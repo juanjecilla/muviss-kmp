@@ -1,0 +1,42 @@
+# Gradle
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+!src/**/build/
+
+# Local config / secrets
+local.properties
+*.local
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.fleet/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Kotlin
+.kotlin/
+
+# Xcode / iOS
+xcuserdata/
+*.xcuserstate
+app/iosApp/iosApp.xcodeproj/project.xcworkspace/xcuserdata/
+app/iosApp/iosApp.xcodeproj/xcuserdata/
+Pods/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Logs
+*.log
+
+# Web
+node_modules/
+kotlin-js-store/

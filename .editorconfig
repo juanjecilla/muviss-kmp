@@ -1,0 +1,26 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 120
+
+[*.{kt,kts}]
+# Compose @Composable functions are PascalCase by convention.
+ktlint_standard_function-naming = disabled
+# Generated/multi-target scaffolding keeps some files terse; line length is
+# enforced via review, not the formatter.
+ktlint_standard_max-line-length = disabled
+ktlint_standard_no-wildcard-imports = enabled
+# Platform entrypoints are conventionally named main.kt.
+ktlint_standard_filename = disabled
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# Muviss pre-commit hook: format check + static analysis before every commit.
+# Enable once per clone with:  git config core.hooksPath .githooks
+#
+set -euo pipefail
+
+echo "[pre-commit] Spotless + Detekt…"
+if ! ./gradlew --quiet spotlessCheck detekt; then
+    echo
+    echo "[pre-commit] Failed. Run './gradlew spotlessApply' to auto-format, then review Detekt findings."
+    exit 1
+fi
+echo "[pre-commit] OK"

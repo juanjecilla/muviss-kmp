@@ -1,0 +1,38 @@
+## Muviss Detekt config — overrides on top of buildUponDefaultConfig.
+
+complexity:
+  LongMethod:
+    active: false
+  TooManyFunctions:
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+
+style:
+  MagicNumber:
+    # Compose dp/sp literals and TMDB constants are readable inline.
+    active: false
+  UnusedPrivateMember:
+    active: true
+  ReturnCount:
+    active: false
+  MaxLineLength:
+    active: false
+
+naming:
+  FunctionNaming:
+    # @Composable functions are PascalCase.
+    ignoreAnnotated: ['Composable']
+  MatchingDeclarationName:
+    # expect/actual files are platform-suffixed (Foo.android.kt) and some files
+    # group related declarations; enforced loosely via review instead.
+    active: false
+
+# Compose ruleset (io.nlopez.compose.rules)
+Compose:
+  ComposableParamOrder:
+    active: false
+  ModifierMissing:
+    active: false
+  ModifierNotUsedAtRoot:
+    active: false

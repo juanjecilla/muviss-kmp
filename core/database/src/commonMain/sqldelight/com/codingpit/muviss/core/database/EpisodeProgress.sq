@@ -1,0 +1,34 @@
+-- Per-episode watched ticks: the single source of truth from which watch
+-- status is derived. Also carries sync columns for the future change-log.
+CREATE TABLE episodeProgress (
+    episodeId TEXT NOT NULL PRIMARY KEY,
+    mediaId TEXT NOT NULL,
+    seasonNumber INTEGER NOT NULL,
+    episodeNumber INTEGER NOT NULL,
+    seen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+);
+
+CREATE INDEX episodeProgress_mediaId ON episodeProgress(mediaId);
+
+selectForMedia:
+SELECT *
+FROM episodeProgress
+WHERE mediaId = :mediaId;
+
+countSeenForMedia:
+SELECT COUNT(*)
+FROM episodeProgress
+WHERE mediaId = :mediaId AND seen = 1;
+
+upsert:
+INSERT OR REPLACE INTO episodeProgress(
+    episodeId, mediaId, seasonNumber, episodeNumber, seen, updatedAtEpochMs, isDirty
+)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+setSeen:
+UPDATE episodeProgress
+SET seen = :seen, updatedAtEpochMs = :now, isDirty = 1
+WHERE episodeId = :episodeId;
