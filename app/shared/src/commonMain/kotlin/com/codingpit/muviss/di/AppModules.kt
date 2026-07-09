@@ -1,8 +1,10 @@
 package com.codingpit.muviss.di
 
 import com.codingpit.muviss.core.common.di.commonModule
+import com.codingpit.muviss.core.database.di.databaseModule
 import com.codingpit.muviss.core.network.di.networkModule
 import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
+import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
 import com.codingpit.muviss.feature.profile.data.di.profileDataModule
 import com.codingpit.muviss.feature.progress.data.di.progressDataModule
 import com.codingpit.muviss.feature.search.data.di.searchDataModule
@@ -14,10 +16,12 @@ import org.koin.core.module.Module
 val appModules: List<Module> =
     listOf(
         commonModule,
+        databaseModule,
         networkModule,
         searchDataModule,
         searchUiModule,
         collectionDataModule,
+        collectionUiModule,
         progressDataModule,
         profileDataModule,
         settingsDataModule,

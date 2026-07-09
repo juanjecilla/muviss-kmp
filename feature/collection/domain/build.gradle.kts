@@ -8,6 +8,8 @@ kotlin {
             api(projects.models)
             api(projects.feature.collection.api)
             implementation(projects.core.common)
+            implementation(projects.core.model)
+            implementation(libs.kotlinx.coroutinesCore)
         }
     }
 }

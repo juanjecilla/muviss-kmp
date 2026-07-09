@@ -17,19 +17,24 @@ import androidx.navigation.compose.rememberNavController
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
+import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.di.appModules
+import com.codingpit.muviss.di.rememberDatabaseDriverFactory
 import com.codingpit.muviss.feature.collection.ui.CollectionRoute
 import com.codingpit.muviss.feature.collection.ui.collectionSection
 import com.codingpit.muviss.feature.profile.ui.ProfileRoute
 import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.progress.ui.progressSection
+import com.codingpit.muviss.feature.search.ui.DetailRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import org.koin.compose.KoinApplication
+import org.koin.core.module.Module
+import org.koin.dsl.module
 
 private data class TopDestination(
     val route: Any,
@@ -50,11 +55,21 @@ private val topDestinations =
 @Composable
 fun MuvissApp() {
     remember { configureImageLoader() }
-    KoinApplication(application = { modules(appModules) }) {
+    val databaseDriverFactory = rememberDatabaseDriverFactory()
+    KoinApplication(application = { modules(appModules + platformDatabaseModule(databaseDriverFactory)) }) {
         MuvissTheme {
             MuvissScaffold()
         }
     }
+}
+
+/**
+ * Binds the platform-built [DatabaseDriverFactory] instance into the Koin
+ * graph. It has to be created in composition (Android needs a `Context`), so
+ * it cannot live in the common [appModules] list alongside `databaseModule`.
+ */
+private fun platformDatabaseModule(driverFactory: DatabaseDriverFactory): Module = module {
+    single { driverFactory }
 }
 
 @Composable
@@ -93,7 +108,7 @@ private fun MuvissScaffold() {
             modifier = Modifier.padding(padding),
         ) {
             searchSection(navController)
-            collectionSection()
+            collectionSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             progressSection()
             profileSection()
             settingsSection()

@@ -15,6 +15,7 @@ kotlin {
         commonMain.dependencies {
             implementation(projects.core.designsystem)
             implementation(projects.core.network)
+            implementation(projects.core.database)
 
             // Feature UI (screens + nav sections)
             implementation(projects.feature.search.ui)

@@ -10,5 +10,5 @@ import org.koin.dsl.module
 
 val searchUiModule: Module = module {
     viewModelOf(::SearchViewModel)
-    viewModel { (id: MediaId) -> DetailViewModel(id, get()) }
+    viewModel { (id: MediaId) -> DetailViewModel(id, get(), get()) }
 }

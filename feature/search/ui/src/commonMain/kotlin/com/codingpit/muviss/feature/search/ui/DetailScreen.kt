@@ -43,6 +43,16 @@ fun DetailScreen(
             TopAppBar(
                 title = { Text(state.details?.summary?.title ?: "Details") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                actions = {
+                    if (state.details != null) {
+                        TextButton(onClick = viewModel::toggleFavorite) {
+                            Text(if (state.favorite) "★ Favorite" else "☆ Favorite")
+                        }
+                        TextButton(onClick = viewModel::toggleSaved) {
+                            Text(if (state.saved) "Remove" else "Add to Library")
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
