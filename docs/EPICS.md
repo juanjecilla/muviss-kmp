@@ -1,6 +1,6 @@
 # Muviss — Epics
 
-Roadmap to production (v1 = **Android, Play Store, local-only**). Each epic below E1 maps to one GitHub issue and is scoped so a single agent can implement it end-to-end. Benchmark: [TV Time](https://www.tvtime.com) feature set, minus social/community (Muviss is user-focused, no social — see `CLAUDE.md`).
+Roadmap. v1 (**Android, Play Store, local-only**) is feature-complete: EPICs 0–8 ✅. v2 targets **all platforms** (iOS, Desktop, Web) plus the next feature tier. Each epic maps to one GitHub issue and is scoped so a single agent can implement it end-to-end. Benchmark: [TV Time](https://www.tvtime.com) feature set, minus social/community (Muviss is user-focused, no social — see `CLAUDE.md`).
 
 ## TV Time parity map
 
@@ -88,10 +88,74 @@ Everything between "builds" and "on the Play Store".
 - Empty states, error states, pull-to-refresh, loading skeletons across screens.
 - Baseline profile + startup performance pass (nice-to-have).
 
-## EPIC 9 — Sync & Accounts (post-v1)
-`SyncEngine` over the existing `isDirty` / `updatedAt` / soft-delete change-log; backend TBD (Supabase vs Firebase); optional auth; web DB driver. No v1 work beyond keeping dirty-tracking intact.
+---
+
+# v2 — All platforms + next feature tier
+
+## Dependency graph (v2)
+
+```
+E10 Data parity ──► E13 Web release          E9 Sync ──► (cross-device value)
+       │                                          ▲
+       ├──► E12 Desktop release        E18 Import ┘ (shares id-mapping work)
+E11 iOS release (independent)
+E14 Calendar   E15 Ratings&Notes   E16 Recommendations   E17 Lists  (feature epics, all platforms)
+```
+
+| Wave | Epics |
+|---|---|
+| 5 | E10 Data parity, E14 Calendar |
+| 6 | E11 iOS release, E12 Desktop release, E15 Ratings & notes |
+| 7 | E13 Web release, E16 Recommendations, E17 Custom lists |
+| 8 | E9 Sync & accounts, E18 Import |
+
+## EPIC 10 — Platform data parity 🔴 v2 critical path — wave 5
+The DB works everywhere or the "all platforms" story is fiction.
+- Fix #10: `:core:model` JS-target serialization compile break.
+- SQLDelight web worker driver for JS + Wasm (`DatabaseFactory.{js,wasmJs}.kt` currently throw); verify wasm support in current SQLDelight, document limits.
+- File-backed JVM driver (desktop) replacing in-memory, with real `.sqm` migrations + `verifyMigration` wired now that the schema is stable (retro-baseline current schema as migration 1).
+- `DataExporter` real impls for iOS (share sheet), JVM (file save dialog), web (download).
+
+## EPIC 11 — iOS productionization — wave 6
+- Xcode project polish: signing, bundle id, version from git (match Android scheme), Sentry iOS init.
+- Local notifications: `UNUserNotificationCenter` + `BGAppRefreshTask` background refresh reusing `RefreshAndFindNewEpisodesUseCase` diff (already common code).
+- TestFlight pipeline (CI or documented manual), App Store listing docs (reuse `docs/store/`).
+
+## EPIC 12 — Desktop productionization — wave 6, depends on E10
+- Compose Desktop packaging: DMG / MSI / DEB via `compose.desktop` `nativeDistributions`; app icon.
+- File-backed DB (from E10), window size/position persistence, desktop-appropriate navigation polish.
+- CI job attaching installers to tagged releases.
+
+## EPIC 13 — Web productionization — wave 7, depends on E10
+- Wasm build deployed (GitHub Pages or similar) from CI.
+- PWA manifest + icons; document offline limits.
+- Web-specific UX pass (responsive grid, keyboard focus).
+
+## EPIC 14 — Calendar & Upcoming — wave 5, all platforms
+TV Time parity: upcoming schedule. Air dates already mapped (`airDateEpochDay`).
+- "Upcoming" view (new tab or Progress section): next air dates for saved shows, grouped by day; agenda list first, month grid optional.
+- Uses snapshot refresh data only — no new endpoints.
+
+## EPIC 15 — Ratings & notes — wave 6, all platforms
+Personal (local, no social): 1–10 rating + free-text note per title.
+- Schema: columns or small table; surfaced in Detail + Collection sort/filter; ratings feed Profile stats (avg rating, top genre by rating).
+
+## EPIC 16 — Recommendations — wave 7, all platforms
+- TMDB `/recommendations` + `/similar` behind `MetadataProvider` seam.
+- "More like this" row in Detail; "For you" section in Discover seeded from library favorites/top-rated.
+
+## EPIC 17 — Custom lists — wave 7, all platforms
+TV Time parity: user lists ("Marathon 2026", "With Ana").
+- Schema: `list` + `listEntry` join tables (dirty-tracked for future sync); CRUD UI in Library; add-to-list from Detail.
+
+## EPIC 18 — Import — wave 8
+- Import from Trakt export / TV Time takeout / generic CSV: map external ids (IMDb/TMDB) → `MediaId`, create collection entries + progress ticks.
+- Groundwork shared with additional `MetadataProvider`s (TVmaze/Trakt) from the backlog.
+
+## EPIC 9 — Sync & Accounts — wave 8 (moved from post-v1 backlog)
+`SyncEngine` over the existing `isDirty` / `updatedAt` / soft-delete change-log; backend TBD (Supabase vs Firebase); optional auth; two-device convergence, tombstone propagation. Schedule after E15/E17 so the schema stops churning first. Issue #8.
 
 ## Cross-cutting / backlog
 - Additional `MetadataProvider`s (TVmaze/Trakt) + cross-source reconciliation via IMDb id.
-- File-backed desktop DB driver with schema versioning.
-- iOS / Desktop / Web productionization (post-v1).
+- Home-screen widgets (Android Glance / iOS WidgetKit) — post-E14.
+- Baseline profile + startup performance pass.
