@@ -8,6 +8,7 @@ kotlin {
         commonMain.dependencies {
             implementation(projects.feature.search.domain)
             implementation(projects.feature.collection.api)
+            implementation(projects.feature.progress.api)
             implementation(projects.core.designsystem)
             implementation(projects.models)
             implementation(libs.navigation.compose)

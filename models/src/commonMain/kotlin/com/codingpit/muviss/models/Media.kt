@@ -71,4 +71,15 @@ data class EpisodeId(
     val episodeNumber: Int,
 ) {
     override fun toString(): String = "$show/$seasonNumber/$episodeNumber"
+
+    companion object {
+        /**
+         * Synthetic id for a movie's single watched tick. Movies have no
+         * season/episode structure, but progress is still stored per-"episode"
+         * (see `EpisodeProgress.sq`), so this convention gives every movie one
+         * stable id to tick. Safe from collision with any real TV episode id
+         * because [show] already carries the media's [MediaType].
+         */
+        fun forMovie(show: MediaId) = EpisodeId(show, seasonNumber = 0, episodeNumber = 0)
+    }
 }

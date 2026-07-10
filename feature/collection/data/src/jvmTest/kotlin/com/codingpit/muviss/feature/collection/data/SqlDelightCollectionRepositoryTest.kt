@@ -8,11 +8,18 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.ProductionStatus
+import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -33,10 +40,28 @@ private class FakeClock(private var millis: Long) : AppClock {
     }
 }
 
+/** Test double for [ProgressApi]: seen-episode sets are controlled per media id via [setSeen]. */
+private class FakeProgressApi : ProgressApi {
+    private val seenByMedia = mutableMapOf<MediaId, MutableStateFlow<Set<EpisodeId>>>()
+
+    private fun flowFor(mediaId: MediaId) = seenByMedia.getOrPut(mediaId) { MutableStateFlow(emptySet()) }
+
+    fun setSeen(mediaId: MediaId, seen: Set<EpisodeId>) {
+        flowFor(mediaId).value = seen
+    }
+
+    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = flowFor(mediaId)
+    override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = error("not used")
+    override suspend fun markSeasonSeen(season: Season) = error("not used")
+    override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("not used")
+    override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = error("not used")
+}
+
 class SqlDelightCollectionRepositoryTest {
 
     private lateinit var queries: CollectionEntryQueries
     private lateinit var clock: FakeClock
+    private lateinit var progressApi: FakeProgressApi
     private lateinit var repository: SqlDelightCollectionRepository
 
     @BeforeTest
@@ -45,7 +70,8 @@ class SqlDelightCollectionRepositoryTest {
         MuvissDatabase.Schema.create(driver)
         queries = MuvissDatabase(driver).collectionEntryQueries
         clock = FakeClock(1_000L)
-        repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+        progressApi = FakeProgressApi()
+        repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, progressApi)
     }
 
     private fun details(
@@ -140,5 +166,41 @@ class SqlDelightCollectionRepositoryTest {
             assertNull(awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun observeEntry_seenEpisodes_reflects_progress_api() = runTest {
+        val id = MediaId.tmdbMovie("603")
+        repository.upsertSnapshot(details(id))
+
+        repository.observeEntry(id).test {
+            val notStarted = awaitItem()!!
+            assertEquals(0, notStarted.seenEpisodes)
+            assertEquals(WatchStatus.NOT_STARTED, notStarted.status)
+
+            progressApi.setSeen(id, setOf(EpisodeId.forMovie(id)))
+            val watched = awaitItem()!!
+            assertEquals(1, watched.seenEpisodes)
+            assertEquals(WatchStatus.WATCHED, watched.status)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun observeAll_seenEpisodes_reacts_to_progress_ticks_per_entry() = runTest {
+        val show = MediaId.tmdbTv("1399")
+        val movie = MediaId.tmdbMovie("603")
+        repository.upsertSnapshot(details(show, productionStatus = ProductionStatus.RETURNING))
+        repository.upsertSnapshot(details(movie))
+
+        repository.observeAll()
+            .map { entries -> entries.associate { it.mediaId to it.seenEpisodes } }
+            .test {
+                assertEquals(mapOf(show to 0, movie to 0), awaitItem())
+
+                progressApi.setSeen(movie, setOf(EpisodeId.forMovie(movie)))
+                assertEquals(mapOf(show to 0, movie to 1), awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
     }
 }

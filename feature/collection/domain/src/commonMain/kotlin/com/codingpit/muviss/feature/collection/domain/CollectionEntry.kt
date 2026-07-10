@@ -13,9 +13,10 @@ import com.codingpit.muviss.models.WatchStatus
  * rather than duplicated.
  *
  * [status] is always derived via [WatchStatusCalculator] — this feature never
- * stores it (ADR 0005). Until the progress feature lands there is no
- * per-episode data, so [seenEpisodes] defaults to 0 and every entry derives
- * [WatchStatus.NOT_STARTED].
+ * stores it (ADR 0005). [seenEpisodes] is fed in from the progress feature
+ * (via its `:api`, see `SqlDelightCollectionRepository`) rather than stored
+ * here; it defaults to 0 so a bare [CollectionEntry] (e.g. in tests) still
+ * derives [WatchStatus.NOT_STARTED].
  */
 data class CollectionEntry(
     val mediaId: MediaId,

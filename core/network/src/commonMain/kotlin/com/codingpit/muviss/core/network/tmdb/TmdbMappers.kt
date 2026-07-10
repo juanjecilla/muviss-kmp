@@ -17,6 +17,40 @@ internal object TmdbMapper {
 
     fun yearOf(date: String?): Int? = date?.take(4)?.toIntOrNull()
 
+    /**
+     * Parses a TMDB `air_date` (`yyyy-MM-dd`) into an epoch day (days since
+     * 1970-01-01, matching [com.codingpit.muviss.models.Episode.airDateEpochDay]'s
+     * convention), or null if [airDate] is null or malformed. No date library
+     * is used — this is common code and must run on every target — so the day
+     * count is computed directly via the standard proleptic-Gregorian
+     * days-from-civil algorithm (Howard Hinnant's `days_from_civil`).
+     */
+    fun airDateToEpochDay(airDate: String?): Long? {
+        if (airDate == null) return null
+        val parts = airDate.split("-")
+        if (parts.size != 3) return null
+        val year = parts[0].toIntOrNull() ?: return null
+        val month = parts[1].toIntOrNull() ?: return null
+        val day = parts[2].toIntOrNull() ?: return null
+        return epochDayFromDate(year, month, day)
+    }
+
+    private fun epochDayFromDate(year: Int, month: Int, day: Int): Long {
+        val y = if (month <= 2) year - 1 else year
+        val era = (if (y >= 0) y else y - ERA_YEAR_ADJUST) / DAYS_PER_ERA_YEARS
+        val yearOfEra = y - era * DAYS_PER_ERA_YEARS // [0, 399]
+        val monthIndex = if (month > 2) month - 3 else month + 9 // [0, 11], March-based
+        val dayOfYear = (MONTH_TO_DAYS_NUMERATOR * monthIndex + 2) / 5 + day - 1 // [0, 365]
+        val dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear // [0, 146096]
+        return era.toLong() * DAYS_PER_ERA + dayOfEra.toLong() - DAYS_FROM_ERA_ZERO_TO_UNIX_EPOCH
+    }
+
+    private const val ERA_YEAR_ADJUST = 399
+    private const val DAYS_PER_ERA_YEARS = 400
+    private const val MONTH_TO_DAYS_NUMERATOR = 153
+    private const val DAYS_PER_ERA = 146_097L
+    private const val DAYS_FROM_ERA_ZERO_TO_UNIX_EPOCH = 719_468L
+
     fun tvProductionStatus(status: String?): ProductionStatus = when (status?.lowercase()) {
         "returning series", "in production", "planned", "pilot" -> ProductionStatus.RETURNING
         "ended" -> ProductionStatus.ENDED
@@ -87,7 +121,7 @@ internal object TmdbMapper {
                 seasonNumber = ep.seasonNumber,
                 episodeNumber = ep.episodeNumber,
                 name = ep.name,
-                airDateEpochDay = null,
+                airDateEpochDay = airDateToEpochDay(ep.airDate),
                 stillUrl = imageUrl(ep.stillPath),
             )
         },

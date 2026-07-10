@@ -1,8 +1,29 @@
 package com.codingpit.muviss.feature.progress.api
 
+import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.Season
+import kotlinx.coroutines.flow.Flow
+
 /**
- * Public contract exposed by the progress feature to other features. Peers depend on
- * this module only, never on the feature's domain/data/ui. The progress feature is a
- * stub in this pass; methods are added as the feature is implemented.
+ * Public contract of the progress feature. Peers (search's `DetailScreen`,
+ * collection's status derivation) depend on this module only — never
+ * progress's domain/data/ui — to tick episodes and read watched state without
+ * knowing anything about how progress is stored.
  */
-interface ProgressApi
+interface ProgressApi {
+    /** Seen episode ids for [mediaId] (movies use the single id from [EpisodeId.forMovie]). */
+    fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>>
+
+    /** Ticks a single episode, e.g. a per-episode checkmark in Detail. */
+    suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean)
+
+    /** Marks every episode in [season] as seen. */
+    suspend fun markSeasonSeen(season: Season)
+
+    /** Marks every episode at or before [target] across [seasons] as seen — the "catch me up" action. */
+    suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId)
+
+    /** Toggles a movie's watched flag. */
+    suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean)
+}

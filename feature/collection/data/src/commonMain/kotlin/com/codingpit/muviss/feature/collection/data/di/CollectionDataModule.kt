@@ -19,9 +19,9 @@ import org.koin.dsl.module
 /** Repository + use-case + [CollectionApi] bindings for the collection feature. */
 val collectionDataModule: Module = module {
     single { get<MuvissDatabase>().collectionEntryQueries }
-    single<CollectionRepository> { SqlDelightCollectionRepository(get(), get(), get()) }
+    single<CollectionRepository> { SqlDelightCollectionRepository(get(), get(), get(), get()) }
     single<MediaSnapshotSource> { RegistryMediaSnapshotSource(get(), get()) }
-    single<CollectionApi> { DefaultCollectionApi(get(), get(), get(), get()) }
+    single<CollectionApi> { DefaultCollectionApi(get(), get(), get(), get(), get()) }
 
     factory { ObserveCollectionUseCase(get()) }
     factory { ObserveCollectionEntryUseCase(get()) }

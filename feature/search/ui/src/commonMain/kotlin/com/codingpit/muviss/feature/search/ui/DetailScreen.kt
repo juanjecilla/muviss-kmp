@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,8 +13,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -29,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.Season
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,14 +70,15 @@ fun DetailScreen(
                     TextButton(onClick = viewModel::load) { Text("Retry") }
                 }
 
-                state.details != null -> DetailContent(state.details!!)
+                state.details != null -> DetailContent(state, viewModel)
             }
         }
     }
 }
 
 @Composable
-private fun DetailContent(details: MediaDetails) {
+private fun DetailContent(state: DetailUiState, viewModel: DetailViewModel) {
+    val details = state.details!!
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -101,19 +107,71 @@ private fun DetailContent(details: MediaDetails) {
             Text(it, style = MaterialTheme.typography.bodyMedium)
         }
 
-        if (details.type == MediaType.TV) {
-            Text(
-                "Seasons",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 8.dp),
+        when (details.type) {
+            MediaType.MOVIE -> MovieWatchedToggle(state.movieWatched, onToggle = viewModel::toggleMovieWatched)
+            MediaType.TV -> SeasonsList(details, state, viewModel)
+        }
+    }
+}
+
+@Composable
+private fun MovieWatchedToggle(watched: Boolean, onToggle: () -> Unit) {
+    Row(Modifier.clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = watched, onCheckedChange = { onToggle() })
+        Text(if (watched) "Watched" else "Mark as watched", style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun SeasonsList(details: MediaDetails, state: DetailUiState, viewModel: DetailViewModel) {
+    Text("Seasons", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+    details.seasons.forEach { season ->
+        SeasonSection(season, state, viewModel)
+    }
+}
+
+@Composable
+private fun SeasonSection(season: Season, state: DetailUiState, viewModel: DetailViewModel) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("${season.name} · ${state.seenCountIn(season)}/${season.episodes.size}", style = MaterialTheme.typography.titleSmall)
+            TextButton(onClick = { viewModel.markSeasonSeen(season) }) { Text("Mark season seen") }
+        }
+        val progress = if (season.episodes.isEmpty()) 0f else state.seenCountIn(season) / season.episodes.size.toFloat()
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        season.episodes.forEach { episode ->
+            EpisodeRow(
+                name = episode.name,
+                number = episode.episodeNumber,
+                seen = state.isSeen(episode.id),
+                onToggleSeen = { viewModel.toggleEpisodeSeen(episode.id) },
+                onMarkPrevious = { viewModel.markPreviousSeen(episode.id) },
             )
-            details.seasons.forEach { season ->
-                Text(
-                    "${season.name} · ${season.episodes.size} episodes",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                )
-            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodeRow(
+    name: String,
+    number: Int,
+    seen: Boolean,
+    onToggleSeen: () -> Unit,
+    onMarkPrevious: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = seen, onCheckedChange = { onToggleSeen() })
+        Text(
+            "$number. $name",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f).padding(end = 4.dp),
+        )
+        if (!seen) {
+            Button(onClick = onMarkPrevious) { Text("Caught up to here") }
         }
     }
 }

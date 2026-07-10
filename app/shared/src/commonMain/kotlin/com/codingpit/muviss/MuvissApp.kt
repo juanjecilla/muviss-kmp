@@ -109,7 +109,7 @@ private fun MuvissScaffold() {
         ) {
             searchSection(navController)
             collectionSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-            progressSection()
+            progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             profileSection()
             settingsSection()
         }
