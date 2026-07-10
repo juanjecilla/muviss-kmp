@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
+import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +27,8 @@ data class DetailUiState(
     val favorite: Boolean = false,
     /** Seen episode ids (movies use the single id from [EpisodeId.forMovie]) — drives checkmarks, season bars, and the movie toggle. */
     val seenEpisodes: Set<EpisodeId> = emptySet(),
+    /** Null while loading; an empty [WatchProviders] once loaded means "hide the section" — no failure surfaced, it's a nice-to-have. */
+    val watchProviders: WatchProviders? = null,
 ) {
     fun isSeen(episodeId: EpisodeId): Boolean = episodeId in seenEpisodes
 
@@ -46,6 +50,7 @@ class DetailViewModel(
     private val loadDetail: MediaDetailUseCase,
     private val collectionApi: CollectionApi,
     private val progressApi: ProgressApi,
+    private val loadWatchProviders: WatchProvidersUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DetailUiState())
@@ -70,6 +75,20 @@ class DetailViewModel(
                 onSuccess = { d -> _state.update { it.copy(loading = false, details = d) } },
                 onFailure = { e -> _state.update { it.copy(loading = false, error = e.message ?: "Something went wrong") } },
             )
+        }
+        loadWhereToWatch()
+    }
+
+    /**
+     * Loaded independently of [load]: a provider outage here shouldn't block
+     * showing the title's details, so failure just leaves the section hidden
+     * rather than surfacing an error.
+     */
+    private fun loadWhereToWatch() {
+        viewModelScope.launch {
+            loadWatchProviders(mediaId).onSuccess { providers ->
+                _state.update { it.copy(watchProviders = providers) }
+            }
         }
     }
 

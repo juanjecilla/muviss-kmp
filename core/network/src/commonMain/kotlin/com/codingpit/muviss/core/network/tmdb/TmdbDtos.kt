@@ -82,3 +82,36 @@ internal data class TmdbEpisodeDto(
     @SerialName("air_date") val airDate: String? = null,
     @SerialName("still_path") val stillPath: String? = null,
 )
+
+/** `/genre/{movie|tv}/list` — unlike [TmdbGenreDto], carries the id needed to filter `/discover`. */
+@Serializable
+internal data class TmdbGenreListItemDto(
+    val id: Long,
+    val name: String,
+)
+
+@Serializable
+internal data class TmdbGenreListDto(
+    val genres: List<TmdbGenreListItemDto> = emptyList(),
+)
+
+@Serializable
+internal data class TmdbWatchProviderDto(
+    @SerialName("provider_id") val providerId: Long,
+    @SerialName("provider_name") val providerName: String,
+    @SerialName("logo_path") val logoPath: String? = null,
+)
+
+/** One region's entry in `/{movie|tv}/{id}/watch/providers`'s `results` map. */
+@Serializable
+internal data class TmdbWatchProviderRegionDto(
+    val flatrate: List<TmdbWatchProviderDto> = emptyList(),
+    val rent: List<TmdbWatchProviderDto> = emptyList(),
+    val buy: List<TmdbWatchProviderDto> = emptyList(),
+)
+
+@Serializable
+internal data class TmdbWatchProvidersResponseDto(
+    val id: Long,
+    val results: Map<String, TmdbWatchProviderRegionDto> = emptyMap(),
+)

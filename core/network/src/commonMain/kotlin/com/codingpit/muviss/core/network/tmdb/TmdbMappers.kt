@@ -2,18 +2,28 @@ package com.codingpit.muviss.core.network.tmdb
 
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaAnchors
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.WatchProvider
+import com.codingpit.muviss.models.WatchProviders
 
 internal object TmdbMapper {
     const val IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
+    // Provider logos render small (a couple dozen dp); w92 is TMDB's smallest
+    // non-thumbnail size and keeps the "Where to watch" row light.
+    const val LOGO_BASE = "https://image.tmdb.org/t/p/w92"
+
     fun imageUrl(path: String?): String? = path?.let { IMAGE_BASE + it }
+
+    fun logoUrl(path: String?): String? = path?.let { LOGO_BASE + it }
 
     fun yearOf(date: String?): Int? = date?.take(4)?.toIntOrNull()
 
@@ -60,9 +70,18 @@ internal object TmdbMapper {
 
     /** Maps a search/trending row; returns null for non movie/tv rows (e.g. people). */
     fun resultToSummary(dto: TmdbResultDto): MediaSummary? = when (dto.mediaType) {
-        "movie" -> dto.toSummary(MediaId.tmdbMovie(dto.id.toString()), dto.title, dto.releaseDate)
-        "tv" -> dto.toSummary(MediaId.tmdbTv(dto.id.toString()), dto.name, dto.firstAirDate)
+        "movie" -> discoverResultToSummary(MediaType.MOVIE, dto)
+        "tv" -> discoverResultToSummary(MediaType.TV, dto)
         else -> null
+    }
+
+    /**
+     * Maps a `/discover/{movie|tv}` row. Unlike search/trending rows, discover
+     * rows carry no `media_type` — the endpoint called already fixes [type].
+     */
+    fun discoverResultToSummary(type: MediaType, dto: TmdbResultDto): MediaSummary = when (type) {
+        MediaType.MOVIE -> dto.toSummary(MediaId.tmdbMovie(dto.id.toString()), dto.title, dto.releaseDate)
+        MediaType.TV -> dto.toSummary(MediaId.tmdbTv(dto.id.toString()), dto.name, dto.firstAirDate)
     }
 
     private fun TmdbResultDto.toSummary(id: MediaId, title: String?, date: String?): MediaSummary = MediaSummary(
@@ -72,6 +91,39 @@ internal object TmdbMapper {
         posterUrl = imageUrl(posterPath),
         overview = overview,
         rating = voteAverage,
+    )
+
+    /** Maps a `/search/multi` page, dropping non movie/tv rows (e.g. people). */
+    fun searchPageToPagedResult(dto: TmdbPageDto): PagedResult<MediaSummary> = PagedResult(
+        items = dto.results.mapNotNull(::resultToSummary),
+        page = dto.page,
+        totalPages = dto.totalPages,
+    )
+
+    /** Maps a `/discover/{movie|tv}` page, already fixed to a single [type]. */
+    fun discoverPageToPagedResult(type: MediaType, dto: TmdbPageDto): PagedResult<MediaSummary> = PagedResult(
+        items = dto.results.map { discoverResultToSummary(type, it) },
+        page = dto.page,
+        totalPages = dto.totalPages,
+    )
+
+    fun genreListToModels(dto: TmdbGenreListDto): List<Genre> = dto.genres.map { Genre(it.id.toString(), it.name) }
+
+    /** Maps one region's entry from `/{movie|tv}/{id}/watch/providers`; null (region not offered) maps to empty. */
+    fun watchProvidersToModel(dto: TmdbWatchProviderRegionDto?): WatchProviders = if (dto == null) {
+        WatchProviders()
+    } else {
+        WatchProviders(
+            flatrate = dto.flatrate.map { it.toModel() },
+            rent = dto.rent.map { it.toModel() },
+            buy = dto.buy.map { it.toModel() },
+        )
+    }
+
+    private fun TmdbWatchProviderDto.toModel() = WatchProvider(
+        id = providerId.toString(),
+        name = providerName,
+        logoUrl = logoUrl(logoPath),
     )
 
     fun movieToDetails(dto: TmdbMovieDetailDto): MediaDetails {

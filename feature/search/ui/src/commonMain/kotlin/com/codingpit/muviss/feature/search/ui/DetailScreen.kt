@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -28,12 +31,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.WatchProvider
+import com.codingpit.muviss.models.WatchProviders
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +118,52 @@ private fun DetailContent(state: DetailUiState, viewModel: DetailViewModel) {
         when (details.type) {
             MediaType.MOVIE -> MovieWatchedToggle(state.movieWatched, onToggle = viewModel::toggleMovieWatched)
             MediaType.TV -> SeasonsList(details, state, viewModel)
+        }
+
+        state.watchProviders?.let { providers -> WhereToWatchSection(providers) }
+    }
+}
+
+/** Streaming/rent/buy rows for the configured region; the caller only renders this when [providers] has data. */
+@Composable
+private fun WhereToWatchSection(providers: WatchProviders) {
+    if (providers.isEmpty) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Where to watch", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+        ProviderRow("Stream", providers.flatrate)
+        ProviderRow("Rent", providers.rent)
+        ProviderRow("Buy", providers.buy)
+        // TMDB's terms require this attribution wherever JustWatch-sourced
+        // provider data renders — do not remove without checking ADR 0001.
+        Text(JUSTWATCH_ATTRIBUTION_TEXT, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun ProviderRow(label: String, providers: List<WatchProvider>) {
+    if (providers.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(providers, key = { it.id }) { provider -> ProviderLogo(provider) }
+        }
+    }
+}
+
+@Composable
+private fun ProviderLogo(provider: WatchProvider) {
+    Surface(shape = RoundedCornerShape(8.dp), tonalElevation = 2.dp) {
+        if (provider.logoUrl != null) {
+            AsyncImage(
+                model = provider.logoUrl,
+                contentDescription = provider.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(40.dp),
+            )
+        } else {
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                Text(provider.name.take(2), style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }

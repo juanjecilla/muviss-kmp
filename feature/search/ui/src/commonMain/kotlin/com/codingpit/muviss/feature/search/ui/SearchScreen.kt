@@ -4,22 +4,35 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,9 +40,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MediaType
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
@@ -46,38 +62,142 @@ fun SearchScreen(
             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
         )
 
-        if (state.showingTrending && state.query.isBlank()) {
-            Text(
-                "Trending this week",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
+        when {
+            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                CircularProgressIndicator(Modifier.padding(top = 32.dp))
+            }
 
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            when {
-                state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
+            state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                ErrorState(state.error!!, viewModel::retry)
+            }
 
-                state.error != null -> ErrorState(state.error!!, viewModel::retry)
+            else -> when (state.mode) {
+                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail)
 
-                state.results.isEmpty() -> Text(
-                    "No results",
-                    modifier = Modifier.padding(top = 32.dp),
-                    style = MaterialTheme.typography.bodyMedium,
+                SearchMode.GENRE_BROWSE -> GenreResults(
+                    state,
+                    onClear = viewModel::clearGenre,
+                    onLoadMore = viewModel::loadMore,
+                    onOpenDetail = onOpenDetail,
                 )
 
-                else -> ResultsGrid(state.results, onOpenDetail)
+                SearchMode.SEARCH_RESULTS -> SearchResults(state, onLoadMore = viewModel::loadMore, onOpenDetail = onOpenDetail)
             }
         }
     }
 }
 
 @Composable
-private fun ResultsGrid(
-    results: List<MediaSummary>,
+private fun DiscoverBrowse(
+    state: SearchUiState,
+    onSelectGenre: (Genre, MediaType) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
 ) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        GenreChipRow("Movie genres", state.movieGenres) { onSelectGenre(it, MediaType.MOVIE) }
+        GenreChipRow("TV genres", state.tvGenres) { onSelectGenre(it, MediaType.TV) }
+        MediaCarousel("Popular movies", state.popularMovies, onOpenDetail)
+        MediaCarousel("Popular TV", state.popularTv, onOpenDetail)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GenreChipRow(title: String, genres: List<Genre>, onClick: (Genre) -> Unit) {
+    if (genres.isEmpty()) return
+    Column {
+        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(genres, key = { it.id }) { genre ->
+                SuggestionChip(onClick = { onClick(genre) }, label = { Text(genre.name) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaCarousel(title: String, items: List<MediaSummary>, onOpenDetail: (MediaId) -> Unit) {
+    if (items.isEmpty()) return
+    Column {
+        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { it.id.toString() }) { item ->
+                Box(Modifier.width(110.dp)) { MediaCard(item) { onOpenDetail(item.id) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GenreResults(
+    state: SearchUiState,
+    onClear: () -> Unit,
+    onLoadMore: () -> Unit,
+    onOpenDetail: (MediaId) -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(state.selectedGenre?.name.orEmpty(), style = MaterialTheme.typography.titleSmall)
+            TextButton(onClick = onClear) { Text("Back to discover") }
+        }
+        if (state.genreResults.isEmpty()) {
+            Text(
+                "No titles found",
+                modifier = Modifier.padding(top = 32.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        } else {
+            PagedResultsGrid(state.genreResults, state.loadingMore, onLoadMore, onOpenDetail)
+        }
+    }
+}
+
+@Composable
+private fun SearchResults(
+    state: SearchUiState,
+    onLoadMore: () -> Unit,
+    onOpenDetail: (MediaId) -> Unit,
+) {
+    if (state.results.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Text(
+                "No results",
+                modifier = Modifier.padding(top = 32.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    } else {
+        PagedResultsGrid(state.results, state.loadingMore, onLoadMore, onOpenDetail)
+    }
+}
+
+/** A results grid that asks [onLoadMore] for the next page once the user nears the end (infinite scroll). */
+@Composable
+private fun PagedResultsGrid(
+    results: List<MediaSummary>,
+    loadingMore: Boolean,
+    onLoadMore: () -> Unit,
+    onOpenDetail: (MediaId) -> Unit,
+) {
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .collect { lastVisibleIndex ->
+                val total = gridState.layoutInfo.totalItemsCount
+                if (lastVisibleIndex != null && total > 0 && lastVisibleIndex >= total - LOAD_MORE_THRESHOLD) {
+                    onLoadMore()
+                }
+            }
+    }
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = 110.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -85,6 +205,13 @@ private fun ResultsGrid(
     ) {
         items(results, key = { it.id.toString() }) { item ->
             MediaCard(item) { onOpenDetail(item.id) }
+        }
+        if (loadingMore) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                }
+            }
         }
     }
 }
@@ -126,3 +253,5 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
         TextButton(onClick = onRetry) { Text("Retry") }
     }
 }
+
+private const val LOAD_MORE_THRESHOLD = 6

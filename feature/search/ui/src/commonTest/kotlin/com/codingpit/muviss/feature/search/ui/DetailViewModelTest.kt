@@ -8,12 +8,18 @@ import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.SearchRepository
+import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.WatchProvider
+import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,10 +35,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private class FakeDetailRepo(private val details: MediaDetails) : SearchRepository {
-    override suspend fun search(query: String) = Result.success(emptyList<MediaSummary>())
+private class FakeDetailRepo(
+    private val details: MediaDetails,
+    private val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
+) : SearchRepository {
+    override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = Result.success(details)
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+    override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
+    override suspend fun watchProviders(id: MediaId) = watchProviders
 }
 
 private class FakeCollectionApi : CollectionApi {
@@ -108,7 +120,11 @@ class DetailViewModelTest {
         progressApi: FakeProgressApi = FakeProgressApi(),
         detailsToLoad: MediaDetails = details,
         id: MediaId = mediaId,
-    ) = DetailViewModel(id, MediaDetailUseCase(FakeDetailRepo(detailsToLoad)), collectionApi, progressApi)
+        watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
+    ): DetailViewModel {
+        val repo = FakeDetailRepo(detailsToLoad, watchProviders)
+        return DetailViewModel(id, MediaDetailUseCase(repo), collectionApi, progressApi, WatchProvidersUseCase(repo))
+    }
 
     @Test
     fun starts_unsaved_and_unfavorited() = runTest {
@@ -211,5 +227,32 @@ class DetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(episode2.id), progressApi.markedPrevious)
+    }
+
+    @Test
+    fun watchProviders_starts_null_and_populates_once_loaded() = runTest {
+        val providers = WatchProviders(flatrate = listOf(WatchProvider("8", "Netflix")))
+        val vm = viewModel(watchProviders = Result.success(providers))
+        advanceUntilIdle()
+
+        assertEquals(providers, vm.state.value.watchProviders)
+    }
+
+    @Test
+    fun watchProviders_failure_leaves_the_section_hidden_rather_than_erroring() = runTest {
+        val vm = viewModel(watchProviders = Result.failure(RuntimeException("no providers")))
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.watchProviders)
+        assertEquals(null, vm.state.value.error)
+    }
+
+    @Test
+    fun watchProviders_empty_result_is_reported_as_is_so_the_screen_can_hide_the_section() = runTest {
+        val vm = viewModel(watchProviders = Result.success(WatchProviders()))
+        advanceUntilIdle()
+
+        assertEquals(WatchProviders(), vm.state.value.watchProviders)
+        assertTrue(vm.state.value.watchProviders!!.isEmpty)
     }
 }

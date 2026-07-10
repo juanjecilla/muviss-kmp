@@ -10,6 +10,7 @@ import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.SourceId
 import kotlinx.coroutines.CoroutineDispatcher
@@ -24,7 +25,7 @@ private class FakeProvider(
     private val seasons: List<Season> = emptyList(),
     private val failWith: Throwable? = null,
 ) : MetadataProvider {
-    override suspend fun search(query: String, page: Int): List<MediaSummary> = emptyList()
+    override suspend fun search(query: String, page: Int): PagedResult<MediaSummary> = PagedResult(emptyList(), 1, 1)
     override suspend fun trending(): List<MediaSummary> = emptyList()
     override suspend fun details(id: MediaId): MediaDetails {
         failWith?.let { throw it }

@@ -1,9 +1,12 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TmdbMapperTest {
 
@@ -56,5 +59,96 @@ class TmdbMapperTest {
 
         assertEquals(TmdbMapper.airDateToEpochDay("2011-04-17"), season.episodes[0].airDateEpochDay)
         assertNull(season.episodes[1].airDateEpochDay)
+    }
+
+    @Test
+    fun discoverResultToSummary_maps_a_movie_row_by_release_date() {
+        val dto = TmdbResultDto(id = 603, title = "The Matrix", releaseDate = "1999-03-30", posterPath = "/m.jpg")
+
+        val summary = TmdbMapper.discoverResultToSummary(MediaType.MOVIE, dto)
+
+        assertEquals(MediaId.tmdbMovie("603"), summary.id)
+        assertEquals("The Matrix", summary.title)
+        assertEquals(1999, summary.year)
+        assertEquals(TmdbMapper.IMAGE_BASE + "/m.jpg", summary.posterUrl)
+    }
+
+    @Test
+    fun discoverResultToSummary_maps_a_tv_row_by_first_air_date() {
+        val dto = TmdbResultDto(id = 1399, name = "Game of Thrones", firstAirDate = "2011-04-17")
+
+        val summary = TmdbMapper.discoverResultToSummary(MediaType.TV, dto)
+
+        assertEquals(MediaId.tmdbTv("1399"), summary.id)
+        assertEquals("Game of Thrones", summary.title)
+        assertEquals(2011, summary.year)
+    }
+
+    @Test
+    fun discoverPageToPagedResult_carries_page_and_totalPages_through() {
+        val dto = TmdbPageDto(
+            page = 2,
+            totalPages = 5,
+            results = listOf(TmdbResultDto(id = 1, title = "A", releaseDate = "2020-01-01")),
+        )
+
+        val result = TmdbMapper.discoverPageToPagedResult(MediaType.MOVIE, dto)
+
+        assertEquals(2, result.page)
+        assertEquals(5, result.totalPages)
+        assertEquals(1, result.items.size)
+        assertTrue(result.hasMore)
+    }
+
+    @Test
+    fun searchPageToPagedResult_drops_non_movie_tv_rows() {
+        val dto = TmdbPageDto(
+            page = 1,
+            totalPages = 1,
+            results = listOf(
+                TmdbResultDto(id = 1, mediaType = "movie", title = "A", releaseDate = "2020-01-01"),
+                TmdbResultDto(id = 2, mediaType = "person", title = "A person"),
+            ),
+        )
+
+        val result = TmdbMapper.searchPageToPagedResult(dto)
+
+        assertEquals(1, result.items.size)
+        assertEquals(MediaId.tmdbMovie("1"), result.items.single().id)
+    }
+
+    @Test
+    fun genreListToModels_maps_id_and_name() {
+        val dto = TmdbGenreListDto(genres = listOf(TmdbGenreListItemDto(id = 28, name = "Action")))
+
+        val genres = TmdbMapper.genreListToModels(dto)
+
+        assertEquals(listOf(Genre("28", "Action")), genres)
+    }
+
+    @Test
+    fun watchProvidersToModel_null_region_maps_to_empty() {
+        val providers = TmdbMapper.watchProvidersToModel(null)
+
+        assertTrue(providers.isEmpty)
+    }
+
+    @Test
+    fun watchProvidersToModel_maps_each_offer_type_and_logo_url() {
+        val dto = TmdbWatchProviderRegionDto(
+            flatrate = listOf(TmdbWatchProviderDto(providerId = 8, providerName = "Netflix", logoPath = "/n.jpg")),
+            rent = listOf(TmdbWatchProviderDto(providerId = 2, providerName = "Apple TV")),
+            buy = emptyList(),
+        )
+
+        val providers = TmdbMapper.watchProvidersToModel(dto)
+
+        assertEquals(1, providers.flatrate.size)
+        assertEquals("Netflix", providers.flatrate.single().name)
+        assertEquals(TmdbMapper.LOGO_BASE + "/n.jpg", providers.flatrate.single().logoUrl)
+        assertEquals(1, providers.rent.size)
+        assertNull(providers.rent.single().logoUrl)
+        assertTrue(providers.buy.isEmpty())
+        assertTrue(!providers.isEmpty)
     }
 }
