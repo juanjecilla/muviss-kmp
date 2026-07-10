@@ -39,7 +39,7 @@ Repo config + `.gitignore`, rename to Muviss, version catalog, `build-logic` con
 ## EPIC 1 — Search & Discovery ✅
 Real end-to-end reference slice. `TmdbProvider`, debounced search + weekly trending, media detail (movie + TV with seasons/episodes). Repository over `MetadataProviderRegistry`; `SearchViewModel`/`DetailViewModel`; unit + ViewModel tests.
 
-## EPIC 2 — Collection (Library) 🔴 critical path — wave 1
+## EPIC 2 — Collection (Library) ✅
 Wire `:core:database` into DI (new `databaseModule`, register in `AppModules.kt`); implement `feature/collection` for real, copying the search slice structure.
 - `CollectionRepository` (domain interface + SQLDelight impl in data) over `CollectionEntry.sq`: add/remove (soft-delete), favorite toggle, observe library as `Flow`.
 - Expose add-to-collection + favorite in `collection:api`; consume from search's DetailScreen (cross-feature via `:api` only).
@@ -47,7 +47,7 @@ Wire `:core:database` into DI (new `databaseModule`, register in `AppModules.kt`
 - Snapshot refresh: on app open, re-pull saved titles from TMDB to update `airedEpisodes` / `productionStatus`.
 - Tests: repository (JVM in-memory driver), ViewModel.
 
-## EPIC 3 — Progress (episode tracking) 🔴 critical path — wave 2, depends on E2
+## EPIC 3 — Progress (episode tracking) ✅
 The core tracking loop: tick episodes seen.
 - `ProgressRepository` over `EpisodeProgress.sq`: per-episode seen toggle, mark-season/mark-all, movie watched toggle.
 - Derive `WatchStatus` via existing `WatchStatusCalculator` (`:core:model`) — never stored.
@@ -56,22 +56,22 @@ The core tracking loop: tick episodes seen.
 - Status transitions (Watched→Watching when new episode airs) surfaced after snapshot refresh.
 - Tests: repository + status-derivation integration + ViewModel.
 
-## EPIC 4 — Profile & Stats — wave 3, depends on E3
+## EPIC 4 — Profile & Stats ✅
 - Local profile (name, avatar from a preset set) persisted via DataStore or a new settings table.
 - Stats computed from DB: titles by status, episodes seen, estimated hours (episode runtime from TMDB details — extend `TmdbProvider` DTOs), genre breakdown, streaks.
 - Simple charts (Compose canvas; no new heavy deps — verify wasm-js publish before adding any lib).
 
-## EPIC 5 — New-episode notifications (Android) — wave 3, depends on E2/E3
+## EPIC 5 — New-episode notifications (Android) ✅
 - Background refresh via WorkManager (androidApp; scheduling behind an expect/actual or Android-only Koin binding).
 - Compare stored `airedEpisodes` vs fresh TMDB data → local notification "S02E05 of X is out".
 - Notification permission flow (API 33+), settings toggle global and per-show.
 
-## EPIC 6 — Discovery & Where-to-Watch — wave 2, depends lightly on E2
+## EPIC 6 — Discovery & Where-to-Watch ✅
 - Extend `TmdbProvider`: `/discover/movie|tv` (genre/popularity), `/genre/*/list`, `/watch/providers` (region-aware; JustWatch attribution required by TMDB terms), pagination in search results.
 - Discover browse UI in the search tab (genre rows, "popular now"); "where to watch" section in Detail.
 - Region/language plumbed from settings (E8).
 
-## EPIC 7 — Release Engineering 🔴 critical path — wave 1, no feature deps
+## EPIC 7 — Release Engineering ✅ (manual pre-tag steps in RELEASING.md §7)
 Everything between "builds" and "on the Play Store".
 - Release signing config (keystore via env/`local.properties`, never committed) + Play App Signing.
 - R8: enable minify, keep rules (Ktor / kotlinx-serialization / SQLDelight / Koin pitfalls).
@@ -82,7 +82,7 @@ Everything between "builds" and "on the Play Store".
 - LICENSE file + OSS attribution screen (license-report plugin); privacy policy; TMDB attribution ("This product uses the TMDB API but is not endorsed or certified by TMDB"); Play data-safety answers.
 - Store listing assets: screenshots, feature graphic, description.
 
-## EPIC 8 — Settings & UX polish — wave 2, parallel
+## EPIC 8 — Settings & UX polish ✅
 - Settings for real: theme (light/dark/system), TMDB language/region (feeds E6), about + licenses, data export (JSON dump of DB).
 - Bottom-nav icons (bundle vector assets manually; `material-icons` unpublished for this Compose version).
 - Empty states, error states, pull-to-refresh, loading skeletons across screens.

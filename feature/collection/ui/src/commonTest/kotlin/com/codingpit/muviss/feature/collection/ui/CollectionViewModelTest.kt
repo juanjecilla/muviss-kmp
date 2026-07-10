@@ -57,6 +57,8 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) {
         setFavoriteCalls += mediaId to favorite
     }
+
+    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
 }
 
 private class NoopSnapshotSource : MediaSnapshotSource {

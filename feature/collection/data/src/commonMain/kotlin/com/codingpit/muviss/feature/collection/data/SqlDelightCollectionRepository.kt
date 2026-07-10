@@ -9,6 +9,8 @@ import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
+import com.codingpit.muviss.feature.collection.domain.airedEpisodeCount
+import com.codingpit.muviss.feature.collection.domain.totalEpisodeCount
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -88,6 +90,7 @@ class SqlDelightCollectionRepository(
             updatedAtEpochMs = now,
             isDirty = true,
             deleted = false,
+            notificationsMuted = existing?.notificationsMuted ?: false,
         )
         Unit
     }
@@ -99,6 +102,11 @@ class SqlDelightCollectionRepository(
 
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = withContext(dispatchers.io) {
         queries.setFavorite(favorite = favorite, now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
+    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = withContext(dispatchers.io) {
+        queries.setNotificationsMuted(muted = muted, now = clock.nowEpochMs(), mediaId = mediaId.toString())
         Unit
     }
 
@@ -115,6 +123,7 @@ class SqlDelightCollectionRepository(
         seenEpisodes = seenEpisodes,
         genres = row.genres.toGenreList(),
         runtimeMinutes = row.runtimeMinutes?.toInt(),
+        notificationsMuted = row.notificationsMuted,
     )
 }
 
@@ -133,21 +142,3 @@ private fun MediaDetails.estimatedRuntimeMinutes(): Int? = when (type) {
 }
 
 private fun List<Int>.averageOrNull(): Int? = if (isEmpty()) null else (sum().toDouble() / size).roundToInt()
-
-// Movies count as a single "episode": both aired and total are 1 once released,
-// matching WatchProgress's movie convention (core/model/WatchProgress.kt).
-private fun MediaDetails.totalEpisodeCount(): Int = when (type) {
-    MediaType.MOVIE -> 1
-    MediaType.TV -> seasons.sumOf { it.episodes.size }
-}
-
-private fun MediaDetails.airedEpisodeCount(todayEpochDay: Long): Int = when (type) {
-    MediaType.MOVIE -> 1
-
-    MediaType.TV -> seasons.sumOf { season ->
-        season.episodes.count { episode ->
-            val airDate = episode.airDateEpochDay
-            airDate != null && airDate <= todayEpochDay
-        }
-    }
-}

@@ -27,4 +27,7 @@ interface CollectionRepository {
     suspend fun remove(mediaId: MediaId)
 
     suspend fun setFavorite(mediaId: MediaId, favorite: Boolean)
+
+    /** Per-show opt-out from EPIC 5's new-episode notifications, independent of the global toggle (see [CollectionEntry.notificationsMuted]). */
+    suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean)
 }

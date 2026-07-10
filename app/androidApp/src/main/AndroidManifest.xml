@@ -6,6 +6,11 @@
          manifest merge from a dependency (e.g. Ktor/Coil/Sentry). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- EPIC 5 (new-episode notifications): runtime-requested on API 33+ from
+         MainActivity on first app open (see its doc comment); a no-op
+         declaration on older APIs where the permission doesn't exist. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- allowBackup=false: Muviss is local-first and the collection/progress
          SQLite DB is the source of truth (see ADR 0002/0005). Android's
          auto-backup only captures app files opportunistically and can
@@ -17,11 +22,13 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:name=".MuvissApplication"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:exported="true"
+            android:launchMode="singleTask"
             android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

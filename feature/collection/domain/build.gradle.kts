@@ -11,5 +11,12 @@ kotlin {
             implementation(projects.core.model)
             implementation(libs.kotlinx.coroutinesCore)
         }
+        commonTest.dependencies {
+            // Only `RefreshAndFindNewEpisodesUseCaseTest` (EPIC 5) needs a
+            // suspend-test scope; `runTest` (unlike `runBlocking`) has an
+            // actual for every target this module compiles for, including
+            // js/wasmJs.
+            implementation(libs.kotlinx.coroutinesTest)
+        }
     }
 }

@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.EpisodeProgress
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
@@ -43,6 +44,8 @@ private class FakeCollectionApi(summaries: List<CollectionSummary>) : Collection
     override suspend fun add(details: MediaDetails) = error("not used")
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
+    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
+    override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
 private class FakeProgressRepository : ProgressRepository {

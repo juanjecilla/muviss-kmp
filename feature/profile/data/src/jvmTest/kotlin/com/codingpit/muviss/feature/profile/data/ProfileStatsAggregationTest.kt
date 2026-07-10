@@ -10,6 +10,7 @@ import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
 import com.codingpit.muviss.feature.profile.domain.GenreCount
@@ -72,6 +73,8 @@ private class RealCollectionApiForStats(private val repository: CollectionReposi
     override suspend fun add(details: MediaDetails) = repository.upsertSnapshot(details)
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
+    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
+    override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
 /**

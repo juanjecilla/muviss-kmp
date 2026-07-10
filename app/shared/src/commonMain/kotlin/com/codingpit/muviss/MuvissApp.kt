@@ -8,6 +8,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -60,10 +61,24 @@ private val topDestinations =
         TopDestination(SettingsRoute, "Settings", MuvissIcons.Settings),
     )
 
-/** Root entry point for every platform. Starts Koin and hosts the app. */
+/**
+ * Root entry point for every platform. Starts Koin (or, on Android, reuses
+ * the instance `MuvissApplication` already started at process start so the
+ * EPIC 5 background worker can reach it too — see [org.koin.compose.KoinApplication],
+ * which no-ops its own `startKoin` when a global instance already exists)
+ * and hosts the app.
+ *
+ * [deepLinkMediaId] carries the media id from an Android notification tap
+ * (`DetailRoute`'s string form); once consumed the caller clears it via
+ * [onDeepLinkConsumed] so backgrounding/foregrounding the app doesn't
+ * re-navigate. Both default to no-op for platforms with no such deep link.
+ */
 @Suppress("DEPRECATION") // KoinApplication(config=) overload not present in this Koin version.
 @Composable
-fun MuvissApp() {
+fun MuvissApp(
+    deepLinkMediaId: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
+) {
     remember { CrashReporter.init(MuvissBuildConfig.SENTRY_DSN) }
     remember { configureImageLoader() }
     val databaseDriverFactory = rememberDatabaseDriverFactory()
@@ -76,7 +91,7 @@ fun MuvissApp() {
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
         MuvissTheme(darkTheme = darkTheme) {
-            MuvissScaffold()
+            MuvissScaffold(deepLinkMediaId, onDeepLinkConsumed)
         }
     }
 }
@@ -91,10 +106,20 @@ private fun platformDatabaseModule(driverFactory: DatabaseDriverFactory): Module
 }
 
 @Composable
-private fun MuvissScaffold() {
+private fun MuvissScaffold(
+    deepLinkMediaId: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
+
+    LaunchedEffect(deepLinkMediaId) {
+        if (deepLinkMediaId != null) {
+            navController.navigate(DetailRoute(deepLinkMediaId))
+            onDeepLinkConsumed()
+        }
+    }
 
     Scaffold(
         bottomBar = {

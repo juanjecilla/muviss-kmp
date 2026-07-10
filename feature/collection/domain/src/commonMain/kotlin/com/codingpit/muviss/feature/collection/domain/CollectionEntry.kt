@@ -21,6 +21,11 @@ import com.codingpit.muviss.models.WatchStatus
  * [genres] and [runtimeMinutes] were added for EPIC 4 (profile stats):
  * genres straight from TMDB, and [runtimeMinutes] the movie's runtime or a TV
  * show's average per-episode runtime (null when TMDB didn't report one).
+ *
+ * [notificationsMuted] was added for EPIC 5 (new-episode notifications): an
+ * independent per-show opt-out from the Android background worker's
+ * new-episode alerts, checked alongside (not instead of) the global toggle
+ * in `feature/settings` (see [NewEpisodesCalculator]).
  */
 data class CollectionEntry(
     val mediaId: MediaId,
@@ -35,6 +40,7 @@ data class CollectionEntry(
     val seenEpisodes: Int = 0,
     val genres: List<String> = emptyList(),
     val runtimeMinutes: Int? = null,
+    val notificationsMuted: Boolean = false,
 ) {
     val mediaType: MediaType get() = mediaId.type
 

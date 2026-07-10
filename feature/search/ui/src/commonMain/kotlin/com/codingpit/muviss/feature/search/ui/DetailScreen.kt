@@ -61,6 +61,12 @@ fun DetailScreen(
                         TextButton(onClick = viewModel::toggleFavorite) {
                             Text(if (state.favorite) "★ Favorite" else "☆ Favorite")
                         }
+                        // Per-show new-episode notification mute (EPIC 5); only meaningful once saved.
+                        if (state.saved) {
+                            TextButton(onClick = viewModel::toggleNotificationsMuted) {
+                                Text(if (state.notificationsMuted) "🔕 Muted" else "🔔 Notify")
+                            }
+                        }
                         TextButton(onClick = viewModel::toggleSaved) {
                             Text(if (state.saved) "Remove" else "Add to Library")
                         }

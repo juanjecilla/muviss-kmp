@@ -9,9 +9,17 @@
 -- `runtimeMinutes` is the movie's runtime, or a TV show's average per-episode
 -- runtime when TMDB reports it, used to estimate hours watched (see
 -- `feature/profile/domain`'s `ProfileStatsCalculator`, which falls back to a
--- fixed default when this is null). No SQLDelight migration file exists yet
--- in this project (verifyMigration isn't wired) so both columns were added
--- directly to the `CREATE TABLE` rather than via a `.sqm` file.
+-- fixed default when this is null).
+--
+-- `notificationsMuted` was added for EPIC 5 (new-episode notifications): a
+-- per-show opt-out, independent of the global toggle in `appSettings`
+-- (`SettingsRepository`/`AppSettings.notificationsEnabled`) — the Android
+-- background worker excludes muted shows from its new-episode diff
+-- (`NewEpisodesCalculator`, `feature/collection/domain`) before posting.
+--
+-- No SQLDelight migration file exists yet in this project (verifyMigration
+-- isn't wired) so all three columns were added directly to the
+-- `CREATE TABLE` rather than via a `.sqm` file.
 CREATE TABLE collectionEntry (
     mediaId TEXT NOT NULL PRIMARY KEY,
     mediaType TEXT NOT NULL,
@@ -27,7 +35,8 @@ CREATE TABLE collectionEntry (
     addedAtEpochMs INTEGER NOT NULL,
     updatedAtEpochMs INTEGER NOT NULL,
     isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    notificationsMuted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectAll:
@@ -45,13 +54,18 @@ upsert:
 INSERT OR REPLACE INTO collectionEntry(
     mediaId, mediaType, title, posterUrl, releaseYear, productionStatus,
     totalEpisodes, airedEpisodes, favorite, genres, runtimeMinutes,
-    addedAtEpochMs, updatedAtEpochMs, isDirty, deleted
+    addedAtEpochMs, updatedAtEpochMs, isDirty, deleted, notificationsMuted
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 setFavorite:
 UPDATE collectionEntry
 SET favorite = :favorite, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId;
+
+setNotificationsMuted:
+UPDATE collectionEntry
+SET notificationsMuted = :muted, updatedAtEpochMs = :now, isDirty = 1
 WHERE mediaId = :mediaId;
 
 softDelete:

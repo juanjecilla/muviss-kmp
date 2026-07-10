@@ -84,3 +84,17 @@
 # Sentry's Android/JVM artifacts ship their own consumer-proguard-rules
 # covering their reflective bits (breadcrumb integrations, OkHttp
 # instrumentation); no project rules needed.
+
+# ---------------------------------------------------------------------------
+# WorkManager (EPIC 5 background worker)
+# ---------------------------------------------------------------------------
+# WorkManager's default WorkerFactory instantiates a worker by reflection —
+# `Class.forName(the worker's fully-qualified name)` then its
+# `(Context, WorkerParameters)` constructor — using the class name stored in
+# the enqueued WorkSpec, not a compile-time reference R8 can trace. Without
+# this rule R8 renames/strips NewEpisodesWorker and the periodic job fails at
+# runtime with a ClassNotFoundException. WorkManager's own consumer rules
+# keep the library's base classes but can't know about this app's subclass.
+-keep class com.codingpit.muviss.notifications.NewEpisodesWorker {
+    <init>(android.content.Context, androidx.work.WorkerParameters);
+}

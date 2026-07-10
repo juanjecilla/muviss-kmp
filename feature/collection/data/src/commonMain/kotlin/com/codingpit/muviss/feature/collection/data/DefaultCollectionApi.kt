@@ -3,11 +3,13 @@ package com.codingpit.muviss.feature.collection.data
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.collection.domain.AddToCollectionUseCase
+import com.codingpit.muviss.feature.collection.domain.CollectionToggles
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionEntryUseCase
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
+import com.codingpit.muviss.feature.collection.domain.RefreshAndFindNewEpisodesUseCase
 import com.codingpit.muviss.feature.collection.domain.RemoveFromCollectionUseCase
-import com.codingpit.muviss.feature.collection.domain.ToggleFavoriteUseCase
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.flow.Flow
@@ -19,11 +21,12 @@ internal class DefaultCollectionApi(
     private val observeCollection: ObserveCollectionUseCase,
     private val addToCollection: AddToCollectionUseCase,
     private val removeFromCollection: RemoveFromCollectionUseCase,
-    private val toggleFavorite: ToggleFavoriteUseCase,
+    private val toggles: CollectionToggles,
+    private val refreshAndFindNewEpisodesUseCase: RefreshAndFindNewEpisodesUseCase,
 ) : CollectionApi {
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = observeEntry(mediaId)
-        .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite) } }
+        .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite, it.notificationsMuted) } }
 
     override fun observeSummaries(): Flow<List<CollectionSummary>> = observeCollection()
         .map { entries ->
@@ -36,6 +39,7 @@ internal class DefaultCollectionApi(
                     genres = it.genres,
                     runtimeMinutes = it.runtimeMinutes,
                     seenEpisodes = it.seenEpisodes,
+                    notificationsMuted = it.notificationsMuted,
                 )
             }
         }
@@ -44,5 +48,10 @@ internal class DefaultCollectionApi(
 
     override suspend fun remove(mediaId: MediaId) = removeFromCollection(mediaId)
 
-    override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = toggleFavorite(mediaId, favorite)
+    override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = toggles.setFavorite(mediaId, favorite)
+
+    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = toggles.setNotificationsMuted(mediaId, muted)
+
+    override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = refreshAndFindNewEpisodesUseCase()
+        .map { NewEpisodesResult(it.mediaId, it.title, it.newEpisodeCount, it.latestEpisodeLabel) }
 }

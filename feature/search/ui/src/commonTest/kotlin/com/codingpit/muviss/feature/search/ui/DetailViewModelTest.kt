@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.search.ui
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.SearchRepository
@@ -68,6 +69,12 @@ private class FakeCollectionApi : CollectionApi {
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) {
         membership.value = membership.value?.copy(favorite = favorite)
     }
+
+    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) {
+        membership.value = membership.value?.copy(notificationsMuted = muted)
+    }
+
+    override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
 private class FakeProgressApi : ProgressApi {
@@ -177,6 +184,21 @@ class DetailViewModelTest {
         advanceUntilIdle()
 
         assertTrue(vm.state.value.favorite)
+    }
+
+    @Test
+    fun toggleNotificationsMuted_flips_the_flag_independent_of_favorite() = runTest {
+        val api = FakeCollectionApi()
+        val vm = viewModel(api)
+        advanceUntilIdle()
+
+        vm.toggleSaved() // save first so mute has a membership row to flip
+        advanceUntilIdle()
+        vm.toggleNotificationsMuted()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.notificationsMuted)
+        assertFalse(vm.state.value.favorite)
     }
 
     @Test

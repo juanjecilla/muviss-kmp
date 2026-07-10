@@ -25,6 +25,8 @@ data class DetailUiState(
     val error: String? = null,
     val saved: Boolean = false,
     val favorite: Boolean = false,
+    /** Per-show new-episode notification opt-out (EPIC 5); only meaningful while [saved] is true. */
+    val notificationsMuted: Boolean = false,
     /** Seen episode ids (movies use the single id from [EpisodeId.forMovie]) — drives checkmarks, season bars, and the movie toggle. */
     val seenEpisodes: Set<EpisodeId> = emptySet(),
     /** Null while loading; an empty [WatchProviders] once loaded means "hide the section" — no failure surfaced, it's a nice-to-have. */
@@ -60,7 +62,13 @@ class DetailViewModel(
         load()
         collectionApi.observeMembership(mediaId)
             .onEach { membership ->
-                _state.update { it.copy(saved = membership != null, favorite = membership?.favorite ?: false) }
+                _state.update {
+                    it.copy(
+                        saved = membership != null,
+                        favorite = membership?.favorite ?: false,
+                        notificationsMuted = membership?.notificationsMuted ?: false,
+                    )
+                }
             }
             .launchIn(viewModelScope)
         progressApi.observeSeenEpisodes(mediaId)
@@ -102,6 +110,11 @@ class DetailViewModel(
 
     fun toggleFavorite() {
         viewModelScope.launch { collectionApi.setFavorite(mediaId, !_state.value.favorite) }
+    }
+
+    /** Mutes/un-mutes this show's new-episode notifications (EPIC 5), independent of the global Settings toggle. */
+    fun toggleNotificationsMuted() {
+        viewModelScope.launch { collectionApi.setNotificationsMuted(mediaId, !_state.value.notificationsMuted) }
     }
 
     /** Ticks a single episode's checkmark. */

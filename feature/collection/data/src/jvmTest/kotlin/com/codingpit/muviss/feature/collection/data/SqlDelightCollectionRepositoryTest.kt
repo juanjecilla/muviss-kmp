@@ -200,6 +200,45 @@ class SqlDelightCollectionRepositoryTest {
     }
 
     @Test
+    fun new_entries_default_to_not_muted() = runTest {
+        repository.upsertSnapshot(details())
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            assertEquals(false, awaitItem()!!.notificationsMuted)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setNotificationsMuted_round_trips_and_is_independent_of_favorite() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setNotificationsMuted(MediaId.tmdbMovie("603"), muted = true)
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            val entry = awaitItem()!!
+            assertTrue(entry.notificationsMuted)
+            assertEquals(false, entry.favorite)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setNotificationsMuted_survives_a_snapshot_refresh_like_favorite_does() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setNotificationsMuted(MediaId.tmdbMovie("603"), muted = true)
+
+        clock.advanceTo(5_000L)
+        repository.upsertSnapshot(details(title = "The Matrix Reloaded"))
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            val entry = awaitItem()!!
+            assertEquals("The Matrix Reloaded", entry.title)
+            assertTrue(entry.notificationsMuted)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun observeEntry_is_null_for_an_unsaved_title() = runTest {
         repository.observeEntry(MediaId.tmdbMovie("999")).test {
             assertNull(awaitItem())

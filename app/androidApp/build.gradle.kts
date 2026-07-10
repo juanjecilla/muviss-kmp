@@ -36,6 +36,18 @@ licensee {
 dependencies {
     implementation(projects.app.shared)
 
+    // EPIC 5 (new-episode notifications): the background worker talks to the
+    // collection/settings features only through their `:api` modules, same
+    // rule as any other cross-feature dependency (ADR 0004) — `:app:androidApp`
+    // just happens to be the module that needs it this time, not a feature.
+    implementation(projects.feature.collection.api)
+    implementation(projects.feature.settings.api)
+    // `MuvissApplication` builds the Android `DatabaseDriverFactory` itself
+    // (see its doc comment) so Koin is running before any Activity exists.
+    implementation(projects.core.database)
+    implementation(libs.koin.core)
+    implementation(libs.androidx.work.runtimeKtx)
+
     implementation(libs.androidx.activity.compose)
 
     implementation(libs.compose.uiToolingPreview)
