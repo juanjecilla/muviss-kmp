@@ -17,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
+import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.di.appModules
@@ -54,6 +55,7 @@ private val topDestinations =
 @Suppress("DEPRECATION") // KoinApplication(config=) overload not present in this Koin version.
 @Composable
 fun MuvissApp() {
+    remember { CrashReporter.init(MuvissBuildConfig.SENTRY_DSN) }
     remember { configureImageLoader() }
     val databaseDriverFactory = rememberDatabaseDriverFactory()
     KoinApplication(application = { modules(appModules + platformDatabaseModule(databaseDriverFactory)) }) {

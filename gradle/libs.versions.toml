@@ -29,6 +29,7 @@ detekt = "1.23.8"
 detektCompose = "0.6.2"
 spotless = "8.8.0"
 ktlint = "1.8.0"
+sentryKmp = "0.27.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -93,6 +94,12 @@ navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-co
 
 # Testing
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+
+# Sentry (crash reporting). KMP artifact publishes real android/jvm/iOS(Darwin)
+# implementations and no-op stubs for js/wasmJs — we still scope the dependency
+# to android/jvm/iOS source sets ourselves (see :core:common CrashReporter) so
+# web targets never pull it in at all.
+sentry-kotlinMultiplatform = { module = "io.sentry:sentry-kotlin-multiplatform", version.ref = "sentryKmp" }
 
 # Detekt plugins/rules (referenced by build-logic + detekt config)
 detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }

@@ -9,6 +9,10 @@ build/
 local.properties
 *.local
 
+# Release signing (never commit a keystore, see docs/RELEASING.md)
+*.jks
+*.keystore
+
 # IDE
 .idea/
 *.iml

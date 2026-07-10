@@ -1,5 +1,39 @@
+import java.util.Properties
+
 plugins {
     id("muviss.kmp.compose")
+}
+
+// Sentry DSN is read from local.properties (gitignored) or the SENTRY_DSN env
+// var and baked into a generated constant, same mechanism as the TMDB key in
+// :core:network (see ADR 0007). Left blank, CrashReporter.init() no-ops.
+val sentryDsn: String = run {
+    val props = Properties()
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { props.load(it) }
+    props.getProperty("SENTRY_DSN") ?: System.getenv("SENTRY_DSN") ?: ""
+}
+
+val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/commonMain/kotlin")
+
+val generateBuildConfig by tasks.registering {
+    val outDir = buildConfigDir
+    val dsn = sentryDsn
+    outputs.dir(outDir)
+    doLast {
+        val target = outDir.get()
+            .file("com/codingpit/muviss/MuvissBuildConfig.kt").asFile
+        target.parentFile.mkdirs()
+        target.writeText(
+            """
+            package com.codingpit.muviss
+
+            internal object MuvissBuildConfig {
+                const val SENTRY_DSN: String = "$dsn"
+            }
+            """.trimIndent() + "\n",
+        )
+    }
 }
 
 kotlin {
@@ -12,7 +46,11 @@ kotlin {
     }
 
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generateBuildConfig)
+        }
         commonMain.dependencies {
+            implementation(projects.core.common)
             implementation(projects.core.designsystem)
             implementation(projects.core.network)
             implementation(projects.core.database)

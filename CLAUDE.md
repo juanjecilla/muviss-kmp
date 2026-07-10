@@ -63,6 +63,7 @@ iOS: open `app/iosApp` in Xcode. Enable the pre-commit hook once per clone: `git
 ## Setup gotchas
 
 - **TMDB key**: put `TMDB_API_KEY=<v3 key>` in `local.properties` (gitignored). It is baked into the generated `MuvissBuildConfig` (see ADR 0007). Without it, search returns errors at runtime but everything still builds.
+- **Release signing / Sentry**: `RELEASE_STORE_FILE`/`RELEASE_STORE_PASSWORD`/`RELEASE_KEY_ALIAS`/`RELEASE_KEY_PASSWORD` and `SENTRY_DSN` are all optional, read from `local.properties` or env vars the same way as the TMDB key. Without them, `:app:androidApp:assembleRelease` falls back to debug signing and crash reporting no-ops. See `docs/RELEASING.md`.
 - **Web + DB**: `:core:database` has no JS/Wasm driver yet (factories throw); collection/progress are not wired on web.
 - **Bottom-nav icons**: label-only for now — `material-icons` isn't published for this Compose version.
 - Bleeding-edge toolchain (Kotlin 2.4, AGP 9, Gradle 9.1). Prefer editing `gradle/libs.versions.toml` for versions; verify new libs publish for `wasm-js` before adding them.
