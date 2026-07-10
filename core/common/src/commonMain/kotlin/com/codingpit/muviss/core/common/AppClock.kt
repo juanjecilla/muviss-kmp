@@ -25,3 +25,11 @@ private const val MILLIS_PER_DAY = 86_400_000L
  * episode aired yet" comparisons.
  */
 fun AppClock.todayEpochDay(): Long = nowEpochMs() / MILLIS_PER_DAY
+
+/**
+ * Converts an arbitrary wall-clock timestamp (epoch milliseconds) to the same
+ * epoch-day convention as [todayEpochDay] — used to bucket per-tick
+ * `updatedAtEpochMs` timestamps (e.g. `episodeProgress` rows) into calendar
+ * days for streak calculations (see the profile feature's `WatchStreakCalculator`).
+ */
+fun epochDayOf(epochMs: Long): Long = epochMs / MILLIS_PER_DAY

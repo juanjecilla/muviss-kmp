@@ -28,6 +28,16 @@ SELECT COUNT(*)
 FROM episodeProgress
 WHERE mediaId = :mediaId AND seen = 1;
 
+-- Every currently-seen row's tick timestamp, across all media — the raw
+-- material for the profile feature's watch-streak calculation (see
+-- `feature/profile/domain`'s `WatchStreakCalculator`). Un-ticking an episode
+-- removes it from this result, so a streak day is only as durable as the
+-- ticks behind it; there is no separate history log (see ADR 0005).
+selectSeenUpdatedAt:
+SELECT updatedAtEpochMs
+FROM episodeProgress
+WHERE seen = 1;
+
 upsert:
 INSERT OR REPLACE INTO episodeProgress(
     episodeId, mediaId, seasonNumber, episodeNumber, seen, updatedAtEpochMs, isDirty

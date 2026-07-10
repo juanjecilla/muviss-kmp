@@ -22,6 +22,11 @@ class ObserveSeenCountUseCase(private val repository: ProgressRepository) {
     operator fun invoke(mediaId: MediaId): Flow<Int> = repository.observeSeenCount(mediaId)
 }
 
+/** Observes every distinct day with watch activity — the profile feature's streak input. */
+class ObserveSeenActivityEpochDaysUseCase(private val repository: ProgressRepository) {
+    operator fun invoke(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
+}
+
 /** Ticks one episode. */
 class ToggleEpisodeSeenUseCase(private val repository: ProgressRepository) {
     suspend operator fun invoke(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)

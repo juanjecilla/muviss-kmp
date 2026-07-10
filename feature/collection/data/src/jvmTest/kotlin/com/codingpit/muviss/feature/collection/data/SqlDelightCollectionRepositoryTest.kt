@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -51,6 +52,7 @@ private class FakeProgressApi : ProgressApi {
     }
 
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = flowFor(mediaId)
+    override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = error("not used")
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = error("not used")
     override suspend fun markSeasonSeen(season: Season) = error("not used")
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("not used")
@@ -78,7 +80,9 @@ class SqlDelightCollectionRepositoryTest {
         id: MediaId = MediaId.tmdbMovie("603"),
         title: String = "The Matrix",
         productionStatus: ProductionStatus = ProductionStatus.RELEASED,
-    ) = MediaDetails(MediaSummary(id, title, year = 1999), productionStatus = productionStatus)
+        genres: List<String> = emptyList(),
+        runtimeMinutes: Int? = null,
+    ) = MediaDetails(MediaSummary(id, title, year = 1999), productionStatus = productionStatus, genres = genres, runtimeMinutes = runtimeMinutes)
 
     @Test
     fun upsertSnapshot_adds_a_new_entry() = runTest {
@@ -133,6 +137,52 @@ class SqlDelightCollectionRepositoryTest {
         repository.observeAll().test {
             val entry = awaitItem().single()
             assertEquals(1_000L, entry.addedAtEpochMs)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun upsertSnapshot_stores_genres_and_movie_runtime() = runTest {
+        repository.upsertSnapshot(details(genres = listOf("Action", "Sci-Fi"), runtimeMinutes = 136))
+
+        repository.observeAll().test {
+            val entry = awaitItem().single()
+            assertEquals(listOf("Action", "Sci-Fi"), entry.genres)
+            assertEquals(136, entry.runtimeMinutes)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun upsertSnapshot_with_no_genres_or_runtime_round_trips_to_empty_and_null() = runTest {
+        repository.upsertSnapshot(details())
+
+        repository.observeAll().test {
+            val entry = awaitItem().single()
+            assertEquals(emptyList(), entry.genres)
+            assertEquals(null, entry.runtimeMinutes)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun upsertSnapshot_stores_a_tv_show_average_episode_runtime() = runTest {
+        val show = MediaId.tmdbTv("1399")
+        val episodes = listOf(
+            Episode(EpisodeId(show, 1, 1), 1, 1, "E1", runtimeMinutes = 40),
+            Episode(EpisodeId(show, 1, 2), 1, 2, "E2", runtimeMinutes = 50),
+            Episode(EpisodeId(show, 1, 3), 1, 3, "E3", runtimeMinutes = null), // unknown runtime, excluded from the average.
+        )
+        repository.upsertSnapshot(
+            MediaDetails(
+                MediaSummary(show, "Show"),
+                productionStatus = ProductionStatus.RETURNING,
+                seasons = listOf(Season(1, "S1", episodes)),
+            ),
+        )
+
+        repository.observeAll().test {
+            assertEquals(45, awaitItem().single().runtimeMinutes)
             cancelAndIgnoreRemainingEvents()
         }
     }

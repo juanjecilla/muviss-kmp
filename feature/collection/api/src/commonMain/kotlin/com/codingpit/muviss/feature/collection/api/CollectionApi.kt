@@ -37,10 +37,18 @@ data class CollectionMembership(
     val favorite: Boolean,
 )
 
-/** The minimal display + status info a peer needs to render its own view of the library. */
+/**
+ * The minimal display + status info a peer needs to render its own view of
+ * the library. [genres], [runtimeMinutes] and [seenEpisodes] exist for the
+ * profile feature's stats aggregation (genre breakdown, hours-watched
+ * estimate); other peers (e.g. progress's watch-next) simply ignore them.
+ */
 data class CollectionSummary(
     val mediaId: MediaId,
     val title: String,
     val posterUrl: String?,
     val status: WatchStatus,
+    val genres: List<String> = emptyList(),
+    val runtimeMinutes: Int? = null,
+    val seenEpisodes: Int = 0,
 )

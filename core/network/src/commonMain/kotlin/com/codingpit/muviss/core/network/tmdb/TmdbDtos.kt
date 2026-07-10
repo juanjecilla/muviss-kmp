@@ -81,6 +81,10 @@ internal data class TmdbEpisodeDto(
     val name: String = "",
     @SerialName("air_date") val airDate: String? = null,
     @SerialName("still_path") val stillPath: String? = null,
+    // TMDB's `/tv/{id}/season/{n}` response carries this per episode (unlike
+    // the deprecated show-level `episode_run_time` average) — free real data
+    // since this endpoint is already fetched for the season/episode structure.
+    val runtime: Int? = null,
 )
 
 /** `/genre/{movie|tv}/list` — unlike [TmdbGenreDto], carries the id needed to filter `/discover`. */

@@ -56,6 +56,8 @@ private class FakeProgressRepository : ProgressRepository {
 
     override fun observeSeenCount(mediaId: MediaId): Flow<Int> = flowFor(mediaId).map { it.size }
 
+    override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = error("not used")
+
     override suspend fun setSeen(episodeId: EpisodeId, seen: Boolean) {
         tickedEpisodes += episodeId to seen
         val flow = flowFor(episodeId.show)

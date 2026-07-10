@@ -62,6 +62,24 @@ class TmdbMapperTest {
     }
 
     @Test
+    fun seasonToModel_maps_per_episode_runtime_when_tmdb_reports_it() {
+        val show = MediaId.tmdbTv("1399")
+        val dto = TmdbSeasonDetailDto(
+            seasonNumber = 1,
+            name = "Season 1",
+            episodes = listOf(
+                TmdbEpisodeDto(seasonNumber = 1, episodeNumber = 1, name = "Winter Is Coming", runtime = 62),
+                TmdbEpisodeDto(seasonNumber = 1, episodeNumber = 2, name = "The Kingsroad", runtime = null),
+            ),
+        )
+
+        val season = TmdbMapper.seasonToModel(show, dto)
+
+        assertEquals(62, season.episodes[0].runtimeMinutes)
+        assertNull(season.episodes[1].runtimeMinutes)
+    }
+
+    @Test
     fun discoverResultToSummary_maps_a_movie_row_by_release_date() {
         val dto = TmdbResultDto(id = 603, title = "The Matrix", releaseDate = "1999-03-30", posterPath = "/m.jpg")
 

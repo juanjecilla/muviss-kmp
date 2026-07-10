@@ -1,0 +1,26 @@
+-- Single-row local profile: display name + a bundled avatar preset id
+-- (EPIC 4). Mirrors `AppSettings.sq`'s singleton-row convention (id = 0);
+-- the repository calls `ensureRow` before it ever reads so `selectProfile`
+-- never has to model "no row yet" beyond first launch. There is no per-user
+-- table because this profile is purely local (no accounts yet) — EPIC 9's
+-- sync engine reuses this same row rather than adding a new one.
+CREATE TABLE profile (
+    id INTEGER NOT NULL PRIMARY KEY,
+    displayName TEXT NOT NULL DEFAULT 'You',
+    avatarId TEXT NOT NULL DEFAULT 'indigo'
+);
+
+selectProfile:
+SELECT *
+FROM profile
+WHERE id = 0;
+
+ensureRow:
+INSERT OR IGNORE INTO profile(id, displayName, avatarId)
+VALUES (0, 'You', 'indigo');
+
+updateDisplayName:
+UPDATE profile SET displayName = :displayName WHERE id = 0;
+
+updateAvatar:
+UPDATE profile SET avatarId = :avatarId WHERE id = 0;

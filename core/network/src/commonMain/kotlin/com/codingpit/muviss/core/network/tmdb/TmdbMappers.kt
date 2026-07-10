@@ -175,6 +175,7 @@ internal object TmdbMapper {
                 name = ep.name,
                 airDateEpochDay = airDateToEpochDay(ep.airDate),
                 stillUrl = imageUrl(ep.stillPath),
+                runtimeMinutes = ep.runtime,
             )
         },
     )

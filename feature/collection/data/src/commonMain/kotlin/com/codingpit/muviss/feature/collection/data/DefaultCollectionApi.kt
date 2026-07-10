@@ -26,7 +26,19 @@ internal class DefaultCollectionApi(
         .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite) } }
 
     override fun observeSummaries(): Flow<List<CollectionSummary>> = observeCollection()
-        .map { entries -> entries.map { CollectionSummary(it.mediaId, it.title, it.posterUrl, it.status) } }
+        .map { entries ->
+            entries.map {
+                CollectionSummary(
+                    mediaId = it.mediaId,
+                    title = it.title,
+                    posterUrl = it.posterUrl,
+                    status = it.status,
+                    genres = it.genres,
+                    runtimeMinutes = it.runtimeMinutes,
+                    seenEpisodes = it.seenEpisodes,
+                )
+            }
+        }
 
     override suspend fun add(details: MediaDetails) = addToCollection(details)
 

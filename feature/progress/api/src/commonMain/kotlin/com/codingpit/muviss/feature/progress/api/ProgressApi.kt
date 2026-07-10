@@ -15,6 +15,15 @@ interface ProgressApi {
     /** Seen episode ids for [mediaId] (movies use the single id from [EpisodeId.forMovie]). */
     fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>>
 
+    /**
+     * Every distinct epoch-day (UTC, [com.codingpit.muviss.core.common.todayEpochDay]'s
+     * convention) on which at least one episode or movie is currently marked
+     * seen, across every title — the raw calendar the profile feature derives
+     * its watch-streak stat from. Un-ticking an episode can remove a day if no
+     * other seen row shares it (progress has no separate history log, ADR 0005).
+     */
+    fun observeSeenActivityEpochDays(): Flow<Set<Long>>
+
     /** Ticks a single episode, e.g. a per-episode checkmark in Detail. */
     suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean)
 

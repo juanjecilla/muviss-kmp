@@ -1,16 +1,247 @@
 package com.codingpit.muviss.feature.profile.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.feature.profile.domain.AvatarPreset
+import com.codingpit.muviss.feature.profile.domain.AvatarPresets
+import com.codingpit.muviss.feature.profile.domain.LocalProfile
+import com.codingpit.muviss.feature.profile.domain.ProfileStats
+import kotlinx.coroutines.launch
+import kotlin.math.round
 
 @Composable
-fun ProfileScreen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Profile — coming soon", style = MaterialTheme.typography.titleMedium)
+fun ProfileScreen(viewModel: ProfileViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(state.comingSoonMessage) {
+        val message = state.comingSoonMessage ?: return@LaunchedEffect
+        coroutineScope.launch { snackbarHostState.showSnackbar(message) }
+        viewModel.comingSoonMessageShown()
     }
+
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        if (state.loading) {
+            Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(Modifier.padding(top = 32.dp))
+            }
+            return@Scaffold
+        }
+
+        Column(
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+
+            IdentitySection(
+                profile = state.profile,
+                onEditName = viewModel::onEditNameRequested,
+                onAvatarSelected = viewModel::onAvatarSelected,
+            )
+            HorizontalDivider()
+            SignInSection(onSignInClicked = viewModel::onSignInClicked)
+            HorizontalDivider()
+
+            if (state.stats.isEmpty) {
+                EmptyLibraryState()
+            } else {
+                StatsSection(state.stats)
+            }
+        }
+
+        if (state.isEditingName) {
+            EditNameDialog(
+                currentName = state.profile.displayName,
+                onConfirm = viewModel::onDisplayNameConfirmed,
+                onDismiss = viewModel::onEditNameDismissed,
+            )
+        }
+    }
+}
+
+@Composable
+private fun IdentitySection(
+    profile: LocalProfile,
+    onEditName: () -> Unit,
+    onAvatarSelected: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            AvatarBadge(profile.avatar, profile.displayName, size = 64.dp)
+            Column {
+                Text(profile.displayName, style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onEditName, contentPadding = PaddingValues(0.dp)) {
+                    Text("Edit name")
+                }
+            }
+        }
+        Text("Avatar", style = MaterialTheme.typography.titleSmall)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(AvatarPresets.all, key = { it.id }) { preset ->
+                AvatarBadge(
+                    preset = preset,
+                    displayName = profile.displayName,
+                    size = 44.dp,
+                    selected = preset.id == profile.avatarId,
+                    onClick = { onAvatarSelected(preset.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AvatarBadge(
+    preset: AvatarPreset,
+    displayName: String,
+    size: Dp,
+    selected: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
+    val color = Color(preset.colorArgb)
+    val initial = displayName.trim().take(1).uppercase().ifEmpty { "?" }
+    var modifier = Modifier.size(size).background(color, CircleShape)
+    if (selected) modifier = modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+    if (onClick != null) modifier = modifier.clickable(onClick = onClick)
+
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Text(initial, color = Color.White, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun EditNameDialog(
+    currentName: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(currentName) { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Your name") },
+        text = {
+            OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true)
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun SignInSection(onSignInClicked: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Account", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Everything stays on this device today.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        OutlinedButton(onClick = onSignInClicked) { Text("Sign in to sync") }
+    }
+}
+
+@Composable
+private fun EmptyLibraryState() {
+    Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("No stats yet", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Save titles to your library and tick episodes to see your stats here.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun StatsSection(stats: ProfileStats) {
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Text("Stats", style = MaterialTheme.typography.titleSmall)
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatTile("Movies watched", stats.moviesWatched.toString(), Modifier.weight(1f))
+            StatTile("Episodes seen", stats.episodesSeen.toString(), Modifier.weight(1f))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatTile("Hours watched", formatHours(stats.estimatedHoursWatched), Modifier.weight(1f))
+            StatTile("Current streak", "${stats.streak.currentDays}d (best ${stats.streak.longestDays}d)", Modifier.weight(1f))
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("By status", style = MaterialTheme.typography.labelLarge)
+            StatusBarChart(stats.statusBreakdown, Modifier.fillMaxWidth())
+        }
+
+        if (stats.genreBreakdown.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("By genre", style = MaterialTheme.typography.labelLarge)
+                GenreDonutChart(foldGenresIntoOther(stats.genreBreakdown))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.medium)
+            .padding(12.dp),
+    ) {
+        Text(value, style = MaterialTheme.typography.headlineSmall)
+        Text(label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private const val ONE_DECIMAL = 10.0
+
+private fun formatHours(hours: Double): String {
+    val roundedToOneDecimal = round(hours * ONE_DECIMAL) / ONE_DECIMAL
+    return "${roundedToOneDecimal}h"
 }

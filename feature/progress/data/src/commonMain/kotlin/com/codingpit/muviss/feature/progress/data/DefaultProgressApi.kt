@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.progress.data
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.domain.MarkPreviousSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkSeasonSeenUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveSeenActivityEpochDaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.SetMovieWatchedUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
@@ -18,9 +19,12 @@ internal class DefaultProgressApi(
     private val markSeasonSeen: MarkSeasonSeenUseCase,
     private val markPreviousSeen: MarkPreviousSeenUseCase,
     private val setMovieWatched: SetMovieWatchedUseCase,
+    private val observeSeenActivityEpochDays: ObserveSeenActivityEpochDaysUseCase,
 ) : ProgressApi {
 
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = observeSeenEpisodes.invoke(mediaId)
+
+    override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = observeSeenActivityEpochDays.invoke()
 
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = toggleEpisodeSeen(episodeId, seen)
 

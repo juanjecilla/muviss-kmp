@@ -77,6 +77,8 @@ private class FakeProgressApi : ProgressApi {
 
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = seen
 
+    override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = MutableStateFlow(emptySet())
+
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) {
         this.seen.value = if (seen) this.seen.value + episodeId else this.seen.value - episodeId
     }

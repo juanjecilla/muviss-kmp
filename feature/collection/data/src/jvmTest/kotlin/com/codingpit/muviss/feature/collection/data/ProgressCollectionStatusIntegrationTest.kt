@@ -48,6 +48,8 @@ private class RealSeenEpisodesProgressApi(private val repository: SqlDelightProg
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = repository.observeForMedia(mediaId)
         .map { rows -> rows.filter { it.seen }.map { it.episodeId }.toSet() }
 
+    override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
+
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
     override suspend fun markSeasonSeen(season: Season) = repository.setSeenBulk(season.episodes.map { it.id }, seen = true)
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("not used")

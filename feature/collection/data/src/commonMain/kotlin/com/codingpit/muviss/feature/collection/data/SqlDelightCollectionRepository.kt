@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 
 /**
@@ -81,6 +82,8 @@ class SqlDelightCollectionRepository(
             totalEpisodes = details.totalEpisodeCount().toLong(),
             airedEpisodes = details.airedEpisodeCount(todayEpochDay).toLong(),
             favorite = existing?.favorite ?: false,
+            genres = details.genres.joinToString(","),
+            runtimeMinutes = details.estimatedRuntimeMinutes()?.toLong(),
             addedAtEpochMs = existing?.addedAtEpochMs ?: now,
             updatedAtEpochMs = now,
             isDirty = true,
@@ -110,8 +113,26 @@ class SqlDelightCollectionRepository(
         favorite = row.favorite,
         addedAtEpochMs = row.addedAtEpochMs,
         seenEpisodes = seenEpisodes,
+        genres = row.genres.toGenreList(),
+        runtimeMinutes = row.runtimeMinutes?.toInt(),
     )
 }
+
+private fun String.toGenreList(): List<String> = if (isBlank()) emptyList() else split(",")
+
+/**
+ * The value stored in `collectionEntry.runtimeMinutes` for stats' hours-watched
+ * estimate: a movie's own runtime, or a TV show's average per-episode runtime
+ * across whichever episodes TMDB reported one for (not every episode always
+ * carries it) — null if none do, so the profile feature falls back to a fixed
+ * default per episode (see `ProfileStatsCalculator`).
+ */
+private fun MediaDetails.estimatedRuntimeMinutes(): Int? = when (type) {
+    MediaType.MOVIE -> runtimeMinutes
+    MediaType.TV -> seasons.flatMap { it.episodes }.mapNotNull { it.runtimeMinutes }.averageOrNull()
+}
+
+private fun List<Int>.averageOrNull(): Int? = if (isEmpty()) null else (sum().toDouble() / size).roundToInt()
 
 // Movies count as a single "episode": both aired and total are 1 once released,
 // matching WatchProgress's movie convention (core/model/WatchProgress.kt).

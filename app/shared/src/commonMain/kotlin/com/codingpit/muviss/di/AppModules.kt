@@ -6,6 +6,7 @@ import com.codingpit.muviss.core.network.di.networkModule
 import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
 import com.codingpit.muviss.feature.profile.data.di.profileDataModule
+import com.codingpit.muviss.feature.profile.ui.di.profileUiModule
 import com.codingpit.muviss.feature.progress.data.di.progressDataModule
 import com.codingpit.muviss.feature.progress.ui.di.progressUiModule
 import com.codingpit.muviss.feature.search.data.di.searchDataModule
@@ -27,6 +28,7 @@ val appModules: List<Module> =
         progressDataModule,
         progressUiModule,
         profileDataModule,
+        profileUiModule,
         settingsDataModule,
         settingsUiModule,
     )

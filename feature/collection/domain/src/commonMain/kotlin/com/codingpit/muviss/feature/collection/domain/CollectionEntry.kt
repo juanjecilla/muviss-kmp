@@ -17,6 +17,10 @@ import com.codingpit.muviss.models.WatchStatus
  * (via its `:api`, see `SqlDelightCollectionRepository`) rather than stored
  * here; it defaults to 0 so a bare [CollectionEntry] (e.g. in tests) still
  * derives [WatchStatus.NOT_STARTED].
+ *
+ * [genres] and [runtimeMinutes] were added for EPIC 4 (profile stats):
+ * genres straight from TMDB, and [runtimeMinutes] the movie's runtime or a TV
+ * show's average per-episode runtime (null when TMDB didn't report one).
  */
 data class CollectionEntry(
     val mediaId: MediaId,
@@ -29,6 +33,8 @@ data class CollectionEntry(
     val favorite: Boolean,
     val addedAtEpochMs: Long,
     val seenEpisodes: Int = 0,
+    val genres: List<String> = emptyList(),
+    val runtimeMinutes: Int? = null,
 ) {
     val mediaType: MediaType get() = mediaId.type
 

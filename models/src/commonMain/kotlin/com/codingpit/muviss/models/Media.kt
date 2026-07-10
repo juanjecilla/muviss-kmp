@@ -61,6 +61,8 @@ data class Episode(
     val name: String,
     val airDateEpochDay: Long? = null,
     val stillUrl: String? = null,
+    /** Minutes, when TMDB reports it for this episode; null otherwise (see profile's hours-watched fallback). */
+    val runtimeMinutes: Int? = null,
 )
 
 /** Stable episode identity within a show, e.g. `tmdb:tv:1399/1/1`. */
