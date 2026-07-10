@@ -33,6 +33,7 @@ class TmdbProvider(
     override suspend fun search(query: String, page: Int): PagedResult<MediaSummary> {
         val dto: TmdbPageDto = client.get("$BASE/search/multi") {
             parameter("api_key", apiKey)
+            parameter("language", locale.language)
             parameter("query", query)
             parameter("page", page)
             parameter("include_adult", false)
@@ -43,6 +44,7 @@ class TmdbProvider(
     override suspend fun trending(): List<MediaSummary> {
         val dto: TmdbPageDto = client.get("$BASE/trending/all/week") {
             parameter("api_key", apiKey)
+            parameter("language", locale.language)
         }.body()
         return dto.results.mapNotNull(TmdbMapper::resultToSummary)
     }
@@ -81,6 +83,7 @@ class TmdbProvider(
     private suspend fun movieDetails(externalId: String): MediaDetails {
         val dto: TmdbMovieDetailDto = client.get("$BASE/movie/$externalId") {
             parameter("api_key", apiKey)
+            parameter("language", locale.language)
             parameter("append_to_response", "external_ids")
         }.body()
         return TmdbMapper.movieToDetails(dto)
@@ -89,6 +92,7 @@ class TmdbProvider(
     private suspend fun tvDetails(externalId: String): MediaDetails {
         val show: TmdbTvDetailDto = client.get("$BASE/tv/$externalId") {
             parameter("api_key", apiKey)
+            parameter("language", locale.language)
             parameter("append_to_response", "external_ids")
         }.body()
         val showId = MediaId.tmdbTv(externalId)
@@ -98,6 +102,7 @@ class TmdbProvider(
                 val detail: TmdbSeasonDetailDto =
                     client.get("$BASE/tv/$externalId/season/${summary.seasonNumber}") {
                         parameter("api_key", apiKey)
+                        parameter("language", locale.language)
                     }.body()
                 TmdbMapper.seasonToModel(showId, detail)
             }

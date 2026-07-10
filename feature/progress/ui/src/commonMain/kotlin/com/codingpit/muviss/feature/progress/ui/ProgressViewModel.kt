@@ -41,6 +41,7 @@ data class WatchNextItem(
 
 data class ProgressUiState(
     val loading: Boolean = true,
+    val refreshing: Boolean = false,
     val items: List<WatchNextItem> = emptyList(),
     val error: String? = null,
 )
@@ -79,6 +80,16 @@ class ProgressViewModel(
     fun tickNext(item: WatchNextItem) {
         val next = item.nextEpisode ?: return
         viewModelScope.launch { toggleEpisodeSeen(next.id, true) }
+    }
+
+    /** Re-fetches every watching show's episode catalog (picks up newly aired episodes); the pull-to-refresh action. */
+    fun refresh() {
+        viewModelScope.launch {
+            _state.update { it.copy(refreshing = true) }
+            val ids = catalogs.value.keys.toList()
+            ids.forEach { id -> fetchEpisodeCatalog(id).onSuccess { seasons -> catalogs.update { it + (id to seasons) } } }
+            _state.update { it.copy(refreshing = false) }
+        }
     }
 
     private fun watchNextItems(watching: List<CollectionSummary>): Flow<List<WatchNextItem>> = when {

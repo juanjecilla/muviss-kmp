@@ -1,6 +1,8 @@
 package com.codingpit.muviss
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -9,6 +11,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
@@ -19,6 +23,7 @@ import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.di.rememberDatabaseDriverFactory
@@ -31,24 +36,28 @@ import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
+import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import org.koin.compose.KoinApplication
+import org.koin.compose.koinInject
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
 private data class TopDestination(
     val route: Any,
     val label: String,
+    val icon: ImageVector,
 )
 
 private val topDestinations =
     listOf(
-        TopDestination(SearchRoute, "Search"),
-        TopDestination(CollectionRoute, "Library"),
-        TopDestination(ProgressRoute, "Progress"),
-        TopDestination(ProfileRoute, "Profile"),
-        TopDestination(SettingsRoute, "Settings"),
+        TopDestination(SearchRoute, "Search", MuvissIcons.Search),
+        TopDestination(CollectionRoute, "Library", MuvissIcons.Library),
+        TopDestination(ProgressRoute, "Progress", MuvissIcons.WatchNext),
+        TopDestination(ProfileRoute, "Profile", MuvissIcons.Profile),
+        TopDestination(SettingsRoute, "Settings", MuvissIcons.Settings),
     )
 
 /** Root entry point for every platform. Starts Koin and hosts the app. */
@@ -59,7 +68,14 @@ fun MuvissApp() {
     remember { configureImageLoader() }
     val databaseDriverFactory = rememberDatabaseDriverFactory()
     KoinApplication(application = { modules(appModules + platformDatabaseModule(databaseDriverFactory)) }) {
-        MuvissTheme {
+        val settingsApi = koinInject<SettingsApi>()
+        val themeMode by settingsApi.observeThemeMode().collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+        val darkTheme = when (themeMode) {
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+            ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        }
+        MuvissTheme(darkTheme = darkTheme) {
             MuvissScaffold()
         }
     }
@@ -97,7 +113,7 @@ private fun MuvissScaffold() {
                                 restoreState = true
                             }
                         },
-                        icon = {},
+                        icon = { Icon(dest.icon, contentDescription = dest.label) },
                         label = { Text(dest.label) },
                     )
                 }
@@ -113,7 +129,7 @@ private fun MuvissScaffold() {
             collectionSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             profileSection()
-            settingsSection()
+            settingsSection(navController)
         }
     }
 }

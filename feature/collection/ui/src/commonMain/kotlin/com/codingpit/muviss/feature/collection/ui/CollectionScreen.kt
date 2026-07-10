@@ -13,16 +13,20 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,6 +34,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.models.MediaId
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionScreen(
     viewModel: CollectionViewModel,
@@ -40,26 +45,46 @@ fun CollectionScreen(
     Column(Modifier.fillMaxSize()) {
         CollectionFilterTabs(state.filter, onSelect = viewModel::selectFilter)
 
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            when {
-                state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
-
-                state.error != null -> Text(
-                    state.error!!,
-                    modifier = Modifier.padding(top = 32.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-
-                state.visibleEntries.isEmpty() -> Text(
-                    "Nothing here yet",
-                    modifier = Modifier.padding(top = 32.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-
-                else -> CollectionGrid(state.visibleEntries, onOpenDetail)
+        PullToRefreshBox(
+            isRefreshing = state.refreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                when {
+                    state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
+                    state.error != null -> ErrorState(state.error!!, onRetry = viewModel::refresh)
+                    state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter)
+                    else -> CollectionGrid(state.visibleEntries, onOpenDetail)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ErrorState(message: String, onRetry: () -> Unit) {
+    Column(
+        Modifier.padding(top = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(message, style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onRetry) { Text("Retry") }
+    }
+}
+
+@Composable
+private fun EmptyLibraryState(filter: CollectionFilter) {
+    val message = when (filter) {
+        CollectionFilter.FAVORITES -> "No favorites yet — tap the star on a saved title to add one."
+        else -> "Nothing here yet — search for a movie or show and add it to your library."
+    }
+    Text(
+        message,
+        modifier = Modifier.padding(top = 32.dp, start = 24.dp, end = 24.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable

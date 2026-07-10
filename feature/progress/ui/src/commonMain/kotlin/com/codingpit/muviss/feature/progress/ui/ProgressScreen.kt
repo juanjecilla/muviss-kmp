@@ -16,9 +16,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -30,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.models.MediaId
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressScreen(
     viewModel: ProgressViewModel,
@@ -37,24 +41,37 @@ fun ProgressScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        when {
-            state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
+    PullToRefreshBox(
+        isRefreshing = state.refreshing,
+        onRefresh = viewModel::refresh,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            when {
+                state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
 
-            state.error != null -> Text(
-                state.error!!,
-                modifier = Modifier.padding(top = 32.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+                state.error != null -> ProgressErrorState(state.error!!, onRetry = viewModel::refresh)
 
-            state.items.isEmpty() -> Text(
-                "Nothing to watch next — start something from your Library",
-                modifier = Modifier.padding(top = 32.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+                state.items.isEmpty() -> Text(
+                    "Nothing to watch next — add a show to your Library and start watching to see it here.",
+                    modifier = Modifier.padding(top = 32.dp, start = 24.dp, end = 24.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
 
-            else -> WatchNextList(state.items, onTick = viewModel::tickNext, onOpenDetail = onOpenDetail)
+                else -> WatchNextList(state.items, onTick = viewModel::tickNext, onOpenDetail = onOpenDetail)
+            }
         }
+    }
+}
+
+@Composable
+private fun ProgressErrorState(message: String, onRetry: () -> Unit) {
+    Column(
+        Modifier.padding(top = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(message, style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onRetry) { Text("Retry") }
     }
 }
 

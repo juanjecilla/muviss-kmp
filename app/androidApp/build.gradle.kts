@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.licensee)
 }
 
 kotlin {
@@ -12,6 +13,26 @@ kotlin {
         jvmTarget = JvmTarget.JVM_11
     }
 }
+
+// -----------------------------------------------------------------------
+// OSS license validation (EPIC 8). `com.github.jk1.dependency-license-report`
+// was tried first (see docs/RELEASING.md item 6) and dropped for failing
+// under the configuration cache; `app.cash.licensee` runs clean under it
+// (verified: `:app:androidApp:licenseeAndroidDebug`/`licenseeAndroidRelease`
+// both store a configuration-cache entry successfully) and is wired into
+// `check` by the plugin itself. It fails the build if a dependency ships a
+// license outside the allow-list below — bump the list deliberately if a new
+// one shows up. The Settings > About > Licenses screen does *not* read this
+// task's output live (see feature/settings/domain's OssLicenses.kt for why);
+// re-run `licenseeAndroidRelease` and regenerate that file when dependencies
+// change.
+// -----------------------------------------------------------------------
+licensee {
+    allow("Apache-2.0")
+    allow("MIT")
+    allowUrl("https://opensource.org/license/mit")
+}
+
 dependencies {
     implementation(projects.app.shared)
 

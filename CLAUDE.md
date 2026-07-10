@@ -25,7 +25,7 @@ Dependency rule: **`ui → domain ← data`**; cross-feature deps go through the
 :core:model         WatchProgress + WatchStatusCalculator (status derivation)
 :core:database      SQLDelight schema + drivers (expect/actual)
 :core:network       Ktor client + MetadataProvider + TmdbProvider
-:core:designsystem  Compose theme + shared components (PosterImage)
+:core:designsystem  Compose theme + shared components (PosterImage, MuvissIcons)
 :app:shared         app shell: MuvissApp() — Koin start, theme, NavHost, bottom bar
 :app:{androidApp,desktopApp,webApp,iosApp}   thin platform hosts
 :server             Ktor, dormant (not deployed)
@@ -37,7 +37,7 @@ Build boilerplate is in the included build `build-logic/`: apply `id("muviss.kmp
 
 ## Adding a feature (copy the search slice)
 
-1. Create `:feature:<name>:{api,domain,data,ui}` mirroring `feature/search/*` (search `:ui`/`:data` are the real reference; the other slices are stubs).
+1. Create `:feature:<name>:{api,domain,data,ui}` mirroring `feature/search/*` (search, collection, progress, and settings are real; `profile` is still a stub).
 2. Register the modules in `settings.gradle.kts` (the `listOf(...)` loop) and add the feature name.
 3. Add the feature's Koin modules to `AppModules.kt`, and its `Route` + `Section` to `MuvissApp.kt`.
 4. Depend on a peer only via its `:api`.
@@ -64,6 +64,7 @@ iOS: open `app/iosApp` in Xcode. Enable the pre-commit hook once per clone: `git
 
 - **TMDB key**: put `TMDB_API_KEY=<v3 key>` in `local.properties` (gitignored). It is baked into the generated `MuvissBuildConfig` (see ADR 0007). Without it, search returns errors at runtime but everything still builds.
 - **Release signing / Sentry**: `RELEASE_STORE_FILE`/`RELEASE_STORE_PASSWORD`/`RELEASE_KEY_ALIAS`/`RELEASE_KEY_PASSWORD` and `SENTRY_DSN` are all optional, read from `local.properties` or env vars the same way as the TMDB key. Without them, `:app:androidApp:assembleRelease` falls back to debug signing and crash reporting no-ops. See `docs/RELEASING.md`.
-- **Web + DB**: `:core:database` has no JS/Wasm driver yet (factories throw); collection/progress are not wired on web.
-- **Bottom-nav icons**: label-only for now — `material-icons` isn't published for this Compose version.
+- **Web + DB**: `:core:database` has no JS/Wasm driver yet (factories throw); collection/progress/settings persistence are not wired on web (theme/locale/notifications fall back to in-memory defaults there; data export is a no-op).
+- **Bottom-nav icons**: `material-icons-extended` still isn't published for this Compose version — the five nav glyphs are hand-bundled `ImageVector`s in `:core:designsystem/.../icon/MuvissIcons.kt` (parsed from Material Design SVG path data with `PathParser`) rather than pulled from that artifact.
+- **OSS licenses**: `app.cash.licensee` (applied to `:app:androidApp` only) validates dependency licenses at build time and is config-cache-compatible; the Settings > About > Licenses screen instead reads a generated-once, checked-in list (`feature/settings/domain/.../OssLicenses.kt`) — see docs/RELEASING.md item 6 for why the two aren't wired together live.
 - Bleeding-edge toolchain (Kotlin 2.4, AGP 9, Gradle 9.1). Prefer editing `gradle/libs.versions.toml` for versions; verify new libs publish for `wasm-js` before adding them.

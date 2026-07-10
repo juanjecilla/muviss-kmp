@@ -1,0 +1,32 @@
+-- Single-row app settings: theme, TMDB language/region, and the global
+-- notifications toggle (EPIC 8). Always exactly one row (id = 0); the
+-- repository calls `ensureRow` before it ever reads so `selectSettings`
+-- never has to model "no row yet" beyond first launch.
+CREATE TABLE appSettings (
+    id INTEGER NOT NULL PRIMARY KEY,
+    theme TEXT NOT NULL DEFAULT 'SYSTEM',
+    language TEXT NOT NULL DEFAULT 'en-US',
+    region TEXT NOT NULL DEFAULT 'US',
+    notificationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+);
+
+selectSettings:
+SELECT *
+FROM appSettings
+WHERE id = 0;
+
+ensureRow:
+INSERT OR IGNORE INTO appSettings(id, theme, language, region, notificationsEnabled)
+VALUES (0, 'SYSTEM', 'en-US', 'US', 1);
+
+updateTheme:
+UPDATE appSettings SET theme = :theme WHERE id = 0;
+
+updateLanguage:
+UPDATE appSettings SET language = :language WHERE id = 0;
+
+updateRegion:
+UPDATE appSettings SET region = :region WHERE id = 0;
+
+updateNotificationsEnabled:
+UPDATE appSettings SET notificationsEnabled = :notificationsEnabled WHERE id = 0;

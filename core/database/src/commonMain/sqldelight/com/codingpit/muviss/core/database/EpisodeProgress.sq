@@ -17,6 +17,12 @@ SELECT *
 FROM episodeProgress
 WHERE mediaId = :mediaId;
 
+-- Every row, unfiltered — used by settings' data export (EPIC 8), which
+-- dumps the whole table rather than one title's slice.
+selectAll:
+SELECT *
+FROM episodeProgress;
+
 countSeenForMedia:
 SELECT COUNT(*)
 FROM episodeProgress

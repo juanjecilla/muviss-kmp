@@ -28,6 +28,7 @@ enum class CollectionFilter {
 
 data class CollectionUiState(
     val loading: Boolean = true,
+    val refreshing: Boolean = false,
     val entries: List<CollectionEntry> = emptyList(),
     val filter: CollectionFilter = CollectionFilter.NOT_STARTED,
     val error: String? = null,
@@ -75,8 +76,13 @@ class CollectionViewModel(
         viewModelScope.launch { toggleFavorite(mediaId, favorite) }
     }
 
+    /** Re-fetches every saved title's snapshot; also the pull-to-refresh action. */
     fun refresh() {
-        viewModelScope.launch { runCatching { refreshSnapshots() } }
+        viewModelScope.launch {
+            _state.update { it.copy(refreshing = true) }
+            runCatching { refreshSnapshots() }
+            _state.update { it.copy(refreshing = false) }
+        }
     }
 
     private companion object {

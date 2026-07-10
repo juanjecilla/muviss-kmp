@@ -140,27 +140,45 @@ vars, and uploads the resulting `.aab` as a workflow artifact. There is no
 Play publishing step yet — the first release is uploaded to the Play
 Console by hand. The existing `ci.yml` (push/PR to `main`) is untouched.
 
-## 6. OSS attribution / license report — deferred
+## 6. OSS attribution / license report
 
 The epic asked for an OSS-attribution screen fed by a license-report
 Gradle plugin. `com.github.jk1.dependency-license-report` (3.1.4, the
-current release) was tried and dropped: its report task calls
+current release) was tried first and dropped: its report task calls
 `Task.project` at execution time and isn't
 configuration-cache-compatible — `generateLicenseReport` failed with
 "cannot serialize object of type `DefaultProject`" against this project's
-`org.gradle.configuration-cache=true` setting. Rather than disable the
-configuration cache project-wide (or fork the plugin) to accommodate one
-report task, this is deferred.
+`org.gradle.configuration-cache=true` setting.
 
-**Follow-up for EPIC 8** (which owns the Settings/About screen this would
-feed): re-evaluate license-report tooling then — either a
-configuration-cache-friendly plugin if one exists by then, or a small
-hand-rolled Gradle task that walks `runtimeClasspath` POM metadata (similar
-in spirit to the ~15-line `MuvissBuildConfig` generator this repo already
-uses instead of BuildKonfig, see ADR 0007). Until then, `docs/PRIVACY.md`
-and the TMDB attribution constant in
-`feature/settings/domain/.../TmdbAttribution.kt` (with its own
-`TODO(EPIC-8)`) are the source of truth for attribution text.
+**EPIC 8 tried `app.cash.licensee` next and it works.** Applied to
+`:app:androidApp` only (see that module's `build.gradle.kts`):
+`./gradlew :app:androidApp:licenseeAndroidDebug` and
+`licenseeAndroidRelease` both run clean and store a configuration-cache
+entry — no `DefaultProject`-style failure. The plugin's own `check` task
+integration means `./gradlew check` runs it too. It fails the build if any
+dependency resolves to a license outside the `allow(...)`/`allowUrl(...)`
+list in that build file; bump the list deliberately (not by blanket-allowing
+"unknown") if a legitimately-new license shows up.
+
+What it does *not* do: feed the Settings screen live. `licenseeAndroidRelease`
+only analyzes the **Android** variant's resolved dependency graph (Android is
+this app's primary target, see CLAUDE.md) and writes its
+`build/reports/licensee/androidRelease/artifacts.json` into a module
+(`:app:androidApp`) nothing else depends on — feeding that file's contents
+into `feature/settings/ui`'s Licenses screen without an app→feature dependency
+inversion would need either a cross-module generated-resource pipeline or
+Compose Multiplatform's raw-resource mechanism, either well beyond this
+epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a
+**generated-once, checked-in** `List<OssLicense>` produced from that same
+`artifacts.json` (253 entries as of this pass). Regenerate it by re-running
+`:app:androidApp:licenseeAndroidRelease` and re-deriving the list from the
+refreshed `artifacts.json` whenever dependencies change meaningfully — it
+will silently go stale otherwise, unlike the build-time gate above, which
+never can.
+
+`docs/PRIVACY.md` and the TMDB attribution constant in
+`feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
+for attribution text; both are now surfaced on the Settings "About" screen.
 
 ## 7. Manual smoke test before a real release
 
