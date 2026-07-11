@@ -180,7 +180,158 @@ never can.
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
 for attribution text; both are now surfaced on the Settings "About" screen.
 
-## 7. Manual smoke test before a real release
+## 7. Desktop installers (EPIC 12 / issue #14)
+
+`:app:desktopApp` produces native installers via Compose Multiplatform's
+`compose.desktop.application.nativeDistributions` DSL (a wrapper over the
+JDK's own `jpackage`) — see `app/desktopApp/build.gradle.kts`.
+
+### Build commands
+
+```bash
+./gradlew :app:desktopApp:packageDmg   # macOS — only runs on macOS
+./gradlew :app:desktopApp:packageMsi   # Windows — only runs on Windows
+./gradlew :app:desktopApp:packageDeb   # Linux — only runs on Linux
+./gradlew :app:desktopApp:packageDistributionForCurrentOS   # whichever format matches the host OS
+```
+
+Each is cross-compile-incapable by construction — `jpackage` calls into the
+host OS's own native packaging tool under the hood (`hdiutil`/`pkgbuild` for
+DMG, WiX for MSI, `dpkg-deb` for DEB) — which is why CI needs one runner per
+format (see below) rather than a single job producing all three.
+
+Artifacts land under `app/desktopApp/build/compose/binaries/main/<format>/`,
+e.g. `.../dmg/Muviss-1.0.12.dmg`. The unpacked `.app`/image (pre-installer)
+is at `.../app/Muviss.app` (macOS) — useful for a faster launch check than
+mounting the DMG.
+
+### Versioning
+
+`packageVersion` is derived from git the same way `versionCode`/`versionName`
+are (see item 3), duplicated into `app/desktopApp/build.gradle.kts` rather
+than shared, consistent with the existing per-module convention — but mapped
+differently, because jpackage's installer backends are far stricter about
+version *syntax* than an Android `versionName` string:
+
+- **DMG** (`pkgbuild`): parses as up to 3 dot-separated integers, and the
+  first one can't be `0` — `packageDmg` fails outright with
+  `Invalid Package-Version` on anything like `0.1.0-dev.12` (this repo's
+  actual `versionName` today, since there are no tags yet).
+- **MSI** (WiX): up to 4 dot-separated integers.
+- **DEB**: Debian policy version syntax — far more permissive than the other
+  two, no reason to diverge though.
+
+One scheme satisfies all three: a real, exact `vMAJOR.MINOR.PATCH` tag (with
+`MAJOR >= 1`) is used verbatim; every untagged/dev build — the norm today —
+falls back to `1.0.<commitCount>`. That's monotonic (commit count only ever
+grows) and always clears every format's "major can't be 0" rule, with no
+dev-suffix to strip since it never had one. Once real `v1.x.x`+ tags exist
+this stops mattering, but nothing needs to change when that day comes.
+
+### jlink modules
+
+`nativeDistributions { modules(...) }` controls which JDK modules `jlink`
+keeps in the bundled runtime image — anything omitted is stripped, and a
+missing module surfaces as a runtime `NoClassDefFoundError`/`module not
+found`, not a build failure, so guessing this list is risky. The list
+actually shipping (`java.desktop`, `java.instrument`, `java.management`,
+`java.sql`, `jdk.unsupported`) was derived by building the uber jar and
+asking `jdeps` what it actually touches, not guessed:
+
+```bash
+./gradlew :app:desktopApp:packageUberJarForCurrentOS
+jdeps --print-module-deps --ignore-missing-deps \
+  app/desktopApp/build/compose/jars/com.codingpit.muviss-*.jar
+```
+
+`java.sql` is the one worth calling out by name: it's what `:core:database`'s
+`sqlite-jdbc` driver (`DatabaseFactory.jvm.kt`) needs, and nothing in
+application code imports `java.sql` directly, so it's easy to drop by
+mistake if this list is ever hand-edited instead of re-derived.
+
+### App icon
+
+`app/desktopApp/icons/{icon.icns,icon.ico,icon.png}` are a **placeholder**
+generated programmatically (a flat rounded-square "play" glyph) — there's no
+real Muviss brand artwork yet. Regenerating them from real artwork later is
+a manual follow-up; nothing in the build depends on their content, only
+their presence/format (`.icns` for `macOS { iconFile }`, `.ico` for
+`windows { iconFile }`, `.png` for `linux { iconFile }`).
+
+### Window size/position persistence
+
+`app/desktopApp/src/main/kotlin/com/codingpit/muviss/DesktopWindowState.kt`
+persists the window's size/position across restarts via
+`java.util.prefs.Preferences` (per-user, JVM-only, schema-less) rather than
+the shared `appSettings` SQLDelight table. That table is `commonMain` schema
+shared by every target (ADR 0004); adding window-geometry columns nobody but
+desktop reads or writes would need a `.sqm` migration + updated verification
+fixture (ADR 0008) for a value that only exists as a concept on one of five
+targets — Android/iOS get equivalent behavior for free from their own window
+managers, and web has no native window to persist at all. Verified locally:
+launching the packaged `.app`, letting it settle, and inspecting
+`~/Library/Preferences/com.codingpit.muviss.plist` showed the expected
+`width`/`height`/`x`/`y` keys under `desktop/window/`.
+
+### Verifying locally
+
+Only the current host OS's format can be exercised:
+
+```bash
+./gradlew :app:desktopApp:packageDmg          # macOS
+open app/desktopApp/build/compose/binaries/main/app/Muviss.app   # launch check
+```
+
+`packageMsi`/`packageDeb` can't run on macOS (or vice versa) — CI is what
+exercises them (see below); their Gradle configuration is reviewed for
+correctness but is otherwise **untested** until a matching-OS run happens.
+
+### CI
+
+`.github/workflows/release.yml`'s `desktop-release` job runs a 2-entry OS
+matrix on the same `v*` tag trigger as the Android `release` job:
+`ubuntu-latest` → `packageDeb`, `macos-latest` → `packageDmg`. Each format
+can only be produced on its native OS (jpackage delegates to the OS's own
+packaging tool), which is why this is a matrix of jobs rather than one job
+running three tasks. Windows/MSI is **not** in the matrix: it would be the
+one desktop CI leg nobody on this project can verify locally before merging
+it (no Windows/macOS-cross-build path, no Windows machine in hand), so it's
+left as a follow-up rather than shipped untested and possibly silently
+broken on every future tag. (GitHub's `windows-latest` runner image does
+list the WiX Toolset as preinstalled per `actions/runner-images`, which is
+what `packageMsi` needs — so adding the third matrix entry later is likely
+just copying the `ubuntu-latest` entry's shape with `os: windows-latest`,
+`task: :app:desktopApp:packageMsi`, and the MSI output path — but "likely"
+isn't "verified," hence leaving it out for now.)
+
+Like the Android `release` job, there's no GitHub Release object created —
+installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`), same
+as the AAB. Attaching to an actual GitHub Release (e.g. via
+`softprops/action-gh-release`) is a natural follow-up once one exists.
+
+### Signing / notarization (manual follow-up, not attempted)
+
+Every installer produced above is **unsigned**:
+
+- **macOS**: no Developer ID signing or notarization. Gatekeeper will block
+  the DMG/`.app` on another machine with "cannot be opened because it is
+  from an unidentified developer" until the user right-click → Open's past
+  it once. Fixing this needs an active Apple Developer Program membership, a
+  Developer ID Application certificate, and `notarytool` wired into the
+  build/CI (secrets for the Apple ID/team ID/app-specific password) — real
+  money and an enrolled account, out of scope for this epic.
+- **Windows**: no Authenticode signing. SmartScreen will warn on first run.
+  Needs a code-signing certificate (EV or OV) from a CA — also real money,
+  also out of scope here.
+- **Linux**: DEB packages are conventionally unsigned for direct
+  distribution outside an APT repository (which Muviss isn't published to);
+  nothing missing here relative to how most non-repo `.deb`s ship.
+
+None of this blocks producing working installers — it only affects the
+first-run trust prompt a user sees. Revisit if/when Muviss gets a real
+distribution channel beyond "download the file from a GitHub artifact."
+
+## 8. Manual smoke test before a real release
 
 Automated checks (`spotlessCheck`, `detekt`, unit tests, `assembleRelease`)
 catch regressions but not "does it actually work minified on a device."

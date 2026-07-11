@@ -1,9 +1,11 @@
 name: Release
 
-# Manual, tag-triggered release build. Produces a signed AAB and uploads it
-# as a workflow artifact — there is no Play publishing step yet (see
-# docs/RELEASING.md); the first release is uploaded to the Play Console by
-# hand. Push a `vX.Y.Z` tag to run this.
+# Manual, tag-triggered release build. Produces a signed AAB plus desktop
+# installers (DMG/DEB — see the `desktop-release` job) and uploads them all
+# as workflow artifacts — there is no Play publishing step, and no GitHub
+# Release object is created either (see docs/RELEASING.md); the first
+# release of each is uploaded/attached by hand. Push a `vX.Y.Z` tag to run
+# this.
 on:
   push:
     tags:
@@ -58,4 +60,56 @@ jobs:
         with:
           name: muviss-release-${{ github.ref_name }}
           path: app/androidApp/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+  # EPIC 12 (issue #14): native desktop installers, one job per OS/format —
+  # jpackage's DMG and DEB backends only run on the OS they target (there's
+  # no cross-compiling a macOS .app or a Debian .deb from Linux/macOS
+  # respectively). Windows/MSI is deliberately left out of this matrix: it
+  # can't be exercised locally on this maintainer's macOS machine (see
+  # docs/RELEASING.md), so it stays a documented follow-up rather than an
+  # untested step that could silently fail every release. Unsigned/
+  # unnotarized — see docs/RELEASING.md's desktop section for that
+  # follow-up. Like the `release` job above, there's no GitHub Release
+  # object to attach to yet, so installers land as workflow artifacts.
+  desktop-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            task: :app:desktopApp:packageDeb
+            artifactPath: app/desktopApp/build/compose/binaries/main/deb/*.deb
+          - os: macos-latest
+            task: :app:desktopApp:packageDmg
+            artifactPath: app/desktopApp/build/compose/binaries/main/dmg/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Same reasoning as the `release` job: packageVersion is derived
+          # from git tags/commit count (see app/desktopApp/build.gradle.kts).
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build desktop installer
+        env:
+          # Optional, same as the `release` job — both degrade gracefully.
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: ./gradlew ${{ matrix.task }} --stacktrace
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: muviss-desktop-${{ matrix.os }}-${{ github.ref_name }}
+          path: ${{ matrix.artifactPath }}
           if-no-files-found: error
