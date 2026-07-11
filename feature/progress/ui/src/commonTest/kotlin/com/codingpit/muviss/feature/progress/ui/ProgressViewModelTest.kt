@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.EpisodeProgress
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
@@ -113,7 +114,7 @@ class ProgressViewModelTest {
         collectionApi,
         ObserveSeenEpisodesUseCase(progressRepository),
         ToggleEpisodeSeenUseCase(progressRepository),
-        FetchEpisodeCatalogUseCase(catalogSource),
+        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource)),
         FakeClock(today),
     )
 

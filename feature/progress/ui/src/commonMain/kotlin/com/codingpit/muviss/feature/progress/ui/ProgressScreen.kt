@@ -18,12 +18,17 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,9 +38,58 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.models.MediaId
 
+/** The two segments the Progress tab switches between (EPIC 14 adds [UPCOMING] alongside the original watch-next view). */
+private enum class ProgressTab {
+    WATCH_NEXT,
+    UPCOMING,
+}
+
+private fun ProgressTab.label(): String = when (this) {
+    ProgressTab.WATCH_NEXT -> "Watch Next"
+    ProgressTab.UPCOMING -> "Upcoming"
+}
+
+/**
+ * The Progress tab's root: a segmented switch between "Watch Next" and
+ * "Upcoming" (EPIC 14) rather than a sixth bottom-nav destination — both are
+ * views over the same saved-shows episode data, just sliced differently.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressScreen(
+    watchNextViewModel: ProgressViewModel,
+    upcomingViewModel: UpcomingViewModel,
+    onOpenDetail: (MediaId) -> Unit,
+) {
+    var selectedTab by remember { mutableStateOf(ProgressTab.WATCH_NEXT) }
+
+    Column(Modifier.fillMaxSize()) {
+        ProgressTabs(selectedTab, onSelect = { selectedTab = it })
+        when (selectedTab) {
+            ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail)
+            ProgressTab.UPCOMING -> UpcomingScreen(upcomingViewModel, onOpenDetail)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProgressTabs(selected: ProgressTab, onSelect: (ProgressTab) -> Unit) {
+    val tabs = ProgressTab.entries
+    PrimaryScrollableTabRow(selectedTabIndex = tabs.indexOf(selected)) {
+        tabs.forEach { tab ->
+            Tab(
+                selected = tab == selected,
+                onClick = { onSelect(tab) },
+                text = { Text(tab.label()) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WatchNextScreen(
     viewModel: ProgressViewModel,
     onOpenDetail: (MediaId) -> Unit,
 ) {

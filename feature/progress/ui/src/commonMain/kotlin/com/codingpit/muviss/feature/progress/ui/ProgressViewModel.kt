@@ -8,13 +8,12 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeOrdering
-import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.MediaId
-import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -47,24 +46,24 @@ data class ProgressUiState(
 )
 
 /**
- * Drives the Progress ("Watch next") tab: every currently-[WatchStatus.WATCHING]
+ * Drives the Progress tab's Watch Next segment: every currently-[WatchStatus.WATCHING]
  * show from [collectionApi] (collection's `:api` — the cross-feature contract,
  * per ADR 0004), paired with the next episode the user hasn't ticked yet.
- * Season/episode structure is fetched once per show and cached; seen state is
- * fully reactive so ticking (here or in Detail) immediately advances the item.
+ * Season/episode structure comes from [catalogCache], shared with
+ * [UpcomingViewModel] (EPIC 14) so a show fetched from one segment doesn't
+ * get fetched again from the other; seen state is fully reactive so ticking
+ * (here or in Detail) immediately advances the item.
  */
 class ProgressViewModel(
     private val collectionApi: CollectionApi,
     private val observeSeenEpisodes: ObserveSeenEpisodesUseCase,
     private val toggleEpisodeSeen: ToggleEpisodeSeenUseCase,
-    private val fetchEpisodeCatalog: FetchEpisodeCatalogUseCase,
+    private val catalogCache: EpisodeCatalogCache,
     private val clock: AppClock,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProgressUiState())
     val state: StateFlow<ProgressUiState> = _state.asStateFlow()
-
-    private val catalogs = MutableStateFlow<Map<MediaId, List<Season>>>(emptyMap())
 
     init {
         collectionApi.observeSummaries()
@@ -82,12 +81,11 @@ class ProgressViewModel(
         viewModelScope.launch { toggleEpisodeSeen(next.id, true) }
     }
 
-    /** Re-fetches every watching show's episode catalog (picks up newly aired episodes); the pull-to-refresh action. */
+    /** Re-fetches every cached show's episode catalog (picks up newly aired episodes); the pull-to-refresh action. */
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(refreshing = true) }
-            val ids = catalogs.value.keys.toList()
-            ids.forEach { id -> fetchEpisodeCatalog(id).onSuccess { seasons -> catalogs.update { it + (id to seasons) } } }
+            catalogCache.refresh()
             _state.update { it.copy(refreshing = false) }
         }
     }
@@ -99,7 +97,7 @@ class ProgressViewModel(
 
     private fun watchNextItemFlow(summary: CollectionSummary): Flow<WatchNextItem> = combine(
         observeSeenEpisodes(summary.mediaId),
-        catalogs,
+        catalogCache.catalogs,
     ) { seen, catalogMap ->
         val seasons = catalogMap[summary.mediaId].orEmpty()
         val next = EpisodeOrdering.nextUnseen(seasons, seen, clock.todayEpochDay())
@@ -107,13 +105,7 @@ class ProgressViewModel(
     }
 
     private fun loadMissingCatalogs(mediaIds: List<MediaId>) {
-        val missing = mediaIds.filterNot { catalogs.value.containsKey(it) }
-        if (missing.isEmpty()) return
-        viewModelScope.launch {
-            missing.forEach { id ->
-                fetchEpisodeCatalog(id).onSuccess { seasons -> catalogs.update { it + (id to seasons) } }
-            }
-        }
+        viewModelScope.launch { catalogCache.loadMissing(mediaIds) }
     }
 
     private companion object {

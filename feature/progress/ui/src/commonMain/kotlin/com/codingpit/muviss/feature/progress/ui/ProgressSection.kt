@@ -14,7 +14,8 @@ import org.koin.compose.viewmodel.koinViewModel
  */
 fun NavGraphBuilder.progressSection(onOpenDetail: (MediaId) -> Unit) {
     composable<ProgressRoute> {
-        val viewModel = koinViewModel<ProgressViewModel>()
-        ProgressScreen(viewModel, onOpenDetail)
+        val watchNextViewModel = koinViewModel<ProgressViewModel>()
+        val upcomingViewModel = koinViewModel<UpcomingViewModel>()
+        ProgressScreen(watchNextViewModel, upcomingViewModel, onOpenDetail)
     }
 }

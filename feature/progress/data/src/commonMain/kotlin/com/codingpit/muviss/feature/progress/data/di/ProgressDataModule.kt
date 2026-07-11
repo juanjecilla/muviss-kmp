@@ -5,6 +5,7 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.data.DefaultProgressApi
 import com.codingpit.muviss.feature.progress.data.RegistryEpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
+import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkPreviousSeenUseCase
@@ -35,4 +36,5 @@ val progressDataModule: Module = module {
     factory { MarkPreviousSeenUseCase(get()) }
     factory { SetMovieWatchedUseCase(get()) }
     factory { FetchEpisodeCatalogUseCase(get()) }
+    single { EpisodeCatalogCache(get()) }
 }

@@ -10,5 +10,8 @@ kotlin {
             implementation(projects.core.common)
             implementation(libs.kotlinx.coroutinesCore)
         }
+        commonTest.dependencies {
+            implementation(libs.kotlinx.coroutinesTest)
+        }
     }
 }
