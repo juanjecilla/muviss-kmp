@@ -7,6 +7,23 @@ sqldelight {
     databases {
         create("MuvissDatabase") {
             packageName.set("com.codingpit.muviss.core.database")
+
+            // Migration baseline (EPIC 10): the schema grew additively and
+            // migration-less through EPICs 0-8 — every install so far has
+            // always created the database fresh from the current .sq files,
+            // there was never an upgrade path. AppSettings.sq /
+            // CollectionEntry.sq / EpisodeProgress.sq / Profile.sq as they
+            // stand today *are* schema version 1; no `.sqm` file is needed
+            // to represent it. From here on, any change to a `CREATE TABLE`
+            // (new column, renamed column, new table that existing installs
+            // must pick up without losing data) must ship as a new
+            // `<version>.sqm` file alongside the `.sq` change, e.g.
+            // `2.sqm` next to `CollectionEntry.sq`. `verifyMigrations`
+            // below fails the build if the `.sqm` chain doesn't reproduce
+            // the schema the `.sq` files declare, so a missing migration is
+            // caught at compile time rather than at some user's upgrade.
+            verifyMigrations.set(true)
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
         }
     }
 }

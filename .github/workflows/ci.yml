@@ -40,8 +40,14 @@ jobs:
           :server:test
           --stacktrace
 
+      - name: Verify SQLDelight migrations
+        run: ./gradlew verifySqlDelightMigration --stacktrace
+
       - name: Assemble Android debug APK
         run: ./gradlew :app:androidApp:assembleDebug --stacktrace
 
       - name: Compile desktop app
         run: ./gradlew :app:desktopApp:compileKotlin --stacktrace
+
+      - name: Compile web targets (JS + Wasm)
+        run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
