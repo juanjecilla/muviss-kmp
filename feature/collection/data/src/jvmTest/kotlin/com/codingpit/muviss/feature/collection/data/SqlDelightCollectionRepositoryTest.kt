@@ -239,6 +239,100 @@ class SqlDelightCollectionRepositoryTest {
     }
 
     @Test
+    fun new_entries_default_to_unrated_with_no_note() = runTest {
+        repository.upsertSnapshot(details())
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            val entry = awaitItem()!!
+            assertEquals(null, entry.rating)
+            assertEquals(null, entry.note)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setRating_round_trips_and_is_independent_of_favorite() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setRating(MediaId.tmdbMovie("603"), 8)
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            val entry = awaitItem()!!
+            assertEquals(8, entry.rating)
+            assertEquals(false, entry.favorite)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setRating_with_null_clears_it() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setRating(MediaId.tmdbMovie("603"), 8)
+        repository.setRating(MediaId.tmdbMovie("603"), null)
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            assertEquals(null, awaitItem()!!.rating)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setRating_survives_a_snapshot_refresh_like_favorite_does() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setRating(MediaId.tmdbMovie("603"), 9)
+
+        clock.advanceTo(5_000L)
+        repository.upsertSnapshot(details(title = "The Matrix Reloaded"))
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            val entry = awaitItem()!!
+            assertEquals("The Matrix Reloaded", entry.title)
+            assertEquals(9, entry.rating)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setNote_round_trips_and_is_independent_of_rating() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setNote(MediaId.tmdbMovie("603"), "Holds up on rewatch")
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            val entry = awaitItem()!!
+            assertEquals("Holds up on rewatch", entry.note)
+            assertEquals(null, entry.rating)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setNote_with_null_clears_it() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setNote(MediaId.tmdbMovie("603"), "Holds up on rewatch")
+        repository.setNote(MediaId.tmdbMovie("603"), null)
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            assertEquals(null, awaitItem()!!.note)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setNote_survives_a_snapshot_refresh_like_favorite_does() = runTest {
+        repository.upsertSnapshot(details())
+        repository.setNote(MediaId.tmdbMovie("603"), "Holds up on rewatch")
+
+        clock.advanceTo(5_000L)
+        repository.upsertSnapshot(details(title = "The Matrix Reloaded"))
+
+        repository.observeEntry(MediaId.tmdbMovie("603")).test {
+            val entry = awaitItem()!!
+            assertEquals("The Matrix Reloaded", entry.title)
+            assertEquals("Holds up on rewatch", entry.note)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun observeEntry_is_null_for_an_unsaved_title() = runTest {
         repository.observeEntry(MediaId.tmdbMovie("999")).test {
             assertNull(awaitItem())

@@ -14,6 +14,8 @@ import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshAndFindNewEpisodesUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshCollectionSnapshotsUseCase
 import com.codingpit.muviss.feature.collection.domain.RemoveFromCollectionUseCase
+import com.codingpit.muviss.feature.collection.domain.SetNoteUseCase
+import com.codingpit.muviss.feature.collection.domain.SetRatingUseCase
 import com.codingpit.muviss.feature.collection.domain.ToggleFavoriteUseCase
 import com.codingpit.muviss.feature.collection.domain.ToggleNotificationsMutedUseCase
 import org.koin.core.module.Module
@@ -32,7 +34,9 @@ val collectionDataModule: Module = module {
     factory { RemoveFromCollectionUseCase(get()) }
     factory { ToggleFavoriteUseCase(get()) }
     factory { ToggleNotificationsMutedUseCase(get()) }
-    factory { CollectionToggles(get(), get()) }
+    factory { SetRatingUseCase(get()) }
+    factory { SetNoteUseCase(get()) }
+    factory { CollectionToggles(get(), get(), get(), get()) }
     factory { RefreshCollectionSnapshotsUseCase(get(), get()) }
     factory { RefreshAndFindNewEpisodesUseCase(get(), get(), get()) }
 }

@@ -59,6 +59,8 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
     }
 
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
+    override suspend fun setRating(mediaId: MediaId, rating: Int?) = error("not used")
+    override suspend fun setNote(mediaId: MediaId, note: String?) = error("not used")
 }
 
 private class NoopSnapshotSource : MediaSnapshotSource {
@@ -120,6 +122,47 @@ class CollectionViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(notStarted.mediaId to true), repository.setFavoriteCalls)
+    }
+
+    @Test
+    fun defaults_to_recently_added_sort() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted)))
+        advanceUntilIdle()
+
+        assertEquals(CollectionSort.RECENTLY_ADDED, vm.state.value.sort)
+    }
+
+    @Test
+    fun recently_added_sort_orders_newest_first() = runTest {
+        val older = entry(MediaId.tmdbMovie("10")).copy(addedAtEpochMs = 1L, title = "Older")
+        val newer = entry(MediaId.tmdbMovie("11")).copy(addedAtEpochMs = 2L, title = "Newer")
+        val vm = viewModel(FakeCollectionRepository(listOf(older, newer)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(newer, older), vm.state.value.visibleEntries)
+    }
+
+    @Test
+    fun rating_sort_orders_highest_first_with_unrated_last() = runTest {
+        val unrated = entry(MediaId.tmdbMovie("20")).copy(title = "Unrated")
+        val lowRated = entry(MediaId.tmdbMovie("21")).copy(rating = 3, title = "Low")
+        val highRated = entry(MediaId.tmdbMovie("22")).copy(rating = 9, title = "High")
+        val vm = viewModel(FakeCollectionRepository(listOf(unrated, lowRated, highRated)))
+        advanceUntilIdle()
+
+        vm.selectSort(CollectionSort.RATING)
+        assertEquals(listOf(highRated, lowRated, unrated), vm.state.value.visibleEntries)
+    }
+
+    @Test
+    fun title_sort_orders_alphabetically_case_insensitively() = runTest {
+        val zebra = entry(MediaId.tmdbMovie("30")).copy(title = "zebra")
+        val apple = entry(MediaId.tmdbMovie("31")).copy(title = "Apple")
+        val vm = viewModel(FakeCollectionRepository(listOf(zebra, apple)))
+        advanceUntilIdle()
+
+        vm.selectSort(CollectionSort.TITLE)
+        assertEquals(listOf(apple, zebra), vm.state.value.visibleEntries)
     }
 
     @Test

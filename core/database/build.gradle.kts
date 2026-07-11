@@ -17,11 +17,16 @@ sqldelight {
             // to represent it. From here on, any change to a `CREATE TABLE`
             // (new column, renamed column, new table that existing installs
             // must pick up without losing data) must ship as a new
-            // `<version>.sqm` file alongside the `.sq` change, e.g.
-            // `2.sqm` next to `CollectionEntry.sq`. `verifyMigrations`
-            // below fails the build if the `.sqm` chain doesn't reproduce
-            // the schema the `.sq` files declare, so a missing migration is
-            // caught at compile time rather than at some user's upgrade.
+            // `<version>.sqm` file alongside the `.sq` change. NOTE the
+            // number in the filename is the version it migrates FROM, not
+            // to (confirmed by EPIC 15, the first real migration here) — the
+            // migration off baseline version 1 is `1.sqm`, not `2.sqm`, and
+            // it produces the `2.db` fixture in `schemaOutputDirectory`
+            // below (regenerate via `generateCommonMainMuvissDatabaseSchema`
+            // after any schema change). `verifyMigrations` below fails the
+            // build if the `.sqm` chain doesn't reproduce the schema the
+            // `.sq` files declare, so a missing migration is caught at
+            // compile time rather than at some user's upgrade.
             verifyMigrations.set(true)
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
         }

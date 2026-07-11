@@ -26,14 +26,22 @@ enum class CollectionFilter {
     FAVORITES,
 }
 
+/** The three ways the (already-filtered) library can be ordered (EPIC 15). [RECENTLY_ADDED] is the default, matching the repository's natural order. */
+enum class CollectionSort {
+    RECENTLY_ADDED,
+    RATING,
+    TITLE,
+}
+
 data class CollectionUiState(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     val entries: List<CollectionEntry> = emptyList(),
     val filter: CollectionFilter = CollectionFilter.NOT_STARTED,
+    val sort: CollectionSort = CollectionSort.RECENTLY_ADDED,
     val error: String? = null,
 ) {
-    /** [entries] sliced by the selected tab. Status always comes from [CollectionEntry.status] — never a stored column. */
+    /** [entries] sliced by the selected tab, then ordered by [sort]. Status always comes from [CollectionEntry.status] — never a stored column. */
     val visibleEntries: List<CollectionEntry>
         get() = entries.filter { entry ->
             when (filter) {
@@ -43,7 +51,14 @@ data class CollectionUiState(
                 CollectionFilter.WATCHED -> entry.status == WatchStatus.WATCHED
                 CollectionFilter.FINISHED -> entry.status == WatchStatus.FINISHED
             }
-        }
+        }.sortedFor(sort)
+}
+
+/** Unrated entries always sort last under [CollectionSort.RATING], newest-first as the tiebreaker. */
+private fun List<CollectionEntry>.sortedFor(sort: CollectionSort): List<CollectionEntry> = when (sort) {
+    CollectionSort.RECENTLY_ADDED -> sortedByDescending { it.addedAtEpochMs }
+    CollectionSort.RATING -> sortedWith(compareByDescending<CollectionEntry> { it.rating ?: -1 }.thenByDescending { it.addedAtEpochMs })
+    CollectionSort.TITLE -> sortedBy { it.title.lowercase() }
 }
 
 /**
@@ -70,6 +85,10 @@ class CollectionViewModel(
 
     fun selectFilter(filter: CollectionFilter) {
         _state.update { it.copy(filter = filter) }
+    }
+
+    fun selectSort(sort: CollectionSort) {
+        _state.update { it.copy(sort = sort) }
     }
 
     fun setFavorite(mediaId: MediaId, favorite: Boolean) {

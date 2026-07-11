@@ -26,6 +26,12 @@ import com.codingpit.muviss.models.WatchStatus
  * independent per-show opt-out from the Android background worker's
  * new-episode alerts, checked alongside (not instead of) the global toggle
  * in `feature/settings` (see [NewEpisodesCalculator]).
+ *
+ * [rating] and [note] were added for EPIC 15 (ratings & notes): personal,
+ * local-only user data exactly like [favorite] (ADR 0005 — never derived,
+ * safe to store), preserved across a snapshot refresh the same way. [rating]
+ * is 1-10 or null for "unrated"; range validation lives in [SetRatingUseCase],
+ * not here.
  */
 data class CollectionEntry(
     val mediaId: MediaId,
@@ -41,6 +47,8 @@ data class CollectionEntry(
     val genres: List<String> = emptyList(),
     val runtimeMinutes: Int? = null,
     val notificationsMuted: Boolean = false,
+    val rating: Int? = null,
+    val note: String? = null,
 ) {
     val mediaType: MediaType get() = mediaId.type
 

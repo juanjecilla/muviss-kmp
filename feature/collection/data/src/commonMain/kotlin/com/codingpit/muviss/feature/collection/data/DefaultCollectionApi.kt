@@ -26,7 +26,7 @@ internal class DefaultCollectionApi(
 ) : CollectionApi {
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = observeEntry(mediaId)
-        .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite, it.notificationsMuted) } }
+        .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite, it.notificationsMuted, it.rating, it.note) } }
 
     override fun observeSummaries(): Flow<List<CollectionSummary>> = observeCollection()
         .map { entries ->
@@ -40,6 +40,7 @@ internal class DefaultCollectionApi(
                     runtimeMinutes = it.runtimeMinutes,
                     seenEpisodes = it.seenEpisodes,
                     notificationsMuted = it.notificationsMuted,
+                    rating = it.rating,
                 )
             }
         }
@@ -51,6 +52,10 @@ internal class DefaultCollectionApi(
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = toggles.setFavorite(mediaId, favorite)
 
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = toggles.setNotificationsMuted(mediaId, muted)
+
+    override suspend fun setRating(mediaId: MediaId, rating: Int?) = toggles.setRating(mediaId, rating)
+
+    override suspend fun setNote(mediaId: MediaId, note: String?) = toggles.setNote(mediaId, note)
 
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = refreshAndFindNewEpisodesUseCase()
         .map { NewEpisodesResult(it.mediaId, it.title, it.newEpisodeCount, it.latestEpisodeLabel) }

@@ -33,6 +33,12 @@ interface CollectionApi {
     /** Per-show opt-out from EPIC 5's new-episode notifications, independent of the global toggle in Settings. */
     suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean)
 
+    /** Sets or clears (via null) the personal 1-10 rating (EPIC 15); throws [IllegalArgumentException] for anything outside 1-10. */
+    suspend fun setRating(mediaId: MediaId, rating: Int?)
+
+    /** Sets or clears (via null, or a blank string) the personal free-text note (EPIC 15). */
+    suspend fun setNote(mediaId: MediaId, note: String?)
+
     /**
      * Re-fetches metadata for every saved title (the same refresh the
      * Collection screen runs on pull-to-refresh) and returns the ones whose
@@ -44,11 +50,17 @@ interface CollectionApi {
     suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult>
 }
 
-/** The minimal membership info a peer needs to render add/remove + favorite + mute controls. */
+/**
+ * The minimal membership info a peer needs to render add/remove + favorite +
+ * mute + rating + note controls. [rating] and [note] are EPIC 15 additions
+ * (search:ui's `DetailScreen` is the only consumer of either today).
+ */
 data class CollectionMembership(
     val mediaId: MediaId,
     val favorite: Boolean,
     val notificationsMuted: Boolean = false,
+    val rating: Int? = null,
+    val note: String? = null,
 )
 
 /**
@@ -60,6 +72,13 @@ data class CollectionMembership(
  * EPIC 5 background worker doesn't need it here, since
  * [CollectionApi.refreshAndFindNewEpisodes] already excludes muted shows
  * itself. Other peers simply ignore whichever of these they don't need.
+ *
+ * [rating] was added for EPIC 15 (ratings & notes): the collection feature's
+ * own list uses it for the rating badge/sort, and the profile feature's
+ * `ProfileStatsCalculator` uses it for the average-rating/top-rated-genre
+ * stats. [note] is deliberately not exposed here — no peer needs it at this
+ * granularity today (it is only rendered/edited in search:ui's
+ * `DetailScreen`, via [CollectionMembership.note]).
  */
 data class CollectionSummary(
     val mediaId: MediaId,
@@ -70,6 +89,7 @@ data class CollectionSummary(
     val runtimeMinutes: Int? = null,
     val seenEpisodes: Int = 0,
     val notificationsMuted: Boolean = false,
+    val rating: Int? = null,
 )
 
 /**

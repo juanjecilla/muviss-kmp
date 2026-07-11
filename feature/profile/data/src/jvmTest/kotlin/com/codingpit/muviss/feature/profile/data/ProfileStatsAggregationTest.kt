@@ -14,6 +14,7 @@ import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
 import com.codingpit.muviss.feature.profile.domain.GenreCount
+import com.codingpit.muviss.feature.profile.domain.GenreRating
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
 import com.codingpit.muviss.feature.profile.domain.WatchStreak
@@ -66,6 +67,7 @@ private class RealCollectionApiForStats(private val repository: CollectionReposi
                 genres = entry.genres,
                 runtimeMinutes = entry.runtimeMinutes,
                 seenEpisodes = entry.seenEpisodes,
+                rating = entry.rating,
             )
         }
     }
@@ -74,6 +76,8 @@ private class RealCollectionApiForStats(private val repository: CollectionReposi
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
+    override suspend fun setRating(mediaId: MediaId, rating: Int?) = repository.setRating(mediaId, rating)
+    override suspend fun setNote(mediaId: MediaId, note: String?) = error("not used")
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
@@ -198,6 +202,24 @@ class ProfileStatsAggregationTest {
                 stats.genreBreakdown.toSet(),
             )
             assertEquals(WatchStreak(currentDays = 1, longestDays = 2), stats.streak)
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun ratings_flow_through_the_real_repository_into_the_aggregated_stats() = runTest {
+        collectionApi.add(MediaDetails(summary = MediaSummary(movieA, "Movie A"), genres = listOf("Action")))
+        collectionApi.add(MediaDetails(summary = MediaSummary(movieB, "Movie B"), genres = listOf("Action")))
+        collectionApi.setRating(movieA, 8)
+        collectionApi.setRating(movieB, 6)
+
+        useCase().test {
+            val stats = awaitItem()
+
+            assertEquals(2, stats.ratedCount)
+            assertEquals(7.0, stats.averageRating)
+            assertEquals(GenreRating("Action", 7.0, 2), stats.topRatedGenre)
 
             cancelAndIgnoreRemainingEvents()
         }

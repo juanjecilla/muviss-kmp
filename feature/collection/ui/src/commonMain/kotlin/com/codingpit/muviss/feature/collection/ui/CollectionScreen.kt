@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,7 @@ fun CollectionScreen(
 
     Column(Modifier.fillMaxSize()) {
         CollectionFilterTabs(state.filter, onSelect = viewModel::selectFilter)
+        CollectionSortRow(state.sort, onSelect = viewModel::selectSort)
 
         PullToRefreshBox(
             isRefreshing = state.refreshing,
@@ -104,6 +107,30 @@ private fun CollectionFilterTabs(
     }
 }
 
+/** Minimal sort control (EPIC 15): a row of labels, the selected one bold — no dropdown/menu dependency needed for three options. */
+@Composable
+private fun CollectionSortRow(
+    selected: CollectionSort,
+    onSelect: (CollectionSort) -> Unit,
+) {
+    Row(
+        Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Sort:", style = MaterialTheme.typography.labelMedium)
+        CollectionSort.entries.forEach { sort ->
+            TextButton(onClick = { onSelect(sort) }) {
+                Text(
+                    sort.label(),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (sort == selected) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun CollectionGrid(
     entries: List<CollectionEntry>,
@@ -145,6 +172,9 @@ private fun CollectionCard(entry: CollectionEntry, onClick: () -> Unit) {
         if (entry.favorite) {
             Text("★ Favorite", style = MaterialTheme.typography.labelSmall)
         }
+        entry.rating?.let { rating ->
+            Text("★ $rating/10", style = MaterialTheme.typography.labelSmall)
+        }
     }
 }
 
@@ -154,4 +184,10 @@ private fun CollectionFilter.label(): String = when (this) {
     CollectionFilter.WATCHED -> "Watched"
     CollectionFilter.FINISHED -> "Finished"
     CollectionFilter.FAVORITES -> "Favorites"
+}
+
+private fun CollectionSort.label(): String = when (this) {
+    CollectionSort.RECENTLY_ADDED -> "Recently added"
+    CollectionSort.RATING -> "Rating"
+    CollectionSort.TITLE -> "Title"
 }

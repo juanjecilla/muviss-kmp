@@ -38,8 +38,30 @@ class ToggleNotificationsMutedUseCase(private val repository: CollectionReposito
 }
 
 /**
- * Groups the collection feature's per-show toggle use cases (favorite, mute)
- * so [DefaultCollectionApi][com.codingpit.muviss.feature.collection.data.DefaultCollectionApi]'s
+ * Sets or clears (via null) the personal 1-10 rating (EPIC 15). The only
+ * place the 1-10 range is enforced — [CollectionRepository]/the database
+ * column accept any integer, this use case is the gate.
+ */
+class SetRatingUseCase(private val repository: CollectionRepository) {
+    suspend operator fun invoke(mediaId: MediaId, rating: Int?) {
+        require(rating == null || rating in RATING_RANGE) { "rating must be null or within $RATING_RANGE, was $rating" }
+        repository.setRating(mediaId, rating)
+    }
+
+    private companion object {
+        val RATING_RANGE = 1..10
+    }
+}
+
+/** Sets or clears (via null, or a blank string) the personal free-text note (EPIC 15). */
+class SetNoteUseCase(private val repository: CollectionRepository) {
+    suspend operator fun invoke(mediaId: MediaId, note: String?) = repository.setNote(mediaId, note?.trim()?.ifBlank { null })
+}
+
+/**
+ * Groups the collection feature's per-show toggle/setter use cases
+ * (favorite, mute, rating, note) so
+ * [DefaultCollectionApi][com.codingpit.muviss.feature.collection.data.DefaultCollectionApi]'s
  * constructor doesn't grow one parameter per toggle — the same pattern
  * `feature/settings/domain`'s `SettingsActions` uses for that feature's
  * mutators.
@@ -47,9 +69,13 @@ class ToggleNotificationsMutedUseCase(private val repository: CollectionReposito
 class CollectionToggles(
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val toggleNotificationsMutedUseCase: ToggleNotificationsMutedUseCase,
+    private val setRatingUseCase: SetRatingUseCase,
+    private val setNoteUseCase: SetNoteUseCase,
 ) {
     suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = toggleFavoriteUseCase(mediaId, favorite)
     suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = toggleNotificationsMutedUseCase(mediaId, muted)
+    suspend fun setRating(mediaId: MediaId, rating: Int?) = setRatingUseCase(mediaId, rating)
+    suspend fun setNote(mediaId: MediaId, note: String?) = setNoteUseCase(mediaId, note)
 }
 
 /**

@@ -30,7 +30,7 @@ import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
  * SQLDelight-backed [CollectionRepository] over `CollectionEntry.sq`.
  * [upsertSnapshot] merges into any existing row: re-saving a removed title
  * un-deletes it, and refreshing a saved title's snapshot preserves its
- * favorite flag and original add date.
+ * favorite flag, rating, note, and original add date.
  *
  * [seenEpisodes][CollectionEntry.seenEpisodes] is never stored here — it is
  * joined in reactively from the progress feature via [progressApi] (its
@@ -91,6 +91,8 @@ class SqlDelightCollectionRepository(
             isDirty = true,
             deleted = false,
             notificationsMuted = existing?.notificationsMuted ?: false,
+            rating = existing?.rating,
+            note = existing?.note,
         )
         Unit
     }
@@ -110,6 +112,16 @@ class SqlDelightCollectionRepository(
         Unit
     }
 
+    override suspend fun setRating(mediaId: MediaId, rating: Int?) = withContext(dispatchers.io) {
+        queries.setRating(rating = rating?.toLong(), now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
+    override suspend fun setNote(mediaId: MediaId, note: String?) = withContext(dispatchers.io) {
+        queries.setNote(note = note, now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
     private fun toDomain(row: CollectionEntryRow, seenEpisodes: Int = 0): CollectionEntry = CollectionEntry(
         mediaId = MediaId.parse(row.mediaId),
         title = row.title,
@@ -124,6 +136,8 @@ class SqlDelightCollectionRepository(
         genres = row.genres.toGenreList(),
         runtimeMinutes = row.runtimeMinutes?.toInt(),
         notificationsMuted = row.notificationsMuted,
+        rating = row.rating?.toInt(),
+        note = row.note,
     )
 }
 

@@ -17,9 +17,13 @@
 -- background worker excludes muted shows from its new-episode diff
 -- (`NewEpisodesCalculator`, `feature/collection/domain`) before posting.
 --
--- No SQLDelight migration file exists yet in this project (verifyMigration
--- isn't wired) so all three columns were added directly to the
--- `CREATE TABLE` rather than via a `.sqm` file.
+-- `rating` (1-10, nullable) and `note` (free text, nullable) were added for
+-- EPIC 15 (ratings & notes): personal, local-only per-title data, same
+-- category as `favorite` (ADR 0005 — user input, never derived) and
+-- preserved across a snapshot refresh the same way (see
+-- `SqlDelightCollectionRepository.upsertSnapshot`). This is the first
+-- change to this table since the EPIC 10 migration baseline (ADR 0008), so
+-- it ships as `2.sqm` rather than editing the `CREATE TABLE` in place.
 CREATE TABLE collectionEntry (
     mediaId TEXT NOT NULL PRIMARY KEY,
     mediaType TEXT NOT NULL,
@@ -36,7 +40,9 @@ CREATE TABLE collectionEntry (
     updatedAtEpochMs INTEGER NOT NULL,
     isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
-    notificationsMuted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    notificationsMuted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    rating INTEGER,
+    note TEXT
 );
 
 selectAll:
@@ -54,9 +60,10 @@ upsert:
 INSERT OR REPLACE INTO collectionEntry(
     mediaId, mediaType, title, posterUrl, releaseYear, productionStatus,
     totalEpisodes, airedEpisodes, favorite, genres, runtimeMinutes,
-    addedAtEpochMs, updatedAtEpochMs, isDirty, deleted, notificationsMuted
+    addedAtEpochMs, updatedAtEpochMs, isDirty, deleted, notificationsMuted,
+    rating, note
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 setFavorite:
 UPDATE collectionEntry
@@ -66,6 +73,18 @@ WHERE mediaId = :mediaId;
 setNotificationsMuted:
 UPDATE collectionEntry
 SET notificationsMuted = :muted, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId;
+
+-- [rating] is 1-10 or null to clear (validated by the domain use case, not
+-- here — see `SetRatingUseCase`).
+setRating:
+UPDATE collectionEntry
+SET rating = :rating, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId;
+
+setNote:
+UPDATE collectionEntry
+SET note = :note, updatedAtEpochMs = :now, isDirty = 1
 WHERE mediaId = :mediaId;
 
 softDelete:

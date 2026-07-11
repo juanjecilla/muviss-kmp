@@ -1,0 +1,12 @@
+-- EPIC 15 (ratings & notes): adds a personal 1-10 rating and a free-text
+-- note to collectionEntry. Both are nullable so every existing row upgrades
+-- cleanly to "unrated, no note" — see CollectionEntry.sq's CREATE TABLE
+-- comment and ADR 0008 for why this is a `.sqm` file rather than an in-place
+-- column addition (this is the first migration since the EPIC 10 baseline).
+--
+-- Named `1.sqm`, not `2.sqm`: SQLDelight's migration file number is the
+-- version it migrates FROM, not to (confirmed empirically — see the note in
+-- this module's `build.gradle.kts`). The baseline is version 1, so the
+-- migration off it is `1.sqm`, producing version 2.
+ALTER TABLE collectionEntry ADD COLUMN rating INTEGER;
+ALTER TABLE collectionEntry ADD COLUMN note TEXT;

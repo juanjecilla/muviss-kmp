@@ -113,6 +113,8 @@ class SqlDelightSettingsRepositoryTest {
             isDirty = true,
             deleted = false,
             notificationsMuted = false,
+            rating = null,
+            note = null,
         )
         database.episodeProgressQueries.upsert(
             episodeId = "tmdb:tv:1399:s1:e1",
@@ -155,6 +157,8 @@ class SqlDelightSettingsRepositoryTest {
             isDirty = true,
             deleted = true,
             notificationsMuted = false,
+            rating = null,
+            note = null,
         )
 
         val json = repository.exportData()

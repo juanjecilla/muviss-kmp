@@ -30,4 +30,10 @@ interface CollectionRepository {
 
     /** Per-show opt-out from EPIC 5's new-episode notifications, independent of the global toggle (see [CollectionEntry.notificationsMuted]). */
     suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean)
+
+    /** Sets or clears (via null) the personal 1-10 rating (EPIC 15). Range validation lives in [SetRatingUseCase], not here. */
+    suspend fun setRating(mediaId: MediaId, rating: Int?)
+
+    /** Sets or clears (via null) the personal free-text note (EPIC 15). */
+    suspend fun setNote(mediaId: MediaId, note: String?)
 }

@@ -17,6 +17,14 @@ object ProfileStatsCalculator {
     const val DEFAULT_MOVIE_RUNTIME_MINUTES = 120
     const val DEFAULT_TV_EPISODE_RUNTIME_MINUTES = 45
 
+    /**
+     * A genre must have at least this many *rated* titles in the library to
+     * be eligible for [ProfileStats.topRatedGenre] (EPIC 15) — guards
+     * against a single 10/10 (or 1/10) outlier in an otherwise-unrated genre
+     * winning "top genre" off one data point.
+     */
+    const val MIN_RATED_TITLES_PER_GENRE = 2
+
     fun calculate(
         summaries: List<CollectionSummary>,
         activityEpochDays: Set<Long>,
@@ -28,6 +36,9 @@ object ProfileStatsCalculator {
         estimatedMinutesWatched = estimatedMinutesWatched(summaries),
         genreBreakdown = genreBreakdown(summaries),
         streak = WatchStreakCalculator.calculate(activityEpochDays, todayEpochDay),
+        averageRating = averageRating(summaries),
+        ratedCount = ratedCount(summaries),
+        topRatedGenre = topRatedGenre(summaries),
     )
 
     private fun statusBreakdown(summaries: List<CollectionSummary>) = StatusBreakdown(
@@ -69,4 +80,27 @@ object ProfileStatsCalculator {
         .eachCount()
         .map { (genre, count) -> GenreCount(genre, count) }
         .sortedByDescending { it.count }
+
+    /** Mean of every saved title's personal rating (EPIC 15); null if nothing is rated yet. */
+    private fun averageRating(summaries: List<CollectionSummary>): Double? = summaries.mapNotNull { it.rating }.averageOrNull()
+
+    private fun ratedCount(summaries: List<CollectionSummary>) = summaries.count { it.rating != null }
+
+    /**
+     * The genre with the highest average personal rating, considering only
+     * genres with at least [MIN_RATED_TITLES_PER_GENRE] rated titles. A
+     * title contributes its rating to every genre it carries (same
+     * multi-counting [genreBreakdown] uses); ties break on whichever genre
+     * [maxByOrNull] encounters first, which is fine since this is a single
+     * "top pick" display, not a ranked list.
+     */
+    private fun topRatedGenre(summaries: List<CollectionSummary>): GenreRating? = summaries
+        .filter { it.rating != null }
+        .flatMap { summary -> summary.genres.map { genre -> genre to summary.rating!! } }
+        .groupBy({ it.first }, { it.second })
+        .filterValues { ratings -> ratings.size >= MIN_RATED_TITLES_PER_GENRE }
+        .map { (genre, ratings) -> GenreRating(genre, ratings.average(), ratings.size) }
+        .maxByOrNull { it.averageRating }
 }
+
+private fun List<Int>.averageOrNull(): Double? = if (isEmpty()) null else average()

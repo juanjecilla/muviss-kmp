@@ -74,6 +74,14 @@ private class FakeCollectionApi : CollectionApi {
         membership.value = membership.value?.copy(notificationsMuted = muted)
     }
 
+    override suspend fun setRating(mediaId: MediaId, rating: Int?) {
+        membership.value = membership.value?.copy(rating = rating)
+    }
+
+    override suspend fun setNote(mediaId: MediaId, note: String?) {
+        membership.value = membership.value?.copy(note = note)
+    }
+
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
@@ -199,6 +207,66 @@ class DetailViewModelTest {
 
         assertTrue(vm.state.value.notificationsMuted)
         assertFalse(vm.state.value.favorite)
+    }
+
+    @Test
+    fun setRating_sets_the_personal_rating() = runTest {
+        val api = FakeCollectionApi()
+        val vm = viewModel(api)
+        advanceUntilIdle()
+
+        vm.toggleSaved() // save first so rating has a membership row to set.
+        advanceUntilIdle()
+        vm.setRating(8)
+        advanceUntilIdle()
+
+        assertEquals(8, vm.state.value.rating)
+    }
+
+    @Test
+    fun setRating_with_the_same_value_again_clears_it() = runTest {
+        val api = FakeCollectionApi()
+        val vm = viewModel(api)
+        advanceUntilIdle()
+
+        vm.toggleSaved()
+        advanceUntilIdle()
+        vm.setRating(8)
+        advanceUntilIdle()
+        vm.setRating(8)
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.rating)
+    }
+
+    @Test
+    fun clearRating_clears_regardless_of_the_current_value() = runTest {
+        val api = FakeCollectionApi()
+        val vm = viewModel(api)
+        advanceUntilIdle()
+
+        vm.toggleSaved()
+        advanceUntilIdle()
+        vm.setRating(3)
+        advanceUntilIdle()
+        vm.clearRating()
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.rating)
+    }
+
+    @Test
+    fun setNote_persists_the_note_text() = runTest {
+        val api = FakeCollectionApi()
+        val vm = viewModel(api)
+        advanceUntilIdle()
+
+        vm.toggleSaved()
+        advanceUntilIdle()
+        vm.setNote("Great rewatch")
+        advanceUntilIdle()
+
+        assertEquals("Great rewatch", vm.state.value.note)
     }
 
     @Test

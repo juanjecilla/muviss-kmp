@@ -13,6 +13,7 @@ class ProfileStatsCalculatorTest {
         status: WatchStatus,
         runtimeMinutes: Int? = null,
         genres: List<String> = emptyList(),
+        rating: Int? = null,
     ) = CollectionSummary(
         mediaId = MediaId.tmdbMovie(id),
         title = "Movie $id",
@@ -21,6 +22,7 @@ class ProfileStatsCalculatorTest {
         genres = genres,
         runtimeMinutes = runtimeMinutes,
         seenEpisodes = if (status == WatchStatus.WATCHED) 1 else 0,
+        rating = rating,
     )
 
     private fun show(
@@ -49,6 +51,9 @@ class ProfileStatsCalculatorTest {
         assertEquals(0, stats.episodesSeen)
         assertEquals(0L, stats.estimatedMinutesWatched)
         assertEquals(emptyList(), stats.genreBreakdown)
+        assertEquals(null, stats.averageRating)
+        assertEquals(0, stats.ratedCount)
+        assertEquals(null, stats.topRatedGenre)
     }
 
     @Test
@@ -158,5 +163,80 @@ class ProfileStatsCalculatorTest {
         val stats = ProfileStatsCalculator.calculate(emptyList(), setOf(8L, 9L, 10L), todayEpochDay = 10)
 
         assertEquals(WatchStreak(currentDays = 3, longestDays = 3), stats.streak)
+    }
+
+    @Test
+    fun unrated_titles_are_excluded_from_rating_stats() {
+        val summaries = listOf(movie("1", WatchStatus.WATCHED, rating = null), movie("2", WatchStatus.NOT_STARTED, rating = null))
+
+        val stats = ProfileStatsCalculator.calculate(summaries, emptySet(), todayEpochDay = 0)
+
+        assertEquals(null, stats.averageRating)
+        assertEquals(0, stats.ratedCount)
+    }
+
+    @Test
+    fun averageRating_and_ratedCount_only_consider_rated_titles() {
+        val summaries = listOf(
+            movie("1", WatchStatus.WATCHED, rating = 8),
+            movie("2", WatchStatus.NOT_STARTED, rating = null),
+            show("3", WatchStatus.WATCHING, seenEpisodes = 1).copy(rating = 6),
+        )
+
+        val stats = ProfileStatsCalculator.calculate(summaries, emptySet(), todayEpochDay = 0)
+
+        assertEquals(2, stats.ratedCount)
+        assertEquals(7.0, stats.averageRating)
+    }
+
+    @Test
+    fun topRatedGenre_is_null_when_no_genre_reaches_the_minimum_rated_titles_threshold() {
+        // "Action" has a single rated title (10/10) — below MIN_RATED_TITLES_PER_GENRE, so it doesn't qualify
+        // despite being the highest (only) average, guarding against a lone outlier winning "top genre".
+        val summaries = listOf(movie("1", WatchStatus.WATCHED, genres = listOf("Action"), rating = 10))
+
+        val stats = ProfileStatsCalculator.calculate(summaries, emptySet(), todayEpochDay = 0)
+
+        assertEquals(null, stats.topRatedGenre)
+    }
+
+    @Test
+    fun topRatedGenre_picks_the_highest_average_once_the_minimum_is_met() {
+        val summaries = listOf(
+            movie("1", WatchStatus.WATCHED, genres = listOf("Action"), rating = 9),
+            movie("2", WatchStatus.WATCHED, genres = listOf("Action"), rating = 7),
+            movie("3", WatchStatus.WATCHED, genres = listOf("Comedy"), rating = 5),
+            movie("4", WatchStatus.WATCHED, genres = listOf("Comedy"), rating = 4),
+        )
+
+        val stats = ProfileStatsCalculator.calculate(summaries, emptySet(), todayEpochDay = 0)
+
+        assertEquals(GenreRating("Action", 8.0, 2), stats.topRatedGenre)
+    }
+
+    @Test
+    fun topRatedGenre_counts_a_title_toward_every_genre_it_carries() {
+        val summaries = listOf(
+            movie("1", WatchStatus.WATCHED, genres = listOf("Action", "Sci-Fi"), rating = 10),
+            movie("2", WatchStatus.WATCHED, genres = listOf("Sci-Fi"), rating = 8),
+        )
+
+        val stats = ProfileStatsCalculator.calculate(summaries, emptySet(), todayEpochDay = 0)
+
+        // "Action" has only 1 rated title, so only "Sci-Fi" (2 rated titles) qualifies.
+        assertEquals(GenreRating("Sci-Fi", 9.0, 2), stats.topRatedGenre)
+    }
+
+    @Test
+    fun topRatedGenre_ignores_unrated_titles_even_if_they_carry_a_qualifying_genre() {
+        val summaries = listOf(
+            movie("1", WatchStatus.WATCHED, genres = listOf("Drama"), rating = 9),
+            movie("2", WatchStatus.WATCHED, genres = listOf("Drama"), rating = 7),
+            movie("3", WatchStatus.NOT_STARTED, genres = listOf("Drama"), rating = null),
+        )
+
+        val stats = ProfileStatsCalculator.calculate(summaries, emptySet(), todayEpochDay = 0)
+
+        assertEquals(GenreRating("Drama", 8.0, 2), stats.topRatedGenre)
     }
 }

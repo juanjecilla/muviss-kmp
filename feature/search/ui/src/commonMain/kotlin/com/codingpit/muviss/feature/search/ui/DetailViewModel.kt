@@ -27,6 +27,10 @@ data class DetailUiState(
     val favorite: Boolean = false,
     /** Per-show new-episode notification opt-out (EPIC 5); only meaningful while [saved] is true. */
     val notificationsMuted: Boolean = false,
+    /** Personal 1-10 rating, or null for unrated (EPIC 15); only meaningful while [saved] is true. */
+    val rating: Int? = null,
+    /** Personal free-text note, or null for none (EPIC 15); only meaningful while [saved] is true. */
+    val note: String? = null,
     /** Seen episode ids (movies use the single id from [EpisodeId.forMovie]) — drives checkmarks, season bars, and the movie toggle. */
     val seenEpisodes: Set<EpisodeId> = emptySet(),
     /** Null while loading; an empty [WatchProviders] once loaded means "hide the section" — no failure surfaced, it's a nice-to-have. */
@@ -67,6 +71,8 @@ class DetailViewModel(
                         saved = membership != null,
                         favorite = membership?.favorite ?: false,
                         notificationsMuted = membership?.notificationsMuted ?: false,
+                        rating = membership?.rating,
+                        note = membership?.note,
                     )
                 }
             }
@@ -115,6 +121,22 @@ class DetailViewModel(
     /** Mutes/un-mutes this show's new-episode notifications (EPIC 5), independent of the global Settings toggle. */
     fun toggleNotificationsMuted() {
         viewModelScope.launch { collectionApi.setNotificationsMuted(mediaId, !_state.value.notificationsMuted) }
+    }
+
+    /** Sets the personal rating (1-10), or clears it (EPIC 15) if [rating] is the one already set — tapping the same star twice un-rates. */
+    fun setRating(rating: Int) {
+        val next = if (_state.value.rating == rating) null else rating
+        viewModelScope.launch { collectionApi.setRating(mediaId, next) }
+    }
+
+    /** Explicitly clears the personal rating (EPIC 15). */
+    fun clearRating() {
+        viewModelScope.launch { collectionApi.setRating(mediaId, null) }
+    }
+
+    /** Persists the personal note (EPIC 15); collection's `:api` normalizes a blank note to null. */
+    fun setNote(note: String) {
+        viewModelScope.launch { collectionApi.setNote(mediaId, note) }
     }
 
     /** Ticks a single episode's checkmark. */

@@ -17,6 +17,18 @@ data class GenreCount(
 )
 
 /**
+ * One genre's average personal rating, part of [ProfileStats.topRatedGenre]
+ * (EPIC 15). [ratedCount] is how many rated titles in the library carry this
+ * genre — see [ProfileStatsCalculator.MIN_RATED_TITLES_PER_GENRE] for the
+ * qualification threshold this was computed under.
+ */
+data class GenreRating(
+    val genre: String,
+    val averageRating: Double,
+    val ratedCount: Int,
+)
+
+/**
  * Consecutive-day watch activity, in UTC epoch-days (see
  * [com.codingpit.muviss.core.common.todayEpochDay]). A "day" counts if at
  * least one episode or movie is currently marked seen with that day's
@@ -50,6 +62,12 @@ data class ProfileStats(
     val estimatedMinutesWatched: Long = 0,
     val genreBreakdown: List<GenreCount> = emptyList(),
     val streak: WatchStreak = WatchStreak(),
+    /** Average of every saved title's personal rating (EPIC 15); null until at least one title is rated. */
+    val averageRating: Double? = null,
+    /** How many saved titles carry a personal rating (EPIC 15). */
+    val ratedCount: Int = 0,
+    /** The genre with the highest average personal rating, once enough titles in it are rated (EPIC 15); null otherwise. */
+    val topRatedGenre: GenreRating? = null,
 ) {
     /** True once the library has no saved titles at all — the screen's empty-state trigger. */
     val isEmpty: Boolean get() = statusBreakdown.total == 0

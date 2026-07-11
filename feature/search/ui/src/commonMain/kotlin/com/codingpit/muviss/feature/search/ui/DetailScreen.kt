@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -22,16 +23,22 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -121,6 +128,14 @@ private fun DetailContent(state: DetailUiState, viewModel: DetailViewModel) {
             Text(it, style = MaterialTheme.typography.bodyMedium)
         }
 
+        // Rating + note (EPIC 15) only make sense once the title is saved —
+        // consistent with the mute button above, which is the other
+        // membership-gated affordance on this screen.
+        if (state.saved) {
+            RatingRow(state.rating, onRate = viewModel::setRating, onClear = viewModel::clearRating)
+            NoteEditor(state.note, onSave = viewModel::setNote)
+        }
+
         when (details.type) {
             MediaType.MOVIE -> MovieWatchedToggle(state.movieWatched, onToggle = viewModel::toggleMovieWatched)
             MediaType.TV -> SeasonsList(details, state, viewModel)
@@ -170,6 +185,58 @@ private fun ProviderLogo(provider: WatchProvider) {
             Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
                 Text(provider.name.take(2), style = MaterialTheme.typography.labelSmall)
             }
+        }
+    }
+}
+
+/**
+ * A 1-10 star row for the personal rating (EPIC 15): tapping a star sets the
+ * rating up to and including it; tapping the currently-set value again
+ * clears it (handled by [DetailViewModel.setRating]). Plain clickable
+ * [Text] rather than a slider/rating-bar component — no new dependency, and
+ * ten discrete taps is precise enough for a 1-10 scale.
+ */
+@Composable
+private fun RatingRow(rating: Int?, onRate: (Int) -> Unit, onClear: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Your rating", style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            for (value in 1..10) {
+                Text(
+                    text = if (rating != null && value <= rating) "★" else "☆",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.clickable { onRate(value) },
+                )
+            }
+        }
+        if (rating != null) {
+            TextButton(onClick = onClear) { Text("Clear rating ($rating/10)") }
+        }
+    }
+}
+
+/**
+ * An always-visible, expandable text field for the personal note (EPIC 15) —
+ * simpler than a dialog for free text this short. Local [draft] tracks
+ * in-progress edits; [LaunchedEffect] resyncs it whenever the persisted
+ * [note] changes from elsewhere (e.g. the value just loaded).
+ */
+@Composable
+private fun NoteEditor(note: String?, onSave: (String) -> Unit) {
+    var draft by remember { mutableStateOf(note.orEmpty()) }
+    LaunchedEffect(note) { draft = note.orEmpty() }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Your note", style = MaterialTheme.typography.titleSmall)
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            placeholder = { Text("Add a private note…") },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (draft != note.orEmpty()) {
+            TextButton(onClick = { onSave(draft) }) { Text("Save note") }
         }
     }
 }

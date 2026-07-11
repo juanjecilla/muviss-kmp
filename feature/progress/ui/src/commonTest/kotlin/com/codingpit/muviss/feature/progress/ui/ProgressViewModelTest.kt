@@ -46,6 +46,8 @@ private class FakeCollectionApi(summaries: List<CollectionSummary>) : Collection
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
+    override suspend fun setRating(mediaId: MediaId, rating: Int?) = error("not used")
+    override suspend fun setNote(mediaId: MediaId, note: String?) = error("not used")
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
