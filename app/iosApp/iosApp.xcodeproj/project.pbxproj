@@ -75,6 +75,7 @@
 				0C2EF673D7D3968A9953D216 /* Sources */,
 				BDDB71C3FE7BBE6A7FE13F22 /* Frameworks */,
 				E040CAE447341492DDC51CCF /* Resources */,
+				EED80AA00364E94C08AC813B /* Set version from git */,
 			);
 			buildRules = (
 			);
@@ -154,6 +155,25 @@
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/../..\"\n./gradlew :app:shared:embedAndSignAppleFrameworkForXcode\n";
 		};
+		EED80AA00364E94C08AC813B /* Set version from git */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Set version from git";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "cd \"$SRCROOT/../..\"\nVERSION_CODE=$(git rev-list --count HEAD 2>/dev/null)\nif [ -z \"$VERSION_CODE\" ]; then\n  echo \"warning: git unavailable, keeping CURRENT_PROJECT_VERSION/MARKETING_VERSION from Config.xcconfig\"\n  exit 0\nfi\nDESCRIBE=$(git describe --tags --always --dirty 2>/dev/null)\nif [[ \"$DESCRIBE\" =~ ^v?([0-9]+\\.[0-9]+\\.[0-9]+) ]]; then\n  VERSION_NAME=\"${BASH_REMATCH[1]}\"\nelse\n  VERSION_NAME=\"0.1.0-dev.$VERSION_CODE\"\nfi\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nif [ -f \"$PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString $VERSION_NAME\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $VERSION_CODE\" \"$PLIST\"\nfi\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -221,7 +241,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -280,7 +300,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;

@@ -4,5 +4,21 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!--
+	  EPIC 5 (new-episode notifications) background refresh, iOS side
+	  (IosBackgroundRefresh.kt in app/shared's iosMain — mirrors
+	  :app:androidApp's WorkManager-based NewEpisodesScheduler/Worker):
+	  BGTaskScheduler requires every identifier a `register()` call uses to be
+	  declared here up front, and `fetch` is the UIBackgroundModes flag Apple
+	  documents for BGAppRefreshTask-based background app refresh.
+	-->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.codingpit.muviss.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 </dict>
 </plist>

@@ -345,3 +345,182 @@ Before tagging a real release:
    derivation still works under R8.
 4. If Sentry is configured, force a test crash and confirm it shows up in
    the Sentry project within a few minutes.
+
+## 9. iOS (TestFlight / App Store) — EPIC 11 / issue #13
+
+`app/iosApp` is a thin SwiftUI host embedding `:app:shared`'s Compose UI
+(`ComposeUIViewController { MuvissApp() }`, `MainViewController.kt`). This
+section covers what's automated vs. what's a manual, by-hand step — iOS has
+no unattended CI signing path in this repo yet (see "Signing" below).
+
+### Startup wiring
+
+Unlike Android (`MuvissApplication.onCreate`, which runs before any
+Activity), a SwiftUI app's `WindowGroup`/scene body is not guaranteed to run
+on every launch — a background `BGAppRefreshTask` launch may never compose
+it. So startup is split:
+
+- **`AppDelegate.swift`** (`app/iosApp/iosApp/AppDelegate.swift`): a few
+  lines, wired via `@UIApplicationDelegateAdaptor` in `iOSApp.swift`. Its
+  `application(_:didFinishLaunchingWithOptions:)` is the one hook Apple
+  guarantees runs before launch completes regardless of why the process
+  launched, and it does exactly one thing: call `IosAppStartup.shared.start()`.
+- **`IosAppStartup.kt`** (`app/shared/src/iosMain/.../ios/`): the real
+  logic — starts Koin (guarded via `KoinPlatformTools.defaultContext().getOrNull()`,
+  the KMP-portable equivalent of `GlobalContext.getOrNull()`, which isn't
+  exported on non-JVM targets), calls `CrashReporter.init(MuvissBuildConfig.SENTRY_DSN)`,
+  registers the `BGTaskScheduler` task, and configures `UNUserNotificationCenter`.
+- **`MainViewController.kt`** additionally wires `IosNotificationCenter.pendingDeepLinkMediaId`
+  into `MuvissApp(deepLinkMediaId, onDeepLinkConsumed)` — the same param pair
+  Android's `MainActivity` feeds from a notification tap's Intent extra,
+  just carried via a `StateFlow` instead since there's no Activity-recreation
+  equivalent on iOS.
+
+Sentry's DSN is baked in via the same generated `MuvissBuildConfig`
+mechanism item 4 describes for Android — nothing iOS-specific to configure
+beyond having `SENTRY_DSN` in `local.properties`/CI env when building.
+
+### Notifications (EPIC 5 parity)
+
+iOS has no WorkManager equivalent, so the Android
+`NewEpisodesScheduler`/`NewEpisodesWorker`/`NewEpisodesNotifier` trio (see
+item 4's sibling code in `app/androidApp/.../notifications/`) is mirrored
+in Kotlin, in `app/shared/src/iosMain/.../ios/`, rather than in Swift:
+
+- **`IosBackgroundRefresh.kt`**: `BGTaskScheduler`-based. There is no
+  periodic-work primitive like `PeriodicWorkRequestBuilder` — every run is
+  a one-shot `BGAppRefreshTaskRequest` that resubmits itself (~12h out,
+  matching Android's repeat interval) after each run. Resolves
+  `CollectionApi`/`SettingsApi` via `KoinComponent`, same reasoning as
+  `NewEpisodesWorker`'s doc comment (the launch handler hands back a plain
+  `BGTask`, nothing Koin can construct through).
+- **`IosNotificationCenter.kt`**: `UNUserNotificationCenter`-based —
+  requests permission (idempotent; the OS only prompts once), posts one
+  notification per show (iOS groups same-`threadIdentifier` notifications
+  into a stack itself, so no hand-built summary notification like
+  Android's `InboxStyle` is needed), and its `UNUserNotificationCenterDelegateProtocol`
+  implementation turns a tap into the pending deep-link id
+  `MainViewController` reads.
+- The global notifications toggle (`SettingsApi.observeNotificationsEnabled`)
+  and per-show mute (already excluded inside
+  `CollectionApi.refreshAndFindNewEpisodes`) are the same EPIC 5 checks
+  Android's worker makes — no iOS-specific gating logic exists or should.
+
+**Info.plist** (`app/iosApp/iosApp/Info.plist`) needs, and now has:
+`BGTaskSchedulerPermittedIdentifiers` (`com.codingpit.muviss.refresh`, must
+match `IosBackgroundRefresh`'s `TASK_ID` exactly) and `UIBackgroundModes` =
+`fetch`. No `NSUserNotificationsUsageDescription`-style key is needed —
+`UNUserNotificationCenter`'s permission prompt uses fixed system copy, not
+an Info.plist string.
+
+A Kotlin/Native interop note for anyone touching this code: `UNMutableNotificationContent`'s
+`title`/`body`/`threadIdentifier`/`userInfo` bind as `val` (read-only) at
+the property-reference site — Kotlin/Native's ObjC interop doesn't widen an
+inherited read-only property to the subclass's read-write redeclaration —
+so `IosNotificationCenter` sets them via `setValue(_, forKey:)` (KVC,
+always available on `NSObject`) instead of `content.title = ...`.
+
+### Versioning
+
+Mirrors item 3's scheme (git-derived, no hardcoded version) via a **Run
+Script build phase** named "Set version from git" (`project.pbxproj`,
+after the Resources phase): it computes the same `versionCode`
+(`git rev-list --count HEAD`) and a `versionName` (latest exact
+`vMAJOR.MINOR.PATCH` tag, else `0.1.0-dev.<count>` — no `+sha` suffix
+unlike Android's, since `CFBundleShortVersionString` is conventionally
+kept to dotted numbers/simple dev suffixes) and overwrites
+`CFBundleVersion`/`CFBundleShortVersionString` in the **built** Info.plist
+via `/usr/libexec/PlistBuddy`. `Configuration/Config.xcconfig`'s
+`CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` are only the static fallback
+used when git is unavailable (e.g. a source-only archive) — the script
+no-ops (keeping them) if `git rev-list` fails.
+
+### Bundle id / signing (manual — no CI signing path yet)
+
+`Configuration/Config.xcconfig` sets `PRODUCT_NAME=Muviss` and
+`PRODUCT_BUNDLE_IDENTIFIER=com.codingpit.muviss` — the same identifier as
+`:app:androidApp`'s `applicationId`, one stable id across platforms rather
+than the template's original per-developer
+`com.codingpit.muviss.KotlinProject$(TEAM_ID)` suffix. `CODE_SIGN_STYLE =
+Automatic` (project.pbxproj) plus a blank `TEAM_ID` xcconfig variable means:
+
+1. Open `app/iosApp/iosApp.xcodeproj` in Xcode.
+2. Signing & Capabilities → pick your Apple Developer team (free personal
+   team works for a Simulator/device run; TestFlight needs a paid Apple
+   Developer Program membership, $99/yr).
+3. Either let Xcode fill `DEVELOPMENT_TEAM` automatically, or put your
+   Team ID in `Configuration/Config.xcconfig`'s `TEAM_ID` (gitignored-safe
+   to edit locally; don't commit a real team id — there isn't one to
+   commit today).
+4. Product → Archive (Release configuration) once signing resolves.
+5. Organizer → Distribute App → TestFlight & App Store → upload. This step
+   requires a real, paid Apple Developer account and was **not**
+   attempted here — no such account exists in this environment.
+6. App Store Connect → TestFlight tab: add internal testers, submit for
+   Beta App Review if using external testing.
+7. App Store listing: reuse `docs/store/LISTING.md`'s copy (see its new
+   "App Store (iOS)" section for the App-Store-specific deltas — subtitle,
+   keywords, screenshot sizes) and `docs/PRIVACY.md` for the App Store
+   "Privacy Nutrition Label" — same "no accounts, no backend, no
+   analytics" story `docs/store/DATA_SAFETY.md` gives Play, just answered
+   in App Store Connect's own questionnaire shape instead of a repo file
+   (there is no App Store Connect API-driven equivalent wired up).
+
+### App icon — gap found, not fixed here
+
+`Assets.xcassets/AppIcon.appiconset` has one real image
+(`app-icon-1024.png`, correctly 1024×1024) plus two *declared-but-empty*
+slots for iOS 18's dark/tinted Home Screen icon appearances (no file
+assigned — falls back to the default icon on iOS 18+, a cosmetic gap
+only). The blocking one: **`app-icon-1024.png` has an alpha channel**
+(`sips -g hasAlpha` → `yes`). App Store Connect rejects an App Store/
+marketing icon with transparency (`Invalid Large App Icon` at Archive
+validation or upload). Fix before the first real submission by
+flattening it onto an opaque background (e.g.
+`sips -s format png --setProperty hasAlpha no ...` after compositing
+onto white/black, or re-export from the source design tool without
+alpha) — not attempted here since there's no real Muviss brand artwork to
+re-derive it from yet (same caveat item 7 gives the desktop icons).
+
+### Sentry test crash — manual, not attempted
+
+Needs a live `SENTRY_DSN` (see item 4) and a physical build; not exercised
+in this environment (no DSN configured, no Apple Developer account to
+sign a device build with). To verify once a DSN exists: force a crash
+(e.g. a debug-only button calling `fatalError()` or throwing an
+uncaught Kotlin exception across the `CrashReporter` seam) on a signed
+device/TestFlight build, and confirm it shows up in the Sentry project
+within a few minutes — same check item 8 describes for Android.
+
+### Environment notes from this epic's verification pass
+
+This environment has Xcode 26.2 with only the iOS 18.1 Simulator runtime
+installed (Xcode 26.2's SDK is iOS 26.2; the matching Simulator runtime is
+an ~8.4 GB download via Settings → Platforms, not fetched here per this
+epic's "don't fight missing tooling" scope). Two consequences, both purely
+environmental — not project defects:
+
+- `xcodebuild -scheme iosApp -destination ...` never resolves *any*
+  Simulator destination in this sandbox, even pinned to the installed
+  18.1 runtime with a real checked-in shared scheme
+  (`xcshareddata/xcschemes/iosApp.xcscheme`, added as part of this epic)
+  and `IPHONEOS_DEPLOYMENT_TARGET` lowered from the template's 18.2 to
+  18.0 (also kept — a reasonable, harmless widening of device
+  compatibility on its own merits). `xcodebuild -target iosApp -sdk
+  iphonesimulator ...` **does** work and is what this epic's Kotlin+Swift
+  verification used; a real Xcode.app GUI run (not exercised here — no
+  windowed session) very likely isn't affected, since Xcode's own Run
+  button uses a different destination-discovery path than headless
+  `xcodebuild -scheme`.
+- Even via `-target`, asset-catalog compilation's app-thinning step
+  (`CompileAssetCatalogVariant thinned`) fails with `No simulator runtime
+  version from ["22B81"] available to use with iphonesimulator SDK version
+  23C53` — the installed 18.1 runtime can't satisfy Xcode 26.2's app-
+  thinning validation for its own 26.2 SDK. Everything before that step —
+  Kotlin compilation (`:app:shared:compileKotlinIosSimulatorArm64`/
+  `compileKotlinIosArm64`), `linkDebugFrameworkIosSimulatorArm64`,
+  `embedAndSignAppleFrameworkForXcode`, and Swift compilation of
+  `AppDelegate.swift`/`iOSApp.swift`/`ContentView.swift` against the
+  exported `Shared` framework — succeeds cleanly. A real simulator run
+  (`xcrun simctl boot` + install + launch) needs that ~8.4 GB runtime
+  download and was not attempted.

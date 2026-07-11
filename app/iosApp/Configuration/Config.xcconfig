@@ -1,7 +1,21 @@
+// TEAM_ID: fill in your own Apple Developer Team ID locally (Xcode > Signing
+// & Capabilities shows it once you pick a team) to build with automatic
+// signing — see docs/RELEASING.md's iOS section. Left blank, CODE_SIGN_STYLE
+// = Automatic (project.pbxproj) still lets Xcode resolve a team interactively
+// for a personal/free-tier run on a device or the Simulator.
 TEAM_ID=
 
-PRODUCT_NAME=KotlinProject
-PRODUCT_BUNDLE_IDENTIFIER=com.codingpit.muviss.KotlinProject$(TEAM_ID)
+PRODUCT_NAME=Muviss
+// Matches :app:androidApp's applicationId (see app/androidApp/build.gradle.kts)
+// — one stable identifier across platforms, not a per-developer suffix.
+PRODUCT_BUNDLE_IDENTIFIER=com.codingpit.muviss
 
+// Static fallback only. The "Set version from git" Run Script build phase
+// (project.pbxproj) overwrites CFBundleShortVersionString/CFBundleVersion in
+// the *built* Info.plist with values derived from git — the same scheme
+// :app:androidApp's versionName/versionCode and :app:desktopApp's
+// packageVersion use (see docs/RELEASING.md item 3) — so these two values
+// only matter for a non-git checkout (e.g. a source-only archive) where that
+// script's git commands no-op.
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
