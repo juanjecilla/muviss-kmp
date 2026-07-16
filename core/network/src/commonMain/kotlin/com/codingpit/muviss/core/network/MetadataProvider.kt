@@ -15,9 +15,10 @@ import com.codingpit.muviss.models.WatchProviders
  * TVmaze/Trakt/etc. plug in later by implementing this interface and registering
  * with the [MetadataProviderRegistry] — no change to the domain or UI.
  *
- * [discover], [genres] and [watchProviders] default to an empty result so a
- * provider that has no equivalent (e.g. one with no watch-provider data) need
- * not implement them; TMDB overrides all three.
+ * [discover], [genres], [watchProviders], [recommendations] and [similar]
+ * default to an empty result so a provider that has no equivalent (e.g. one
+ * with no watch-provider data) need not implement them; TMDB overrides all
+ * five.
  */
 interface MetadataProvider {
     val source: SourceId
@@ -36,6 +37,12 @@ interface MetadataProvider {
 
     /** Streaming/rent/buy availability for [id] in [region] (ISO 3166-1 alpha-2). */
     suspend fun watchProviders(id: MediaId, region: String): WatchProviders = WatchProviders()
+
+    /** Titles the source recommends alongside [id] (EPIC 16's "More like this"), paged. */
+    suspend fun recommendations(id: MediaId, page: Int = 1): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
+
+    /** Titles similar to [id] by genre/keyword overlap, paged — the Detail screen's fallback when [recommendations] is thin. */
+    suspend fun similar(id: MediaId, page: Int = 1): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
 }
 
 /**

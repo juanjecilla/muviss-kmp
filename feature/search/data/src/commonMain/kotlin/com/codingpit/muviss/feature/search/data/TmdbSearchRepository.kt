@@ -39,5 +39,9 @@ class TmdbSearchRepository(
 
     override suspend fun watchProviders(id: MediaId): Result<WatchProviders> = runOnIo { registry.forId(id).watchProviders(id, locale.region) }
 
+    override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).recommendations(id, page) }
+
+    override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).similar(id, page) }
+
     private suspend fun <T> runOnIo(block: suspend () -> T): Result<T> = withContext(dispatchers.io) { runCatching { block() } }
 }

@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
+import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
 import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +37,8 @@ data class DetailUiState(
     val seenEpisodes: Set<EpisodeId> = emptySet(),
     /** Null while loading; an empty [WatchProviders] once loaded means "hide the section" — no failure surfaced, it's a nice-to-have. */
     val watchProviders: WatchProviders? = null,
+    /** "More like this" row (EPIC 16): recommendations, falling back to similar titles when TMDB has no recommendations for this title. Empty hides the row. */
+    val moreLikeThis: List<MediaSummary> = emptyList(),
 ) {
     fun isSeen(episodeId: EpisodeId): Boolean = episodeId in seenEpisodes
 
@@ -57,6 +61,7 @@ class DetailViewModel(
     private val collectionApi: CollectionApi,
     private val progressApi: ProgressApi,
     private val loadWatchProviders: WatchProvidersUseCase,
+    private val loadMoreLikeThis: MoreLikeThisUseCase,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DetailUiState())
@@ -91,6 +96,7 @@ class DetailViewModel(
             )
         }
         loadWhereToWatch()
+        loadMoreLikeThisRow()
     }
 
     /**
@@ -103,6 +109,19 @@ class DetailViewModel(
             loadWatchProviders(mediaId).onSuccess { providers ->
                 _state.update { it.copy(watchProviders = providers) }
             }
+        }
+    }
+
+    /**
+     * Loaded independently of [load], same as [loadWhereToWatch]: "More like
+     * this" is a nice-to-have, so a failure just leaves the row hidden rather
+     * than surfacing an error. [MoreLikeThisUseCase] owns the
+     * recommendations-with-similar-fallback choice.
+     */
+    private fun loadMoreLikeThisRow() {
+        viewModelScope.launch {
+            val items = loadMoreLikeThis(mediaId).getOrNull()?.items.orEmpty()
+            _state.update { it.copy(moreLikeThis = items) }
         }
     }
 

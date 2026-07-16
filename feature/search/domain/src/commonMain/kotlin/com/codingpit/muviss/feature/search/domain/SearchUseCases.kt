@@ -41,3 +41,37 @@ class GenresUseCase(private val repository: SearchRepository) {
 class WatchProvidersUseCase(private val repository: SearchRepository) {
     suspend operator fun invoke(id: MediaId): Result<WatchProviders> = repository.watchProviders(id)
 }
+
+/**
+ * Loads "More like this" recommendations for [id] (EPIC 16); the Detail
+ * screen falls back to [SimilarMediaUseCase] when this is empty (see
+ * [MoreLikeThisUseCase]), and `SearchViewModel` also calls this directly to
+ * fetch each seed's recommendations for Discover's "For you" section.
+ */
+class RecommendationsUseCase(private val repository: SearchRepository) {
+    suspend operator fun invoke(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>> = repository.recommendations(id, page)
+}
+
+/** Loads titles similar to [id] (EPIC 16); the Detail screen's recommendations fallback (see [MoreLikeThisUseCase]). */
+class SimilarMediaUseCase(private val repository: SearchRepository) {
+    suspend operator fun invoke(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>> = repository.similar(id, page)
+}
+
+/**
+ * Loads the Detail screen's "More like this" row (EPIC 16): [RecommendationsUseCase],
+ * falling back to [SimilarMediaUseCase] when TMDB has no recommendations for
+ * [id] (common for very new or niche titles). Composing the fallback here
+ * — rather than in `DetailViewModel` — keeps that choice testable as domain
+ * logic and keeps the view model's own constructor from growing by two
+ * dependencies instead of one.
+ */
+class MoreLikeThisUseCase(
+    private val recommendations: RecommendationsUseCase,
+    private val similar: SimilarMediaUseCase,
+) {
+    suspend operator fun invoke(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>> {
+        val recommended = recommendations(id, page)
+        if (recommended.getOrNull()?.items?.isNotEmpty() == true) return recommended
+        return similar(id, page)
+    }
+}

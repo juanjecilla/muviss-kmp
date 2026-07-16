@@ -29,4 +29,10 @@ interface SearchRepository {
 
     /** Streaming/rent/buy availability for [id] in the configured region (see [com.codingpit.muviss.core.network.MetadataLocale]). */
     suspend fun watchProviders(id: MediaId): Result<WatchProviders>
+
+    /** Titles recommended alongside [id] (EPIC 16's "More like this"), paged. */
+    suspend fun recommendations(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>>
+
+    /** Titles similar to [id], paged — the Detail screen's fallback when [recommendations] is thin. */
+    suspend fun similar(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>>
 }

@@ -22,16 +22,25 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+/** Bundles [FakeProvider]'s EPIC 16 fakes into one constructor param, keeping its parameter count under detekt's LongParameterList threshold. */
+private data class RecommendationFakes(
+    val recommendationsResults: List<MediaSummary> = emptyList(),
+    val similarResults: List<MediaSummary> = emptyList(),
+)
+
 private class FakeProvider(
-    override val source: SourceId = SourceId.TMDB,
     private val results: List<MediaSummary> = emptyList(),
     private val discoverResults: List<MediaSummary> = emptyList(),
     private val genreList: List<Genre> = emptyList(),
     private val providers: WatchProviders = WatchProviders(),
+    private val recs: RecommendationFakes = RecommendationFakes(),
     private val failWith: Throwable? = null,
 ) : MetadataProvider {
+    override val source: SourceId = SourceId.TMDB
     var lastWatchProvidersRegion: String? = null
     var lastDiscoverGenreId: String? = null
+    var lastRecommendationsPage: Int? = null
+    var lastSimilarPage: Int? = null
 
     override suspend fun search(query: String, page: Int): PagedResult<MediaSummary> {
         failWith?.let { throw it }
@@ -52,6 +61,17 @@ private class FakeProvider(
     override suspend fun watchProviders(id: MediaId, region: String): WatchProviders {
         lastWatchProvidersRegion = region
         return providers
+    }
+
+    override suspend fun recommendations(id: MediaId, page: Int): PagedResult<MediaSummary> {
+        failWith?.let { throw it }
+        lastRecommendationsPage = page
+        return PagedResult(recs.recommendationsResults, page = page, totalPages = page + 1)
+    }
+
+    override suspend fun similar(id: MediaId, page: Int): PagedResult<MediaSummary> {
+        lastSimilarPage = page
+        return PagedResult(recs.similarResults, page = page, totalPages = page + 1)
     }
 }
 
@@ -125,5 +145,33 @@ class TmdbSearchRepositoryTest {
 
         assertEquals(providers, result.getOrThrow())
         assertEquals("FR", provider.lastWatchProvidersRegion)
+    }
+
+    @Test
+    fun recommendations_routes_by_media_id_source_and_forwards_the_page() = runTest {
+        val summary = MediaSummary(MediaId.tmdbMovie("27205"), "Inception")
+        val provider = FakeProvider(recs = RecommendationFakes(recommendationsResults = listOf(summary)))
+        val result = repo(provider).recommendations(MediaId.tmdbMovie("603"), page = 2)
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf(summary), result.getOrThrow().items)
+        assertEquals(2, provider.lastRecommendationsPage)
+    }
+
+    @Test
+    fun recommendations_wraps_provider_failure_in_result() = runTest {
+        val result = repo(FakeProvider(failWith = IllegalStateException("boom"))).recommendations(MediaId.tmdbMovie("603"))
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun similar_routes_by_media_id_source_and_forwards_the_page() = runTest {
+        val summary = MediaSummary(MediaId.tmdbTv("1399"), "Game of Thrones")
+        val provider = FakeProvider(recs = RecommendationFakes(similarResults = listOf(summary)))
+        val result = repo(provider).similar(MediaId.tmdbTv("1396"), page = 3)
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf(summary), result.getOrThrow().items)
+        assertEquals(3, provider.lastSimilarPage)
     }
 }

@@ -80,6 +80,24 @@ class TmdbProvider(
         return TmdbMapper.watchProvidersToModel(dto.results[region])
     }
 
+    override suspend fun recommendations(id: MediaId, page: Int): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = client.get("$BASE/${id.type.tmdbPath}/${id.external}/recommendations") {
+            parameter("api_key", apiKey)
+            parameter("language", locale.language)
+            parameter("page", page)
+        }.body()
+        return TmdbMapper.discoverPageToPagedResult(id.type, dto)
+    }
+
+    override suspend fun similar(id: MediaId, page: Int): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = client.get("$BASE/${id.type.tmdbPath}/${id.external}/similar") {
+            parameter("api_key", apiKey)
+            parameter("language", locale.language)
+            parameter("page", page)
+        }.body()
+        return TmdbMapper.discoverPageToPagedResult(id.type, dto)
+    }
+
     private suspend fun movieDetails(externalId: String): MediaDetails {
         val dto: TmdbMovieDetailDto = client.get("$BASE/movie/$externalId") {
             parameter("api_key", apiKey)

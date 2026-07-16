@@ -8,7 +8,10 @@ import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
+import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
+import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchRepository
+import com.codingpit.muviss.feature.search.domain.SimilarMediaUseCase
 import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
@@ -39,6 +42,8 @@ import kotlin.test.assertTrue
 private class FakeDetailRepo(
     private val details: MediaDetails,
     private val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
+    private val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
+    private val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
 ) : SearchRepository {
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
@@ -46,7 +51,16 @@ private class FakeDetailRepo(
     override suspend fun discover(type: MediaType, page: Int, genreId: String?) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
     override suspend fun watchProviders(id: MediaId) = watchProviders
+    override suspend fun recommendations(id: MediaId, page: Int) = recommendations
+    override suspend fun similar(id: MediaId, page: Int) = similar
 }
+
+/** Bundles [FakeDetailRepo]'s independently-loaded-section fakes into one test-helper param, keeping [DetailViewModelTest.viewModel]'s parameter count under detekt's LongParameterList threshold. */
+private data class DetailRepoFakes(
+    val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
+    val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
+    val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
+)
 
 private class FakeCollectionApi : CollectionApi {
     private val membership = MutableStateFlow<CollectionMembership?>(null)
@@ -137,10 +151,17 @@ class DetailViewModelTest {
         progressApi: FakeProgressApi = FakeProgressApi(),
         detailsToLoad: MediaDetails = details,
         id: MediaId = mediaId,
-        watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
+        repoFakes: DetailRepoFakes = DetailRepoFakes(),
     ): DetailViewModel {
-        val repo = FakeDetailRepo(detailsToLoad, watchProviders)
-        return DetailViewModel(id, MediaDetailUseCase(repo), collectionApi, progressApi, WatchProvidersUseCase(repo))
+        val repo = FakeDetailRepo(detailsToLoad, repoFakes.watchProviders, repoFakes.recommendations, repoFakes.similar)
+        return DetailViewModel(
+            id,
+            MediaDetailUseCase(repo),
+            collectionApi,
+            progressApi,
+            WatchProvidersUseCase(repo),
+            MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
+        )
     }
 
     @Test
@@ -324,7 +345,7 @@ class DetailViewModelTest {
     @Test
     fun watchProviders_starts_null_and_populates_once_loaded() = runTest {
         val providers = WatchProviders(flatrate = listOf(WatchProvider("8", "Netflix")))
-        val vm = viewModel(watchProviders = Result.success(providers))
+        val vm = viewModel(repoFakes = DetailRepoFakes(watchProviders = Result.success(providers)))
         advanceUntilIdle()
 
         assertEquals(providers, vm.state.value.watchProviders)
@@ -332,7 +353,7 @@ class DetailViewModelTest {
 
     @Test
     fun watchProviders_failure_leaves_the_section_hidden_rather_than_erroring() = runTest {
-        val vm = viewModel(watchProviders = Result.failure(RuntimeException("no providers")))
+        val vm = viewModel(repoFakes = DetailRepoFakes(watchProviders = Result.failure(RuntimeException("no providers"))))
         advanceUntilIdle()
 
         assertEquals(null, vm.state.value.watchProviders)
@@ -341,10 +362,61 @@ class DetailViewModelTest {
 
     @Test
     fun watchProviders_empty_result_is_reported_as_is_so_the_screen_can_hide_the_section() = runTest {
-        val vm = viewModel(watchProviders = Result.success(WatchProviders()))
+        val vm = viewModel(repoFakes = DetailRepoFakes(watchProviders = Result.success(WatchProviders())))
         advanceUntilIdle()
 
         assertEquals(WatchProviders(), vm.state.value.watchProviders)
         assertTrue(vm.state.value.watchProviders!!.isEmpty)
+    }
+
+    @Test
+    fun moreLikeThis_uses_recommendations_when_present() = runTest {
+        val recommended = MediaSummary(MediaId.tmdbMovie("99"), "Recommended")
+        val similarTitle = MediaSummary(MediaId.tmdbMovie("77"), "Similar")
+        val vm = viewModel(
+            repoFakes = DetailRepoFakes(
+                recommendations = Result.success(PagedResult(listOf(recommended), 1, 1)),
+                similar = Result.success(PagedResult(listOf(similarTitle), 1, 1)),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(recommended), vm.state.value.moreLikeThis)
+    }
+
+    @Test
+    fun moreLikeThis_falls_back_to_similar_when_recommendations_are_empty() = runTest {
+        val similarTitle = MediaSummary(MediaId.tmdbMovie("77"), "Similar")
+        val vm = viewModel(
+            repoFakes = DetailRepoFakes(
+                recommendations = Result.success(PagedResult(emptyList(), 1, 1)),
+                similar = Result.success(PagedResult(listOf(similarTitle), 1, 1)),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(similarTitle), vm.state.value.moreLikeThis)
+    }
+
+    @Test
+    fun moreLikeThis_falls_back_to_similar_when_recommendations_fail() = runTest {
+        val similarTitle = MediaSummary(MediaId.tmdbMovie("77"), "Similar")
+        val vm = viewModel(
+            repoFakes = DetailRepoFakes(
+                recommendations = Result.failure(RuntimeException("no recommendations")),
+                similar = Result.success(PagedResult(listOf(similarTitle), 1, 1)),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(similarTitle), vm.state.value.moreLikeThis)
+    }
+
+    @Test
+    fun moreLikeThis_is_empty_when_both_recommendations_and_similar_are_empty() = runTest {
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.moreLikeThis.isEmpty())
     }
 }

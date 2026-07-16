@@ -20,6 +20,14 @@ fun NavGraphBuilder.searchSection(navController: NavController) {
         val route = entry.toRoute<DetailRoute>()
         val id = MediaId.parse(route.mediaId)
         val viewModel = koinViewModel<DetailViewModel> { parametersOf(id) }
-        DetailScreen(viewModel, onBack = { navController.popBackStack() })
+        DetailScreen(
+            viewModel,
+            onBack = { navController.popBackStack() },
+            // "More like this" (EPIC 16) pushes another DetailRoute on top of
+            // this one — Navigation Compose supports recursive routes of the
+            // same type natively, so tapping through several titles just
+            // grows the back stack and Back unwinds it one title at a time.
+            onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
+        )
     }
 }

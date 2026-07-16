@@ -3,8 +3,13 @@
 package com.codingpit.muviss.feature.search.ui
 
 import app.cash.turbine.test
+import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.collection.api.CollectionMembership
+import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.domain.SearchRepository
 import com.codingpit.muviss.models.Genre
@@ -14,7 +19,10 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
+import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -33,6 +41,7 @@ private class FakeRepo(
     private val tvGenresResult: Result<List<Genre>> = Result.success(emptyList()),
     private val discoverResult: (type: MediaType, page: Int, genreId: String?) -> Result<PagedResult<MediaSummary>> =
         { _, page, _ -> Result.success(PagedResult(emptyList(), page, page)) },
+    private val recommendationsResult: (id: MediaId) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), 1, 1)) },
 ) : SearchRepository {
     override suspend fun search(query: String, page: Int) = searchResult(page)
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
@@ -40,6 +49,22 @@ private class FakeRepo(
     override suspend fun discover(type: MediaType, page: Int, genreId: String?) = discoverResult(type, page, genreId)
     override suspend fun genres(type: MediaType) = if (type == MediaType.MOVIE) movieGenresResult else tvGenresResult
     override suspend fun watchProviders(id: MediaId) = Result.success(WatchProviders())
+    override suspend fun recommendations(id: MediaId, page: Int) = recommendationsResult(id)
+    override suspend fun similar(id: MediaId, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+}
+
+private class FakeSearchCollectionApi(initialLibrary: List<CollectionSummary> = emptyList()) : CollectionApi {
+    val library = MutableStateFlow(initialLibrary)
+
+    override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
+    override fun observeSummaries(): Flow<List<CollectionSummary>> = library
+    override suspend fun add(details: MediaDetails) = error("not used")
+    override suspend fun remove(mediaId: MediaId) = error("not used")
+    override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
+    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
+    override suspend fun setRating(mediaId: MediaId, rating: Int?) = error("not used")
+    override suspend fun setNote(mediaId: MediaId, note: String?) = error("not used")
+    override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
 class SearchViewModelTest {
@@ -50,7 +75,13 @@ class SearchViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(repo: FakeRepo) = SearchViewModel(SearchMediaUseCase(repo), DiscoverMediaUseCase(repo), GenresUseCase(repo))
+    private fun viewModel(repo: FakeRepo, collectionApi: FakeSearchCollectionApi = FakeSearchCollectionApi()) = SearchViewModel(
+        SearchMediaUseCase(repo),
+        DiscoverMediaUseCase(repo),
+        GenresUseCase(repo),
+        RecommendationsUseCase(repo),
+        collectionApi,
+    )
 
     private val movieGenre = Genre("28", "Action")
     private val tvGenre = Genre("10759", "Action & Adventure")
@@ -200,5 +231,76 @@ class SearchViewModelTest {
         assertEquals(SearchMode.DISCOVER, vm.state.value.mode)
         assertEquals(null, vm.state.value.selectedGenre)
         assertTrue(vm.state.value.genreResults.isEmpty())
+    }
+
+    private fun libraryTitle(
+        id: MediaId,
+        favorite: Boolean = false,
+        rating: Int? = null,
+        addedAtEpochMs: Long = 0,
+    ) = CollectionSummary(id, "Saved title", posterUrl = null, status = WatchStatus.NOT_STARTED, favorite = favorite, rating = rating, addedAtEpochMs = addedAtEpochMs)
+
+    @Test
+    fun forYou_is_hidden_when_the_library_has_no_favorite_or_top_rated_signal() = runTest {
+        val library = listOf(libraryTitle(MediaId.tmdbMovie("1")), libraryTitle(MediaId.tmdbMovie("2"), rating = 5))
+        val vm = viewModel(FakeRepo(), FakeSearchCollectionApi(library))
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.forYou.isEmpty())
+    }
+
+    @Test
+    fun forYou_is_hidden_when_the_library_is_empty() = runTest {
+        val vm = viewModel(FakeRepo(), FakeSearchCollectionApi(emptyList()))
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.forYou.isEmpty())
+    }
+
+    @Test
+    fun forYou_is_populated_from_a_favorites_recommendations_when_signal_exists() = runTest {
+        val seed = MediaId.tmdbMovie("1")
+        val recommended = MediaSummary(MediaId.tmdbMovie("99"), "Recommended")
+        val library = listOf(libraryTitle(seed, favorite = true))
+        val vm = viewModel(
+            FakeRepo(recommendationsResult = { id -> if (id == seed) Result.success(PagedResult(listOf(recommended), 1, 1)) else Result.success(PagedResult(emptyList(), 1, 1)) }),
+            FakeSearchCollectionApi(library),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(recommended), vm.state.value.forYou)
+    }
+
+    @Test
+    fun forYou_excludes_titles_already_in_the_library() = runTest {
+        val seed = MediaId.tmdbMovie("1")
+        val alreadySaved = MediaId.tmdbMovie("2")
+        val recommended = MediaSummary(alreadySaved, "Already saved")
+        val library = listOf(libraryTitle(seed, favorite = true), libraryTitle(alreadySaved))
+        val vm = viewModel(
+            FakeRepo(recommendationsResult = { Result.success(PagedResult(listOf(recommended), 1, 1)) }),
+            FakeSearchCollectionApi(library),
+        )
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.forYou.isEmpty())
+    }
+
+    @Test
+    fun forYou_updates_reactively_when_the_library_changes() = runTest {
+        val seed = MediaId.tmdbMovie("1")
+        val recommended = MediaSummary(MediaId.tmdbMovie("99"), "Recommended")
+        val collectionApi = FakeSearchCollectionApi(emptyList())
+        val vm = viewModel(
+            FakeRepo(recommendationsResult = { Result.success(PagedResult(listOf(recommended), 1, 1)) }),
+            collectionApi,
+        )
+        advanceUntilIdle()
+        assertTrue(vm.state.value.forYou.isEmpty())
+
+        collectionApi.library.value = listOf(libraryTitle(seed, favorite = true))
+        advanceUntilIdle()
+
+        assertEquals(listOf(recommended), vm.state.value.forYou)
     }
 }

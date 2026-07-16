@@ -79,6 +79,11 @@ data class CollectionMembership(
  * stats. [note] is deliberately not exposed here — no peer needs it at this
  * granularity today (it is only rendered/edited in search:ui's
  * `DetailScreen`, via [CollectionMembership.note]).
+ *
+ * [favorite] and [addedAtEpochMs] were added for EPIC 16 (recommendations):
+ * search:ui's `ForYouSeeding` reads them to pick which saved titles seed the
+ * Discover tab's "For you" section (favorites and top-rated titles, most
+ * recently added first).
  */
 data class CollectionSummary(
     val mediaId: MediaId,
@@ -90,6 +95,8 @@ data class CollectionSummary(
     val seenEpisodes: Int = 0,
     val notificationsMuted: Boolean = false,
     val rating: Int? = null,
+    val favorite: Boolean = false,
+    val addedAtEpochMs: Long = 0,
 )
 
 /**

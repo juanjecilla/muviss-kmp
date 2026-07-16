@@ -97,6 +97,10 @@ private fun DiscoverBrowse(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
+        // "For you" (EPIC 16) leads the browse when it has anything to show;
+        // MediaCarousel itself renders nothing while state.forYou is empty
+        // (no library signal yet), so no separate visibility check is needed.
+        MediaCarousel("For you", state.forYou, onOpenDetail)
         GenreChipRow("Movie genres", state.movieGenres) { onSelectGenre(it, MediaType.MOVIE) }
         GenreChipRow("TV genres", state.tvGenres) { onSelectGenre(it, MediaType.TV) }
         MediaCarousel("Popular movies", state.popularMovies, onOpenDetail)

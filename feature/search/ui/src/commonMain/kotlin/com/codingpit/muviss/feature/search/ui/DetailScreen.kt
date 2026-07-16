@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,14 +38,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
 import com.codingpit.muviss.models.MediaDetails
+import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
@@ -55,6 +60,7 @@ import com.codingpit.muviss.models.WatchProviders
 fun DetailScreen(
     viewModel: DetailViewModel,
     onBack: () -> Unit,
+    onOpenDetail: (MediaId) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -91,14 +97,14 @@ fun DetailScreen(
                     TextButton(onClick = viewModel::load) { Text("Retry") }
                 }
 
-                state.details != null -> DetailContent(state, viewModel)
+                state.details != null -> DetailContent(state, viewModel, onOpenDetail)
             }
         }
     }
 }
 
 @Composable
-private fun DetailContent(state: DetailUiState, viewModel: DetailViewModel) {
+private fun DetailContent(state: DetailUiState, viewModel: DetailViewModel, onOpenDetail: (MediaId) -> Unit) {
     val details = state.details!!
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -142,6 +148,46 @@ private fun DetailContent(state: DetailUiState, viewModel: DetailViewModel) {
         }
 
         state.watchProviders?.let { providers -> WhereToWatchSection(providers) }
+
+        MoreLikeThisSection(state.moreLikeThis, onOpenDetail)
+    }
+}
+
+/** "More like this" row (EPIC 16): recommendations, or similar titles when the Detail screen's viewmodel found no recommendations. Hidden when both are empty. */
+@Composable
+private fun MoreLikeThisSection(items: List<MediaSummary>, onOpenDetail: (MediaId) -> Unit) {
+    if (items.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("More like this", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { it.id.toString() }) { item ->
+                Box(Modifier.width(110.dp)) { MoreLikeThisCard(item) { onOpenDetail(item.id) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreLikeThisCard(item: MediaSummary, onClick: () -> Unit) {
+    Column(Modifier.clickable(onClick = onClick)) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            tonalElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
+        ) {
+            PosterImage(
+                url = item.posterUrl,
+                title = item.title,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)),
+            )
+        }
+        Text(
+            item.title,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 

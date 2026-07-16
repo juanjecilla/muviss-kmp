@@ -1,18 +1,29 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
+import com.codingpit.muviss.feature.search.domain.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -43,6 +54,8 @@ data class SearchUiState(
     val tvGenres: List<Genre> = emptyList(),
     val popularMovies: List<MediaSummary> = emptyList(),
     val popularTv: List<MediaSummary> = emptyList(),
+    /** "For you" section (EPIC 16), seeded from library favorites/top-rated titles; empty hides the section (see [ForYouSeeding]). */
+    val forYou: List<MediaSummary> = emptyList(),
     // GENRE_BROWSE
     val selectedGenre: Genre? = null,
     val selectedGenreType: MediaType? = null,
@@ -56,14 +69,17 @@ data class SearchUiState(
 
 /**
  * Drives the search screen: a debounced, paged query; a discover browse
- * (genre chips + popularity carousels) shown while the query is blank; and a
- * paged genre drill-down when a chip is tapped. Progress is not touched here
- * — this feature is read-only discovery.
+ * (genre chips + popularity carousels, plus a "For you" section seeded from
+ * the library — EPIC 16) shown while the query is blank; and a paged genre
+ * drill-down when a chip is tapped. Progress is not touched here — this
+ * feature is read-only discovery.
  */
 class SearchViewModel(
     private val searchMedia: SearchMediaUseCase,
     private val discoverMedia: DiscoverMediaUseCase,
     private val genresUseCase: GenresUseCase,
+    private val recommendationsUseCase: RecommendationsUseCase,
+    private val collectionApi: CollectionApi,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -73,6 +89,14 @@ class SearchViewModel(
 
     init {
         loadDiscover()
+        // Independent of loadDiscover's one-shot load: the library can change
+        // any time (a favorite toggled, a new top-rated title added), so this
+        // stays subscribed and re-derives "For you" reactively, same pattern
+        // as progress:ui's UpcomingViewModel reacting to collectionApi.
+        collectionApi.observeSummaries()
+            .flatMapLatest { library -> forYouFlow(library) }
+            .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
+            .launchIn(viewModelScope)
     }
 
     fun onQueryChange(query: String) {
@@ -220,6 +244,25 @@ class SearchViewModel(
 
     private fun fail(e: Throwable) {
         _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) }
+    }
+
+    /**
+     * Seeds recommendations from [library]'s favorites/top-rated titles via
+     * [ForYouSeeding.selectSeeds], fetches each seed's recommendations, and
+     * merges them with [ForYouSeeding.mergeAndExclude]. Emits an empty list —
+     * which hides the section — when the library carries no signal yet, same
+     * "no error, just hidden" treatment as [DetailViewModel]'s watch-providers
+     * and more-like-this rows.
+     */
+    private fun forYouFlow(library: List<CollectionSummary>): Flow<List<MediaSummary>> = flow {
+        val seeds = ForYouSeeding.selectSeeds(library)
+        if (seeds.isEmpty()) {
+            emit(emptyList())
+            return@flow
+        }
+        val libraryIds = library.map { it.mediaId }.toSet()
+        val recommendationsBySeed = seeds.map { seed -> recommendationsUseCase(seed).getOrNull()?.items.orEmpty() }
+        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, libraryIds))
     }
 
     private companion object {

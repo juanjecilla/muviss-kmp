@@ -41,6 +41,8 @@ internal class DefaultCollectionApi(
                     seenEpisodes = it.seenEpisodes,
                     notificationsMuted = it.notificationsMuted,
                     rating = it.rating,
+                    favorite = it.favorite,
+                    addedAtEpochMs = it.addedAtEpochMs,
                 )
             }
         }
