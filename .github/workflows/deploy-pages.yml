@@ -1,17 +1,20 @@
 name: Deploy web (GitHub Pages)
 
 # EPIC 13 (web productionization): builds the Wasm distribution and deploys
-# it to GitHub Pages on every push to main. Requires Pages to be enabled on
-# the repo first — see docs/RELEASING.md's web section for the one-click
-# manual step (GitHub Pages on a *private* repo needs a paid plan; this repo
-# is private and on the free plan as of this writing, so `gh api -X POST
-# repos/{owner}/{repo}/pages` 422s with "Your current plan does not support
-# GitHub Pages for this repository" — this workflow is created ready to go
-# for whenever that's resolved, either by upgrading the plan or making the
-# repo public).
+# it to GitHub Pages. Requires Pages to be enabled on the repo first — see
+# docs/RELEASING.md's web section (GitHub Pages on a *private* repo needs a
+# paid plan; this repo is private and on the free plan as of this writing,
+# so enabling Pages 422s with "Your current plan does not support GitHub
+# Pages for this repository").
+#
+# Manual-only trigger until Pages can be enabled (plan upgrade or repo made
+# public) — a push trigger would fail on every commit to main. Once Pages is
+# enabled, restore:
+#   on:
+#     push:
+#       branches: [ main ]
+#     workflow_dispatch: { }
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch: { }
 
 concurrency:
