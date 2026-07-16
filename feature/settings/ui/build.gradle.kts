@@ -21,6 +21,15 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
+            // Test-only, for ImportViewModelTest's fakes — production code here
+            // only ever depends on settings:domain's ImportActions.
+            implementation(projects.feature.collection.api)
+            implementation(projects.feature.progress.api)
+        }
+        // FileImporter.android.kt (EPIC 18) needs an activity-result launcher
+        // to bridge the system document picker back into a suspend call.
+        androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
         }
     }
 }

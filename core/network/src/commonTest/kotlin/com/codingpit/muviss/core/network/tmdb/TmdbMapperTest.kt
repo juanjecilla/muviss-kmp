@@ -152,6 +152,42 @@ class TmdbMapperTest {
     }
 
     @Test
+    fun findResponseToSummary_movie_type_reads_the_movie_list() {
+        val dto = TmdbFindResponseDto(
+            movieResults = listOf(TmdbResultDto(id = 603, title = "The Matrix", releaseDate = "1999-03-30")),
+            tvResults = listOf(TmdbResultDto(id = 1399, name = "Game of Thrones", firstAirDate = "2011-04-17")),
+        )
+
+        val summary = TmdbMapper.findResponseToSummary(dto, MediaType.MOVIE)
+
+        assertEquals(MediaId.tmdbMovie("603"), summary?.id)
+    }
+
+    @Test
+    fun findResponseToSummary_tv_type_reads_the_tv_list() {
+        val dto = TmdbFindResponseDto(tvResults = listOf(TmdbResultDto(id = 1399, name = "Game of Thrones", firstAirDate = "2011-04-17")))
+
+        val summary = TmdbMapper.findResponseToSummary(dto, MediaType.TV)
+
+        assertEquals(MediaId.tmdbTv("1399"), summary?.id)
+    }
+
+    @Test
+    fun findResponseToSummary_null_type_falls_back_movie_then_tv() {
+        val tvOnly = TmdbFindResponseDto(tvResults = listOf(TmdbResultDto(id = 1399, name = "Game of Thrones", firstAirDate = "2011-04-17")))
+        assertEquals(MediaId.tmdbTv("1399"), TmdbMapper.findResponseToSummary(tvOnly, null)?.id)
+
+        val movieOnly = TmdbFindResponseDto(movieResults = listOf(TmdbResultDto(id = 603, title = "The Matrix", releaseDate = "1999-03-30")))
+        assertEquals(MediaId.tmdbMovie("603"), TmdbMapper.findResponseToSummary(movieOnly, null)?.id)
+    }
+
+    @Test
+    fun findResponseToSummary_no_match_is_null() {
+        assertNull(TmdbMapper.findResponseToSummary(TmdbFindResponseDto(), MediaType.MOVIE))
+        assertNull(TmdbMapper.findResponseToSummary(TmdbFindResponseDto(), null))
+    }
+
+    @Test
     fun watchProvidersToModel_maps_each_offer_type_and_logo_url() {
         val dto = TmdbWatchProviderRegionDto(
             flatrate = listOf(TmdbWatchProviderDto(providerId = 8, providerName = "Netflix", logoPath = "/n.jpg")),

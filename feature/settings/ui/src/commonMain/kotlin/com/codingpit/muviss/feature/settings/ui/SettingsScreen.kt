@@ -33,6 +33,7 @@ import com.codingpit.muviss.feature.settings.domain.TMDB_ATTRIBUTION_TEXT
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onOpenLicenses: () -> Unit,
+    onOpenImport: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
@@ -65,6 +66,8 @@ fun SettingsScreen(
         NotificationsSection(state.settings.notificationsEnabled, viewModel::onNotificationsToggled)
         HorizontalDivider()
         ExportSection(onExport = viewModel::exportData, error = state.exportError)
+        HorizontalDivider()
+        ImportSection(onOpenImport = onOpenImport)
         HorizontalDivider()
         AboutSection(appVersionName = state.appVersion.versionName, onOpenLicenses = onOpenLicenses)
     }
@@ -160,6 +163,19 @@ private fun ExportSection(onExport: () -> Unit, error: String?) {
         )
         Button(onClick = onExport) { Text("Export data") }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+private fun ImportSection(onOpenImport: () -> Unit) {
+    Column {
+        SectionTitle("Import from another tracker")
+        Text(
+            "Bring in your library and watch history from Trakt, TV Time, or a CSV file.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Button(onClick = onOpenImport) { Text("Import data") }
     }
 }
 

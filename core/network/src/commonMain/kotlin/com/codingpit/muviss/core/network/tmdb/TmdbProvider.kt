@@ -98,6 +98,15 @@ class TmdbProvider(
         return TmdbMapper.discoverPageToPagedResult(id.type, dto)
     }
 
+    override suspend fun findByExternalId(externalId: String, type: MediaType?): MediaSummary? {
+        val dto: TmdbFindResponseDto = client.get("$BASE/find/$externalId") {
+            parameter("api_key", apiKey)
+            parameter("language", locale.language)
+            parameter("external_source", "imdb_id")
+        }.body()
+        return TmdbMapper.findResponseToSummary(dto, type)
+    }
+
     private suspend fun movieDetails(externalId: String): MediaDetails {
         val dto: TmdbMovieDetailDto = client.get("$BASE/movie/$externalId") {
             parameter("api_key", apiKey)

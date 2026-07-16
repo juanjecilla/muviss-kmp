@@ -119,3 +119,15 @@ internal data class TmdbWatchProvidersResponseDto(
     val id: Long,
     val results: Map<String, TmdbWatchProviderRegionDto> = emptyMap(),
 )
+
+/**
+ * `/find/{external_id}` — resolves an id from another source (e.g. an IMDb
+ * id) to TMDB's own movie/TV results. Rows reuse [TmdbResultDto]'s shape
+ * (id/title/name/poster_path/...) but this endpoint never sets `media_type`,
+ * hence the two separate typed lists rather than one `results` array.
+ */
+@Serializable
+internal data class TmdbFindResponseDto(
+    @SerialName("movie_results") val movieResults: List<TmdbResultDto> = emptyList(),
+    @SerialName("tv_results") val tvResults: List<TmdbResultDto> = emptyList(),
+)

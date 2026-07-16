@@ -164,6 +164,21 @@ internal object TmdbMapper {
         )
     }
 
+    /**
+     * Picks the right row out of a `/find/{external_id}` response for
+     * [type] (the movie or TV list, whichever the caller asked for), or —
+     * when [type] is unknown — whichever list has a match, movies first.
+     * Used by [TmdbProvider.findByExternalId] (EPIC 18 import id-mapping).
+     */
+    fun findResponseToSummary(dto: TmdbFindResponseDto, type: MediaType?): MediaSummary? = when (type) {
+        MediaType.MOVIE -> dto.movieResults.firstOrNull()?.let { discoverResultToSummary(MediaType.MOVIE, it) }
+
+        MediaType.TV -> dto.tvResults.firstOrNull()?.let { discoverResultToSummary(MediaType.TV, it) }
+
+        null -> dto.movieResults.firstOrNull()?.let { discoverResultToSummary(MediaType.MOVIE, it) }
+            ?: dto.tvResults.firstOrNull()?.let { discoverResultToSummary(MediaType.TV, it) }
+    }
+
     fun seasonToModel(show: MediaId, dto: TmdbSeasonDetailDto): Season = Season(
         number = dto.seasonNumber,
         name = dto.name,

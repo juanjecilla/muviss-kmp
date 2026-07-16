@@ -9,9 +9,17 @@ import org.koin.compose.viewmodel.koinViewModel
 fun NavGraphBuilder.settingsSection(navController: NavController) {
     composable<SettingsRoute> {
         val viewModel = koinViewModel<SettingsViewModel>()
-        SettingsScreen(viewModel, onOpenLicenses = { navController.navigate(LicensesRoute) })
+        SettingsScreen(
+            viewModel,
+            onOpenLicenses = { navController.navigate(LicensesRoute) },
+            onOpenImport = { navController.navigate(ImportRoute) },
+        )
     }
     composable<LicensesRoute> {
         LicensesScreen()
+    }
+    composable<ImportRoute> {
+        val viewModel = koinViewModel<ImportViewModel>()
+        ImportScreen(viewModel, onDone = { navController.popBackStack() })
     }
 }

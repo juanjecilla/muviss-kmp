@@ -43,6 +43,19 @@ interface MetadataProvider {
 
     /** Titles similar to [id] by genre/keyword overlap, paged — the Detail screen's fallback when [recommendations] is thin. */
     suspend fun similar(id: MediaId, page: Int = 1): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
+
+    /**
+     * Resolves an external id from another source (currently only IMDb ids,
+     * e.g. `tt0944947`) to this source's own [MediaSummary] — the EPIC 18
+     * import seam: a Trakt/TV Time export carries IMDb ids, not this source's
+     * native ids, so a title has to be looked up before it can become a
+     * [MediaId]. [type] narrows the search when the caller already knows
+     * movie vs TV (most import rows do); left null, an implementation should
+     * return whichever match it finds first. Defaults to null (unsupported)
+     * so a provider with no equivalent lookup need not implement it — TMDB
+     * overrides it via `/find/{external_id}`.
+     */
+    suspend fun findByExternalId(externalId: String, type: MediaType? = null): MediaSummary? = null
 }
 
 /**
