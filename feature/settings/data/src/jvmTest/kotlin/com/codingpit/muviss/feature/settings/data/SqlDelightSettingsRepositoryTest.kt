@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.settings.data
 
+import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
@@ -37,7 +38,7 @@ class SqlDelightSettingsRepositoryTest {
     @BeforeTest
     fun setUp() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.create(driver)
+        MuvissDatabase.Schema.synchronous().create(driver)
         database = MuvissDatabase(driver)
         repository = SqlDelightSettingsRepository(
             database.appSettingsQueries,

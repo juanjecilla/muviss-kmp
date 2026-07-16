@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.settings.data
 
+import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
@@ -12,6 +13,7 @@ import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
@@ -20,14 +22,19 @@ import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 
 /**
  * SQLDelight-backed [SettingsRepository] over `AppSettings.sq`. The table is
- * a permanent singleton row (`id = 0`); [ensureRow] runs once at construction
- * so [observeSettings] never has to model a "no row yet" state beyond the
- * very first launch.
+ * a permanent singleton row (`id = 0`). [ensureRow] (`INSERT OR IGNORE`, so
+ * idempotent) runs before every read via [observeSettings]'s `onStart` and
+ * at the top of every mutation — see `SqlDelightProfileRepository`'s KDoc for
+ * why this can no longer run once from `init` now that `generateAsync`
+ * (EPIC 13) made it a `suspend fun`.
  *
  * [exportData] reaches into `collectionEntry`/`episodeProgress` directly
  * (both are `:core:database` infrastructure, not collection/progress's own —
  * no cross-feature dependency needed) rather than through those features'
- * `:api`, because the export is a literal table dump, not a domain view.
+ * `:api`, because the export is a literal table dump, not a domain view. It
+ * uses `awaitAsList()` (from `async-extensions`) rather than
+ * `executeAsList()` because the latter assumes a synchronous driver and
+ * throws on web's async one — see `DatabaseFactory.web.kt`.
  */
 class SqlDelightSettingsRepository(
     private val settingsQueries: AppSettingsQueries,
@@ -39,31 +46,32 @@ class SqlDelightSettingsRepository(
 
     private val json = Json { prettyPrint = true }
 
-    init {
-        settingsQueries.ensureRow()
-    }
-
     override fun observeSettings(): Flow<AppSettings> = settingsQueries.selectSettings()
         .asFlow()
         .mapToOneOrNull(dispatchers.io)
+        .onStart { ensureRow() }
         .map { row -> row?.toDomain() ?: AppSettings() }
 
     override suspend fun setTheme(theme: AppTheme) = withContext(dispatchers.io) {
+        ensureRow()
         settingsQueries.updateTheme(theme.name)
         Unit
     }
 
     override suspend fun setLanguage(language: String) = withContext(dispatchers.io) {
+        ensureRow()
         settingsQueries.updateLanguage(language)
         Unit
     }
 
     override suspend fun setRegion(region: String) = withContext(dispatchers.io) {
+        ensureRow()
         settingsQueries.updateRegion(region)
         Unit
     }
 
     override suspend fun setNotificationsEnabled(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
         settingsQueries.updateNotificationsEnabled(enabled)
         Unit
     }
@@ -71,11 +79,13 @@ class SqlDelightSettingsRepository(
     override suspend fun exportData(): String = withContext(dispatchers.io) {
         val export = MuvissDataExport(
             exportedAtEpochMs = clock.nowEpochMs(),
-            collection = collectionQueries.selectAll().executeAsList().map { it.toExport() },
-            progress = progressQueries.selectAll().executeAsList().map { it.toExport() },
+            collection = collectionQueries.selectAll().awaitAsList().map { it.toExport() },
+            progress = progressQueries.selectAll().awaitAsList().map { it.toExport() },
         )
         json.encodeToString(export)
     }
+
+    private suspend fun ensureRow() = withContext(dispatchers.io) { settingsQueries.ensureRow() }
 
     private fun AppSettingsRow.toDomain(): AppSettings = AppSettings(
         theme = AppTheme.valueOf(theme),

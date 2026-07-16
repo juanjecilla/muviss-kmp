@@ -29,9 +29,24 @@ sqldelight {
             // compile time rather than at some user's upgrade.
             verifyMigrations.set(true)
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
+
+            // EPIC 13 (web productionization, ADR 0008's amendment): flipped
+            // on so `web-worker-driver` can back real web persistence. Every
+            // generated mutation (`INSERT`/`UPDATE`/`DELETE`) becomes a
+            // `suspend fun` on every platform, not just web — Android/iOS/JVM
+            // keep working unchanged because their sync drivers still return
+            // `QueryResult.Value` (see `MuvissDatabase.Schema.synchronous()`
+            // used by their `DatabaseDriverFactory` actuals). Select queries
+            // (`Query<T>.executeAsList()` etc.) are untouched by this flag —
+            // they stay driver-shaped, so sync platforms keep using them
+            // as-is and only the web driver needs the `awaitAsList()`-style
+            // calls from `async-extensions`.
+            generateAsync.set(true)
         }
     }
 }
+
+val sqldelightVersion: String = libs.versions.sqldelight.get()
 
 kotlin {
     sourceSets {
@@ -40,6 +55,7 @@ kotlin {
             api(projects.core.common)
             api(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutinesExtensions)
+            implementation(libs.sqldelight.asyncExtensions)
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.androidDriver)
@@ -49,6 +65,30 @@ kotlin {
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.nativeDriver)
+        }
+        // `DatabaseFactory.web.kt` lives in `src/webMain/kotlin` (compiled
+        // into both `js` and `wasmJs` via that shared directory — see
+        // `:app:webApp`'s `Main.kt` for the same layout) but this project's
+        // `sourceSets` container has no source set literally named
+        // `webMain` to hang dependencies off (confirmed empirically: it is
+        // absent from `kotlin.sourceSets.names` even after the default
+        // hierarchy template settles), so `js`/`wasmJs` each declare the
+        // same web-persistence dependencies directly instead. EPIC 13 /
+        // ADR 0008's amendment: `web-worker-driver` talks to a Web Worker
+        // running `@cashapp/sqldelight-sqljs-worker` (SQL.js compiled to
+        // wasm), which is why the schema needed `generateAsync` in the
+        // first place.
+        jsMain.dependencies {
+            implementation(libs.sqldelight.webWorkerDriver)
+            implementation(libs.kotlinx.browser)
+            implementation(npm("sql.js", "1.10.3"))
+            implementation(npm("@cashapp/sqldelight-sqljs-worker", sqldelightVersion))
+        }
+        wasmJsMain.dependencies {
+            implementation(libs.sqldelight.webWorkerDriver)
+            implementation(libs.kotlinx.browser)
+            implementation(npm("sql.js", "1.10.3"))
+            implementation(npm("@cashapp/sqldelight-sqljs-worker", sqldelightVersion))
         }
     }
 }

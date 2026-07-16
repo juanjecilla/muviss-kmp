@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.collection.data
 
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -71,7 +72,7 @@ class SqlDelightCollectionRepository(
 
     override suspend fun upsertSnapshot(details: MediaDetails) = withContext(dispatchers.io) {
         val id = details.summary.id.toString()
-        val existing = queries.selectById(id).executeAsOneOrNull()
+        val existing = queries.selectById(id).awaitAsOneOrNull()
         val now = clock.nowEpochMs()
         val todayEpochDay = clock.todayEpochDay()
         queries.upsert(

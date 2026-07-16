@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.database
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.runBlocking
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,9 +35,11 @@ class DatabaseFactoryJvmTest {
         val directory = createTempDirectory("muviss-db-test").toFile()
 
         val firstDriver = createFileDriver(directory)
-        MuvissDatabase(firstDriver).appSettingsQueries.apply {
-            ensureRow()
-            updateTheme("DARK")
+        runBlocking {
+            MuvissDatabase(firstDriver).appSettingsQueries.apply {
+                ensureRow()
+                updateTheme("DARK")
+            }
         }
         firstDriver.close()
 

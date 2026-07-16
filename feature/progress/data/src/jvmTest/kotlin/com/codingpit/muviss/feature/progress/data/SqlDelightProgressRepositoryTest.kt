@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.progress.data
 
+import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
@@ -45,7 +46,7 @@ class SqlDelightProgressRepositoryTest {
     @BeforeTest
     fun setUp() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.create(driver)
+        MuvissDatabase.Schema.synchronous().create(driver)
         queries = MuvissDatabase(driver).episodeProgressQueries
         clock = FakeClock(1_000L)
         repository = SqlDelightProgressRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)

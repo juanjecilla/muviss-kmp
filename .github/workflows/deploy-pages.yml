@@ -1,0 +1,65 @@
+name: Deploy web (GitHub Pages)
+
+# EPIC 13 (web productionization): builds the Wasm distribution and deploys
+# it to GitHub Pages on every push to main. Requires Pages to be enabled on
+# the repo first — see docs/RELEASING.md's web section for the one-click
+# manual step (GitHub Pages on a *private* repo needs a paid plan; this repo
+# is private and on the free plan as of this writing, so `gh api -X POST
+# repos/{owner}/{repo}/pages` 422s with "Your current plan does not support
+# GitHub Pages for this repository" — this workflow is created ready to go
+# for whenever that's resolved, either by upgrading the plan or making the
+# repo public).
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: { }
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Wasm distribution
+        env:
+          # Optional — same as the other workflows (ADR 0007 / docs/RELEASING.md):
+          # without it search returns errors at runtime but everything still builds.
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: ./gradlew :app:webApp:wasmJsBrowserDistribution --stacktrace
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/webApp/build/dist/wasmJs/productionExecutable
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

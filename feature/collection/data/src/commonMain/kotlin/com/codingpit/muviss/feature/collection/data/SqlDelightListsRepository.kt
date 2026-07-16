@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.collection.data
 
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import com.codingpit.muviss.core.common.AppClock
@@ -73,7 +74,7 @@ class SqlDelightListsRepository(
     /** Looks up any existing (possibly soft-deleted) row first so a re-add preserves the original [MediaListItem.addedAtEpochMs] — see [ListsRepository.addEntry]'s KDoc. */
     override suspend fun addEntry(listId: String, mediaId: MediaId) = withContext(dispatchers.io) {
         val id = mediaId.toString()
-        val existing = queries.selectEntry(listId, id).executeAsOneOrNull()
+        val existing = queries.selectEntry(listId, id).awaitAsOneOrNull()
         queries.upsertEntry(listId = listId, mediaId = id, addedAtEpochMs = existing?.addedAtEpochMs ?: clock.nowEpochMs())
         Unit
     }

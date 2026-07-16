@@ -524,3 +524,115 @@ environmental — not project defects:
   exported `Shared` framework — succeeds cleanly. A real simulator run
   (`xcrun simctl boot` + install + launch) needs that ~8.4 GB runtime
   download and was not attempted.
+
+## 10. Web (GitHub Pages, PWA) — EPIC 13 / issue #16
+
+### Deploy workflow
+
+`.github/workflows/deploy-pages.yml` builds `:app:webApp:wasmJsBrowserDistribution`
+and deploys `app/webApp/build/dist/wasmJs/productionExecutable` to GitHub
+Pages via the standard `actions/configure-pages` → `actions/upload-pages-artifact`
+→ `actions/deploy-pages` trio, on every push to `main` (plus manual
+`workflow_dispatch`). Wasm was chosen over the `js` target as the deployed
+build — it's the one CLAUDE.md documents as primary (`wasmJsBrowserDevelopmentRun`
+is the documented dev command) and the one exercised end-to-end during this
+epic's verification (see the ADR 0008 amendment for the live-browser check).
+
+**This repo is private, and GitHub Pages on a private repo needs a paid
+plan** — confirmed directly, not assumed:
+
+```bash
+gh api -X POST repos/{owner}/{repo}/pages -f "build_type=workflow"
+# → 422 "Your current plan does not support GitHub Pages for this repository."
+```
+
+The workflow is committed and ready to run the moment either of these
+happens (no code changes needed, just flip the switch):
+
+1. **Make the repo public** (Settings → General → Danger Zone → Change
+   visibility), or
+2. **Upgrade to GitHub Pro/Team/Enterprise** (any paid plan enables Pages on
+   private repos).
+
+Then, one-time, either let the first push to `main` after that trigger the
+workflow (it self-configures Pages via `actions/configure-pages` — no
+separate manual "enable Pages" click needed once the plan/visibility allows
+it), or do it explicitly first: **Settings → Pages → Build and deployment
+→ Source → GitHub Actions**.
+
+### Build commands
+
+```bash
+./gradlew :app:webApp:wasmJsBrowserDevelopmentRun    # local dev server, Wasm
+./gradlew :app:webApp:wasmJsBrowserDistribution       # production build → app/webApp/build/dist/wasmJs/productionExecutable
+./gradlew :app:webApp:jsBrowserDistribution           # production build, JS target → app/webApp/build/dist/js/productionExecutable
+```
+
+Either distribution can be smoke-tested locally without Gradle by serving
+the output directory statically, e.g. `python3 -m http.server 8080` from
+inside the `productionExecutable` directory, then opening
+`http://127.0.0.1:8080/index.html` — real browsers, not `file://`, are
+required (module workers and the wasm fetch both need an HTTP origin).
+
+### PWA manifest + icons
+
+`app/webApp/src/webMain/resources/manifest.webmanifest` + `icons/` (192,
+512, a maskable 512, a 32×32 favicon, and a 180×180 Apple touch icon) are
+all derived from `app/desktopApp/icons/icon.png` via `sips` (same
+placeholder-art caveat item 7 gives the desktop icons — there's no real
+Muviss brand artwork yet, so regenerating these from real artwork later is
+a manual follow-up, same as the desktop ones). `theme_color`/`background_color`
+in the manifest and the `<meta name="theme-color">` in `index.html` match
+the app's actual Material theme (`Purple = 0xFF6C5CE7`, `core/designsystem/.../Theme.kt`),
+not a placeholder color. Verified installable in Chrome (the manifest
+resolves, icons load, `display: "standalone"` is honored) as part of this
+epic's live-browser check — an actual "Install" prompt/App icon on a home
+screen was not captured (no mobile device in this environment), but the
+manifest itself validates and every icon file 200s.
+
+No service worker: offline asset caching was explicitly scoped out of this
+epic (manifest + installability is the v1 bar) — the app still needs a live
+network for TMDB search/discover regardless, so full offline support is a
+separate, larger follow-up (a cache-first service worker for the shell plus
+whatever staleness story the collection/progress screens would need for
+already-fetched poster images).
+
+### Web persistence (SQL.js in a Web Worker)
+
+See `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`'s
+2026-07-16 amendment for the full story. Short version: real read/write
+persistence now works on both `js` and `wasmJs`, backed by SQLDelight's
+`web-worker-driver` running SQL.js (SQLite-to-wasm) inside a Web Worker —
+but it is **session-only** (in the worker's memory; a page reload starts
+from an empty database again, there is no OPFS/IndexedDB-backed durability
+yet). Getting the worker to actually load in a webpack-bundled build needed
+two non-obvious fixes, both in `app/webApp/webpack.config.d/copy-sqljs-wasm.js`
+and both discovered only by driving a real build's output in a real browser
+(a clean `wasmJsBrowserDistribution` alone does not catch either):
+
+1. The `new Worker(new URL(...))` construction has to appear as one
+   untouched `js(...)` string (see `sqljsWorker()` in `core/database`'s
+   `DatabaseFactory.web.kt`) — split across two Kotlin calls, it still
+   compiles and still produces a webpack asset, but webpack's *native*
+   worker-chunking never triggers, so the worker's own `import "sql.js"`
+   never gets bundled and the browser can't resolve it (silent hang, no
+   console error — the failure is inside the worker's own module load).
+2. `sql.js`'s loader references Node's `fs`/`path`/`crypto` for a code path
+   this browser build never takes; webpack 5 still needs `resolve.fallback`
+   entries disabling all three or the build fails outright.
+
+### Manual smoke test before relying on the deployed web build
+
+1. `./gradlew :app:webApp:wasmJsBrowserDistribution`, serve the output
+   locally (see above), open it in a real browser.
+2. Confirm the splash spinner clears and the app renders (bottom nav +
+   Search screen) within a few seconds.
+3. Settings screen: toggle the theme; confirm it round-trips (proves a
+   write + reactive re-read against the real web driver, not just that the
+   canvas painted).
+4. Library/Progress/Profile screens: confirm they load without an error
+   state (each screen's `.catch { }` would otherwise surface a visible
+   error instead of a silent hang or crash — see ADR 0008).
+5. Reload the page; confirm the Settings screen goes back to defaults —
+   this is *expected* today (session-only persistence, see above), not a
+   bug to chase.

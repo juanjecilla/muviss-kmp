@@ -2,19 +2,38 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KotlinProject</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Muviss</title>
+    <meta name="description" content="Muviss — an offline-first tracker for movies and TV shows.">
+    <meta name="theme-color" content="#121212">
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
     <link type="text/css" rel="stylesheet" href="styles.css">
 </head>
-<body style="text-align: center; align-content: center">
-    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 50 50" role="presentation">
-        <circle cx="25" cy="25" r="20" stroke="#ccc" stroke-width="4" fill="none"/>
-        <circle cx="25" cy="25" r="20" stroke="#333" stroke-width="4" fill="none" stroke-linecap="round"
-                stroke-dasharray="90 125">
-            <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s"
-                              repeatCount="indefinite"/>
-        </circle>
-    </svg>
+<body>
+    <!--
+      Plain HTML/CSS splash shown while the Wasm/JS module boots (no
+      offline caching / service worker — EPIC 13 deliberately scoped that
+      out, see docs/RELEASING.md's web section). `splash.js` below removes
+      it the moment Compose attaches its <canvas>, via a MutationObserver
+      rather than a fixed timeout, so it disappears exactly when there's
+      something to show instead of guessing a delay.
+    -->
+    <div id="splash" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 50 50" role="presentation">
+            <circle cx="25" cy="25" r="20" stroke="#2a2a33" stroke-width="4" fill="none"/>
+            <circle cx="25" cy="25" r="20" stroke="#6C5CE7" stroke-width="4" fill="none" stroke-linecap="round"
+                    stroke-dasharray="90 125">
+                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s"
+                                  repeatCount="indefinite"/>
+            </circle>
+        </svg>
+    </div>
+
+    <script type="application/javascript" src="splash.js"></script>
     <script type="application/javascript" src="webApp.js"></script>
 </body>
 </html>

@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.profile.data
 
+import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
@@ -135,7 +136,7 @@ class ProfileStatsAggregationTest {
     @BeforeTest
     fun setUp() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.create(driver)
+        MuvissDatabase.Schema.synchronous().create(driver)
         val database = MuvissDatabase(driver)
         val dispatchers = StatsAggregationDispatchers(UnconfinedTestDispatcher())
         clock = StatsTestClock(epochDay = 0)

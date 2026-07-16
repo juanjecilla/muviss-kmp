@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.collection.data
 
+import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.database.CollectionEntryQueries
@@ -28,7 +29,7 @@ class SqlDelightListsRepositoryTest {
     @BeforeTest
     fun setUp() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.create(driver)
+        MuvissDatabase.Schema.synchronous().create(driver)
         val database = MuvissDatabase(driver)
         listQueries = database.mediaListQueries
         collectionQueries = database.collectionEntryQueries
@@ -37,7 +38,7 @@ class SqlDelightListsRepositoryTest {
     }
 
     /** Saves a minimal library snapshot for [mediaId] so it has a live `collectionEntry` row to join against. */
-    private fun saveSnapshot(mediaId: MediaId, title: String = mediaId.toString()) {
+    private suspend fun saveSnapshot(mediaId: MediaId, title: String = mediaId.toString()) {
         collectionQueries.upsert(
             mediaId = mediaId.toString(),
             mediaType = mediaId.type.wireName,

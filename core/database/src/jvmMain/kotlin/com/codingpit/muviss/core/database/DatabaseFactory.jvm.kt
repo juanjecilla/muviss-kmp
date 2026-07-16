@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.database
 
+import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -37,14 +38,19 @@ internal fun createFileDriver(directory: File): SqlDriver {
     val isNewDatabase = !databaseFile.exists()
 
     val driver = JdbcSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}")
-    val targetVersion = MuvissDatabase.Schema.version
+    // `.synchronous()` bridges `MuvissDatabase.Schema` (now
+    // `SqlSchema<QueryResult.AsyncValue<Unit>>`, see `core/database`'s
+    // `build.gradle.kts` on `generateAsync`) back to the synchronous shape
+    // this factory has always used — see `DatabaseFactory.android.kt`'s KDoc.
+    val schema = MuvissDatabase.Schema.synchronous()
+    val targetVersion = schema.version
     if (isNewDatabase) {
-        MuvissDatabase.Schema.create(driver)
+        schema.create(driver)
         driver.setUserVersion(targetVersion)
     } else {
         val currentVersion = driver.userVersion()
         if (currentVersion < targetVersion) {
-            MuvissDatabase.Schema.migrate(driver, currentVersion, targetVersion)
+            schema.migrate(driver, currentVersion, targetVersion)
             driver.setUserVersion(targetVersion)
         }
     }

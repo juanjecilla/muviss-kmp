@@ -77,6 +77,9 @@ sqldelight-primitiveAdapters = { module = "app.cash.sqldelight:primitive-adapter
 sqldelight-androidDriver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-nativeDriver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-sqliteDriver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+sqldelight-asyncExtensions = { module = "app.cash.sqldelight:async-extensions", version.ref = "sqldelight" }
+sqldelight-webWorkerDriver = { module = "app.cash.sqldelight:web-worker-driver", version.ref = "sqldelight" }
+kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version = "0.5.0" }
 
 # Ktor client
 ktor-clientCore = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }

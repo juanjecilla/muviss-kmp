@@ -55,7 +55,7 @@ class SqlDelightProgressRepository(
         }
     }
 
-    private fun upsert(episodeId: EpisodeId, seen: Boolean, now: Long) {
+    private suspend fun upsert(episodeId: EpisodeId, seen: Boolean, now: Long) {
         queries.upsert(
             episodeId = episodeId.toString(),
             mediaId = episodeId.show.toString(),

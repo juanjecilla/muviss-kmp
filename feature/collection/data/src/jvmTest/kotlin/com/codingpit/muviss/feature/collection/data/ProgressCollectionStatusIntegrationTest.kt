@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.collection.data
 
+import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
@@ -93,7 +94,7 @@ class ProgressCollectionStatusIntegrationTest {
     @BeforeTest
     fun setUp() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.create(driver)
+        MuvissDatabase.Schema.synchronous().create(driver)
         val db = MuvissDatabase(driver)
         val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
         clock = StatusTestClock(0L)
