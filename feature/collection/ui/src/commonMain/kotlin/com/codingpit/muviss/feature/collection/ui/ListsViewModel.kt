@@ -1,0 +1,73 @@
+package com.codingpit.muviss.feature.collection.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.feature.collection.domain.ListsUseCases
+import com.codingpit.muviss.feature.collection.domain.MediaList
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+data class ListsUiState(
+    val loading: Boolean = true,
+    val lists: List<MediaList> = emptyList(),
+    val error: String? = null,
+    /** Non-null while the create-list dialog is open. */
+    val creating: Boolean = false,
+    /** The list currently being renamed, or null while no rename dialog is open. */
+    val editing: MediaList? = null,
+)
+
+/**
+ * Drives the Lists segment of the Collection screen (EPIC 17): observes
+ * every user-defined list (with live entry counts) and exposes
+ * create/rename/delete. Mirrors [CollectionViewModel]'s shape.
+ */
+class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
+
+    private val _state = MutableStateFlow(ListsUiState())
+    val state: StateFlow<ListsUiState> = _state.asStateFlow()
+
+    init {
+        listsUseCases.observeLists()
+            .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
+            .onEach { lists -> _state.update { it.copy(loading = false, lists = lists, error = null) } }
+            .launchIn(viewModelScope)
+    }
+
+    fun startCreating() = _state.update { it.copy(creating = true) }
+
+    fun cancelCreating() = _state.update { it.copy(creating = false) }
+
+    fun createList(name: String) {
+        viewModelScope.launch {
+            runCatching { listsUseCases.create(name) }
+            _state.update { it.copy(creating = false) }
+        }
+    }
+
+    fun startEditing(list: MediaList) = _state.update { it.copy(editing = list) }
+
+    fun cancelEditing() = _state.update { it.copy(editing = null) }
+
+    fun renameList(name: String) {
+        val listId = _state.value.editing?.id ?: return
+        viewModelScope.launch {
+            runCatching { listsUseCases.rename(listId, name) }
+            _state.update { it.copy(editing = null) }
+        }
+    }
+
+    fun deleteList(list: MediaList) {
+        viewModelScope.launch { listsUseCases.delete(list.id) }
+    }
+
+    private companion object {
+        const val DEFAULT_ERROR = "Something went wrong"
+    }
+}

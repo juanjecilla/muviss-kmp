@@ -4,8 +4,6 @@ package com.codingpit.muviss.feature.collection.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
-import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -17,7 +15,6 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -28,18 +25,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-
-private class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
-    override val default = d
-    override val io = d
-}
-
-private class FakeClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun advanceTo(newMillis: Long) {
-        millis = newMillis
-    }
-}
 
 /** Test double for [ProgressApi]: seen-episode sets are controlled per media id via [setSeen]. */
 private class FakeProgressApi : ProgressApi {

@@ -1,0 +1,30 @@
+-- EPIC 17 (custom lists): adds `mediaList` (a user-defined list, e.g.
+-- "Marathon 2026") and `listEntry` (its membership join table). Both are
+-- brand new tables, so — unlike EPIC 15's `1.sqm`, which altered an
+-- existing table — this migration is pure `CREATE TABLE`, nothing to
+-- backfill for existing installs. See `MediaList.sq`'s header for the
+-- table-naming rationale (`mediaList`, not `list`, to avoid colliding with
+-- `kotlin.collections.List`) and `ListsRepository`'s KDoc for the schema's
+-- orphaned-entry semantics.
+--
+-- Named `2.sqm`: the migration off the EPIC 10 baseline (version 1 -> 2)
+-- was `1.sqm` (EPIC 15's rating/note columns), so this one — version 2 -> 3
+-- — is named after the version it migrates FROM (see ADR 0008's amendment
+-- and `1.sqm`'s comment).
+CREATE TABLE mediaList (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    createdAtEpochMs INTEGER NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+);
+
+CREATE TABLE listEntry (
+    listId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    addedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    PRIMARY KEY (listId, mediaId)
+);

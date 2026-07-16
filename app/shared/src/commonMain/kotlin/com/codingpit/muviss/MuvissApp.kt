@@ -151,7 +151,7 @@ private fun MuvissScaffold(
             modifier = Modifier.padding(padding),
         ) {
             searchSection(navController)
-            collectionSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+            collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             profileSection()
             settingsSection(navController)

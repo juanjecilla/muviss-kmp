@@ -1,0 +1,139 @@
+-- User-defined lists (EPIC 17), TV Time-parity groupings like "Marathon
+-- 2026". Orthogonal to `collectionEntry`/`WatchStatus` (ADR 0005; see
+-- CONTEXT.md "WatchStatus"): a title can be saved to the library, a member
+-- of any number of lists, both, or neither, independently. Dirty-tracking
+-- columns mirror `collectionEntry`'s so a future sync change-log covers
+-- this table from day one (ADR 0008, CONTEXT.md "SyncEngine").
+--
+-- Table is named `mediaList`, not `list` — SQLDelight names a table's
+-- generated row class after the table (PascalCased), and `List` would
+-- collide with `kotlin.collections.List`. The domain layer's own
+-- `MediaList` class shares the generated row class's simple name for the
+-- same reason `CollectionEntry` (domain) and `CollectionEntry` (generated
+-- row) do; `SqlDelightListsRepository` aliases the import the same way
+-- `SqlDelightCollectionRepository` aliases `CollectionEntry`.
+--
+-- New table added after the EPIC 10 migration baseline, so it ships as
+-- `2.sqm` alongside this file — see that migration's comment for the
+-- "named after the version it migrates FROM" numbering rule (ADR 0008's
+-- amendment).
+CREATE TABLE mediaList (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    createdAtEpochMs INTEGER NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+);
+
+-- One row per (list, title) membership. Deliberately carries no title/
+-- poster copy of its own and no foreign key to `collectionEntry` — a title
+-- can be added to a list without ever being saved to the library. Reading
+-- contents back joins against `collectionEntry` for display fields (see
+-- `selectListContents` below and `ListsRepository`'s KDoc for the
+-- "orphaned entry" rule this produces: a row survives here even when its
+-- title has no live snapshot to join against, it's just hidden from the
+-- rendered result until one exists again).
+CREATE TABLE listEntry (
+    listId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    addedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    PRIMARY KEY (listId, mediaId)
+);
+
+-- List CRUD --
+
+-- [entryCount] only counts entries that currently have a live (non-deleted)
+-- `collectionEntry` snapshot to join against — the same rule
+-- `selectListContents` applies, so a list's badge count always matches
+-- what tapping into it shows (see `ListsRepository`'s KDoc).
+selectAllLists:
+SELECT
+    mediaList.*,
+    (
+        SELECT COUNT(*)
+        FROM listEntry
+        INNER JOIN collectionEntry ON collectionEntry.mediaId = listEntry.mediaId AND collectionEntry.deleted = 0
+        WHERE listEntry.listId = mediaList.id AND listEntry.deleted = 0
+    ) AS entryCount
+FROM mediaList
+WHERE mediaList.deleted = 0
+ORDER BY mediaList.createdAtEpochMs DESC;
+
+selectListById:
+SELECT *
+FROM mediaList
+WHERE id = :id;
+
+insertList:
+INSERT INTO mediaList(id, name, createdAtEpochMs, updatedAtEpochMs, isDirty, deleted)
+VALUES (?, ?, ?, ?, ?, ?);
+
+renameList:
+UPDATE mediaList
+SET name = :name, updatedAtEpochMs = :now, isDirty = 1
+WHERE id = :id;
+
+softDeleteList:
+UPDATE mediaList
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
+WHERE id = :id;
+
+-- Run alongside softDeleteList so a deleted list doesn't leave its entries
+-- live (cascading soft-delete — see ListsRepository.deleteList's KDoc).
+softDeleteEntriesForList:
+UPDATE listEntry
+SET deleted = 1, isDirty = 1
+WHERE listId = :listId AND deleted = 0;
+
+selectDirtyLists:
+SELECT * FROM mediaList WHERE isDirty = 1;
+
+-- List entries --
+
+selectEntry:
+SELECT *
+FROM listEntry
+WHERE listId = :listId AND mediaId = :mediaId;
+
+-- Hides rows with no live `collectionEntry` snapshot to join against — see
+-- `ListsRepository`'s KDoc for the orphaned-entry rule this epic's issue
+-- asked to be documented.
+selectListContents:
+SELECT
+    listEntry.mediaId AS mediaId,
+    listEntry.addedAtEpochMs AS addedAtEpochMs,
+    collectionEntry.title AS title,
+    collectionEntry.posterUrl AS posterUrl
+FROM listEntry
+INNER JOIN collectionEntry ON collectionEntry.mediaId = listEntry.mediaId AND collectionEntry.deleted = 0
+WHERE listEntry.listId = :listId AND listEntry.deleted = 0
+ORDER BY listEntry.addedAtEpochMs DESC;
+
+-- Every non-deleted list currently containing [mediaId] — drives Detail's
+-- "Add to list" checkmarks (EPIC 17).
+selectListIdsContainingMedia:
+SELECT listEntry.listId AS listId
+FROM listEntry
+INNER JOIN mediaList ON mediaList.id = listEntry.listId
+WHERE listEntry.mediaId = :mediaId AND listEntry.deleted = 0 AND mediaList.deleted = 0;
+
+-- Un-deletes on re-add (`deleted = 0` unconditionally), same convention as
+-- `CollectionEntry.sq`'s `upsert`. The caller (`SqlDelightListsRepository`)
+-- looks up any existing row first so it can preserve the original
+-- `addedAtEpochMs` across a remove-then-re-add, the same way
+-- `SqlDelightCollectionRepository.upsertSnapshot` preserves
+-- `addedAtEpochMs`.
+upsertEntry:
+INSERT OR REPLACE INTO listEntry(listId, mediaId, addedAtEpochMs, isDirty, deleted)
+VALUES (?, ?, ?, 1, 0);
+
+removeEntry:
+UPDATE listEntry
+SET deleted = 1, isDirty = 1
+WHERE listId = :listId AND mediaId = :mediaId;
+
+selectDirtyEntries:
+SELECT * FROM listEntry WHERE isDirty = 1;

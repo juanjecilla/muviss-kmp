@@ -24,6 +24,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,11 +37,64 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
+import com.codingpit.muviss.feature.collection.domain.MediaList
 import com.codingpit.muviss.models.MediaId
 
+/** The two segments the Collection tab switches between (EPIC 17 adds [LISTS] alongside the original library view) — mirrors Progress's Watch Next/Upcoming switch. */
+private enum class CollectionSegment {
+    LIBRARY,
+    LISTS,
+}
+
+private fun CollectionSegment.label(): String = when (this) {
+    CollectionSegment.LIBRARY -> "Library"
+    CollectionSegment.LISTS -> "Lists"
+}
+
+/**
+ * The Collection tab's root: a segmented switch between the saved-title
+ * "Library" grid and user-defined "Lists" (EPIC 17), rather than a sixth
+ * bottom-nav destination or a sixth tab mixed in with the status filters
+ * below it — lists aren't a status slice of the library, they're a
+ * different grouping entirely.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionScreen(
+    viewModel: CollectionViewModel,
+    listsViewModel: ListsViewModel,
+    onOpenDetail: (MediaId) -> Unit,
+    onOpenList: (MediaList) -> Unit,
+) {
+    var segment by remember { mutableStateOf(CollectionSegment.LIBRARY) }
+
+    Column(Modifier.fillMaxSize()) {
+        CollectionSegmentTabs(segment, onSelect = { segment = it })
+        when (segment) {
+            CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail)
+            CollectionSegment.LISTS -> ListsScreen(listsViewModel, onOpenList)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CollectionSegmentTabs(selected: CollectionSegment, onSelect: (CollectionSegment) -> Unit) {
+    val segments = CollectionSegment.entries
+    PrimaryScrollableTabRow(selectedTabIndex = segments.indexOf(selected)) {
+        segments.forEach { segment ->
+            Tab(
+                selected = segment == selected,
+                onClick = { onSelect(segment) },
+                text = { Text(segment.label()) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LibraryScreen(
     viewModel: CollectionViewModel,
     onOpenDetail: (MediaId) -> Unit,
 ) {

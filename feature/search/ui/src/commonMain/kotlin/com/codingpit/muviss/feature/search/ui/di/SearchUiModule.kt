@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.search.ui.di
 
+import com.codingpit.muviss.feature.search.ui.AddToListViewModel
 import com.codingpit.muviss.feature.search.ui.DetailViewModel
 import com.codingpit.muviss.feature.search.ui.SearchViewModel
 import com.codingpit.muviss.models.MediaId
@@ -11,4 +12,5 @@ import org.koin.dsl.module
 val searchUiModule: Module = module {
     viewModelOf(::SearchViewModel)
     viewModel { (id: MediaId) -> DetailViewModel(id, get(), get(), get(), get(), get()) }
+    viewModel { (id: MediaId) -> AddToListViewModel(id, get()) }
 }

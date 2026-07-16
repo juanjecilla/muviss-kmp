@@ -54,6 +54,8 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
+import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +65,7 @@ fun DetailScreen(
     onOpenDetail: (MediaId) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showAddToList by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -80,6 +83,9 @@ fun DetailScreen(
                                 Text(if (state.notificationsMuted) "🔕 Muted" else "🔔 Notify")
                             }
                         }
+                        // Lists (EPIC 17) are orthogonal to library membership, so this
+                        // is always available, saved or not.
+                        TextButton(onClick = { showAddToList = true }) { Text("+ List") }
                         TextButton(onClick = viewModel::toggleSaved) {
                             Text(if (state.saved) "Remove" else "Add to Library")
                         }
@@ -100,6 +106,12 @@ fun DetailScreen(
                 state.details != null -> DetailContent(state, viewModel, onOpenDetail)
             }
         }
+    }
+
+    val detailsMediaId = state.details?.summary?.id
+    if (showAddToList && detailsMediaId != null) {
+        val addToListViewModel = koinViewModel<AddToListViewModel> { parametersOf(detailsMediaId) }
+        AddToListDialog(addToListViewModel, onDismiss = { showAddToList = false })
     }
 }
 
