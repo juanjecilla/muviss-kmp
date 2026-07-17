@@ -46,6 +46,7 @@ import com.codingpit.muviss.feature.profile.domain.AvatarPreset
 import com.codingpit.muviss.feature.profile.domain.AvatarPresets
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ProfileStats
+import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import kotlinx.coroutines.launch
 import kotlin.math.round
 
@@ -55,10 +56,10 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(state.comingSoonMessage) {
-        val message = state.comingSoonMessage ?: return@LaunchedEffect
+    LaunchedEffect(state.sync.message) {
+        val message = state.sync.message ?: return@LaunchedEffect
         coroutineScope.launch { snackbarHostState.showSnackbar(message) }
-        viewModel.comingSoonMessageShown()
+        viewModel.syncMessageShown()
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
@@ -81,7 +82,12 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
                 onAvatarSelected = viewModel::onAvatarSelected,
             )
             HorizontalDivider()
-            SignInSection(onSignInClicked = viewModel::onSignInClicked)
+            SyncSection(
+                sync = state.sync,
+                onSignInClicked = viewModel::onSignInClicked,
+                onSyncNowClicked = viewModel::onSyncNowClicked,
+                onSignOutClicked = viewModel::onSignOutClicked,
+            )
             HorizontalDivider()
 
             if (state.stats.isEmpty) {
@@ -96,6 +102,21 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
                 currentName = state.profile.displayName,
                 onConfirm = viewModel::onDisplayNameConfirmed,
                 onDismiss = viewModel::onEditNameDismissed,
+            )
+        }
+
+        if (state.sync.isEnteringEmail) {
+            SignInEmailDialog(
+                onConfirm = viewModel::onSignInEmailConfirmed,
+                onDismiss = viewModel::onSignInEmailDismissed,
+            )
+        }
+
+        if (state.sync.isEnteringCode) {
+            SignInCodeDialog(
+                email = state.sync.pendingEmail.orEmpty(),
+                onConfirm = viewModel::onSignInCodeConfirmed,
+                onDismiss = viewModel::onSignInCodeDismissed,
             )
         }
     }
@@ -173,17 +194,93 @@ private fun EditNameDialog(
     )
 }
 
+/**
+ * Account/sync section (EPIC 9). Renders nothing when sync isn't configured
+ * for this build ([SyncAccountState.Unavailable]) — the entry point is
+ * hidden entirely rather than shown disabled, same contract as a blank
+ * Sentry DSN (CLAUDE.md).
+ */
 @Composable
-private fun SignInSection(onSignInClicked: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Account", style = MaterialTheme.typography.titleSmall)
-        Text(
-            "Everything stays on this device today.",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-        OutlinedButton(onClick = onSignInClicked) { Text("Sign in to sync") }
+private fun SyncSection(
+    sync: SyncUiState,
+    onSignInClicked: () -> Unit,
+    onSyncNowClicked: () -> Unit,
+    onSignOutClicked: () -> Unit,
+) {
+    when (val account = sync.account) {
+        SyncAccountState.Unavailable -> return
+
+        SyncAccountState.SignedOut -> {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Account", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Everything stays on this device today.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                OutlinedButton(onClick = onSignInClicked, enabled = !sync.syncing) { Text("Sign in to sync") }
+            }
+        }
+
+        is SyncAccountState.SignedIn -> {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Account", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    account.email ?: "Signed in",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(sync.lastSyncedLabel, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onSyncNowClicked, enabled = !sync.syncing) {
+                        Text(if (sync.syncing) "Syncing…" else "Sync now")
+                    }
+                    TextButton(onClick = onSignOutClicked, enabled = !sync.syncing) { Text("Sign out") }
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun SignInEmailDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sign in to sync") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("We'll email you a one-time code — no password needed.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = email, onValueChange = { email = it }, singleLine = true, label = { Text("Email") })
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(email) }, enabled = email.isNotBlank()) { Text("Send code") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun SignInCodeDialog(email: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var code by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Enter the code") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("We sent a code to $email.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = code, onValueChange = { code = it }, singleLine = true, label = { Text("Code") })
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(code) }, enabled = code.isNotBlank()) { Text("Verify") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

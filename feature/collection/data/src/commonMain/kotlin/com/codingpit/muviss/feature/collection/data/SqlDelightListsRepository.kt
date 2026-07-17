@@ -66,7 +66,7 @@ class SqlDelightListsRepository(
     override suspend fun deleteList(listId: String) = withContext(dispatchers.io) {
         val now = clock.nowEpochMs()
         queries.transaction {
-            queries.softDeleteEntriesForList(listId)
+            queries.softDeleteEntriesForList(now = now, listId = listId)
             queries.softDeleteList(now = now, id = listId)
         }
     }
@@ -75,12 +75,20 @@ class SqlDelightListsRepository(
     override suspend fun addEntry(listId: String, mediaId: MediaId) = withContext(dispatchers.io) {
         val id = mediaId.toString()
         val existing = queries.selectEntry(listId, id).awaitAsOneOrNull()
-        queries.upsertEntry(listId = listId, mediaId = id, addedAtEpochMs = existing?.addedAtEpochMs ?: clock.nowEpochMs())
+        val now = clock.nowEpochMs()
+        queries.upsertEntry(
+            listId = listId,
+            mediaId = id,
+            addedAtEpochMs = existing?.addedAtEpochMs ?: now,
+            updatedAtEpochMs = now,
+            isDirty = true,
+            deleted = false,
+        )
         Unit
     }
 
     override suspend fun removeEntry(listId: String, mediaId: MediaId) = withContext(dispatchers.io) {
-        queries.removeEntry(listId = listId, mediaId = mediaId.toString())
+        queries.removeEntry(now = clock.nowEpochMs(), listId = listId, mediaId = mediaId.toString())
         Unit
     }
 

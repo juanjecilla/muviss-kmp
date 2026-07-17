@@ -2,12 +2,16 @@
 -- notifications toggle (EPIC 8). Always exactly one row (id = 0); the
 -- repository calls `ensureRow` before it ever reads so `selectSettings`
 -- never has to model "no row yet" beyond first launch.
+--
+-- `lastSyncedAtEpochMs` was added in `3.sqm` (EPIC 9, sync): null means
+-- "never synced"; `SyncEngine` stamps it after a completed push+pull cycle.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
     language TEXT NOT NULL DEFAULT 'en-US',
     region TEXT NOT NULL DEFAULT 'US',
-    notificationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+    notificationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    lastSyncedAtEpochMs INTEGER
 );
 
 selectSettings:
@@ -30,3 +34,6 @@ UPDATE appSettings SET region = :region WHERE id = 0;
 
 updateNotificationsEnabled:
 UPDATE appSettings SET notificationsEnabled = :notificationsEnabled WHERE id = 0;
+
+updateLastSyncedAt:
+UPDATE appSettings SET lastSyncedAtEpochMs = :lastSyncedAtEpochMs WHERE id = 0;

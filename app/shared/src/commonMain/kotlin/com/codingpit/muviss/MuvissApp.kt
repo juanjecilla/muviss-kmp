@@ -11,8 +11,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -26,6 +29,7 @@ import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.di.rememberDatabaseDriverFactory
 import com.codingpit.muviss.feature.collection.ui.CollectionRoute
@@ -41,6 +45,7 @@ import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
+import kotlinx.coroutines.launch
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.core.module.Module
@@ -90,9 +95,31 @@ fun MuvissApp(
             ThemeMode.DARK -> true
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
+        AutoSyncOnForeground()
         MuvissTheme(darkTheme = darkTheme) {
             MuvissScaffold(deepLinkMediaId, onDeepLinkConsumed)
         }
+    }
+}
+
+/**
+ * Best-effort auto-sync (EPIC 9) whenever the app returns to the foreground.
+ * Lives here rather than in the profile feature because it must fire no
+ * matter which screen is visible — `ProfileViewModel`'s lifetime is scoped
+ * to the Profile screen's own back-stack entry, this is scoped to the whole
+ * app. Failures are swallowed: [SyncEngine.syncNow] already turns them into
+ * a `SyncOutcome.Failed` return value rather than throwing, and there's no
+ * single screen to surface a message on from here — the profile screen's
+ * own "last synced" label is the source of truth for whether it's working.
+ * A no-op when sync isn't signed in or not configured for this build (see
+ * `NoOpSyncBackend`/`SyncOutcome.NotSignedIn`).
+ */
+@Composable
+private fun AutoSyncOnForeground() {
+    val syncEngine = koinInject<SyncEngine>()
+    val coroutineScope = rememberCoroutineScope()
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        coroutineScope.launch { syncEngine.syncNow() }
     }
 }
 

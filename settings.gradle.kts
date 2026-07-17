@@ -40,6 +40,7 @@ include(":core:model")
 include(":core:database")
 include(":core:network")
 include(":core:designsystem")
+include(":core:sync")
 
 // Feature slices (each: :api / :domain / :data / :ui)
 listOf("search", "collection", "progress", "profile", "settings").forEach { feature ->

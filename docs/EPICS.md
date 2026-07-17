@@ -152,8 +152,8 @@ TV Time parity: user lists ("Marathon 2026", "With Ana").
 - Import from Trakt export / TV Time takeout / generic CSV: map external ids (IMDb/TMDB) → `MediaId`, create collection entries + progress ticks.
 - Groundwork shared with additional `MetadataProvider`s (TVmaze/Trakt) from the backlog.
 
-## EPIC 9 — Sync & Accounts — wave 8 (moved from post-v1 backlog)
-`SyncEngine` over the existing `isDirty` / `updatedAt` / soft-delete change-log; backend TBD (Supabase vs Firebase); optional auth; two-device convergence, tombstone propagation. Schedule after E15/E17 so the schema stops churning first. Issue #8.
+## EPIC 9 — Sync & Accounts ✅ — wave 8 (moved from post-v1 backlog)
+`SyncEngine` (`:core:sync`) over the existing `isDirty` / `updatedAt` / soft-delete change-log, behind a backend-agnostic `SyncBackend` seam; Supabase implemented first via plain Ktor (Firebase swappable later), optional email-OTP auth, last-write-wins conflict resolution, tombstone propagation. See ADR 0009 and `docs/SYNC.md`. Issue #8.
 
 ## Cross-cutting / backlog
 - Additional `MetadataProvider`s (TVmaze/Trakt) + cross-source reconciliation via IMDb id.

@@ -3,6 +3,7 @@ package com.codingpit.muviss.di
 import com.codingpit.muviss.core.common.di.commonModule
 import com.codingpit.muviss.core.database.di.databaseModule
 import com.codingpit.muviss.core.network.di.networkModule
+import com.codingpit.muviss.core.sync.di.syncModule
 import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
 import com.codingpit.muviss.feature.profile.data.di.profileDataModule
@@ -21,6 +22,7 @@ val appModules: List<Module> =
         commonModule,
         databaseModule,
         networkModule,
+        syncModule,
         searchDataModule,
         searchUiModule,
         collectionDataModule,

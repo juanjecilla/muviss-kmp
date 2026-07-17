@@ -17,6 +17,14 @@ SELECT *
 FROM episodeProgress
 WHERE mediaId = :mediaId;
 
+-- Single-row lookup by natural key — used by `SyncEngine` (EPIC 9) to read
+-- the current local value before deciding whether a pulled remote row wins
+-- the last-write-wins comparison.
+selectByEpisodeId:
+SELECT *
+FROM episodeProgress
+WHERE episodeId = :episodeId;
+
 -- Every row, unfiltered — used by settings' data export (EPIC 8), which
 -- dumps the whole table rather than one title's slice.
 selectAll:
@@ -47,4 +55,19 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 setSeen:
 UPDATE episodeProgress
 SET seen = :seen, updatedAtEpochMs = :now, isDirty = 1
+WHERE episodeId = :episodeId;
+
+-- EPIC 9 (sync): episode ticks are idempotent booleans with no soft-delete
+-- (un-ticking just sets seen = 0, that state change is itself what
+-- propagates — see ADR 0009), so there is no tombstone to worry about here,
+-- only a plain dirty change-log.
+selectDirty:
+SELECT *
+FROM episodeProgress
+WHERE isDirty = 1;
+
+-- Run by SyncEngine after a row has been successfully pushed.
+clearDirty:
+UPDATE episodeProgress
+SET isDirty = 0
 WHERE episodeId = :episodeId;

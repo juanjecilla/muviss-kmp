@@ -1,0 +1,33 @@
+# Multi-backend sync seam; Supabase first; last-write-wins conflict resolution
+
+EPIC 9 (issue #8) builds the `SyncEngine` CONTEXT.md and ADR 0002 named before any backend existed: an optional layer that pushes/pulls the local change-log (`isDirty`/`updatedAtEpochMs`/soft `deleted` on `collectionEntry`, `episodeProgress`, `mediaList`, `listEntry`) to a cloud backend. Three decisions, recorded together because they shaped each other.
+
+## The app must support more than one backend
+
+Per explicit product direction, the sync backend is not assumed to be permanent — a `SyncBackend` interface (`:core:sync`) is the extensibility seam, mirroring how `MetadataProvider` abstracts TMDB (ADR 0001): shaped around the change-log (`push(SyncChangeSet)` / `pull(since)`, session `Flow`, email-OTP auth), never around a specific vendor's SDK shape. `SupabaseSyncBackend` is the only implementation today; a `FirebaseSyncBackend` (or a self-hosted one, reviving `:server`) plugs in later by implementing the interface and rebinding it in `core/sync/di/SyncModule.kt` — no change to `SyncEngine`, the domain layer, or the UI.
+
+## Supabase, via plain Ktor — not the `supabase-kt` SDK
+
+Considered `supabase-kt` (the official Kotlin Multiplatform client). Rejected for now: its `wasmJs` target was at a `-beta` release at time of writing (`supabase-kt-wasm-js:3.2.0-beta-2`), and pulling a beta multiplatform dependency onto an already bleeding-edge toolchain (Kotlin 2.4, AGP 9) risked exactly the kind of version-fighting ADR 0008's amendments describe elsewhere in this codebase. The actual surface area needed is small — two GoTrue auth endpoints (`/otp`, `/verify`) plus PostgREST CRUD on four tables — well inside the "~15 lines we fully control" bar ADR 0007 already set for avoiding a dependency (BuildKonfig, there; `supabase-kt`, here). `SupabaseSyncBackend` calls PostgREST/GoTrue directly over the shared `HttpClient` from `:core:network`. Revisit if `supabase-kt`'s wasmJs target stabilizes and the hand-rolled client grows past what a "~6 endpoints" wrapper should be.
+
+Auth is anonymous-first at the interface level (`SyncBackend.signInAnonymously`) per ADR 0002's "no login required" default, but the shipped UI only wires the email one-time-code flow (`requestEmailOtp` / `verifyEmailOtp`) — simpler for a first release than an anonymous-session-upgrade dance, and it directly satisfies issue #8's acceptance criterion ("sign in on fresh install restores full library"). Anonymous sign-in stays available on the interface for a future entry point.
+
+## Conflict resolution: last-write-wins, whole row, per table
+
+Every synced row already carries `updatedAtEpochMs` (ADR 0002's reason for adding it years before this epic). `SyncEngine` applies one rule everywhere: a pulled remote row overwrites the local row only when its `updatedAtEpochMs` is strictly greater; otherwise the local row is left untouched. This is intentionally coarse — whole-row, not per-field — accepted because:
+
+- It makes tombstone propagation and "never resurrect" the *same* rule, not a special case: a soft-deleted row's `deleted = true` is just another field on the row, so an older remote write (deleted or not) can never overwrite a newer local tombstone, and a newer remote tombstone always propagates.
+- `episodeProgress` has no `deleted` column at all — ticks are idempotent booleans (un-ticking sets `seen = false`, which *is* the change that propagates), so there is nothing to merge beyond LWW there regardless.
+- Richer per-field/CRDT merging is real complexity this app's use case (a personal, mostly-single-user-at-a-time tracker, not a live collaborative doc) doesn't need yet. Revisit only if concurrent multi-device conflicts on the *same* row turn out to be common in practice.
+
+**Engine order is push, then pull** (`SyncEngine.syncNow`). A push is never gated on first reading the remote value — it would need a read-before-write round trip PostgREST doesn't give you cheaply. Instead, correctness under out-of-order pushes is enforced **server-side**: each synced table has a trigger that discards an incoming write whose `updated_at_epoch_ms` is older than what's already stored (see `docs/SYNC.md`'s schema). This keeps the client-side `SupabasePostgrestClient.upsert` a single unconditional `Prefer: resolution=merge-duplicates` POST — no read-modify-write — while still guaranteeing two devices converge on the row with the latest timestamp regardless of which one's push physically arrives first. The pull side enforces the same rule again, client-side, because pulling is inherently a compare-then-maybe-apply operation already (see `SyncEngine.applyRemote`).
+
+Sync stays entirely optional: no `SUPABASE_URL`/`SUPABASE_ANON_KEY` in `local.properties` → `SyncAvailability.isConfigured()` is false → `di/SyncModule.kt` binds `NoOpSyncBackend` instead of `SupabaseSyncBackend`, and the profile screen hides the sync section entirely — the same "blank generated key, feature quietly absent" contract ADR 0007 established for the Sentry DSN.
+
+## Consequences
+
+- `:core:sync` is a new core module (infra, like `:core:database`/`:core:network`), not a `feature/*` vertical slice — it has no user-facing screen of its own, `feature/profile/data` is the only place that depends on it directly (via `CoreSyncRepository`), keeping `:core:sync`'s Ktor/Supabase specifics out of the domain/UI layers per ADR 0004.
+- `listEntry` gained its own `updatedAtEpochMs` (it only had `addedAtEpochMs` before, which never changes after creation) and `appSettings` gained `lastSyncedAtEpochMs` — both via `3.sqm`, alongside a new `syncAccount` table caching the signed-in session locally. See that migration's comment in `core/database/.../3.sqm`.
+- The local session cache (`syncAccount`) stores its access/refresh tokens in plaintext SQLite — the same trust boundary as the rest of this on-device, non-shared database (no keychain/keystore wrapper exists in this codebase yet). Acceptable for a personal tracker's first sync pass; a follow-up could move it behind platform secure storage (Android Keystore, iOS Keychain) without changing `SyncSessionStore`'s interface.
+- `notificationsMuted` on `collectionEntry` is excluded from what syncs (see `SyncChangeSet.CollectionEntryChange`'s KDoc) — a per-device notification preference, not user library data.
+- Not yet verified against a live Supabase project (no test project provisioned for this pass) — `SyncEngine` is tested against an in-memory `FakeSyncBackend` only (no live network calls in tests, by design); the manual steps to stand up a real project are in `docs/SYNC.md`.

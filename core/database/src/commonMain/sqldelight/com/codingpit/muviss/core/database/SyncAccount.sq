@@ -1,0 +1,43 @@
+-- Single-row local session cache for EPIC 9 (sync & accounts). Mirrors
+-- `Profile.sq`/`AppSettings.sq`'s singleton-row convention (id = 0) so a
+-- cold launch can present as still signed in without a network round trip —
+-- `SyncEngine`/`SyncBackend` read this on startup before doing anything
+-- else. New table added after the EPIC 10 migration baseline, so it ships
+-- in `3.sqm` alongside this file (see that migration's comment).
+--
+-- `backendId` records which `SyncBackend` implementation the session
+-- belongs to (`"supabase"` today) — the multi-backend seam ADR 0009
+-- describes: a session from one backend is never silently reused against
+-- another. Tokens are stored in plaintext, the same trust boundary as the
+-- rest of this on-device, non-shared SQLite database (no keychain/keystore
+-- wrapper exists in this codebase yet); see ADR 0009's "Consequences" for
+-- the follow-up this defers.
+CREATE TABLE syncAccount (
+    id INTEGER NOT NULL PRIMARY KEY,
+    backendId TEXT,
+    userId TEXT,
+    email TEXT,
+    accessToken TEXT,
+    refreshToken TEXT,
+    expiresAtEpochMs INTEGER
+);
+
+selectAccount:
+SELECT *
+FROM syncAccount
+WHERE id = 0;
+
+ensureRow:
+INSERT OR IGNORE INTO syncAccount(id, backendId, userId, email, accessToken, refreshToken, expiresAtEpochMs)
+VALUES (0, NULL, NULL, NULL, NULL, NULL, NULL);
+
+saveSession:
+UPDATE syncAccount
+SET backendId = :backendId, userId = :userId, email = :email, accessToken = :accessToken,
+    refreshToken = :refreshToken, expiresAtEpochMs = :expiresAtEpochMs
+WHERE id = 0;
+
+clearSession:
+UPDATE syncAccount
+SET backendId = NULL, userId = NULL, email = NULL, accessToken = NULL, refreshToken = NULL, expiresAtEpochMs = NULL
+WHERE id = 0;

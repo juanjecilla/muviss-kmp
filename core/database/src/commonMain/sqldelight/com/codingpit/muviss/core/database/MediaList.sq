@@ -34,12 +34,21 @@ CREATE TABLE mediaList (
 -- "orphaned entry" rule this produces: a row survives here even when its
 -- title has no live snapshot to join against, it's just hidden from the
 -- rendered result until one exists again).
+--
+-- `updatedAtEpochMs` was added in `3.sqm` (EPIC 9, sync): the only
+-- dirty-tracked table that didn't already have a "last touched" column
+-- distinct from its creation timestamp — see that migration's comment.
+-- Declared last (not next to `addedAtEpochMs`) because `verifyMigrations`
+-- checks the fresh-create schema against the migrated one *including*
+-- column ordinal position, and `ALTER TABLE ADD COLUMN` (`3.sqm`) always
+-- appends at the end.
 CREATE TABLE listEntry (
     listId TEXT NOT NULL,
     mediaId TEXT NOT NULL,
     addedAtEpochMs INTEGER NOT NULL,
     isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    updatedAtEpochMs INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (listId, mediaId)
 );
 
@@ -71,6 +80,14 @@ insertList:
 INSERT INTO mediaList(id, name, createdAtEpochMs, updatedAtEpochMs, isDirty, deleted)
 VALUES (?, ?, ?, ?, ?, ?);
 
+-- EPIC 9 (sync): `SyncEngine` applies a pulled remote row that may already
+-- exist locally (a second pull for the same list) — unlike [insertList],
+-- which only ever runs for a brand-new local list, this must tolerate a
+-- primary-key conflict.
+upsertList:
+INSERT OR REPLACE INTO mediaList(id, name, createdAtEpochMs, updatedAtEpochMs, isDirty, deleted)
+VALUES (?, ?, ?, ?, ?, ?);
+
 renameList:
 UPDATE mediaList
 SET name = :name, updatedAtEpochMs = :now, isDirty = 1
@@ -85,11 +102,14 @@ WHERE id = :id;
 -- live (cascading soft-delete — see ListsRepository.deleteList's KDoc).
 softDeleteEntriesForList:
 UPDATE listEntry
-SET deleted = 1, isDirty = 1
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
 WHERE listId = :listId AND deleted = 0;
 
 selectDirtyLists:
 SELECT * FROM mediaList WHERE isDirty = 1;
+
+clearDirtyList:
+UPDATE mediaList SET isDirty = 0 WHERE id = :id;
 
 -- List entries --
 
@@ -120,20 +140,26 @@ FROM listEntry
 INNER JOIN mediaList ON mediaList.id = listEntry.listId
 WHERE listEntry.mediaId = :mediaId AND listEntry.deleted = 0 AND mediaList.deleted = 0;
 
--- Un-deletes on re-add (`deleted = 0` unconditionally), same convention as
--- `CollectionEntry.sq`'s `upsert`. The caller (`SqlDelightListsRepository`)
--- looks up any existing row first so it can preserve the original
--- `addedAtEpochMs` across a remove-then-re-add, the same way
--- `SqlDelightCollectionRepository.upsertSnapshot` preserves
--- `addedAtEpochMs`.
+-- Un-deletes on re-add when the local caller passes `deleted = false`, same
+-- convention as `CollectionEntry.sq`'s `upsert`. The caller
+-- (`SqlDelightListsRepository`) looks up any existing row first so it can
+-- preserve the original `addedAtEpochMs` across a remove-then-re-add, the
+-- same way `SqlDelightCollectionRepository.upsertSnapshot` preserves
+-- `addedAtEpochMs`. `isDirty`/`deleted` are bind parameters (not the
+-- literal `1, 0` they used to be) so `SyncEngine` (EPIC 9) can reuse this
+-- same query to apply a pulled remote row — including a remote tombstone
+-- (`deleted = true`) — with `isDirty = false`.
 upsertEntry:
-INSERT OR REPLACE INTO listEntry(listId, mediaId, addedAtEpochMs, isDirty, deleted)
-VALUES (?, ?, ?, 1, 0);
+INSERT OR REPLACE INTO listEntry(listId, mediaId, addedAtEpochMs, updatedAtEpochMs, isDirty, deleted)
+VALUES (?, ?, ?, ?, ?, ?);
 
 removeEntry:
 UPDATE listEntry
-SET deleted = 1, isDirty = 1
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
 WHERE listId = :listId AND mediaId = :mediaId;
 
 selectDirtyEntries:
 SELECT * FROM listEntry WHERE isDirty = 1;
+
+clearDirtyEntry:
+UPDATE listEntry SET isDirty = 0 WHERE listId = :listId AND mediaId = :mediaId;

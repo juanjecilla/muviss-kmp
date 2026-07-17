@@ -1,0 +1,39 @@
+-- EPIC 9 (sync & accounts): three changes needed to support the SyncEngine
+-- (see ADR 0009, docs/SYNC.md).
+--
+-- 1. `listEntry` never carried its own `updatedAtEpochMs` (only
+--    `addedAtEpochMs`, which never changes after creation) — every other
+--    dirty-tracked table (`collectionEntry`, `episodeProgress`, `mediaList`)
+--    already had one from EPIC 10's baseline or EPIC 17's `2.sqm`. Sync's
+--    last-write-wins merge needs a real "when did this row last change"
+--    column to compare against the remote row, so this adds one, backfilled
+--    from `addedAtEpochMs` for existing rows (the best available proxy: a
+--    row that predates this migration has never been individually touched
+--    since creation, by definition — `removeEntry`/`softDeleteEntriesForList`
+--    are the only other writers, and any pre-migration soft-delete is, at
+--    worst, treated as slightly staler than it really is, which only makes
+--    the LWW merge *more* conservative, never wrong in the other direction).
+-- 2. `appSettings` gets `lastSyncedAtEpochMs` (nullable — null means "never
+--    synced"), read/written by `SyncEngine` after a completed push+pull
+--    cycle. Deliberately not modeled as its own table: this is exactly the
+--    kind of single-row app-wide state `appSettings` already exists for.
+-- 3. `syncAccount` is a new singleton-row table (id = 0, same convention as
+--    `profile`/`appSettings`) persisting the signed-in session locally, so a
+--    cold app launch can present as still signed in without a network round
+--    trip. See `SyncAccount.sq` for the column rationale and ADR 0009 for
+--    why plaintext local storage was accepted here (same trust boundary as
+--    the rest of this on-device database).
+ALTER TABLE listEntry ADD COLUMN updatedAtEpochMs INTEGER NOT NULL DEFAULT 0;
+UPDATE listEntry SET updatedAtEpochMs = addedAtEpochMs;
+
+ALTER TABLE appSettings ADD COLUMN lastSyncedAtEpochMs INTEGER;
+
+CREATE TABLE syncAccount (
+    id INTEGER NOT NULL PRIMARY KEY,
+    backendId TEXT,
+    userId TEXT,
+    email TEXT,
+    accessToken TEXT,
+    refreshToken TEXT,
+    expiresAtEpochMs INTEGER
+);

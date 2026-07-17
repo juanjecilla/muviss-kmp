@@ -8,12 +8,18 @@ import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
+import com.codingpit.muviss.feature.profile.domain.ObserveLastSyncedAtUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileUseCase
+import com.codingpit.muviss.feature.profile.domain.ObserveSyncAccountUseCase
 import com.codingpit.muviss.feature.profile.domain.ProfileActions
 import com.codingpit.muviss.feature.profile.domain.ProfileRepository
 import com.codingpit.muviss.feature.profile.domain.SetAvatarUseCase
 import com.codingpit.muviss.feature.profile.domain.SetDisplayNameUseCase
+import com.codingpit.muviss.feature.profile.domain.SyncAccountState
+import com.codingpit.muviss.feature.profile.domain.SyncActions
+import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
+import com.codingpit.muviss.feature.profile.domain.SyncRepository
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -32,7 +38,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private class FakeProfileRepository(initial: LocalProfile = LocalProfile.DEFAULT) : ProfileRepository {
@@ -82,6 +87,42 @@ private class FixedClock(private val epochDay: Long) : AppClock {
     }
 }
 
+private class FakeSyncRepository(
+    override val isAvailable: Boolean = true,
+    initialAccount: SyncAccountState = SyncAccountState.SignedOut,
+) : SyncRepository {
+    val account = MutableStateFlow(initialAccount)
+    val lastSyncedAt = MutableStateFlow<Long?>(null)
+    var requestedEmail: String? = null
+    var verifiedCode: String? = null
+    var requestSignInCodeResult: Result<Unit> = Result.success(Unit)
+    var verifySignInCodeResult: Result<Unit> = Result.success(Unit)
+    var syncNowResult: SyncOutcomeSummary = SyncOutcomeSummary.Success(1_000L)
+    var signOutCalled = false
+
+    override fun observeAccount(): Flow<SyncAccountState> = account
+
+    override fun observeLastSyncedAt(): Flow<Long?> = lastSyncedAt
+
+    override suspend fun requestSignInCode(email: String): Result<Unit> {
+        requestedEmail = email
+        return requestSignInCodeResult
+    }
+
+    override suspend fun verifySignInCode(email: String, code: String): Result<Unit> {
+        verifiedCode = code
+        if (verifySignInCodeResult.isSuccess) account.value = SyncAccountState.SignedIn(email)
+        return verifySignInCodeResult
+    }
+
+    override suspend fun signOut() {
+        signOutCalled = true
+        account.value = SyncAccountState.SignedOut
+    }
+
+    override suspend fun syncNow(): SyncOutcomeSummary = syncNowResult
+}
+
 class ProfileViewModelTest {
 
     @BeforeTest
@@ -94,10 +135,13 @@ class ProfileViewModelTest {
         profileRepository: FakeProfileRepository = FakeProfileRepository(),
         collectionApi: FakeCollectionApi = FakeCollectionApi(),
         progressApi: FakeProgressApi = FakeProgressApi(),
+        syncRepository: FakeSyncRepository = FakeSyncRepository(),
     ): ProfileViewModel = ProfileViewModel(
         ObserveProfileUseCase(profileRepository),
         ObserveProfileStatsUseCase(collectionApi, progressApi, FixedClock(epochDay = 0)),
         ProfileActions(SetDisplayNameUseCase(profileRepository), SetAvatarUseCase(profileRepository)),
+        SyncActions(syncRepository, ObserveSyncAccountUseCase(syncRepository), ObserveLastSyncedAtUseCase(syncRepository)),
+        FixedClock(epochDay = 0),
     )
 
     @Test
@@ -152,15 +196,103 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun onSignInClicked_surfaces_a_one_shot_coming_soon_message() = runTest {
-        val vm = viewModel()
+    fun onSignInClicked_opens_the_email_step_when_sync_is_available() = runTest {
+        val vm = viewModel(syncRepository = FakeSyncRepository(isAvailable = true))
         advanceUntilIdle()
 
         vm.onSignInClicked()
-        assertEquals("Sign in — coming soon", vm.state.value.comingSoonMessage)
 
-        vm.comingSoonMessageShown()
-        assertNull(vm.state.value.comingSoonMessage)
+        assertTrue(vm.state.value.sync.isEnteringEmail)
+    }
+
+    @Test
+    fun onSignInClicked_surfaces_a_message_instead_when_sync_is_unavailable() = runTest {
+        val vm = viewModel(syncRepository = FakeSyncRepository(isAvailable = false))
+        advanceUntilIdle()
+
+        vm.onSignInClicked()
+
+        assertEquals(false, vm.state.value.sync.isEnteringEmail)
+        assertEquals("Sync isn't set up for this build", vm.state.value.sync.message)
+    }
+
+    @Test
+    fun onSignInEmailConfirmed_requests_a_code_and_opens_the_code_step() = runTest {
+        val repository = FakeSyncRepository()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        vm.onSignInClicked()
+
+        vm.onSignInEmailConfirmed("person@example.com")
+        advanceUntilIdle()
+
+        assertEquals("person@example.com", repository.requestedEmail)
+        assertEquals(false, vm.state.value.sync.isEnteringEmail)
+        assertTrue(vm.state.value.sync.isEnteringCode)
+        assertEquals("person@example.com", vm.state.value.sync.pendingEmail)
+    }
+
+    @Test
+    fun onSignInCodeConfirmed_signs_in_on_success_and_triggers_a_sync() = runTest {
+        val repository = FakeSyncRepository()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        vm.onSignInClicked()
+        vm.onSignInEmailConfirmed("person@example.com")
+        advanceUntilIdle()
+
+        vm.onSignInCodeConfirmed("123456")
+        advanceUntilIdle()
+
+        assertEquals("123456", repository.verifiedCode)
+        assertEquals(false, vm.state.value.sync.isEnteringCode)
+        assertEquals(SyncAccountState.SignedIn("person@example.com"), vm.state.value.sync.account)
+    }
+
+    @Test
+    fun onSignInCodeConfirmed_keeps_the_dialog_open_on_a_wrong_code() = runTest {
+        val repository = FakeSyncRepository().apply {
+            verifySignInCodeResult = Result.failure(IllegalStateException("Invalid code"))
+        }
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        vm.onSignInClicked()
+        vm.onSignInEmailConfirmed("person@example.com")
+        advanceUntilIdle()
+
+        vm.onSignInCodeConfirmed("000000")
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.sync.isEnteringCode)
+        assertEquals("Invalid code", vm.state.value.sync.message)
+    }
+
+    @Test
+    fun onSyncNowClicked_surfaces_the_outcome_message() = runTest {
+        val repository = FakeSyncRepository(initialAccount = SyncAccountState.SignedIn("person@example.com")).apply {
+            syncNowResult = SyncOutcomeSummary.Success(5_000L)
+        }
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onSyncNowClicked()
+        advanceUntilIdle()
+
+        assertEquals("Synced", vm.state.value.sync.message)
+        assertEquals(false, vm.state.value.sync.syncing)
+    }
+
+    @Test
+    fun onSignOutClicked_returns_to_signed_out() = runTest {
+        val repository = FakeSyncRepository(initialAccount = SyncAccountState.SignedIn("person@example.com"))
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onSignOutClicked()
+        advanceUntilIdle()
+
+        assertTrue(repository.signOutCalled)
+        assertEquals(SyncAccountState.SignedOut, vm.state.value.sync.account)
     }
 
     @Test

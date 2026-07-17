@@ -45,5 +45,5 @@ _Avoid_: state, phase.
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 
 **SyncEngine**:
-The (not-yet-built) abstraction that pushes/pulls local changes to an optional cloud backend. Local data carries `updatedAt`/`isDirty`/soft-delete columns so a change-log exists before any backend is chosen.
+The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row.
 _Avoid_: backend, cloud (those are vendors behind this seam).

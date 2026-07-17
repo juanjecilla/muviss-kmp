@@ -25,6 +25,7 @@ Dependency rule: **`ui → domain ← data`**; cross-feature deps go through the
 :core:model         WatchProgress + WatchStatusCalculator (status derivation)
 :core:database      SQLDelight schema + drivers (expect/actual)
 :core:network       Ktor client + MetadataProvider + TmdbProvider
+:core:sync          SyncBackend seam + SyncEngine + Supabase impl (ADR 0009)
 :core:designsystem  Compose theme + shared components (PosterImage, MuvissIcons)
 :app:shared         app shell: MuvissApp() — Koin start, theme, NavHost, bottom bar
 :app:{androidApp,desktopApp,webApp,iosApp}   thin platform hosts
@@ -37,7 +38,7 @@ Build boilerplate is in the included build `build-logic/`: apply `id("muviss.kmp
 
 ## Adding a feature (copy the search slice)
 
-1. Create `:feature:<name>:{api,domain,data,ui}` mirroring `feature/search/*` (search, collection, progress, and settings are real; `profile` is still a stub).
+1. Create `:feature:<name>:{api,domain,data,ui}` mirroring `feature/search/*` (all five existing slices are real implementations).
 2. Register the modules in `settings.gradle.kts` (the `listOf(...)` loop) and add the feature name.
 3. Add the feature's Koin modules to `AppModules.kt`, and its `Route` + `Section` to `MuvissApp.kt`.
 4. Depend on a peer only via its `:api`.

@@ -96,3 +96,9 @@ selectDirty:
 SELECT *
 FROM collectionEntry
 WHERE isDirty = 1;
+
+-- Run by SyncEngine after a row has been successfully pushed (EPIC 9).
+clearDirty:
+UPDATE collectionEntry
+SET isDirty = 0
+WHERE mediaId = :mediaId;
