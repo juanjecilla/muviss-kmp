@@ -1,5 +1,8 @@
 package com.codingpit.muviss.feature.progress.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,33 +13,49 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.launch
 
 /** The two segments the Progress tab switches between (EPIC 14 adds [UPCOMING] alongside the original watch-next view). */
 private enum class ProgressTab {
@@ -54,7 +73,6 @@ private fun ProgressTab.label(): String = when (this) {
  * "Upcoming" (EPIC 14) rather than a sixth bottom-nav destination — both are
  * views over the same saved-shows episode data, just sliced differently.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProgressScreen(
     watchNextViewModel: ProgressViewModel,
@@ -64,25 +82,20 @@ fun ProgressScreen(
     var selectedTab by remember { mutableStateOf(ProgressTab.WATCH_NEXT) }
 
     Column(Modifier.fillMaxSize()) {
-        ProgressTabs(selectedTab, onSelect = { selectedTab = it })
+        Text(
+            "Progress",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s),
+        )
+        SegmentedSwitch(
+            options = ProgressTab.entries.map { it.label() },
+            selectedIndex = ProgressTab.entries.indexOf(selectedTab),
+            onSelect = { selectedTab = ProgressTab.entries[it] },
+            modifier = Modifier.padding(horizontal = MuvissSpacing.l),
+        )
         when (selectedTab) {
             ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail)
             ProgressTab.UPCOMING -> UpcomingScreen(upcomingViewModel, onOpenDetail)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ProgressTabs(selected: ProgressTab, onSelect: (ProgressTab) -> Unit) {
-    val tabs = ProgressTab.entries
-    PrimaryScrollableTabRow(selectedTabIndex = tabs.indexOf(selected)) {
-        tabs.forEach { tab ->
-            Tab(
-                selected = tab == selected,
-                onClick = { onSelect(tab) },
-                text = { Text(tab.label()) },
-            )
         }
     }
 }
@@ -94,38 +107,45 @@ private fun WatchNextScreen(
     onOpenDetail: (MediaId) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
-    PullToRefreshBox(
-        isRefreshing = state.refreshing,
-        onRefresh = viewModel::refresh,
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            when {
-                state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
-
-                state.error != null -> ProgressErrorState(state.error!!, onRetry = viewModel::refresh)
-
-                state.items.isEmpty() -> Text(
-                    "Nothing to watch next — add a show to your Library and start watching to see it here.",
-                    modifier = Modifier.padding(top = 32.dp, start = 24.dp, end = 24.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-
-                else -> WatchNextList(state.items, onTick = viewModel::tickNext, onOpenDetail = onOpenDetail)
-            }
+    // One-tap tick with undo (design doc, Motion + Progress screen): tick
+    // persists immediately; the snackbar's Undo reverts it via the VM.
+    val onTick: (WatchNextItem) -> Unit = tick@{ item ->
+        val episode = item.nextEpisode ?: return@tick
+        viewModel.tickNext(item)
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = "Marked S${episode.seasonNumber}E${episode.episodeNumber} seen",
+                actionLabel = "Undo",
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
         }
     }
-}
 
-@Composable
-private fun ProgressErrorState(message: String, onRetry: () -> Unit) {
-    Column(
-        Modifier.padding(top = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(message, style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = onRetry) { Text("Retry") }
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        PullToRefreshBox(
+            isRefreshing = state.refreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                when {
+                    state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
+
+                    state.error != null -> ErrorState(state.error!!, onRetry = viewModel::refresh)
+
+                    state.items.isEmpty() -> EmptyState(
+                        icon = MuvissIcons.WatchNext,
+                        title = "Nothing to watch next",
+                        body = "Add a show to your Library and start watching to see it here.",
+                    )
+
+                    else -> WatchNextList(state.items, onTick = onTick, onOpenDetail = onOpenDetail)
+                }
+            }
+        }
     }
 }
 
@@ -137,8 +157,8 @@ private fun WatchNextList(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
+        contentPadding = PaddingValues(MuvissSpacing.m),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
             WatchNextRow(item, onTick = { onTick(item) }, onClick = { onOpenDetail(item.mediaId) })
@@ -152,33 +172,89 @@ private fun WatchNextRow(
     onTick: () -> Unit,
     onClick: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(8.dp), tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(
-            Modifier.clickable(onClick = onClick).padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.clickable(onClick = onClick).padding(9.dp),
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             PosterImage(
                 url = item.posterUrl,
                 title = item.title,
-                modifier = Modifier.width(56.dp).height(84.dp).clip(RoundedCornerShape(6.dp)),
+                modifier = Modifier.width(44.dp).height(66.dp).clip(MaterialTheme.shapes.small),
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
                 Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val episode = item.nextEpisode
-                if (episode != null) {
-                    Text(
-                        "S${episode.seasonNumber}E${episode.episodeNumber} · ${episode.name}",
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                Text(
+                    text = if (episode != null) {
+                        "S${episode.seasonNumber} E${episode.episodeNumber} · ${episode.name}"
+                    } else {
+                        "Caught up — waiting on new episodes"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                item.progress?.let { progress ->
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        color = MaterialTheme.colorScheme.tertiary,
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        drawStopIndicator = {},
+                        modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
                     )
-                } else {
-                    Text("Caught up — waiting on new episodes", style = MaterialTheme.typography.bodySmall)
                 }
             }
             if (item.nextEpisode != null) {
-                Button(onClick = onTick) { Text("Mark seen") }
+                TickButton(onTick, label = "${item.title} next episode")
             }
         }
+    }
+}
+
+/** 44dp amber filled tick: scale pop (0.6→1.15→1.0) + haptic on tap; the row then advances reactively. */
+@Composable
+private fun TickButton(onTick: () -> Unit, label: String) {
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val scale = remember { Animatable(1f) }
+    IconButton(
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            scope.launch {
+                scale.snapTo(0.6f)
+                scale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = keyframes {
+                        durationMillis = 200
+                        1.15f at 120
+                        1f at 200
+                    },
+                )
+            }
+            onTick()
+        },
+        modifier = Modifier
+            .size(44.dp)
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            }
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary)
+            .semantics { contentDescription = "Mark $label watched" },
+    ) {
+        Icon(
+            MuvissIcons.Check,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }

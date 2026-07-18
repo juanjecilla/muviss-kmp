@@ -13,6 +13,7 @@ import com.codingpit.muviss.feature.progress.domain.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,7 +37,12 @@ data class WatchNextItem(
     val title: String,
     val posterUrl: String?,
     val nextEpisode: Episode?,
-)
+    val seenCount: Int = 0,
+    val airedCount: Int = 0,
+) {
+    /** Fraction of aired episodes seen, for the row's sage progress bar; null when nothing aired. */
+    val progress: Float? get() = if (airedCount > 0) seenCount / airedCount.toFloat() else null
+}
 
 data class ProgressUiState(
     val loading: Boolean = true,
@@ -81,6 +87,11 @@ class ProgressViewModel(
         viewModelScope.launch { toggleEpisodeSeen(next.id, true) }
     }
 
+    /** Reverts a tick — the undo-snackbar action; the reactive pipeline re-surfaces the episode. */
+    fun untick(episodeId: EpisodeId) {
+        viewModelScope.launch { toggleEpisodeSeen(episodeId, false) }
+    }
+
     /** Re-fetches every cached show's episode catalog (picks up newly aired episodes); the pull-to-refresh action. */
     fun refresh() {
         viewModelScope.launch {
@@ -100,8 +111,17 @@ class ProgressViewModel(
         catalogCache.catalogs,
     ) { seen, catalogMap ->
         val seasons = catalogMap[summary.mediaId].orEmpty()
-        val next = EpisodeOrdering.nextUnseen(seasons, seen, clock.todayEpochDay())
-        WatchNextItem(summary.mediaId, summary.title, summary.posterUrl, next)
+        val today = clock.todayEpochDay()
+        val next = EpisodeOrdering.nextUnseen(seasons, seen, today)
+        val aired = EpisodeOrdering.flatten(seasons).filter { ep -> ep.airDateEpochDay?.let { it <= today } == true }
+        WatchNextItem(
+            mediaId = summary.mediaId,
+            title = summary.title,
+            posterUrl = summary.posterUrl,
+            nextEpisode = next,
+            seenCount = aired.count { it.id in seen },
+            airedCount = aired.size,
+        )
     }
 
     private fun loadMissingCatalogs(mediaIds: List<MediaId>) {

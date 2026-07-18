@@ -158,6 +158,40 @@ class ProgressViewModelTest {
     }
 
     @Test
+    fun untick_reverts_a_tick_and_resurfaces_the_episode() = runTest {
+        val repository = FakeProgressRepository()
+        val vm = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
+        advanceUntilIdle()
+
+        vm.tickNext(vm.state.value.items.single())
+        advanceUntilIdle()
+        assertEquals(ep2, vm.state.value.items.single().nextEpisode?.id)
+
+        vm.untick(ep1)
+        advanceUntilIdle()
+
+        assertEquals(listOf(ep1 to true, ep1 to false), repository.tickedEpisodes)
+        assertEquals(ep1, vm.state.value.items.single().nextEpisode?.id)
+    }
+
+    @Test
+    fun progress_counts_seen_aired_episodes() = runTest {
+        val repository = FakeProgressRepository()
+        val vm = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
+        advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.items.single().seenCount)
+        assertEquals(2, vm.state.value.items.single().airedCount)
+
+        vm.tickNext(vm.state.value.items.single())
+        advanceUntilIdle()
+
+        val item = vm.state.value.items.single()
+        assertEquals(1, item.seenCount)
+        assertEquals(0.5f, item.progress)
+    }
+
+    @Test
     fun nextEpisode_is_null_once_fully_caught_up_on_aired_episodes() = runTest {
         val repository = FakeProgressRepository()
         val vm = viewModel(FakeCollectionApi(listOf(summary(show))), repository)

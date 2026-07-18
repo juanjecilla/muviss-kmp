@@ -13,13 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,7 +27,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.progress.domain.UpcomingBucket
 import com.codingpit.muviss.models.MediaId
 
@@ -54,8 +55,8 @@ fun UpcomingScreen(
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             when {
-                state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
-                state.error != null -> UpcomingErrorState(state.error!!, onRetry = viewModel::refresh)
+                state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
+                state.error != null -> ErrorState(state.error!!, onRetry = viewModel::refresh)
                 state.groups.isEmpty() -> UpcomingEmptyState(hasLibraryEntries = state.hasLibraryEntries)
                 else -> UpcomingList(state.groups, onOpenDetail)
             }
@@ -64,29 +65,20 @@ fun UpcomingScreen(
 }
 
 @Composable
-private fun UpcomingErrorState(message: String, onRetry: () -> Unit) {
-    Column(
-        Modifier.padding(top = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(message, style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = onRetry) { Text("Retry") }
-    }
-}
-
-@Composable
 private fun UpcomingEmptyState(hasLibraryEntries: Boolean) {
-    val message = if (hasLibraryEntries) {
-        "Nothing upcoming — every saved show is either finished or has no scheduled episodes yet."
+    if (hasLibraryEntries) {
+        EmptyState(
+            icon = MuvissIcons.Calendar,
+            title = "Nothing upcoming",
+            body = "Every saved show is either finished or has no scheduled episodes yet.",
+        )
     } else {
-        "Nothing here yet — save a show to your Library to see its upcoming episodes."
+        EmptyState(
+            icon = MuvissIcons.Calendar,
+            title = "Nothing here yet",
+            body = "Save a show to your Library to see its upcoming episodes.",
+        )
     }
-    Text(
-        message,
-        modifier = Modifier.padding(top = 32.dp, start = 24.dp, end = 24.dp),
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center,
-    )
 }
 
 @Composable
@@ -96,15 +88,16 @@ private fun UpcomingList(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
+        contentPadding = PaddingValues(MuvissSpacing.m),
     ) {
         groups.forEach { group ->
             item(key = "header-${group.bucket}") {
                 Text(
-                    group.bucket.label(),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    group.bucket.label().uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = MuvissSpacing.s, bottom = MuvissSpacing.xs),
                 )
             }
             items(group.rows, key = { it.episode.id.toString() }) { row ->
@@ -114,31 +107,38 @@ private fun UpcomingList(
     }
 }
 
+/** Agenda row: amber date block left (mock's "18 JUL" treatment), episode info right. */
 @Composable
 private fun UpcomingRow(
     row: UpcomingRow,
     onClick: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(8.dp), tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.clickable(onClick = onClick).padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PosterImage(
-                url = row.posterUrl,
-                title = row.title,
-                modifier = Modifier.width(56.dp).height(84.dp).clip(RoundedCornerShape(6.dp)),
+    Row(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClick = onClick).padding(MuvissSpacing.s),
+        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            row.dateLabel,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(64.dp),
+        )
+        PosterImage(
+            url = row.posterUrl,
+            title = row.title,
+            modifier = Modifier.width(40.dp).height(60.dp).clip(MaterialTheme.shapes.extraSmall),
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(row.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "S${row.episode.seasonNumber}E${row.episode.episodeNumber} · ${row.episode.name}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(row.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "S${row.episode.seasonNumber}E${row.episode.episodeNumber} · ${row.episode.name}",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(row.dateLabel, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
