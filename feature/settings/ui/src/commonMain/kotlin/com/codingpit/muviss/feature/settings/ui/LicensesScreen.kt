@@ -34,8 +34,16 @@ fun LicensesScreen() {
 @Composable
 private fun LicenseRow(license: OssLicense) {
     Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(license.name, style = MaterialTheme.typography.bodyMedium)
-        Text("${license.groupId}:${license.artifactId}", style = MaterialTheme.typography.labelSmall)
-        Text(license.licenseName, style = MaterialTheme.typography.bodySmall)
+        Text(license.name, style = MaterialTheme.typography.titleSmall)
+        Text(
+            "${license.groupId}:${license.artifactId}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            license.licenseName,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

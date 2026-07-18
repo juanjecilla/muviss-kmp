@@ -1,15 +1,22 @@
 package com.codingpit.muviss.feature.settings.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -19,7 +26,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.StatTile
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
 import com.codingpit.muviss.feature.settings.domain.ImportSource
 import com.codingpit.muviss.feature.settings.domain.UnresolvedImportTitle
@@ -45,6 +56,8 @@ fun ImportScreen(viewModel: ImportViewModel, onDone: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        StepIndicator(state.step.ordinalStep())
+
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
 
         when (val step = state.step) {
@@ -57,16 +70,43 @@ fun ImportScreen(viewModel: ImportViewModel, onDone: () -> Unit) {
     }
 }
 
+private const val IMPORT_STEP_COUNT = 4
+
+/** Which of the 4 user-visible steps (pick → preview → import → done) a state-machine step belongs to. */
+private fun ImportStep.ordinalStep(): Int = when (this) {
+    is ImportStep.PickFile -> 0
+    is ImportStep.Resolving, is ImportStep.Preview -> 1
+    is ImportStep.Applying -> 2
+    is ImportStep.Summary -> 3
+}
+
+/** Four segments; amber up to and including the current step. */
+@Composable
+private fun StepIndicator(current: Int) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(IMPORT_STEP_COUNT) { index ->
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (index <= current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+            )
+        }
+    }
+}
+
 @Composable
 private fun PickFileStep(onPickFile: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Import from another tracker", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Supports a Trakt export (JSON), a TV Time data export (CSV), or Muviss's own CSV format. See docs/IMPORT.md for details.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Button(onClick = onPickFile) { Text("Choose file") }
-    }
+    EmptyState(
+        icon = MuvissIcons.Import,
+        title = "Import from another tracker",
+        body = "Supports a Trakt export (JSON), a TV Time data export (CSV), or Muviss's own CSV format. See docs/IMPORT.md for details.",
+        actionLabel = "Choose file",
+        onAction = onPickFile,
+    )
 }
 
 @Composable
@@ -125,10 +165,10 @@ private fun PreviewStep(step: ImportStep.Preview, onConfirm: () -> Unit, onCance
 
 @Composable
 private fun SummaryCounts(titleCount: Int, episodeCount: Int, unresolvedCount: Int) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("$titleCount title(s) found", style = MaterialTheme.typography.bodyMedium)
-        Text("$episodeCount episode(s) will be marked watched", style = MaterialTheme.typography.bodyMedium)
-        Text("$unresolvedCount title(s) could not be matched", style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        StatTile(titleCount.toString(), "titles found", Modifier.weight(1f))
+        StatTile(episodeCount.toString(), "episodes to mark", Modifier.weight(1f))
+        StatTile(unresolvedCount.toString(), "unmatched", Modifier.weight(1f))
     }
 }
 
@@ -147,6 +187,12 @@ private fun UnresolvedList(unresolved: List<UnresolvedImportTitle>, modifier: Mo
 @Composable
 private fun SummaryStep(result: ImportApplyResult, onImportAnother: () -> Unit, onDone: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(
+            MuvissIcons.CheckCircle,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.tertiary,
+            modifier = Modifier.size(40.dp),
+        )
         Text("Import complete", style = MaterialTheme.typography.titleMedium)
         Text("${result.importedTitleCount} title(s) imported", style = MaterialTheme.typography.bodyMedium)
         Text("${result.episodeTickCount} episode(s)/movie(s) marked watched", style = MaterialTheme.typography.bodyMedium)
