@@ -17,8 +17,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +42,9 @@ import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
  * (sage check circle), next-up (2dp amber left rule + raised background).
  * Toggling to seen plays the tick animation (scale 0.6→1.15→1.0) with a
  * haptic tick; undo/snackbar behavior belongs to the caller.
+ *
+ * [secondaryActionLabel]/[onSecondaryAction] render a small text action
+ * before the toggle (e.g. Detail's "Catch up" = mark-previous-seen).
  */
 @Composable
 fun EpisodeRow(
@@ -51,6 +56,8 @@ fun EpisodeRow(
     stillUrl: String? = null,
     nextUp: Boolean = false,
     onClick: (() -> Unit)? = null,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
 ) {
     val ruleColor = MaterialTheme.colorScheme.primary
     Row(
@@ -92,6 +99,11 @@ fun EpisodeRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (secondaryActionLabel != null && onSecondaryAction != null) {
+            TextButton(onClick = onSecondaryAction) {
+                Text(secondaryActionLabel, style = MaterialTheme.typography.labelMedium)
+            }
+        }
         SeenToggle(seen = seen, onToggle = onToggle, label = "$title $subtitle")
     }
 }
@@ -105,7 +117,14 @@ private fun SeenToggle(
 ) {
     val haptics = LocalHapticFeedback.current
     val scale = remember { Animatable(1f) }
+    // Skip the initial composition — the tick animation and haptic should only
+    // fire on an actual toggle, not when an already-seen row scrolls in.
+    val firstComposition = remember { mutableStateOf(true) }
     LaunchedEffect(seen) {
+        if (firstComposition.value) {
+            firstComposition.value = false
+            return@LaunchedEffect
+        }
         if (seen) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             scale.snapTo(0.6f)

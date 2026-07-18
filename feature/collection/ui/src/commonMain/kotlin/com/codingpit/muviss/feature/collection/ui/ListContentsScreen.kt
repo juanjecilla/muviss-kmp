@@ -1,23 +1,20 @@
 package com.codingpit.muviss.feature.collection.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -25,12 +22,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.PosterCard
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.MediaListItem
 import com.codingpit.muviss.models.MediaId
 
@@ -54,14 +51,18 @@ fun ListContentsScreen(
         topBar = {
             TopAppBar(
                 title = { Text(name) },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(MuvissIcons.Back, contentDescription = "Back")
+                    }
+                },
             )
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
             when {
-                state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
-                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = 32.dp), style = MaterialTheme.typography.bodyMedium)
+                state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
+                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = MuvissSpacing.xxl), style = MaterialTheme.typography.bodyMedium)
                 state.items.isEmpty() -> EmptyListContentsState()
                 else -> ListContentsGrid(state.items, onOpenDetail, onRemove = viewModel::removeEntry)
             }
@@ -71,11 +72,10 @@ fun ListContentsScreen(
 
 @Composable
 private fun EmptyListContentsState() {
-    Text(
-        "Nothing in this list yet — add a title from its detail screen.",
-        modifier = Modifier.padding(top = 32.dp, start = 24.dp, end = 24.dp),
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center,
+    EmptyState(
+        icon = MuvissIcons.AddToList,
+        title = "Nothing in this list yet",
+        body = "Add a title from its detail screen.",
     )
 }
 
@@ -87,39 +87,21 @@ private fun ListContentsGrid(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize().padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        modifier = Modifier.fillMaxSize().padding(MuvissSpacing.m),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
-            ListContentsCard(item, onClick = { onOpenDetail(item.mediaId) }, onRemove = { onRemove(item.mediaId) })
-        }
-    }
-}
-
-@Composable
-private fun ListContentsCard(item: MediaListItem, onClick: () -> Unit, onRemove: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            tonalElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
-        ) {
-            PosterImage(
-                url = item.posterUrl,
-                title = item.title,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)),
-            )
-        }
-        Text(
-            item.title,
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        TextButton(onClick = onRemove, contentPadding = PaddingValues(0.dp)) {
-            Text("Remove", style = MaterialTheme.typography.labelSmall)
+            Column {
+                PosterCard(
+                    title = item.title,
+                    posterUrl = item.posterUrl,
+                    onClick = { onOpenDetail(item.mediaId) },
+                )
+                TextButton(onClick = { onRemove(item.mediaId) }, contentPadding = PaddingValues(0.dp)) {
+                    Text("Remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }

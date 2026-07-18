@@ -43,15 +43,18 @@ data class CollectionUiState(
 ) {
     /** [entries] sliced by the selected tab, then ordered by [sort]. Status always comes from [CollectionEntry.status] — never a stored column. */
     val visibleEntries: List<CollectionEntry>
-        get() = entries.filter { entry ->
-            when (filter) {
-                CollectionFilter.FAVORITES -> entry.favorite
-                CollectionFilter.NOT_STARTED -> entry.status == WatchStatus.NOT_STARTED
-                CollectionFilter.WATCHING -> entry.status == WatchStatus.WATCHING
-                CollectionFilter.WATCHED -> entry.status == WatchStatus.WATCHED
-                CollectionFilter.FINISHED -> entry.status == WatchStatus.FINISHED
-            }
-        }.sortedFor(sort)
+        get() = entries.filter { it.matches(filter) }.sortedFor(sort)
+
+    /** Chip count suffix ("Watching 12") for any filter, selected or not. */
+    fun count(filter: CollectionFilter): Int = entries.count { it.matches(filter) }
+}
+
+private fun CollectionEntry.matches(filter: CollectionFilter): Boolean = when (filter) {
+    CollectionFilter.FAVORITES -> favorite
+    CollectionFilter.NOT_STARTED -> status == WatchStatus.NOT_STARTED
+    CollectionFilter.WATCHING -> status == WatchStatus.WATCHING
+    CollectionFilter.WATCHED -> status == WatchStatus.WATCHED
+    CollectionFilter.FINISHED -> status == WatchStatus.FINISHED
 }
 
 /** Unrated entries always sort last under [CollectionSort.RATING], newest-first as the tiebreaker. */

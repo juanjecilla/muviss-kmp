@@ -11,11 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -28,9 +28,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.MediaList
 
 /**
@@ -45,18 +46,21 @@ fun ListsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.End) {
-            Button(onClick = viewModel::startCreating) { Text("New list") }
-        }
+    Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             when {
-                state.loading -> CircularProgressIndicator(Modifier.padding(top = 32.dp))
-                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = 32.dp), style = MaterialTheme.typography.bodyMedium)
+                state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
+                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = MuvissSpacing.xxl), style = MaterialTheme.typography.bodyMedium)
                 state.lists.isEmpty() -> EmptyListsState()
                 else -> ListsColumn(state.lists, onOpenList, onEdit = viewModel::startEditing, onDelete = viewModel::deleteList)
             }
         }
+        ExtendedFloatingActionButton(
+            onClick = viewModel::startCreating,
+            icon = { Icon(MuvissIcons.Add, contentDescription = null) },
+            text = { Text("New list") },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(MuvissSpacing.l),
+        )
     }
 
     if (state.creating) {
@@ -82,11 +86,10 @@ fun ListsScreen(
 
 @Composable
 private fun EmptyListsState() {
-    Text(
-        "No lists yet — tap \"New list\" to start one, like \"Marathon 2026\".",
-        modifier = Modifier.padding(top = 32.dp, start = 24.dp, end = 24.dp),
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center,
+    EmptyState(
+        icon = MuvissIcons.AddToList,
+        title = "No lists yet",
+        body = "Tap \"New list\" to start one, like \"Marathon 2026\".",
     )
 }
 
@@ -99,8 +102,8 @@ private fun ListsColumn(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
+        contentPadding = PaddingValues(MuvissSpacing.m),
     ) {
         items(lists, key = { it.id }) { list ->
             ListRow(list, onClick = { onOpenList(list) }, onEdit = { onEdit(list) }, onDelete = { onDelete(list) })
@@ -115,21 +118,28 @@ private fun ListRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(8.dp), tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(
-            Modifier.clickable(onClick = onClick).padding(12.dp),
+            Modifier.clickable(onClick = onClick).padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.m),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(list.name, style = MaterialTheme.typography.titleSmall)
+                Text(list.name, style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (list.entryCount == 1) "1 title" else "${list.entryCount} titles",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             TextButton(onClick = onEdit) { Text("Rename") }
-            TextButton(onClick = onDelete) { Text("Delete") }
+            IconButton(onClick = onDelete) {
+                Icon(MuvissIcons.Close, contentDescription = "Delete ${list.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
