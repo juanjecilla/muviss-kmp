@@ -21,7 +21,13 @@ internal object TmdbMapper {
     // non-thumbnail size and keeps the "Where to watch" row light.
     const val LOGO_BASE = "https://image.tmdb.org/t/p/w92"
 
+    // Backdrops render edge-to-edge behind the detail hero; w780 is the
+    // smallest size that stays sharp at expanded widths.
+    const val BACKDROP_BASE = "https://image.tmdb.org/t/p/w780"
+
     fun imageUrl(path: String?): String? = path?.let { IMAGE_BASE + it }
+
+    fun backdropUrl(path: String?): String? = path?.let { BACKDROP_BASE + it }
 
     fun logoUrl(path: String?): String? = path?.let { LOGO_BASE + it }
 
@@ -142,6 +148,7 @@ internal object TmdbMapper {
             runtimeMinutes = dto.runtime,
             productionStatus = ProductionStatus.RELEASED,
             seasons = emptyList(),
+            backdropUrl = backdropUrl(dto.backdropPath),
         )
     }
 
@@ -161,6 +168,7 @@ internal object TmdbMapper {
             runtimeMinutes = null,
             productionStatus = tvProductionStatus(dto.status),
             seasons = seasons,
+            backdropUrl = backdropUrl(dto.backdropPath),
         )
     }
 

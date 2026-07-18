@@ -103,6 +103,24 @@ class TmdbMapperTest {
     }
 
     @Test
+    fun movieToDetails_maps_backdrop_at_w780() {
+        val dto = TmdbMovieDetailDto(id = 603, title = "The Matrix", backdropPath = "/back.jpg")
+
+        val details = TmdbMapper.movieToDetails(dto)
+
+        assertEquals(TmdbMapper.BACKDROP_BASE + "/back.jpg", details.backdropUrl)
+    }
+
+    @Test
+    fun tvToDetails_maps_missing_backdrop_to_null() {
+        val dto = TmdbTvDetailDto(id = 1399, name = "Game of Thrones")
+
+        val details = TmdbMapper.tvToDetails(dto, seasons = emptyList())
+
+        assertEquals(null, details.backdropUrl)
+    }
+
+    @Test
     fun discoverPageToPagedResult_carries_page_and_totalPages_through() {
         val dto = TmdbPageDto(
             page = 2,

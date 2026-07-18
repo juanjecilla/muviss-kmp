@@ -41,6 +41,8 @@ data class MediaDetails(
     val runtimeMinutes: Int? = null,
     val productionStatus: ProductionStatus = ProductionStatus.UNKNOWN,
     val seasons: List<Season> = emptyList(),
+    /** Wide (16:9) backdrop art for the detail hero; null when TMDB has none. */
+    val backdropUrl: String? = null,
 ) {
     val id: MediaId get() = summary.id
     val type: MediaType get() = summary.type
