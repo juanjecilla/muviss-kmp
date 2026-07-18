@@ -3,6 +3,10 @@
 complexity:
   LongMethod:
     active: false
+  LongParameterList:
+    # @Composable components legitimately take many optional styling/variant
+    # params (rating, progress, selected…) — Compose's own components do too.
+    ignoreAnnotated: ['Composable']
   TooManyFunctions:
     active: false
   CyclomaticComplexMethod:

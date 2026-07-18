@@ -273,4 +273,7 @@ val ossLicenses: List<OssLicense> = listOf(
     OssLicense("org.jetbrains.kotlinx", "kotlinx-serialization-json-jvm", "kotlinx-serialization-json", "Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0"),
     OssLicense("org.jspecify", "jspecify", "JSpecify annotations", "Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0"),
     OssLicense("org.slf4j", "slf4j-api", "SLF4J API Module", "See project", "https://opensource.org/license/mit"),
+    // Not a Maven dependency: the app-wide type family bundled as a Compose
+    // font resource in :core:designsystem (see core/designsystem/FONTS.md).
+    OssLicense("com.schibsted", "schibsted-grotesk", "Schibsted Grotesk (font)", "SIL Open Font License 1.1", "https://openfontlicense.org"),
 )

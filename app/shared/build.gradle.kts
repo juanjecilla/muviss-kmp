@@ -71,6 +71,8 @@ kotlin {
             implementation(projects.feature.settings.data)
 
             implementation(libs.navigation.compose)
+            implementation(libs.compose.material3.adaptiveNavigationSuite)
+            implementation(libs.compose.material3.adaptive)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.composeViewmodel)

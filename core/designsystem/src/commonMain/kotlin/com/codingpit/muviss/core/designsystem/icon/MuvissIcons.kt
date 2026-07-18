@@ -2,57 +2,124 @@ package com.codingpit.muviss.core.designsystem.icon
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 
 /**
- * The five bottom-nav glyphs, hand-bundled as [ImageVector]s because
+ * Muviss icon set, hand-bundled as [ImageVector]s because
  * `material-icons-extended` doesn't publish for this Compose Multiplatform
- * version (see CLAUDE.md's setup gotchas). Each is the standard Material
- * Design "filled" 24dp glyph, parsed from its SVG path data with
- * [PathParser] — the same technique the real `material-icons-extended`
- * artifact's generated sources use, just written by hand for exactly the
- * five icons this app needs instead of pulling in the whole set.
+ * version (see CLAUDE.md's setup gotchas). Follows the design system's
+ * drawing rules: 24×24dp grid, 2dp stroke with round caps and joins,
+ * outlined style except the brand play triangle, the filled star/heart and
+ * the filled check-circle "watched" state. Single color — tint from the M3
+ * role at the call site; the baked-in black here is only the vector's
+ * intrinsic color and is always overridden by `Icon(tint = …)`.
  *
- * Built lazily and cached per icon (mirroring the generated icon pattern) so
- * [PathParser] only runs once per glyph no matter how many times the getter
- * is read (e.g. on every recomposition of the bottom nav).
+ * Built lazily and cached per icon so [PathParser] only runs once per glyph
+ * no matter how many times the getter is read (e.g. on every recomposition
+ * of the nav bar).
  */
 object MuvissIcons {
 
-    val Search: ImageVector get() = cached("Search", SEARCH_PATH)
-    val Library: ImageVector get() = cached("Library", LIBRARY_PATH)
-    val WatchNext: ImageVector get() = cached("WatchNext", WATCH_NEXT_PATH)
-    val Profile: ImageVector get() = cached("Profile", PROFILE_PATH)
-    val Settings: ImageVector get() = cached("Settings", SETTINGS_PATH)
+    // Navigation
+    val Search: ImageVector get() = stroked("Search", "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14", "M20 20l-3.5-3.5")
+    val Library: ImageVector
+        get() = stroked(
+            "Library",
+            roundedRect(4f, 4f, 6f, 8f),
+            roundedRect(14f, 4f, 6f, 8f),
+            roundedRect(4f, 15f, 6f, 5f),
+            roundedRect(14f, 15f, 6f, 5f),
+        )
+    val WatchNext: ImageVector get() = stroked("WatchNext", "M5 13l4 4L19 7")
+    val Profile: ImageVector get() = stroked("Profile", "M12 4.6a3.4 3.4 0 1 0 0 6.8a3.4 3.4 0 1 0 0-6.8", "M5 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5")
+    val Settings: ImageVector
+        get() = stroked(
+            "Settings",
+            "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6",
+            "M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2",
+        )
+
+    // Library actions
+    val Favorite: ImageVector get() = filled("Favorite", HEART_PATH)
+    val FavoriteOutline: ImageVector get() = stroked("FavoriteOutline", HEART_PATH)
+    val Add: ImageVector get() = stroked("Add", "M12 5v14M5 12h14")
+    val AddToList: ImageVector get() = stroked("AddToList", "M4 6h12M4 12h12M4 18h8", "M18 15v6M15 18h6")
+    val Sort: ImageVector get() = stroked("Sort", "M4 6h16M7 12h10M10 18h4")
+    val Filter: ImageVector get() = stroked("Filter", "M4 5h16l-6 7v5l-4 2v-7z")
+
+    // Tracking
+    val Check: ImageVector get() = stroked("Check", "M5 13l4 4L19 7")
+    val CheckCircle: ImageVector get() = filled("CheckCircle", CHECK_CIRCLE_PATH)
+    val Bell: ImageVector get() = stroked("Bell", "M12 3a5 5 0 0 1 5 5v4l2 3H5l2-3V8a5 5 0 0 1 5-5z", "M10 19.5a2 2 0 0 0 4 0")
+    val BellOff: ImageVector get() = stroked("BellOff", "M12 3a5 5 0 0 1 5 5v4l2 3H9M5.7 9.5V12l-2 3h5", "M10 19.5a2 2 0 0 0 4 0", "M4 4l16 16")
+    val Star: ImageVector get() = filled("Star", STAR_PATH)
+    val StarOutline: ImageVector get() = stroked("StarOutline", STAR_PATH)
+
+    // Detail / nav
+    val Back: ImageVector get() = stroked("Back", "M15 5l-7 7 7 7")
+    val Close: ImageVector get() = stroked("Close", "M6 6l12 12M18 6L6 18")
+    val ChevronRight: ImageVector get() = stroked("ChevronRight", "M9 5l7 7-7 7")
+    val ChevronDown: ImageVector get() = stroked("ChevronDown", "M5 9l7 7 7-7")
+
+    // Data / sync
+    val Sync: ImageVector get() = stroked("Sync", "M20 12a8 8 0 1 0 -3 6.2", "M20 12v-4M20 12h-4")
+    val Import: ImageVector get() = stroked("Import", "M12 4v11M6 9.5l6 5.5 6-5.5", "M4 20h16")
+    val Export: ImageVector get() = stroked("Export", "M12 15V4M6 9.5L12 4l6 5.5", "M4 20h16")
+    val Account: ImageVector
+        get() = stroked(
+            "Account",
+            "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18",
+            "M12 7.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6",
+            "M6.5 18.5c1-2.5 3-3.5 5.5-3.5s4.5 1 5.5 3.5",
+        )
+    val Calendar: ImageVector get() = stroked("Calendar", roundedRect(4f, 5f, 16f, 16f), "M4 9h16M8 3v4M16 3v4")
+
+    // States
+    val Error: ImageVector get() = stroked("Error", "M12 3L2 20h20z", "M12 10v4M12 16.8v.2")
+    val SearchOff: ImageVector get() = stroked("SearchOff", "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14", "M20 20l-3.5-3.5", "M8.5 8.5l5 5M13.5 8.5l-5 5")
+    val CloudOff: ImageVector get() = stroked("CloudOff", "M20 17.6A4.5 4.5 0 0 0 17.5 9h-1.8A7 7 0 0 0 9 4.7M4.6 6.5A7 7 0 0 0 7 18h9", "M3 3l18 18")
+    val Play: ImageVector get() = filled("Play", "M6 4.5v15l12-7.5z")
+
+    private const val HEART_PATH =
+        "M12 21s-7-4.6-9.3-9C1 9 2.5 5 6 5c2 0 3.2 1.3 6 4 2.8-2.7 4-4 6-4 3.5 0 5 4 3.3 7C19 16.4 12 21 12 21z"
+    private const val STAR_PATH =
+        "M12 2l2.9 6.2 6.6.8-4.9 4.6 1.3 6.6L12 17.8 6.1 20.8l1.3-6.6L2.5 9.6l6.6-.8z"
+
+    // Material Design "CheckCircle" (filled, check carved out).
+    private const val CHECK_CIRCLE_PATH =
+        "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
+
+    /** Stroked rounded rect (2dp corner radius per the drawing rules). */
+    private fun roundedRect(x: Float, y: Float, w: Float, h: Float, r: Float = 2f): String = "M${x + r} $y h${w - 2 * r} a$r $r 0 0 1 $r $r v${h - 2 * r} a$r $r 0 0 1 -$r $r " +
+        "h-${w - 2 * r} a$r $r 0 0 1 -$r -$r v-${h - 2 * r} a$r $r 0 0 1 $r -$r z"
 
     private val cache = mutableMapOf<String, ImageVector>()
 
-    private fun cached(name: String, pathData: String): ImageVector = cache.getOrPut(name) { buildIcon(name, pathData) }
+    private fun filled(name: String, vararg pathData: String): ImageVector = cache.getOrPut(name) { build(name, pathData, filled = true) }
 
-    private fun buildIcon(name: String, pathData: String): ImageVector = ImageVector
-        .Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
-        .addPath(pathData = PathParser().parsePathString(pathData).toNodes(), fill = SolidColor(Color.Black))
-        .build()
+    private fun stroked(name: String, vararg pathData: String): ImageVector = cache.getOrPut(name) { build(name, pathData, filled = false) }
 
-    // Material Design "Search" (filled, 24dp).
-    private const val SEARCH_PATH =
-        "M15.5,14h-0.79l-0.28,-0.27C15.41,12.59,16,11.11,16,9.5C16,5.91,13.09,3,9.5,3S3,5.91,3,9.5S5.91,16,9.5,16c1.61,0,3.09,-0.59,4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14,5,11.99,5,9.5S7.01,5,9.5,5S14,7.01,14,9.5S11.99,14,9.5,14z"
-
-    // Material Design "Bookmark" (filled, 24dp) — the saved-library tab.
-    private const val LIBRARY_PATH =
-        "M17,3H7C5.9,3,5,3.9,5,5v16l7,-3l7,3V5C19,3.9,18.1,3,17,3z"
-
-    // Material Design "PlayCircle" (filled, 24dp) — watch-next / progress.
-    private const val WATCH_NEXT_PATH =
-        "M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10s10,-4.48,10,-10S17.52,2,12,2z M10,16.5v-9l6,4.5L10,16.5z"
-
-    // Material Design "Person" (filled, 24dp).
-    private const val PROFILE_PATH =
-        "M12,12c2.21,0,4,-1.79,4,-4c0,-2.21,-1.79,-4,-4,-4S8,5.79,8,8C8,10.21,9.79,12,12,12z M12,14c-2.67,0,-8,1.34,-8,4v2h16v-2C20,15.34,14.67,14,12,14z"
-
-    // Material Design "Settings" (filled gear, 24dp).
-    private const val SETTINGS_PATH =
-        "M19.14,12.94c0.04,-0.3,0.06,-0.61,0.06,-0.94c0,-0.32,-0.02,-0.64,-0.07,-0.94l2.03,-1.58c0.18,-0.14,0.23,-0.41,0.12,-0.61l-1.92,-3.32c-0.12,-0.22,-0.37,-0.29,-0.59,-0.22l-2.39,0.96c-0.5,-0.38,-1.03,-0.7,-1.62,-0.94L14.4,2.81c-0.04,-0.24,-0.24,-0.41,-0.48,-0.41h-3.84c-0.24,0,-0.43,0.17,-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22,-0.08,-0.47,0,-0.59,0.22L2.74,8.87c-0.12,0.21,-0.08,0.47,0.12,0.61l2.03,1.58C4.84,11.36,4.82,11.69,4.82,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14,-0.23,0.41,-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39,-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44,-0.17,0.47,-0.41l0.36,-2.54c0.59,-0.24,1.13,-0.56,1.62,-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59,-0.22l1.92,-3.32c0.12,-0.22,0.07,-0.47,-0.12,-0.61L19.14,12.94z M12,15.6c-1.98,0,-3.6,-1.62,-3.6,-3.6s1.62,-3.6,3.6,-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
+    private fun build(name: String, pathData: Array<out String>, filled: Boolean): ImageVector {
+        val builder = ImageVector
+            .Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+        pathData.forEach { data ->
+            val nodes = PathParser().parsePathString(data).toNodes()
+            if (filled) {
+                builder.addPath(pathData = nodes, fill = SolidColor(Color.Black))
+            } else {
+                builder.addPath(
+                    pathData = nodes,
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 2f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
+        }
+        return builder.build()
+    }
 }

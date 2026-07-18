@@ -1,12 +1,20 @@
 package com.codingpit.muviss
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +30,7 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.window.core.layout.WindowSizeClass
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
@@ -148,34 +157,81 @@ private fun MuvissScaffold(
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                topDestinations.forEach { dest ->
-                    val selected =
-                        currentDestination?.hierarchy?.any {
-                            it.hasRoute(dest.route::class)
-                        } == true
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = {
-                            navController.navigate(dest.route) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(dest.icon, contentDescription = dest.label) },
-                        label = { Text(dest.label) },
-                    )
-                }
+    // Window-size-class-driven navigation: bottom bar on compact (<600dp),
+    // nav rail on medium and expanded — a rail keeps posters full-width and
+    // five destinations never warrant a drawer (design doc §06).
+    val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+    val layoutType =
+        if (windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)) {
+            NavigationSuiteType.NavigationRail
+        } else {
+            NavigationSuiteType.NavigationBar
+        }
+
+    // Amber pill indicator + amber selected label, per the design mockups.
+    // Built here because the navigationSuiteItems DSL is not composable.
+    val itemColors = NavigationSuiteDefaults.itemColors(
+        navigationBarItemColors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+        navigationRailItemColors = NavigationRailItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+    )
+
+    NavigationSuiteScaffold(
+        layoutType = layoutType,
+        navigationSuiteColors = NavigationSuiteDefaults.colors(
+            navigationBarContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+            navigationRailContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+        navigationSuiteItems = {
+            topDestinations.forEach { dest ->
+                val selected =
+                    currentDestination?.hierarchy?.any {
+                        it.hasRoute(dest.route::class)
+                    } == true
+                item(
+                    selected = selected,
+                    onClick = {
+                        navController.navigate(dest.route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    icon = { Icon(dest.icon, contentDescription = dest.label) },
+                    label = { Text(dest.label) },
+                    colors = itemColors,
+                )
             }
         },
-    ) { padding ->
+    ) {
         NavHost(
             navController = navController,
             startDestination = SearchRoute,
-            modifier = Modifier.padding(padding),
+            // M3 fade-through: outgoing fades and settles to 0.92, incoming
+            // fades in from 1.02 — every destination inherits it from here.
+            enterTransition = {
+                fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
+                    scaleIn(initialScale = 1.02f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
+            },
+            exitTransition = {
+                fadeOut(tween(durationMillis = 90)) +
+                    scaleOut(targetScale = 0.92f, animationSpec = tween(durationMillis = 90))
+            },
+            popEnterTransition = {
+                fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
+            },
+            popExitTransition = {
+                fadeOut(tween(durationMillis = 90)) +
+                    scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
+            },
         ) {
             searchSection(navController)
             collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
