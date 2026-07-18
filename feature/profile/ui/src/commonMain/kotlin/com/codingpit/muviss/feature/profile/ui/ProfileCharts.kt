@@ -1,13 +1,14 @@
 package com.codingpit.muviss.feature.profile.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,37 +16,55 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.theme.MuvissChartPalette
 import com.codingpit.muviss.feature.profile.domain.GenreCount
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
 
 // Compose-canvas-only bar/donut charts for the profile stats section (EPIC 4
-// — no chart library allowed). Colors follow a fixed, ordered palette rather
-// than being generated or reassigned by value, so the same status/genre
-// always reads as the same color; both ramps were chosen to stay legible on
-// light and dark surfaces (see isSystemInDarkTheme usage below).
+// — no chart library allowed). Colors come from the design system's
+// MuvissChartPalette so the same status/genre always reads as the same color
+// in both themes; a 8th+ genre folds into "Other" rather than generating a
+// new hue. Charts grow in once per screen visit (600ms, emphasized
+// decelerate) — guarded by rememberSaveable so config changes don't replay.
 
-/** Status is a funnel (not-started -> watching -> watched/finished), so an ordinal single-hue ramp reads better than four unrelated categorical hues. */
-private val StatusRampLight = listOf(Color(0xFF86B6EF), Color(0xFF5598E7), Color(0xFF2A78D6), Color(0xFF1C5CAB))
-private val StatusRampDark = listOf(Color(0xFF9EC5F4), Color(0xFF6DA7EC), Color(0xFF3987E5), Color(0xFF256ABF))
-
-/** Genres are unordered identities, so a fixed-order categorical palette applies — a 9th+ genre folds into "Other" (see [foldGenresIntoOther]) rather than generating a new hue. */
-private val GenreCategoricalLight =
-    listOf(Color(0xFF2A78D6), Color(0xFF1BAF7A), Color(0xFFEDA100), Color(0xFF008300), Color(0xFF4A3AA7), Color(0xFFE34948), Color(0xFFE87BA4))
-private val GenreCategoricalDark =
-    listOf(Color(0xFF3987E5), Color(0xFF199E70), Color(0xFFC98500), Color(0xFF008300), Color(0xFF9085E9), Color(0xFFE66767), Color(0xFFD55181))
 private val OtherGenreColor = Color(0xFF898781)
-private const val MAX_GENRE_SLOTS = 7
+private const val MAX_GENRE_SLOTS = 6
+
+/** M3 emphasized-decelerate; 600ms per the design doc's chart-entry motion row. */
+private val ChartEntryEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+private const val CHART_ENTRY_MS = 600
+
+/** 0→1 grow-in fraction, animated only on the first composition of this screen visit. */
+@Composable
+private fun rememberChartGrowth(): State<Float> {
+    val played = rememberSaveable { mutableStateOf(false) }
+    val growth = remember { Animatable(if (played.value) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!played.value) {
+            growth.animateTo(1f, tween(CHART_ENTRY_MS, easing = ChartEntryEasing))
+            played.value = true
+        }
+    }
+    return growth.asState()
+}
 
 /** Horizontal bars, one per [StatusBreakdown] bucket, each label + count always shown (never color-only identity). */
 @Composable
 fun StatusBarChart(breakdown: StatusBreakdown, modifier: Modifier = Modifier) {
-    val ramp = if (isSystemInDarkTheme()) StatusRampDark else StatusRampLight
+    val palette = MuvissChartPalette.categorical()
+    val growth by rememberChartGrowth()
     val entries = listOf(
         "Not started" to breakdown.notStarted,
         "Watching" to breakdown.watching,
@@ -59,13 +78,14 @@ fun StatusBarChart(breakdown: StatusBreakdown, modifier: Modifier = Modifier) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(label, modifier = Modifier.width(88.dp), style = MaterialTheme.typography.labelSmall)
                 val fraction = count / maxCount.toFloat()
+                val barColor = palette[index % palette.size]
                 Canvas(Modifier.weight(1f).height(14.dp)) {
                     val corner = CornerRadius(size.height / 2f, size.height / 2f)
-                    drawRoundRect(color = ramp[index].copy(alpha = 0.18f), cornerRadius = corner)
+                    drawRoundRect(color = barColor.copy(alpha = 0.18f), cornerRadius = corner)
                     if (fraction > 0f) {
                         drawRoundRect(
-                            color = ramp[index],
-                            size = size.copy(width = size.width * fraction),
+                            color = barColor,
+                            size = size.copy(width = size.width * fraction * growth),
                             cornerRadius = corner,
                         )
                     }
@@ -88,11 +108,12 @@ fun foldGenresIntoOther(genres: List<GenreCount>, maxSlots: Int = MAX_GENRE_SLOT
     return kept + GenreCount(genre = "Other", count = otherCount)
 }
 
-/** Donut of [genres] (already folded via [foldGenresIntoOther]) with a color-keyed legend beside it. */
+/** Donut of [genres] (already folded via [foldGenresIntoOther]) with a color-keyed legend beside it; sweeps clockwise on entry. */
 @Composable
 fun GenreDonutChart(genres: List<GenreCount>, modifier: Modifier = Modifier) {
     if (genres.isEmpty()) return
-    val palette = if (isSystemInDarkTheme()) GenreCategoricalDark else GenreCategoricalLight
+    val palette = MuvissChartPalette.categorical()
+    val growth by rememberChartGrowth()
     val total = genres.sumOf { it.count }.coerceAtLeast(1)
 
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -100,7 +121,7 @@ fun GenreDonutChart(genres: List<GenreCount>, modifier: Modifier = Modifier) {
             var startAngle = -90f
             val strokeWidth = size.minDimension * 0.24f
             genres.forEachIndexed { index, genre ->
-                val sweep = 360f * genre.count / total
+                val sweep = 360f * genre.count / total * growth
                 drawArc(
                     color = genre.colorFor(index, palette),
                     startAngle = startAngle,

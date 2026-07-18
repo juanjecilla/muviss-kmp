@@ -20,12 +20,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +44,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.StatTile
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.feature.profile.domain.AvatarPreset
 import com.codingpit.muviss.feature.profile.domain.AvatarPresets
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
@@ -207,34 +212,53 @@ private fun SyncSection(
     onSyncNowClicked: () -> Unit,
     onSignOutClicked: () -> Unit,
 ) {
-    when (val account = sync.account) {
-        SyncAccountState.Unavailable -> return
+    val account = sync.account
+    if (account == SyncAccountState.Unavailable) return
 
-        SyncAccountState.SignedOut -> {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Account", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "Everything stays on this device today.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
-                OutlinedButton(onClick = onSignInClicked, enabled = !sync.syncing) { Text("Sign in to sync") }
-            }
-        }
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                MuvissIcons.Account,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(28.dp),
+            )
+            when (account) {
+                SyncAccountState.Unavailable -> Unit
 
-        is SyncAccountState.SignedIn -> {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Account", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    account.email ?: "Signed in",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(sync.lastSyncedLabel, style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onSyncNowClicked, enabled = !sync.syncing) {
-                        Text(if (sync.syncing) "Syncing…" else "Sync now")
+                SyncAccountState.SignedOut -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Account", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Everything stays on this device today.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    OutlinedButton(onClick = onSignInClicked, enabled = !sync.syncing) { Text("Sign in to sync") }
+                }
+
+                is SyncAccountState.SignedIn -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(account.email ?: "Signed in", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        sync.lastSyncedLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = onSyncNowClicked, enabled = !sync.syncing) {
+                            Icon(MuvissIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text(if (sync.syncing) " Syncing…" else " Sync now")
+                        }
+                        TextButton(onClick = onSignOutClicked, enabled = !sync.syncing) { Text("Sign out") }
                     }
-                    TextButton(onClick = onSignOutClicked, enabled = !sync.syncing) { Text("Sign out") }
                 }
             }
         }
@@ -285,15 +309,11 @@ private fun SignInCodeDialog(email: String, onConfirm: (String) -> Unit, onDismi
 
 @Composable
 private fun EmptyLibraryState() {
-    Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("No stats yet", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Save titles to your library and tick episodes to see your stats here.",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-    }
+    EmptyState(
+        icon = MuvissIcons.Profile,
+        title = "No stats yet",
+        body = "Save titles to your library and tick episodes to see your stats here.",
+    )
 }
 
 @Composable
@@ -302,12 +322,12 @@ private fun StatsSection(stats: ProfileStats) {
         Text("Stats", style = MaterialTheme.typography.titleSmall)
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatTile("Movies watched", stats.moviesWatched.toString(), Modifier.weight(1f))
-            StatTile("Episodes seen", stats.episodesSeen.toString(), Modifier.weight(1f))
+            StatTile(stats.moviesWatched.toString(), "movies watched", Modifier.weight(1f))
+            StatTile(stats.episodesSeen.toString(), "episodes seen", Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatTile("Hours watched", formatHours(stats.estimatedHoursWatched), Modifier.weight(1f))
-            StatTile("Current streak", "${stats.streak.currentDays}d (best ${stats.streak.longestDays}d)", Modifier.weight(1f))
+            StatTile(formatHours(stats.estimatedHoursWatched), "hours watched", Modifier.weight(1f))
+            StatTile("${stats.streak.currentDays}d", "streak (best ${stats.streak.longestDays}d)", Modifier.weight(1f))
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -321,18 +341,6 @@ private fun StatsSection(stats: ProfileStats) {
                 GenreDonutChart(foldGenresIntoOther(stats.genreBreakdown))
             }
         }
-    }
-}
-
-@Composable
-private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier
-            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.medium)
-            .padding(12.dp),
-    ) {
-        Text(value, style = MaterialTheme.typography.headlineSmall)
-        Text(label, style = MaterialTheme.typography.bodySmall)
     }
 }
 
