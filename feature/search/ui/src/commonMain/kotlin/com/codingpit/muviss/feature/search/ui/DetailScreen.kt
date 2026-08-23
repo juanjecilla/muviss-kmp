@@ -195,6 +195,10 @@ private fun DetailBody(
     details: MediaDetails,
     onOpenDetail: (MediaId) -> Unit,
 ) {
+    // A skipped title (ADR 0010) leaves nothing in the library, so this line
+    // is the only way back to it once the deck's undo snackbar has gone.
+    if (state.skipped) SkippedBanner(onUndo = viewModel::unskip)
+
     // Rating + note (EPIC 15) only make sense once the title is saved —
     // consistent with the mute button, the other membership-gated affordance.
     if (state.saved) {
@@ -512,6 +516,29 @@ private fun SeasonSection(season: Season, state: DetailUiState, viewModel: Detai
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+    }
+}
+
+@Composable
+private fun SkippedBanner(onUndo: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = MuvissSpacing.m, vertical = MuvissSpacing.xs),
+        ) {
+            Icon(MuvissIcons.Skip, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "You skipped this during triage",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).padding(start = MuvissSpacing.s),
+            )
+            TextButton(onClick = onUndo) { Text("Undo") }
         }
     }
 }

@@ -55,6 +55,7 @@ import com.codingpit.muviss.models.MediaType
 fun SearchScreen(
     viewModel: SearchViewModel,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenTriage: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -73,7 +74,7 @@ fun SearchScreen(
             }
 
             else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail)
+                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage)
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -165,11 +166,15 @@ private fun DiscoverBrowse(
     state: SearchUiState,
     onSelectGenre: (Genre, MediaType) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenTriage: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
     ) {
+        // Triage's main entry point (ADR 0010). It leads the browse because
+        // an empty or thin library is exactly the state it exists to fix.
+        TriageEntryCard(onOpenTriage)
         // "For you" (EPIC 16) leads the browse when it has anything to show;
         // MediaCarousel itself renders nothing while state.forYou is empty
         // (no library signal yet), so no separate visibility check is needed.
@@ -178,6 +183,37 @@ private fun DiscoverBrowse(
         GenreChipRow("TV genres", state.tvGenres) { onSelectGenre(it, MediaType.TV) }
         MediaCarousel("Popular movies", state.popularMovies, onOpenDetail)
         MediaCarousel("Popular TV", state.popularTv, onOpenDetail)
+    }
+}
+
+/** The way into the triage deck. Not a bottom-bar tab — five is the ceiling. */
+@Composable
+private fun TriageEntryCard(onOpenTriage: () -> Unit) {
+    Surface(
+        onClick = onOpenTriage,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(MuvissSpacing.l),
+        ) {
+            Icon(MuvissIcons.CaughtUp, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            Column(Modifier.weight(1f).padding(horizontal = MuvissSpacing.m)) {
+                Text(
+                    "Fill your library",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    "Sort through titles one at a time — skip, save for later, or mark yourself caught up.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Icon(MuvissIcons.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        }
     }
 }
 

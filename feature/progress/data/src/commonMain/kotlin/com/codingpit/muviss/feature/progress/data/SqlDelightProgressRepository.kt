@@ -55,6 +55,11 @@ class SqlDelightProgressRepository(
         }
     }
 
+    override suspend fun clearForMedia(mediaId: MediaId) = withContext(dispatchers.io) {
+        queries.clearForMedia(now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
     private suspend fun upsert(episodeId: EpisodeId, seen: Boolean, now: Long) {
         queries.upsert(
             episodeId = episodeId.toString(),

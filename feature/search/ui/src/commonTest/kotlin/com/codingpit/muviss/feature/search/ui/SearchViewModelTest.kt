@@ -12,6 +12,7 @@ import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.domain.SearchRepository
+import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -24,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -75,12 +77,17 @@ class SearchViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(repo: FakeRepo, collectionApi: FakeSearchCollectionApi = FakeSearchCollectionApi()) = SearchViewModel(
+    private fun viewModel(
+        repo: FakeRepo,
+        collectionApi: FakeSearchCollectionApi = FakeSearchCollectionApi(),
+        triageApi: FakeTriageApi = FakeTriageApi(),
+    ) = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
         GenresUseCase(repo),
         RecommendationsUseCase(repo),
         collectionApi,
+        triageApi,
     )
 
     private val movieGenre = Genre("28", "Action")
@@ -284,6 +291,57 @@ class SearchViewModelTest {
         advanceUntilIdle()
 
         assertTrue(vm.state.value.forYou.isEmpty())
+    }
+
+    @Test
+    fun forYou_excludes_titles_skipped_during_triage() = runTest {
+        val seed = MediaId.tmdbMovie("1")
+        val skipped = MediaId.tmdbMovie("2")
+        val recommended = MediaSummary(skipped, "Skipped in triage")
+        val vm = viewModel(
+            FakeRepo(recommendationsResult = { Result.success(PagedResult(listOf(recommended), 1, 1)) }),
+            FakeSearchCollectionApi(listOf(libraryTitle(seed, favorite = true))),
+            FakeTriageApi(mapOf(skipped to TriageVerdict.SKIP)),
+        )
+        advanceUntilIdle()
+
+        // "For you" is a suggestion surface, so suggesting something the user
+        // explicitly rejected is the one place a skip must be respected.
+        assertTrue(vm.state.value.forYou.isEmpty())
+    }
+
+    @Test
+    fun search_results_still_return_a_skipped_title() = runTest {
+        val skipped = MediaId.tmdbMovie("2")
+        val result = MediaSummary(skipped, "Skipped in triage")
+        val vm = viewModel(
+            FakeRepo(searchResult = { Result.success(PagedResult(listOf(result), 1, 1)) }),
+            FakeSearchCollectionApi(emptyList()),
+            FakeTriageApi(mapOf(skipped to TriageVerdict.SKIP)),
+        )
+        vm.onQueryChange("skipped")
+        advanceTimeBy(400)
+        advanceUntilIdle()
+
+        // Search is a lookup tool: it must return what was typed, skipped or
+        // not, or the app simply looks broken.
+        assertEquals(listOf(result), vm.state.value.results)
+    }
+
+    @Test
+    fun popular_carousels_are_not_filtered_by_triage_decisions() = runTest {
+        val skipped = MediaId.tmdbMovie("1")
+        val popular = MediaSummary(skipped, "Popular but skipped")
+        val vm = viewModel(
+            FakeRepo(discoverResult = { type, _, _ -> Result.success(PagedResult(if (type == MediaType.MOVIE) listOf(popular) else emptyList(), 1, 1)) }),
+            FakeSearchCollectionApi(emptyList()),
+            FakeTriageApi(mapOf(skipped to TriageVerdict.SKIP)),
+        )
+        advanceUntilIdle()
+
+        // The catalogue rows stay whole — filtering them would quietly
+        // personalise browsing in a way nobody asked for.
+        assertEquals(listOf(popular), vm.state.value.popularMovies)
     }
 
     @Test

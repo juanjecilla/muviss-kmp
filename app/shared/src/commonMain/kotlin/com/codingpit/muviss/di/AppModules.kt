@@ -14,6 +14,8 @@ import com.codingpit.muviss.feature.search.data.di.searchDataModule
 import com.codingpit.muviss.feature.search.ui.di.searchUiModule
 import com.codingpit.muviss.feature.settings.data.di.settingsDataModule
 import com.codingpit.muviss.feature.settings.ui.di.settingsUiModule
+import com.codingpit.muviss.feature.triage.data.di.triageDataModule
+import com.codingpit.muviss.feature.triage.ui.di.triageUiModule
 import org.koin.core.module.Module
 
 /** Every Koin module assembled into the app graph. */
@@ -33,4 +35,6 @@ val appModules: List<Module> =
         profileUiModule,
         settingsDataModule,
         settingsUiModule,
+        triageDataModule,
+        triageUiModule,
     )

@@ -3,6 +3,8 @@
 package com.codingpit.muviss.feature.settings.ui
 
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
@@ -69,6 +71,7 @@ class SettingsViewModelTest {
             ExportDataUseCase(repository),
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),
+        FakeFeatureFlags(),
     )
 
     @Test
@@ -147,5 +150,14 @@ class SettingsViewModelTest {
 
         assertNull(vm.state.value.exportJson)
         assertEquals("disk full", vm.state.value.exportError)
+    }
+}
+
+private class FakeFeatureFlags : FeatureFlags {
+    private val scheme = MutableStateFlow(TriageControlScheme.DEFAULT)
+    override val triageControlScheme: Flow<TriageControlScheme> = scheme
+
+    override suspend fun setTriageControlScheme(scheme: TriageControlScheme) {
+        this.scheme.value = scheme
     }
 }

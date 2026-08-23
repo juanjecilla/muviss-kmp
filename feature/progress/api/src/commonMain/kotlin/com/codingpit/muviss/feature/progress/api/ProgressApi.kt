@@ -33,6 +33,22 @@ interface ProgressApi {
     /** Marks every episode at or before [target] across [seasons] as seen — the "catch me up" action. */
     suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId)
 
+    /**
+     * Marks every episode that has aired by [todayEpochDay] as seen, and
+     * nothing else — the "I am fully up to date" action triage's `CaughtUp`
+     * verdict uses. Unlike [markPreviousSeen] this never ticks an unaired or
+     * undated episode, which would make seen exceed aired and break status
+     * derivation (ADR 0005).
+     */
+    suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long)
+
+    /**
+     * Un-ticks every episode (or the movie tick) for [mediaId]. Triage's undo
+     * uses it to reverse the progress a verdict wrote; without it, taking back
+     * a "caught up" swipe would leave the title reading as fully watched.
+     */
+    suspend fun clearProgress(mediaId: MediaId)
+
     /** Toggles a movie's watched flag. */
     suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean)
 }

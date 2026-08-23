@@ -74,6 +74,7 @@ internal class SupabaseSyncBackend(
         postgrest.upsert(TABLE_EPISODE_PROGRESS, token, changes.episodeProgress)
         postgrest.upsert(TABLE_MEDIA_LIST, token, changes.mediaLists)
         postgrest.upsert(TABLE_LIST_ENTRY, token, changes.listEntries)
+        postgrest.upsert(TABLE_TRIAGE_DECISION, token, changes.triageDecisions)
     }
 
     override suspend fun pull(sinceEpochMs: Long?): Result<SyncChangeSet> = runCatching {
@@ -83,6 +84,7 @@ internal class SupabaseSyncBackend(
             episodeProgress = postgrest.selectSince(TABLE_EPISODE_PROGRESS, token, sinceEpochMs),
             mediaLists = postgrest.selectSince(TABLE_MEDIA_LIST, token, sinceEpochMs),
             listEntries = postgrest.selectSince(TABLE_LIST_ENTRY, token, sinceEpochMs),
+            triageDecisions = postgrest.selectSince(TABLE_TRIAGE_DECISION, token, sinceEpochMs),
         )
     }
 
@@ -120,6 +122,7 @@ internal class SupabaseSyncBackend(
         const val TABLE_EPISODE_PROGRESS = "episode_progress"
         const val TABLE_MEDIA_LIST = "media_list"
         const val TABLE_LIST_ENTRY = "list_entry"
+        const val TABLE_TRIAGE_DECISION = "triage_decision"
         const val MILLIS_PER_SECOND = 1000L
     }
 }

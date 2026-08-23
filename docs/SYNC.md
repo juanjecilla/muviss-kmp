@@ -150,6 +150,29 @@ create policy "own rows only" on list_entry
 create trigger list_entry_lww
   before update on list_entry
   for each row execute function discard_stale_write();
+
+-- triage_decision --
+create table triage_decision (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  media_id text not null,
+  media_type text not null,
+  verdict text not null,
+  title text not null,
+  poster_url text,
+  decided_at_epoch_ms bigint not null,
+  resolved boolean not null default true,
+  updated_at_epoch_ms bigint not null,
+  deleted boolean not null default false,
+  primary key (user_id, media_id)
+);
+
+alter table triage_decision enable row level security;
+create policy "own rows only" on triage_decision
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create trigger triage_decision_lww
+  before update on triage_decision
+  for each row execute function discard_stale_write();
 ```
 
 Notes:
@@ -165,6 +188,11 @@ Notes:
   update` branch is exactly what fires `discard_stale_write()`'s `before
   update` trigger, so first-time inserts and later updates both go through
   the same client call.
+- `triage_decision` (ADR 0010) carries its own `title`/`poster_url` because a
+  `SKIP` verdict writes no `collection_entry` row to join against — the
+  Skipped screen renders straight off these. Unlike
+  `collection_entry.notifications_muted`, it *is* synced: a skip is user
+  intent, and a title ruled on from one device must not resurface on another.
 - No `deleted` filter is applied server-side on select — `SyncEngine` pulls
   tombstoned rows too (so it can propagate the delete locally) and relies on
   `updated_at_epoch_ms` for the `since` filter, same as every other row.

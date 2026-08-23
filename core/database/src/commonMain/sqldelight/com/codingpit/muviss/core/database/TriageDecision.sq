@@ -1,0 +1,103 @@
+-- One row per MediaItem the user has ruled on during triage (ADR 0010).
+-- This is a *log of intent*, never a status: `collectionEntry` and
+-- `episodeProgress` remain the only truth about what is saved and how far it
+-- has been watched. Reading this table answers exactly one question — "has
+-- the user already decided about this title?" — which is what keeps the deck
+-- from asking twice.
+--
+-- Deliberately has no foreign key to `collectionEntry`, following
+-- `listEntry` (EPIC 17). A SKIP verdict writes no collection row at all, and
+-- a SKIP is precisely the verdict that must be remembered, so this table
+-- carries its own minimal `title`/`posterUrl` snapshot: without it the
+-- "Skipped" screen would have nothing to render. It also means a decision
+-- survives the user deleting the title from their collection, which is the
+-- intended behaviour, not an oversight.
+--
+-- `resolved` is 0 while a verdict's side effects (details fetch -> collection
+-- upsert -> progress ticks) have not completed. Swipes commit optimistically:
+-- the decision row lands locally and instantly so dedupe holds even when the
+-- network work behind it fails, and `selectUnresolved` is how a retry finds
+-- the leftovers.
+--
+-- Sync columns (updatedAtEpochMs / isDirty / deleted) per ADR 0002; the table
+-- is pushed and pulled like any other user-owned table (ADR 0009).
+CREATE TABLE triageDecision (
+    mediaId TEXT NOT NULL PRIMARY KEY,
+    mediaType TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    title TEXT NOT NULL,
+    posterUrl TEXT,
+    decidedAtEpochMs INTEGER NOT NULL,
+    resolved INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+);
+
+-- Skipped titles are listed newest-first and restores are per-verdict reads,
+-- so the verdict column is worth an index once a few thousand rows exist.
+CREATE INDEX triageDecision_verdict ON triageDecision(verdict);
+
+selectAll:
+SELECT *
+FROM triageDecision
+WHERE deleted = 0
+ORDER BY decidedAtEpochMs DESC;
+
+selectByVerdict:
+SELECT *
+FROM triageDecision
+WHERE deleted = 0 AND verdict = :verdict
+ORDER BY decidedAtEpochMs DESC;
+
+-- Does not filter `deleted` — callers decide (mirrors collectionEntry.selectById).
+selectById:
+SELECT *
+FROM triageDecision
+WHERE mediaId = :mediaId;
+
+-- The deck's exclusion set. One query, no per-row work, whatever the size.
+selectDecidedIds:
+SELECT mediaId
+FROM triageDecision
+WHERE deleted = 0;
+
+selectUnresolved:
+SELECT *
+FROM triageDecision
+WHERE deleted = 0 AND resolved = 0
+ORDER BY decidedAtEpochMs ASC;
+
+-- Re-triaging a restored title overwrites its previous verdict in place.
+upsert:
+INSERT OR REPLACE INTO triageDecision(
+    mediaId, mediaType, verdict, title, posterUrl,
+    decidedAtEpochMs, resolved, updatedAtEpochMs, isDirty, deleted
+)
+VALUES (
+    :mediaId, :mediaType, :verdict, :title, :posterUrl,
+    :decidedAtEpochMs, :resolved, :updatedAtEpochMs, :isDirty, :deleted
+);
+
+markResolved:
+UPDATE triageDecision
+SET resolved = :resolved, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId;
+
+-- Restoring a decision (undo, or the Skipped screen) soft-deletes the row so
+-- the title becomes deck-eligible again and the tombstone still propagates.
+softDelete:
+UPDATE triageDecision
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId;
+
+selectDirty:
+SELECT *
+FROM triageDecision
+WHERE isDirty = 1;
+
+-- Run by SyncEngine after a row has been successfully pushed (EPIC 9).
+clearDirty:
+UPDATE triageDecision
+SET isDirty = 0
+WHERE mediaId = :mediaId;

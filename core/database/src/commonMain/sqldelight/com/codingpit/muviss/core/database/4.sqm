@@ -1,0 +1,42 @@
+-- Triage (ADR 0010): rapid one-at-a-time decisions about candidate titles.
+--
+-- 1. `triageDecision` is a new table recording one verdict per MediaItem.
+--    It has no foreign key to `collectionEntry` on purpose: a SKIP verdict
+--    saves nothing, and a SKIP is exactly the verdict that has to be
+--    remembered so the deck never re-asks. That is also why it carries its
+--    own `title`/`posterUrl` snapshot — the "Skipped" screen has no
+--    collection row to join against. See `TriageDecision.sq` for the full
+--    column rationale and ADR 0010 for why this is a decision *log* rather
+--    than a flag on `collectionEntry`.
+--
+--    Existing installs get an empty table: every title already in the
+--    collection is excluded from the deck by collection membership, not by a
+--    backfilled decision, so there is nothing to migrate into it.
+--
+-- 2. `appSettings` gains two per-device triage UI preferences. Both are
+--    deliberately excluded from sync, same category as
+--    `collectionEntry.notificationsMuted` (ADR 0009): which drag scheme feels
+--    right and whether the tutorial has been seen are properties of a device
+--    and its input method, not of the user's library.
+--
+--    `triageControlScheme` is FOUR_WAY (left/right/up/down) or THREE_WAY
+--    (left/right/up, with Watching on a button). It defaults to FOUR_WAY and
+--    is switchable from Settings; `FeatureFlags` in `:core:common` reads it,
+--    so a remote flag source can take over later without touching triage.
+ALTER TABLE appSettings ADD COLUMN triageControlScheme TEXT NOT NULL DEFAULT 'FOUR_WAY';
+ALTER TABLE appSettings ADD COLUMN triageTutorialSeen INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE triageDecision (
+    mediaId TEXT NOT NULL PRIMARY KEY,
+    mediaType TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    title TEXT NOT NULL,
+    posterUrl TEXT,
+    decidedAtEpochMs INTEGER NOT NULL,
+    resolved INTEGER NOT NULL DEFAULT 1,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX triageDecision_verdict ON triageDecision(verdict);

@@ -38,12 +38,18 @@ object ForYouSeeding {
     /**
      * Merges the recommendation pages fetched for each seed into one list:
      * flattened in seed order (so the most recently-added seed's picks lead),
-     * deduplicated by [MediaId] (first occurrence wins), and with anything
-     * already in [libraryIds] dropped — no point recommending what's already
-     * saved.
+     * deduplicated by [MediaId] (first occurrence wins), and with anything in
+     * [excludedIds] dropped.
+     *
+     * [excludedIds] is the library **plus** anything skipped during triage
+     * (ADR 0010): there is no point recommending what is already saved, and
+     * even less point suggesting something the user explicitly rejected.
+     * "For you" is the only discovery surface that filters on skips — search
+     * results and the popular carousels stay whole, because those have to
+     * return the catalogue, not a personalised view of it.
      */
-    fun mergeAndExclude(recommendationsBySeed: List<List<MediaSummary>>, libraryIds: Set<MediaId>): List<MediaSummary> = recommendationsBySeed
+    fun mergeAndExclude(recommendationsBySeed: List<List<MediaSummary>>, excludedIds: Set<MediaId>): List<MediaSummary> = recommendationsBySeed
         .flatten()
         .distinctBy { it.id }
-        .filterNot { it.id in libraryIds }
+        .filterNot { it.id in excludedIds }
 }

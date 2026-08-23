@@ -15,6 +15,7 @@ import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
+import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 
 /** The outcome of one [SyncEngine.syncNow] run. */
 sealed interface SyncOutcome {
@@ -91,6 +92,7 @@ class SyncEngine(
         episodeProgress = database.episodeProgressQueries.selectDirty().awaitAsList().map { it.toChange() },
         mediaLists = database.mediaListQueries.selectDirtyLists().awaitAsList().map { it.toChange() },
         listEntries = database.mediaListQueries.selectDirtyEntries().awaitAsList().map { it.toChange() },
+        triageDecisions = database.triageDecisionQueries.selectDirty().awaitAsList().map { it.toChange() },
     )
 
     private suspend fun clearDirty(dirty: SyncChangeSet) {
@@ -98,6 +100,7 @@ class SyncEngine(
         dirty.episodeProgress.forEach { database.episodeProgressQueries.clearDirty(it.episodeId) }
         dirty.mediaLists.forEach { database.mediaListQueries.clearDirtyList(it.id) }
         dirty.listEntries.forEach { database.mediaListQueries.clearDirtyEntry(listId = it.listId, mediaId = it.mediaId) }
+        dirty.triageDecisions.forEach { database.triageDecisionQueries.clearDirty(it.mediaId) }
     }
 
     private suspend fun applyRemote(remote: SyncChangeSet) {
@@ -105,6 +108,7 @@ class SyncEngine(
         remote.episodeProgress.forEach { change -> applyEpisodeProgress(change) }
         remote.mediaLists.forEach { change -> applyMediaList(change) }
         remote.listEntries.forEach { change -> applyListEntry(change) }
+        remote.triageDecisions.forEach { change -> applyTriageDecision(change) }
     }
 
     /** Never resurrects a tombstone and never overwrites a newer local edit — see the class KDoc's "Order" section. Applies unconditionally when no local row exists (first sync on a fresh install). */
@@ -174,6 +178,23 @@ class SyncEngine(
         )
     }
 
+    private suspend fun applyTriageDecision(change: TriageDecisionChange) {
+        val local = database.triageDecisionQueries.selectById(change.mediaId).awaitAsOneOrNull()
+        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
+        database.triageDecisionQueries.upsert(
+            mediaId = change.mediaId,
+            mediaType = change.mediaType,
+            verdict = change.verdict,
+            title = change.title,
+            posterUrl = change.posterUrl,
+            decidedAtEpochMs = change.decidedAtEpochMs,
+            resolved = change.resolved,
+            updatedAtEpochMs = change.updatedAtEpochMs,
+            isDirty = false,
+            deleted = change.deleted,
+        )
+    }
+
     private fun CollectionEntryRow.toChange() = CollectionEntryChange(
         mediaId = mediaId,
         mediaType = mediaType,
@@ -214,6 +235,18 @@ class SyncEngine(
         listId = listId,
         mediaId = mediaId,
         addedAtEpochMs = addedAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
+    )
+
+    private fun TriageDecisionRow.toChange() = TriageDecisionChange(
+        mediaId = mediaId,
+        mediaType = mediaType,
+        verdict = verdict,
+        title = title,
+        posterUrl = posterUrl,
+        decidedAtEpochMs = decidedAtEpochMs,
+        resolved = resolved,
         updatedAtEpochMs = updatedAtEpochMs,
         deleted = deleted,
     )

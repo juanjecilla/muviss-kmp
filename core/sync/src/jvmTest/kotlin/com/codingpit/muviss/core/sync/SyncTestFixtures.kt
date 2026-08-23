@@ -49,6 +49,7 @@ internal class FakeSyncBackend(
     private val episodeProgress = mutableMapOf<String, EpisodeProgressChange>()
     private val mediaLists = mutableMapOf<String, MediaListChange>()
     private val listEntries = mutableMapOf<Pair<String, String>, ListEntryChange>()
+    private val triageDecisions = mutableMapOf<String, TriageDecisionChange>()
 
     var pushFailure: Throwable? = null
     var pullFailure: Throwable? = null
@@ -60,6 +61,12 @@ internal class FakeSyncBackend(
     fun seedRemoteCollectionEntry(change: CollectionEntryChange) {
         collectionEntries[change.mediaId] = change
     }
+
+    fun seedRemoteTriageDecision(change: TriageDecisionChange) {
+        triageDecisions[change.mediaId] = change
+    }
+
+    fun remoteTriageDecision(mediaId: String): TriageDecisionChange? = triageDecisions[mediaId]
 
     override suspend fun signInAnonymously(): Result<SyncSession> = Result.success(FAKE_SESSION).also { sessionState.value = FAKE_SESSION }
 
@@ -81,6 +88,7 @@ internal class FakeSyncBackend(
         changes.episodeProgress.forEach { upsertIfNewer(episodeProgress, it.episodeId, it) { c -> c.updatedAtEpochMs } }
         changes.mediaLists.forEach { upsertIfNewer(mediaLists, it.id, it) { c -> c.updatedAtEpochMs } }
         changes.listEntries.forEach { upsertIfNewer(listEntries, it.listId to it.mediaId, it) { c -> c.updatedAtEpochMs } }
+        changes.triageDecisions.forEach { upsertIfNewer(triageDecisions, it.mediaId, it) { c -> c.updatedAtEpochMs } }
         return Result.success(Unit)
     }
 
@@ -93,6 +101,7 @@ internal class FakeSyncBackend(
                 episodeProgress = episodeProgress.values.filter { it.updatedAtEpochMs > since },
                 mediaLists = mediaLists.values.filter { it.updatedAtEpochMs > since },
                 listEntries = listEntries.values.filter { it.updatedAtEpochMs > since },
+                triageDecisions = triageDecisions.values.filter { it.updatedAtEpochMs > since },
             ),
         )
     }

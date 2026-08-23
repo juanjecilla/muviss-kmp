@@ -44,6 +44,7 @@ class SqlDelightSettingsRepositoryTest {
             database.appSettingsQueries,
             database.collectionEntryQueries,
             database.episodeProgressQueries,
+            database.triageDecisionQueries,
             ImmediateDispatchers(UnconfinedTestDispatcher()),
             FakeClock(1_000L),
         )

@@ -11,7 +11,9 @@ import com.codingpit.muviss.feature.search.domain.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
+import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.Job
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
@@ -80,6 +83,7 @@ class SearchViewModel(
     private val genresUseCase: GenresUseCase,
     private val recommendationsUseCase: RecommendationsUseCase,
     private val collectionApi: CollectionApi,
+    private val triageApi: TriageApi,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -93,8 +97,10 @@ class SearchViewModel(
         // any time (a favorite toggled, a new top-rated title added), so this
         // stays subscribed and re-derives "For you" reactively, same pattern
         // as progress:ui's UpcomingViewModel reacting to collectionApi.
-        collectionApi.observeSummaries()
-            .flatMapLatest { library -> forYouFlow(library) }
+        // Skipped titles are excluded alongside saved ones — see
+        // ForYouSeeding.mergeAndExclude for why only this surface filters them.
+        combine(collectionApi.observeSummaries(), triageApi.observeDecidedIds(), ::Pair)
+            .flatMapLatest { (library, decided) -> forYouFlow(library, decided) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
             .launchIn(viewModelScope)
     }
@@ -254,15 +260,15 @@ class SearchViewModel(
      * "no error, just hidden" treatment as [DetailViewModel]'s watch-providers
      * and more-like-this rows.
      */
-    private fun forYouFlow(library: List<CollectionSummary>): Flow<List<MediaSummary>> = flow {
+    private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>): Flow<List<MediaSummary>> = flow {
         val seeds = ForYouSeeding.selectSeeds(library)
         if (seeds.isEmpty()) {
             emit(emptyList())
             return@flow
         }
-        val libraryIds = library.map { it.mediaId }.toSet()
+        val excluded = library.mapTo(mutableSetOf()) { it.mediaId } + decidedIds
         val recommendationsBySeed = seeds.map { seed -> recommendationsUseCase(seed).getOrNull()?.items.orEmpty() }
-        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, libraryIds))
+        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, excluded))
     }
 
     private companion object {

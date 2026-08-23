@@ -5,13 +5,21 @@
 --
 -- `lastSyncedAtEpochMs` was added in `3.sqm` (EPIC 9, sync): null means
 -- "never synced"; `SyncEngine` stamps it after a completed push+pull cycle.
+--
+-- `triageControlScheme` and `triageTutorialSeen` were added in `4.sqm`
+-- (triage, ADR 0010). Both are per-device UI preferences, deliberately NOT
+-- synced — same category as `collectionEntry.notificationsMuted`. Columns
+-- added by a migration must stay LAST in this declaration: `ALTER TABLE ADD
+-- COLUMN` appends, and `verifyMigrations` compares ordinal position.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
     language TEXT NOT NULL DEFAULT 'en-US',
     region TEXT NOT NULL DEFAULT 'US',
     notificationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    lastSyncedAtEpochMs INTEGER
+    lastSyncedAtEpochMs INTEGER,
+    triageControlScheme TEXT NOT NULL DEFAULT 'FOUR_WAY',
+    triageTutorialSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -37,3 +45,9 @@ UPDATE appSettings SET notificationsEnabled = :notificationsEnabled WHERE id = 0
 
 updateLastSyncedAt:
 UPDATE appSettings SET lastSyncedAtEpochMs = :lastSyncedAtEpochMs WHERE id = 0;
+
+updateTriageControlScheme:
+UPDATE appSettings SET triageControlScheme = :triageControlScheme WHERE id = 0;
+
+updateTriageTutorialSeen:
+UPDATE appSettings SET triageTutorialSeen = :triageTutorialSeen WHERE id = 0;

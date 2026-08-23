@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.settings.domain.AppTheme
@@ -44,6 +45,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onOpenLicenses: () -> Unit,
     onOpenImport: () -> Unit,
+    onOpenTriage: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
@@ -88,6 +90,22 @@ fun SettingsScreen(
             options = SupportedLocales.regions.map { it.code to it.displayName },
             selectedCode = state.settings.region,
             onSelect = viewModel::onRegionSelected,
+        )
+
+        SectionOverline("Triage", topPadding = true)
+        ActionRow(
+            icon = MuvissIcons.CaughtUp,
+            label = "Fill your library",
+            value = "Sort titles quickly",
+            onClick = onOpenTriage,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        PickerRow(
+            label = "Swipe controls",
+            value = state.triageControlScheme.displayName,
+            options = TriageControlScheme.entries.map { it.name to it.displayName },
+            selectedCode = state.triageControlScheme.name,
+            onSelect = { name -> viewModel.onTriageControlSchemeSelected(TriageControlScheme.fromStored(name)) },
         )
 
         SectionOverline("Data", topPadding = true)
@@ -284,3 +302,13 @@ private fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit) {
         }
     }
 }
+
+/**
+ * Both schemes keep left/right/up on the three high-frequency verdicts; they
+ * differ only in whether a downward drag commits Watching or is inert.
+ */
+private val TriageControlScheme.displayName: String
+    get() = when (this) {
+        TriageControlScheme.FOUR_WAY -> "Four directions"
+        TriageControlScheme.THREE_WAY -> "Three directions + button"
+    }

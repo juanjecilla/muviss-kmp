@@ -5,15 +5,18 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.data.DefaultProgressApi
 import com.codingpit.muviss.feature.progress.data.RegistryEpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
+import com.codingpit.muviss.feature.progress.domain.ClearProgressUseCase
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
+import com.codingpit.muviss.feature.progress.domain.MarkAllAiredSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkPreviousSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkSeasonSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveEpisodeProgressUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenActivityEpochDaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenCountUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
+import com.codingpit.muviss.feature.progress.domain.ProgressMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.SetMovieWatchedUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
@@ -25,7 +28,7 @@ val progressDataModule: Module = module {
     single { get<MuvissDatabase>().episodeProgressQueries }
     single<ProgressRepository> { SqlDelightProgressRepository(get(), get(), get()) }
     single<EpisodeCatalogSource> { RegistryEpisodeCatalogSource(get(), get()) }
-    single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get(), get(), get()) }
+    single<ProgressApi> { DefaultProgressApi(get(), get(), get()) }
 
     factory { ObserveEpisodeProgressUseCase(get()) }
     factory { ObserveSeenEpisodesUseCase(get()) }
@@ -34,6 +37,9 @@ val progressDataModule: Module = module {
     factory { ToggleEpisodeSeenUseCase(get()) }
     factory { MarkSeasonSeenUseCase(get()) }
     factory { MarkPreviousSeenUseCase(get()) }
+    factory { MarkAllAiredSeenUseCase(get()) }
+    factory { ClearProgressUseCase(get()) }
+    factory { ProgressMutations(get(), get(), get(), get(), get(), get()) }
     factory { SetMovieWatchedUseCase(get()) }
     factory { FetchEpisodeCatalogUseCase(get()) }
     single { EpisodeCatalogCache(get()) }

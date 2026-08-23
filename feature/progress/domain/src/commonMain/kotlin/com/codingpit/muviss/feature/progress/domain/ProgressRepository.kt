@@ -23,4 +23,7 @@ interface ProgressRepository {
 
     /** Ticks every id in [episodeIds] to [seen] as one operation. */
     suspend fun setSeenBulk(episodeIds: List<EpisodeId>, seen: Boolean)
+
+    /** Un-ticks every episode of [mediaId] — triage's undo. */
+    suspend fun clearForMedia(mediaId: MediaId)
 }

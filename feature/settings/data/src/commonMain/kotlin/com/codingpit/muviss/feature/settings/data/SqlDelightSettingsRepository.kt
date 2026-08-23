@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
+import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.Json
 import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
 import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
+import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 
 /**
  * SQLDelight-backed [SettingsRepository] over `AppSettings.sq`. The table is
@@ -40,6 +42,7 @@ class SqlDelightSettingsRepository(
     private val settingsQueries: AppSettingsQueries,
     private val collectionQueries: CollectionEntryQueries,
     private val progressQueries: EpisodeProgressQueries,
+    private val triageQueries: TriageDecisionQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
 ) : SettingsRepository {
@@ -81,6 +84,7 @@ class SqlDelightSettingsRepository(
             exportedAtEpochMs = clock.nowEpochMs(),
             collection = collectionQueries.selectAll().awaitAsList().map { it.toExport() },
             progress = progressQueries.selectAll().awaitAsList().map { it.toExport() },
+            triage = triageQueries.selectAll().awaitAsList().map { it.toExport() },
         )
         json.encodeToString(export)
     }
@@ -105,6 +109,16 @@ class SqlDelightSettingsRepository(
         airedEpisodes = airedEpisodes.toInt(),
         favorite = favorite,
         addedAtEpochMs = addedAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun TriageDecisionRow.toExport(): TriageDecisionExport = TriageDecisionExport(
+        mediaId = mediaId,
+        mediaType = mediaType,
+        verdict = verdict,
+        title = title,
+        posterUrl = posterUrl,
+        decidedAtEpochMs = decidedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
     )
 

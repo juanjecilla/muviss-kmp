@@ -25,6 +25,26 @@ object EpisodeOrdering {
             episode.id !in seen && airDate != null && airDate <= todayEpochDay
         }
 
+    /**
+     * Every episode that has aired by [todayEpochDay], in show order.
+     *
+     * Deliberately not expressible as [upToInclusive] with the last aired
+     * episode as its target: that walks a contiguous prefix and so would also
+     * tick anything positioned *before* the target that has not aired — an
+     * undated special in season 0, or a mid-season episode TMDB has no date
+     * for yet. Those ticks are counted by
+     * [WatchProgress][com.codingpit.muviss.core.model.WatchProgress]'s
+     * `seenEpisodes` but not by its `airedEpisodes`, and that struct's
+     * `require(seenEpisodes <= airedEpisodes)` throws. Filtering on air date
+     * directly keeps the two counts consistent by construction.
+     */
+    fun airedBy(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = flatten(seasons)
+        .filter { episode ->
+            val airDate = episode.airDateEpochDay
+            airDate != null && airDate <= todayEpochDay
+        }
+        .map { it.id }
+
     /** Every episode at or before [target] in show order, inclusive of [target] itself. */
     fun upToInclusive(seasons: List<Season>, target: EpisodeId): List<EpisodeId> {
         val ordered = flatten(seasons)

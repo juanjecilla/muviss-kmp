@@ -47,3 +47,15 @@ An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 **SyncEngine**:
 The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row.
 _Avoid_: backend, cloud (those are vendors behind this seam).
+
+**Triage**:
+Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on.
+_Avoid_: swipe, deck, card (those are UI mechanics, not domain).
+
+**TriageDecision**:
+The persisted record of one TriageVerdict on one MediaItem — a log of what the user decided, never a status. Outlives the CollectionEntry it created: removing a MediaItem from the collection does not erase the decision, so triage never asks about it twice.
+_Avoid_: dismissal, rejection (Skip is reversible); triage state (a decision is an event, not a state).
+
+**TriageVerdict**:
+The four outcomes of triaging one MediaItem. Skip — not for me. Later — collected, not started. Watching — collected, started (TV only; a movie is never in progress). CaughtUp — collected, every aired episode seen. The last three write a CollectionEntry and, for Watching and CaughtUp, real WatchProgress ticks; none of them stores a WatchStatus, which stays derived (ADR 0005).
+_Avoid_: watchlist (that is a CollectionEntry with NotStarted status), seen (that is an episode tick).

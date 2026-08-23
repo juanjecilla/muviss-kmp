@@ -3,6 +3,8 @@ package com.codingpit.muviss.feature.settings.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
@@ -24,6 +26,8 @@ data class SettingsUiState(
     /** One-shot: non-null while an export is ready for the platform sharer to hand off; cleared by [SettingsViewModel.exportHandled]. */
     val exportJson: String? = null,
     val exportError: String? = null,
+    /** Which drag scheme the triage deck uses (ADR 0010) — a per-device input preference, not a library setting. */
+    val triageControlScheme: TriageControlScheme = TriageControlScheme.DEFAULT,
 )
 
 /**
@@ -37,16 +41,25 @@ class SettingsViewModel(
     observeSettings: ObserveSettingsUseCase,
     private val actions: SettingsActions,
     appVersion: AppVersion,
+    private val featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState(appVersion = appVersion))
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
 
     init {
+        featureFlags.triageControlScheme
+            .onEach { scheme -> _state.update { it.copy(triageControlScheme = scheme) } }
+            .launchIn(viewModelScope)
+
         observeSettings()
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
             .launchIn(viewModelScope)
+    }
+
+    fun onTriageControlSchemeSelected(scheme: TriageControlScheme) {
+        viewModelScope.launch { featureFlags.setTriageControlScheme(scheme) }
     }
 
     fun onThemeSelected(theme: AppTheme) {

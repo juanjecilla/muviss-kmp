@@ -108,6 +108,7 @@ E14 Calendar   E15 Ratings&Notes   E16 Recommendations   E17 Lists  (feature epi
 | 6 | E11 iOS release, E12 Desktop release, E15 Ratings & notes |
 | 7 | E13 Web release, E16 Recommendations, E17 Custom lists |
 | 8 | E9 Sync & accounts, E18 Import |
+| 9 | E19 Triage |
 
 ## EPIC 10 — Platform data parity 🔴 v2 critical path — wave 5
 The DB works everywhere or the "all platforms" story is fiction.
@@ -155,7 +156,13 @@ TV Time parity: user lists ("Marathon 2026", "With Ana").
 ## EPIC 9 — Sync & Accounts ✅ — wave 8 (moved from post-v1 backlog)
 `SyncEngine` (`:core:sync`) over the existing `isDirty` / `updatedAt` / soft-delete change-log, behind a backend-agnostic `SyncBackend` seam; Supabase implemented first via plain Ktor (Firebase swappable later), optional email-OTP auth, last-write-wins conflict resolution, tombstone propagation. See ADR 0009 and `docs/SYNC.md`. Issue #8.
 
+## EPIC 19 — Triage ✅ — wave 9
+Swipe-deck triage (`:feature:triage`) for filling a library fast and then keeping up with what's new. Four verdicts — Skip / Later / Watching / Caught up — recorded in a `triageDecision` log (ADR 0010) so the deck never asks twice, even after a title is later removed from the collection. Caught up writes real aired-episode ticks and lets `WatchStatusCalculator` derive Watched/Finished (ADR 0005); nothing stores a status. Entered from Discover and Settings, not a sixth bottom-bar tab. Two drag schemes behind a `FeatureFlags` seam, keyboard parity on desktop/web, decisions synced like any other user-owned table. See ADR 0010.
+
 ## Cross-cutting / backlog
+- **Analytics + remote feature flags.** `AnalyticsTracker` and `FeatureFlags` seams exist in `:core:common` with no vendor behind them (the tracker is a no-op; flags read `appSettings`). Choosing a vendor means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
+- **Durable web persistence.** The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything — including triage decisions, whose whole promise is not asking twice. Fixes `collectionEntry`/`episodeProgress`/`mediaList` equally; needs an ADR 0008 amendment.
+- **`:app:macrobenchmark`.** Frame timing for the triage drag, deck cold start, and commit latency on a real device. Needs an emulator in CI, which the repo has no provision for.
 - Additional `MetadataProvider`s (TVmaze/Trakt) + cross-source reconciliation via IMDb id.
 - Home-screen widgets (Android Glance / iOS WidgetKit) — post-E14.
 - Baseline profile + startup performance pass.

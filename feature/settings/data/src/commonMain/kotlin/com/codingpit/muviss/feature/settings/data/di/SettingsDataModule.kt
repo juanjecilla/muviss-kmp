@@ -1,9 +1,11 @@
 package com.codingpit.muviss.feature.settings.data.di
 
+import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.data.AppSettingsFeatureFlags
 import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
 import com.codingpit.muviss.feature.settings.data.RegistryImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
@@ -47,9 +49,17 @@ import org.koin.dsl.module
 val settingsDataModule: Module = module {
     single { get<MuvissDatabase>().appSettingsQueries }
     single<SettingsRepository> {
-        SqlDelightSettingsRepository(get(), get<MuvissDatabase>().collectionEntryQueries, get<MuvissDatabase>().episodeProgressQueries, get(), get())
+        SqlDelightSettingsRepository(
+            get(),
+            get<MuvissDatabase>().collectionEntryQueries,
+            get<MuvissDatabase>().episodeProgressQueries,
+            get<MuvissDatabase>().triageDecisionQueries,
+            get(),
+            get(),
+        )
     }
     single<SettingsApi> { DefaultSettingsApi(get()) }
+    single<FeatureFlags> { AppSettingsFeatureFlags(get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
     single { SettingsLocaleSync(get(), get(), get()) } withOptions { createdAtStart() }

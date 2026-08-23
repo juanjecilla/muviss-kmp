@@ -65,6 +65,13 @@ object MuvissIcons {
     val ChevronRight: ImageVector get() = stroked("ChevronRight", "M9 5l7 7-7 7")
     val ChevronDown: ImageVector get() = stroked("ChevronDown", "M5 9l7 7 7-7")
 
+    // Triage (ADR 0010) — the four verdicts plus undo
+    val Skip: ImageVector get() = stroked("Skip", "M6 6l12 12M18 6L6 18")
+    val Later: ImageVector get() = stroked("Later", "M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z")
+    val Watching: ImageVector get() = stroked("Watching", "M12 4.5C7 4.5 3.5 8.5 2.5 12c1 3.5 4.5 7.5 9.5 7.5s8.5-4 9.5-7.5c-1-3.5-4.5-7.5-9.5-7.5z", "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6")
+    val CaughtUp: ImageVector get() = stroked("CaughtUp", "M3 13l4 4L15 7", "M13 15l2 2L21 7")
+    val Undo: ImageVector get() = stroked("Undo", "M4 9h11a5 5 0 0 1 0 10h-6", "M4 9l4-4M4 9l4 4")
+
     // Data / sync
     val Sync: ImageVector get() = stroked("Sync", "M20 12a8 8 0 1 0 -3 6.2", "M20 12v-4M20 12h-4")
     val Import: ImageVector get() = stroked("Import", "M12 4v11M6 9.5l6 5.5 6-5.5", "M4 20h16")

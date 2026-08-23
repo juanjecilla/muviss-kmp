@@ -45,6 +45,21 @@ class MarkPreviousSeenUseCase(private val repository: ProgressRepository) {
     suspend operator fun invoke(seasons: List<Season>, target: EpisodeId) = repository.setSeenBulk(EpisodeOrdering.upToInclusive(seasons, target), seen = true)
 }
 
+/**
+ * Marks exactly the episodes that have aired by `todayEpochDay` as seen —
+ * "I am completely up to date with this show". Triage's `CaughtUp` verdict
+ * writes progress through this rather than through [MarkPreviousSeenUseCase];
+ * see [EpisodeOrdering.airedBy] for why the difference matters.
+ */
+class MarkAllAiredSeenUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long) = repository.setSeenBulk(EpisodeOrdering.airedBy(seasons, todayEpochDay), seen = true)
+}
+
+/** Un-ticks everything for one title — used to take back a triage verdict. */
+class ClearProgressUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(mediaId: MediaId) = repository.clearForMedia(mediaId)
+}
+
 /** Toggles a movie's single watched tick (see [EpisodeId.forMovie]). */
 class SetMovieWatchedUseCase(private val repository: ProgressRepository) {
     suspend operator fun invoke(mediaId: MediaId, watched: Boolean) = repository.setSeen(EpisodeId.forMovie(mediaId), watched)
@@ -54,3 +69,18 @@ class SetMovieWatchedUseCase(private val repository: ProgressRepository) {
 class FetchEpisodeCatalogUseCase(private val source: EpisodeCatalogSource) {
     suspend operator fun invoke(mediaId: MediaId): Result<List<Season>> = source.fetch(mediaId)
 }
+
+/**
+ * The write half of [com.codingpit.muviss.feature.progress.api.ProgressApi],
+ * bundled so `DefaultProgressApi`'s constructor stays inside detekt's
+ * `LongParameterList` budget — the same trick collection's `CollectionToggles`
+ * uses.
+ */
+class ProgressMutations(
+    val toggleEpisodeSeen: ToggleEpisodeSeenUseCase,
+    val markSeasonSeen: MarkSeasonSeenUseCase,
+    val markPreviousSeen: MarkPreviousSeenUseCase,
+    val markAllAiredSeen: MarkAllAiredSeenUseCase,
+    val clearProgress: ClearProgressUseCase,
+    val setMovieWatched: SetMovieWatchedUseCase,
+)

@@ -76,6 +76,10 @@ private class FakeProgressApi : ProgressApi {
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = error("not used")
     override suspend fun markSeasonSeen(season: Season) = error("not used")
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("not used")
+
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = error("not used")
+
+    override suspend fun clearProgress(mediaId: MediaId) = error("not used")
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = error("not used")
 }
 

@@ -7,6 +7,8 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
 import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
+import com.codingpit.muviss.feature.triage.api.TriageApi
+import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -39,6 +41,8 @@ data class DetailUiState(
     val watchProviders: WatchProviders? = null,
     /** "More like this" row (EPIC 16): recommendations, falling back to similar titles when TMDB has no recommendations for this title. Empty hides the row. */
     val moreLikeThis: List<MediaSummary> = emptyList(),
+    /** True when this title was skipped during triage (ADR 0010) — the only way back once the undo snackbar has gone. */
+    val skipped: Boolean = false,
 ) {
     fun isSeen(episodeId: EpisodeId): Boolean = episodeId in seenEpisodes
 
@@ -58,17 +62,23 @@ data class DetailUiState(
 class DetailViewModel(
     private val mediaId: MediaId,
     private val loadDetail: MediaDetailUseCase,
-    private val collectionApi: CollectionApi,
-    private val progressApi: ProgressApi,
+    private val peers: DetailPeers,
     private val loadWatchProviders: WatchProvidersUseCase,
     private val loadMoreLikeThis: MoreLikeThisUseCase,
 ) : ViewModel() {
+
+    private val collectionApi: CollectionApi get() = peers.collection
+    private val progressApi: ProgressApi get() = peers.progress
+    private val triageApi: TriageApi get() = peers.triage
 
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state.asStateFlow()
 
     init {
         load()
+        triageApi.observeDecision(mediaId)
+            .onEach { decision -> _state.update { it.copy(skipped = decision?.verdict == TriageVerdict.SKIP) } }
+            .launchIn(viewModelScope)
         collectionApi.observeMembership(mediaId)
             .onEach { membership ->
                 _state.update {
@@ -125,6 +135,11 @@ class DetailViewModel(
         }
     }
 
+    /** Clears a SKIP so the title can come back around in the deck. */
+    fun unskip() {
+        viewModelScope.launch { triageApi.restore(mediaId) }
+    }
+
     /** Adds the loaded title to the library, or removes it if already saved. */
     fun toggleSaved() {
         val details = _state.value.details ?: return
@@ -179,3 +194,15 @@ class DetailViewModel(
         viewModelScope.launch { progressApi.setMovieWatched(mediaId, !_state.value.movieWatched) }
     }
 }
+
+/**
+ * The peer features Detail reads through, bundled so this screen's ViewModel
+ * constructor stays inside detekt's `LongParameterList` budget — the same
+ * trick collection's `CollectionToggles` uses. Each is still a peer's `:api`
+ * and nothing more (ADR 0004).
+ */
+class DetailPeers(
+    val collection: CollectionApi,
+    val progress: ProgressApi,
+    val triage: TriageApi,
+)

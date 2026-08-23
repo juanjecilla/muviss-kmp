@@ -68,6 +68,10 @@ private class FakeProgressApi : ProgressApi {
 
     override suspend fun markSeasonSeen(season: Season) = Unit
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = Unit
+
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit
+
+    override suspend fun clearProgress(mediaId: MediaId) = Unit
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) {
         if (watched) watchedMovies += mediaId else watchedMovies -= mediaId
     }

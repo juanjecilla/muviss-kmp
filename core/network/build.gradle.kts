@@ -19,6 +19,7 @@ val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/comm
 val generateBuildConfig by tasks.registering {
     val outDir = buildConfigDir
     val key = tmdbApiKey
+    inputs.property("tmdbApiKey", key)
     outputs.dir(outDir)
     doLast {
         val target = outDir.get()

@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 
 /**
  * One change-log slice covering every table [SyncEngine] replicates —
- * mirrors `collectionEntry` / `episodeProgress` / `mediaList` / `listEntry`
+ * mirrors `collectionEntry` / `episodeProgress` / `mediaList` / `listEntry` /
+ * `triageDecision`
  * (see `core/database`'s `.sq` files) minus device-local-only columns.
  * [SyncBackend.push] sends a set of local dirty rows; [SyncBackend.pull]
  * returns a set of remote rows changed since some point in time. `@Serializable`
@@ -19,12 +20,14 @@ data class SyncChangeSet(
     val episodeProgress: List<EpisodeProgressChange> = emptyList(),
     val mediaLists: List<MediaListChange> = emptyList(),
     val listEntries: List<ListEntryChange> = emptyList(),
+    val triageDecisions: List<TriageDecisionChange> = emptyList(),
 ) {
     val isEmpty: Boolean
-        get() = collectionEntries.isEmpty() && episodeProgress.isEmpty() && mediaLists.isEmpty() && listEntries.isEmpty()
+        get() = collectionEntries.isEmpty() && episodeProgress.isEmpty() && mediaLists.isEmpty() &&
+            listEntries.isEmpty() && triageDecisions.isEmpty()
 
     val size: Int
-        get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size
+        get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size + triageDecisions.size
 }
 
 /**
@@ -84,6 +87,29 @@ data class ListEntryChange(
     @SerialName("list_id") val listId: String,
     @SerialName("media_id") val mediaId: String,
     @SerialName("added_at_epoch_ms") val addedAtEpochMs: Long,
+    @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
+    val deleted: Boolean,
+)
+
+/**
+ * Mirrors `triageDecision` (`TriageDecision.sq`, ADR 0010). Skipping a title
+ * is user intent, not a device preference, so unlike
+ * `collectionEntry.notificationsMuted` it does replicate: a title ruled on
+ * from a phone must not come back around on a desktop, or the promise that
+ * triage never asks twice only holds on one device.
+ *
+ * [resolved] rides along so a verdict whose side effects failed on one device
+ * is still visible as incomplete on another.
+ */
+@Serializable
+data class TriageDecisionChange(
+    @SerialName("media_id") val mediaId: String,
+    @SerialName("media_type") val mediaType: String,
+    val verdict: String,
+    val title: String,
+    @SerialName("poster_url") val posterUrl: String?,
+    @SerialName("decided_at_epoch_ms") val decidedAtEpochMs: Long,
+    val resolved: Boolean,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
     val deleted: Boolean,
 )

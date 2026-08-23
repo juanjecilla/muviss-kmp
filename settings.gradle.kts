@@ -43,7 +43,7 @@ include(":core:designsystem")
 include(":core:sync")
 
 // Feature slices (each: :api / :domain / :data / :ui)
-listOf("search", "collection", "progress", "profile", "settings").forEach { feature ->
+listOf("search", "collection", "progress", "profile", "settings", "triage").forEach { feature ->
     listOf("api", "domain", "data", "ui").forEach { layer ->
         include(":feature:$feature:$layer")
     }

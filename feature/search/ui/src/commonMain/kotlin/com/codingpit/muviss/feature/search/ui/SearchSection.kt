@@ -9,12 +9,16 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 /** Registers the search + detail destinations into the app NavGraphBuilder. */
-fun NavGraphBuilder.searchSection(navController: NavController) {
+fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: () -> Unit) {
     composable<SearchRoute> {
         val viewModel = koinViewModel<SearchViewModel>()
-        SearchScreen(viewModel) { id ->
-            navController.navigate(DetailRoute(id.toString()))
-        }
+        SearchScreen(
+            viewModel = viewModel,
+            onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
+            // Triage's route lives in a peer feature's :ui (ADR 0004), so the
+            // app shell owns the navigation and passes it down.
+            onOpenTriage = onOpenTriage,
+        )
     }
     composable<DetailRoute> { entry ->
         val route = entry.toRoute<DetailRoute>()

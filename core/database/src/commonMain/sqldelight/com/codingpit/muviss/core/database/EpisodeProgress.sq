@@ -57,6 +57,17 @@ UPDATE episodeProgress
 SET seen = :seen, updatedAtEpochMs = :now, isDirty = 1
 WHERE episodeId = :episodeId;
 
+-- Un-ticks every episode of one title in a single statement. Added for
+-- triage's undo (ADR 0010): taking back a "caught up" verdict has to take
+-- back the ticks it wrote, or the title would sit in the library still
+-- reading as fully watched. Un-ticks rather than deletes, matching this
+-- table's no-soft-delete convention (see below) — `seen = 0` is itself the
+-- state change sync replays.
+clearForMedia:
+UPDATE episodeProgress
+SET seen = 0, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId;
+
 -- EPIC 9 (sync): episode ticks are idempotent booleans with no soft-delete
 -- (un-ticking just sets seen = 0, that state change is itself what
 -- propagates — see ADR 0009), so there is no tombstone to worry about here,

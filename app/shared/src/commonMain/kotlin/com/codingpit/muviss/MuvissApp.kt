@@ -54,6 +54,8 @@ import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
+import com.codingpit.muviss.feature.triage.ui.TriageRoute
+import com.codingpit.muviss.feature.triage.ui.triageSection
 import kotlinx.coroutines.launch
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
@@ -233,11 +235,13 @@ private fun MuvissScaffold(
                     scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
             },
         ) {
-            searchSection(navController)
+            searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
             collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
             profileSection()
-            settingsSection(navController)
+            settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+            // Not a top-level destination — reached from Discover and Settings.
+            triageSection(navController)
         }
     }
 }

@@ -62,6 +62,7 @@ kotlin {
             implementation(projects.feature.progress.ui)
             implementation(projects.feature.profile.ui)
             implementation(projects.feature.settings.ui)
+            implementation(projects.feature.triage.ui)
 
             // Feature data (Koin modules)
             implementation(projects.feature.search.data)
@@ -69,6 +70,7 @@ kotlin {
             implementation(projects.feature.progress.data)
             implementation(projects.feature.profile.data)
             implementation(projects.feature.settings.data)
+            implementation(projects.feature.triage.data)
 
             implementation(libs.navigation.compose)
             implementation(libs.compose.material3.adaptiveNavigationSuite)

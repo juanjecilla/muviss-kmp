@@ -73,6 +73,10 @@ private class FakeProgressRepository : ProgressRepository {
     override suspend fun setSeenBulk(episodeIds: List<EpisodeId>, seen: Boolean) {
         episodeIds.forEach { setSeen(it, seen) }
     }
+
+    override suspend fun clearForMedia(mediaId: MediaId) {
+        flowFor(mediaId).value = emptySet()
+    }
 }
 
 private class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {

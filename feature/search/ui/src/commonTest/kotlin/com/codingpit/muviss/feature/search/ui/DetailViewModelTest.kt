@@ -57,6 +57,7 @@ private class FakeDetailRepo(
 
 /** Bundles [FakeDetailRepo]'s independently-loaded-section fakes into one test-helper param, keeping [DetailViewModelTest.viewModel]'s parameter count under detekt's LongParameterList threshold. */
 private data class DetailRepoFakes(
+    val triageApi: FakeTriageApi = FakeTriageApi(),
     val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
     val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
@@ -121,6 +122,10 @@ private class FakeProgressApi : ProgressApi {
         markedPrevious += target
     }
 
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit
+
+    override suspend fun clearProgress(mediaId: MediaId) = Unit
+
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) {
         val id = EpisodeId.forMovie(mediaId)
         seen.value = if (watched) seen.value + id else seen.value - id
@@ -157,8 +162,7 @@ class DetailViewModelTest {
         return DetailViewModel(
             id,
             MediaDetailUseCase(repo),
-            collectionApi,
-            progressApi,
+            DetailPeers(collectionApi, progressApi, repoFakes.triageApi),
             WatchProvidersUseCase(repo),
             MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
         )
