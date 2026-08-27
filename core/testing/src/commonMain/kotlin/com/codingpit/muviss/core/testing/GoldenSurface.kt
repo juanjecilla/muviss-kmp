@@ -24,6 +24,13 @@ const val GOLDEN_SURFACE_TAG = "golden-surface"
  * The opaque background matters as much as the size. Captured transparency
  * differs between backends, and a golden of a half-transparent page compares
  * noise.
+ *
+ * What this frame cannot fix, and every golden test has to handle itself: the
+ * **theme**. `MuvissTheme`'s `darkTheme` defaults to `isSystemInDarkTheme()`,
+ * which on desktop is the host machine's setting — so a golden recorded on a
+ * developer's machine in dark mode compares against a light render on
+ * `ubuntu-latest` and 99.99% of pixels move. Every golden test must pass
+ * `darkTheme` explicitly.
  */
 @Composable
 fun GoldenSurface(

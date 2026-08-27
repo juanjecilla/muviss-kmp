@@ -42,7 +42,11 @@ class ScreenInsetsGoldenTest {
 
 @androidx.compose.runtime.Composable
 private fun InsetSample(insets: WindowInsets) {
-    MuvissTheme {
+    // Pinned, never left to default: `MuvissTheme`'s `darkTheme` reads
+    // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded
+    // on a machine in dark mode compares against a light render on CI and every
+    // pixel moves. See `GoldenSurface`.
+    MuvissTheme(darkTheme = false) {
         GoldenSurface(width = 300.dp, height = 300.dp) {
             ScreenInsets(insets = insets) {
                 Box(

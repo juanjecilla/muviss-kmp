@@ -103,7 +103,11 @@ private fun SearchUnderTest(insets: WindowInsets) {
         FakeSearchCollectionApi(),
         FakeTriageApi(),
     )
-    MuvissTheme {
+    // Pinned, never left to default: `MuvissTheme`'s `darkTheme` reads
+    // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded
+    // on a machine in dark mode compares against a light render on CI and every
+    // pixel moves. See `GoldenSurface`.
+    MuvissTheme(darkTheme = false) {
         GoldenSurface {
             ScreenInsets(insets = insets) {
                 SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {})
