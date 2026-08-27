@@ -45,6 +45,7 @@ jobs:
           :feature:search:ui:jvmTest
           :feature:triage:ui:jvmTest
           :server:test
+          --continue
           --stacktrace
 
       # Golden-image failures are only readable as pictures: the harness writes

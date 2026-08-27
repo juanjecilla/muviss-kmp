@@ -44,7 +44,7 @@ class TriageDeckGoldenTest {
         val viewModel = showDeck(harness)
 
         assertEquals(BACKING_CARD_COUNT, viewModel.state.value.backingCards.size)
-        assertMatchesGolden("triage-deck-stacked")
+        assertMatchesGolden("triage-deck-stacked", tolerance = DECK_TOLERANCE)
     }
 
     /** The end of the deck: one card, and nothing behind it to imply otherwise. */
@@ -54,13 +54,13 @@ class TriageDeckGoldenTest {
         val viewModel = showDeck(harness)
 
         assertEquals(0, viewModel.state.value.backingCards.size)
-        assertMatchesGolden("triage-deck-single")
+        assertMatchesGolden("triage-deck-single", tolerance = DECK_TOLERANCE)
     }
 
     @Test
     fun a_movie_deck_offers_three_verdicts_and_says_watched() = runComposeUiTest {
         showDeck(TriageHarness(movies = listOf(movie("1"), movie("2"), movie("3"))))
-        assertMatchesGolden("triage-deck-movie")
+        assertMatchesGolden("triage-deck-movie", tolerance = DECK_TOLERANCE)
     }
 
     private fun ComposeUiTest.showDeck(harness: TriageHarness): TriageViewModel {
@@ -83,3 +83,14 @@ private fun DeckUnderTest(viewModel: TriageViewModel) {
         }
     }
 }
+
+/**
+ * Wider than the 0.5% default: a deck card is a poster plus a title, an
+ * overview and three verdict labels, and Linux rasterises the bundled font
+ * heavier than macOS does. Measured between a recording here and the same
+ * frames on `ubuntu-latest`: 1.015% for the stacked and single decks, 0.968%
+ * for the movie deck, with the diff marking glyphs and nothing else. Leaves
+ * roughly double the observed drift as headroom while staying far below what
+ * a card moving would cost. See `assertMatchesGolden`.
+ */
+private const val DECK_TOLERANCE = 0.02
