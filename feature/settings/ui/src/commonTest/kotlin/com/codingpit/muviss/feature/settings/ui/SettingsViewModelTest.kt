@@ -124,6 +124,31 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun onAnimationsToggled_persists() = runTest {
+        val vm = viewModel(FakeSettingsRepository())
+        advanceUntilIdle()
+
+        vm.onAnimationsToggled(false)
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.animationsEnabled)
+    }
+
+    @Test
+    fun onTriageDeckAnimationsToggled_persists_without_touching_the_master() = runTest {
+        val vm = viewModel(FakeSettingsRepository())
+        advanceUntilIdle()
+
+        vm.onTriageDeckAnimationsToggled(false)
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.triageDeckAnimations)
+        // The row renders its own stored position; the master governs whether
+        // it can be changed, not what it says.
+        assertEquals(true, vm.state.value.animationsEnabled)
+    }
+
+    @Test
     fun exportData_delivers_the_json_once_then_exportHandled_clears_it() = runTest {
         val repository = FakeSettingsRepository()
         val vm = viewModel(repository)
@@ -155,9 +180,22 @@ class SettingsViewModelTest {
 
 private class FakeFeatureFlags : FeatureFlags {
     private val scheme = MutableStateFlow(TriageControlScheme.DEFAULT)
+    val animations = MutableStateFlow(true)
+    val deckAnimations = MutableStateFlow(true)
+
     override val triageControlScheme: Flow<TriageControlScheme> = scheme
+    override val animationsEnabled: Flow<Boolean> = animations
+    override val triageDeckAnimations: Flow<Boolean> = deckAnimations
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) {
         this.scheme.value = scheme
+    }
+
+    override suspend fun setAnimationsEnabled(enabled: Boolean) {
+        animations.value = enabled
+    }
+
+    override suspend fun setTriageDeckAnimations(enabled: Boolean) {
+        deckAnimations.value = enabled
     }
 }

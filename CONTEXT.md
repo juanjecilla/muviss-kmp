@@ -57,5 +57,5 @@ The persisted record of one TriageVerdict on one MediaItem — a log of what the
 _Avoid_: dismissal, rejection (Skip is reversible); triage state (a decision is an event, not a state).
 
 **TriageVerdict**:
-The four outcomes of triaging one MediaItem. Skip — not for me. Later — collected, not started. Watching — collected, started (TV only; a movie is never in progress). CaughtUp — collected, every aired episode seen. The last three write a CollectionEntry and, for Watching and CaughtUp, real WatchProgress ticks; none of them stores a WatchStatus, which stays derived (ADR 0005).
+The four outcomes of triaging one MediaItem. Skip — not for me. Later — collected, not started. Watching — collected, started (TV only; a movie is never in progress). CaughtUp — collected, every aired episode seen. The last three write a CollectionEntry and, for Watching and CaughtUp, real WatchProgress ticks; none of them stores a WatchStatus, which stays derived (ADR 0005). CaughtUp is one verdict but presents as two words: a film has a single element, so its button reads **Watched** — the WatchStatus its ticks derive — while a show reads **Caught up**. The distinction is wording only; the persisted verdict and the sync payload are identical.
 _Avoid_: watchlist (that is a CollectionEntry with NotStarted status), seen (that is an episode tick).

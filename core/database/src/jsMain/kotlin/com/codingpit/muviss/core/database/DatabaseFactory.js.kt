@@ -1,33 +1,42 @@
 package com.codingpit.muviss.core.database
 
-import app.cash.sqldelight.async.coroutines.awaitCreate
-import app.cash.sqldelight.db.QueryResult
-import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.worker.WebWorkerDriver
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.w3c.dom.Worker
 
 /**
- * Shared JS + Wasm actual (see the `webMain` intermediate source set created
- * by the default hierarchy template — `:app:webApp` already relies on the
- * same grouping).
- *
  * Real persistence (EPIC 13; see `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`'s
  * second amendment): backed by SQLDelight's `web-worker-driver`, which talks
  * to a Web Worker running `@cashapp/sqldelight-sqljs-worker` (SQL.js —
  * SQLite compiled to wasm) over `postMessage`. That is why `generateAsync`
  * is on for the whole schema now (`core/database`'s `build.gradle.kts`) —
  * every mutating query becomes a real `suspend fun` on every platform, not
- * just web.
+ * just web. The schema round-trip itself is deferred by
+ * [SchemaEnsuringDriver], which is shared with wasm in `webMain`.
  *
  * SQL.js keeps the database **in memory inside the worker for the tab's
  * lifetime only** — there is no persistent backing store (no OPFS, no
  * IndexedDB snapshot) wired up. A full page reload starts from an empty
  * database. That is a deliberate v1 scope cut, not an oversight — see the
  * ADR.
+ *
+ * This actual and its wasm twin (`DatabaseFactory.wasmJs.kt`) are byte-for-byte
+ * the same code, and it would be one `webMain` file if it could be: it cannot,
+ * because [WebWorkerDriver]'s parameter type is `expect class
+ * app.cash.sqldelight.driver.worker.expected.Worker`, whose wasmJs actual is an
+ * **internal** `typealias` to [Worker]. A shared `webMain` file therefore
+ * cannot name the parameter type at all — spelling it `org.w3c.dom.Worker`
+ * fails `compileWebMainKotlinMetadata` (`actual type is 'org.w3c.dom.Worker',
+ * but 'app.cash.sqldelight.driver.worker.expected.Worker' was expected`, since
+ * a metadata compilation cannot see through an expect class), and spelling it
+ * `expected.Worker` fails `compileKotlinWasmJs` (`Cannot access 'typealias
+ * Worker = Worker': it is internal in file`). Per target, where the typealias
+ * has already been resolved, [Worker] is simply the right type.
+ *
+ * The library's own `createDefaultWebWorkerDriver()` is not a way out: its js
+ * actual builds the URL and the `Worker` in two separate calls, which is
+ * exactly the shape that defeats webpack's worker bundling (see [sqljsWorker]),
+ * and neither actual passes `{ type: "module" }`.
  */
 actual class DatabaseDriverFactory {
     actual fun create(): SqlDriver = SchemaEnsuringDriver(WebWorkerDriver(sqljsWorker()))
@@ -61,60 +70,6 @@ actual class DatabaseDriverFactory {
  * declared return type is the external [Worker] class rather than
  * `JsAny`/`dynamic`, which Kotlin/Wasm's JS interop allows for `js(...)`.
  */
-@OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 private fun sqljsWorker(): Worker = js(
     """new Worker(new URL("@cashapp/sqldelight-sqljs-worker/sqljs.worker.js", import.meta.url), { type: "module" })""",
 )
-
-/**
- * [WebWorkerDriver]'s constructor is not suspend — spawning a `Worker` is
- * fire-and-forget, the browser loads and initializes it in the background.
- * What *is* asynchronous is the first round-trip that actually creates
- * `MuvissDatabase.Schema` against it. This wrapper defers that round-trip
- * (via [ensureSchema], guarded by [mutex] so concurrent first callers only
- * pay it once) to the first real query instead of doing it in [create] —
- * keeping [DatabaseDriverFactory.create] itself synchronous, exactly like
- * every other platform, so Koin's `single { }` graph never needs to become
- * suspend-aware.
- *
- * Listener bookkeeping (`addListener`/`removeListener`/`notifyListeners`,
- * used by `Query.asFlow()` for reactive reads) is pure in-memory pub/sub on
- * the driver itself, not a query — it needs no such guard, so it (and
- * `newTransaction`/`currentTransaction`/`close`) delegate straight through
- * via `by delegate`.
- */
-private class SchemaEnsuringDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
-    private val mutex = Mutex()
-    private var schemaReady = false
-
-    override fun <R> executeQuery(
-        identifier: Int?,
-        sql: String,
-        mapper: (SqlCursor) -> QueryResult<R>,
-        parameters: Int,
-        binders: (SqlPreparedStatement.() -> Unit)?,
-    ): QueryResult<R> = QueryResult.AsyncValue {
-        ensureSchema()
-        delegate.executeQuery(identifier, sql, mapper, parameters, binders).await()
-    }
-
-    override fun execute(
-        identifier: Int?,
-        sql: String,
-        parameters: Int,
-        binders: (SqlPreparedStatement.() -> Unit)?,
-    ): QueryResult<Long> = QueryResult.AsyncValue {
-        ensureSchema()
-        delegate.execute(identifier, sql, parameters, binders).await()
-    }
-
-    private suspend fun ensureSchema() {
-        if (schemaReady) return
-        mutex.withLock {
-            if (!schemaReady) {
-                MuvissDatabase.Schema.awaitCreate(delegate)
-                schemaReady = true
-            }
-        }
-    }
-}

@@ -37,6 +37,7 @@ import coil3.network.ktor3.KtorNetworkFetcherFactory
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
@@ -213,35 +214,42 @@ private fun MuvissScaffold(
             }
         },
     ) {
-        NavHost(
-            navController = navController,
-            startDestination = SearchRoute,
-            // M3 fade-through: outgoing fades and settles to 0.92, incoming
-            // fades in from 1.02 — every destination inherits it from here.
-            enterTransition = {
-                fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
-                    scaleIn(initialScale = 1.02f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
-            },
-            exitTransition = {
-                fadeOut(tween(durationMillis = 90)) +
-                    scaleOut(targetScale = 0.92f, animationSpec = tween(durationMillis = 90))
-            },
-            popEnterTransition = {
-                fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
-                    scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
-            },
-            popExitTransition = {
-                fadeOut(tween(durationMillis = 90)) +
-                    scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
-            },
-        ) {
-            searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
-            collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-            progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-            profileSection()
-            settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
-            // Not a top-level destination — reached from Discover and Settings.
-            triageSection(navController)
+        // The nav bar and rail inset themselves, but NavigationSuiteScaffold
+        // hands its content no padding and takes no contentWindowInsets — so
+        // without this every screen not built on an M3 Scaffold draws its first
+        // pixel under the status bar and camera cutout. One wrap fixes all of
+        // them, on every platform.
+        ScreenInsets {
+            NavHost(
+                navController = navController,
+                startDestination = SearchRoute,
+                // M3 fade-through: outgoing fades and settles to 0.92, incoming
+                // fades in from 1.02 — every destination inherits it from here.
+                enterTransition = {
+                    fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
+                        scaleIn(initialScale = 1.02f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
+                },
+                exitTransition = {
+                    fadeOut(tween(durationMillis = 90)) +
+                        scaleOut(targetScale = 0.92f, animationSpec = tween(durationMillis = 90))
+                },
+                popEnterTransition = {
+                    fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
+                        scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
+                },
+                popExitTransition = {
+                    fadeOut(tween(durationMillis = 90)) +
+                        scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
+                },
+            ) {
+                searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                profileSection()
+                settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                // Not a top-level destination — reached from Discover and Settings.
+                triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+            }
         }
     }
 }

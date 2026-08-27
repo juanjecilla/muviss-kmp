@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.models.MediaType
 
 /**
  * First-run coaching. Four directions are more than anyone guesses, so the
@@ -34,16 +35,21 @@ fun TriageTutorial(scheme: TriageControlScheme, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
                 Text(
-                    text = "Swipe the card, tap a button, or use the arrow keys. Z undoes.",
+                    text = "Swipe the card, tap a button, or use the arrow keys. Z undoes. Tap a card to see its details.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TriageVerdict.entries.forEach { verdict ->
-                    val style = styleFor(verdict, fourWay)
+                    // No card is on screen yet, so there is no media type to
+                    // present against; the tutorial covers both readings.
+                    val style = styleFor(verdict, MediaType.TV, fourWay)
                     Row(verticalAlignment = Alignment.Top) {
                         Icon(style.icon, contentDescription = null, tint = style.color)
                         Column(Modifier.padding(start = MuvissSpacing.m)) {
-                            Text("${style.label} · ${style.hint}", style = MaterialTheme.typography.titleSmall)
-                            Text(explanationFor(verdict), style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                text = "${tutorialLabelFor(verdict, style)} · ${style.hint}",
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(explanationForTutorial(verdict), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

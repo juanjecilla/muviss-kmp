@@ -73,7 +73,19 @@ fun SettingsScreen(
 
         SectionOverline("Appearance")
         ThemeRow(state.settings.theme, viewModel::onThemeSelected)
-        NotificationsRow(state.settings.notificationsEnabled, viewModel::onNotificationsToggled)
+        SwitchRow(
+            label = "Notifications",
+            description = "Reminders for new episodes (coming soon)",
+            checked = state.settings.notificationsEnabled,
+            onToggle = viewModel::onNotificationsToggled,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        SwitchRow(
+            label = "Animations",
+            description = "Motion and transitions across the app",
+            checked = state.animationsEnabled,
+            onToggle = viewModel::onAnimationsToggled,
+        )
 
         SectionOverline("Content", topPadding = true)
         PickerRow(
@@ -106,6 +118,17 @@ fun SettingsScreen(
             options = TriageControlScheme.entries.map { it.name to it.displayName },
             selectedCode = state.triageControlScheme.name,
             onSelect = { name -> viewModel.onTriageControlSchemeSelected(TriageControlScheme.fromStored(name)) },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        SwitchRow(
+            label = "Swipe animations",
+            description = "Cards fly out when decided, and undo brings them back",
+            checked = state.triageDeckAnimations,
+            // Greyed rather than hidden while the master switch is off: the
+            // stored position stays visible, so turning motion back on returns
+            // the deck to whatever the user last chose here.
+            enabled = state.animationsEnabled,
+            onToggle = viewModel::onTriageDeckAnimationsToggled,
         )
 
         SectionOverline("Data", topPadding = true)
@@ -171,22 +194,42 @@ private fun AppTheme.label(): String = when (this) {
     AppTheme.SYSTEM -> "System"
 }
 
+/**
+ * "Label / description — switch" row.
+ *
+ * [enabled] is what a dependent toggle uses: a row governed by a master switch
+ * stays readable at its stored position and simply stops responding, which is
+ * why the whole row dims rather than disappearing. The label is dimmed along
+ * with the control so the row does not read as active text beside a dead
+ * switch.
+ */
 @Composable
-private fun NotificationsRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+private fun SwitchRow(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
+    val contentAlpha = if (enabled) 1f else DISABLED_ALPHA
     Row(
         Modifier.fillMaxWidth().padding(vertical = MuvissSpacing.xs),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
-            Text("Notifications", style = MaterialTheme.typography.bodyLarge)
+        Column(Modifier.weight(1f).padding(end = MuvissSpacing.s)) {
             Text(
-                "Reminders for new episodes (coming soon)",
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+            )
+            Text(
+                text = description,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
             )
         }
-        Switch(checked = enabled, onCheckedChange = onToggle)
+        Switch(checked = checked, onCheckedChange = onToggle, enabled = enabled)
     }
 }
 
@@ -312,3 +355,6 @@ private val TriageControlScheme.displayName: String
         TriageControlScheme.FOUR_WAY -> "Four directions"
         TriageControlScheme.THREE_WAY -> "Three directions + button"
     }
+
+/** Material3's own disabled-content opacity, which `Switch` applies to itself. */
+private const val DISABLED_ALPHA = 0.38f

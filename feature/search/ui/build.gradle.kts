@@ -25,5 +25,9 @@ kotlin {
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
         }
+        // Golden capture needs Skia, so the Search screenshot is JVM-only.
+        jvmTest.dependencies {
+            implementation(projects.core.testing)
+        }
     }
 }

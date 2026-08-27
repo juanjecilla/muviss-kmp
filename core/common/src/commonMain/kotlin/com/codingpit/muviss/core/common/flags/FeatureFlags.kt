@@ -38,5 +38,32 @@ enum class TriageControlScheme {
 interface FeatureFlags {
     val triageControlScheme: Flow<TriageControlScheme>
 
+    /**
+     * The app-wide motion switch. Off means every animation the app plays on
+     * purpose should be skipped, not shortened — a transition either happens or
+     * the end state appears immediately.
+     *
+     * Direct manipulation is not an animation and is out of scope: a card
+     * tracking a finger keeps tracking it with this off, because that motion
+     * *is* the gesture rather than a decoration on top of it.
+     */
+    val animationsEnabled: Flow<Boolean>
+
+    /**
+     * The triage deck's own card animations — the committed card's fly-out, the
+     * undo re-entry, and the stack promoting behind it.
+     *
+     * Narrows [animationsEnabled] rather than competing with it: readers take
+     * the AND of the two, so the master switch turns this off regardless. It
+     * exists because the deck is the one screen that throws a card clear across
+     * the display, and someone can want that gone without flattening the rest
+     * of the app.
+     */
+    val triageDeckAnimations: Flow<Boolean>
+
     suspend fun setTriageControlScheme(scheme: TriageControlScheme)
+
+    suspend fun setAnimationsEnabled(enabled: Boolean)
+
+    suspend fun setTriageDeckAnimations(enabled: Boolean)
 }

@@ -28,6 +28,9 @@ data class SettingsUiState(
     val exportError: String? = null,
     /** Which drag scheme the triage deck uses (ADR 0010) — a per-device input preference, not a library setting. */
     val triageControlScheme: TriageControlScheme = TriageControlScheme.DEFAULT,
+    /** The app-wide motion switch. While it is off every per-feature motion row below is inert. */
+    val animationsEnabled: Boolean = true,
+    val triageDeckAnimations: Boolean = true,
 )
 
 /**
@@ -52,6 +55,18 @@ class SettingsViewModel(
             .onEach { scheme -> _state.update { it.copy(triageControlScheme = scheme) } }
             .launchIn(viewModelScope)
 
+        featureFlags.animationsEnabled
+            .onEach { enabled -> _state.update { it.copy(animationsEnabled = enabled) } }
+            .launchIn(viewModelScope)
+
+        // Kept as its own value rather than folded into the master: the screen
+        // has to render this switch's real stored position even while the
+        // master has it disabled, so turning the master back on restores what
+        // the user last chose instead of silently re-enabling everything.
+        featureFlags.triageDeckAnimations
+            .onEach { enabled -> _state.update { it.copy(triageDeckAnimations = enabled) } }
+            .launchIn(viewModelScope)
+
         observeSettings()
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
@@ -60,6 +75,14 @@ class SettingsViewModel(
 
     fun onTriageControlSchemeSelected(scheme: TriageControlScheme) {
         viewModelScope.launch { featureFlags.setTriageControlScheme(scheme) }
+    }
+
+    fun onAnimationsToggled(enabled: Boolean) {
+        viewModelScope.launch { featureFlags.setAnimationsEnabled(enabled) }
+    }
+
+    fun onTriageDeckAnimationsToggled(enabled: Boolean) {
+        viewModelScope.launch { featureFlags.setTriageDeckAnimations(enabled) }
     }
 
     fun onThemeSelected(theme: AppTheme) {

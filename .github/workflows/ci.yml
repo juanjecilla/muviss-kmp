@@ -31,12 +31,19 @@ jobs:
       - name: Detekt (static analysis)
         run: ./gradlew detekt --stacktrace
 
+      # Includes every module that renders Compose in a test. Golden images are
+      # compared here, not just recorded: MuvissTheme sets a bundled font on
+      # every text style, so a screenshot is the same on this runner as on a
+      # developer's machine bar antialiasing, which the tolerance absorbs.
       - name: Unit tests (JVM)
         run: >
           ./gradlew
           :core:model:jvmTest
+          :core:designsystem:jvmTest
+          :core:testing:jvmTest
           :feature:search:data:jvmTest
           :feature:search:ui:jvmTest
+          :feature:triage:ui:jvmTest
           :server:test
           --stacktrace
 
@@ -51,3 +58,14 @@ jobs:
 
       - name: Compile web targets (JS + Wasm)
         run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
+
+      # The per-target compiles above never touch the *intermediate* source
+      # sets' own compilations (`webMain`, `appleMain`, `iosMain`,
+      # `nativeMain`): they read those directories straight into the target.
+      # A shared source set can therefore be broken — unresolved references
+      # against dependencies declared only per target — with every step above
+      # still green and only `./gradlew build` red. `allMetadataJar` compiles
+      # each of them once. It needs no Kotlin/Native toolchain (metadata
+      # klibs come from the JVM compiler), so it runs here like anywhere else.
+      - name: Compile shared source sets (metadata klibs)
+        run: ./gradlew allMetadataJar --stacktrace

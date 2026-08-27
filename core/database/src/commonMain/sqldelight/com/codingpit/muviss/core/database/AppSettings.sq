@@ -11,6 +11,14 @@
 -- synced — same category as `collectionEntry.notificationsMuted`. Columns
 -- added by a migration must stay LAST in this declaration: `ALTER TABLE ADD
 -- COLUMN` appends, and `verifyMigrations` compares ordinal position.
+--
+-- `animationsEnabled` and `triageDeckAnimations` were added in `5.sqm`. The
+-- first is the app-wide motion switch; the second turns off the triage deck's
+-- own card animations on their own. The effective value is the AND of the two,
+-- so the master switch turns everything off and the per-feature switch narrows
+-- it further. Both are per-device UI preferences and, like the two above, are
+-- deliberately NOT synced: motion tolerance belongs to a device and the person
+-- holding it, not to a library.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
@@ -19,7 +27,9 @@ CREATE TABLE appSettings (
     notificationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     lastSyncedAtEpochMs INTEGER,
     triageControlScheme TEXT NOT NULL DEFAULT 'FOUR_WAY',
-    triageTutorialSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    triageTutorialSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    animationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    triageDeckAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
 );
 
 selectSettings:
@@ -51,3 +61,9 @@ UPDATE appSettings SET triageControlScheme = :triageControlScheme WHERE id = 0;
 
 updateTriageTutorialSeen:
 UPDATE appSettings SET triageTutorialSeen = :triageTutorialSeen WHERE id = 0;
+
+updateAnimationsEnabled:
+UPDATE appSettings SET animationsEnabled = :animationsEnabled WHERE id = 0;
+
+updateTriageDeckAnimations:
+UPDATE appSettings SET triageDeckAnimations = :triageDeckAnimations WHERE id = 0;

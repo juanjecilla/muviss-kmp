@@ -75,12 +75,31 @@ internal class RecordingAnalytics : AnalyticsTracker {
     }
 }
 
-internal class FakeFeatureFlags(scheme: TriageControlScheme = TriageControlScheme.FOUR_WAY) : FeatureFlags {
+internal class FakeFeatureFlags(
+    scheme: TriageControlScheme = TriageControlScheme.FOUR_WAY,
+    animations: Boolean = true,
+    deckAnimations: Boolean = true,
+) : FeatureFlags {
     private val state = MutableStateFlow(scheme)
+
+    /** Settable directly, so a test can pick a starting point without a suspend context. */
+    val appAnimations = MutableStateFlow(animations)
+    val deck = MutableStateFlow(deckAnimations)
+
     override val triageControlScheme: Flow<TriageControlScheme> = state
+    override val animationsEnabled: Flow<Boolean> = appAnimations
+    override val triageDeckAnimations: Flow<Boolean> = deck
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) {
         state.value = scheme
+    }
+
+    override suspend fun setAnimationsEnabled(enabled: Boolean) {
+        appAnimations.value = enabled
+    }
+
+    override suspend fun setTriageDeckAnimations(enabled: Boolean) {
+        deck.value = enabled
     }
 }
 
@@ -210,6 +229,7 @@ internal class TriageHarness(
     genres: List<Genre> = emptyList(),
     scheme: TriageControlScheme = TriageControlScheme.FOUR_WAY,
     tutorialSeen: Boolean = true,
+    deckAnimations: Boolean = true,
 ) {
     val source = FakeDeckSource(movies, tv, genres)
     val details = GatedDetailsSource(movies + tv)
@@ -218,7 +238,7 @@ internal class TriageHarness(
     val progress = FakeProgressApi()
     val analytics = RecordingAnalytics()
     val preferences = FakeTriagePreferences(tutorialSeen)
-    val flags = FakeFeatureFlags(scheme)
+    val flags = FakeFeatureFlags(scheme, deckAnimations = deckAnimations)
 
     private val record = RecordDecisionUseCase(repository, collection, progress, details, FakeClock())
 

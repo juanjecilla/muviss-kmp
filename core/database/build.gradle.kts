@@ -66,27 +66,43 @@ kotlin {
         iosMain.dependencies {
             implementation(libs.sqldelight.nativeDriver)
         }
-        // `DatabaseFactory.web.kt` lives in `src/webMain/kotlin` (compiled
-        // into both `js` and `wasmJs` via that shared directory — see
-        // `:app:webApp`'s `Main.kt` for the same layout) but this project's
-        // `sourceSets` container has no source set literally named
-        // `webMain` to hang dependencies off (confirmed empirically: it is
-        // absent from `kotlin.sourceSets.names` even after the default
-        // hierarchy template settles), so `js`/`wasmJs` each declare the
-        // same web-persistence dependencies directly instead. EPIC 13 /
-        // ADR 0008's amendment: `web-worker-driver` talks to a Web Worker
-        // running `@cashapp/sqldelight-sqljs-worker` (SQL.js compiled to
-        // wasm), which is why the schema needed `generateAsync` in the
-        // first place.
+        // Web persistence (EPIC 13 / ADR 0008's amendment):
+        // `web-worker-driver` talks to a Web Worker running
+        // `@cashapp/sqldelight-sqljs-worker` (SQL.js compiled to wasm), which
+        // is why the schema needed `generateAsync` in the first place.
+        //
+        // The klib halves are declared on `webMain` — the shared js+wasmJs
+        // source set the default hierarchy template creates, holding
+        // `SchemaEnsuringDriver.kt` — rather than twice on `jsMain` and
+        // `wasmJsMain`. `webMain` has a compilation of its own,
+        // `compileWebMainKotlinMetadata`, which type-checks its sources ahead
+        // of and independently of either target and resolves against
+        // `webMain`'s dependencies only: declaring these two per target left
+        // that compilation with nothing, so `./gradlew build` failed with
+        // `Unresolved reference 'WebWorkerDriver'` while CI's
+        // `compileKotlinJs`/`compileKotlinWasmJs` stayed green (CI runs
+        // `allMetadataJar` now too). Both targets inherit what is declared
+        // here.
+        //
+        // `matching { }.configureEach { }` rather than `val webMain by
+        // getting`, because the template creates `webMain` *after* this block
+        // runs — `getting` throws `KotlinSourceSet with name 'webMain' not
+        // found` at configuration time, while `configureEach` also applies to
+        // elements added later.
+        //
+        // `npm(...)` stays per target below: it feeds each target's own
+        // webpack/yarn resolution and means nothing to a metadata compilation.
+        matching { it.name == "webMain" }.configureEach {
+            dependencies {
+                implementation(libs.sqldelight.webWorkerDriver)
+                implementation(libs.kotlinx.browser)
+            }
+        }
         jsMain.dependencies {
-            implementation(libs.sqldelight.webWorkerDriver)
-            implementation(libs.kotlinx.browser)
             implementation(npm("sql.js", "1.10.3"))
             implementation(npm("@cashapp/sqldelight-sqljs-worker", sqldelightVersion))
         }
         wasmJsMain.dependencies {
-            implementation(libs.sqldelight.webWorkerDriver)
-            implementation(libs.kotlinx.browser)
             implementation(npm("sql.js", "1.10.3"))
             implementation(npm("@cashapp/sqldelight-sqljs-worker", sqldelightVersion))
         }

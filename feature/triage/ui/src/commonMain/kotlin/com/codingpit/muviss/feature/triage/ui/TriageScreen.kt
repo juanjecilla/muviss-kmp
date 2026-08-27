@@ -1,5 +1,8 @@
 package com.codingpit.muviss.feature.triage.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -20,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -29,13 +33,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -56,8 +64,10 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckFilter
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.launch
 
 /**
  * The triage deck.
@@ -72,11 +82,32 @@ fun TriageScreen(
     viewModel: TriageViewModel,
     onBack: () -> Unit,
     onOpenSkipped: () -> Unit,
+    onOpenDetail: (MediaId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusRequester = remember { FocusRequester() }
+    val deck = rememberSwipeDeckState(animated = state.deckAnimations)
+    val scope = rememberCoroutineScope()
+
+    // The single way a verdict is committed, whichever input asked for it: the
+    // card flies out first and the deck advances behind it. Buttons and arrow
+    // keys used to call the ViewModel directly and cut straight to the next
+    // card; routing all three through here is what makes them one gesture.
+    val decide: (TriageVerdict, Boolean) -> Unit = { verdict, viaGesture ->
+        val top = state.topCard
+        if (top != null && verdict in state.verdictsForTopCard) {
+            scope.launch { deck.commit(top.id, verdict) { viewModel.onDecide(verdict, viaGesture) } }
+        }
+    }
+
+    // Undo plays the exit backwards: the restored card is the one that just
+    // left, so it is still parked off screen and only has to come home.
+    LaunchedEffect(state.restored?.token) {
+        val restored = state.restored ?: return@LaunchedEffect
+        deck.enter(restored.id, directionFor(restored.verdict))
+    }
 
     UndoSnackbarEffect(
         undoable = state.undoable,
@@ -85,6 +116,8 @@ fun TriageScreen(
         onDismissed = viewModel::onUndoDismissed,
     )
 
+    // Left at Material3's Indefinite default on purpose: this is an error with
+    // a Retry, and timing it out silently would take away the chance to act.
     LaunchedEffect(state.failedCommit) {
         val failed = state.failedCommit ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
@@ -118,11 +151,9 @@ fun TriageScreen(
             .focusable()
             // Preview, not bubble: the arrow keys would otherwise be taken by
             // focus traversal before the deck ever sees them.
-            .onPreviewKeyEvent { event -> handleKey(event.key, event.type, state, viewModel) },
+            .onPreviewKeyEvent { event -> handleKey(event.key, event.type, state, viewModel::onUndo, decide) },
     ) {
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-        ) { padding ->
+        Scaffold { padding ->
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -149,15 +180,27 @@ fun TriageScreen(
                             onOpenSkipped = onOpenSkipped,
                         )
 
-                        else -> DeckArea(state = state, onDecide = { verdict -> viewModel.onDecide(verdict, viaGesture = true) })
+                        else -> DeckArea(
+                            state = state,
+                            deck = deck,
+                            onDecide = { verdict -> decide(verdict, true) },
+                            onOpenDetail = onOpenDetail,
+                        )
                     }
                 }
+
+                // Above the button row, not in Scaffold's bottom-anchored
+                // slot: the buttons are the primary, always-available way to
+                // decide, and a snackbar sitting on top of them takes that away
+                // for as long as it is up.
+                SnackbarHost(snackbarHostState)
 
                 if (state.topCard != null) {
                     VerdictButtonRow(
                         verdicts = state.verdictsForTopCard,
+                        mediaType = state.topCard?.type ?: MediaType.TV,
                         fourWay = state.controlScheme == TriageControlScheme.FOUR_WAY,
-                        onDecide = { verdict -> viewModel.onDecide(verdict, viaGesture = false) },
+                        onDecide = { verdict -> decide(verdict, false) },
                     )
                 }
             }
@@ -179,12 +222,18 @@ private fun UndoSnackbarEffect(
     onUndo: () -> Unit,
     onDismissed: () -> Unit,
 ) {
-    val label = undoable?.let { styleFor(it.verdict, fourWay = true).label }
+    // The label follows the card that was decided — a movie's CAUGHT_UP reads
+    // "Watched", so the snackbar has to say so too.
+    val label = undoable?.let { styleFor(it.verdict, it.summary.type, fourWay = true).label }
     LaunchedEffect(undoable) {
         if (undoable == null) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
             message = "$label · ${undoable.summary.title}",
             actionLabel = "Undo",
+            // Material3 defaults to Indefinite whenever an action label is
+            // given. Long rather than Short because undo is the only safety
+            // net for a decision that already committed optimistically.
+            duration = SnackbarDuration.Long,
         )
         if (result == SnackbarResult.ActionPerformed) onUndo() else onDismissed()
     }
@@ -195,7 +244,13 @@ private fun UndoSnackbarEffect(
  * THREE_WAY and for movies, for the same reasons the drag is — the keyboard
  * is a parallel path to the same rules, not a way around them.
  */
-private fun handleKey(key: Key, type: KeyEventType, state: TriageUiState, viewModel: TriageViewModel): Boolean {
+private fun handleKey(
+    key: Key,
+    type: KeyEventType,
+    state: TriageUiState,
+    onUndo: () -> Unit,
+    decide: (TriageVerdict, Boolean) -> Unit,
+): Boolean {
     if (type != KeyEventType.KeyDown) return false
     val direction = when (key) {
         Key.DirectionLeft -> DragDirection.LEFT
@@ -207,14 +262,14 @@ private fun handleKey(key: Key, type: KeyEventType, state: TriageUiState, viewMo
         Key.DirectionDown -> DragDirection.DOWN
 
         Key.Z -> {
-            viewModel.onUndo()
+            onUndo()
             return true
         }
 
         else -> return false
     }
     val verdict = verdictFor(direction, state.controlScheme, state.verdictsForTopCard) ?: return false
-    viewModel.onDecide(verdict, viaGesture = true)
+    decide(verdict, true)
     return true
 }
 
@@ -272,38 +327,119 @@ private fun DeckFilterBar(
 }
 
 @Composable
-private fun DeckArea(state: TriageUiState, onDecide: (TriageVerdict) -> Unit) {
+private fun DeckArea(
+    state: TriageUiState,
+    deck: SwipeDeckState,
+    onDecide: (TriageVerdict) -> Unit,
+    onOpenDetail: (MediaId) -> Unit,
+) {
     Box(
         contentAlignment = Alignment.Center,
         // Capped so the card stays a card on a wide desktop window rather
         // than stretching across the whole rail layout.
-        modifier = Modifier.widthIn(max = MAX_CARD_WIDTH).padding(MuvissSpacing.l).fillMaxSize(),
+        // Extra room at the top for the stack to rise into, so its rims never
+        // reach the filter chips above.
+        modifier = Modifier
+            .widthIn(max = MAX_CARD_WIDTH)
+            .padding(start = MuvissSpacing.l, end = MuvissSpacing.l, bottom = MuvissSpacing.l, top = MuvissSpacing.xxl)
+            .fillMaxSize(),
     ) {
-        state.peekedCard?.let { peeked ->
-            TriageCardSurface(summary = peeked, modifier = Modifier.padding(top = MuvissSpacing.m))
+        // Back to front, so the deepest card is drawn first and the top card
+        // lands on top of all of them.
+        state.backingCards.asReversed().forEachIndexed { indexFromBack, backing ->
+            val depth = state.backingCards.size - indexFromBack
+            // Keyed on the card, so a card keeps its own depth animation as the
+            // deck advances underneath it. Unkeyed, these are positional slots
+            // whose contents swap and whose depth recomputes instantly — the
+            // stack snapped while the top card glided.
+            key(backing.id) {
+                // graphicsLayer, not layout padding: padding is what made the
+                // old peek invisible, and scaling in the layer leaves every
+                // card the same *measured* size, which is what lets the next
+                // one promote into place without a reflow.
+                TriageCardSurface(
+                    summary = backing,
+                    backing = true,
+                    modifier = Modifier.cardDepth(rememberDepth(depth.toFloat(), state.deckAnimations)),
+                )
+            }
         }
         state.topCard?.let { top ->
-            SwipeCard(
-                scheme = state.controlScheme,
-                available = state.verdictsForTopCard,
-                onDecide = onDecide,
-                // The draggable surface is one thing however many texts it
-                // draws; the poster's own text fallback would otherwise be
-                // indistinguishable from the title beneath it.
-                modifier = Modifier.testTag(TRIAGE_CARD_TAG),
-            ) { pending, progress ->
-                TriageCardSurface(summary = top)
-                if (pending != null) DragHint(verdict = pending, progress = progress, fourWay = state.controlScheme == TriageControlScheme.FOUR_WAY)
+            // The card now on top spent the last moment drawn one depth down,
+            // so it grows into place from there rather than appearing at full
+            // size. A card coming back from undo starts at zero instead: it is
+            // arriving from off screen, not from inside the stack.
+            val promoted = remember(top.id) { Animatable(if (state.restored?.id == top.id) 0f else 1f) }
+            LaunchedEffect(top.id, state.deckAnimations) {
+                if (state.deckAnimations) promoted.animateTo(0f, tween(PROMOTE_MS)) else promoted.snapTo(0f)
+            }
+            // Two layers, because the two motions pivot differently: depth
+            // scales from the top edge, the swipe rotates about the centre.
+            Box(Modifier.cardDepth(promoted.value).fillMaxSize()) {
+                SwipeCard(
+                    state = deck,
+                    cardId = top.id,
+                    scheme = state.controlScheme,
+                    available = state.verdictsForTopCard,
+                    onDecide = onDecide,
+                    onTap = { onOpenDetail(top.id) },
+                    // The draggable surface is one thing however many texts it
+                    // draws; the poster's own text fallback would otherwise be
+                    // indistinguishable from the title beneath it.
+                    modifier = Modifier.testTag(TRIAGE_CARD_TAG),
+                ) { pending, progress ->
+                    TriageCardSurface(summary = top, modifier = Modifier.testTag(TRIAGE_CARD_FACE_TAG))
+                    if (pending != null) {
+                        DragHint(
+                            verdict = pending,
+                            mediaType = top.type,
+                            progress = progress,
+                            fourWay = state.controlScheme == TriageControlScheme.FOUR_WAY,
+                        )
+                    }
+                }
             }
         }
     }
 }
 
+/** A card's place in the stack, in whole depths: 0 is the top card, 1 the one behind it. */
 @Composable
-private fun TriageCardSurface(summary: MediaSummary, modifier: Modifier = Modifier) {
+private fun rememberDepth(depth: Float, animated: Boolean): Float {
+    val value = remember { Animatable(depth) }
+    LaunchedEffect(depth, animated) {
+        if (animated) value.animateTo(depth, tween(PROMOTE_MS)) else value.snapTo(depth)
+    }
+    return value.value
+}
+
+/**
+ * Draws a card at [depth] in the stack: smaller, and risen by the rim that
+ * shows above the card in front of it.
+ *
+ * The origin is the top edge, so scaling shrinks the card upward from a fixed
+ * top and the rise below is exactly that rim. Scaling about the centre — the
+ * obvious first try — pulls every edge inward, and no offset small enough to
+ * look like a deck ever clears the opaque top card: the stack renders and stays
+ * invisible.
+ */
+private fun Modifier.cardDepth(depth: Float): Modifier = graphicsLayer {
+    transformOrigin = TransformOrigin(pivotFractionX = 0.5f, pivotFractionY = 0f)
+    val scale = 1f - BACKING_SCALE_STEP * depth
+    scaleX = scale
+    scaleY = scale
+    translationY = -BACKING_OFFSET.toPx() * depth
+}
+
+@Composable
+private fun TriageCardSurface(summary: MediaSummary, modifier: Modifier = Modifier, backing: Boolean = false) {
     Surface(
         shape = MaterialTheme.shapes.large,
         tonalElevation = MuvissSpacing.xs,
+        // A card behind the top one is nearly the same value as it — tonal
+        // elevation alone leaves the rim invisible in dark theme. The outline
+        // is what actually makes the queue legible, in both themes.
+        border = if (backing) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
         modifier = modifier.fillMaxSize(),
     ) {
         Column {
@@ -342,8 +478,8 @@ private fun TriageCardSurface(summary: MediaSummary, modifier: Modifier = Modifi
  * the threshold.
  */
 @Composable
-private fun DragHint(verdict: TriageVerdict, progress: Float, fourWay: Boolean) {
-    val style = styleFor(verdict, fourWay)
+private fun DragHint(verdict: TriageVerdict, mediaType: MediaType, progress: Float, fourWay: Boolean) {
+    val style = styleFor(verdict, mediaType, fourWay)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -368,13 +504,18 @@ private fun DragHint(verdict: TriageVerdict, progress: Float, fourWay: Boolean) 
  * harder to hit than its neighbours.
  */
 @Composable
-private fun VerdictButtonRow(verdicts: List<TriageVerdict>, fourWay: Boolean, onDecide: (TriageVerdict) -> Unit) {
+private fun VerdictButtonRow(
+    verdicts: List<TriageVerdict>,
+    mediaType: MediaType,
+    fourWay: Boolean,
+    onDecide: (TriageVerdict) -> Unit,
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
         modifier = Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.s, vertical = MuvissSpacing.m),
     ) {
         verdicts.forEach { verdict ->
-            val style = styleFor(verdict, fourWay)
+            val style = styleFor(verdict, mediaType, fourWay)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
@@ -384,7 +525,7 @@ private fun VerdictButtonRow(verdicts: List<TriageVerdict>, fourWay: Boolean, on
                     .clickable { onDecide(verdict) }
                     .padding(vertical = MuvissSpacing.s)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = "${style.label}. ${explanationFor(verdict)}"
+                        contentDescription = "${style.label}. ${explanationFor(verdict, mediaType)}"
                     },
             ) {
                 Icon(style.icon, contentDescription = null, tint = style.color)
@@ -424,5 +565,26 @@ private fun EmptyDeck(filtered: Boolean, onClearFilters: () -> Unit, onOpenSkipp
 /** Identifies the draggable card itself, for tests and for anything that needs to find it. */
 const val TRIAGE_CARD_TAG = "triage-card"
 
+/**
+ * Identifies the top card's face, *inside* [SwipeCard]'s `graphicsLayer`.
+ *
+ * [TRIAGE_CARD_TAG] is applied to the caller's modifier, which sits outside
+ * that layer, so its semantics node's `positionInRoot` never walks through the
+ * layer's transform and its bounds do not move when the card is dragged or
+ * flung. A node below the layer does move, which is what makes the deck's
+ * motion assertable on screen rather than only through `SwipeDeckState`.
+ */
+const val TRIAGE_CARD_FACE_TAG = "triage-card-face"
+
 private val MAX_CARD_WIDTH = 420.dp
+
+/**
+ * How much each card behind the top one shrinks, and how far its rim rises
+ * above it.
+ */
+private const val BACKING_SCALE_STEP = 0.04f
+private val BACKING_OFFSET = 14.dp
 private const val HINT_MAX_ALPHA = 0.35f
+
+/** How long a card takes to rise one depth as the deck advances. */
+private const val PROMOTE_MS = 220

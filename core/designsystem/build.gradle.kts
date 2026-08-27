@@ -12,5 +12,8 @@ kotlin {
             api(libs.coil.compose)
             api(libs.coil.networkKtor)
         }
+        commonTest.dependencies {
+            implementation(projects.core.testing)
+        }
     }
 }

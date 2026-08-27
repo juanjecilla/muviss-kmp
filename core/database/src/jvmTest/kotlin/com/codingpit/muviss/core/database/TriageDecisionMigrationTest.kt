@@ -37,10 +37,12 @@ class TriageDecisionMigrationTest {
     }
 
     @Test
-    fun `the schema fixture chain is at the version 4_sqm produces`() {
+    fun `4_sqm produced its own fixture`() {
         // Guards the "the .sqm is named after the version it migrates FROM"
         // trap (ADR 0008's 2026-07-11 amendment): 4.sqm produces version 5.
-        assertEquals(5L, MuvissDatabase.Schema.version)
+        // The assertion is deliberately not `== 5`: later migrations move the
+        // schema on, and only the newest one's test pins the current number.
+        assertTrue(MuvissDatabase.Schema.version >= 5L)
         assertTrue(fixtures.resolve("5.db").exists(), "5.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
     }
 

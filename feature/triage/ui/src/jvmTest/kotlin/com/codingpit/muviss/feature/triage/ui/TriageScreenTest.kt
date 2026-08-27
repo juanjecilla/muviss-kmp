@@ -6,6 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -19,6 +20,8 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -53,11 +56,14 @@ class TriageScreenTest {
     /** Past the 120.dp commit threshold at any sane test density. */
     private val commitDistance = 600f
 
+    /** Every id a card tap sent to the detail screen. */
+    private val opened = mutableListOf<MediaId>()
+
     private fun ComposeUiTest.showDeck(harness: TriageHarness): TriageViewModel {
         val viewModel = harness.viewModel()
         setContent {
             MuvissTheme {
-                TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {})
+                TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = { opened += it })
             }
         }
         waitForIdle()
@@ -110,7 +116,7 @@ class TriageScreenTest {
         val harness = TriageHarness(tv = listOf(show("1"), showA), scheme = TriageControlScheme.FOUR_WAY)
         val first = show("1")
         val viewModel = harness.viewModel()
-        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}) } }
+        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = { opened += it }) } }
         waitForIdle()
 
         onNodeWithTag(TRIAGE_CARD_TAG).performTouchInput {
@@ -128,7 +134,7 @@ class TriageScreenTest {
         val first = show("1")
         val harness = TriageHarness(tv = listOf(first, showA), scheme = TriageControlScheme.THREE_WAY)
         val viewModel = harness.viewModel()
-        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}) } }
+        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = { opened += it }) } }
         waitForIdle()
 
         onNodeWithTag(TRIAGE_CARD_TAG).performTouchInput {
@@ -204,7 +210,55 @@ class TriageScreenTest {
         assertEquals(0, onAllNodesWithTextCount("Watching"))
         onNodeWithText("Skip").assertIsDisplayed()
         onNodeWithText("Later").assertIsDisplayed()
+        // A film has one element, so "caught up" says nothing about it. The
+        // verdict is the same CAUGHT_UP; only the word changes.
+        onNodeWithText("Watched").assertIsDisplayed()
+        assertEquals(0, onAllNodesWithTextCount("Caught up"))
+    }
+
+    @Test
+    fun a_tv_card_still_says_caught_up() = runComposeUiTest {
+        val harness = TriageHarness(tv = listOf(showA))
+        showDeck(harness)
+
         onNodeWithText("Caught up").assertIsDisplayed()
+        assertEquals(0, onAllNodesWithTextCount("Watched"))
+    }
+
+    @Test
+    fun a_movie_button_reads_aloud_what_it_actually_does() = runComposeUiTest {
+        val harness = TriageHarness(movies = listOf(filmA))
+        showDeck(harness)
+
+        // "every aired episode ticked" is nonsense for a film, and this string
+        // is the button's contentDescription.
+        onNodeWithContentDescription("Watched. Saved and marked as watched.").assertIsDisplayed()
+    }
+
+    // --- opening a title ---
+
+    @Test
+    fun tapping_the_card_opens_the_title_rather_than_deciding_it() = runComposeUiTest {
+        val harness = TriageHarness(tv = listOf(showA, show("11")))
+        showDeck(harness)
+
+        onNodeWithTag(TRIAGE_CARD_TAG).performClick()
+        waitForIdle()
+
+        assertEquals(listOf(showA.id), opened)
+        // A tap is not a verdict: nothing was decided, and the card stayed.
+        assertTrue(harness.repository.decisions.value.isEmpty())
+    }
+
+    @Test
+    fun a_drag_past_the_threshold_is_not_also_a_tap() = runComposeUiTest {
+        val harness = TriageHarness(tv = listOf(showA, show("11")))
+        showDeck(harness)
+
+        dragCard(Offset(-commitDistance, 0f))
+
+        assertEquals(TriageVerdict.SKIP, harness.repository.decisions.value[showA.id]?.verdict)
+        assertEquals(emptyList(), opened)
     }
 
     @Test
@@ -221,7 +275,7 @@ class TriageScreenTest {
                 TriageVerdict.WATCHING -> "Watching"
                 TriageVerdict.CAUGHT_UP -> "Caught up"
             }
-            onNodeWithContentDescription("$label. ${explanationFor(verdict)}").assertIsDisplayed()
+            onNodeWithContentDescription("$label. ${explanationFor(verdict, MediaType.TV)}").assertIsDisplayed()
         }
     }
 
@@ -299,6 +353,36 @@ class TriageScreenTest {
         assertEquals(emptyList(), harness.collection.removed)
     }
 
+    @Test
+    fun the_undo_snackbar_uses_the_decided_card_own_wording() = runComposeUiTest {
+        val harness = TriageHarness(movies = listOf(filmA, filmB))
+        showDeck(harness)
+
+        dragCard(Offset(0f, -commitDistance))
+
+        // The card that was decided is a film, so the verdict it names is the
+        // one the button offered — "Watched", not "Caught up".
+        onNodeWithText("Watched · ${filmA.title}").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_snackbar_never_covers_the_verdict_buttons() = runComposeUiTest {
+        val harness = TriageHarness(tv = listOf(showA, show("11")))
+        showDeck(harness)
+
+        dragCard(Offset(-commitDistance, 0f))
+
+        // The buttons are the primary, always-available way to decide, so a
+        // snackbar sitting on top of them takes that away for as long as it is
+        // up. It sits above the row rather than in Scaffold's bottom slot.
+        val snackbarBottom = onNodeWithText("Undo").getUnclippedBoundsInRoot().bottom
+        val buttonsTop = onNodeWithText("Skip").getUnclippedBoundsInRoot().top
+        assertTrue(
+            snackbarBottom <= buttonsTop,
+            "snackbar bottom $snackbarBottom overlaps the button row at $buttonsTop",
+        )
+    }
+
     // --- deck behaviour ---
 
     @Test
@@ -320,7 +404,7 @@ class TriageScreenTest {
         showDeck(harness)
 
         onNodeWithText("How triage works").assertIsDisplayed()
-        onNodeWithText(explanationFor(TriageVerdict.CAUGHT_UP)).assertIsDisplayed()
+        onNodeWithText(explanationForTutorial(TriageVerdict.CAUGHT_UP)).assertIsDisplayed()
 
         onNodeWithText("Got it").performClick()
         waitForIdle()

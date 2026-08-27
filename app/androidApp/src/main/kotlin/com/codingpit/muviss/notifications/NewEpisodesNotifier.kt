@@ -1,8 +1,8 @@
 package com.codingpit.muviss.notifications
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.codingpit.muviss.MainActivity
@@ -29,6 +30,13 @@ import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
  */
 class NewEpisodesNotifier(private val context: Context) {
 
+    // `MissingPermission` is suppressed, not ignored: the two `manager.notify`
+    // calls below are already guarded by `canPostNotifications()` on the first
+    // line, which is exactly the `checkSelfPermission` lint asks for — it just
+    // cannot follow the check across a function boundary, and inlining it here
+    // to satisfy the analysis would duplicate the API-33 branch at both call
+    // sites for nothing.
+    @SuppressLint("MissingPermission")
     fun notify(results: List<NewEpisodesResult>) {
         if (results.isEmpty() || !canPostNotifications()) return
 
@@ -93,12 +101,18 @@ class NewEpisodesNotifier(private val context: Context) {
         )
     }
 
+    /**
+     * Via `NotificationChannelCompat`, not the platform `NotificationChannel`:
+     * channels are API 26 and `minSdk` is 24, so the platform constructor is a
+     * `NewApi` error here. The compat builder is a no-op on 24/25, where a
+     * channel is neither needed nor meaningful.
+     */
     private fun ensureChannel() {
-        val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        val channel = NotificationChannel(CHANNEL_ID, "New episodes", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Alerts when a saved show has a new episode out"
-        }
-        manager.createNotificationChannel(channel)
+        val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManager.IMPORTANCE_DEFAULT)
+            .setName("New episodes")
+            .setDescription("Alerts when a saved show has a new episode out")
+            .build()
+        NotificationManagerCompat.from(context).createNotificationChannel(channel)
     }
 
     private fun canPostNotifications(): Boolean {

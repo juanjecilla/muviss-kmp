@@ -41,7 +41,7 @@ class TriageViewModelTest {
         advanceUntilIdle()
 
         assertEquals(filmA.id, vm.state.value.topCard?.id)
-        assertEquals(filmB.id, vm.state.value.peekedCard?.id)
+        assertEquals(listOf(filmB.id), vm.state.value.backingCards.map { it.id })
         assertFalse(vm.state.value.loading)
     }
 
@@ -129,6 +129,76 @@ class TriageViewModelTest {
         assertEquals(listOf(filmA.id), harness.collection.removed)
         assertEquals(listOf(filmA.id), harness.progress.cleared)
         assertNull(vm.state.value.undoable)
+    }
+
+    @Test
+    fun `undo says which way the card left so the screen can play it backwards`() = runTest {
+        val vm = TriageHarness(movies = listOf(filmA, filmB)).viewModel()
+        advanceUntilIdle()
+        vm.onDecide(TriageVerdict.LATER, viaGesture = true)
+        advanceUntilIdle()
+
+        vm.onUndo()
+        advanceUntilIdle()
+
+        val restored = assertNotNull(vm.state.value.restored)
+        assertEquals(filmA.id, restored.id)
+        // The verdict is what the direction is derived from — Later went right,
+        // so the card comes back from the right.
+        assertEquals(TriageVerdict.LATER, restored.verdict)
+    }
+
+    @Test
+    fun `undoing the same card twice reads as two separate arrivals`() = runTest {
+        val vm = TriageHarness(movies = listOf(filmA, filmB)).viewModel()
+        advanceUntilIdle()
+
+        vm.onDecide(TriageVerdict.SKIP, viaGesture = true)
+        vm.onUndo()
+        advanceUntilIdle()
+        val first = assertNotNull(vm.state.value.restored).token
+
+        vm.onDecide(TriageVerdict.SKIP, viaGesture = true)
+        vm.onUndo()
+        advanceUntilIdle()
+
+        // Same card, same verdict: without the token the screen would see an
+        // unchanged value and never replay the entrance.
+        assertTrue(assertNotNull(vm.state.value.restored).token > first)
+    }
+
+    @Test
+    fun `deciding again clears the card undo put back`() = runTest {
+        val vm = TriageHarness(movies = listOf(filmA, filmB)).viewModel()
+        advanceUntilIdle()
+        vm.onDecide(TriageVerdict.SKIP, viaGesture = true)
+        vm.onUndo()
+        advanceUntilIdle()
+
+        vm.onDecide(TriageVerdict.SKIP, viaGesture = true)
+        advanceUntilIdle()
+
+        // Left standing, the next card would be treated as an arrival and fly
+        // in from the side the previous one came back on.
+        assertNull(vm.state.value.restored)
+    }
+
+    @Test
+    fun `the deck animates only while both motion flags are on`() = runTest {
+        val harness = TriageHarness(movies = listOf(filmA))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.deckAnimations)
+
+        harness.flags.setTriageDeckAnimations(false)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.deckAnimations)
+
+        harness.flags.setTriageDeckAnimations(true)
+        harness.flags.setAnimationsEnabled(false)
+        advanceUntilIdle()
+        // The app-wide switch wins on its own: it is the master, not a peer.
+        assertFalse(vm.state.value.deckAnimations)
     }
 
     @Test

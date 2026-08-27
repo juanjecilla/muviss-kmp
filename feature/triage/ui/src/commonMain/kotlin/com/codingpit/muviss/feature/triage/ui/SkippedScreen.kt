@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.triage.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,9 +27,15 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.models.MediaId
 
 @Composable
-fun SkippedScreen(viewModel: SkippedViewModel, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun SkippedScreen(
+    viewModel: SkippedViewModel,
+    onBack: () -> Unit,
+    onOpenDetail: (MediaId) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(modifier.fillMaxSize()) {
@@ -50,7 +57,12 @@ fun SkippedScreen(viewModel: SkippedViewModel, onBack: () -> Unit, modifier: Mod
                 items(state.titles, key = { it.mediaId.toString() }) { skipped ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s),
+                        // The row opens the title; Restore stays its own
+                        // target, so a mis-tap reviews rather than un-skips.
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenDetail(skipped.mediaId) }
+                            .padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s),
                     ) {
                         PosterImage(
                             url = skipped.posterUrl,

@@ -23,16 +23,36 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** How many cards are drawn behind the top one. */
+const val BACKING_CARD_COUNT = 2
+
 /** A verdict the user can still take back, held only until the snackbar goes. */
 data class UndoableDecision(
     val summary: MediaSummary,
     val verdict: TriageVerdict,
+)
+
+/**
+ * A card undo has just put back on top of the deck, so the screen can play its
+ * exit animation backwards.
+ *
+ * [verdict] is what says *where* the card left from — the deck maps a verdict
+ * to a direction and re-enters from there. [token] exists because neither the
+ * id nor the verdict is enough to retrigger the effect: decide the same card
+ * again and undo it again and both repeat, so a monotonic counter is what makes
+ * the second undo a distinct event.
+ */
+data class RestoredCard(
+    val id: MediaId,
+    val verdict: TriageVerdict,
+    val token: Long,
 )
 
 /** A verdict whose save/tick work failed after the decision itself was recorded. */
@@ -55,11 +75,19 @@ data class TriageUiState(
     val error: String? = null,
     val undoable: UndoableDecision? = null,
     val failedCommit: FailedCommit? = null,
+    val restored: RestoredCard? = null,
+    /** The AND of the app-wide motion switch and triage's own — see [FeatureFlags]. */
+    val deckAnimations: Boolean = true,
 ) {
     val topCard: MediaSummary? get() = cards.firstOrNull()
 
-    /** Drawn behind the top card so the deck reads as a stack. */
-    val peekedCard: MediaSummary? get() = cards.getOrNull(1)
+    /**
+     * Drawn behind the top card so the deck reads as a queue rather than a
+     * lone card. Two, because one rim reads as a shadow; a count is not
+     * offered because `cards.size` is a paging artifact of `REFILL_THRESHOLD`,
+     * not how many titles are actually left.
+     */
+    val backingCards: List<MediaSummary> get() = cards.drop(1).take(BACKING_CARD_COUNT)
 
     /** Watching is never offered for a movie — a film is not something you are partway through. */
     val verdictsForTopCard: List<TriageVerdict>
@@ -103,9 +131,18 @@ class TriageViewModel(
 
     private var loadJob: Job? = null
 
+    /** Monotonic, so undoing the same card twice reads as two separate events. */
+    private var restoreToken = 0L
+
     init {
         featureFlags.triageControlScheme
             .onEach { scheme -> _state.update { it.copy(controlScheme = scheme) } }
+            .launchIn(viewModelScope)
+
+        // Combined here rather than in the screen: whether the deck animates is
+        // one fact, and the UI should not have to know it is stored as two.
+        combine(featureFlags.animationsEnabled, featureFlags.triageDeckAnimations) { app, deck -> app && deck }
+            .onEach { enabled -> _state.update { it.copy(deckAnimations = enabled) } }
             .launchIn(viewModelScope)
 
         // Only the first emission matters: dismissing the tutorial must not
@@ -153,6 +190,10 @@ class TriageViewModel(
                 cards = it.cards.drop(1),
                 undoable = UndoableDecision(summary, verdict),
                 failedCommit = null,
+                // Whatever undo last put back has now been decided again; a
+                // stale value here would re-enter the *next* card from the side
+                // the previous one came back on.
+                restored = null,
             )
         }
         viewModelScope.launch {
@@ -175,6 +216,7 @@ class TriageViewModel(
                 undoable = null,
                 failedCommit = null,
                 exhausted = false,
+                restored = RestoredCard(undoable.summary.id, undoable.verdict, ++restoreToken),
             )
         }
         shown -= undoable.summary.id

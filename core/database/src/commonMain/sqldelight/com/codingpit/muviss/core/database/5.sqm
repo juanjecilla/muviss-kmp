@@ -1,0 +1,20 @@
+-- Motion preferences: an app-wide animations switch, and one that narrows it
+-- to the triage deck's own card animations.
+--
+-- `animationsEnabled` is the master: everything the app animates deliberately
+-- is expected to honour it. `triageDeckAnimations` covers only the swipe
+-- deck's fly-out, undo re-entry and stack promotion (ADR 0010), so someone who
+-- wants motion everywhere else can still turn off the one screen that throws a
+-- card across the display. Readers take the AND of the two.
+--
+-- Both default to 1, which is exactly how the app behaved before this
+-- migration: an existing install upgrades into its current behaviour and
+-- nothing changes until the user asks for it.
+--
+-- Per-device, and deliberately NOT synced — same category as
+-- `triageControlScheme`/`triageTutorialSeen` (4.sqm) and
+-- `collectionEntry.notificationsMuted` (ADR 0009). How much motion is
+-- comfortable is a property of a device and the person holding it, not of the
+-- library the account owns.
+ALTER TABLE appSettings ADD COLUMN animationsEnabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE appSettings ADD COLUMN triageDeckAnimations INTEGER NOT NULL DEFAULT 1;
