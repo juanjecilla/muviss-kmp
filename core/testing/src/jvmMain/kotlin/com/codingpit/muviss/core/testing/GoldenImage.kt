@@ -27,21 +27,38 @@ import kotlin.test.fail
  * every text style, so no host font ever participates in a golden.
  *
  * Comparison is deliberately **not** byte equality. Skia is the same engine on
- * macOS and on `ubuntu-latest`, but antialiasing and hinting are not bit-identical
- * across them, so a tolerance absorbs the residual drift. It is tight enough that
- * a real layout shift — a card moving 10dp, a button label changing — moves far
- * more than [TOLERATED_FRACTION] of the pixels.
+ * macOS and on `ubuntu-latest`, but text is not rasterised identically across
+ * them, so a tolerance absorbs the residual drift. It is tight enough that a
+ * real layout shift — a card moving 10dp — moves far more than
+ * [TOLERATED_FRACTION] of the pixels.
+ *
+ * How much drift there is depends on how much *text* a golden contains, which
+ * is why [assertMatchesGolden] takes a `tolerance`. Measured between a macOS
+ * recording and the same frame rendered on `ubuntu-latest`: the triage deck and
+ * the inset samples stay under the 0.5% default, while the search screen — wall
+ * to wall labels — moves 2.15%, and its diff image marks the glyphs and nothing
+ * else. Linux draws the same font perceptibly heavier rather than merely
+ * blurrier, so this is not edge noise that a blur or a downsample can average
+ * away (both were tried against the real CI capture; downsampling made the
+ * measured difference *worse*, 3.1% at 2x). Widening the per-pixel channel
+ * delta would hide it, at the cost of no longer noticing a colour token
+ * changing. Widening the area instead keeps every pixel judged strictly and
+ * only says how much of the frame is allowed to be text.
  */
-fun ComposeUiTest.assertMatchesGolden(name: String) {
+fun ComposeUiTest.assertMatchesGolden(name: String, tolerance: Double = TOLERATED_FRACTION) {
     waitForIdle()
     // The [GoldenSurface] frame when there is one, so the image is the same
     // size on every machine; the whole root otherwise.
     val surfaces = onAllNodesWithTag(GOLDEN_SURFACE_TAG).fetchSemanticsNodes()
-    if (surfaces.isEmpty()) onRoot().assertMatchesGolden(name) else onNodeWithTag(GOLDEN_SURFACE_TAG).assertMatchesGolden(name)
+    if (surfaces.isEmpty()) {
+        onRoot().assertMatchesGolden(name, tolerance)
+    } else {
+        onNodeWithTag(GOLDEN_SURFACE_TAG).assertMatchesGolden(name, tolerance)
+    }
 }
 
 /** As [assertMatchesGolden], but captures one node rather than the whole root. */
-fun SemanticsNodeInteraction.assertMatchesGolden(name: String) {
+fun SemanticsNodeInteraction.assertMatchesGolden(name: String, tolerance: Double = TOLERATED_FRACTION) {
     val actual = captureToImage().toBufferedImage()
     val golden = goldenFile(name)
 
@@ -74,12 +91,12 @@ fun SemanticsNodeInteraction.assertMatchesGolden(name: String) {
 
     val (differing, diff) = compare(expected, actual)
     val fraction = differing.toDouble() / (actual.width * actual.height)
-    if (fraction > TOLERATED_FRACTION) {
+    if (fraction > tolerance) {
         writeFailureArtifacts(name, actual, diff)
         fail(
             "Golden '$name' differs: %.3f%% of pixels moved by more than $TOLERATED_CHANNEL_DELTA/255 "
                 .format(fraction * 100) +
-                "(tolerance %.3f%%).\n".format(TOLERATED_FRACTION * 100) +
+                "(tolerance %.3f%%).\n".format(tolerance * 100) +
                 "Actual and diff written to ${failureDir(name).path}\n" +
                 "If the change is intended, re-record with:  ./gradlew <module>:jvmTest -Precord",
         )
@@ -167,8 +184,8 @@ private val recording: Boolean
     get() = System.getProperty("muviss.golden.record") == "true" ||
         System.getenv("MUVISS_RECORD_GOLDENS") == "1"
 
-/** Fail once more than this fraction of pixels has moved. */
-private const val TOLERATED_FRACTION = 0.005
+/** Fail once more than this fraction of pixels has moved, unless a caller says otherwise. */
+const val TOLERATED_FRACTION = 0.005
 
 /** How far one channel may drift before a pixel counts as changed. */
 private const val TOLERATED_CHANNEL_DELTA = 8

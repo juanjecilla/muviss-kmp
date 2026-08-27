@@ -72,7 +72,13 @@ class SearchScreenInsetsTest {
         setContent { SearchUnderTest(TestSafeAreaInsets) }
         waitForIdle()
 
-        assertMatchesGolden("search-screen-insets")
+        // Wider than the 0.5% default because this frame is almost entirely text,
+        // and Linux rasterises the bundled font heavier than macOS does: the
+        // measured difference between a recording here and the same frame on
+        // `ubuntu-latest` is 2.15%, with the diff image marking the glyphs and
+        // nothing else. Still far below what any layout shift on this screen
+        // would move. See `assertMatchesGolden`.
+        assertMatchesGolden("search-screen-insets", tolerance = 0.04)
     }
 
     private companion object {
