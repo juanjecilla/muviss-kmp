@@ -1,6 +1,8 @@
 import com.diffplug.gradle.spotless.SpotlessExtension
 import io.gitlab.arturbosch.detekt.Detekt
 import io.gitlab.arturbosch.detekt.extensions.DetektExtension
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.NativeOutputKind
@@ -66,6 +68,20 @@ allprojects {
         setSource(files(projectDir.resolve("src")))
         include("**/*.kt")
         exclude("**/build/**")
+    }
+
+    // A failing test's *message* is what says why it failed — for a golden,
+    // the percentage of pixels that moved and where the diff image was
+    // written. Gradle's default console output prints only the exception
+    // class, which on CI leaves nothing to go on but `AssertionError`.
+    tasks.withType<AbstractTestTask>().configureEach {
+        testLogging {
+            events(TestLogEvent.FAILED)
+            exceptionFormat = TestExceptionFormat.FULL
+            showExceptions = true
+            showCauses = true
+            showStackTraces = false
+        }
     }
 
     linkSentryCocoaFramework()

@@ -47,6 +47,20 @@ jobs:
           :server:test
           --stacktrace
 
+      # Golden-image failures are only readable as pictures: the harness writes
+      # the actual capture and a magenta-marked diff next to each other, and
+      # without them a red run says nothing but "pixels moved".
+      - name: Upload test reports and golden diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          if-no-files-found: ignore
+          path: |
+            **/build/reports/tests/**
+            **/build/test-results/**
+            /tmp/muviss-goldens/**
+
       - name: Verify SQLDelight migrations
         run: ./gradlew verifySqlDelightMigration --stacktrace
 
