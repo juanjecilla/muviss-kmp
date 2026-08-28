@@ -47,9 +47,15 @@ class SqlDelightProgressRepositoryTest {
     fun setUp() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         MuvissDatabase.Schema.synchronous().create(driver)
-        queries = MuvissDatabase(driver).episodeProgressQueries
+        val database = MuvissDatabase(driver)
+        queries = database.episodeProgressQueries
         clock = FakeClock(1_000L)
-        repository = SqlDelightProgressRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+        repository = SqlDelightProgressRepository(
+            queries,
+            database.episodePlayQueries,
+            ImmediateDispatchers(UnconfinedTestDispatcher()),
+            clock,
+        )
     }
 
     @Test

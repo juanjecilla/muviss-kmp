@@ -1,6 +1,8 @@
 package com.codingpit.muviss.core.network.tmdb
 
 import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.EpisodeCredit
+import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaAnchors
@@ -201,5 +203,28 @@ internal object TmdbMapper {
                 runtimeMinutes = ep.runtime,
             )
         },
+    )
+
+    fun episodeDetailToModel(episodeId: EpisodeId, dto: TmdbEpisodeDetailDto): EpisodeDetails = EpisodeDetails(
+        id = episodeId,
+        name = dto.name,
+        seasonNumber = dto.seasonNumber,
+        episodeNumber = dto.episodeNumber,
+        overview = dto.overview?.takeIf { it.isNotBlank() },
+        airDateEpochDay = airDateToEpochDay(dto.airDate),
+        stillUrl = imageUrl(dto.stillPath),
+        runtimeMinutes = dto.runtime,
+        // TMDB returns 0.0 for "nobody has voted", which would render as a
+        // real score of zero rather than as an absence.
+        voteAverage = dto.voteAverage?.takeIf { it > 0.0 },
+        guestStars = dto.guestStars.map { it.toCredit() },
+        crew = dto.crew.map { it.toCredit() },
+    )
+
+    private fun TmdbEpisodeCreditDto.toCredit(): EpisodeCredit = EpisodeCredit(
+        name = name,
+        character = character?.takeIf { it.isNotBlank() },
+        job = job?.takeIf { it.isNotBlank() },
+        profileUrl = imageUrl(profilePath),
     )
 }

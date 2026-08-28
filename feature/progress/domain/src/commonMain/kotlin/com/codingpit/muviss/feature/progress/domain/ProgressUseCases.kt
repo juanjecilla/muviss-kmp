@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
@@ -32,9 +33,70 @@ class ToggleEpisodeSeenUseCase(private val repository: ProgressRepository) {
     suspend operator fun invoke(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
 }
 
-/** Marks every episode in [season] as seen. */
-class MarkSeasonSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(season: Season) = repository.setSeenBulk(season.episodes.map { it.id }, seen = true)
+/**
+ * Marks every episode of [season] that has aired as seen, and only those,
+ * returning the ids it actually ticked.
+ *
+ * The aired filter is load-bearing, not tidiness. Ticking a currently-airing
+ * season's unaired episodes pushes `seenEpisodes` past `airedEpisodes`, and
+ * [WatchProgress][com.codingpit.muviss.core.model.WatchProgress] `require`s
+ * the opposite — so the library screen threw the next time it derived that
+ * title's status. This is the same trap [MarkAllAiredSeenUseCase] documents
+ * for triage; see [EpisodeOrdering.airedBy].
+ *
+ * Episodes already seen are skipped rather than replayed: catching up on a
+ * season is not a claim to have rewatched it.
+ */
+class MarkSeasonAiredSeenUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(season: Season, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(listOf(season), todayEpochDay))
+}
+
+/** [MarkSeasonAiredSeenUseCase] across every season — "mark the whole show seen". */
+class MarkShowAiredSeenUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
+}
+
+/**
+ * Reverses a bulk mark by dropping the most recent viewing of each episode in
+ * [seasons] — the mirror of the single-episode "I ticked that by mistake".
+ *
+ * Episodes with no viewings are untouched, and one genuinely watched three
+ * times drops to two rather than being wiped, so the toggle may legitimately
+ * not clear a season outright. Losing real rewatch history to a toggle would
+ * be the worse failure.
+ */
+class UnmarkSeasonsUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(seasons: List<Season>) = repository.removeLatestPlays(EpisodeOrdering.flatten(seasons).map { it.id })
+}
+
+/** Takes back exactly the ids a bulk mark reported writing — the undo snackbar. */
+class UndoBulkMarkUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(episodeIds: List<EpisodeId>) = repository.removeLatestPlays(episodeIds)
+}
+
+/** "I watched this again": records another viewing without disturbing the ones before it. */
+class RecordPlayUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(episodeId: EpisodeId) = repository.recordPlay(episodeId)
+}
+
+/** "I ticked that by mistake": drops the newest viewing only. */
+class RemoveLatestPlayUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
+}
+
+/** Forgets an episode's whole watch history — episode detail's explicit "clear". */
+class ClearPlaysUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(episodeId: EpisodeId) = repository.clearPlays(episodeId)
+}
+
+/** How many times each episode of a title has been watched. */
+class ObservePlayCountsUseCase(private val repository: ProgressRepository) {
+    operator fun invoke(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = repository.observePlayCounts(mediaId)
+}
+
+/** One episode's viewings, newest first. */
+class ObservePlaysUseCase(private val repository: ProgressRepository) {
+    operator fun invoke(episodeId: EpisodeId): Flow<List<EpisodePlay>> = repository.observePlays(episodeId)
 }
 
 /**
@@ -78,9 +140,25 @@ class FetchEpisodeCatalogUseCase(private val source: EpisodeCatalogSource) {
  */
 class ProgressMutations(
     val toggleEpisodeSeen: ToggleEpisodeSeenUseCase,
-    val markSeasonSeen: MarkSeasonSeenUseCase,
-    val markPreviousSeen: MarkPreviousSeenUseCase,
-    val markAllAiredSeen: MarkAllAiredSeenUseCase,
     val clearProgress: ClearProgressUseCase,
     val setMovieWatched: SetMovieWatchedUseCase,
+    val plays: ProgressPlayMutations,
+    val bulk: ProgressBulkMutations,
+)
+
+/** The per-episode rewatch writes (ADR 0011), grouped for the same budget reason as [ProgressMutations]. */
+class ProgressPlayMutations(
+    val recordPlay: RecordPlayUseCase,
+    val removeLatestPlay: RemoveLatestPlayUseCase,
+    val clearPlays: ClearPlaysUseCase,
+)
+
+/** Every write that covers more than one episode, and their reversals, grouped likewise. */
+class ProgressBulkMutations(
+    val markSeasonAiredSeen: MarkSeasonAiredSeenUseCase,
+    val markShowAiredSeen: MarkShowAiredSeenUseCase,
+    val unmarkSeasons: UnmarkSeasonsUseCase,
+    val undoBulkMark: UndoBulkMarkUseCase,
+    val markPreviousSeen: MarkPreviousSeenUseCase,
+    val markAllAiredSeen: MarkAllAiredSeenUseCase,
 )

@@ -4,7 +4,8 @@ import kotlinx.serialization.Serializable
 
 /**
  * Wire shape of the data-export JSON: a straight, denormalized dump of the
- * `collectionEntry` + `episodeProgress` + `triageDecision` tables (see `SqlDelightSettingsRepository.exportData`).
+ * `collectionEntry` + `episodeProgress` + `episodePlay` + `triageDecision`
+ * tables (see `SqlDelightSettingsRepository.exportData`).
  * Import is explicitly out of scope for EPIC 8 — these types only need to
  * serialize, not round-trip.
  */
@@ -19,6 +20,17 @@ data class MuvissDataExport(
      * hand-written file without breaking anything.
      */
     val triage: List<TriageDecisionExport> = emptyList(),
+    /**
+     * Rewatch history (ADR 0011). Defaulted like [triage] so an export
+     * produced before play history existed still parses.
+     *
+     * Exported but never synced: v1 is local-only, and append-only rows would
+     * need a different conflict rule than ADR 0009's last-write-wins. A
+     * person's own backup is a different question from replication, and
+     * leaving their rewatch history out of it would silently lose it on
+     * reinstall.
+     */
+    val plays: List<EpisodePlayExport> = emptyList(),
 )
 
 @Serializable
@@ -44,6 +56,13 @@ data class EpisodeProgressExport(
     val episodeNumber: Int,
     val seen: Boolean,
     val updatedAtEpochMs: Long,
+)
+
+@Serializable
+data class EpisodePlayExport(
+    val episodeId: String,
+    val mediaId: String,
+    val watchedAtEpochMs: Long,
 )
 
 @Serializable

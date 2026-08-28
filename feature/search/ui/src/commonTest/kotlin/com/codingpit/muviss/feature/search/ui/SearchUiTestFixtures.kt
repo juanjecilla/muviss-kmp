@@ -9,6 +9,8 @@ import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.feature.triage.api.TriageDecisionSummary
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -60,6 +62,7 @@ internal class FakeRepo(
     override suspend fun watchProviders(id: MediaId) = Result.success(WatchProviders())
     override suspend fun recommendations(id: MediaId, page: Int) = recommendationsResult(id)
     override suspend fun similar(id: MediaId, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+    override suspend fun episodeDetails(episodeId: EpisodeId) = Result.success(EpisodeDetails(episodeId, "Episode", episodeId.seasonNumber, episodeId.episodeNumber))
 }
 
 internal class FakeSearchCollectionApi(initialLibrary: List<CollectionSummary> = emptyList()) : CollectionApi {

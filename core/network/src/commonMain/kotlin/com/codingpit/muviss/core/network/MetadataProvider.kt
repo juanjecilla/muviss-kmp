@@ -1,5 +1,7 @@
 package com.codingpit.muviss.core.network
 
+import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -56,6 +58,18 @@ interface MetadataProvider {
      * overrides it via `/find/{external_id}`.
      */
     suspend fun findByExternalId(externalId: String, type: MediaType? = null): MediaSummary? = null
+
+    /**
+     * Everything about one episode — overview, guest cast, crew, public
+     * average — for the episode detail screen.
+     *
+     * A dedicated call rather than a richer [details] response: the
+     * season/episode structure is fetched for every show in the library on
+     * every refresh, and this data is read one episode at a time. Defaults to
+     * null (unsupported) so a provider without an episode endpoint need not
+     * implement it.
+     */
+    suspend fun episodeDetails(episodeId: EpisodeId): EpisodeDetails? = null
 }
 
 /**

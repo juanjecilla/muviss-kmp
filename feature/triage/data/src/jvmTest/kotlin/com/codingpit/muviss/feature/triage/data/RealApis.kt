@@ -7,6 +7,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.progress.domain.EpisodeOrdering
@@ -70,7 +71,16 @@ internal class RealProgressApi(private val repository: SqlDelightProgressReposit
 
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
 
-    override suspend fun markSeasonSeen(season: Season) = repository.setSeenBulk(season.episodes.map { it.id }, seen = true)
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = repository.observePlayCounts(mediaId)
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = repository.observePlays(episodeId)
+    override suspend fun recordPlay(episodeId: EpisodeId) = repository.recordPlay(episodeId)
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
+    override suspend fun clearPlays(episodeId: EpisodeId) = repository.clearPlays(episodeId)
+    override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(listOf(season), todayEpochDay))
+    override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
+    override suspend fun unmarkSeason(season: Season) = repository.removeLatestPlays(season.episodes.map { it.id })
+    override suspend fun unmarkShow(seasons: List<Season>) = repository.removeLatestPlays(seasons.flatMap { it.episodes }.map { it.id })
+    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = repository.removeLatestPlays(episodeIds)
 
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = repository.setSeenBulk(EpisodeOrdering.upToInclusive(seasons, target), seen = true)
 

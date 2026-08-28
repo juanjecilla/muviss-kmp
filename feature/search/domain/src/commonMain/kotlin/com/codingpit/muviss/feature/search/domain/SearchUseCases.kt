@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.search.domain
 
+import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -74,4 +76,9 @@ class MoreLikeThisUseCase(
         if (recommended.getOrNull()?.items?.isNotEmpty() == true) return recommended
         return similar(id, page)
     }
+}
+
+/** Loads one episode's full detail for the episode screen. */
+class EpisodeDetailUseCase(private val repository: SearchRepository) {
+    suspend operator fun invoke(episodeId: EpisodeId): Result<EpisodeDetails> = repository.episodeDetails(episodeId)
 }

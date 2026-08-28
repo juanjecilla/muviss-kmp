@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.search.domain
 
+import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -35,4 +37,7 @@ interface SearchRepository {
 
     /** Titles similar to [id], paged — the Detail screen's fallback when [recommendations] is thin. */
     suspend fun similar(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>>
+
+    /** One episode's full detail — overview, guest cast, crew, public average. */
+    suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails>
 }

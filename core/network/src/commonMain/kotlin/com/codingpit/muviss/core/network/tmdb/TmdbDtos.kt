@@ -89,6 +89,33 @@ internal data class TmdbEpisodeDto(
     val runtime: Int? = null,
 )
 
+/**
+ * `/tv/{id}/season/{n}/episode/{m}` — the same fields as [TmdbEpisodeDto] plus
+ * everything only the episode detail screen reads. `guest_stars` and `crew`
+ * come back on this endpoint directly, so no `append_to_response` is needed.
+ */
+@Serializable
+internal data class TmdbEpisodeDetailDto(
+    @SerialName("season_number") val seasonNumber: Int,
+    @SerialName("episode_number") val episodeNumber: Int,
+    val name: String = "",
+    val overview: String? = null,
+    @SerialName("air_date") val airDate: String? = null,
+    @SerialName("still_path") val stillPath: String? = null,
+    val runtime: Int? = null,
+    @SerialName("vote_average") val voteAverage: Double? = null,
+    @SerialName("guest_stars") val guestStars: List<TmdbEpisodeCreditDto> = emptyList(),
+    val crew: List<TmdbEpisodeCreditDto> = emptyList(),
+)
+
+@Serializable
+internal data class TmdbEpisodeCreditDto(
+    val name: String = "",
+    val character: String? = null,
+    val job: String? = null,
+    @SerialName("profile_path") val profilePath: String? = null,
+)
+
 /** `/genre/{movie|tv}/list` — unlike [TmdbGenreDto], carries the id needed to filter `/discover`. */
 @Serializable
 internal data class TmdbGenreListItemDto(

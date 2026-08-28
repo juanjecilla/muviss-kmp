@@ -2,6 +2,8 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
@@ -43,14 +45,38 @@ data class DetailUiState(
     val moreLikeThis: List<MediaSummary> = emptyList(),
     /** True when this title was skipped during triage (ADR 0010) — the only way back once the undo snackbar has gone. */
     val skipped: Boolean = false,
+    /** How many times each episode has been watched (ADR 0011); absent means never. */
+    val playCounts: Map<EpisodeId, Int> = emptyMap(),
+    /** Set right after a bulk mark, so its snackbar can take back exactly those ticks. */
+    val pendingUndo: BulkMarkUndo? = null,
 ) {
     fun isSeen(episodeId: EpisodeId): Boolean = episodeId in seenEpisodes
+
+    /** Viewings recorded for [episodeId]; 0 for an episode never watched. */
+    fun playCountOf(episodeId: EpisodeId): Int = playCounts[episodeId] ?: 0
 
     fun seenCountIn(season: Season): Int = season.episodes.count { it.id in seenEpisodes }
 
     val movieWatched: Boolean
         get() = details?.let { EpisodeId.forMovie(it.id) in seenEpisodes } ?: false
+
+    /** How many times the movie has been watched, for the "watched 3x" line under its toggle. */
+    val moviePlayCount: Int
+        get() = details?.let { playCountOf(EpisodeId.forMovie(it.id)) } ?: 0
 }
+
+/**
+ * What a bulk "mark seen" just wrote, so its snackbar can undo precisely that
+ * and nothing else.
+ *
+ * The ids matter: a season mark skips episodes already seen, so undoing by
+ * re-deriving "everything in the season" would strip viewings the action never
+ * added.
+ */
+data class BulkMarkUndo(
+    val episodeIds: List<EpisodeId>,
+    val message: String,
+)
 
 /**
  * Loads a title's detail and mirrors its library membership and watch
@@ -65,6 +91,7 @@ class DetailViewModel(
     private val peers: DetailPeers,
     private val loadWatchProviders: WatchProvidersUseCase,
     private val loadMoreLikeThis: MoreLikeThisUseCase,
+    private val clock: AppClock,
 ) : ViewModel() {
 
     private val collectionApi: CollectionApi get() = peers.collection
@@ -73,6 +100,9 @@ class DetailViewModel(
 
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state.asStateFlow()
+
+    /** "Today" for aired-vs-unaired decisions in the season list. */
+    val todayEpochDay: Long get() = clock.todayEpochDay()
 
     init {
         load()
@@ -94,6 +124,9 @@ class DetailViewModel(
             .launchIn(viewModelScope)
         progressApi.observeSeenEpisodes(mediaId)
             .onEach { seen -> _state.update { it.copy(seenEpisodes = seen) } }
+            .launchIn(viewModelScope)
+        progressApi.observePlayCounts(mediaId)
+            .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
             .launchIn(viewModelScope)
     }
 
@@ -178,9 +211,79 @@ class DetailViewModel(
         viewModelScope.launch { progressApi.setEpisodeSeen(episodeId, !_state.value.isSeen(episodeId)) }
     }
 
-    /** Marks every episode in [season] as seen. */
+    /**
+     * Marks every *aired* episode of [season] as seen and parks an undo.
+     *
+     * Aired-only is the rule the whole feature hangs on: ticking unaired
+     * episodes makes seen exceed aired, which `WatchProgress` forbids and the
+     * library screen would then throw on. See `ProgressApi.markSeasonAiredSeen`.
+     */
     fun markSeasonSeen(season: Season) {
-        viewModelScope.launch { progressApi.markSeasonSeen(season) }
+        viewModelScope.launch {
+            val written = progressApi.markSeasonAiredSeen(season, clock.todayEpochDay())
+            offerUndo(written, "${'$'}{season.name} marked seen")
+        }
+    }
+
+    /** Reverses [markSeasonSeen]: drops the newest viewing of each seen episode in [season]. */
+    fun unmarkSeason(season: Season) {
+        viewModelScope.launch {
+            progressApi.unmarkSeason(season)
+            _state.update { it.copy(pendingUndo = null) }
+        }
+    }
+
+    /** The "mark whole show seen" action; the caller confirms first. */
+    fun markShowSeen() {
+        val seasons = _state.value.details?.seasons ?: return
+        viewModelScope.launch {
+            val written = progressApi.markShowAiredSeen(seasons, clock.todayEpochDay())
+            offerUndo(written, "Marked every aired episode seen")
+        }
+    }
+
+    /** Reverses [markShowSeen] across every season. */
+    fun unmarkShow() {
+        val seasons = _state.value.details?.seasons ?: return
+        viewModelScope.launch {
+            progressApi.unmarkShow(seasons)
+            _state.update { it.copy(pendingUndo = null) }
+        }
+    }
+
+    /** Takes back exactly the ticks the last bulk mark wrote. */
+    fun undoBulkMark() {
+        val undo = _state.value.pendingUndo ?: return
+        viewModelScope.launch {
+            progressApi.undoBulkMark(undo.episodeIds)
+            _state.update { it.copy(pendingUndo = null) }
+        }
+    }
+
+    /** Acknowledges the undo snackbar without undoing anything. */
+    fun dismissUndo() {
+        _state.update { it.copy(pendingUndo = null) }
+    }
+
+    /** "I watched this again": records another viewing, leaving earlier ones intact. */
+    fun recordRewatch(episodeId: EpisodeId) {
+        viewModelScope.launch { progressApi.recordPlay(episodeId) }
+    }
+
+    /** "I ticked that by mistake": drops the newest viewing only. */
+    fun undoLatestPlay(episodeId: EpisodeId) {
+        viewModelScope.launch { progressApi.removeLatestPlay(episodeId) }
+    }
+
+    /** Forgets an episode's entire watch history — the explicit, destructive one. */
+    fun clearEpisodeHistory(episodeId: EpisodeId) {
+        viewModelScope.launch { progressApi.clearPlays(episodeId) }
+    }
+
+    /** A bulk mark that ticked nothing (already caught up) has nothing to undo, so it offers none. */
+    private fun offerUndo(written: List<EpisodeId>, message: String) {
+        if (written.isEmpty()) return
+        _state.update { it.copy(pendingUndo = BulkMarkUndo(written, message)) }
     }
 
     /** "I'm caught up through here": marks every episode at or before [episodeId] as seen. */

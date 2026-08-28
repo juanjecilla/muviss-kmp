@@ -42,9 +42,12 @@ class SqlDelightSettingsRepositoryTest {
         database = MuvissDatabase(driver)
         repository = SqlDelightSettingsRepository(
             database.appSettingsQueries,
-            database.collectionEntryQueries,
-            database.episodeProgressQueries,
-            database.triageDecisionQueries,
+            ExportQueries(
+                collection = database.collectionEntryQueries,
+                progress = database.episodeProgressQueries,
+                plays = database.episodePlayQueries,
+                triage = database.triageDecisionQueries,
+            ),
             ImmediateDispatchers(UnconfinedTestDispatcher()),
             FakeClock(1_000L),
         )
@@ -166,5 +169,18 @@ class SqlDelightSettingsRepositoryTest {
         val json = repository.exportData()
         val collection = Json.parseToJsonElement(json).jsonObject["collection"]!!.jsonArray
         assertTrue(collection.isEmpty())
+    }
+
+    @Test
+    fun the_export_carries_rewatch_history() = runTest {
+        database.episodePlayQueries.insert("tmdb:tv:1399/1/1", "tmdb:tv:1399", 1_000L, false)
+        database.episodePlayQueries.insert("tmdb:tv:1399/1/1", "tmdb:tv:1399", 2_000L, false)
+
+        val json = repository.exportData()
+
+        // A person's backup has to include how often they watched things;
+        // leaving plays out would silently drop that on reinstall (ADR 0011).
+        assertTrue(json.contains("\"plays\""))
+        assertTrue(json.contains("\"watchedAtEpochMs\": 2000"))
     }
 }

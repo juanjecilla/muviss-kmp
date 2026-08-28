@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -36,18 +38,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -66,6 +76,8 @@ import com.codingpit.muviss.core.designsystem.component.RatingRow
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
+import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -84,10 +96,21 @@ fun DetailScreen(
     viewModel: DetailViewModel,
     onBack: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenEpisode: (EpisodeId) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
     var editingNote by remember { mutableStateOf(false) }
+    var tickedEpisode by remember { mutableStateOf<EpisodeId?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // A bulk mark parks its undo in state; this turns it into the snackbar and
+    // clears it once acted on, so it can't reappear on the next recomposition.
+    LaunchedEffect(state.pendingUndo) {
+        val undo = state.pendingUndo ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(undo.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark() else viewModel.dismissUndo()
+    }
 
     Box(Modifier.fillMaxSize()) {
         when {
@@ -109,6 +132,8 @@ fun DetailScreen(
                         onOpenDetail,
                         onAddToList = { showAddToList = true },
                         onEditNote = { editingNote = true },
+                        onOpenEpisode = onOpenEpisode,
+                        onTapSeenEpisode = { tickedEpisode = it },
                     )
                 } else {
                     DetailCompact(
@@ -117,6 +142,8 @@ fun DetailScreen(
                         onOpenDetail,
                         onAddToList = { showAddToList = true },
                         onEditNote = { editingNote = true },
+                        onOpenEpisode = onOpenEpisode,
+                        onTapSeenEpisode = { tickedEpisode = it },
                     )
                 }
             }
@@ -124,6 +151,25 @@ fun DetailScreen(
 
         // Floating back button over the hero, per the mockups.
         BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
+
+        // Detail is a scrolling Box rather than a Scaffold, so it hosts its
+        // own snackbar for the bulk-mark undo.
+        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+    }
+
+    tickedEpisode?.let { episodeId ->
+        WatchedAgainDialog(
+            playCount = state.playCountOf(episodeId),
+            onWatchedAgain = {
+                viewModel.recordRewatch(episodeId)
+                tickedEpisode = null
+            },
+            onMistake = {
+                viewModel.undoLatestPlay(episodeId)
+                tickedEpisode = null
+            },
+            onDismiss = { tickedEpisode = null },
+        )
     }
 
     if (editingNote) {
@@ -145,7 +191,7 @@ fun DetailScreen(
 }
 
 @Composable
-private fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
+internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         shape = CircleShape,
         color = Color.Black.copy(alpha = 0.45f),
@@ -165,6 +211,8 @@ private fun DetailCompact(
     onOpenDetail: (MediaId) -> Unit,
     onAddToList: () -> Unit,
     onEditNote: () -> Unit,
+    onOpenEpisode: (EpisodeId) -> Unit,
+    onTapSeenEpisode: (EpisodeId) -> Unit,
 ) {
     val details = state.details!!
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -174,7 +222,7 @@ private fun DetailCompact(
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         ) {
             ActionRow(state, viewModel, onAddToList)
-            DetailBody(state, viewModel, details, onOpenDetail, onEditNote)
+            DetailBody(state, viewModel, details, onOpenDetail, onEditNote, onOpenEpisode, onTapSeenEpisode)
         }
     }
 }
@@ -187,6 +235,8 @@ private fun DetailExpanded(
     onOpenDetail: (MediaId) -> Unit,
     onAddToList: () -> Unit,
     onEditNote: () -> Unit,
+    onOpenEpisode: (EpisodeId) -> Unit,
+    onTapSeenEpisode: (EpisodeId) -> Unit,
 ) {
     val details = state.details!!
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -211,7 +261,7 @@ private fun DetailExpanded(
             ) {
                 Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
                 MetadataLine(details)
-                DetailBody(state, viewModel, details, onOpenDetail, onEditNote)
+                DetailBody(state, viewModel, details, onOpenDetail, onEditNote, onOpenEpisode, onTapSeenEpisode)
             }
         }
     }
@@ -225,6 +275,8 @@ private fun DetailBody(
     details: MediaDetails,
     onOpenDetail: (MediaId) -> Unit,
     onEditNote: () -> Unit,
+    onOpenEpisode: (EpisodeId) -> Unit,
+    onTapSeenEpisode: (EpisodeId) -> Unit,
 ) {
     // A skipped title (ADR 0010) leaves nothing in the library, so this line
     // is the only way back to it once the deck's undo snackbar has gone.
@@ -245,8 +297,23 @@ private fun DetailBody(
     }
 
     when (details.type) {
-        MediaType.MOVIE -> MovieWatchedToggle(state.movieWatched, onToggle = viewModel::toggleMovieWatched)
-        MediaType.TV -> SeasonsList(details, state, viewModel)
+        MediaType.MOVIE -> MovieWatchedToggle(
+            watched = state.movieWatched,
+            playCount = state.moviePlayCount,
+            onToggle = {
+                val id = EpisodeId.forMovie(details.id)
+                if (state.movieWatched) onTapSeenEpisode(id) else viewModel.toggleMovieWatched()
+            },
+        )
+
+        MediaType.TV -> SeasonsList(
+            details = details,
+            state = state,
+            viewModel = viewModel,
+            todayEpochDay = viewModel.todayEpochDay,
+            onOpenEpisode = onOpenEpisode,
+            onTapSeenEpisode = onTapSeenEpisode,
+        )
     }
 
     state.watchProviders?.let { providers -> WhereToWatchSection(providers) }
@@ -547,19 +614,124 @@ internal fun NoteEditorContent(initial: String, onSave: (String) -> Unit, onCanc
 }
 
 @Composable
-private fun MovieWatchedToggle(watched: Boolean, onToggle: () -> Unit) {
+private fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () -> Unit) {
     Row(Modifier.clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = watched, onCheckedChange = { onToggle() })
-        Text(if (watched) "Watched" else "Mark as watched", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            when {
+                !watched -> "Mark as watched"
+                playCount > 1 -> "Watched · $playCount×"
+                else -> "Watched"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
 
 @Composable
-private fun SeasonsList(details: MediaDetails, state: DetailUiState, viewModel: DetailViewModel) {
-    SeasonsHeader(details.seasons.size)
-    details.seasons.forEach { season ->
-        SeasonSection(season, state, viewModel)
+private fun SeasonsList(
+    details: MediaDetails,
+    state: DetailUiState,
+    viewModel: DetailViewModel,
+    todayEpochDay: Long,
+    onOpenEpisode: (EpisodeId) -> Unit,
+    onTapSeenEpisode: (EpisodeId) -> Unit,
+) {
+    var confirmMarkShow by rememberSaveable { mutableStateOf(false) }
+
+    // Seeded once from where the user left off, then owned by the user: a
+    // reseed on every progress change would slam a season shut mid-tick.
+    val expanded = rememberSaveable(details.id.toString(), saver = expandedSeasonsSaver) {
+        mutableStateOf(
+            SeasonExpansion.initiallyExpandedIndex(details.seasons, state.seenEpisodes, todayEpochDay)
+                ?.let { setOf(details.seasons[it].number) }
+                .orEmpty(),
+        )
     }
+
+    SeasonsHeader(details.seasons.size)
+    MarkShowSeenButton(onClick = { confirmMarkShow = true })
+
+    details.seasons.forEachIndexed { index, season ->
+        SeasonSection(
+            season = season,
+            state = state,
+            todayEpochDay = todayEpochDay,
+            expanded = season.number in expanded.value,
+            onExpandedChange = { open ->
+                expanded.value = if (open) expanded.value + season.number else expanded.value - season.number
+            },
+            actions = SeasonActions(
+                onMarkSeasonSeen = {
+                    viewModel.markSeasonSeen(season)
+                    // Finished seasons get out of the way — except the last,
+                    // which is where the next episode will land.
+                    if (SeasonExpansion.collapsesAfterMarking(index, details.seasons.size)) {
+                        expanded.value = expanded.value - season.number
+                    }
+                },
+                onUnmarkSeason = { viewModel.unmarkSeason(season) },
+                onTapEpisode = { episodeId ->
+                    if (state.isSeen(episodeId)) onTapSeenEpisode(episodeId) else viewModel.toggleEpisodeSeen(episodeId)
+                },
+                onCatchUp = viewModel::markPreviousSeen,
+                onOpenEpisode = onOpenEpisode,
+            ),
+        )
+    }
+
+    if (confirmMarkShow) {
+        MarkShowSeenDialog(
+            onConfirm = {
+                viewModel.markShowSeen()
+                confirmMarkShow = false
+            },
+            onDismiss = { confirmMarkShow = false },
+        )
+    }
+}
+
+/** Season numbers survive rotation; a `Set<Int>` needs a saver of its own. */
+private val expandedSeasonsSaver = listSaver<MutableState<Set<Int>>, Int>(
+    save = { it.value.toList() },
+    restore = { mutableStateOf(it.toSet()) },
+)
+
+/** Bundled so [SeasonSection] can be driven in tests without a ViewModel. */
+internal class SeasonActions(
+    val onMarkSeasonSeen: () -> Unit,
+    val onUnmarkSeason: () -> Unit,
+    val onTapEpisode: (EpisodeId) -> Unit,
+    val onCatchUp: (EpisodeId) -> Unit,
+    val onOpenEpisode: (EpisodeId) -> Unit,
+)
+
+internal const val MARK_SHOW_SEEN_LABEL = "Mark whole show as seen"
+
+@Composable
+private fun MarkShowSeenButton(onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.testTag(MARK_SHOW_TAG)) {
+        Icon(MuvissIcons.CaughtUp, contentDescription = null, modifier = Modifier.size(18.dp))
+        Text(MARK_SHOW_SEEN_LABEL, modifier = Modifier.padding(start = MuvissSpacing.s))
+    }
+}
+
+internal const val MARK_SHOW_TAG = "detailMarkShowSeen"
+
+/**
+ * Confirmation for the one action here that touches every season at once.
+ * Reversible, but reversing it episode by episode would be miserable, so it
+ * asks first.
+ */
+@Composable
+private fun MarkShowSeenDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mark whole show as seen?") },
+        text = { Text("Every episode that has aired will be marked watched. Episodes that haven't aired yet are left alone.") },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Mark seen") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(CANCEL_NOTE_LABEL) } },
+    )
 }
 
 /**
@@ -577,56 +749,131 @@ internal fun SeasonsHeader(seasonCount: Int) {
     )
 }
 
+internal const val SEASON_HEADER_TAG_PREFIX = "seasonHeader"
+internal const val SEASON_TOGGLE_TAG_PREFIX = "seasonToggle"
+internal const val SEASON_EPISODES_TAG_PREFIX = "seasonEpisodes"
+
+/**
+ * One collapsible season.
+ *
+ * The header carries everything needed to decide whether to open it — name,
+ * aired progress, a progress bar — plus the toggle that marks the season
+ * seen. Counts are stated against *aired* episodes, not total: "12 / 12
+ * aired" is a truthful "caught up" for a season still airing, where "12 / 22"
+ * would read as unfinished forever.
+ */
 @Composable
-private fun SeasonSection(season: Season, state: DetailUiState, viewModel: DetailViewModel) {
-    val seen = state.seenCountIn(season)
-    val total = season.episodes.size
-    // First unseen episode is "next up" — amber left rule in its row.
-    val nextUpId = season.episodes.firstOrNull { !state.isSeen(it.id) }?.id
+internal fun SeasonSection(
+    season: Season,
+    state: DetailUiState,
+    todayEpochDay: Long,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    actions: SeasonActions,
+) {
+    val aired = season.episodes.filter { it.hasAiredBy(todayEpochDay) }
+    val seenAired = aired.count { state.isSeen(it.id) }
+    val allAiredSeen = aired.isNotEmpty() && seenAired == aired.size
+    val nextUpId = aired.firstOrNull { !state.isSeen(it.id) }?.id
+
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
         Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .clickable { onExpandedChange(!expanded) }
+                .testTag("$SEASON_HEADER_TAG_PREFIX${season.number}")
+                .padding(vertical = MuvissSpacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(season.name, style = MaterialTheme.typography.titleSmall)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "$seen / $total watched",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
-                if (seen < total) {
-                    TextButton(onClick = { viewModel.markSeasonSeen(season) }) { Text("Mark season seen") }
-                }
-            }
+            Icon(
+                MuvissIcons.ChevronDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(20.dp)
+                    .rotate(if (expanded) 0f else -90f),
+            )
+            Text(
+                season.name,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
+            )
+            Text(
+                "$seenAired / ${aired.size} aired",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+            // A season with nothing aired has nothing to mark, so the toggle
+            // would be a control that silently does nothing.
+            Checkbox(
+                checked = allAiredSeen,
+                enabled = aired.isNotEmpty(),
+                onCheckedChange = { checked -> if (checked) actions.onMarkSeasonSeen() else actions.onUnmarkSeason() },
+                modifier = Modifier.testTag("$SEASON_TOGGLE_TAG_PREFIX${season.number}"),
+            )
         }
-        val progress = if (total == 0) 0f else seen / total.toFloat()
         LinearProgressIndicator(
-            progress = { progress },
+            progress = { if (aired.isEmpty()) 0f else seenAired / aired.size.toFloat() },
             color = MaterialTheme.colorScheme.tertiary,
             trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
         )
-        season.episodes.forEach { episode ->
-            val isSeen = state.isSeen(episode.id)
-            EpisodeRow(
-                title = episode.name,
-                subtitle = "S${episode.seasonNumber} · E${episode.episodeNumber}",
-                seen = isSeen,
-                onToggle = { viewModel.toggleEpisodeSeen(episode.id) },
-                stillUrl = episode.stillUrl,
-                nextUp = episode.id == nextUpId,
-                secondaryActionLabel = if (!isSeen && episode.id != nextUpId) "Catch up" else null,
-                onSecondaryAction = if (!isSeen && episode.id != nextUpId) {
-                    { viewModel.markPreviousSeen(episode.id) }
-                } else {
-                    null
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                Modifier.testTag("$SEASON_EPISODES_TAG_PREFIX${season.number}"),
+                verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
+            ) {
+                season.episodes.forEach { episode ->
+                    SeasonEpisodeRow(episode, state, todayEpochDay, nextUpId, actions)
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun SeasonEpisodeRow(
+    episode: Episode,
+    state: DetailUiState,
+    todayEpochDay: Long,
+    nextUpId: EpisodeId?,
+    actions: SeasonActions,
+) {
+    val isSeen = state.isSeen(episode.id)
+    val hasAired = episode.hasAiredBy(todayEpochDay)
+    val playCount = state.playCountOf(episode.id)
+    val subtitle = buildString {
+        append("S${episode.seasonNumber} · E${episode.episodeNumber}")
+        if (playCount > 1) append(" · watched $playCount×")
+        if (!hasAired) append(" · not aired yet")
+    }
+    // Catch-up only makes sense for something already out, and only ahead of
+    // where you are.
+    val offerCatchUp = hasAired && !isSeen && episode.id != nextUpId
+    EpisodeRow(
+        title = episode.name,
+        subtitle = subtitle,
+        seen = isSeen,
+        // An unaired episode cannot be ticked: doing so pushes seen past
+        // aired, which WatchProgress forbids and the library would throw on.
+        onToggle = { if (hasAired) actions.onTapEpisode(episode.id) },
+        stillUrl = episode.stillUrl,
+        nextUp = episode.id == nextUpId,
+        onClick = { actions.onOpenEpisode(episode.id) },
+        secondaryActionLabel = if (offerCatchUp) "Catch up" else null,
+        onSecondaryAction = if (offerCatchUp) {
+            { actions.onCatchUp(episode.id) }
+        } else {
+            null
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+private fun Episode.hasAiredBy(todayEpochDay: Long): Boolean {
+    val airDate = airDateEpochDay
+    return airDate != null && airDate <= todayEpochDay
 }
 
 @Composable
@@ -650,4 +897,40 @@ private fun SkippedBanner(onUndo: () -> Unit) {
             TextButton(onClick = onUndo) { Text("Undo") }
         }
     }
+}
+
+internal const val WATCHED_AGAIN_LABEL = "I watched it again"
+internal const val TICK_MISTAKE_LABEL = "I ticked it by mistake"
+
+/**
+ * What tapping an already-ticked episode means. It used to mean "un-tick",
+ * which made a second viewing unrecordable and turned a mis-tap and a rewatch
+ * into the same gesture.
+ *
+ * "By mistake" drops the newest viewing only, so an episode watched three
+ * times goes to two rather than losing the history behind the slip; clearing
+ * it outright lives in episode detail, where it can be deliberate.
+ */
+@Composable
+private fun WatchedAgainDialog(
+    playCount: Int,
+    onWatchedAgain: () -> Unit,
+    onMistake: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("You've already watched this") },
+        text = {
+            Text(
+                if (playCount > 1) {
+                    "Watched $playCount× so far. Did you watch it again, or was the last tick a mistake?"
+                } else {
+                    "Did you watch it again, or was that tick a mistake?"
+                },
+            )
+        },
+        confirmButton = { TextButton(onClick = onWatchedAgain) { Text(WATCHED_AGAIN_LABEL) } },
+        dismissButton = { TextButton(onClick = onMistake) { Text(TICK_MISTAKE_LABEL) } },
+    )
 }

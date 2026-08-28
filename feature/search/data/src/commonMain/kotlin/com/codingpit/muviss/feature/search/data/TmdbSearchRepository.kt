@@ -4,6 +4,8 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProviderRegistry
 import com.codingpit.muviss.feature.search.domain.SearchRepository
+import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -42,6 +44,14 @@ class TmdbSearchRepository(
     override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).recommendations(id, page) }
 
     override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).similar(id, page) }
+
+    override suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails> = runOnIo {
+        registry.forId(episodeId.show).episodeDetails(episodeId)
+            // Only a provider with no episode endpoint returns null (the
+            // interface default); surfacing it as a failure lets the screen
+            // show its error state rather than an empty one.
+            ?: error("This source has no episode details")
+    }
 
     private suspend fun <T> runOnIo(block: suspend () -> T): Result<T> = withContext(dispatchers.io) { runCatching { block() } }
 }

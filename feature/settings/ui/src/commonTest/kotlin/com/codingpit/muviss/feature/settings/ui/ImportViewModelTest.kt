@@ -6,6 +6,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.domain.ApplyImportUseCase
 import com.codingpit.muviss.feature.settings.domain.ExternalIdResolver
@@ -23,6 +24,7 @@ import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -59,7 +61,16 @@ private class FakeProgressApi : ProgressApi {
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = MutableStateFlow(emptySet())
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = MutableStateFlow(emptySet())
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = Unit
-    override suspend fun markSeasonSeen(season: Season) = Unit
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowOf(emptyList())
+    override suspend fun recordPlay(episodeId: EpisodeId) = Unit
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) = Unit
+    override suspend fun clearPlays(episodeId: EpisodeId) = Unit
+    override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = emptyList()
+    override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
+    override suspend fun unmarkSeason(season: Season) = Unit
+    override suspend fun unmarkShow(seasons: List<Season>) = Unit
+    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = Unit
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = Unit
 
     override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit

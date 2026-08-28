@@ -19,6 +19,7 @@ import com.codingpit.muviss.feature.profile.domain.GenreRating
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
 import com.codingpit.muviss.feature.profile.domain.WatchStreak
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
@@ -94,7 +95,16 @@ private class RealProgressApiForStats(private val repository: ProgressRepository
 
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
-    override suspend fun markSeasonSeen(season: Season) = error("not used")
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = repository.observePlayCounts(mediaId)
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = repository.observePlays(episodeId)
+    override suspend fun recordPlay(episodeId: EpisodeId) = repository.recordPlay(episodeId)
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
+    override suspend fun clearPlays(episodeId: EpisodeId) = repository.clearPlays(episodeId)
+    override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = error("not used")
+    override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = error("not used")
+    override suspend fun unmarkSeason(season: Season) = error("not used")
+    override suspend fun unmarkShow(seasons: List<Season>) = error("not used")
+    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = error("not used")
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("not used")
 
     override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = error("not used")
@@ -145,7 +155,7 @@ class ProfileStatsAggregationTest {
         val dispatchers = StatsAggregationDispatchers(UnconfinedTestDispatcher())
         clock = StatsTestClock(epochDay = 0)
 
-        val progressRepository: ProgressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, dispatchers, clock)
+        val progressRepository: ProgressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock)
         progressApi = RealProgressApiForStats(progressRepository)
         val collectionRepository: CollectionRepository =
             SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi)

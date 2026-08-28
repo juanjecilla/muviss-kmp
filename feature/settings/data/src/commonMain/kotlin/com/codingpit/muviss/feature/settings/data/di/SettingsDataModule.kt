@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.network.MutableMetadataLocale
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.data.AppSettingsFeatureFlags
 import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
+import com.codingpit.muviss.feature.settings.data.ExportQueries
 import com.codingpit.muviss.feature.settings.data.RegistryImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
 import com.codingpit.muviss.feature.settings.data.SqlDelightSettingsRepository
@@ -51,9 +52,12 @@ val settingsDataModule: Module = module {
     single<SettingsRepository> {
         SqlDelightSettingsRepository(
             get(),
-            get<MuvissDatabase>().collectionEntryQueries,
-            get<MuvissDatabase>().episodeProgressQueries,
-            get<MuvissDatabase>().triageDecisionQueries,
+            ExportQueries(
+                collection = get<MuvissDatabase>().collectionEntryQueries,
+                progress = get<MuvissDatabase>().episodeProgressQueries,
+                plays = get<MuvissDatabase>().episodePlayQueries,
+                triage = get<MuvissDatabase>().triageDecisionQueries,
+            ),
             get(),
             get(),
         )

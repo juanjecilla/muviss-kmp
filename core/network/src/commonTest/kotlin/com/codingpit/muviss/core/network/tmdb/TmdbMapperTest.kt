@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
@@ -222,5 +223,50 @@ class TmdbMapperTest {
         assertNull(providers.rent.single().logoUrl)
         assertTrue(providers.buy.isEmpty())
         assertTrue(!providers.isEmpty)
+    }
+
+    @Test
+    fun episode_details_map_overview_credits_and_runtime() {
+        val id = EpisodeId(MediaId.tmdbTv("1399"), 3, 9)
+        val dto = TmdbEpisodeDetailDto(
+            seasonNumber = 3,
+            episodeNumber = 9,
+            name = "The Rains of Castamere",
+            overview = "Robb presents himself to Walder Frey.",
+            airDate = "2013-06-02",
+            stillPath = "/still.jpg",
+            runtime = 51,
+            voteAverage = 9.2,
+            guestStars = listOf(TmdbEpisodeCreditDto(name = "David Bradley", character = "Walder Frey", profilePath = "/p.jpg")),
+            crew = listOf(TmdbEpisodeCreditDto(name = "David Nutter", job = "Director")),
+        )
+
+        val details = TmdbMapper.episodeDetailToModel(id, dto)
+
+        assertEquals("The Rains of Castamere", details.name)
+        assertEquals("Robb presents himself to Walder Frey.", details.overview)
+        assertEquals(51, details.runtimeMinutes)
+        assertEquals(9.2, details.voteAverage)
+        assertEquals("https://image.tmdb.org/t/p/w500/still.jpg", details.stillUrl)
+        assertEquals("Walder Frey", details.guestStars.single().character)
+        assertEquals("Director", details.crew.single().job)
+    }
+
+    @Test
+    fun an_unvoted_episode_has_no_score_rather_than_a_score_of_zero() {
+        val id = EpisodeId(MediaId.tmdbTv("1399"), 1, 1)
+        val dto = TmdbEpisodeDetailDto(seasonNumber = 1, episodeNumber = 1, voteAverage = 0.0)
+
+        // TMDB returns 0.0 for "nobody has voted", which would otherwise
+        // render as a genuine zero score.
+        assertNull(TmdbMapper.episodeDetailToModel(id, dto).voteAverage)
+    }
+
+    @Test
+    fun a_blank_overview_is_absent_rather_than_empty() {
+        val id = EpisodeId(MediaId.tmdbTv("1399"), 1, 1)
+        val dto = TmdbEpisodeDetailDto(seasonNumber = 1, episodeNumber = 1, overview = "")
+
+        assertNull(TmdbMapper.episodeDetailToModel(id, dto).overview)
     }
 }

@@ -3,7 +3,9 @@ package com.codingpit.muviss.feature.search.ui.di
 import com.codingpit.muviss.feature.search.ui.AddToListViewModel
 import com.codingpit.muviss.feature.search.ui.DetailPeers
 import com.codingpit.muviss.feature.search.ui.DetailViewModel
+import com.codingpit.muviss.feature.search.ui.EpisodeDetailViewModel
 import com.codingpit.muviss.feature.search.ui.SearchViewModel
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
@@ -12,6 +14,7 @@ import org.koin.dsl.module
 
 val searchUiModule: Module = module {
     viewModelOf(::SearchViewModel)
-    viewModel { (id: MediaId) -> DetailViewModel(id, get(), DetailPeers(get(), get(), get()), get(), get()) }
+    viewModel { (id: MediaId) -> DetailViewModel(id, get(), DetailPeers(get(), get(), get()), get(), get(), get()) }
     viewModel { (id: MediaId) -> AddToListViewModel(id, get()) }
+    viewModel { (id: EpisodeId) -> EpisodeDetailViewModel(id, get(), get()) }
 }

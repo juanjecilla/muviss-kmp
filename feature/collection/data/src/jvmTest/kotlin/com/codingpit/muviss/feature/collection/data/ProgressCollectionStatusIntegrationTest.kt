@@ -7,9 +7,12 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
+import com.codingpit.muviss.feature.progress.domain.EpisodeOrdering
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -51,8 +54,22 @@ private class RealSeenEpisodesProgressApi(private val repository: SqlDelightProg
 
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
 
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = repository.observePlayCounts(mediaId)
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = repository.observePlays(episodeId)
+
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
-    override suspend fun markSeasonSeen(season: Season) = repository.setSeenBulk(season.episodes.map { it.id }, seen = true)
+    override suspend fun recordPlay(episodeId: EpisodeId) = repository.recordPlay(episodeId)
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
+    override suspend fun clearPlays(episodeId: EpisodeId) = repository.clearPlays(episodeId)
+
+    override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(listOf(season), todayEpochDay))
+
+    override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
+
+    override suspend fun unmarkSeason(season: Season) = repository.removeLatestPlays(season.episodes.map { it.id })
+    override suspend fun unmarkShow(seasons: List<Season>) = repository.removeLatestPlays(seasons.flatMap { it.episodes }.map { it.id })
+    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = repository.removeLatestPlays(episodeIds)
+
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("not used")
 
     override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = error("not used")
@@ -89,6 +106,10 @@ class ProgressCollectionStatusIntegrationTest {
     private val episodeC = episode(2, 1, airDay = 102)
     private val episodeD = episode(2, 2, airDay = 140)
 
+    // Genuinely beyond "today" (day 150), unlike episodeD which the older
+    // tests move the clock past. This is the one a bulk mark must not touch.
+    private val unairedEpisode = episode(2, 3, airDay = 900)
+
     private fun details(seasons: List<Season>, productionStatus: ProductionStatus) = MediaDetails(
         summary = MediaSummary(show, "Show"),
         productionStatus = productionStatus,
@@ -103,7 +124,7 @@ class ProgressCollectionStatusIntegrationTest {
         val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
         clock = StatusTestClock(0L)
         clock.advanceToEpochDay(150) // "today" — episodes A, B, C have aired; D hasn't yet.
-        val progressRepository = SqlDelightProgressRepository(db.episodeProgressQueries, dispatchers, clock)
+        val progressRepository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, clock)
         progressApi = RealSeenEpisodesProgressApi(progressRepository)
         collectionRepository = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, clock, progressApi)
     }
@@ -148,6 +169,56 @@ class ProgressCollectionStatusIntegrationTest {
             )
             assertEquals(WatchStatus.FINISHED, awaitItem()!!.status)
 
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * The regression this whole aired-only rule exists for.
+     *
+     * "Mark season seen" used to tick every episode in the season, unaired
+     * ones included. `CollectionEntry.status` builds a `WatchProgress`, which
+     * `require(seenEpisodes <= airedEpisodes)` — so the next time the library
+     * screen derived this title's status, it threw. Reading the status here is
+     * the assertion: before the fix, this test crashed rather than failed.
+     */
+    @Test
+    fun marking_a_currently_airing_season_seen_leaves_a_status_that_can_be_read() = runTest {
+        val airing = Season(2, "S2", listOf(episodeC, unairedEpisode))
+        collectionRepository.upsertSnapshot(
+            details(listOf(Season(1, "S1", listOf(episodeA, episodeB)), airing), ProductionStatus.RETURNING),
+        )
+
+        collectionRepository.observeEntry(show).test {
+            awaitItem()
+
+            progressApi.markSeasonAiredSeen(airing, clock.todayEpochDay())
+
+            val entry = awaitItem()!!
+            assertEquals(1, entry.seenEpisodes, "only the aired episode of that season should be ticked")
+            // Deriving the status is what used to throw.
+            assertEquals(WatchStatus.WATCHING, entry.status)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun marking_the_whole_show_seen_stops_at_what_has_aired() = runTest {
+        val seasons = listOf(
+            Season(1, "S1", listOf(episodeA, episodeB)),
+            Season(2, "S2", listOf(episodeC, unairedEpisode)),
+        )
+        collectionRepository.upsertSnapshot(details(seasons, ProductionStatus.RETURNING))
+
+        collectionRepository.observeEntry(show).test {
+            awaitItem()
+
+            progressApi.markShowAiredSeen(seasons, clock.todayEpochDay())
+
+            val entry = awaitItem()!!
+            assertEquals(3, entry.airedEpisodes)
+            assertEquals(entry.airedEpisodes, entry.seenEpisodes, "caught up is exactly 'everything that has aired'")
+            assertEquals(WatchStatus.WATCHED, entry.status)
             cancelAndIgnoreRemainingEvents()
         }
     }

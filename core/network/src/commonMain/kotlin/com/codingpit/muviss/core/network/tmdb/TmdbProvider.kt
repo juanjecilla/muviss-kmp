@@ -4,6 +4,8 @@ import com.codingpit.muviss.core.network.DefaultMetadataLocale
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.core.network.MuvissBuildConfig
+import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -105,6 +107,21 @@ class TmdbProvider(
             parameter("external_source", "imdb_id")
         }.body()
         return TmdbMapper.findResponseToSummary(dto, type)
+    }
+
+    /**
+     * One request per episode. `guest_stars` and `crew` come back on this
+     * endpoint without an `append_to_response`, so the whole detail screen is
+     * a single round trip.
+     */
+    override suspend fun episodeDetails(episodeId: EpisodeId): EpisodeDetails {
+        val show = episodeId.show
+        val dto: TmdbEpisodeDetailDto = client
+            .get("$BASE/tv/${show.external}/season/${episodeId.seasonNumber}/episode/${episodeId.episodeNumber}") {
+                parameter("api_key", apiKey)
+                parameter("language", locale.language)
+            }.body()
+        return TmdbMapper.episodeDetailToModel(episodeId, dto)
     }
 
     private suspend fun movieDetails(externalId: String): MediaDetails {

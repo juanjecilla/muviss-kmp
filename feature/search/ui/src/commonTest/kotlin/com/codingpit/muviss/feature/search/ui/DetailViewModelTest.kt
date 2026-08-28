@@ -2,10 +2,12 @@
 
 package com.codingpit.muviss.feature.search.ui
 
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
@@ -14,6 +16,7 @@ import com.codingpit.muviss.feature.search.domain.SearchRepository
 import com.codingpit.muviss.feature.search.domain.SimilarMediaUseCase
 import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
 import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
@@ -27,6 +30,7 @@ import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -37,6 +41,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private class FakeDetailRepo(
@@ -53,6 +59,7 @@ private class FakeDetailRepo(
     override suspend fun watchProviders(id: MediaId) = watchProviders
     override suspend fun recommendations(id: MediaId, page: Int) = recommendations
     override suspend fun similar(id: MediaId, page: Int) = similar
+    override suspend fun episodeDetails(episodeId: EpisodeId) = Result.success(EpisodeDetails(episodeId, "Episode", episodeId.seasonNumber, episodeId.episodeNumber))
 }
 
 /** Bundles [FakeDetailRepo]'s independently-loaded-section fakes into one test-helper param, keeping [DetailViewModelTest.viewModel]'s parameter count under detekt's LongParameterList threshold. */
@@ -100,22 +107,83 @@ private class FakeCollectionApi : CollectionApi {
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
-private class FakeProgressApi : ProgressApi {
-    private val seen = MutableStateFlow<Set<EpisodeId>>(emptySet())
+/**
+ * Models rewatch history the way the real one does (ADR 0011): plays are the
+ * record, `seen` follows from whether any remain. Tests that only care about
+ * ticks can still read [seenIds].
+ */
+internal class FakeProgressApi : ProgressApi {
+    private val plays = MutableStateFlow<Map<EpisodeId, List<Long>>>(emptyMap())
     val markedSeasons = mutableListOf<Season>()
+    val unmarkedSeasons = mutableListOf<Season>()
+    val markedShows = mutableListOf<List<Season>>()
     val markedPrevious = mutableListOf<EpisodeId>()
+    val clearedEpisodes = mutableListOf<EpisodeId>()
+    var now = 1_000L
 
-    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = seen
+    val seenIds: Set<EpisodeId> get() = plays.value.filterValues { it.isNotEmpty() }.keys
+
+    private fun addPlay(episodeId: EpisodeId) {
+        plays.value = plays.value + (episodeId to (plays.value[episodeId].orEmpty() + now))
+    }
+
+    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = plays.map { all -> all.filterValues { it.isNotEmpty() }.keys }
 
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = MutableStateFlow(emptySet())
 
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = plays.map { all -> all.filterValues { it.isNotEmpty() }.mapValues { it.value.size } }
+
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = plays.map { all -> all[episodeId].orEmpty().sortedDescending().map { EpisodePlay(episodeId, it) } }
+
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) {
-        this.seen.value = if (seen) this.seen.value + episodeId else this.seen.value - episodeId
+        if (seen) {
+            if (plays.value[episodeId].isNullOrEmpty()) addPlay(episodeId)
+        } else {
+            plays.value = plays.value - episodeId
+        }
     }
 
-    override suspend fun markSeasonSeen(season: Season) {
+    override suspend fun recordPlay(episodeId: EpisodeId) = addPlay(episodeId)
+
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) {
+        val remaining = plays.value[episodeId].orEmpty().dropLast(1)
+        plays.value = if (remaining.isEmpty()) plays.value - episodeId else plays.value + (episodeId to remaining)
+    }
+
+    override suspend fun clearPlays(episodeId: EpisodeId) {
+        clearedEpisodes += episodeId
+        plays.value = plays.value - episodeId
+    }
+
+    override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> {
         markedSeasons += season
-        seen.value = seen.value + season.episodes.map { it.id }
+        return airedUnseen(listOf(season), todayEpochDay).onEach { addPlay(it) }
+    }
+
+    override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> {
+        markedShows += seasons
+        return airedUnseen(seasons, todayEpochDay).onEach { addPlay(it) }
+    }
+
+    private fun airedUnseen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = seasons
+        .flatMap { it.episodes }
+        .filter { episode ->
+            val airDate = episode.airDateEpochDay
+            airDate != null && airDate <= todayEpochDay && plays.value[episode.id].isNullOrEmpty()
+        }
+        .map { it.id }
+
+    override suspend fun unmarkSeason(season: Season) {
+        unmarkedSeasons += season
+        season.episodes.forEach { removeLatestPlay(it.id) }
+    }
+
+    override suspend fun unmarkShow(seasons: List<Season>) {
+        seasons.forEach { unmarkSeason(it) }
+    }
+
+    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) {
+        episodeIds.forEach { removeLatestPlay(it) }
     }
 
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) {
@@ -124,12 +192,16 @@ private class FakeProgressApi : ProgressApi {
 
     override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit
 
-    override suspend fun clearProgress(mediaId: MediaId) = Unit
-
-    override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) {
-        val id = EpisodeId.forMovie(mediaId)
-        seen.value = if (watched) seen.value + id else seen.value - id
+    override suspend fun clearProgress(mediaId: MediaId) {
+        plays.value = emptyMap()
     }
+
+    override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = setEpisodeSeen(EpisodeId.forMovie(mediaId), watched)
+}
+
+/** Fixed "today" so aired-vs-unaired is a property of the fixture, not of the calendar. */
+private class TestClock(private val todayEpochMs: Long) : AppClock {
+    override fun nowEpochMs(): Long = todayEpochMs
 }
 
 class DetailViewModelTest {
@@ -144,8 +216,13 @@ class DetailViewModelTest {
     private val details = MediaDetails(MediaSummary(mediaId, "The Matrix"))
 
     private val show = MediaId.tmdbTv("1399")
-    private val episode1 = Episode(EpisodeId(show, 1, 1), 1, 1, "Winter Is Coming")
-    private val episode2 = Episode(EpisodeId(show, 1, 2), 1, 2, "The Kingsroad")
+
+    // Air dates matter now: bulk marks tick aired episodes only, so a fixture
+    // without them would silently mark nothing.
+    private val episode1 = Episode(EpisodeId(show, 1, 1), 1, 1, "Winter Is Coming", airDateEpochDay = 10L)
+    private val episode2 = Episode(EpisodeId(show, 1, 2), 1, 2, "The Kingsroad", airDateEpochDay = 11L)
+    private val unairedEpisode = Episode(EpisodeId(show, 1, 3), 1, 3, "Not Out Yet", airDateEpochDay = 9_999L)
+    private val undatedSpecial = Episode(EpisodeId(show, 1, 4), 1, 4, "Undated Special", airDateEpochDay = null)
     private val tvDetails = MediaDetails(
         summary = MediaSummary(show, "Game of Thrones"),
         seasons = listOf(Season(1, "Season 1", listOf(episode1, episode2))),
@@ -165,6 +242,8 @@ class DetailViewModelTest {
             DetailPeers(collectionApi, progressApi, repoFakes.triageApi),
             WatchProvidersUseCase(repo),
             MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
+            // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
+            TestClock(todayEpochMs = 20L * 86_400_000L),
         )
     }
 
@@ -331,6 +410,172 @@ class DetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(tvDetails.seasons.single()), progressApi.markedSeasons)
+        assertEquals(2, vm.state.value.seenCountIn(tvDetails.seasons.single()))
+    }
+
+    @Test
+    fun marking_a_season_seen_leaves_unaired_and_undated_episodes_alone() = runTest {
+        val progressApi = FakeProgressApi()
+        val season = Season(1, "Season 1", listOf(episode1, episode2, unairedEpisode, undatedSpecial))
+        val vm = viewModel(
+            progressApi = progressApi,
+            detailsToLoad = MediaDetails(MediaSummary(show, "Game of Thrones"), seasons = listOf(season)),
+            id = show,
+        )
+        advanceUntilIdle()
+
+        vm.markSeasonSeen(season)
+        advanceUntilIdle()
+
+        // Ticking these would push seenEpisodes past airedEpisodes, and
+        // WatchProgress `require`s otherwise — the library screen would throw
+        // the next time it derived this title's status.
+        assertFalse(vm.state.value.isSeen(unairedEpisode.id))
+        assertFalse(vm.state.value.isSeen(undatedSpecial.id))
+        assertEquals(2, vm.state.value.seenCountIn(season))
+    }
+
+    @Test
+    fun marking_a_season_seen_offers_an_undo_for_exactly_what_it_wrote() = runTest {
+        val progressApi = FakeProgressApi()
+        val season = tvDetails.seasons.single()
+        val vm = viewModel(progressApi = progressApi, detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+
+        vm.markSeasonSeen(season)
+        advanceUntilIdle()
+
+        val undo = vm.state.value.pendingUndo
+        assertNotNull(undo)
+        assertEquals(listOf(episode2.id), undo.episodeIds, "episode1 was already seen, so the undo must not touch it")
+
+        vm.undoBulkMark()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.isSeen(episode1.id), "the undo took back only what the bulk mark wrote")
+        assertFalse(vm.state.value.isSeen(episode2.id))
+        assertNull(vm.state.value.pendingUndo)
+    }
+
+    @Test
+    fun unmarking_a_season_drops_one_viewing_from_each_seen_episode() = runTest {
+        val progressApi = FakeProgressApi()
+        val season = tvDetails.seasons.single()
+        val vm = viewModel(progressApi = progressApi, detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        // episode1 genuinely watched twice, episode2 once.
+        vm.recordRewatch(episode1.id)
+        vm.recordRewatch(episode1.id)
+        vm.recordRewatch(episode2.id)
+        advanceUntilIdle()
+
+        vm.unmarkSeason(season)
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.isSeen(episode1.id), "a title watched twice is not unwatched by one undo")
+        assertEquals(1, vm.state.value.playCountOf(episode1.id))
+        assertFalse(vm.state.value.isSeen(episode2.id))
+    }
+
+    @Test
+    fun marking_the_whole_show_seen_covers_every_season() = runTest {
+        val progressApi = FakeProgressApi()
+        val seasonTwo = Season(2, "Season 2", listOf(Episode(EpisodeId(show, 2, 1), 2, 1, "Valar", airDateEpochDay = 12L)))
+        val details = MediaDetails(
+            MediaSummary(show, "Game of Thrones"),
+            seasons = listOf(tvDetails.seasons.single(), seasonTwo),
+        )
+        val vm = viewModel(progressApi = progressApi, detailsToLoad = details, id = show)
+        advanceUntilIdle()
+
+        vm.markShowSeen()
+        advanceUntilIdle()
+
+        assertEquals(1, progressApi.markedShows.size)
+        assertEquals(2, vm.state.value.seenCountIn(details.seasons.first()))
+        assertEquals(1, vm.state.value.seenCountIn(seasonTwo))
+        assertNotNull(vm.state.value.pendingUndo)
+    }
+
+    @Test
+    fun watching_an_episode_again_adds_a_viewing_and_keeps_it_seen() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+
+        vm.recordRewatch(episode1.id)
+        advanceUntilIdle()
+
+        assertEquals(2, vm.state.value.playCountOf(episode1.id))
+        assertTrue(vm.state.value.isSeen(episode1.id))
+    }
+
+    @Test
+    fun taking_back_a_mistaken_tick_drops_only_the_newest_viewing() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+        vm.recordRewatch(episode1.id)
+        vm.recordRewatch(episode1.id)
+        advanceUntilIdle()
+
+        vm.undoLatestPlay(episode1.id)
+        advanceUntilIdle()
+
+        assertEquals(1, vm.state.value.playCountOf(episode1.id))
+        assertTrue(vm.state.value.isSeen(episode1.id))
+
+        vm.undoLatestPlay(episode1.id)
+        advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.playCountOf(episode1.id))
+        assertFalse(vm.state.value.isSeen(episode1.id), "with no viewings left it was never watched")
+    }
+
+    @Test
+    fun clearing_an_episodes_history_forgets_every_viewing() = runTest {
+        val progressApi = FakeProgressApi()
+        val vm = viewModel(progressApi = progressApi, detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+        vm.recordRewatch(episode1.id)
+        vm.recordRewatch(episode1.id)
+        advanceUntilIdle()
+
+        vm.clearEpisodeHistory(episode1.id)
+        advanceUntilIdle()
+
+        assertEquals(listOf(episode1.id), progressApi.clearedEpisodes)
+        assertEquals(0, vm.state.value.playCountOf(episode1.id))
+        assertFalse(vm.state.value.isSeen(episode1.id))
+    }
+
+    @Test
+    fun play_counts_reach_the_state_so_rows_can_show_them() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        vm.recordRewatch(episode1.id)
+        vm.recordRewatch(episode1.id)
+        vm.recordRewatch(episode1.id)
+        advanceUntilIdle()
+
+        assertEquals(3, vm.state.value.playCountOf(episode1.id))
+        assertEquals(0, vm.state.value.playCountOf(episode2.id))
+    }
+
+    @Test
+    fun dismissing_the_undo_leaves_the_progress_it_wrote_in_place() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        vm.markSeasonSeen(tvDetails.seasons.single())
+        advanceUntilIdle()
+        vm.dismissUndo()
+
+        assertNull(vm.state.value.pendingUndo)
         assertEquals(2, vm.state.value.seenCountIn(tvDetails.seasons.single()))
     }
 

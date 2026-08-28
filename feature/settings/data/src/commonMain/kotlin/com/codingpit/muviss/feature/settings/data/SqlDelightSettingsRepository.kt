@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.core.database.CollectionEntryQueries
+import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -19,6 +20,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
 import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
+import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 
@@ -30,7 +32,7 @@ import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
  * why this can no longer run once from `init` now that `generateAsync`
  * (EPIC 13) made it a `suspend fun`.
  *
- * [exportData] reaches into `collectionEntry`/`episodeProgress` directly
+ * [exportData] reaches into `collectionEntry`/`episodeProgress`/`episodePlay` directly
  * (both are `:core:database` infrastructure, not collection/progress's own —
  * no cross-feature dependency needed) rather than through those features'
  * `:api`, because the export is a literal table dump, not a domain view. It
@@ -40,9 +42,7 @@ import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
  */
 class SqlDelightSettingsRepository(
     private val settingsQueries: AppSettingsQueries,
-    private val collectionQueries: CollectionEntryQueries,
-    private val progressQueries: EpisodeProgressQueries,
-    private val triageQueries: TriageDecisionQueries,
+    private val exportQueries: ExportQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
 ) : SettingsRepository {
@@ -82,9 +82,10 @@ class SqlDelightSettingsRepository(
     override suspend fun exportData(): String = withContext(dispatchers.io) {
         val export = MuvissDataExport(
             exportedAtEpochMs = clock.nowEpochMs(),
-            collection = collectionQueries.selectAll().awaitAsList().map { it.toExport() },
-            progress = progressQueries.selectAll().awaitAsList().map { it.toExport() },
-            triage = triageQueries.selectAll().awaitAsList().map { it.toExport() },
+            collection = exportQueries.collection.selectAll().awaitAsList().map { it.toExport() },
+            progress = exportQueries.progress.selectAll().awaitAsList().map { it.toExport() },
+            triage = exportQueries.triage.selectAll().awaitAsList().map { it.toExport() },
+            plays = exportQueries.plays.selectAll().awaitAsList().map { it.toExport() },
         )
         json.encodeToString(export)
     }
@@ -130,4 +131,22 @@ class SqlDelightSettingsRepository(
         seen = seen,
         updatedAtEpochMs = updatedAtEpochMs,
     )
+
+    private fun EpisodePlayRow.toExport(): EpisodePlayExport = EpisodePlayExport(
+        episodeId = episodeId,
+        mediaId = mediaId,
+        watchedAtEpochMs = watchedAtEpochMs,
+    )
 }
+
+/**
+ * The four tables [SqlDelightSettingsRepository.exportData] dumps, bundled so
+ * its constructor stays inside detekt's `LongParameterList` budget — the same
+ * trick `ProgressMutations` and `CollectionToggles` use.
+ */
+class ExportQueries(
+    val collection: CollectionEntryQueries,
+    val progress: EpisodeProgressQueries,
+    val plays: EpisodePlayQueries,
+    val triage: TriageDecisionQueries,
+)

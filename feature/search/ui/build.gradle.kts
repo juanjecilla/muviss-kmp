@@ -12,6 +12,8 @@ kotlin {
             implementation(projects.feature.triage.api)
             implementation(projects.core.designsystem)
             implementation(projects.models)
+            // DetailViewModel needs AppClock: bulk marks tick aired episodes only.
+            implementation(projects.core.common)
             implementation(libs.navigation.compose)
             implementation(libs.kotlinx.serializationJson)
             implementation(libs.kotlinx.coroutinesCore)

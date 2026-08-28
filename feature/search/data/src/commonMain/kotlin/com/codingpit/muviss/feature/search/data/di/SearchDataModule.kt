@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.search.data.di
 
 import com.codingpit.muviss.feature.search.data.TmdbSearchRepository
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
+import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
@@ -20,6 +21,7 @@ val searchDataModule: Module = module {
     factory { SearchMediaUseCase(get()) }
     factory { TrendingUseCase(get()) }
     factory { MediaDetailUseCase(get()) }
+    factory { EpisodeDetailUseCase(get()) }
     factory { DiscoverMediaUseCase(get()) }
     factory { GenresUseCase(get()) }
     factory { WatchProvidersUseCase(get()) }

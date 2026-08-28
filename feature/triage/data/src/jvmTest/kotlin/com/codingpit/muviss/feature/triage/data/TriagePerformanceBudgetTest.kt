@@ -63,7 +63,7 @@ class TriagePerformanceBudgetTest {
 
         val dispatchers = ImmediateDispatchers(UnconfinedTestDispatcher())
         val clock = FakeClock()
-        val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, dispatchers, clock)
+        val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock)
         progressApi = RealProgressApi(progressRepository)
         collectionApi = RealCollectionApi(
             SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi),

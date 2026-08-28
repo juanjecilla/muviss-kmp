@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.EpisodeProgress
@@ -77,6 +78,30 @@ private class FakeProgressRepository : ProgressRepository {
     override suspend fun clearForMedia(mediaId: MediaId) {
         flowFor(mediaId).value = emptySet()
     }
+
+    // Rewatch history (ADR 0011): watch-next only ever asks "seen or not", so
+    // the play side is modelled as one viewing per seen episode.
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowFor(mediaId).map { seen -> seen.associateWith { 1 } }
+
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowFor(episodeId.show).map { seen ->
+        if (episodeId in seen) listOf(EpisodePlay(episodeId, 0L)) else emptyList()
+    }
+
+    override suspend fun recordPlay(episodeId: EpisodeId) = setSeen(episodeId, true)
+
+    override suspend fun recordPlaysForUnseen(episodeIds: List<EpisodeId>): List<EpisodeId> {
+        val unseen = episodeIds.filterNot { it in flowFor(it.show).value }
+        unseen.forEach { setSeen(it, true) }
+        return unseen
+    }
+
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) = setSeen(episodeId, false)
+
+    override suspend fun removeLatestPlays(episodeIds: List<EpisodeId>) {
+        episodeIds.filter { it in flowFor(it.show).value }.forEach { setSeen(it, false) }
+    }
+
+    override suspend fun clearPlays(episodeId: EpisodeId) = setSeen(episodeId, false)
 }
 
 private class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {

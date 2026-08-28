@@ -4,6 +4,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
@@ -13,6 +14,7 @@ import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 internal class FakeTriageDecisionRepository : TriageDecisionRepository {
@@ -94,7 +96,16 @@ internal class FakeProgressApi : ProgressApi {
         ticked += episodeId
     }
 
-    override suspend fun markSeasonSeen(season: Season) = error("triage never marks a single season")
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowOf(emptyList())
+    override suspend fun recordPlay(episodeId: EpisodeId) = Unit
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) = Unit
+    override suspend fun clearPlays(episodeId: EpisodeId) = Unit
+    override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = emptyList()
+    override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
+    override suspend fun unmarkSeason(season: Season) = Unit
+    override suspend fun unmarkShow(seasons: List<Season>) = Unit
+    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = Unit
 
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("triage uses markAllAiredSeen — see EpisodeOrdering.airedBy")
 
