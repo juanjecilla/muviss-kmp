@@ -221,7 +221,7 @@ class DetailViewModel(
     fun markSeasonSeen(season: Season) {
         viewModelScope.launch {
             val written = progressApi.markSeasonAiredSeen(season, clock.todayEpochDay())
-            offerUndo(written, "${'$'}{season.name} marked seen")
+            offerUndo(written, "${season.name} marked seen")
         }
     }
 

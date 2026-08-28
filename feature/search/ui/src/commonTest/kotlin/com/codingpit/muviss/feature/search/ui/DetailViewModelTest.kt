@@ -450,6 +450,8 @@ class DetailViewModelTest {
         val undo = vm.state.value.pendingUndo
         assertNotNull(undo)
         assertEquals(listOf(episode2.id), undo.episodeIds, "episode1 was already seen, so the undo must not touch it")
+        // Names the season, rather than showing a raw template to the user.
+        assertEquals("${season.name} marked seen", undo.message)
 
         vm.undoBulkMark()
         advanceUntilIdle()
