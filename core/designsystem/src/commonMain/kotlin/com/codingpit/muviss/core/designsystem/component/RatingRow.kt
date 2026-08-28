@@ -4,7 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -13,7 +12,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -120,23 +120,26 @@ private fun RatingStar(
                 modifier = Modifier.size(STAR_GLYPH),
             )
             if (fill == StarFill.HALF) {
-                // A filled star clipped to its left half, laid over the
-                // outline — cheaper and pixel-exact next to the full star,
-                // where a separately drawn "half star" glyph would have to be
-                // kept in visual sync with STAR_PATH by hand.
-                Box(
-                    Modifier
-                        .size(width = STAR_GLYPH / 2, height = STAR_GLYPH)
-                        .clipToBounds(),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Icon(
-                        imageVector = MuvissIcons.Star,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.requiredSize(STAR_GLYPH),
-                    )
-                }
+                // A filled star laid exactly over the outline and clipped at
+                // its own midpoint, so the amber is the left half *of that
+                // star* rather than a separate glyph that has to be kept in
+                // visual sync with STAR_PATH by hand.
+                //
+                // The clip is a draw-time `clipRect` rather than a smaller
+                // parent box around an oversized child: sizing the wrapper to
+                // half a star makes the icon inside it a layout child that no
+                // longer shares the outline's origin, and it renders visibly
+                // offset from the star it is supposed to be filling.
+                Icon(
+                    imageVector = MuvissIcons.Star,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(STAR_GLYPH)
+                        .drawWithContent {
+                            clipRect(right = size.width / 2f) { this@drawWithContent.drawContent() }
+                        },
+                )
             }
         }
     }

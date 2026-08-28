@@ -1,0 +1,28 @@
+-- Rewatch history (ADR 0011). The filename is the version this migrates
+-- FROM, not to: 6.sqm takes a v6 database to v7.
+--
+-- The backfill is the point of doing this in a migration rather than lazily.
+-- Every episode already ticked gets one play row carrying the timestamp the
+-- tick was written with, so nobody upgrades into a library that claims they
+-- have watched nothing: `playCount` reads 1 for everything already seen
+-- rather than 0, and the profile's watch streak — which now reads play
+-- timestamps instead of `episodeProgress.updatedAtEpochMs` — keeps every day
+-- it had before.
+--
+-- Backfilled rows are `isDirty = 0`: they describe history that already
+-- existed locally, not a new change to push.
+CREATE TABLE episodePlay (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    episodeId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    watchedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX episodePlay_episodeId ON episodePlay(episodeId);
+CREATE INDEX episodePlay_mediaId ON episodePlay(mediaId);
+
+INSERT INTO episodePlay(episodeId, mediaId, watchedAtEpochMs, isDirty)
+SELECT episodeId, mediaId, updatedAtEpochMs, 0
+FROM episodeProgress
+WHERE seen = 1;

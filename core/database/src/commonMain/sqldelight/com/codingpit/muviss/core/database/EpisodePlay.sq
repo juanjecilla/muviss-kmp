@@ -1,0 +1,98 @@
+-- Rewatch history: one row per viewing, with the day it happened.
+--
+-- ADR 0005 originally said progress carries no separate history log, and for
+-- a long time it didn't need one: an episode was seen or it wasn't. Watching
+-- something a second time had nowhere to go — re-tapping a ticked episode
+-- just un-ticked it. ADR 0011 records the reversal and why a counter column
+-- was not enough: a count answers "how many times" and nothing else, so
+-- "how often did I rewatch this year" would have been permanently
+-- unanswerable. Rows carry their timestamp for exactly that reason.
+--
+-- `episodeProgress.seen` deliberately stays where it is rather than becoming
+-- a view over this table: the sync change-log, `clearForMedia` and
+-- last-write-wins all key off it, and un-ticking propagates as `seen = 0`
+-- (ADR 0009). Both are written together through the repository. `playCount`
+-- is derived here and never stored.
+--
+-- Movies use `EpisodeId.forMovie`'s single synthetic id, same as
+-- `episodeProgress`, so rewatching a film is recorded identically.
+--
+-- `isDirty` is present from the start so the change-log shape is right, but
+-- nothing pushes these rows yet: v1 is local-only, and append-only rows need
+-- a different conflict rule than ADR 0009's last-write-wins. See ADR 0011.
+CREATE TABLE episodePlay (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    episodeId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    watchedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+);
+
+CREATE INDEX episodePlay_episodeId ON episodePlay(episodeId);
+CREATE INDEX episodePlay_mediaId ON episodePlay(mediaId);
+
+insert:
+INSERT INTO episodePlay(episodeId, mediaId, watchedAtEpochMs, isDirty)
+VALUES (?, ?, ?, ?);
+
+-- "I ticked that by mistake": drops the newest viewing only, so an episode
+-- genuinely watched three times goes to two rather than losing its history.
+deleteLatestForEpisode:
+DELETE FROM episodePlay
+WHERE id = (
+    SELECT id FROM episodePlay
+    WHERE episodeId = :episodeId
+    ORDER BY watchedAtEpochMs DESC, id DESC
+    LIMIT 1
+);
+
+-- The destructive one, reachable only from episode detail's explicit
+-- "clear watch history".
+deleteAllForEpisode:
+DELETE FROM episodePlay
+WHERE episodeId = :episodeId;
+
+deleteAllForMedia:
+DELETE FROM episodePlay
+WHERE mediaId = :mediaId;
+
+countForEpisode:
+SELECT COUNT(*)
+FROM episodePlay
+WHERE episodeId = :episodeId;
+
+-- Play counts for one title in a single round trip, for the detail screen's
+-- per-episode "watched 3x" markers.
+countsForMedia:
+SELECT episodeId, COUNT(*) AS playCount
+FROM episodePlay
+WHERE mediaId = :mediaId
+GROUP BY episodeId;
+
+selectForEpisode:
+SELECT *
+FROM episodePlay
+WHERE episodeId = :episodeId
+ORDER BY watchedAtEpochMs DESC, id DESC;
+
+-- Every viewing's timestamp, across all titles — the profile watch-streak's
+-- input. Unlike the `episodeProgress.updatedAtEpochMs` it replaces, a rewatch
+-- adds a day here instead of moving an old one.
+selectAllWatchedAt:
+SELECT watchedAtEpochMs
+FROM episodePlay;
+
+-- Whole table, for settings' data export (EPIC 8).
+selectAll:
+SELECT *
+FROM episodePlay;
+
+selectDirty:
+SELECT *
+FROM episodePlay
+WHERE isDirty = 1;
+
+clearDirty:
+UPDATE episodePlay
+SET isDirty = 0
+WHERE id = :id;
