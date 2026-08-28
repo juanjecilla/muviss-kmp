@@ -4,6 +4,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -267,7 +268,13 @@ private fun CollectionGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
-        modifier = Modifier.fillMaxSize().padding(MuvissSpacing.m),
+        contentPadding = PaddingValues(
+            start = MuvissSpacing.m,
+            end = MuvissSpacing.m,
+            top = MuvissSpacing.m,
+            bottom = MuvissSpacing.bottomContent,
+        ),
+        modifier = Modifier.fillMaxSize(),
     ) {
         items(entries, key = { it.mediaId.toString() }) { entry ->
             PosterCard(

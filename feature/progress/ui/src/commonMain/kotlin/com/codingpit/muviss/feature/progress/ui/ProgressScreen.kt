@@ -158,7 +158,12 @@ private fun WatchNextList(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
-        contentPadding = PaddingValues(MuvissSpacing.m),
+        contentPadding = PaddingValues(
+            start = MuvissSpacing.m,
+            end = MuvissSpacing.m,
+            top = MuvissSpacing.m,
+            bottom = MuvissSpacing.bottomContent,
+        ),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
             WatchNextRow(item, onTick = { onTick(item) }, onClick = { onOpenDetail(item.mediaId) })

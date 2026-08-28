@@ -89,7 +89,12 @@ private fun UpcomingList(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
-        contentPadding = PaddingValues(MuvissSpacing.m),
+        contentPadding = PaddingValues(
+            start = MuvissSpacing.m,
+            end = MuvissSpacing.m,
+            top = MuvissSpacing.m,
+            bottom = MuvissSpacing.bottomContent,
+        ),
     ) {
         groups.forEach { group ->
             item(key = "header-${group.bucket}") {

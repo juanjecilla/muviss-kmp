@@ -16,4 +16,6 @@ object MuvissSpacing {
     val xl = 24.dp
     val xxl = 32.dp
     val huge = 48.dp
+
+    val bottomContent = 32.dp
 }

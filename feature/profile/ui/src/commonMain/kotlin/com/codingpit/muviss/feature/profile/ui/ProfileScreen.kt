@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.StatTile
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.AvatarPreset
 import com.codingpit.muviss.feature.profile.domain.AvatarPresets
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
@@ -76,7 +77,12 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
         }
 
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+                .padding(bottom = MuvissSpacing.bottomContent),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }

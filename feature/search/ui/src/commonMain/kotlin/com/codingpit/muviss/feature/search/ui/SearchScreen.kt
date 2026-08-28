@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -169,7 +170,10 @@ private fun DiscoverBrowse(
     onOpenTriage: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = MuvissSpacing.bottomContent),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
     ) {
         // Triage's main entry point (ADR 0010). It leads the browse because
@@ -328,6 +332,7 @@ private fun PagedResultsGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        contentPadding = PaddingValues(bottom = MuvissSpacing.bottomContent),
         modifier = Modifier.fillMaxSize(),
     ) {
         items(results, key = { it.id.toString() }) { item ->

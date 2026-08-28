@@ -103,7 +103,12 @@ private fun ListsColumn(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
-        contentPadding = PaddingValues(MuvissSpacing.m),
+        contentPadding = PaddingValues(
+            start = MuvissSpacing.m,
+            end = MuvissSpacing.m,
+            top = MuvissSpacing.m,
+            bottom = MuvissSpacing.bottomContent,
+        ),
     ) {
         items(lists, key = { it.id }) { list ->
             ListRow(list, onClick = { onOpenList(list) }, onEdit = { onEdit(list) }, onDelete = { onDelete(list) })

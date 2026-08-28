@@ -89,7 +89,13 @@ private fun ListContentsGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
-        modifier = Modifier.fillMaxSize().padding(MuvissSpacing.m),
+        contentPadding = PaddingValues(
+            start = MuvissSpacing.m,
+            end = MuvissSpacing.m,
+            top = MuvissSpacing.m,
+            bottom = MuvissSpacing.bottomContent,
+        ),
+        modifier = Modifier.fillMaxSize(),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
             Column {

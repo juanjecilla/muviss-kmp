@@ -64,7 +64,11 @@ fun SettingsScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(MuvissSpacing.l),
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(MuvissSpacing.l)
+            .padding(bottom = MuvissSpacing.bottomContent),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = MuvissSpacing.s))

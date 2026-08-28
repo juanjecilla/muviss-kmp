@@ -24,14 +24,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+/** Test tag on the caption; `PosterImage` renders the title too, so matching by text finds two nodes. */
+const val POSTER_TITLE_TAG = "posterCardTitle"
+
+private const val TITLE_LINES = 2
 
 /**
  * The one poster card. 2:3 poster with optional rating badge (top-right),
  * watched-progress strip (bottom, sage) and selection ring; pressed state
  * scales to 0.97 per the motion spec. Poster grids, carousels and
  * more-like-this rows all use this — don't hand-roll another Surface+poster.
+ *
+ * The caption wraps to two lines and always reserves both, so a wrapping
+ * title in one grid cell can't push its neighbours' posters out of alignment.
  *
  * [progress] is 0..1 (fraction of aired episodes seen); null hides the strip.
  * [rating] is the user's stored 1..10 rating, shown out of five; null hides the badge.
@@ -103,9 +112,10 @@ fun PosterCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
+                maxLines = TITLE_LINES,
+                minLines = TITLE_LINES,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp),
+                modifier = Modifier.padding(top = 6.dp).testTag(POSTER_TITLE_TAG),
             )
         }
     }
