@@ -65,6 +65,9 @@ object MuvissIcons {
     val ChevronRight: ImageVector get() = stroked("ChevronRight", "M9 5l7 7-7 7")
     val ChevronDown: ImageVector get() = stroked("ChevronDown", "M5 9l7 7 7-7")
 
+    // Personal note (EPIC 15): a pencil, matching Material's "edit".
+    val Note: ImageVector get() = stroked("Note", "M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4z", "M13.5 6.5l4 4")
+
     // Triage (ADR 0010) — the four verdicts plus undo
     val Skip: ImageVector get() = stroked("Skip", "M6 6l12 12M18 6L6 18")
     val Later: ImageVector get() = stroked("Later", "M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z")

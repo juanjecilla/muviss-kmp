@@ -28,10 +28,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -49,7 +51,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -83,6 +87,7 @@ fun DetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
+    var editingNote by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         when {
@@ -98,15 +103,38 @@ fun DetailScreen(
 
             state.details != null -> BoxWithConstraints {
                 if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(state, viewModel, onOpenDetail, onAddToList = { showAddToList = true })
+                    DetailExpanded(
+                        state,
+                        viewModel,
+                        onOpenDetail,
+                        onAddToList = { showAddToList = true },
+                        onEditNote = { editingNote = true },
+                    )
                 } else {
-                    DetailCompact(state, viewModel, onOpenDetail, onAddToList = { showAddToList = true })
+                    DetailCompact(
+                        state,
+                        viewModel,
+                        onOpenDetail,
+                        onAddToList = { showAddToList = true },
+                        onEditNote = { editingNote = true },
+                    )
                 }
             }
         }
 
         // Floating back button over the hero, per the mockups.
         BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
+    }
+
+    if (editingNote) {
+        NoteEditorSheet(
+            initial = state.note.orEmpty(),
+            onSave = {
+                viewModel.setNote(it)
+                editingNote = false
+            },
+            onDismiss = { editingNote = false },
+        )
     }
 
     val detailsMediaId = state.details?.summary?.id
@@ -136,6 +164,7 @@ private fun DetailCompact(
     viewModel: DetailViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onAddToList: () -> Unit,
+    onEditNote: () -> Unit,
 ) {
     val details = state.details!!
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -145,7 +174,7 @@ private fun DetailCompact(
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         ) {
             ActionRow(state, viewModel, onAddToList)
-            DetailBody(state, viewModel, details, onOpenDetail)
+            DetailBody(state, viewModel, details, onOpenDetail, onEditNote)
         }
     }
 }
@@ -157,6 +186,7 @@ private fun DetailExpanded(
     viewModel: DetailViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onAddToList: () -> Unit,
+    onEditNote: () -> Unit,
 ) {
     val details = state.details!!
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -181,7 +211,7 @@ private fun DetailExpanded(
             ) {
                 Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
                 MetadataLine(details)
-                DetailBody(state, viewModel, details, onOpenDetail)
+                DetailBody(state, viewModel, details, onOpenDetail, onEditNote)
             }
         }
     }
@@ -194,6 +224,7 @@ private fun DetailBody(
     viewModel: DetailViewModel,
     details: MediaDetails,
     onOpenDetail: (MediaId) -> Unit,
+    onEditNote: () -> Unit,
 ) {
     // A skipped title (ADR 0010) leaves nothing in the library, so this line
     // is the only way back to it once the deck's undo snackbar has gone.
@@ -206,7 +237,7 @@ private fun DetailBody(
             Text("Your rating", style = MaterialTheme.typography.titleSmall)
             RatingRow(state.rating, onRate = viewModel::setRating, onClear = viewModel::clearRating)
         }
-        NoteEditor(state.note, onSave = viewModel::setNote)
+        NoteField(state.note, onEdit = onEditNote)
     }
 
     details.summary.overview?.let {
@@ -428,29 +459,89 @@ private fun ProviderLogo(provider: WatchProvider) {
     }
 }
 
+internal const val NOTE_FIELD_TAG = "detailNoteField"
+internal const val NOTE_EDITOR_TAG = "detailNoteEditor"
+internal const val ADD_NOTE_LABEL = "Add a private note"
+internal const val SAVE_NOTE_LABEL = "Save"
+internal const val CANCEL_NOTE_LABEL = "Cancel"
+
 /**
- * An always-visible, expandable text field for the personal note (EPIC 15) —
- * simpler than a dialog for free text this short. Local [draft] tracks
- * in-progress edits; [LaunchedEffect] resyncs it whenever the persisted
- * [note] changes from elsewhere (e.g. the value just loaded).
+ * The personal note (EPIC 15) as one quiet line rather than an always-open
+ * text field.
+ *
+ * A note is optional and usually absent, so an open `OutlinedTextField`
+ * between the rating and the overview made the emptiest thing on the screen
+ * the loudest. This shows the invitation when there is nothing to show and the
+ * note itself — two lines at most — when there is; either way a tap opens
+ * [NoteEditorSheet].
  */
 @Composable
-private fun NoteEditor(note: String?, onSave: (String) -> Unit) {
-    var draft by remember { mutableStateOf(note.orEmpty()) }
-    LaunchedEffect(note) { draft = note.orEmpty() }
+internal fun NoteField(note: String?, onEdit: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClick = onEdit)
+            .testTag(NOTE_FIELD_TAG)
+            .padding(vertical = MuvissSpacing.xs),
+    ) {
+        Icon(
+            MuvissIcons.Note,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = note ?: ADD_NOTE_LABEL,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
 
-    Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
-        Text("Your note", style = MaterialTheme.typography.titleSmall)
+/** [NoteEditorContent] in a modal bottom sheet; the sheet itself holds no logic. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoteEditorSheet(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        NoteEditorContent(initial = initial, onSave = onSave, onCancel = onDismiss)
+    }
+}
+
+/**
+ * The editor body, separate from the sheet so it can be driven directly in
+ * tests. [initial] seeds the draft once — the persisted note cannot change
+ * underneath an open editor without the sheet being dismissed first.
+ *
+ * Saving an empty field is how a note is deleted: collection's `:api`
+ * normalizes a blank note to null.
+ */
+@Composable
+internal fun NoteEditorContent(initial: String, onSave: (String) -> Unit, onCancel: () -> Unit) {
+    var draft by remember { mutableStateOf(initial) }
+
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.l).padding(bottom = MuvissSpacing.xl),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+    ) {
+        Text("Your note", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = draft,
             onValueChange = { draft = it },
-            placeholder = { Text("Add a private note…") },
+            placeholder = { Text("Private to you — nobody else sees this.") },
             shape = MaterialTheme.shapes.small,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag(NOTE_EDITOR_TAG),
         )
-        if (draft != note.orEmpty()) {
-            TextButton(onClick = { onSave(draft) }) { Text("Save note") }
+        Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onCancel) { Text(CANCEL_NOTE_LABEL) }
+            Button(onClick = { onSave(draft) }) { Text(SAVE_NOTE_LABEL) }
         }
     }
 }
@@ -465,10 +556,25 @@ private fun MovieWatchedToggle(watched: Boolean, onToggle: () -> Unit) {
 
 @Composable
 private fun SeasonsList(details: MediaDetails, state: DetailUiState, viewModel: DetailViewModel) {
-    Text("Seasons", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = MuvissSpacing.s))
+    SeasonsHeader(details.seasons.size)
     details.seasons.forEach { season ->
         SeasonSection(season, state, viewModel)
     }
+}
+
+/**
+ * The count is `seasons.size` — the seasons actually rendered below — rather
+ * than TMDB's `number_of_seasons`, so the header can never disagree with the
+ * rows under it. `TmdbProvider` drops season 0 ("Specials"), and the two
+ * numbers differ for any show that has them.
+ */
+@Composable
+internal fun SeasonsHeader(seasonCount: Int) {
+    Text(
+        "Seasons ($seasonCount)",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = MuvissSpacing.s),
+    )
 }
 
 @Composable
