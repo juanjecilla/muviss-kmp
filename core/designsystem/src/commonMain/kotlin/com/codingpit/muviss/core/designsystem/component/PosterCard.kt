@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
  * more-like-this rows all use this — don't hand-roll another Surface+poster.
  *
  * [progress] is 0..1 (fraction of aired episodes seen); null hides the strip.
- * [rating] is the user's 1..10 rating; null hides the badge.
+ * [rating] is the user's stored 1..10 rating, shown out of five; null hides the badge.
  */
 @Composable
 fun PosterCard(

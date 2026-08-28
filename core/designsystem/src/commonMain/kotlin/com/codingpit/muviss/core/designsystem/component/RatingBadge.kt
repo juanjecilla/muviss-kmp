@@ -17,8 +17,12 @@ import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.tabular
 
 /**
- * "★ 9" pill overlaid on posters — amber star + tabular number on a black
+ * "★ 4.5" pill overlaid on posters — amber star + tabular number on a black
  * scrim so it stays legible over any artwork in either theme.
+ *
+ * [rating] is the stored 1-10 value; it renders on the five-point scale the
+ * detail screen's star row uses, so the same title doesn't read "9" in one
+ * place and "4.5 stars" in the other. See [RatingScale].
  */
 @Composable
 fun RatingBadge(
@@ -41,7 +45,7 @@ fun RatingBadge(
                 modifier = Modifier.size(10.dp),
             )
             Text(
-                text = " $rating",
+                text = " ${RatingScale.label(rating)}",
                 style = MaterialTheme.typography.labelSmall.tabular(),
                 color = Color(0xFFFFCB6B),
             )

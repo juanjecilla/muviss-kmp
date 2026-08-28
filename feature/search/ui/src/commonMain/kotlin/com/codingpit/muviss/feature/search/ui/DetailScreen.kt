@@ -282,7 +282,10 @@ private fun MetadataLine(details: MediaDetails) {
         details.summary.year?.let { add(it.toString()) }
         add(if (details.type == MediaType.TV) "TV" else "Movie")
         if (details.genres.isNotEmpty()) add(details.genres.take(2).joinToString(", "))
-        details.summary.rating?.let { add("★ ${it.toString().take(3)}") }
+        // Labelled, because the poster badge and the star row on this same
+        // screen show the *user's* rating out of five — this one is TMDB's
+        // public average out of ten.
+        details.summary.rating?.let { add("TMDB ${it.toString().take(3)}") }
     }
     Text(
         parts.joinToString(" · "),
