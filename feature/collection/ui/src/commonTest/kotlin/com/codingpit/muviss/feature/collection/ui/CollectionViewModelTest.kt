@@ -3,7 +3,9 @@
 package com.codingpit.muviss.feature.collection.ui
 
 import app.cash.turbine.test
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
+import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
 import com.codingpit.muviss.feature.collection.domain.MediaSnapshotSource
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
@@ -25,6 +27,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 private fun entry(
@@ -52,7 +56,9 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
 
     override fun observeAll(): Flow<List<CollectionEntry>> = flow
     override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = error("not used")
-    override suspend fun upsertSnapshot(details: MediaDetails) = error("not used")
+    override suspend fun upsertSnapshot(details: MediaDetails) {
+        // The refresh path writes here; the tests only care that it doesn't blow up.
+    }
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) {
         setFavoriteCalls += mediaId to favorite
@@ -64,7 +70,22 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
 }
 
 private class NoopSnapshotSource : MediaSnapshotSource {
-    override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = Result.success(MediaDetails(MediaSummary(mediaId, "x")))
+    var fetches = 0
+        private set
+
+    override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> {
+        fetches++
+        return Result.success(MediaDetails(MediaSummary(mediaId, "x")))
+    }
+}
+
+/** Fails the way a dead network does: by throwing out of the source, not by returning a failed Result. */
+private class ThrowingSnapshotSource : MediaSnapshotSource {
+    override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = error("network down")
+}
+
+private class FakeClock(var now: Long = 0L) : AppClock {
+    override fun nowEpochMs(): Long = now
 }
 
 class CollectionViewModelTest {
@@ -79,10 +100,15 @@ class CollectionViewModelTest {
     private val watching = entry(MediaId.tmdbTv("2"), seenEpisodes = 1, airedEpisodes = 5)
     private val favoriteButNotStarted = entry(MediaId.tmdbMovie("3"), favorite = true)
 
-    private fun viewModel(repository: FakeCollectionRepository) = CollectionViewModel(
+    private fun viewModel(
+        repository: FakeCollectionRepository,
+        source: MediaSnapshotSource = NoopSnapshotSource(),
+        throttle: CollectionRefreshThrottle = CollectionRefreshThrottle(FakeClock()),
+    ) = CollectionViewModel(
         ObserveCollectionUseCase(repository),
         ToggleFavoriteUseCase(repository),
-        RefreshCollectionSnapshotsUseCase(repository, NoopSnapshotSource()),
+        RefreshCollectionSnapshotsUseCase(repository, source),
+        throttle,
     )
 
     @Test
@@ -174,5 +200,52 @@ class CollectionViewModelTest {
             assertTrue(current.entries.isEmpty())
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun refreshing_clears_when_the_snapshot_source_throws() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted)), source = ThrowingSnapshotSource())
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.refreshing, "the pull-to-refresh spinner must stop even when the refresh fails")
+    }
+
+    @Test
+    fun a_failed_refresh_surfaces_a_message() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted)), source = ThrowingSnapshotSource())
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.message, "a silent failure leaves the user with a stale library and no explanation")
+
+        vm.consumeMessage()
+        assertEquals(null, vm.state.value.message)
+    }
+
+    @Test
+    fun the_automatic_refresh_only_runs_once_per_throttle_interval() = runTest {
+        val throttle = CollectionRefreshThrottle(FakeClock())
+        val source = NoopSnapshotSource()
+
+        viewModel(FakeCollectionRepository(listOf(notStarted)), source, throttle)
+        advanceUntilIdle()
+        assertEquals(1, source.fetches)
+
+        viewModel(FakeCollectionRepository(listOf(notStarted)), source, throttle)
+        advanceUntilIdle()
+        assertEquals(1, source.fetches, "re-entering the tab must not re-fetch the whole library")
+    }
+
+    @Test
+    fun an_explicit_refresh_ignores_the_throttle() = runTest {
+        val throttle = CollectionRefreshThrottle(FakeClock())
+        val source = NoopSnapshotSource()
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted)), source, throttle)
+        advanceUntilIdle()
+        assertEquals(1, source.fetches)
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(2, source.fetches, "pulling to refresh must always actually refresh")
     }
 }

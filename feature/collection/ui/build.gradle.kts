@@ -21,6 +21,8 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
+            // CollectionRefreshThrottle takes an AppClock; the tests fake it.
+            implementation(projects.core.common)
         }
     }
 }

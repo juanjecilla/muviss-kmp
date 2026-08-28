@@ -9,6 +9,7 @@ import com.codingpit.muviss.feature.collection.data.RegistryMediaSnapshotSource
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.collection.data.SqlDelightListsRepository
 import com.codingpit.muviss.feature.collection.domain.AddToCollectionUseCase
+import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
 import com.codingpit.muviss.feature.collection.domain.CollectionToggles
 import com.codingpit.muviss.feature.collection.domain.ListsRepository
@@ -43,6 +44,8 @@ val collectionDataModule: Module = module {
     factory { SetNoteUseCase(get()) }
     factory { CollectionToggles(get(), get(), get(), get()) }
     factory { RefreshCollectionSnapshotsUseCase(get(), get()) }
+    // A `single`: the throttle is only useful if every Collection back-stack entry shares one.
+    single { CollectionRefreshThrottle(get()) }
     factory { RefreshAndFindNewEpisodesUseCase(get(), get(), get()) }
 
     // Lists (EPIC 17) — see ListsApi's KDoc for why this is a sibling

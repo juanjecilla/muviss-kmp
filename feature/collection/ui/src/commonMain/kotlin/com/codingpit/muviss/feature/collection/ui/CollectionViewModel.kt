@@ -3,11 +3,13 @@ package com.codingpit.muviss.feature.collection.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
+import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshCollectionSnapshotsUseCase
 import com.codingpit.muviss.feature.collection.domain.ToggleFavoriteUseCase
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +42,8 @@ data class CollectionUiState(
     val filter: CollectionFilter = CollectionFilter.NOT_STARTED,
     val sort: CollectionSort = CollectionSort.RECENTLY_ADDED,
     val error: String? = null,
+    /** One-shot snackbar text — currently only "the refresh failed". Cleared by [CollectionViewModel.consumeMessage]. */
+    val message: String? = null,
 ) {
     /** [entries] sliced by the selected tab, then ordered by [sort]. Status always comes from [CollectionEntry.status] — never a stored column. */
     val visibleEntries: List<CollectionEntry>
@@ -73,6 +77,7 @@ class CollectionViewModel(
     observeCollection: ObserveCollectionUseCase,
     private val toggleFavorite: ToggleFavoriteUseCase,
     private val refreshSnapshots: RefreshCollectionSnapshotsUseCase,
+    private val refreshThrottle: CollectionRefreshThrottle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(CollectionUiState())
@@ -83,7 +88,8 @@ class CollectionViewModel(
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { entries -> _state.update { it.copy(loading = false, entries = entries, error = null) } }
             .launchIn(viewModelScope)
-        refresh()
+        // Automatic, so it defers to the throttle; an explicit pull does not.
+        if (refreshThrottle.claimAutomaticRefresh()) refresh(automatic = true)
     }
 
     fun selectFilter(filter: CollectionFilter) {
@@ -98,16 +104,36 @@ class CollectionViewModel(
         viewModelScope.launch { toggleFavorite(mediaId, favorite) }
     }
 
-    /** Re-fetches every saved title's snapshot; also the pull-to-refresh action. */
-    fun refresh() {
+    /**
+     * Re-fetches every saved title's snapshot; also the pull-to-refresh
+     * action, which is why the flag is cleared in a `finally` rather than
+     * after a `runCatching`: `runCatching` swallows `CancellationException`
+     * too, and any path that leaves `refreshing` true leaves the user staring
+     * at a spinner that never stops.
+     */
+    fun refresh(automatic: Boolean = false) {
+        if (!automatic) refreshThrottle.recordRefresh()
         viewModelScope.launch {
             _state.update { it.copy(refreshing = true) }
-            runCatching { refreshSnapshots() }
-            _state.update { it.copy(refreshing = false) }
+            try {
+                refreshSnapshots()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                _state.update { it.copy(message = e.message ?: REFRESH_FAILED) }
+            } finally {
+                _state.update { it.copy(refreshing = false) }
+            }
         }
+    }
+
+    /** Acknowledges [CollectionUiState.message] once its snackbar has been shown. */
+    fun consumeMessage() {
+        _state.update { it.copy(message = null) }
     }
 
     private companion object {
         const val DEFAULT_ERROR = "Something went wrong"
+        const val REFRESH_FAILED = "Couldn't refresh your library"
     }
 }

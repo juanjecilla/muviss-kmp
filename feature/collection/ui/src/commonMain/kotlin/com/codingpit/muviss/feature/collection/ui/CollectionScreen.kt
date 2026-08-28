@@ -21,9 +21,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,24 +132,36 @@ private fun LibraryScreen(
     onOpenDetail: (MediaId) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Column(Modifier.fillMaxSize()) {
-        CollectionFilterChips(state, onSelect = viewModel::selectFilter)
+    // A refresh failure used to vanish silently, leaving a stale library and
+    // no explanation; the ViewModel now parks a one-shot message here.
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.consumeMessage()
+    }
 
-        PullToRefreshBox(
-            isRefreshing = state.refreshing,
-            onRefresh = viewModel::refresh,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                when {
-                    state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                    state.error != null -> ErrorState(state.error!!, onRetry = viewModel::refresh)
-                    state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter)
-                    else -> CollectionGrid(state.visibleEntries, onOpenDetail)
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            CollectionFilterChips(state, onSelect = viewModel::selectFilter)
+
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    when {
+                        state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
+                        state.error != null -> ErrorState(state.error!!, onRetry = { viewModel.refresh() })
+                        state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter)
+                        else -> CollectionGrid(state.visibleEntries, onOpenDetail)
+                    }
                 }
             }
         }
+        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
 }
 

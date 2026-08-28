@@ -4,8 +4,13 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /** Observes the full saved library, newest first. */
 class ObserveCollectionUseCase(private val repository: CollectionRepository) {
@@ -81,17 +86,37 @@ class CollectionToggles(
 /**
  * Re-fetches metadata for every saved, non-deleted title and upserts the
  * refreshed snapshot (aired-episode count, production status, poster). Meant
- * to run on Collection screen entry; best-effort per title — one failure
- * doesn't block the rest.
+ * to run on Collection screen entry and as the pull-to-refresh action;
+ * best-effort per title — one failure doesn't block the rest.
+ *
+ * Titles are refreshed [concurrency] at a time rather than one after another.
+ * A TV title costs one request per season on top of the show itself, so a
+ * serial walk over a twenty-show library is easily a couple of hundred
+ * round-trips in a row — long enough that the pull-to-refresh spinner reads
+ * as hung. The limit is small on purpose: TMDB rate-limits, and the point is
+ * to overlap latency, not to flood.
  */
 class RefreshCollectionSnapshotsUseCase(
     private val repository: CollectionRepository,
     private val snapshotSource: MediaSnapshotSource,
+    private val concurrency: Int = DEFAULT_CONCURRENCY,
 ) {
-    suspend operator fun invoke() {
-        repository.observeAll().first().forEach { entry ->
-            snapshotSource.fetch(entry.mediaId).onSuccess { details -> repository.upsertSnapshot(details) }
-        }
+    suspend operator fun invoke() = coroutineScope {
+        val inFlight = Semaphore(concurrency)
+        repository.observeAll().first()
+            .map { entry ->
+                async {
+                    inFlight.withPermit {
+                        snapshotSource.fetch(entry.mediaId).onSuccess { details -> repository.upsertSnapshot(details) }
+                    }
+                }
+            }
+            .awaitAll()
+        Unit
+    }
+
+    private companion object {
+        const val DEFAULT_CONCURRENCY = 4
     }
 }
 
