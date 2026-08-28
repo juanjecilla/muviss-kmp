@@ -99,6 +99,7 @@ class CollectionViewModelTest {
     private val notStarted = entry(MediaId.tmdbMovie("1"))
     private val watching = entry(MediaId.tmdbTv("2"), seenEpisodes = 1, airedEpisodes = 5)
     private val favoriteButNotStarted = entry(MediaId.tmdbMovie("3"), favorite = true)
+    private val tvNotStarted = entry(MediaId.tmdbTv("4"))
 
     private fun viewModel(
         repository: FakeCollectionRepository,
@@ -247,5 +248,60 @@ class CollectionViewModelTest {
         advanceUntilIdle()
 
         assertEquals(2, source.fetches, "pulling to refresh must always actually refresh")
+    }
+
+    @Test
+    fun the_type_filter_defaults_to_showing_everything() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted, watching)))
+        advanceUntilIdle()
+
+        assertEquals(CollectionTypeFilter.ALL, vm.state.value.typeFilter)
+    }
+
+    @Test
+    fun selecting_movies_hides_tv_titles() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted, tvNotStarted)))
+        advanceUntilIdle()
+
+        vm.selectTypeFilter(CollectionTypeFilter.MOVIES)
+
+        assertEquals(listOf(notStarted), vm.state.value.visibleEntries)
+    }
+
+    @Test
+    fun selecting_tv_hides_movies() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted, tvNotStarted)))
+        advanceUntilIdle()
+
+        vm.selectTypeFilter(CollectionTypeFilter.TV)
+
+        assertEquals(listOf(tvNotStarted), vm.state.value.visibleEntries)
+    }
+
+    @Test
+    fun the_type_filter_narrows_the_status_chip_counts_too() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted, tvNotStarted)))
+        advanceUntilIdle()
+
+        assertEquals(2, vm.state.value.count(CollectionFilter.NOT_STARTED))
+
+        vm.selectTypeFilter(CollectionTypeFilter.TV)
+
+        assertEquals(
+            1,
+            vm.state.value.count(CollectionFilter.NOT_STARTED),
+            "a chip reading \"Not started 2\" over a single visible poster is just wrong",
+        )
+    }
+
+    @Test
+    fun the_type_filter_composes_with_the_status_filter() = runTest {
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted, tvNotStarted, watching)))
+        advanceUntilIdle()
+
+        vm.selectTypeFilter(CollectionTypeFilter.TV)
+        vm.selectFilter(CollectionFilter.WATCHING)
+
+        assertEquals(listOf(watching), vm.state.value.visibleEntries)
     }
 }

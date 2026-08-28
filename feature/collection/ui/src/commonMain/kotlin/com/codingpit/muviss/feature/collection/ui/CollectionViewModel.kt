@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshCollectionSnapshotsUseCase
 import com.codingpit.muviss.feature.collection.domain.ToggleFavoriteUseCase
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,17 @@ enum class CollectionFilter {
     FAVORITES,
 }
 
+/**
+ * Movies, shows, or both. Orthogonal to [CollectionFilter]: a status slice and
+ * a media-type slice are different questions, so they compose rather than
+ * sharing one chip row.
+ */
+enum class CollectionTypeFilter {
+    ALL,
+    MOVIES,
+    TV,
+}
+
 /** The three ways the (already-filtered) library can be ordered (EPIC 15). [RECENTLY_ADDED] is the default, matching the repository's natural order. */
 enum class CollectionSort {
     RECENTLY_ADDED,
@@ -40,17 +52,31 @@ data class CollectionUiState(
     val refreshing: Boolean = false,
     val entries: List<CollectionEntry> = emptyList(),
     val filter: CollectionFilter = CollectionFilter.NOT_STARTED,
+    val typeFilter: CollectionTypeFilter = CollectionTypeFilter.ALL,
     val sort: CollectionSort = CollectionSort.RECENTLY_ADDED,
     val error: String? = null,
     /** One-shot snackbar text — currently only "the refresh failed". Cleared by [CollectionViewModel.consumeMessage]. */
     val message: String? = null,
 ) {
-    /** [entries] sliced by the selected tab, then ordered by [sort]. Status always comes from [CollectionEntry.status] — never a stored column. */
+    /** [entries] narrowed to the selected media type, sliced by the selected tab, then ordered by [sort]. Status always comes from [CollectionEntry.status] — never a stored column. */
     val visibleEntries: List<CollectionEntry>
-        get() = entries.filter { it.matches(filter) }.sortedFor(sort)
+        get() = ofSelectedType.filter { it.matches(filter) }.sortedFor(sort)
 
-    /** Chip count suffix ("Watching 12") for any filter, selected or not. */
-    fun count(filter: CollectionFilter): Int = entries.count { it.matches(filter) }
+    /**
+     * Chip count suffix ("Watching 12") for any filter, selected or not —
+     * counted *within* the selected media type, so a chip can never claim more
+     * titles than the grid under it is willing to show.
+     */
+    fun count(filter: CollectionFilter): Int = ofSelectedType.count { it.matches(filter) }
+
+    private val ofSelectedType: List<CollectionEntry>
+        get() = entries.filter { it.matches(typeFilter) }
+}
+
+private fun CollectionEntry.matches(typeFilter: CollectionTypeFilter): Boolean = when (typeFilter) {
+    CollectionTypeFilter.ALL -> true
+    CollectionTypeFilter.MOVIES -> mediaType == MediaType.MOVIE
+    CollectionTypeFilter.TV -> mediaType == MediaType.TV
 }
 
 private fun CollectionEntry.matches(filter: CollectionFilter): Boolean = when (filter) {
@@ -94,6 +120,10 @@ class CollectionViewModel(
 
     fun selectFilter(filter: CollectionFilter) {
         _state.update { it.copy(filter = filter) }
+    }
+
+    fun selectTypeFilter(typeFilter: CollectionTypeFilter) {
+        _state.update { it.copy(typeFilter = typeFilter) }
     }
 
     fun selectSort(sort: CollectionSort) {

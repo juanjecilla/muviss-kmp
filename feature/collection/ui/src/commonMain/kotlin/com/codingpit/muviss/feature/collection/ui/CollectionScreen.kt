@@ -82,6 +82,7 @@ fun CollectionScreen(
             Text("Library", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.weight(1f))
             if (segment == CollectionSegment.LIBRARY) {
+                TypeFilterMenuButton(state.typeFilter, onSelect = viewModel::selectTypeFilter)
                 SortMenuButton(state.sort, onSelect = viewModel::selectSort)
             }
         }
@@ -94,6 +95,48 @@ fun CollectionScreen(
         when (segment) {
             CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail)
             CollectionSegment.LISTS -> ListsScreen(listsViewModel, onOpenList)
+        }
+    }
+}
+
+/**
+ * Movies / TV / both, as an icon + menu beside the sort control it mirrors.
+ *
+ * A menu rather than a second visible control: the Library already spends a
+ * title row and a segmented switch before the first poster, and a status chip
+ * row after it. Another always-on selector would push the grid a further
+ * ~48dp down a screen that is already short on room.
+ */
+@Composable
+private fun TypeFilterMenuButton(selected: CollectionTypeFilter, onSelect: (CollectionTypeFilter) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(
+                MuvissIcons.Filter,
+                contentDescription = "Filter by type (${selected.label()})",
+                tint = if (selected == CollectionTypeFilter.ALL) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            CollectionTypeFilter.entries.forEach { typeFilter ->
+                DropdownMenuItem(
+                    text = { Text(typeFilter.label()) },
+                    leadingIcon = {
+                        if (typeFilter == selected) {
+                            Icon(MuvissIcons.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    },
+                    onClick = {
+                        onSelect(typeFilter)
+                        open = false
+                    },
+                )
+            }
         }
     }
 }
@@ -155,7 +198,7 @@ private fun LibraryScreen(
                     when {
                         state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
                         state.error != null -> ErrorState(state.error!!, onRetry = { viewModel.refresh() })
-                        state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter)
+                        state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter, state.typeFilter)
                         else -> CollectionGrid(state.visibleEntries, onOpenDetail)
                     }
                 }
@@ -166,9 +209,18 @@ private fun LibraryScreen(
 }
 
 @Composable
-private fun EmptyLibraryState(filter: CollectionFilter) {
-    when (filter) {
-        CollectionFilter.FAVORITES -> EmptyState(
+private fun EmptyLibraryState(filter: CollectionFilter, typeFilter: CollectionTypeFilter) {
+    when {
+        // An active type filter is the likelier reason the grid is empty, and
+        // it lives behind a menu — so say so rather than implying the library
+        // itself is bare.
+        typeFilter != CollectionTypeFilter.ALL -> EmptyState(
+            icon = MuvissIcons.Filter,
+            title = "No ${typeFilter.label().lowercase()} here",
+            body = "Nothing in this tab matches the type filter.",
+        )
+
+        filter == CollectionFilter.FAVORITES -> EmptyState(
             icon = MuvissIcons.FavoriteOutline,
             title = "No favorites yet",
             body = "Tap the heart on a saved title to add one.",
@@ -238,6 +290,12 @@ private fun CollectionFilter.label(): String = when (this) {
     CollectionFilter.WATCHED -> "Watched"
     CollectionFilter.FINISHED -> "Finished"
     CollectionFilter.FAVORITES -> "★ Favorites"
+}
+
+private fun CollectionTypeFilter.label(): String = when (this) {
+    CollectionTypeFilter.ALL -> "All"
+    CollectionTypeFilter.MOVIES -> "Movies"
+    CollectionTypeFilter.TV -> "TV shows"
 }
 
 private fun CollectionSort.label(): String = when (this) {
