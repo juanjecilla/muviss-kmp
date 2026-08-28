@@ -30,10 +30,13 @@ class MotionPreferencesMigrationTest {
     }
 
     @Test
-    fun `the schema fixture chain is at the version 5_sqm produces`() {
+    fun `5_sqm produced its own fixture`() {
         // The .sqm is named after the version it migrates FROM, so 5.sqm
-        // produces version 6 (ADR 0008's 2026-07-11 amendment).
-        assertEquals(6L, MuvissDatabase.Schema.version)
+        // produces version 6 (ADR 0008's 2026-07-11 amendment). Deliberately
+        // `>=` rather than `== 6`: later migrations move the schema on, and
+        // only the newest one's test pins the current number — see
+        // `EpisodePlayMigrationTest`.
+        assertTrue(MuvissDatabase.Schema.version >= 6L)
         assertTrue(fixtures.resolve("6.db").exists(), "6.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
     }
 
