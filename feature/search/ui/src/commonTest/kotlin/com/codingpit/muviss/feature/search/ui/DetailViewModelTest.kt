@@ -30,6 +30,7 @@ import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -134,6 +135,10 @@ internal class FakeProgressApi : ProgressApi {
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = plays.map { all -> all.filterValues { it.isNotEmpty() }.mapValues { it.value.size } }
 
     override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = plays.map { all -> all[episodeId].orEmpty().sortedDescending().map { EpisodePlay(episodeId, it) } }
+
+    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
+
+    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
 
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) {
         if (seen) {

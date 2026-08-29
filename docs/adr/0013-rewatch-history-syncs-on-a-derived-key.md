@@ -89,3 +89,26 @@ migration composes the same expression in raw SQL; the two must agree.
   than permanently. Before this, `seen` states matched across devices while
   "watched 3x" markers did not, which read as a bug and was in fact the
   documented design.
+- **The same-millisecond collapse interacts with EPIC 21's rewatch stats**,
+  which landed on `main` while this was in review. Two plays of one episode at
+  one millisecond used to be two rows and one rewatch; they are now one row and
+  none. `RewatchQueryTest` asserted the old behaviour and now asserts the new,
+  with the boundary case beside it.
+
+  Kept rather than reversed: a person cannot tap twice inside a millisecond,
+  and every path that writes several plays at one timestamp writes them for
+  *different* episodes, whose ids differ. It is reachable only from a test
+  holding a fixed clock. Should that ever stop being true — a bulk import
+  stamping many plays of one episode identically, say — the fix is a
+  disambiguating suffix on the id, which needs a migration but not a change to
+  any of the reasoning above.
+
+  Note that `rewatchCountsByMedia`'s `id` tiebreak is unaffected and still
+  needed: it disambiguates two *different* episodes sharing a timestamp inside
+  the `MIN()` aggregate, which bulk "mark season seen" produces constantly.
+- **Both rewatch queries had to gain `deleted = 0`**, in the CTE and the outer
+  query. They arrived from EPIC 21 assuming hard deletes; git merged them
+  cleanly against this branch's soft ones and produced statistics that counted
+  plays the user had cleared. Filtering only the outer query would be just as
+  wrong in the other direction — a deleted first viewing would still anchor
+  `firstAt`, so the surviving later play would stop counting as a rewatch.

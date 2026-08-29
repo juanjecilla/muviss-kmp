@@ -45,8 +45,12 @@ _Avoid_: state, phase.
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 
 **Play**:
-One viewing of one MediaItem, with the moment it happened. Rewatching adds a Play; it never increments a counter, so "how often did I rewatch this year" stays answerable (ADR 0011). A Play's identity comes from the viewing itself, not from the device that recorded it, which is what lets rewatch history cross devices (ADR 0013).
-_Avoid_: view, watch (both read as verbs); rewatch (that is the second Play, not the concept); play count (that is derived from these, never stored).
+One recorded viewing of one element — an episode, or a movie via its single synthetic element. Carries the moment it happened. Progress answers whether something was seen; a Play is the event that made it so, and the reason "three times, most recently in March" is answerable at all. A Play's identity comes from the viewing itself, not from the device that recorded it, which is what lets rewatch history cross devices (ADR 0013).
+_Avoid_: watch, view (verbs, not records); tick (that is the act of marking seen); play count (that is derived from these, never stored).
+
+**Rewatch**:
+A Play with an earlier Play of the same element behind it, at any date. Derived, never stored. The unit every "most rewatched" number counts: a title's score is its Plays beyond the first, per element, so a first watch-through scores zero however long it is. A time window bounds the Rewatch itself and never the Play before it — an episode first seen in December and watched again in March is a Rewatch *in March*.
+_Avoid_: "most seen" (_seen_ is the stored boolean tick); replay; play count (that is a total, not the beyond-the-first count).
 
 **SyncEngine**:
 The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row. Refuses to run without an Entitlement (ADR 0012).

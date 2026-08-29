@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,11 +26,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.theme.MuvissChartPalette
 import com.codingpit.muviss.feature.profile.domain.GenreCount
+import com.codingpit.muviss.feature.profile.domain.MonthlyRewatches
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
 
 // Compose-canvas-only bar/donut charts for the profile stats section (EPIC 4
@@ -144,3 +149,62 @@ fun GenreDonutChart(genres: List<GenreCount>, modifier: Modifier = Modifier) {
 }
 
 private fun GenreCount.colorFor(index: Int, palette: List<Color>): Color = if (genre == "Other") OtherGenreColor else palette[index % palette.size]
+
+const val REWATCH_TREND_TAG = "rewatch_trend"
+
+/**
+ * Rewatches per month over the trailing year, one bar each, empty months
+ * included so a quiet stretch reads as a gap rather than closing up.
+ *
+ * Labelled with single initials: twelve three-letter month names do not fit
+ * across a phone, and a year stamp on January does not either — at a twelfth
+ * of the width it clips to "202". The heading carries the span instead, and a
+ * run of twelve months ending at the current one is unambiguous from that.
+ */
+@Composable
+fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modifier) {
+    if (months.isEmpty()) return
+    val barColor = MuvissChartPalette.categorical().first()
+    val growth by rememberChartGrowth()
+    val maxCount = months.maxOf { it.rewatches }.coerceAtLeast(1)
+
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(TREND_HEIGHT).testTag(REWATCH_TREND_TAG),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            months.forEach { month ->
+                val fraction = month.rewatches / maxCount.toFloat()
+                Canvas(Modifier.weight(1f).height(TREND_HEIGHT)) {
+                    val corner = CornerRadius(size.width / 4f, size.width / 4f)
+                    drawRoundRect(color = barColor.copy(alpha = 0.18f), cornerRadius = corner)
+                    if (fraction > 0f) {
+                        val barHeight = size.height * fraction * growth
+                        drawRoundRect(
+                            color = barColor,
+                            topLeft = Offset(0f, size.height - barHeight),
+                            size = size.copy(height = barHeight),
+                            cornerRadius = corner,
+                        )
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            months.forEach { month ->
+                Text(
+                    text = MONTH_INITIALS[month.month - 1],
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private val TREND_HEIGHT = 96.dp
+private val MONTH_INITIALS = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")

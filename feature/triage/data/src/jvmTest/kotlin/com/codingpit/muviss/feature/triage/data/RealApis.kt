@@ -73,6 +73,9 @@ internal class RealProgressApi(private val repository: SqlDelightProgressReposit
 
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = repository.observePlayCounts(mediaId)
     override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = repository.observePlays(episodeId)
+
+    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = repository.observeRewatchCounts(sinceEpochMs)
+    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = repository.observeRewatchTimestamps(sinceEpochMs)
     override suspend fun recordPlay(episodeId: EpisodeId) = repository.recordPlay(episodeId)
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
     override suspend fun clearPlays(episodeId: EpisodeId) = repository.clearPlays(episodeId)

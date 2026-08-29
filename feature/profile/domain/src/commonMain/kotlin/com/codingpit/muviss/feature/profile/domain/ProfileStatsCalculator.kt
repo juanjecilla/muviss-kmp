@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.profile.domain
 
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.WatchStatus
 
@@ -25,10 +26,14 @@ object ProfileStatsCalculator {
      */
     const val MIN_RATED_TITLES_PER_GENRE = 2
 
+    /** How many titles the profile's most-rewatched card shows before handing off to the full ranking. */
+    const val MOST_REWATCHED_ON_CARD = 3
+
     fun calculate(
         summaries: List<CollectionSummary>,
         activityEpochDays: Set<Long>,
         todayEpochDay: Long,
+        rewatchCounts: Map<MediaId, Int> = emptyMap(),
     ): ProfileStats = ProfileStats(
         statusBreakdown = statusBreakdown(summaries),
         moviesWatched = moviesWatched(summaries),
@@ -39,6 +44,7 @@ object ProfileStatsCalculator {
         averageRating = averageRating(summaries),
         ratedCount = ratedCount(summaries),
         topRatedGenre = topRatedGenre(summaries),
+        mostRewatched = RewatchRankingCalculator.calculate(rewatchCounts, summaries).top(MOST_REWATCHED_ON_CARD),
     )
 
     private fun statusBreakdown(summaries: List<CollectionSummary>) = StatusBreakdown(

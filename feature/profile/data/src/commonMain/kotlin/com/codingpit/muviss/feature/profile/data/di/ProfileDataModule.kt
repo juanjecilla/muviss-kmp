@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.profile.data.SqlDelightProfileRepository
 import com.codingpit.muviss.feature.profile.domain.ObserveLastSyncedAtUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileUseCase
+import com.codingpit.muviss.feature.profile.domain.ObserveRewatchStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveSyncAccountUseCase
 import com.codingpit.muviss.feature.profile.domain.ProfileActions
 import com.codingpit.muviss.feature.profile.domain.ProfileRepository
@@ -29,6 +30,7 @@ val profileDataModule: Module = module {
     factory { SetAvatarUseCase(get()) }
     factory { ProfileActions(get(), get()) }
     factory { ObserveProfileStatsUseCase(get(), get(), get()) }
+    factory { ObserveRewatchStatsUseCase(get(), get(), get()) }
 
     // Sync (EPIC 9) — see CoreSyncRepository's KDoc for why profile:data is
     // allowed to depend on :core:sync directly.

@@ -28,5 +28,11 @@ kotlin {
             implementation(projects.feature.collection.api)
             implementation(projects.feature.progress.api)
         }
+        // Golden-image capture needs Skia, so the rewatch screen's screenshot
+        // tests are JVM-only. `compose.uiTest` and the Skiko desktop binary
+        // arrive from the `muviss.kmp.compose` convention.
+        jvmTest.dependencies {
+            implementation(projects.core.testing)
+        }
     }
 }

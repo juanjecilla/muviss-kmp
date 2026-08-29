@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,13 +54,14 @@ import com.codingpit.muviss.feature.profile.domain.AvatarPreset
 import com.codingpit.muviss.feature.profile.domain.AvatarPresets
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ProfileStats
+import com.codingpit.muviss.feature.profile.domain.RewatchEntry
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import kotlinx.coroutines.launch
 import kotlin.math.round
 
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel) {
+fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -121,7 +123,7 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
             if (state.stats.isEmpty) {
                 EmptyLibraryState()
             } else {
-                StatsSection(state.stats)
+                StatsSection(state.stats, onOpenRewatch)
             }
         }
 
@@ -317,7 +319,7 @@ private fun EmptyLibraryState() {
 }
 
 @Composable
-private fun StatsSection(stats: ProfileStats) {
+private fun StatsSection(stats: ProfileStats, onOpenRewatch: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("Stats", style = MaterialTheme.typography.titleSmall)
 
@@ -341,8 +343,71 @@ private fun StatsSection(stats: ProfileStats) {
                 GenreDonutChart(foldGenresIntoOther(stats.genreBreakdown))
             }
         }
+
+        MostRewatchedCard(stats.mostRewatched, onOpenRewatch)
     }
 }
+
+/**
+ * Top rewatched titles, and the way into the full ranking.
+ *
+ * It renders even with nothing in it, which is deliberate: the backfill that
+ * shipped with the rewatch history gave every already-seen episode exactly one
+ * viewing (ADR 0011), so every install's first look at this card is the empty
+ * one — and the "Watched again" gesture that fills it is advertised nowhere
+ * else in the app.
+ *
+ * Shows and films sit in one list here, which the full screen does not allow
+ * itself; the per-row unit is what makes the mix readable (ADR 0012).
+ */
+@Composable
+internal fun MostRewatchedCard(entries: List<RewatchEntry>, onOpenRewatch: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().testTag(MOST_REWATCHED_CARD_TAG),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable(enabled = entries.isNotEmpty(), onClick = onOpenRewatch),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Most rewatched", style = MaterialTheme.typography.labelLarge)
+            if (entries.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("See all", style = MaterialTheme.typography.labelMedium)
+                    Icon(MuvissIcons.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+
+        if (entries.isEmpty()) {
+            Text(
+                "Nothing rewatched yet. $REWATCH_HOW_TO",
+                modifier = Modifier.testTag(MOST_REWATCHED_EMPTY_TAG),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            entries.forEach { entry ->
+                Row(
+                    Modifier.fillMaxWidth().testTag(MOST_REWATCHED_ROW_TAG),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(entry.title, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        entry.rewatchLabel(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+const val MOST_REWATCHED_CARD_TAG = "most_rewatched_card"
+const val MOST_REWATCHED_ROW_TAG = "most_rewatched_row"
+const val MOST_REWATCHED_EMPTY_TAG = "most_rewatched_empty"
 
 private const val ONE_DECIMAL = 10.0
 

@@ -4,6 +4,8 @@ import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.domain.ObservePlayCountsUseCase
 import com.codingpit.muviss.feature.progress.domain.ObservePlaysUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveRewatchCountsUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveRewatchTimestampsUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenActivityEpochDaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ProgressMutations
@@ -29,6 +31,10 @@ internal class DefaultProgressApi(
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = playObservers.counts(mediaId)
 
     override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = playObservers.plays(episodeId)
+
+    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = playObservers.rewatchCounts(sinceEpochMs)
+
+    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = playObservers.rewatchTimestamps(sinceEpochMs)
 
     override suspend fun recordPlay(episodeId: EpisodeId) = mutations.plays.recordPlay(episodeId)
 
@@ -56,14 +62,18 @@ internal class DefaultProgressApi(
 }
 
 /**
- * The two play-history read paths, bundled so [DefaultProgressApi]'s
- * constructor stays inside detekt's `LongParameterList` budget — the same
- * trick [ProgressMutations] uses for the write half.
+ * The play-history read paths, bundled so [DefaultProgressApi]'s constructor
+ * stays inside detekt's `LongParameterList` budget — the same trick
+ * [ProgressMutations] uses for the write half.
  */
 internal class ProgressPlayObservers(
     private val observePlayCounts: ObservePlayCountsUseCase,
     private val observePlays: ObservePlaysUseCase,
+    private val observeRewatchCounts: ObserveRewatchCountsUseCase,
+    private val observeRewatchTimestamps: ObserveRewatchTimestampsUseCase,
 ) {
     fun counts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = observePlayCounts(mediaId)
     fun plays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = observePlays(episodeId)
+    fun rewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = observeRewatchCounts(sinceEpochMs)
+    fun rewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = observeRewatchTimestamps(sinceEpochMs)
 }

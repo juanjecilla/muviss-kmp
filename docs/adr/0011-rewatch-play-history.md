@@ -36,5 +36,5 @@ The profile's watch streak now reads play timestamps rather than `episodeProgres
 - Schema version 7. `verifyMigrations` covers the chain; `EpisodePlayMigrationTest` covers a populated v6 database surviving the upgrade with its history intact.
 - `ProgressApi` grew considerably — plays, bulk marks, and their reversals. `ProgressMutations` had to be split into `ProgressPlayMutations` and `ProgressBulkMutations` to stay inside detekt's parameter budget.
 - Plays are **exported** but **not synced**. v1 is local-only, and append-only rows need a different conflict rule than ADR 0009's last-write-wins — last-write-wins on a row that is never updated is meaningless, and the merge is a union, not a comparison. Leaving them out of the export instead would silently lose a person's rewatch history on reinstall, which is a different question from replication. Wiring sync later costs the six touchpoints ADR 0009 enumerates.
-- A "most seen episodes/movies" feature is now possible; it is deliberately not built here. See `docs/EPICS.md`.
+- A "most rewatched" feature is now possible; it is deliberately not built here. It was built next, and what a *rewatch* turned out to mean is ADR 0012.
 - One viewing per bulk mark: marking a season seen skips episodes already seen rather than replaying them. Catching up is not a claim to have rewatched.

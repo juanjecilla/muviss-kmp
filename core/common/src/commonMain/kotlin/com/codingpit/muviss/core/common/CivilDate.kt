@@ -32,6 +32,25 @@ fun civilDateOf(epochDay: Long): CivilDate {
 
 data class CivilDate(val year: Int, val month: Int, val day: Int)
 
+/**
+ * A calendar date back to an epoch day — Hinnant's `days_from_civil`, the
+ * exact inverse of [civilDateOf] (which its KDoc notes `TmdbMapper` inverts
+ * privately for parsing TMDB air dates; this is the shared direction).
+ *
+ * Needed wherever a calendar *boundary* has to become a timestamp bound
+ * rather than the other way round — "since the first of January" is a civil
+ * date first and an epoch day second.
+ */
+fun epochDayOfCivil(year: Int, month: Int, day: Int): Long {
+    val shiftedYear = (if (month <= 2) year - 1 else year).toLong()
+    val era = (if (shiftedYear >= 0) shiftedYear else shiftedYear - (DAYS_PER_ERA_YEARS - 1)) / DAYS_PER_ERA_YEARS
+    val yearOfEra = shiftedYear - era * DAYS_PER_ERA_YEARS // [0, 399]
+    val monthIndex = (if (month > 2) month - 3 else month + 9).toLong() // [0, 11], March-based
+    val dayOfYear = (MONTH_TO_DAYS_NUMERATOR * monthIndex + 2) / 5 + (day - 1) // [0, 365]
+    val dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear // [0, 146096]
+    return era * DAYS_PER_ERA + dayOfEra - DAYS_FROM_ERA_ZERO_TO_UNIX_EPOCH
+}
+
 /** A date as `12 Mar 2024` — short, unambiguous, and not locale-dependent. */
 fun formatEpochDay(epochDay: Long): String {
     val date = civilDateOf(epochDay)
