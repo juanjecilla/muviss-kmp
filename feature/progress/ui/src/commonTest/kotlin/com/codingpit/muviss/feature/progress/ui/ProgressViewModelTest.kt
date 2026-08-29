@@ -156,7 +156,7 @@ class ProgressViewModelTest {
     ): Pair<ProgressViewModel, EpisodeCatalogCache> {
         val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore())
         val vm = ProgressViewModel(
-            WatchNextUseCase(collectionApi, ObserveSeenEpisodesUseCase(progressRepository), cache, FakeClock(today)),
+            WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), cache, FakeClock(today)),
             ToggleEpisodeSeenUseCase(progressRepository),
             cache,
         )

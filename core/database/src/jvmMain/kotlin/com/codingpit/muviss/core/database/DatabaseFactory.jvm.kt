@@ -15,6 +15,12 @@ private const val DATABASE_FILE_NAME = "muviss.db"
  * on first run; later runs migrate forward from the version stamped in the
  * file's `PRAGMA user_version` (see `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`).
  *
+ * [directory] is defaulted rather than fixed so a test can point the whole
+ * Koin graph at a temp directory — `:app:shared`'s `AppGraphTest` does, to
+ * assemble the real app graph without writing to the developer's actual
+ * app-data directory. Production callers construct it with no arguments, and
+ * the `expect` declaration is satisfied by the default.
+ *
  * jvmTest suites covering *repositories* deliberately bypass this: they
  * construct `JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)` directly and call
  * `MuvissDatabase.Schema.create(driver)` themselves, so they stay hermetic
@@ -23,8 +29,8 @@ private const val DATABASE_FILE_NAME = "muviss.db"
  * [createFileDriver], since driving [create] itself would touch the real
  * per-user app-data directory.
  */
-actual class DatabaseDriverFactory {
-    actual fun create(): SqlDriver = createFileDriver(appDataDirectory())
+actual class DatabaseDriverFactory(private val directory: File = appDataDirectory()) {
+    actual fun create(): SqlDriver = createFileDriver(directory)
 }
 
 /**

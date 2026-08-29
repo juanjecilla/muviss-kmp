@@ -6,11 +6,9 @@ import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.state.updateAppWidgetState
-import androidx.glance.state.PreferencesGlanceStateDefinition
 import com.codingpit.muviss.MainActivity
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
-import kotlinx.coroutines.flow.first
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -22,11 +20,6 @@ val DeepLinkMediaIdKey = ActionParameters.Key<String>(MainActivity.EXTRA_DEEP_LI
 
 /** Where the "just ticked, offer Undo" marker lives, per widget instance. */
 internal val JustTickedKey = stringPreferencesKey("justTickedEpisodeId")
-
-internal suspend fun readJustTicked(context: Context, id: GlanceId): EpisodeId? {
-    val preferences = PreferencesGlanceStateDefinition.getDataStore(context, id.toString()).data.first()
-    return parseEpisodeId(preferences[JustTickedKey])
-}
 
 /**
  * Ticks a row's episode straight from the home screen.

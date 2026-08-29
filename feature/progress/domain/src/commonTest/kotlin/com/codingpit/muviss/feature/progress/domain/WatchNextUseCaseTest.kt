@@ -39,7 +39,7 @@ class WatchNextUseCaseTest {
         catalogs: Map<MediaId, List<Season>> = mapOf(show to seasons),
         store: InMemoryEpisodeCatalogStore = InMemoryEpisodeCatalogStore(),
     ) = WatchNextUseCase(
-        collectionApi,
+        { collectionApi },
         ObserveSeenEpisodesUseCase(repository),
         EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(catalogs)), store),
         FixedClock(today),

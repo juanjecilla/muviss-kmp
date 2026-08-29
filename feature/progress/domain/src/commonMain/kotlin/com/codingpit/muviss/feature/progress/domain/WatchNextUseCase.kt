@@ -30,15 +30,24 @@ import kotlinx.coroutines.launch
  *
  * Ordering is whatever [CollectionApi.observeSummaries] yields, filtered —
  * the widget deliberately does not sort differently from the tab it mirrors.
+ *
+ * [collectionApi] is a **provider, not an instance**, and has to be. The
+ * collection repository depends on `ProgressApi` to derive `WatchStatus`
+ * (ADR 0005), and `ProgressApi` now exposes this use case — so resolving the
+ * peer at construction closes a cycle that Koin follows until the stack
+ * overflows, on the first frame, before anything renders. Nothing here needs
+ * a `CollectionApi` until [invoke] is collected, by which point the graph is
+ * built. Verified the hard way: the app crashed on launch with a
+ * `StackOverflowError` the first time it was an instance.
  */
 class WatchNextUseCase(
-    private val collectionApi: CollectionApi,
+    private val collectionApi: () -> CollectionApi,
     private val observeSeenEpisodes: ObserveSeenEpisodesUseCase,
     private val catalogCache: EpisodeCatalogCache,
     private val clock: AppClock,
 ) {
 
-    operator fun invoke(): Flow<List<WatchNextItem>> = collectionApi.observeSummaries()
+    operator fun invoke(): Flow<List<WatchNextItem>> = collectionApi().observeSummaries()
         .map { summaries -> summaries.filter { it.status == WatchStatus.WATCHING } }
         .flatMapLatest { watching -> itemsWhileLoadingCatalogs(watching) }
 

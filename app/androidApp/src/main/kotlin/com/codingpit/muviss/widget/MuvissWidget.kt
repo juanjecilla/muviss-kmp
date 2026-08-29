@@ -2,8 +2,11 @@ package com.codingpit.muviss.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.datastore.preferences.core.Preferences
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
@@ -19,6 +22,7 @@ import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.currentState
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -37,7 +41,6 @@ import com.codingpit.muviss.MainActivity
 import com.codingpit.muviss.core.designsystem.theme.muvissColorScheme
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
-import kotlinx.coroutines.flow.first
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -71,11 +74,24 @@ class MuvissWidget :
      */
     override val sizeMode = SizeMode.Exact
 
+    /**
+     * Both the watch-next list and the Undo marker are read *inside* the
+     * composition, and that is not a style choice.
+     *
+     * `provideContent` composes and then suspends for the lifetime of the
+     * session, so a later `update()` recomposes the composition it already
+     * has — it does not re-enter this function. Anything captured out here
+     * before `provideContent` is therefore frozen for as long as the session
+     * lives, which showed up as a widget that wrote the tick and then went on
+     * displaying the episode it had just ticked. Read as state, the same
+     * `Flow` that drives the Progress tab drives the widget, and the row
+     * advances on its own.
+     */
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val items = progressApi.observeWatchNext().first()
-        val justTicked = readJustTicked(context, id)
-
         provideContent {
+            val items by progressApi.observeWatchNext().collectAsState(initial = emptyList())
+            val justTicked = parseEpisodeId(currentState<Preferences>()[JustTickedKey])
+
             GlanceTheme(colors = MuvissGlanceColors) {
                 val size = WidgetSize.forHeightDp(LocalSize.current.height.value.toInt())
                 WidgetBody(watchNextWidgetUi(items, size, justTicked))

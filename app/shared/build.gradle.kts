@@ -88,5 +88,11 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
         }
+        // The one place the whole Koin graph exists, so the one place it can
+        // be assembled and checked (see `AppGraphTest`).
+        jvmTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.sqldelight.sqliteDriver)
+        }
     }
 }
