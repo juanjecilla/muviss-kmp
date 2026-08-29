@@ -1,4 +1,5 @@
 import UIKit
+import WidgetKit
 import Shared
 
 /// Deliberately thin (EPIC 11 / issue #13): the only reason this exists at
@@ -16,7 +17,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        IosAppStartup.shared.start()
+        // WidgetKit is Swift-only — it has no Objective-C surface for
+        // Kotlin/Native to bind to — so the reload is handed to the shared
+        // `WidgetRefresher` seam from here (EPIC 22). See IosWidgetRefresher.
+        IosAppStartup.shared.start(reloadWidgetTimelines: {
+            WidgetCenter.shared.reloadAllTimelines()
+        })
         return true
     }
 }

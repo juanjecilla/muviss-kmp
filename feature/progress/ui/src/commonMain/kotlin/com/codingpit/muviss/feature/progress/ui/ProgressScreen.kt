@@ -54,6 +54,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.launch
 

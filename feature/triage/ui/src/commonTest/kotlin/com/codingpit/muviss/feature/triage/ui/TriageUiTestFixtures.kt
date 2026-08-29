@@ -11,6 +11,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckLoader
 import com.codingpit.muviss.feature.triage.domain.DeckSource
@@ -170,6 +171,11 @@ internal class FakeProgressApi : ProgressApi {
     val moviesWatched = mutableListOf<MediaId>()
 
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = MutableStateFlow(emptySet())
+
+    // Watch-next (EPIC 22) — this fake's subject never asks for it.
+    override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
+    override suspend fun refreshWatchNextCatalogs() = Unit
+
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = MutableStateFlow(emptySet())
 
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) {

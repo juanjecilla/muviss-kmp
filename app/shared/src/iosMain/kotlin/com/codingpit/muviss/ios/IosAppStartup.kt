@@ -2,6 +2,7 @@ package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.MuvissBuildConfig
 import com.codingpit.muviss.core.common.crash.CrashReporter
+import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
 import org.koin.core.context.startKoin
@@ -35,14 +36,22 @@ object IosAppStartup {
      * Koin's own `org.koin.mp.KoinPlatformTools`). [CrashReporter.init] is
      * cheap to call again (Sentry's own `init` just reconfigures) so no
      * extra flag is kept for it.
+     *
+     * [reloadWidgetTimelines] is the Swift side's
+     * `WidgetCenter.shared.reloadAllTimelines()` (EPIC 22). It is a parameter
+     * rather than something this object calls because WidgetKit has no
+     * Objective-C surface for Kotlin/Native to bind to — see
+     * [IosWidgetRefresher]. It defaults to a no-op so a host that has no
+     * widget extension yet still compiles and runs.
      */
-    fun start() {
+    fun start(reloadWidgetTimelines: () -> Unit = {}) {
         CrashReporter.init(MuvissBuildConfig.SENTRY_DSN)
         if (KoinPlatformTools.defaultContext().getOrNull() == null) {
             startKoin {
                 modules(appModules + module { single { DatabaseDriverFactory() } })
             }
         }
+        AppWidgets.install(IosWidgetRefresher(reloadWidgetTimelines))
         IosBackgroundRefresh.register()
         IosBackgroundRefresh.scheduleNext()
         IosNotificationCenter.configure()

@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">KotlinProject</string>
+    <string name="app_name">Muviss</string>
+    <!-- Shown under the widget's preview in the launcher's widget picker. -->
+    <string name="widget_description">The shows you are part-way through, with a one-tap tick.</string>
 </resources>

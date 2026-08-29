@@ -636,3 +636,73 @@ and both discovered only by driving a real build's output in a real browser
 5. Reload the page; confirm the Settings screen goes back to defaults —
    this is *expected* today (session-only persistence, see above), not a
    bug to chase.
+
+## 11. Home-screen widgets — EPIC 22
+
+Android needs nothing here: the Glance widget ships in the debug and release
+APK, and appears in the launcher's widget picker under **Muviss** with no
+extra setup.
+
+iOS is the opposite. The Kotlin side, the Swift sources and the Xcode target
+are all checked in and compile, but a widget extension that shares the app's
+database needs an **App Group**, and an App Group needs a real Apple
+Developer team. Nothing in this repo can create one. Until the steps below
+are done, `DatabaseFactory.ios.kt` falls back to the app's Documents
+directory (ADR 0014) — the app works exactly as before and the widget shows
+an empty library.
+
+### iOS: one-time setup
+
+1. **Fill in `TEAM_ID`** in `app/iosApp/Configuration/Config.xcconfig` (Xcode
+   > Signing & Capabilities shows it once a team is selected). Same value the
+   rest of §9 needs; it is gitignored-by-convention only in the sense that it
+   ships blank — do not commit a real one.
+2. **Register the App Group** `group.com.codingpit.muviss` in the Apple
+   Developer portal (Certificates, Identifiers & Profiles > Identifiers > App
+   Groups).
+3. **Enable it on both bundle ids** — `com.codingpit.muviss` and
+   `com.codingpit.muviss.MuvissWidget`. Both entitlement files
+   (`app/iosApp/iosApp/iosApp.entitlements`,
+   `app/iosApp/MuvissWidget/MuvissWidget.entitlements`) already declare it;
+   the portal has to agree or neither target will sign.
+4. **Let Xcode regenerate the provisioning profiles** (automatic signing
+   picks the change up on the next build).
+
+The identifier appears in four places and they must all match: the two
+entitlement files, `MUVISS_APP_GROUP` in
+`core/database/src/iosMain/.../DatabaseFactory.ios.kt`, and the
+`UserDefaults(suiteName:)` in `app/iosApp/MuvissWidget/WidgetIntents.swift`.
+
+### iOS: what to check in Xcode
+
+The `MuvissWidget` target was added to `project.pbxproj` by hand — the
+project opens and its target graph parses, but **it has never been built**,
+because building it needs Xcode and a team. Expect to adjust:
+
+- **Framework linking.** The target links the static `Shared` framework via
+  `OTHER_LDFLAGS = -framework Shared` and a `FRAMEWORK_SEARCH_PATHS` entry
+  pointing at `app/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)`.
+  If the linker cannot find it, check where
+  `:app:shared:embedAndSignAppleFrameworkForXcode` actually wrote the
+  framework for your Xcode version and fix the search path.
+- **Deployment target and Swift version** are set to match the app (18.0,
+  Swift 5.0). Interactive widget buttons (`Button(intent:)`) need iOS 17+, so
+  18.0 is comfortably fine.
+- **The scheme.** Xcode will offer to create a `MuvissWidget` scheme the
+  first time; the shared `iosApp` scheme builds the extension as a dependency
+  either way.
+
+### iOS: manual smoke test
+
+1. Run the app once on a device or simulator so the episode catalog fills
+   (it ships empty — ADR 0013).
+2. Long-press the home screen > add the **Watch next** widget.
+3. Confirm it names the next unseen episode of a show you are part-way
+   through, in the app's amber, and resizes between one, three and five rows.
+4. Tap **Seen**; confirm the row shows "Marked seen" with **Undo**, and that
+   the app's Progress tab and that episode's watch history both agree.
+5. Tap **Undo**; confirm both the tick and its play row are gone.
+6. **Turn on airplane mode, force-quit the app, and check the widget still
+   names an episode.** This is the whole point of the stored catalog; if it
+   goes blank, the App Group is not wired up and the extension is reading its
+   own empty database.

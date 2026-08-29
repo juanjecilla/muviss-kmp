@@ -1,6 +1,7 @@
 package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -41,6 +42,7 @@ object IosBackgroundRefresh : KoinComponent {
 
     private val collectionApi: CollectionApi by inject()
     private val settingsApi: SettingsApi by inject()
+    private val progressApi: ProgressApi by inject()
 
     private var runningJob: Job? = null
 
@@ -89,6 +91,13 @@ object IosBackgroundRefresh : KoinComponent {
             runningJob?.cancel()
         }
         runningJob = scope.launch {
+            runCatching {
+                // Ahead of the notification gate, for the reason
+                // `NewEpisodesWorker` gives (EPIC 22): the widget's episode
+                // names go stale otherwise, and muting notifications is not a
+                // request for that.
+                progressApi.refreshWatchNextCatalogs()
+            }
             runCatching {
                 val notificationsEnabled = settingsApi.observeNotificationsEnabled().first()
                 if (notificationsEnabled) {

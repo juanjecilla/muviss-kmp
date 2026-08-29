@@ -108,7 +108,7 @@ E14 Calendar   E15 Ratings&Notes   E16 Recommendations   E17 Lists  (feature epi
 | 6 | E11 iOS release, E12 Desktop release, E15 Ratings & notes |
 | 7 | E13 Web release, E16 Recommendations, E17 Custom lists |
 | 8 | E9 Sync & accounts, E18 Import |
-| 9 | E19 Triage, E20 Detail rework, E21 Most rewatched |
+| 9 | E19 Triage, E20 Detail rework, E21 Most rewatched, E22 Home-screen widgets |
 
 ## EPIC 10 — Platform data parity ✅ — wave 5
 The DB works everywhere or the "all platforms" story is fiction.
@@ -135,7 +135,7 @@ The DB works everywhere or the "all platforms" story is fiction.
 ## EPIC 14 — Calendar & Upcoming ✅ — wave 5, all platforms
 TV Time parity: upcoming schedule. Air dates already mapped (`airDateEpochDay`).
 - "Upcoming" view (new tab or Progress section): next air dates for saved shows, grouped by day; agenda list first, month grid optional.
-- Uses snapshot refresh data only — no new endpoints.
+- No new endpoints. It reads the same episode catalog watch-next does — in memory until EPIC 22 stored it (ADR 0013), so despite what this line used to claim, it was a network read per show until then; it is genuinely offline now.
 
 ## EPIC 15 — Ratings & notes ✅ — wave 6, all platforms
 Personal (local, no social): 1–10 rating + free-text note per title.
@@ -167,11 +167,20 @@ Collapsible seasons with aired-only bulk marks, a five-star rating (display-only
 
 The ranking ADR 0011 kept the door open for. A "Most rewatched" card on Profile opening a full screen: shows and movies ranked separately by *rewatches* — viewings beyond the first, per element, so a first watch-through scores zero and a long show cannot outrank a film by being long — under an All time / This year toggle, over a fixed trailing-twelve-month trend chart. A rewatch is a play with an earlier play of the same element **at any date**, so a window never re-reads a December first viewing as March's first watch. No schema change: two queries over `episodePlay` alone, joined onto the library in Kotlin, which is also why a removed title leaves the ranking while its history stays on disk. See ADR 0012.
 
+## EPIC 22 — Home-screen widgets ✅ — wave 9
+
+"Watch next" on the home screen, on both platforms that have one: shows in progress, each with its next unseen aired episode and a one-tap tick with Undo. Android is Glance in `:app:androidApp` (a receiver runs in the app process, so it resolves the existing Koin graph like `NewEpisodesWorker` does); iOS is a SwiftUI WidgetKit extension under `app/iosApp/MuvissWidget`, since Compose cannot draw in a widget.
+
+The feature turned on something the roadmap had not noticed: the episode catalog was in-memory and cold each launch, so "next unseen episode" could not be computed offline at all. It is stored now — new `episode` table, schema v8, provider cache with no sync columns and no backfill (**ADR 0013**) — which also makes ADR 0002's offline-first promise true for episodes and fixes E14's claim above. The watch-next join moved out of `ProgressViewModel` into `WatchNextUseCase` behind `ProgressApi.observeWatchNext()`, so the screen and both widgets share one answer.
+
+On iOS the database moved into a `group.com.codingpit.muviss` App Group with a one-time move-on-open (**ADR 0014**): a widget extension is a separate process, and its interactive buttons write. Signing it needs a real Apple team and a registered App Group — manual steps in `docs/RELEASING.md` §11; the Kotlin side falls back to the old Documents path without them.
+
+Colour is one source: `MuvissPalette` (`:core:designsystem`) holds the literals, the M3 schemes are built from it, Glance builds `ColorProviders` from those, and the SwiftUI widget carries the same hexes. Refreshes are pushed from the write itself through a `WidgetRefresher` seam in `:core:common`, plus a reload at local midnight so the "aired by today" boundary moves.
+
 ## Cross-cutting / backlog
 - **Syncing rewatch history.** `episodePlay` carries `isDirty` but is not wired into `SyncChangeSet` (ADR 0011): plays are append-only, so ADR 0009's last-write-wins does not apply — the merge is a union, and deletion needs a tombstone or an id stable across devices. Costs the six touchpoints ADR 0009 enumerates.
 - **Analytics + remote feature flags.** `AnalyticsTracker` and `FeatureFlags` seams exist in `:core:common` with no vendor behind them (the tracker is a no-op; flags read `appSettings`). Choosing a vendor means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
 - **Durable web persistence.** The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything — including triage decisions, whose whole promise is not asking twice. Fixes `collectionEntry`/`episodeProgress`/`mediaList` equally; needs an ADR 0008 amendment.
 - **`:app:macrobenchmark`.** Frame timing for the triage drag, deck cold start, and commit latency on a real device. Needs an emulator in CI, which the repo has no provision for.
 - Additional `MetadataProvider`s (TVmaze/Trakt) + cross-source reconciliation via IMDb id.
-- Home-screen widgets (Android Glance / iOS WidgetKit) — post-E14.
 - Baseline profile + startup performance pass.

@@ -8,7 +8,12 @@
 
 /* Begin PBXFileReference section */
 		D1ECFA8041FD747746DEC31F /* KotlinProject.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KotlinProject.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D400000000000000E1 /* MuvissWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MuvissWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXBuildFile section */
+		A1B2C3D400000000000000EF /* MuvissWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000000000000E1 /* MuvissWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		716717DC8990234F8D0457B2 /* Exceptions for "iosApp" folder in "iosApp" target */ = {
@@ -17,6 +22,14 @@
 				Info.plist,
 			);
 			target = 3E91DAF20BCA609889F21746 /* iosApp */;
+		};
+		A1B2C3D400000000000000E3 /* Exceptions for "MuvissWidget" folder in "MuvissWidget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				MuvissWidget.entitlements,
+			);
+			target = A1B2C3D400000000000000E4 /* MuvissWidget */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -34,10 +47,25 @@
 			path = Configuration;
 			sourceTree = "<group>";
 		};
+		A1B2C3D400000000000000E2 /* MuvissWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1B2C3D400000000000000E3 /* Exceptions for "MuvissWidget" folder in "MuvissWidget" target */,
+			);
+			path = MuvissWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		BDDB71C3FE7BBE6A7FE13F22 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D400000000000000E6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -52,6 +80,7 @@
 			children = (
 				46D19BC8C97A16CF82FA6DC7 /* Configuration */,
 				58CC2B5904A4AE43C0ECEF8F /* iosApp */,
+				A1B2C3D400000000000000E2 /* MuvissWidget */,
 				C91FFF32251F3E8CE89F9306 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -60,6 +89,7 @@
 			isa = PBXGroup;
 			children = (
 				D1ECFA8041FD747746DEC31F /* KotlinProject.app */,
+				A1B2C3D400000000000000E1 /* MuvissWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -75,11 +105,13 @@
 				0C2EF673D7D3968A9953D216 /* Sources */,
 				BDDB71C3FE7BBE6A7FE13F22 /* Frameworks */,
 				E040CAE447341492DDC51CCF /* Resources */,
+				A1B2C3D400000000000000EC /* Embed Foundation Extensions */,
 				EED80AA00364E94C08AC813B /* Set version from git */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A1B2C3D400000000000000ED /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				58CC2B5904A4AE43C0ECEF8F /* iosApp */,
@@ -90,6 +122,29 @@
 			productName = iosApp;
 			productReference = D1ECFA8041FD747746DEC31F /* KotlinProject.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A1B2C3D400000000000000E4 /* MuvissWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D400000000000000EB /* Build configuration list for PBXNativeTarget "MuvissWidget" */;
+			buildPhases = (
+				A1B2C3D400000000000000E8 /* Compile Kotlin Framework */,
+				A1B2C3D400000000000000E5 /* Sources */,
+				A1B2C3D400000000000000E6 /* Frameworks */,
+				A1B2C3D400000000000000E7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D400000000000000E2 /* MuvissWidget */,
+			);
+			name = MuvissWidget;
+			packageProductDependencies = (
+			);
+			productName = MuvissWidget;
+			productReference = A1B2C3D400000000000000E1 /* MuvissWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -102,6 +157,9 @@
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
 					3E91DAF20BCA609889F21746 = {
+						CreatedOnToolsVersion = 16.2;
+					};
+					A1B2C3D400000000000000E4 = {
 						CreatedOnToolsVersion = 16.2;
 					};
 				};
@@ -121,12 +179,34 @@
 			projectRoot = "";
 			targets = (
 				3E91DAF20BCA609889F21746 /* iosApp */,
+				A1B2C3D400000000000000E4 /* MuvissWidget */,
 			);
 		};
 /* End PBXProject section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		A1B2C3D400000000000000EC /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1B2C3D400000000000000EF /* MuvissWidget.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXResourcesBuildPhase section */
 		E040CAE447341492DDC51CCF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D400000000000000E7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -174,6 +254,25 @@
 			shellPath = /bin/bash;
 			shellScript = "cd \"$SRCROOT/../..\"\nVERSION_CODE=$(git rev-list --count HEAD 2>/dev/null)\nif [ -z \"$VERSION_CODE\" ]; then\n  echo \"warning: git unavailable, keeping CURRENT_PROJECT_VERSION/MARKETING_VERSION from Config.xcconfig\"\n  exit 0\nfi\nDESCRIBE=$(git describe --tags --always --dirty 2>/dev/null)\nif [[ \"$DESCRIBE\" =~ ^v?([0-9]+\\.[0-9]+\\.[0-9]+) ]]; then\n  VERSION_NAME=\"${BASH_REMATCH[1]}\"\nelse\n  VERSION_NAME=\"0.1.0-dev.$VERSION_CODE\"\nfi\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nif [ -f \"$PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString $VERSION_NAME\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $VERSION_CODE\" \"$PLIST\"\nfi\n";
 		};
+		A1B2C3D400000000000000E8 /* Compile Kotlin Framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Compile Kotlin Framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/../..\"\n./gradlew :app:shared:embedAndSignAppleFrameworkForXcode\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -184,7 +283,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3D400000000000000E5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1B2C3D400000000000000ED /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3D400000000000000E4 /* MuvissWidget */;
+			targetProxy = A1B2C3D400000000000000EE /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		A1B2C3D400000000000000EE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9DCFEFBF7C1D8124DE482B3E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D400000000000000E4;
+			remoteInfo = MuvissWidget;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin XCBuildConfiguration section */
 		13F58E9338A539B5F1C72F7B /* Debug */ = {
@@ -316,6 +440,7 @@
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
@@ -344,6 +469,7 @@
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
@@ -366,6 +492,91 @@
 			};
 			name = Release;
 		};
+		A1B2C3D400000000000000E9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = MuvissWidget/MuvissWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				ENABLE_PREVIEWS = YES;
+				// The Kotlin framework is built into the app target's products
+				// directory by the shared "Compile Kotlin Framework" phase;
+				// `Shared` is a *static* framework (app/shared/build.gradle.kts),
+				// so the extension links it rather than embedding a second copy.
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MuvissWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Watch next";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Shared,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.codingpit.muviss.MuvissWidget";
+				PRODUCT_NAME = MuvissWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A1B2C3D400000000000000EA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_ENTITLEMENTS = MuvissWidget/MuvissWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				ENABLE_PREVIEWS = YES;
+				// The Kotlin framework is built into the app target's products
+				// directory by the shared "Compile Kotlin Framework" phase;
+				// `Shared` is a *static* framework (app/shared/build.gradle.kts),
+				// so the extension links it rather than embedding a second copy.
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MuvissWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Watch next";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Shared,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.codingpit.muviss.MuvissWidget";
+				PRODUCT_NAME = MuvissWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -383,6 +594,15 @@
 			buildConfigurations = (
 				9E851E086559891DAE1C0C42 /* Debug */,
 				53C333A42C615A8ADEE84911 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D400000000000000EB /* Build configuration list for PBXNativeTarget "MuvissWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D400000000000000E9 /* Debug */,
+				A1B2C3D400000000000000EA /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

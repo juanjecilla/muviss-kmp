@@ -1,0 +1,63 @@
+-- The episode catalog: a show's seasons and episodes as the source reported
+-- them, stored so they survive a process death.
+--
+-- This table is a cache of provider data, not the user's data, and the
+-- distinction is load-bearing (ADR 0013). Every other table here carries
+-- `isDirty` / `updatedAtEpochMs` / a soft delete because it records something
+-- a person did; this one records what TMDB says a show contains. Nothing in
+-- it is authored locally, so there is nothing to reconcile: it is absent from
+-- `SyncChangeSet` and from settings' data export, and re-fetching it always
+-- wins over what is stored.
+--
+-- It exists because `WatchProgress` alone cannot answer "what do I watch
+-- next". `EpisodeOrdering.nextUnseen` needs the full episode list to find the
+-- first aired one not ticked, and until EPIC 22 that list lived only in an
+-- in-memory cache filled per launch — so the answer was unavailable with no
+-- network and no running app, which is exactly a home-screen widget's
+-- situation. Persisting it is also what finally makes ADR 0002's
+-- offline-first promise true for episodes.
+--
+-- `seasonName` is denormalized onto every row rather than kept in a `season`
+-- table: a season carries nothing else, and one table rebuilds
+-- `List<Season>` in a single query.
+--
+-- `fetchedAtEpochMs` records when the row was written, not when anything was
+-- watched. It is staleness bookkeeping, and deliberately not comparable with
+-- `episodePlay.watchedAtEpochMs`.
+CREATE TABLE episode (
+    episodeId TEXT NOT NULL PRIMARY KEY,
+    mediaId TEXT NOT NULL,
+    seasonNumber INTEGER NOT NULL,
+    seasonName TEXT NOT NULL,
+    episodeNumber INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    airDateEpochDay INTEGER,
+    stillUrl TEXT,
+    runtimeMinutes INTEGER,
+    fetchedAtEpochMs INTEGER NOT NULL
+);
+
+CREATE INDEX episode_mediaId ON episode(mediaId);
+
+-- One title's whole catalog, ordered so `List<Season>` can be rebuilt by a
+-- single grouping pass with no sorting in Kotlin.
+selectForMedia:
+SELECT *
+FROM episode
+WHERE mediaId = :mediaId
+ORDER BY seasonNumber, episodeNumber;
+
+upsert:
+INSERT OR REPLACE INTO episode(
+    episodeId, mediaId, seasonNumber, seasonName, episodeNumber,
+    name, airDateEpochDay, stillUrl, runtimeMinutes, fetchedAtEpochMs
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- A refetch replaces a title's catalog wholesale rather than merging into it,
+-- so an episode the source has removed (a mis-numbered special, a season
+-- restructured) disappears here too. Runs in the same transaction as the
+-- `upsert` calls that follow it.
+deleteForMedia:
+DELETE FROM episode
+WHERE mediaId = :mediaId;

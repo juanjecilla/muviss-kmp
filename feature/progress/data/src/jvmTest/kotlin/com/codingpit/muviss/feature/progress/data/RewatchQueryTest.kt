@@ -7,6 +7,7 @@ import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.models.EpisodeId
@@ -68,6 +69,7 @@ class RewatchQueryTest {
             playQueries,
             RewatchDispatchers(UnconfinedTestDispatcher()),
             clock,
+            NoOpWidgetRefresher,
         )
     }
 

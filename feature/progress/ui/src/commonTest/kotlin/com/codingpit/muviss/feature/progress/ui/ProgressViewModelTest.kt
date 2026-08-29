@@ -16,6 +16,7 @@ import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
+import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -36,7 +37,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 private fun summary(id: MediaId, title: String = id.toString(), status: WatchStatus = WatchStatus.WATCHING) = CollectionSummary(id, title, posterUrl = null, status = status)
 
@@ -80,8 +80,6 @@ private class FakeProgressRepository : ProgressRepository {
         flowFor(mediaId).value = emptySet()
     }
 
-    // Rewatch history (ADR 0011): watch-next only ever asks "seen or not", so
-    // the play side is modelled as one viewing per seen episode.
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowFor(mediaId).map { seen -> seen.associateWith { 1 } }
 
     override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowFor(episodeId.show).map { seen ->
@@ -110,13 +108,23 @@ private class FakeProgressRepository : ProgressRepository {
 }
 
 private class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
-    override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = Result.success(bySeasons[mediaId].orEmpty())
+    val refetched = mutableListOf<MediaId>()
+    override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
+        refetched += mediaId
+        return Result.success(bySeasons[mediaId].orEmpty())
+    }
 }
 
 private class FakeClock(private val millis: Long) : AppClock {
     override fun nowEpochMs(): Long = millis
 }
 
+/**
+ * What is left of this suite after EPIC 22 moved the collection x catalog x
+ * ticks join into `WatchNextUseCase`: the ViewModel's own behaviour — its
+ * loading and refreshing flags, and turning a tap into a write. The join's
+ * own rules are asserted in `WatchNextUseCaseTest`.
+ */
 class ProgressViewModelTest {
 
     @BeforeTest
@@ -127,7 +135,6 @@ class ProgressViewModelTest {
 
     private val show = MediaId.tmdbTv("1399")
     private val ep1 = EpisodeId(show, 1, 1)
-    private val ep2 = EpisodeId(show, 1, 2)
 
     // "Today" is epoch day 100 (millis irrelevant beyond that division).
     private val today = 100L * 86_400_000L
@@ -145,103 +152,84 @@ class ProgressViewModelTest {
     private fun viewModel(
         collectionApi: FakeCollectionApi,
         progressRepository: FakeProgressRepository,
-        catalogSource: EpisodeCatalogSource = FakeEpisodeCatalogSource(mapOf(show to seasons)),
-    ) = ProgressViewModel(
-        collectionApi,
-        ObserveSeenEpisodesUseCase(progressRepository),
-        ToggleEpisodeSeenUseCase(progressRepository),
-        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource)),
-        FakeClock(today),
-    )
-
-    @Test
-    fun lists_next_unseen_episode_for_a_watching_show() = runTest {
-        val vm = viewModel(FakeCollectionApi(listOf(summary(show))), FakeProgressRepository())
-        advanceUntilIdle()
-
-        val item = vm.state.value.items.single()
-        assertEquals(show, item.mediaId)
-        assertEquals(ep1, item.nextEpisode?.id)
+        catalogSource: FakeEpisodeCatalogSource = FakeEpisodeCatalogSource(mapOf(show to seasons)),
+    ): Pair<ProgressViewModel, EpisodeCatalogCache> {
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore())
+        val vm = ProgressViewModel(
+            WatchNextUseCase(collectionApi, ObserveSeenEpisodesUseCase(progressRepository), cache, FakeClock(today)),
+            ToggleEpisodeSeenUseCase(progressRepository),
+            cache,
+        )
+        return vm to cache
     }
 
     @Test
-    fun ignores_shows_that_are_not_watching() = runTest {
-        val notStarted = summary(MediaId.tmdbTv("2"), status = WatchStatus.NOT_STARTED)
-        val watched = summary(MediaId.tmdbTv("3"), status = WatchStatus.WATCHED)
-        val vm = viewModel(FakeCollectionApi(listOf(notStarted, watched)), FakeProgressRepository())
+    fun renders_the_watch_next_rows_it_is_given() = runTest {
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), FakeProgressRepository())
         advanceUntilIdle()
 
-        assertEquals(emptyList(), vm.state.value.items)
+        assertEquals(listOf(show), vm.state.value.items.map { it.mediaId })
     }
 
     @Test
-    fun tickNext_ticks_the_next_episode_and_advances_to_the_following_one() = runTest {
+    fun tickNext_writes_the_named_episode() = runTest {
         val repository = FakeProgressRepository()
-        val vm = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
-        advanceUntilIdle()
-
-        val firstItem = vm.state.value.items.single()
-        assertEquals(ep1, firstItem.nextEpisode?.id)
-
-        vm.tickNext(firstItem)
-        advanceUntilIdle()
-
-        assertEquals(listOf(ep1 to true), repository.tickedEpisodes)
-        val secondItem = vm.state.value.items.single()
-        assertEquals(ep2, secondItem.nextEpisode?.id)
-    }
-
-    @Test
-    fun untick_reverts_a_tick_and_resurfaces_the_episode() = runTest {
-        val repository = FakeProgressRepository()
-        val vm = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
         advanceUntilIdle()
 
         vm.tickNext(vm.state.value.items.single())
         advanceUntilIdle()
-        assertEquals(ep2, vm.state.value.items.single().nextEpisode?.id)
 
+        assertEquals(listOf(ep1 to true), repository.tickedEpisodes)
+    }
+
+    @Test
+    fun tickNext_on_a_row_with_no_named_episode_writes_nothing() = runTest {
+        val repository = FakeProgressRepository()
+        val (vm, _) = viewModel(
+            FakeCollectionApi(listOf(summary(show))),
+            repository,
+            FakeEpisodeCatalogSource(emptyMap()),
+        )
+        advanceUntilIdle()
+
+        vm.tickNext(vm.state.value.items.single())
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), repository.tickedEpisodes)
+    }
+
+    @Test
+    fun untick_reverts_a_tick() = runTest {
+        val repository = FakeProgressRepository()
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
+        advanceUntilIdle()
+
+        vm.tickNext(vm.state.value.items.single())
+        advanceUntilIdle()
         vm.untick(ep1)
         advanceUntilIdle()
 
         assertEquals(listOf(ep1 to true, ep1 to false), repository.tickedEpisodes)
-        assertEquals(ep1, vm.state.value.items.single().nextEpisode?.id)
     }
 
     @Test
-    fun progress_counts_seen_aired_episodes() = runTest {
-        val repository = FakeProgressRepository()
-        val vm = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
+    fun refresh_refetches_the_catalogs_and_clears_the_flag() = runTest {
+        val source = FakeEpisodeCatalogSource(mapOf(show to seasons))
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), FakeProgressRepository(), source)
+        advanceUntilIdle()
+        val before = source.refetched.size
+
+        vm.refresh()
         advanceUntilIdle()
 
-        assertEquals(0, vm.state.value.items.single().seenCount)
-        assertEquals(2, vm.state.value.items.single().airedCount)
-
-        vm.tickNext(vm.state.value.items.single())
-        advanceUntilIdle()
-
-        val item = vm.state.value.items.single()
-        assertEquals(1, item.seenCount)
-        assertEquals(0.5f, item.progress)
-    }
-
-    @Test
-    fun nextEpisode_is_null_once_fully_caught_up_on_aired_episodes() = runTest {
-        val repository = FakeProgressRepository()
-        val vm = viewModel(FakeCollectionApi(listOf(summary(show))), repository)
-        advanceUntilIdle()
-
-        vm.tickNext(vm.state.value.items.single())
-        advanceUntilIdle()
-        vm.tickNext(vm.state.value.items.single())
-        advanceUntilIdle()
-
-        assertNull(vm.state.value.items.single().nextEpisode)
+        assertEquals(before + 1, source.refetched.size)
+        assertEquals(false, vm.state.value.refreshing)
     }
 
     @Test
     fun loading_flips_off_once_summaries_emit() = runTest {
-        val vm = viewModel(FakeCollectionApi(emptyList()), FakeProgressRepository())
+        val (vm, _) = viewModel(FakeCollectionApi(emptyList()), FakeProgressRepository())
         vm.state.test {
             var current = awaitItem()
             while (current.loading) current = awaitItem()

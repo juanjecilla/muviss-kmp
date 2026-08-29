@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -40,6 +41,11 @@ private class FakeProgressApi : ProgressApi {
     }
 
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = flowFor(mediaId)
+
+    // Watch-next (EPIC 22) — this fake's subject never asks for it.
+    override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
+    override suspend fun refreshWatchNextCatalogs() = Unit
+
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = error("not used")
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = error("not used")
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())

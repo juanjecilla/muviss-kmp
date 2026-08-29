@@ -1,0 +1,39 @@
+-- The episode catalog (ADR 0015). The filename is the version this migrates
+-- FROM, not to: 8.sqm takes a v8 database to v9.
+--
+-- Numbered 8 rather than 7 because EPIC 22 and the sync-gating work were
+-- written in parallel and both reached for v8. Theirs landed first (7.sqm,
+-- rebuilding `episodePlay` on a derived key, ADR 0013), so this one follows
+-- it. Two `.sqm` files claiming one version is not a merge conflict SQLDelight
+-- can see - `verifyMigrations` only checks that the chain reproduces the `.sq`
+-- files - so the ordering had to be decided by hand.
+--
+-- There is no backfill, and that is not an oversight. `6.sqm` could seed
+-- `episodePlay` because the facts it needed were already on disk in
+-- `episodeProgress`; here the facts are TMDB's and have never been stored, so
+-- there is nothing local to derive an episode list from. The table starts
+-- empty on every upgrade and fills read-through the first time each title is
+-- opened, or on the next background refresh.
+--
+-- The visible consequence is on the home screen: a widget placed immediately
+-- after upgrading has no catalog to name a next episode from, and says so
+-- until the app has run once. Every alternative was worse — fetching every
+-- saved title's catalog inside a migration would put a network fan-out on the
+-- upgrade path, where it could fail, hang, or run on a cellular connection
+-- with the user watching a blank screen.
+--
+-- No sync columns: this is provider data, not the user's (see Episode.sq).
+CREATE TABLE episode (
+    episodeId TEXT NOT NULL PRIMARY KEY,
+    mediaId TEXT NOT NULL,
+    seasonNumber INTEGER NOT NULL,
+    seasonName TEXT NOT NULL,
+    episodeNumber INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    airDateEpochDay INTEGER,
+    stillUrl TEXT,
+    runtimeMinutes INTEGER,
+    fetchedAtEpochMs INTEGER NOT NULL
+);
+
+CREATE INDEX episode_mediaId ON episode(mediaId);

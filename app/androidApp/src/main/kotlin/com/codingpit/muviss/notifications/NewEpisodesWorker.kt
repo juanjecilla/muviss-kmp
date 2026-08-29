@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import kotlinx.coroutines.flow.first
 import org.koin.core.component.KoinComponent
@@ -27,8 +28,8 @@ import org.koin.core.component.inject
  * before/after diff — lives in `feature/collection/domain`'s
  * `NewEpisodesCalculator`/`RefreshAndFindNewEpisodesUseCase`, reached here
  * only through [CollectionApi.refreshAndFindNewEpisodes]. This class' own
- * job is just: check the global toggle, call that, and hand the result to
- * [NewEpisodesNotifier].
+ * job is just: refresh the episode catalogs, check the global toggle, call
+ * that, and hand the result to [NewEpisodesNotifier].
  */
 class NewEpisodesWorker(
     context: Context,
@@ -38,8 +39,15 @@ class NewEpisodesWorker(
 
     private val collectionApi: CollectionApi by inject()
     private val settingsApi: SettingsApi by inject()
+    private val progressApi: ProgressApi by inject()
 
     override suspend fun doWork(): Result {
+        // Ahead of the notification gate on purpose (EPIC 22): the home-screen
+        // widget needs a current episode catalog to name the next episode, and
+        // turning notifications off is a statement about being interrupted,
+        // not about wanting a stale widget.
+        runCatching { progressApi.refreshWatchNextCatalogs() }
+
         val notificationsEnabled = settingsApi.observeNotificationsEnabled().first()
         if (!notificationsEnabled) return Result.success()
 
