@@ -28,10 +28,12 @@ import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -75,7 +77,7 @@ private class RealCollectionApiForStats(private val repository: CollectionReposi
     }
 
     override suspend fun add(details: MediaDetails) = repository.upsertSnapshot(details)
-    override suspend fun remove(mediaId: MediaId) = error("not used")
+    override suspend fun remove(mediaId: MediaId) = repository.remove(mediaId)
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
     override suspend fun setRating(mediaId: MediaId, rating: Int?) = repository.setRating(mediaId, rating)
@@ -97,6 +99,8 @@ private class RealProgressApiForStats(private val repository: ProgressRepository
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = repository.observePlayCounts(mediaId)
     override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = repository.observePlays(episodeId)
+    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = repository.observeRewatchCounts(sinceEpochMs)
+    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = repository.observeRewatchTimestamps(sinceEpochMs)
     override suspend fun recordPlay(episodeId: EpisodeId) = repository.recordPlay(episodeId)
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
     override suspend fun clearPlays(episodeId: EpisodeId) = repository.clearPlays(episodeId)
@@ -238,5 +242,59 @@ class ProfileStatsAggregationTest {
 
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun a_second_viewing_reaches_the_profile_card_with_its_unit_intact() = runTest {
+        clock.advanceToEpochDay(10)
+        collectionApi.add(MediaDetails(summary = MediaSummary(movieA, "Movie A")))
+        collectionApi.add(
+            MediaDetails(
+                summary = MediaSummary(showX, "Show X"),
+                productionStatus = ProductionStatus.RETURNING,
+                seasons = listOf(Season(1, "S1", listOf(ep1, ep2, ep3, ep4))),
+            ),
+        )
+        progressApi.setEpisodeSeen(ep1.id, true)
+        progressApi.setEpisodeSeen(ep2.id, true)
+        progressApi.setMovieWatched(movieA, true)
+
+        clock.advanceToEpochDay(20)
+        progressApi.recordPlay(ep1.id)
+        progressApi.recordPlay(ep2.id)
+        progressApi.recordPlay(EpisodeId.forMovie(movieA))
+
+        useCase().test {
+            val entries = awaitItem().mostRewatched
+
+            assertEquals(listOf("Show X" to 2, "Movie A" to 1), entries.map { it.title to it.rewatches })
+            assertEquals(listOf(MediaType.TV, MediaType.MOVIE), entries.map { it.mediaType })
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * The ranking is a view of the library, so removing a title takes it out
+     * of the list — but only out of the list. Its viewings are untouched on
+     * disk (only `clearForMedia` erases those), which is what lets the trend
+     * keep counting them and what restores the number if the title is saved
+     * again. See ADR 0012.
+     */
+    @Test
+    fun a_removed_title_leaves_the_ranking_and_keeps_its_history() = runTest {
+        clock.advanceToEpochDay(10)
+        collectionApi.add(MediaDetails(summary = MediaSummary(movieA, "Movie A")))
+        progressApi.setMovieWatched(movieA, true)
+        clock.advanceToEpochDay(20)
+        progressApi.recordPlay(EpisodeId.forMovie(movieA))
+
+        collectionApi.remove(movieA)
+
+        useCase().test {
+            assertEquals(emptyList(), awaitItem().mostRewatched)
+            cancelAndIgnoreRemainingEvents()
+        }
+        assertEquals(mapOf(movieA to 1), progressApi.observeRewatchCounts(0L).first())
     }
 }

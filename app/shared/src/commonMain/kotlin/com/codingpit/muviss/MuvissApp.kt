@@ -245,7 +245,7 @@ private fun MuvissScaffold(
                 searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
                 collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                 progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-                profileSection()
+                profileSection(navController)
                 settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
                 // Not a top-level destination — reached from Discover and Settings.
                 triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })

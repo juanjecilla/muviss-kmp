@@ -33,3 +33,12 @@ fun AppClock.todayEpochDay(): Long = nowEpochMs() / MILLIS_PER_DAY
  * days for streak calculations (see the profile feature's `WatchStreakCalculator`).
  */
 fun epochDayOf(epochMs: Long): Long = epochMs / MILLIS_PER_DAY
+
+/**
+ * The inverse of [epochDayOf]: the first millisecond of [epochDay], UTC.
+ *
+ * Turns a calendar boundary back into the bound a timestamp query wants —
+ * "everything since the start of this year" is an epoch day computed with
+ * [epochDayOfCivil] and then widened here.
+ */
+fun epochMsAtStartOfDay(epochDay: Long): Long = epochDay * MILLIS_PER_DAY

@@ -99,6 +99,16 @@ class ObservePlaysUseCase(private val repository: ProgressRepository) {
     operator fun invoke(episodeId: EpisodeId): Flow<List<EpisodePlay>> = repository.observePlays(episodeId)
 }
 
+/** Rewatches per title since a bound (0 = all time) — the profile ranking's input. */
+class ObserveRewatchCountsUseCase(private val repository: ProgressRepository) {
+    operator fun invoke(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = repository.observeRewatchCounts(sinceEpochMs)
+}
+
+/** Every rewatch's timestamp since a bound — the profile trend's input. */
+class ObserveRewatchTimestampsUseCase(private val repository: ProgressRepository) {
+    operator fun invoke(sinceEpochMs: Long): Flow<List<Long>> = repository.observeRewatchTimestamps(sinceEpochMs)
+}
+
 /**
  * Marks every episode at or before [target] (inclusive, across all of
  * [seasons]) as seen — the "I'm caught up through here" catch-up action.

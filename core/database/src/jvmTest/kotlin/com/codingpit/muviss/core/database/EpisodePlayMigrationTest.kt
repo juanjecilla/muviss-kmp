@@ -136,4 +136,45 @@ class EpisodePlayMigrationTest {
         }
         driver.close()
     }
+
+    /**
+     * The backfill gives each already-seen episode exactly *one* viewing, so
+     * an upgraded library has watched a great deal and rewatched nothing.
+     *
+     * That is not an accident to be worked around: it is the guarantee the
+     * profile's rewatch card is designed against — day one is empty for
+     * everybody, which is why the card teaches the "Watched again" gesture
+     * instead of hiding itself (ADR 0012). If a future migration ever
+     * backfilled more than one row per tick, a person's first sight of the
+     * feature would be a fabricated rewatch history, and this test is what
+     * would catch it.
+     */
+    @Test
+    fun `an upgraded library reports no rewatches at all`() {
+        val (driver, database) = v6Driver()
+
+        runBlocking {
+            tick(database, "tmdb:tv:1399/1/1", seen = true, at = 1_000)
+            tick(database, "tmdb:tv:1399/1/2", seen = true, at = 2_000)
+            tick(database, "tmdb:tv:1399/1/3", seen = true, at = 3_000)
+        }
+        migrate(driver)
+
+        val after = MuvissDatabase(driver)
+        assertEquals(
+            emptyList(),
+            after.episodePlayQueries.rewatchCountsByMedia(since = 0).executeAsList(),
+            "a backfilled install has watched plenty and rewatched nothing",
+        )
+        assertEquals(emptyList(), after.episodePlayQueries.rewatchTimestamps(since = 0).executeAsList())
+
+        // ...and a genuine second viewing after the upgrade is a rewatch.
+        runBlocking { after.episodePlayQueries.insert("tmdb:tv:1399/1/1", "tmdb:tv:1399", 4_000, true) }
+        assertEquals(
+            listOf("tmdb:tv:1399" to 1L),
+            after.episodePlayQueries.rewatchCountsByMedia(since = 0).executeAsList().map { it.mediaId to it.rewatches },
+        )
+
+        driver.close()
+    }
 }

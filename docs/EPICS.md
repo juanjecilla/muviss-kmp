@@ -108,48 +108,48 @@ E14 Calendar   E15 Ratings&Notes   E16 Recommendations   E17 Lists  (feature epi
 | 6 | E11 iOS release, E12 Desktop release, E15 Ratings & notes |
 | 7 | E13 Web release, E16 Recommendations, E17 Custom lists |
 | 8 | E9 Sync & accounts, E18 Import |
-| 9 | E19 Triage |
+| 9 | E19 Triage, E20 Detail rework, E21 Most rewatched |
 
-## EPIC 10 — Platform data parity 🔴 v2 critical path — wave 5
+## EPIC 10 — Platform data parity ✅ — wave 5
 The DB works everywhere or the "all platforms" story is fiction.
 - Fix #10: `:core:model` JS-target serialization compile break.
 - SQLDelight web worker driver for JS + Wasm (`DatabaseFactory.{js,wasmJs}.kt` currently throw); verify wasm support in current SQLDelight, document limits.
 - File-backed JVM driver (desktop) replacing in-memory, with real `.sqm` migrations + `verifyMigration` wired now that the schema is stable (retro-baseline current schema as migration 1).
 - `DataExporter` real impls for iOS (share sheet), JVM (file save dialog), web (download).
 
-## EPIC 11 — iOS productionization — wave 6
+## EPIC 11 — iOS productionization ✅ — wave 6
 - Xcode project polish: signing, bundle id, version from git (match Android scheme), Sentry iOS init.
 - Local notifications: `UNUserNotificationCenter` + `BGAppRefreshTask` background refresh reusing `RefreshAndFindNewEpisodesUseCase` diff (already common code).
 - TestFlight pipeline (CI or documented manual), App Store listing docs (reuse `docs/store/`).
 
-## EPIC 12 — Desktop productionization — wave 6, depends on E10
+## EPIC 12 — Desktop productionization ✅ — wave 6, depends on E10
 - Compose Desktop packaging: DMG / MSI / DEB via `compose.desktop` `nativeDistributions`; app icon.
 - File-backed DB (from E10), window size/position persistence, desktop-appropriate navigation polish.
 - CI job attaching installers to tagged releases.
 
-## EPIC 13 — Web productionization — wave 7, depends on E10
+## EPIC 13 — Web productionization ✅ — wave 7, depends on E10
 - Wasm build deployed (GitHub Pages or similar) from CI.
 - PWA manifest + icons; document offline limits.
 - Web-specific UX pass (responsive grid, keyboard focus).
 
-## EPIC 14 — Calendar & Upcoming — wave 5, all platforms
+## EPIC 14 — Calendar & Upcoming ✅ — wave 5, all platforms
 TV Time parity: upcoming schedule. Air dates already mapped (`airDateEpochDay`).
 - "Upcoming" view (new tab or Progress section): next air dates for saved shows, grouped by day; agenda list first, month grid optional.
 - Uses snapshot refresh data only — no new endpoints.
 
-## EPIC 15 — Ratings & notes — wave 6, all platforms
+## EPIC 15 — Ratings & notes ✅ — wave 6, all platforms
 Personal (local, no social): 1–10 rating + free-text note per title.
 - Schema: columns or small table; surfaced in Detail + Collection sort/filter; ratings feed Profile stats (avg rating, top genre by rating).
 
-## EPIC 16 — Recommendations — wave 7, all platforms
+## EPIC 16 — Recommendations ✅ — wave 7, all platforms
 - TMDB `/recommendations` + `/similar` behind `MetadataProvider` seam.
 - "More like this" row in Detail; "For you" section in Discover seeded from library favorites/top-rated.
 
-## EPIC 17 — Custom lists — wave 7, all platforms
+## EPIC 17 — Custom lists ✅ — wave 7, all platforms
 TV Time parity: user lists ("Marathon 2026", "With Ana").
 - Schema: `list` + `listEntry` join tables (dirty-tracked for future sync); CRUD UI in Library; add-to-list from Detail.
 
-## EPIC 18 — Import — wave 8
+## EPIC 18 — Import ✅ — wave 8
 - Import from Trakt export / TV Time takeout / generic CSV: map external ids (IMDb/TMDB) → `MediaId`, create collection entries + progress ticks.
 - Groundwork shared with additional `MetadataProvider`s (TVmaze/Trakt) from the backlog.
 
@@ -163,8 +163,11 @@ Swipe-deck triage (`:feature:triage`) for filling a library fast and then keepin
 
 Collapsible seasons with aired-only bulk marks, a five-star rating (display-only; storage stays 1-10), the note behind a one-line affordance, a per-episode detail screen, and `episodePlay` — real rewatch history (ADR 0011, schema v7). Also fixed the Library's never-ending pull-to-refresh spinner (no `HttpTimeout` + a fully sequential refresh) and the crash where marking a currently-airing season seen pushed `seenEpisodes` past `airedEpisodes`.
 
+## EPIC 21 — Most rewatched ✅ — wave 9
+
+The ranking ADR 0011 kept the door open for. A "Most rewatched" card on Profile opening a full screen: shows and movies ranked separately by *rewatches* — viewings beyond the first, per element, so a first watch-through scores zero and a long show cannot outrank a film by being long — under an All time / This year toggle, over a fixed trailing-twelve-month trend chart. A rewatch is a play with an earlier play of the same element **at any date**, so a window never re-reads a December first viewing as March's first watch. No schema change: two queries over `episodePlay` alone, joined onto the library in Kotlin, which is also why a removed title leaves the ranking while its history stays on disk. See ADR 0012.
+
 ## Cross-cutting / backlog
-- **"Most seen" episodes and movies.** `episodePlay` (ADR 0011) records one row per viewing with its timestamp, so the data is already there: a most-rewatched ranking, "watched N times this year", per-month rewatch trends. Deliberately not built alongside the schema — the storage decision was made to keep these reachable, not to ship them. Needs a home (Profile is the obvious one, next to the existing stats), a decision about whether movies and episodes rank together or separately, and a story for shows whose rewatch counts are dominated by short episodes. Nothing blocks it technically.
 - **Syncing rewatch history.** `episodePlay` carries `isDirty` but is not wired into `SyncChangeSet` (ADR 0011): plays are append-only, so ADR 0009's last-write-wins does not apply — the merge is a union, and deletion needs a tombstone or an id stable across devices. Costs the six touchpoints ADR 0009 enumerates.
 - **Analytics + remote feature flags.** `AnalyticsTracker` and `FeatureFlags` seams exist in `:core:common` with no vendor behind them (the tracker is a no-op; flags read `appSettings`). Choosing a vendor means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
 - **Durable web persistence.** The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything — including triage decisions, whose whole promise is not asking twice. Fixes `collectionEntry`/`episodeProgress`/`mediaList` equally; needs an ADR 0008 amendment.

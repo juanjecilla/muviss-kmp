@@ -82,6 +82,57 @@ selectAllWatchedAt:
 SELECT watchedAtEpochMs
 FROM episodePlay;
 
+-- Rewatches per title, for the profile's "most rewatched" ranking.
+--
+-- A *rewatch* is a play that has an earlier play of the same episode — at any
+-- date, not merely inside the window. That is the entire reason for the CTE:
+-- over all time this result is exactly `COUNT(*) - COUNT(DISTINCT episodeId)`
+-- and a plain GROUP BY would do, but under a window a plain GROUP BY answers
+-- a different, wrong question. An episode first seen in December and watched
+-- again in March is a rewatch *in March*; recomputing "first play" inside the
+-- window would read that March viewing as a first watch and report nothing.
+-- See ADR 0012.
+--
+-- The bare `id` beside `MIN(watchedAtEpochMs)` is SQLite's documented
+-- min-row rule: in a MIN/MAX aggregate query the unaggregated columns come
+-- from the row that produced the extreme. It disambiguates two viewings
+-- recorded in the same millisecond, so neither is silently dropped.
+--
+-- `:since` bounds the *rewatch* play only, never the first one. Pass 0 for
+-- all time.
+rewatchCountsByMedia:
+WITH firstPlay AS (
+    SELECT episodeId, MIN(watchedAtEpochMs) AS firstAt, id AS firstId
+    FROM episodePlay
+    GROUP BY episodeId
+)
+SELECT p.mediaId, COUNT(*) AS rewatches
+FROM episodePlay p
+JOIN firstPlay f ON p.episodeId = f.episodeId
+WHERE (p.watchedAtEpochMs > f.firstAt OR (p.watchedAtEpochMs = f.firstAt AND p.id > f.firstId))
+  AND p.watchedAtEpochMs >= :since
+GROUP BY p.mediaId;
+
+-- Every rewatch's timestamp since :since, across all titles — the input to the
+-- profile's rewatch trend. Months are bucketed in Kotlin (`CivilDate`) rather
+-- than by SQLite's date functions, so the chart shares the UTC epoch-day
+-- convention `WatchStreak` already uses instead of inventing a second one.
+--
+-- Unlike the ranking, this deliberately does not care whether the title is
+-- still in the library: a play is an event that happened, and removing a
+-- title does not un-happen it (ADR 0012).
+rewatchTimestamps:
+WITH firstPlay AS (
+    SELECT episodeId, MIN(watchedAtEpochMs) AS firstAt, id AS firstId
+    FROM episodePlay
+    GROUP BY episodeId
+)
+SELECT p.watchedAtEpochMs
+FROM episodePlay p
+JOIN firstPlay f ON p.episodeId = f.episodeId
+WHERE (p.watchedAtEpochMs > f.firstAt OR (p.watchedAtEpochMs = f.firstAt AND p.id > f.firstId))
+  AND p.watchedAtEpochMs >= :since;
+
 -- Whole table, for settings' data export (EPIC 8).
 selectAll:
 SELECT *

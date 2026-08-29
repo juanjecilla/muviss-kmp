@@ -72,12 +72,16 @@ private class FakeCollectionApi : CollectionApi {
 
 private class FakeProgressApi : ProgressApi {
     val activityDays = MutableStateFlow<Set<Long>>(emptySet())
+    val rewatchCounts = MutableStateFlow<Map<MediaId, Int>>(emptyMap())
+    val rewatchTimestamps = MutableStateFlow<List<Long>>(emptyList())
 
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = error("not used")
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = activityDays
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = error("not used")
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
     override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowOf(emptyList())
+    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = rewatchCounts
+    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = rewatchTimestamps
     override suspend fun recordPlay(episodeId: EpisodeId) = Unit
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = Unit
     override suspend fun clearPlays(episodeId: EpisodeId) = Unit

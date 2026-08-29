@@ -18,6 +18,8 @@ import com.codingpit.muviss.feature.progress.domain.MarkShowAiredSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveEpisodeProgressUseCase
 import com.codingpit.muviss.feature.progress.domain.ObservePlayCountsUseCase
 import com.codingpit.muviss.feature.progress.domain.ObservePlaysUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveRewatchCountsUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveRewatchTimestampsUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenActivityEpochDaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenCountUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
@@ -56,7 +58,9 @@ val progressDataModule: Module = module {
     factory { ClearPlaysUseCase(get()) }
     factory { ObservePlayCountsUseCase(get()) }
     factory { ObservePlaysUseCase(get()) }
-    factory { ProgressPlayObservers(get(), get()) }
+    factory { ObserveRewatchCountsUseCase(get()) }
+    factory { ObserveRewatchTimestampsUseCase(get()) }
+    factory { ProgressPlayObservers(get(), get(), get(), get()) }
     factory { MarkPreviousSeenUseCase(get()) }
     factory { MarkAllAiredSeenUseCase(get()) }
     factory { ClearProgressUseCase(get()) }
