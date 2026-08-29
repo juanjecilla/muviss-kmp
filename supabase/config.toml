@@ -157,13 +157,20 @@ enabled = true
 # in emails.
 # Matches the linked project rather than the CLI's local default, so
 # `supabase config push` only ever changes what this file deliberately
-# differs on. Muviss never follows an auth redirect — sign-in is a typed
-# code, not a link — so this value only matters to keep the diff empty.
+# differs on. Muviss never lands here: OAuth redirects to the app's own
+# scheme below, and this is only the fallback GoTrue uses when a request
+# names no redirect at all.
 site_url = "http://localhost:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = []
+#
+# This allow-list is a security control, not a formality: GoTrue refuses to
+# redirect anywhere not named here, which is what stops another app from
+# talking Supabase into delivering an authorization code somewhere else. Must
+# stay identical to OAUTH_REDIRECT_URI in :core:sync's OAuthRedirect.kt and to
+# the auth-callback intent filter in the Android manifest (ADR 0014).
+additional_redirect_urls = ["muviss://auth-callback"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -236,11 +243,9 @@ secure_password_change = false
 # asking for a second code inside a minute is rejected, which looks like the
 # app failing rather than a rate limit.
 max_frequency = "1m0s"
-# Number of characters used in the email OTP. A deliberate difference from
-# the linked project, which is still on GoTrue's 8: docs/SYNC.md and the
-# sign-in dialog both describe a six-digit code. Applying it needs the same
-# `supabase config push` that the email templates below are waiting on.
-otp_length = 6
+# Left at the project's value. Muviss no longer uses email OTP at all (ADR
+# 0014), so this only affects flows the app never triggers.
+otp_length = 8
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
@@ -254,21 +259,11 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Muviss signs in with a typed six-digit code, not a clickable link (ADR
-# 0009). GoTrue's stock templates render {{ .ConfirmationURL }}, so out of
-# the box the email contains nothing to type and the link bounces off
-# site_url — which is exactly what happened the first time this was tried.
-# Both templates are needed: /auth/v1/otp sends `magic_link` to an address
-# that already has a user and `confirmation` to a brand-new one, and Muviss
-# passes create_user: true, so a first-time sign-in takes the latter path.
-[auth.email.template.magic_link]
-subject = "Your Muviss sign-in code"
-content_path = "./supabase/templates/magic_link.html"
-
-[auth.email.template.confirmation]
-subject = "Your Muviss sign-in code"
-content_path = "./supabase/templates/confirmation.html"
-
+# No email templates here on purpose. Muviss signs in with OAuth and sends no
+# email at all (ADR 0014) — which is what finally made sign-in work on the
+# free tier, since it refuses template edits without a custom SMTP provider
+# and its stock templates send a link where the app wanted a typed code.
+#
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

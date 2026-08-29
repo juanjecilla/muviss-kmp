@@ -30,43 +30,35 @@ row and a paywall. Those are deliberately opposite, see ADR 0012.
    Sign-Ins) if you intend to use `SyncBackend.signInAnonymously` — the
    shipped Profile UI only wires the email one-time-code flow, so this is
    optional for the app as it stands today.
-3. **Email OTP — the stock templates do not work, and this is the trap.**
-   Authentication → Providers → Email is on by default, but GoTrue's default
-   `confirmation` and `magic_link` templates both render
-   `{{ .ConfirmationURL }}`: the user gets a clickable *link*, while Muviss's
-   profile screen asks them to type a *code*. There is nothing in the email
-   to type, and following the link instead bounces off `site_url` with
-   `error_code=otp_expired`, which reads like a broken token rather than a
-   template mismatch. The OTP itself is fine — it is simply never shown.
+3. **Sign-in is OAuth (ADR 0014).** Muviss sends no email at all — the email
+   one-time-code flow was removed because Supabase's free tier refuses to
+   customise the email templates, and its stock ones send a clickable link
+   where the app asked for a typable code. Two things to set up:
 
-   The fix is `{{ .Token }}` in both templates. Both, not one:
-   `POST /auth/v1/otp` sends `magic_link` to an address that already has a
-   user and `confirmation` to a new one, and Muviss passes
-   `create_user: true`. Both live in `supabase/templates/`, wired up in
-   `supabase/config.toml`, and apply with:
+   **a. Register an OAuth app with the provider.** For GitHub: Settings →
+   Developer settings → OAuth Apps → New OAuth App. The **Authorization
+   callback URL** is Supabase's, not the app's:
 
-   ```bash
-   supabase config push
+   ```
+   https://<your-project-ref>.supabase.co/auth/v1/callback
    ```
 
-   **On the free tier that push is refused** unless the project uses custom
-   SMTP:
+   **b. Enable it in Supabase**: Authentication → Providers → GitHub, on, and
+   paste the client ID and secret. Adding Google later is the same two steps
+   plus one entry in `SyncUiState.providers` — the client takes the provider
+   as a query parameter, so there is no second code path.
 
-   > Email template modification is not available for free tier projects
-   > using the default email provider. Please upgrade your plan or configure
-   > a custom SMTP provider.
+   The redirect back *into the app* is `muviss://auth-callback`, and it has to
+   be identical in three places that cannot reference each other:
+   `OAUTH_REDIRECT_URI` in `core/sync/.../OAuthRedirect.kt`, the
+   `auth-callback` intent filter in the Android manifest, and
+   `additional_redirect_urls` in `supabase/config.toml`. The last one is a
+   security control — GoTrue refuses to redirect anywhere not on that
+   allow-list — and is applied with `supabase config push`.
 
-   So sign-in needs a custom SMTP provider (Authentication → Emails → SMTP
-   Settings) before it can work at all. That is worth doing regardless: the
-   built-in sender is rate-limited to a couple of emails an hour and Supabase
-   documents it as unsuitable for production.
-
-   Two further settings worth knowing while testing: `max_frequency` is one
-   minute, so asking for a second code too quickly is rejected in a way that
-   looks like the app failing; and the project ships `otp_length = 8` while
-   this repo's config and docs assume 6 — `supabase config push` reconciles
-   that in the same call as the templates, since the auth update is atomic
-   and currently fails as a whole.
+   Sign-in works on **Android only** for now. The other targets each need a
+   different browser round-trip and report it as unsupported (ADR 0003 makes
+   Android the first-verify target).
 4. Apply the schema — six synced tables, their Row Level Security policies,
    the last-write-wins trigger and the pull-cursor indexes:
 
@@ -313,13 +305,13 @@ Plain HTTP against GoTrue (`{SUPABASE_URL}/auth/v1/...`), not the
 | Endpoint | Used for |
 |---|---|
 | `POST /auth/v1/signup` (empty body) | `signInAnonymously` — GoTrue's anonymous sign-in shape, requires the project setting from step 2 above |
-| `POST /auth/v1/otp` `{ "email", "create_user": true }` | `requestEmailOtp` |
-| `POST /auth/v1/verify` `{ "type": "email", "email", "token" }` | `verifyEmailOtp` — `type: "email"` is GoTrue's OTP-code verification path, distinct from `"magiclink"` |
+| `GET /auth/v1/authorize?provider=…&redirect_to=…&code_challenge=…&code_challenge_method=s256` | `beginOAuth` — **built, never requested**. It answers 302 to the provider, so following it from the HTTP client would authenticate the client rather than the user; the browser has to make this request |
+| `POST /auth/v1/token?grant_type=pkce` `{ "auth_code", "code_verifier" }` | `completeOAuth` — redeems the `code` from the redirect. The verifier proves the code was issued to this device's attempt, which matters because `muviss://auth-callback` is a custom scheme any app can register (ADR 0014) |
 | `POST /auth/v1/token?grant_type=refresh_token` `{ "refresh_token" }` | `refreshSession` — Supabase access tokens last about an hour, so without this a session stops syncing the same day it is created and only a re-login recovers. GoTrue **rotates** the refresh token on every use, so the returned one is the one to keep |
 | `POST /auth/v1/logout` | `signOut` |
 
-All four also require an `apikey: <anon key>` header; the three that act on
-an existing session additionally send `Authorization: Bearer <access_token>`.
+All require an `apikey: <anon key>` header; those acting on an existing
+session additionally send `Authorization: Bearer <access_token>`.
 
 ## What's not verified
 
@@ -343,12 +335,12 @@ in-memory `FakeSyncBackend`. Neither talks to a network, by design.
 What no test can establish is whether the rest of the server behaves as
 assumed. Still open, and each needs a real signed-in session:
 
-- **Email OTP round trip** (`requestEmailOtp` → real inbox → `verifyEmailOtp`)
-  against GoTrue's actual response shapes. Nothing before this point exercises
-  a real GoTrue response. Attempted 2026-08-29 and **blocked**: the request
-  side works — a real email arrived — but the stock template carries a link
-  rather than a code, so there was nothing to type, and the link failed with
-  `otp_expired`. Blocked on custom SMTP; see step 3.
+- **The OAuth round trip** (`beginOAuth` → browser → provider →
+  `muviss://auth-callback` → `completeOAuth`) against GoTrue's actual response
+  shapes. Nothing before this point exercises a real GoTrue response. Needs
+  the GitHub OAuth app from step 3 to exist first.
+  *(The email one-time-code flow this replaced was attempted on 2026-08-29 and
+  could not be completed — see ADR 0014.)*
 - **Token refresh end to end.** Sign in, leave the app more than an hour,
   return, and confirm sync still succeeds. The client-side logic is tested;
   what is not is whether GoTrue's `/token` response deserializes into

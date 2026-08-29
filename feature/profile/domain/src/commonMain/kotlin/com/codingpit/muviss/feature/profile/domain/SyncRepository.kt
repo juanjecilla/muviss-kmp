@@ -9,9 +9,10 @@ import kotlinx.coroutines.flow.Flow
  * every other repository in this codebase hides its data-layer
  * implementation from the domain contract (ADR 0004).
  *
- * Auth here is the email one-time-code flow only ([requestSignInCode] /
- * [verifySignInCode]) — see [SyncAccountState.SignedIn]'s KDoc for why
- * anonymous sign-in isn't exposed at this layer.
+ * Auth here is OAuth only ([beginSignIn] / [completeSignIn]) — see
+ * [SyncAccountState.SignedIn]'s KDoc for why anonymous sign-in isn't exposed
+ * at this layer, and ADR 0014 for why the email one-time-code flow this
+ * replaced could not be made to work.
  */
 interface SyncRepository {
     /** False when no Supabase keys are configured for this build — the UI should hide the entry point entirely rather than call anything else here. */
@@ -21,11 +22,18 @@ interface SyncRepository {
 
     fun observeLastSyncedAt(): Flow<Long?>
 
-    /** Sends a one-time login code to [email]. */
-    suspend fun requestSignInCode(email: String): Result<Unit>
+    /**
+     * Starts sign-in and returns the URL the caller must open in a browser.
+     *
+     * The domain deliberately stops at "here is a URL": opening it is a
+     * platform concern (a browser on Android, nothing at all on the targets
+     * that cannot come back), and the result arrives out-of-band as a
+     * redirect rather than as this call's return value.
+     */
+    suspend fun beginSignIn(provider: SyncProvider): Result<String>
 
-    /** Completes sign-in with the code sent by [requestSignInCode]. */
-    suspend fun verifySignInCode(email: String, code: String): Result<Unit>
+    /** Completes sign-in from the `code` carried by a [beginSignIn] redirect. */
+    suspend fun completeSignIn(authCode: String): Result<Unit>
 
     suspend fun signOut()
 

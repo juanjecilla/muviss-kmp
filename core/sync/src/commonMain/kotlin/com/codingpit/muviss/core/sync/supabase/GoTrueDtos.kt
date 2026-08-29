@@ -25,23 +25,15 @@ internal data class GoTrueSessionDto(
     val user: GoTrueUserDto,
 )
 
-/** POST `/auth/v1/otp` body — `create_user = true` so a first-time email can sign up via OTP instead of needing a separate signup step. */
+/** POST `/auth/v1/token?grant_type=pkce` body — redeems the `code` from an OAuth redirect against the verifier that produced its challenge (RFC 7636). */
 @Serializable
-internal data class OtpRequestDto(
-    val email: String,
-    @SerialName("create_user") val createUser: Boolean = true,
+internal data class PkceExchangeRequestDto(
+    @SerialName("auth_code") val authCode: String,
+    @SerialName("code_verifier") val codeVerifier: String,
 )
 
 /** POST `/auth/v1/token?grant_type=refresh_token` body. The response is a full [GoTrueSessionDto] with a *rotated* refresh token — GoTrue invalidates the one sent here. */
 @Serializable
 internal data class RefreshTokenRequestDto(
     @SerialName("refresh_token") val refreshToken: String,
-)
-
-/** POST `/auth/v1/verify` body. `type = "email"` is GoTrue's OTP-code verification path (distinct from `"magiclink"`, which verifies a link token instead — see docs/SYNC.md). */
-@Serializable
-internal data class VerifyOtpRequestDto(
-    val type: String = "email",
-    val email: String,
-    val token: String,
 )

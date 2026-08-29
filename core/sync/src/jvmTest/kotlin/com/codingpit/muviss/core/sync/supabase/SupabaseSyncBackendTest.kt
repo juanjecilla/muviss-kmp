@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.sync.supabase
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.sync.CollectionEntryChange
+import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
 import com.codingpit.muviss.core.sync.SyncSession
@@ -15,6 +16,7 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.first
@@ -22,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -238,30 +241,90 @@ class SupabaseSyncBackendTest {
         assertNull(backend.session.first())
     }
 
+    // --- OAuth (ADR 0014) ------------------------------------------------
+
     @Test
     fun signing_in_stamps_an_absolute_expiry_from_the_relative_one() = runTest {
         val clock = RecordingClock(50_000L)
         val (backend, _) = backend(InMemorySessionStore(), clock) { jsonOk(sessionBody) }
 
-        val session = backend.verifyEmailOtp("person@example.com", "123456").getOrNull()
+        backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT)
+        val session = backend.completeOAuth("auth-code").getOrNull()
 
         assertNotNull(session)
         assertEquals(50_000L + 3_600_000L, session.expiresAtEpochMs, "expires_in is relative; only an absolute stamp survives being persisted")
     }
 
     @Test
-    fun a_wrong_code_is_reported_as_a_failure() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) {
-            respond("""{"message":"Token has expired or is invalid"}""", HttpStatusCode.Forbidden, headersOf(HttpHeaders.ContentType, "application/json"))
-        }
+    fun the_authorize_url_carries_the_provider_redirect_and_a_hashed_challenge() = runTest {
+        val (backend, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
 
-        val result = backend.verifyEmailOtp("person@example.com", "000000")
+        val url = backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT).getOrThrow()
+
+        assertTrue(url.startsWith("$BASE_URL/auth/v1/authorize"), "unexpected endpoint: $url")
+        assertTrue(url.contains("provider=github"), "missing provider: $url")
+        assertTrue(url.contains("code_challenge="), "missing challenge: $url")
+        // s256, never `plain` — `plain` sends the verifier itself, which
+        // protects nothing against an intercepted redirect.
+        assertTrue(url.contains("code_challenge_method=s256"), "missing or wrong method: $url")
+        assertFalse(url.contains(" "), "the redirect must be url-encoded: $url")
+    }
+
+    @Test
+    fun the_exchange_sends_the_verifier_that_produced_the_challenge() = runTest {
+        val (backend, requests) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+
+        val url = backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT).getOrThrow()
+        backend.completeOAuth("auth-code").getOrThrow()
+
+        val exchange = requests.last()
+        assertEquals("pkce", exchange.url.parameters["grant_type"])
+        // The verifier itself never appears in the browser URL — only its hash
+        // does. That asymmetry is the whole mechanism.
+        val body = (exchange.body as TextContent).text
+        assertTrue(body.contains("\"auth_code\":\"auth-code\""), "unexpected body: $body")
+        assertTrue(body.contains("code_verifier"), "unexpected body: $body")
+        val verifier = Regex("\"code_verifier\":\"([^\"]+)\"").find(body)!!.groupValues[1]
+        assertFalse(url.contains(verifier), "the verifier must not travel in the authorize URL")
+    }
+
+    @Test
+    fun completing_without_starting_fails_rather_than_sending_a_blank_verifier() = runTest {
+        val (backend, requests) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+
+        val result = backend.completeOAuth("auth-code")
+
+        assertTrue(result.isFailure, "a redirect with no attempt behind it is not a sign-in")
+        assertTrue(requests.isEmpty(), "nothing should reach the network")
+    }
+
+    @Test
+    fun a_verifier_is_single_use() = runTest {
+        val (backend, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+        backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT)
+        backend.completeOAuth("auth-code").getOrThrow()
+
+        val second = backend.completeOAuth("another-code")
+
+        assertTrue(second.isFailure, "replaying a redirect must not redeem a second code against the same verifier")
+    }
+
+    @Test
+    fun a_rejected_exchange_is_reported_and_clears_the_attempt() = runTest {
+        val (backend, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) {
+            respond("""{"error":"invalid_grant","error_description":"code challenge does not match"}""", HttpStatusCode.BadRequest)
+        }
+        backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT)
+
+        val result = backend.completeOAuth("auth-code")
 
         assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Token has expired or is invalid"))
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("code challenge does not match"))
+        assertTrue(backend.completeOAuth("auth-code").isFailure, "a burnt verifier must not be retried")
     }
 
     private companion object {
         const val BASE_URL = "https://project.supabase.co"
+        const val REDIRECT = "muviss://auth-callback"
     }
 }

@@ -1,11 +1,13 @@
 package com.codingpit.muviss.core.sync.supabase
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionStore
+import com.codingpit.muviss.core.sync.newPkcePair
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +47,9 @@ internal class SupabaseSyncBackend(
     private val refreshMutex = Mutex()
     private var restored = false
 
+    /** The PKCE verifier for the OAuth attempt currently in flight, if any. See [beginOAuth]. */
+    private var pendingVerifier: String? = null
+
     override val session: Flow<SyncSession?> = flow {
         ensureRestored()
         emitAll(sessionState)
@@ -54,13 +59,26 @@ internal class SupabaseSyncBackend(
         auth.signInAnonymously().toSession().also { persist(it) }
     }
 
-    override suspend fun requestEmailOtp(email: String): Result<Unit> = runCatching {
-        auth.requestEmailOtp(email)
+    override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String> = runCatching {
+        val (verifier, challenge) = newPkcePair()
+        // Kept in memory only. Persisting it would mean another migration for
+        // a value that lives for the seconds the browser is open; the cost is
+        // that a process death mid-sign-in loses the attempt, which surfaces
+        // as completeOAuth's "no sign-in is in progress" and is fixed by
+        // tapping the button again.
+        pendingVerifier = verifier
+        auth.authorizeUrl(provider = provider, redirectUri = redirectUri, codeChallenge = challenge)
     }
 
-    override suspend fun verifyEmailOtp(email: String, code: String): Result<SyncSession> = runCatching {
-        auth.verifyEmailOtp(email, code).toSession().also { persist(it) }
-    }
+    override suspend fun completeOAuth(authCode: String): Result<SyncSession> = runCatching {
+        val verifier = pendingVerifier ?: error("No sign-in is in progress — start again from the profile screen")
+        val session = auth.exchangeOAuthCode(authCode = authCode, codeVerifier = verifier).toSession()
+        // Single-use, whether or not the exchange succeeded: a verifier that
+        // has been sent once must never be reused against a second code.
+        pendingVerifier = null
+        persist(session)
+        session
+    }.onFailure { pendingVerifier = null }
 
     override suspend fun signOut() {
         ensureRestored()

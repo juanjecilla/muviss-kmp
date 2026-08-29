@@ -1,12 +1,15 @@
 package com.codingpit.muviss.feature.profile.data
 
 import com.codingpit.muviss.core.billing.EntitlementProvider
+import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
+import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncOutcome
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
+import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -53,9 +56,14 @@ class CoreSyncRepository(
 
     override fun observeLastSyncedAt(): Flow<Long?> = engine.observeLastSyncedAt()
 
-    override suspend fun requestSignInCode(email: String): Result<Unit> = backend.requestEmailOtp(email)
+    override suspend fun beginSignIn(provider: SyncProvider): Result<String> = backend.beginOAuth(provider = provider.toBackend(), redirectUri = OAUTH_REDIRECT_URI)
 
-    override suspend fun verifySignInCode(email: String, code: String): Result<Unit> = backend.verifyEmailOtp(email, code).map { }
+    override suspend fun completeSignIn(authCode: String): Result<Unit> = backend.completeOAuth(authCode).map { }
+
+    private fun SyncProvider.toBackend(): OAuthProvider = when (this) {
+        SyncProvider.GITHUB -> OAuthProvider.GITHUB
+        SyncProvider.GOOGLE -> OAuthProvider.GOOGLE
+    }
 
     override suspend fun signOut() = backend.signOut()
 

@@ -89,12 +89,12 @@ internal class FakeSyncBackend(
 
     override suspend fun signInAnonymously(): Result<SyncSession> = Result.success(FAKE_SESSION).also { sessionState.value = FAKE_SESSION }
 
-    override suspend fun requestEmailOtp(email: String): Result<Unit> = Result.success(Unit)
+    override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String> = Result.success("https://fake.test/auth/v1/authorize?provider=${provider.wireName}&redirect_to=$redirectUri")
 
-    override suspend fun verifyEmailOtp(email: String, code: String): Result<SyncSession> {
-        val upgraded = FAKE_SESSION.copy(email = email)
-        sessionState.value = upgraded
-        return Result.success(upgraded)
+    override suspend fun completeOAuth(authCode: String): Result<SyncSession> {
+        val signedIn = FAKE_SESSION.copy(email = "person@example.com")
+        sessionState.value = signedIn
+        return Result.success(signedIn)
     }
 
     override suspend fun signOut() {

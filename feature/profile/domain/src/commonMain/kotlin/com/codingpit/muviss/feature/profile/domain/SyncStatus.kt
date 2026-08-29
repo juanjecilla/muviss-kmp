@@ -1,6 +1,18 @@
 package com.codingpit.muviss.feature.profile.domain
 
 /**
+ * An identity provider offered on the sign-in button (ADR 0014).
+ *
+ * A domain-level mirror of `core.sync.OAuthProvider`, for the same reason as
+ * [SyncAccountState]: `feature/profile/ui` reads this, and it must not have to
+ * depend on `:core:sync` to do so (ADR 0004's `ui -> domain <- data`).
+ */
+enum class SyncProvider(val displayName: String) {
+    GITHUB("GitHub"),
+    GOOGLE("Google"),
+}
+
+/**
  * Domain-level view of the sync feature's account state (EPIC 9) — a
  * deliberately thin mirror of `core.sync.SyncSession`/`SyncBackend`'s state,
  * so `:core:sync` (a Ktor/Supabase-facing infra module) never has to be
@@ -28,7 +40,7 @@ sealed interface SyncAccountState {
 
     data object SignedOut : SyncAccountState
 
-    /** [email] is always non-null here: this app's UI only ever completes sign-in via the email one-time-code flow (see `SyncRepository.verifySignInCode`) — `SyncBackend.signInAnonymously` exists for a future entry point but isn't wired into this screen yet. */
+    /** [email] comes from the OAuth provider and is normally set, but is nullable because a provider can withhold it (a GitHub account with a private email does) — and `SyncBackend.signInAnonymously`, which exists for a future entry point but isn't wired into this screen, would have none at all. */
     data class SignedIn(val email: String?) : SyncAccountState
 }
 

@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,6 +54,7 @@ import com.codingpit.muviss.feature.profile.domain.AvatarPresets
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
+import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import kotlinx.coroutines.launch
 import kotlin.math.round
 
@@ -70,6 +72,16 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
         val message = state.sync.message ?: return@LaunchedEffect
         coroutineScope.launch { snackbarHostState.showSnackbar(message) }
         viewModel.syncMessageShown()
+    }
+
+    // Sign-in leaves the app: the provider's page runs in a browser and comes
+    // back as a redirect into MainActivity, not as a result here. Consuming
+    // the URL immediately keeps returning to this screen from reopening it.
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(state.sync.pendingAuthUrl) {
+        val url = state.sync.pendingAuthUrl ?: return@LaunchedEffect
+        uriHandler.openUri(url)
+        viewModel.authUrlOpened()
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
@@ -120,21 +132,6 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
                 currentName = state.profile.displayName,
                 onConfirm = viewModel::onDisplayNameConfirmed,
                 onDismiss = viewModel::onEditNameDismissed,
-            )
-        }
-
-        if (state.sync.isEnteringEmail) {
-            SignInEmailDialog(
-                onConfirm = viewModel::onSignInEmailConfirmed,
-                onDismiss = viewModel::onSignInEmailDismissed,
-            )
-        }
-
-        if (state.sync.isEnteringCode) {
-            SignInCodeDialog(
-                email = state.sync.pendingEmail.orEmpty(),
-                onConfirm = viewModel::onSignInCodeConfirmed,
-                onDismiss = viewModel::onSignInCodeDismissed,
             )
         }
     }
@@ -225,7 +222,7 @@ private fun EditNameDialog(
 @Composable
 private fun SyncSection(
     sync: SyncUiState,
-    onSignInClicked: () -> Unit,
+    onSignInClicked: (SyncProvider) -> Unit,
     onSyncNowClicked: () -> Unit,
     onSignOutClicked: () -> Unit,
     onUnlockClicked: () -> Unit,
@@ -278,7 +275,16 @@ private fun SyncSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
-                    OutlinedButton(onClick = onSignInClicked, enabled = !sync.syncing) { Text("Sign in to sync") }
+                    // One button per provider rather than a picker: there are
+                    // two at most, and a picker would add a step to the one
+                    // action on this row.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        sync.providers.forEach { provider ->
+                            OutlinedButton(onClick = { onSignInClicked(provider) }, enabled = !sync.syncing) {
+                                Text("Sign in with ${provider.displayName}")
+                            }
+                        }
+                    }
                 }
 
                 is SyncAccountState.SignedIn -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -299,48 +305,6 @@ private fun SyncSection(
             }
         }
     }
-}
-
-@Composable
-private fun SignInEmailDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Sign in to sync") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("We'll email you a one-time code — no password needed.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(value = email, onValueChange = { email = it }, singleLine = true, label = { Text("Email") })
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(email) }, enabled = email.isNotBlank()) { Text("Send code") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-}
-
-@Composable
-private fun SignInCodeDialog(email: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var code by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Enter the code") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("We sent a code to $email.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(value = code, onValueChange = { code = it }, singleLine = true, label = { Text("Code") })
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(code) }, enabled = code.isNotBlank()) { Text("Verify") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
 }
 
 @Composable

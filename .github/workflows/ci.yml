@@ -53,6 +53,7 @@ jobs:
           :feature:search:ui:jvmTest
           :feature:triage:ui:jvmTest
           :feature:profile:data:jvmTest
+          :feature:profile:ui:jvmTest
           :feature:progress:data:jvmTest
           :feature:settings:data:jvmTest
           :server:test

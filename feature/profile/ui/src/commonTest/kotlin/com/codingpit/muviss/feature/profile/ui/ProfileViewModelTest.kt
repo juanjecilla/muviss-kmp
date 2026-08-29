@@ -19,6 +19,7 @@ import com.codingpit.muviss.feature.profile.domain.SetDisplayNameUseCase
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
+import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncRepository
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -40,6 +41,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private class FakeProfileRepository(initial: LocalProfile = LocalProfile.DEFAULT) : ProfileRepository {
@@ -108,10 +110,10 @@ private class FakeSyncRepository(
 ) : SyncRepository {
     val account = MutableStateFlow(initialAccount)
     val lastSyncedAt = MutableStateFlow<Long?>(null)
-    var requestedEmail: String? = null
-    var verifiedCode: String? = null
-    var requestSignInCodeResult: Result<Unit> = Result.success(Unit)
-    var verifySignInCodeResult: Result<Unit> = Result.success(Unit)
+    var requestedProvider: SyncProvider? = null
+    var completedCode: String? = null
+    var beginSignInResult: Result<String> = Result.success(AUTHORIZE_URL)
+    var completeSignInResult: Result<Unit> = Result.success(Unit)
     var syncNowResult: SyncOutcomeSummary = SyncOutcomeSummary.Success(1_000L)
     var signOutCalled = false
 
@@ -119,15 +121,15 @@ private class FakeSyncRepository(
 
     override fun observeLastSyncedAt(): Flow<Long?> = lastSyncedAt
 
-    override suspend fun requestSignInCode(email: String): Result<Unit> {
-        requestedEmail = email
-        return requestSignInCodeResult
+    override suspend fun beginSignIn(provider: SyncProvider): Result<String> {
+        requestedProvider = provider
+        return beginSignInResult
     }
 
-    override suspend fun verifySignInCode(email: String, code: String): Result<Unit> {
-        verifiedCode = code
-        if (verifySignInCodeResult.isSuccess) account.value = SyncAccountState.SignedIn(email)
-        return verifySignInCodeResult
+    override suspend fun completeSignIn(authCode: String): Result<Unit> {
+        completedCode = authCode
+        if (completeSignInResult.isSuccess) account.value = SyncAccountState.SignedIn("person@example.com")
+        return completeSignInResult
     }
 
     override suspend fun signOut() {
@@ -136,6 +138,10 @@ private class FakeSyncRepository(
     }
 
     override suspend fun syncNow(): SyncOutcomeSummary = syncNowResult
+
+    companion object {
+        const val AUTHORIZE_URL = "https://project.supabase.co/auth/v1/authorize?provider=github"
+    }
 }
 
 class ProfileViewModelTest {
@@ -211,75 +217,72 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun onSignInClicked_opens_the_email_step_when_sync_is_available() = runTest {
-        val vm = viewModel(syncRepository = FakeSyncRepository(isAvailable = true))
+    fun onSignInClicked_hands_the_screen_an_authorize_url_to_open() = runTest {
+        val repository = FakeSyncRepository(isAvailable = true)
+        val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
 
-        vm.onSignInClicked()
+        vm.onSignInClicked(SyncProvider.GITHUB)
+        advanceUntilIdle()
 
-        assertTrue(vm.state.value.sync.isEnteringEmail)
+        assertEquals(SyncProvider.GITHUB, repository.requestedProvider)
+        assertEquals(FakeSyncRepository.AUTHORIZE_URL, vm.state.value.sync.pendingAuthUrl)
     }
 
     @Test
     fun onSignInClicked_surfaces_a_message_instead_when_sync_is_unavailable() = runTest {
-        val vm = viewModel(syncRepository = FakeSyncRepository(isAvailable = false))
+        val repository = FakeSyncRepository(isAvailable = false)
+        val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
 
-        vm.onSignInClicked()
+        vm.onSignInClicked(SyncProvider.GITHUB)
+        advanceUntilIdle()
 
-        assertEquals(false, vm.state.value.sync.isEnteringEmail)
+        assertNull(vm.state.value.sync.pendingAuthUrl)
+        assertNull(repository.requestedProvider, "an unavailable build must not reach the backend at all")
         assertEquals("Sync isn't set up for this build", vm.state.value.sync.message)
     }
 
     @Test
-    fun onSignInEmailConfirmed_requests_a_code_and_opens_the_code_step() = runTest {
-        val repository = FakeSyncRepository()
-        val vm = viewModel(syncRepository = repository)
+    fun the_url_is_consumed_once_so_returning_to_the_screen_does_not_reopen_the_browser() = runTest {
+        val vm = viewModel(syncRepository = FakeSyncRepository())
         advanceUntilIdle()
-        vm.onSignInClicked()
-
-        vm.onSignInEmailConfirmed("person@example.com")
+        vm.onSignInClicked(SyncProvider.GITHUB)
         advanceUntilIdle()
 
-        assertEquals("person@example.com", repository.requestedEmail)
-        assertEquals(false, vm.state.value.sync.isEnteringEmail)
-        assertTrue(vm.state.value.sync.isEnteringCode)
-        assertEquals("person@example.com", vm.state.value.sync.pendingEmail)
+        vm.authUrlOpened()
+
+        assertNull(vm.state.value.sync.pendingAuthUrl)
     }
 
     @Test
-    fun onSignInCodeConfirmed_signs_in_on_success_and_triggers_a_sync() = runTest {
-        val repository = FakeSyncRepository()
-        val vm = viewModel(syncRepository = repository)
-        advanceUntilIdle()
-        vm.onSignInClicked()
-        vm.onSignInEmailConfirmed("person@example.com")
-        advanceUntilIdle()
-
-        vm.onSignInCodeConfirmed("123456")
-        advanceUntilIdle()
-
-        assertEquals("123456", repository.verifiedCode)
-        assertEquals(false, vm.state.value.sync.isEnteringCode)
-        assertEquals(SyncAccountState.SignedIn("person@example.com"), vm.state.value.sync.account)
-    }
-
-    @Test
-    fun onSignInCodeConfirmed_keeps_the_dialog_open_on_a_wrong_code() = runTest {
+    fun a_failure_to_start_sign_in_is_reported_and_opens_no_browser() = runTest {
         val repository = FakeSyncRepository().apply {
-            verifySignInCodeResult = Result.failure(IllegalStateException("Invalid code"))
+            beginSignInResult = Result.failure(IllegalStateException("Provider not enabled"))
         }
         val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
-        vm.onSignInClicked()
-        vm.onSignInEmailConfirmed("person@example.com")
+
+        vm.onSignInClicked(SyncProvider.GITHUB)
         advanceUntilIdle()
 
-        vm.onSignInCodeConfirmed("000000")
+        assertNull(vm.state.value.sync.pendingAuthUrl)
+        assertEquals("Provider not enabled", vm.state.value.sync.message)
+    }
+
+    @Test
+    fun signing_in_arrives_through_the_account_stream_not_a_return_value() = runTest {
+        // The redirect lands in MainActivity, which may be long after this
+        // ViewModel is gone — so the only thing that can report success is the
+        // account Flow this class already collects.
+        val repository = FakeSyncRepository()
+        val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
 
-        assertTrue(vm.state.value.sync.isEnteringCode)
-        assertEquals("Invalid code", vm.state.value.sync.message)
+        repository.completeSignIn("auth-code")
+        advanceUntilIdle()
+
+        assertEquals(SyncAccountState.SignedIn("person@example.com"), vm.state.value.sync.account)
     }
 
     @Test

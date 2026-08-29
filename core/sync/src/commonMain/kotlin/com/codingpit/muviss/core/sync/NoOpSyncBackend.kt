@@ -23,9 +23,9 @@ class NoOpSyncBackend : SyncBackend {
 
     override suspend fun signInAnonymously(): Result<SyncSession> = Result.failure(notConfigured())
 
-    override suspend fun requestEmailOtp(email: String): Result<Unit> = Result.failure(notConfigured())
+    override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String> = Result.failure(notConfigured())
 
-    override suspend fun verifyEmailOtp(email: String, code: String): Result<SyncSession> = Result.failure(notConfigured())
+    override suspend fun completeOAuth(authCode: String): Result<SyncSession> = Result.failure(notConfigured())
 
     override suspend fun signOut() = Unit
 
@@ -34,6 +34,6 @@ class NoOpSyncBackend : SyncBackend {
     override suspend fun pull(sinceEpochMs: Long?): Result<SyncChangeSet> = Result.success(SyncChangeSet())
 
     private fun notConfigured(): IllegalStateException = IllegalStateException(
-        "Sync is not configured: no SUPABASE_URL/SUPABASE_ANON_KEY in local.properties (see docs/SYNC.md).",
+        "Sync is not configured: SYNC_ENABLED and SUPABASE_URL/SUPABASE_ANON_KEY must all be set in local.properties (see docs/SYNC.md).",
     )
 }

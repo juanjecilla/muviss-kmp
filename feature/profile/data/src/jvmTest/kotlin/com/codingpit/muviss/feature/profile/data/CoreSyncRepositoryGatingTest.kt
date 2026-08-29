@@ -10,6 +10,8 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.EntitlementGate
+import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
+import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
@@ -18,6 +20,7 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
+import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +29,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The two gates the profile screen has to tell apart (ADR 0012): a build
@@ -49,8 +53,9 @@ class CoreSyncRepositoryGatingTest {
         override val id = SyncBackendId.SUPABASE
         override val session: Flow<SyncSession?> = MutableStateFlow(session)
         override suspend fun signInAnonymously() = error("not used")
-        override suspend fun requestEmailOtp(email: String) = Result.success(Unit)
-        override suspend fun verifyEmailOtp(email: String, code: String) = error("not used")
+        override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String) = Result.success("https://stub.test/authorize?provider=${provider.wireName}&redirect_to=$redirectUri")
+
+        override suspend fun completeOAuth(authCode: String) = error("not used")
         override suspend fun signOut() = Unit
         override suspend fun push(changes: SyncChangeSet) = Result.success(Unit)
         override suspend fun pull(sinceEpochMs: Long?) = Result.success(SyncChangeSet())
@@ -139,5 +144,19 @@ class CoreSyncRepositoryGatingTest {
         val outcome = repository(entitlement = Entitlement.Active).syncNow()
 
         assertEquals(SyncOutcomeSummary.Success(syncedAtEpochMs = 1_000L), outcome)
+    }
+
+    @Test
+    fun sign_in_asks_for_the_redirect_the_manifest_and_supabase_agree_on() = runTest {
+        val url = repository().beginSignIn(SyncProvider.GITHUB).getOrThrow()
+
+        // The redirect has to be byte-identical in three places that cannot
+        // reference each other — this constant, the Android manifest's intent
+        // filter, and Supabase's additional_redirect_urls. GoTrue rejects a
+        // redirect that is not on its allow-list, so a drift here fails at the
+        // browser rather than at compile time.
+        assertEquals("muviss://auth-callback", OAUTH_REDIRECT_URI)
+        assertTrue(url.contains("redirect_to=$OAUTH_REDIRECT_URI"), "expected the redirect in: $url")
+        assertTrue(url.contains("provider=github"), "expected the provider in: $url")
     }
 }
