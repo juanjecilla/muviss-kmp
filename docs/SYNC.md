@@ -33,9 +33,26 @@ row and a paywall. Those are deliberately opposite, see ADR 0012.
 3. **Email OTP**: Authentication → Providers → Email is on by default;
    confirm "Confirm email" / OTP length settings match what you want users to
    see (Muviss expects a 6-digit code, GoTrue's default).
-4. Run the SQL below in the SQL Editor (Database → SQL Editor) to create the
-   four synced tables, their Row Level Security policies, and the
-   last-write-wins trigger.
+4. Apply the schema — six synced tables, their Row Level Security policies,
+   the last-write-wins trigger and the pull-cursor indexes:
+
+   ```bash
+   brew install supabase/tap/supabase   # once
+   supabase login                       # opens a browser
+   supabase link --project-ref <your-project-ref>
+   supabase db push
+   ```
+
+   The schema lives in `supabase/migrations/` and **that file is the source of
+   truth**, not the SQL quoted below. It used to be the other way round: the
+   only copy was fenced in this document, so standing up a project was a
+   copy-paste job that left no record of what had actually been applied and no
+   way to tell two projects apart. The block below is kept for reading; if the
+   two ever disagree, the migration is right.
+
+   The CLI never sees `SUPABASE_ANON_KEY` — it authenticates with your own
+   account token from `supabase login`, and `supabase link` stores only the
+   project ref. Neither belongs in `local.properties`.
 5. Copy the project's URL and anon (public) key (Project Settings → API)
    into `local.properties` (gitignored, never commit real keys):
 
@@ -56,6 +73,12 @@ row and a paywall. Those are deliberately opposite, see ADR 0012.
    properties builds and runs exactly as before, with sync hidden.
 
 ## Schema
+
+> Reference copy. The executable one is
+> `supabase/migrations/20260829000000_sync_schema.sql`, applied with
+> `supabase db push` — see step 4 above. That file additionally creates a
+> `(user_id, updated_at_epoch_ms)` index per table, which is what keeps
+> `SyncEngine`'s `gt.<cursor>` pull a range scan as a library grows.
 
 One table per synced local table (`collectionEntry`, `episodeProgress`,
 `mediaList`, `listEntry`, `triageDecision`, `episodePlay` — see their `.sq`

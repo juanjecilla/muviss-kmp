@@ -44,3 +44,8 @@ Pods/
 # Web
 node_modules/
 kotlin-js-store/
+
+# Supabase CLI: local state and the linked project ref (supabase/.temp),
+# never the migrations — those are the schema's source of truth (docs/SYNC.md).
+supabase/.temp/
+supabase/.branches/
