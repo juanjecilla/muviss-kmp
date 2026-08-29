@@ -68,6 +68,13 @@ data class ProfileStats(
     val ratedCount: Int = 0,
     /** The genre with the highest average personal rating, once enough titles in it are rated (EPIC 15); null otherwise. */
     val topRatedGenre: GenreRating? = null,
+    /**
+     * The handful of most-rewatched saved titles, shows and movies together,
+     * for the profile card that opens the full ranking. Empty until something
+     * has been watched a second time — which is every install's day one, since
+     * ADR 0011's backfill gave each already-seen episode exactly one viewing.
+     */
+    val mostRewatched: List<RewatchEntry> = emptyList(),
 ) {
     /** True once the library has no saved titles at all — the screen's empty-state trigger. */
     val isEmpty: Boolean get() = statusBreakdown.total == 0

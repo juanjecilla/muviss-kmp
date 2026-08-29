@@ -67,6 +67,15 @@ class SqlDelightProgressRepository(
         .mapToList(dispatchers.io)
         .map { rows -> rows.map { EpisodePlay(episodeId, it.watchedAtEpochMs) } }
 
+    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = playQueries.rewatchCountsByMedia(sinceEpochMs)
+        .asFlow()
+        .mapToList(dispatchers.io)
+        .map { rows -> rows.associate { MediaId.parse(it.mediaId) to it.rewatches.toInt() } }
+
+    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = playQueries.rewatchTimestamps(sinceEpochMs)
+        .asFlow()
+        .mapToList(dispatchers.io)
+
     override suspend fun setSeen(episodeId: EpisodeId, seen: Boolean) = withContext(dispatchers.io) {
         val now = clock.nowEpochMs()
         queries.transaction {

@@ -48,6 +48,31 @@ interface ProgressApi {
     fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>>
 
     /**
+     * How many *rewatches* each title has accumulated since [sinceEpochMs]
+     * (0 for all time) — the profile's "most rewatched" ranking.
+     *
+     * A rewatch is a viewing that has an earlier viewing of the same episode
+     * behind it, at any date. The bound applies to the rewatch itself and
+     * never to the first viewing, so an episode first seen last December and
+     * watched again in March counts as a rewatch *in March* rather than
+     * disappearing at the year boundary. A show's number therefore counts
+     * episode rewatches and a film's counts viewings beyond the first; a
+     * first watch-through scores zero however long the show is. See ADR 0012.
+     *
+     * Titles no longer in the library are still reported here — filtering to
+     * the library is the caller's decision, and the profile ranking makes it
+     * by joining these counts onto what the collection holds.
+     */
+    fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>>
+
+    /**
+     * The timestamp of every rewatch since [sinceEpochMs], across every
+     * title — the raw input the profile's rewatch trend buckets into months.
+     * Same definition of "rewatch" as [observeRewatchCounts].
+     */
+    fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>>
+
+    /**
      * Ticks a single episode, e.g. a per-episode checkmark in Detail.
      *
      * `true` records a first viewing and is idempotent — re-asserting "seen"

@@ -30,6 +30,12 @@ interface ProgressRepository {
     /** Every viewing of [episodeId], newest first. */
     fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>>
 
+    /** Rewatches per title since [sinceEpochMs] — see [com.codingpit.muviss.feature.progress.api.ProgressApi.observeRewatchCounts]. */
+    fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>>
+
+    /** Every rewatch's timestamp since [sinceEpochMs], across all titles. */
+    fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>>
+
     /** Adds a viewing and ticks the episode. */
     suspend fun recordPlay(episodeId: EpisodeId)
 

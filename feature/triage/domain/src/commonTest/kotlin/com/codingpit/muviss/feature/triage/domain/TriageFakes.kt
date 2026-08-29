@@ -98,6 +98,10 @@ internal class FakeProgressApi : ProgressApi {
 
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
     override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowOf(emptyList())
+
+    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
+
+    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
     override suspend fun recordPlay(episodeId: EpisodeId) = Unit
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = Unit
     override suspend fun clearPlays(episodeId: EpisodeId) = Unit
