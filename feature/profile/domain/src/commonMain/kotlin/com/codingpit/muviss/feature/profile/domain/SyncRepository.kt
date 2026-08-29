@@ -35,6 +35,18 @@ interface SyncRepository {
     /** Completes sign-in from the `code` carried by a [beginSignIn] redirect. */
     suspend fun completeSignIn(authCode: String): Result<Unit>
 
+    /**
+     * Why the last sign-in attempt failed, or null.
+     *
+     * A stream rather than [completeSignIn]'s return value because the two can
+     * happen in different places: the redirect is redeemed at app scope, which
+     * may be while no profile screen exists (ADR 0014). Cleared through
+     * [signInFailureShown] once displayed.
+     */
+    fun observeSignInFailure(): Flow<String?>
+
+    fun signInFailureShown()
+
     suspend fun signOut()
 
     /** Runs one push+pull cycle. */

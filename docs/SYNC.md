@@ -27,9 +27,10 @@ row and a paywall. Those are deliberately opposite, see ADR 0012.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. **Enable anonymous sign-ins** (Authentication → Providers → Anonymous
-   Sign-Ins) if you intend to use `SyncBackend.signInAnonymously` — the
-   shipped Profile UI only wires the email one-time-code flow, so this is
-   optional for the app as it stands today.
+   Sign-Ins) only if you intend to use `SyncBackend.signInAnonymously`. The
+   shipped UI does not: an anonymous user is per-device, so two devices get two
+   identities and nothing syncs between them (ADR 0014). It stays on the
+   interface for a future entry point, and this step is optional today.
 3. **Sign-in is OAuth (ADR 0014).** Muviss sends no email at all — the email
    one-time-code flow was removed because Supabase's free tier refuses to
    customise the email templates, and its stock ones send a clickable link
@@ -313,51 +314,39 @@ Plain HTTP against GoTrue (`{SUPABASE_URL}/auth/v1/...`), not the
 All require an `apikey: <anon key>` header; those acting on an existing
 session additionally send `Authorization: Bearer <access_token>`.
 
-## What's not verified
+## Verification status
 
-`SupabaseSyncBackend` now has its own tests (`SupabaseSyncBackendTest`, over a
-Ktor `MockEngine`) covering status handling, token refresh, refresh-on-401 and
-the sign-out-on-dead-refresh path; `SyncEngine` is still tested against the
-in-memory `FakeSyncBackend`. Neither talks to a network, by design.
+Verified against the live project (`sodjedenvnvsuktbxevt`, eu-west-1) on
+2026-08-29, on an Android device:
 
-**Verified against the live project** (`sodjedenvnvsuktbxevt`, eu-west-1) on
-2026-08-29:
-
-- The migration applies. All six tables exist with their primary keys and
+- **The schema applies.** All six tables with their primary keys and
   `(user_id, updated_at_epoch_ms)` indexes.
 - **RLS blocks cross-user access.** An unauthenticated `GET` with the anon key
-  returns `200 []` on every table, and a `POST` is refused with `401`. The
-  `200` is the correct result, not a leak: `auth.uid()` is null for an
-  unauthenticated request, so the `using (auth.uid() = user_id)` policy matches
-  no rows and PostgREST returns an empty set rather than an error. A `200` with
-  rows in it would be the leak.
+  returns `200 []` on every table and a `POST` is refused `401`. The `200` is
+  the correct result, not a leak: `auth.uid()` is null without a token, so the
+  policy matches no rows. A `200` *with rows* would be the leak.
+- **OAuth round trip.** GitHub authorize → redirect → code exchange → session
+  persisted, then a full push and pull. Device and server row counts matched
+  exactly across all six tables.
+- **`discard_stale_write()` fires on the upsert path.** A write with an older
+  `updated_at_epoch_ms` returned `200` and left the row untouched; a newer one
+  applied. This is the assumption the push-then-pull ordering rests on — push
+  is unconditional *because* the server drops stale writes — and the 2xx on a
+  discarded write is exactly why "the request succeeded" is not evidence.
+- **Rewatch history crosses the wire**, carrying the derived ids `7.sqm`
+  backfilled (ADR 0013).
+- **The v7 → v8 migration runs on a real device**, against a seeded database:
+  version bumped, `episodePlay` rebuilt, every row preserved with its id
+  derived, `lastSyncedAtEpochMs` untouched.
 
-What no test can establish is whether the rest of the server behaves as
-assumed. Still open, and each needs a real signed-in session:
+Re-run any of these with `scripts/sync/` — see that directory's README.
 
-- **The OAuth round trip** (`beginOAuth` → browser → provider →
-  `muviss://auth-callback` → `completeOAuth`) against GoTrue's actual response
-  shapes. Nothing before this point exercises a real GoTrue response. Needs
-  the GitHub OAuth app from step 3 to exist first.
-  *(The email one-time-code flow this replaced was attempted on 2026-08-29 and
-  could not be completed — see ADR 0014.)*
-- **Token refresh end to end.** Sign in, leave the app more than an hour,
-  return, and confirm sync still succeeds. The client-side logic is tested;
-  what is not is whether GoTrue's `/token` response deserializes into
-  `GoTrueSessionDto` as expected.
-- **Failure actually surfaces.** Break the anon key on purpose, sync, and
-  confirm the profile screen reports a failure rather than "Synced just now".
-- The `discard_stale_write()` trigger actually fires on a `resolution=merge-
-  duplicates` upsert as described (verified against PostgREST's documented
-  behavior, not against a running project). This is the one the whole
-  push-then-pull ordering rests on: push is unconditional precisely because the
-  server is supposed to discard a stale write, so if the trigger does not fire
-  on the upsert path, two devices silently stop converging.
-- A fresh install signing in restores the full library + progress (issue
-  #8's acceptance criterion) end to end against real data.
-- **Rewatch history crosses devices** (ADR 0013): tick an episode twice on one
-  device, sync both, confirm the other reads "watched 2x"; then clear the
-  history on the second and confirm the first drops to zero.
-- With `SYNC_ENABLED` unset, a release build shows **no sync row at all** on
-  the profile screen. Confirm `SYNC_ENABLED`, `SYNC_ENTITLEMENT_OVERRIDE` and
-  both Supabase keys are absent from `.github/workflows/release.yml`'s `env:`.
+## Still open
+
+- **Token refresh against a live session.** The logic is covered by
+  `SupabaseSyncBackendTest` over a `MockEngine`, but nothing has yet watched a
+  real Supabase token cross its one-hour expiry. Sign in, leave the app more
+  than an hour, return, and confirm sync still succeeds.
+- **Fresh-install restore** (issue #8's acceptance criterion). Clearing the app
+  data and signing in again should bring the whole library back from the
+  server. The pull path is exercised, but not from an empty database.

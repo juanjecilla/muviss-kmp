@@ -39,6 +39,7 @@ import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
@@ -154,20 +155,38 @@ private fun AutoSyncOnForeground() {
  * receive it. Nothing is returned to a caller — `SyncBackend.session` is a
  * Flow, so a successful exchange reaches the profile screen on its own.
  *
- * A failure is deliberately quiet here: the session simply stays signed out
- * and the sign-in button is still there, which is both the correct state and
- * the recovery. Surfacing it would mean inventing an app-level error channel
- * for a screen that may not exist.
+ * A failure is reported through [SignInFeedback] rather than dropped. It used
+ * to be dropped, on the reasoning that staying signed out was itself the
+ * correct state and the recovery — which was true and still useless: sign-in
+ * shipped broken, and a failure that looks identical to "not attempted" hid it
+ * through three rounds of diagnosis.
  */
 @Composable
 private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
     val backend = koinInject<SyncBackend>()
     val syncEngine = koinInject<SyncEngine>()
+    val feedback = koinInject<SignInFeedback>()
+    // The exchange deliberately runs in the composition's scope rather than the
+    // effect's own. Consuming the code clears the state this effect is keyed
+    // on, and a LaunchedEffect is cancelled the moment its key changes — so
+    // doing the work inside it would abort at the first suspension point,
+    // which is the exchange itself. Sign-in then failed silently every time.
+    // rememberCoroutineScope outlives a key change; it ends when the composable
+    // leaves composition.
+    val scope = rememberCoroutineScope()
     LaunchedEffect(authCode) {
-        if (authCode == null) return@LaunchedEffect
-        // Consume first: a recomposition must not redeem a single-use code twice.
+        val code = authCode ?: return@LaunchedEffect
+        // Still consumed immediately: the code is single-use server-side, and
+        // re-delivering the same intent must not redeem it twice.
         onConsumed()
-        if (backend.completeOAuth(authCode).isSuccess) syncEngine.syncNow()
+        scope.launch {
+            backend.completeOAuth(code)
+                .onSuccess { syncEngine.syncNow() }
+                // Reported rather than swallowed: this is the only place that
+                // knows why sign-in failed, and the profile screen is the only
+                // place that can say so.
+                .onFailure { feedback.report(it.message) }
+        }
     }
 }
 

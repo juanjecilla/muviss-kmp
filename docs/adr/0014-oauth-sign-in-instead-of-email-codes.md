@@ -106,11 +106,35 @@ fails at the browser, not at compile time, so a test pins the constant.
   so `MuvissApp` redeems it at app scope and the signed-in state reaches the
   UI through `SyncBackend.session` — which is already a Flow. This is the same
   reasoning that put `AutoSyncOnForeground` there.
+- **The exchange runs in the composition's scope, not the effect's**, and that
+  is load-bearing rather than stylistic. The first version awaited it inside
+  the `LaunchedEffect` keyed on the incoming code, and consumed the code first
+  so a re-delivered intent could not redeem it twice. Consuming clears the key;
+  a `LaunchedEffect` is cancelled the moment its key changes; the first
+  suspension point is the exchange. The guard destroyed the work it guarded,
+  and sign-in could never have succeeded on any device. `rememberCoroutineScope`
+  survives a key change and ends only when the composable leaves composition.
+  `OAuthRedirectCompletionTest` pins both arrangements — the fixed one to prove
+  it completes, the original to prove the test can still tell them apart.
 - The PKCE verifier is held **in memory only**. Persisting it would mean a
   migration for a value that lives as long as a browser visit; the cost is
   that a process death mid-sign-in loses the attempt and the user taps the
   button again. The verifier is single-use and cleared on both success and
-  failure, so a replayed redirect cannot redeem a second code.
+  failure, so a replayed redirect cannot redeem a second code. Reconsidered
+  after live testing and kept: GoTrue's own flow state expires in five minutes
+  (`defaultFlowStateExpiryDuration`), so the server already bounds the window
+  the verifier has to survive, and with the failure now visible a lost attempt
+  says so instead of failing mutely.
+- **A failed sign-in is reported**, through `SignInFeedback` — a small shared
+  `Flow<String?>` in `:core:sync`, written where the code is redeemed and read
+  by the profile screen. The failure and the only screen that can describe it
+  are in different places, so a `Result` had nowhere to go and the first
+  version simply dropped it. That was justified at the time as "staying signed
+  out is itself the correct state", which was true and useless: it made a
+  broken sign-in indistinguishable from one never attempted, and hid the
+  cancellation bug above through three rounds of diagnosis. The message is
+  GoTrue's own text, because "code challenge does not match" is what tells
+  anyone where to look.
 - `SyncAccountState.SignedIn.email` stays nullable — a GitHub account with a
   private email signs in without one, where the code flow always had an
   address by construction.
@@ -126,3 +150,16 @@ fails at the browser, not at compile time, so a test pins the constant.
 - `supabase/config.toml` no longer carries email templates, which is what
   unblocked `supabase config push` — the auth update is atomic, so while the
   templates were in the file nothing else in `[auth]` could be applied either.
+
+## Verified against the live project
+
+Signed in on an Android device against project `sodjedenvnvsuktbxevt` on
+2026-08-29: GitHub authorize round trip, code exchange, session persisted,
+followed by a full push of the local library and a pull back. Device and
+server row counts matched exactly across all six tables, including
+`episode_play` rows carrying the derived ids from `7.sqm`'s backfill.
+
+`scripts/sync/` holds the checks that cannot be unit-tested because they live
+on the server — RLS, the last-write-wins trigger, and a sign-in diagnosis
+walk-through. Each was written against a real failure; see that directory's
+README.

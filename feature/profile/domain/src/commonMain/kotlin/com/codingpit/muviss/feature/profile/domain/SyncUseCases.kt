@@ -33,6 +33,10 @@ class SyncActions(
 
     suspend fun completeSignIn(authCode: String): Result<Unit> = repository.completeSignIn(authCode)
 
+    fun observeSignInFailure(): Flow<String?> = repository.observeSignInFailure()
+
+    fun signInFailureShown() = repository.signInFailureShown()
+
     suspend fun signOut() = repository.signOut()
 
     suspend fun syncNow(): SyncOutcomeSummary = repository.syncNow()

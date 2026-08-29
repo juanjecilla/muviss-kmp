@@ -43,6 +43,7 @@ jobs:
       - name: Unit tests (JVM)
         run: >
           ./gradlew
+          :app:shared:jvmTest
           :core:model:jvmTest
           :core:designsystem:jvmTest
           :core:testing:jvmTest

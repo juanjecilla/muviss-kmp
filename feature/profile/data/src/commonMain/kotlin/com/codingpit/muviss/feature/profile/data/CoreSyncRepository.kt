@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.profile.data
 import com.codingpit.muviss.core.billing.EntitlementProvider
 import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
 import com.codingpit.muviss.core.sync.OAuthProvider
+import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncEngine
@@ -28,6 +29,7 @@ class CoreSyncRepository(
     private val backend: SyncBackend,
     private val engine: SyncEngine,
     private val entitlements: EntitlementProvider,
+    private val signInFeedback: SignInFeedback,
 ) : SyncRepository {
 
     override val isAvailable: Boolean get() = availability.isConfigured()
@@ -59,6 +61,10 @@ class CoreSyncRepository(
     override suspend fun beginSignIn(provider: SyncProvider): Result<String> = backend.beginOAuth(provider = provider.toBackend(), redirectUri = OAUTH_REDIRECT_URI)
 
     override suspend fun completeSignIn(authCode: String): Result<Unit> = backend.completeOAuth(authCode).map { }
+
+    override fun observeSignInFailure(): Flow<String?> = signInFeedback.lastFailure
+
+    override fun signInFailureShown() = signInFeedback.consume()
 
     private fun SyncProvider.toBackend(): OAuthProvider = when (this) {
         SyncProvider.GITHUB -> OAuthProvider.GITHUB

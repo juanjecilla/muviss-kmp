@@ -95,6 +95,13 @@ class ProfileViewModel(
                 }
             }
             .launchIn(viewModelScope)
+
+        // Sign-in can fail while this screen does not exist — the redirect is
+        // redeemed at app scope (ADR 0014) — so the reason arrives here as a
+        // stream rather than as a call's return value.
+        syncActions.observeSignInFailure()
+            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = failure)) } }
+            .launchIn(viewModelScope)
     }
 
     fun onEditNameRequested() {
@@ -163,6 +170,9 @@ class ProfileViewModel(
 
     fun syncMessageShown() {
         _state.update { it.copy(sync = it.sync.copy(message = null)) }
+        // Also clears the shared sign-in failure, or it would be re-emitted to
+        // the next collector and the message would come back.
+        syncActions.signInFailureShown()
     }
 
     private suspend fun runSyncNow() {

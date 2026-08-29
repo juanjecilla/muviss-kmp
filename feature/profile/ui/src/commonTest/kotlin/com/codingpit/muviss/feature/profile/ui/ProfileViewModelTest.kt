@@ -116,6 +116,8 @@ private class FakeSyncRepository(
     var completeSignInResult: Result<Unit> = Result.success(Unit)
     var syncNowResult: SyncOutcomeSummary = SyncOutcomeSummary.Success(1_000L)
     var signOutCalled = false
+    val signInFailure = MutableStateFlow<String?>(null)
+    var failureShownCount = 0
 
     override fun observeAccount(): Flow<SyncAccountState> = account
 
@@ -130,6 +132,13 @@ private class FakeSyncRepository(
         completedCode = authCode
         if (completeSignInResult.isSuccess) account.value = SyncAccountState.SignedIn("person@example.com")
         return completeSignInResult
+    }
+
+    override fun observeSignInFailure(): Flow<String?> = signInFailure
+
+    override fun signInFailureShown() {
+        failureShownCount++
+        signInFailure.value = null
     }
 
     override suspend fun signOut() {
@@ -283,6 +292,40 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         assertEquals(SyncAccountState.SignedIn("person@example.com"), vm.state.value.sync.account)
+    }
+
+    @Test
+    fun a_sign_in_failure_reaches_the_screen_even_though_it_happened_elsewhere() = runTest {
+        // The redirect is redeemed at app scope, so the failure arrives on a
+        // stream rather than as any call's return value. Before this existed a
+        // broken sign-in was indistinguishable from one never attempted, which
+        // is how a cancelled exchange shipped (ADR 0014).
+        val repository = FakeSyncRepository()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        repository.signInFailure.value = "code challenge does not match"
+        advanceUntilIdle()
+
+        assertEquals("code challenge does not match", vm.state.value.sync.message)
+    }
+
+    @Test
+    fun showing_the_failure_clears_it_so_it_does_not_come_back() = runTest {
+        val repository = FakeSyncRepository()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        repository.signInFailure.value = "invalid grant"
+        advanceUntilIdle()
+
+        vm.syncMessageShown()
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.sync.message)
+        // Cleared at the source too: the failure is shared state, so leaving it
+        // set would re-deliver it to the next collector.
+        assertEquals(1, repository.failureShownCount)
+        assertNull(repository.signInFailure.value)
     }
 
     @Test

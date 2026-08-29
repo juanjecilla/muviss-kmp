@@ -12,6 +12,7 @@ import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
 import com.codingpit.muviss.core.sync.OAuthProvider
+import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
@@ -90,6 +91,7 @@ class CoreSyncRepositoryGatingTest {
             backend = backend,
             engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), FixedClock(), gate),
             entitlements = StubEntitlements(entitlement),
+            signInFeedback = SignInFeedback(),
         )
     }
 

@@ -5,6 +5,7 @@ import com.codingpit.muviss.core.network.createHttpClient
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.MuvissBuildConfig
 import com.codingpit.muviss.core.sync.NoOpSyncBackend
+import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SqlDelightSyncSessionStore
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -36,6 +37,7 @@ val syncModule: Module = module {
         }
     }
     single<EntitlementGate> { EntitlementGate.AlwaysEntitled }
+    single { SignInFeedback() }
     single { get<MuvissDatabase>().syncAccountQueries }
     single<SyncSessionStore> { SqlDelightSyncSessionStore(get()) }
     single<SyncBackend> {
