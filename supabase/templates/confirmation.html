@@ -1,0 +1,19 @@
+<!--
+  Sign-in code for a first-time address (GoTrue's "Confirm signup"
+  template). Muviss sends POST /auth/v1/otp with create_user: true, so a
+  brand-new email takes this path rather than the magic-link one — both
+  need to carry a code, or signing in works only for people who already
+  have an account.
+
+  See magic_link.html for why {{ .Token }} replaces the stock
+  {{ .ConfirmationURL }}.
+-->
+<h2>Your Muviss sign-in code</h2>
+
+<p>Welcome. Enter this code in the app to finish setting up sync:</p>
+
+<p style="font-size: 32px; font-weight: 700; letter-spacing: 6px; margin: 24px 0;">
+  {{ .Token }}
+</p>
+
+<p>The code expires in an hour. If you didn't ask to sign in, ignore this email — no account has been created.</p>

@@ -155,11 +155,15 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+# Matches the linked project rather than the CLI's local default, so
+# `supabase config push` only ever changes what this file deliberately
+# differs on. Muviss never follows an auth redirect — sign-in is a typed
+# code, not a link — so this value only matters to keep the diff empty.
+site_url = "http://localhost:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = []
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -222,12 +226,20 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# True to match the linked project. Harmless for the code flow: typing the
+# emailed code is itself the confirmation.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
-# Number of characters used in the email OTP.
+# 1m0s matches the linked project. Worth knowing while testing sign-in:
+# asking for a second code inside a minute is rejected, which looks like the
+# app failing rather than a rate limit.
+max_frequency = "1m0s"
+# Number of characters used in the email OTP. A deliberate difference from
+# the linked project, which is still on GoTrue's 8: docs/SYNC.md and the
+# sign-in dialog both describe a six-digit code. Applying it needs the same
+# `supabase config push` that the email templates below are waiting on.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
@@ -241,6 +253,21 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
+
+# Muviss signs in with a typed six-digit code, not a clickable link (ADR
+# 0009). GoTrue's stock templates render {{ .ConfirmationURL }}, so out of
+# the box the email contains nothing to type and the link bounces off
+# site_url — which is exactly what happened the first time this was tried.
+# Both templates are needed: /auth/v1/otp sends `magic_link` to an address
+# that already has a user and `confirmation` to a brand-new one, and Muviss
+# passes create_user: true, so a first-time sign-in takes the latter path.
+[auth.email.template.magic_link]
+subject = "Your Muviss sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
+subject = "Your Muviss sign-in code"
+content_path = "./supabase/templates/confirmation.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -299,8 +326,11 @@ max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+# True to match the linked project. Muviss does not use MFA, but a config
+# push that silently turned it off would be a security change nobody asked
+# for — this file only differs from the project where it means to.
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

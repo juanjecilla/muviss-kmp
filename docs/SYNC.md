@@ -30,9 +30,43 @@ row and a paywall. Those are deliberately opposite, see ADR 0012.
    Sign-Ins) if you intend to use `SyncBackend.signInAnonymously` — the
    shipped Profile UI only wires the email one-time-code flow, so this is
    optional for the app as it stands today.
-3. **Email OTP**: Authentication → Providers → Email is on by default;
-   confirm "Confirm email" / OTP length settings match what you want users to
-   see (Muviss expects a 6-digit code, GoTrue's default).
+3. **Email OTP — the stock templates do not work, and this is the trap.**
+   Authentication → Providers → Email is on by default, but GoTrue's default
+   `confirmation` and `magic_link` templates both render
+   `{{ .ConfirmationURL }}`: the user gets a clickable *link*, while Muviss's
+   profile screen asks them to type a *code*. There is nothing in the email
+   to type, and following the link instead bounces off `site_url` with
+   `error_code=otp_expired`, which reads like a broken token rather than a
+   template mismatch. The OTP itself is fine — it is simply never shown.
+
+   The fix is `{{ .Token }}` in both templates. Both, not one:
+   `POST /auth/v1/otp` sends `magic_link` to an address that already has a
+   user and `confirmation` to a new one, and Muviss passes
+   `create_user: true`. Both live in `supabase/templates/`, wired up in
+   `supabase/config.toml`, and apply with:
+
+   ```bash
+   supabase config push
+   ```
+
+   **On the free tier that push is refused** unless the project uses custom
+   SMTP:
+
+   > Email template modification is not available for free tier projects
+   > using the default email provider. Please upgrade your plan or configure
+   > a custom SMTP provider.
+
+   So sign-in needs a custom SMTP provider (Authentication → Emails → SMTP
+   Settings) before it can work at all. That is worth doing regardless: the
+   built-in sender is rate-limited to a couple of emails an hour and Supabase
+   documents it as unsuitable for production.
+
+   Two further settings worth knowing while testing: `max_frequency` is one
+   minute, so asking for a second code too quickly is rejected in a way that
+   looks like the app failing; and the project ships `otp_length = 8` while
+   this repo's config and docs assume 6 — `supabase config push` reconciles
+   that in the same call as the templates, since the auth update is atomic
+   and currently fails as a whole.
 4. Apply the schema — six synced tables, their Row Level Security policies,
    the last-write-wins trigger and the pull-cursor indexes:
 
@@ -311,7 +345,10 @@ assumed. Still open, and each needs a real signed-in session:
 
 - **Email OTP round trip** (`requestEmailOtp` → real inbox → `verifyEmailOtp`)
   against GoTrue's actual response shapes. Nothing before this point exercises
-  a real GoTrue response.
+  a real GoTrue response. Attempted 2026-08-29 and **blocked**: the request
+  side works — a real email arrived — but the stock template carries a link
+  rather than a code, so there was nothing to type, and the link failed with
+  `otp_expired`. Blocked on custom SMTP; see step 3.
 - **Token refresh end to end.** Sign in, leave the app more than an hour,
   return, and confirm sync still succeeds. The client-side logic is tested;
   what is not is whether GoTrue's `/token` response deserializes into
