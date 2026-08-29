@@ -294,8 +294,20 @@ Ktor `MockEngine`) covering status handling, token refresh, refresh-on-401 and
 the sign-out-on-dead-refresh path; `SyncEngine` is still tested against the
 in-memory `FakeSyncBackend`. Neither talks to a network, by design.
 
-What no test can establish is whether the real server behaves as assumed.
-Provision a project per the steps above and check, in order:
+**Verified against the live project** (`sodjedenvnvsuktbxevt`, eu-west-1) on
+2026-08-29:
+
+- The migration applies. All six tables exist with their primary keys and
+  `(user_id, updated_at_epoch_ms)` indexes.
+- **RLS blocks cross-user access.** An unauthenticated `GET` with the anon key
+  returns `200 []` on every table, and a `POST` is refused with `401`. The
+  `200` is the correct result, not a leak: `auth.uid()` is null for an
+  unauthenticated request, so the `using (auth.uid() = user_id)` policy matches
+  no rows and PostgREST returns an empty set rather than an error. A `200` with
+  rows in it would be the leak.
+
+What no test can establish is whether the rest of the server behaves as
+assumed. Still open, and each needs a real signed-in session:
 
 - **Email OTP round trip** (`requestEmailOtp` → real inbox → `verifyEmailOtp`)
   against GoTrue's actual response shapes. Nothing before this point exercises
@@ -308,9 +320,10 @@ Provision a project per the steps above and check, in order:
   confirm the profile screen reports a failure rather than "Synced just now".
 - The `discard_stale_write()` trigger actually fires on a `resolution=merge-
   duplicates` upsert as described (verified against PostgREST's documented
-  behavior, not against a running project).
-- RLS policies block cross-user access as intended — a second account must see
-  an empty table.
+  behavior, not against a running project). This is the one the whole
+  push-then-pull ordering rests on: push is unconditional precisely because the
+  server is supposed to discard a stale write, so if the trigger does not fire
+  on the upsert path, two devices silently stop converging.
 - A fresh install signing in restores the full library + progress (issue
   #8's acceptance criterion) end to end against real data.
 - **Rewatch history crosses devices** (ADR 0013): tick an episode twice on one
