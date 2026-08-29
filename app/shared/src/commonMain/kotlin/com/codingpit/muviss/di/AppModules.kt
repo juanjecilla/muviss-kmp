@@ -1,5 +1,6 @@
 package com.codingpit.muviss.di
 
+import com.codingpit.muviss.core.billing.di.billingModule
 import com.codingpit.muviss.core.common.di.commonModule
 import com.codingpit.muviss.core.database.di.databaseModule
 import com.codingpit.muviss.core.network.di.networkModule
@@ -24,7 +25,11 @@ val appModules: List<Module> =
         commonModule,
         databaseModule,
         networkModule,
+        billingModule,
         syncModule,
+        // After syncModule: it overrides that module's permissive default
+        // EntitlementGate, and Koin's last binding wins.
+        billingSyncBridgeModule,
         searchDataModule,
         searchUiModule,
         collectionDataModule,

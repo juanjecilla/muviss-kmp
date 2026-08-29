@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.profile.data
 
+import com.codingpit.muviss.core.billing.EntitlementProvider
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncEngine
@@ -8,6 +9,7 @@ import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 /**
@@ -22,13 +24,28 @@ class CoreSyncRepository(
     private val availability: SyncAvailability,
     private val backend: SyncBackend,
     private val engine: SyncEngine,
+    private val entitlements: EntitlementProvider,
 ) : SyncRepository {
 
     override val isAvailable: Boolean get() = availability.isConfigured()
 
-    override fun observeAccount(): Flow<SyncAccountState> = backend.session.map { session ->
+    /**
+     * Combined rather than read once, because an entitlement changes while the
+     * app is open — a purchase completes, a subscription lapses, a refund
+     * lands — and the sync section has to follow it without a restart.
+     *
+     * Locked outranks the session states on purpose: a paywall is what an
+     * unentitled user needs to see whether or not they happen to be signed in,
+     * and [SyncAccountState.Locked] carries the email so signing out stays
+     * reachable from behind it.
+     */
+    override fun observeAccount(): Flow<SyncAccountState> = combine(
+        backend.session,
+        entitlements.entitlement,
+    ) { session, entitlement ->
         when {
             !isAvailable -> SyncAccountState.Unavailable
+            !entitlement.isEntitled -> SyncAccountState.Locked(session?.email)
             session == null -> SyncAccountState.SignedOut
             else -> SyncAccountState.SignedIn(session.email)
         }
@@ -46,6 +63,7 @@ class CoreSyncRepository(
         if (!isAvailable) return SyncOutcomeSummary.Unavailable
         return when (val outcome = engine.syncNow()) {
             SyncOutcome.NotSignedIn -> SyncOutcomeSummary.NotSignedIn
+            SyncOutcome.NotEntitled -> SyncOutcomeSummary.NotEntitled
             is SyncOutcome.Success -> SyncOutcomeSummary.Success(outcome.syncedAtEpochMs)
             is SyncOutcome.Failed -> SyncOutcomeSummary.Failed(outcome.message)
         }

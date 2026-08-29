@@ -35,15 +35,26 @@ jobs:
       # compared here, not just recorded: MuvissTheme sets a bundled font on
       # every text style, so a screenshot is the same on this runner as on a
       # developer's machine bar antialiasing, which the tolerance absorbs.
+      #
+      # This is an allowlist, so a module missing from it is a module whose
+      # tests never run. :core:sync and :core:database were both absent —
+      # every sync and migration test written since EPIC 9 had only ever run
+      # on a developer's machine.
       - name: Unit tests (JVM)
         run: >
           ./gradlew
           :core:model:jvmTest
           :core:designsystem:jvmTest
           :core:testing:jvmTest
+          :core:billing:jvmTest
+          :core:database:jvmTest
+          :core:sync:jvmTest
           :feature:search:data:jvmTest
           :feature:search:ui:jvmTest
           :feature:triage:ui:jvmTest
+          :feature:profile:data:jvmTest
+          :feature:progress:data:jvmTest
+          :feature:settings:data:jvmTest
           :server:test
           --continue
           --stacktrace

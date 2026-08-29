@@ -54,6 +54,7 @@ kotlin {
             implementation(projects.core.designsystem)
             implementation(projects.core.network)
             implementation(projects.core.database)
+            implementation(projects.core.billing)
             implementation(projects.core.sync)
 
             // Feature UI (screens + nav sections)

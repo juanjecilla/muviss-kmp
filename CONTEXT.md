@@ -44,9 +44,17 @@ _Avoid_: state, phase.
 **Favorite**:
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 
+**Play**:
+One viewing of one MediaItem, with the moment it happened. Rewatching adds a Play; it never increments a counter, so "how often did I rewatch this year" stays answerable (ADR 0011). A Play's identity comes from the viewing itself, not from the device that recorded it, which is what lets rewatch history cross devices (ADR 0013).
+_Avoid_: view, watch (both read as verbs); rewatch (that is the second Play, not the concept); play count (that is derived from these, never stored).
+
 **SyncEngine**:
-The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row.
+The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row. Refuses to run without an Entitlement (ADR 0012).
 _Avoid_: backend, cloud (those are vendors behind this seam).
+
+**Entitlement**:
+Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. Independent of being signed in — one is bought, the other is an account (ADR 0012).
+_Avoid_: subscription, purchase, licence (those are how an Entitlement is acquired, and vendors behind that seam); premium, pro (those name a tier this app does not have).
 
 **Triage**:
 Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on.

@@ -61,6 +61,10 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    // Purely presentational — whether a sheet is open is not something the
+    // ViewModel or the domain has any use for.
+    val paywall = rememberPaywallPresenter()
+    var paywallVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.sync.message) {
         val message = state.sync.message ?: return@LaunchedEffect
@@ -98,6 +102,7 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
                 onSignInClicked = viewModel::onSignInClicked,
                 onSyncNowClicked = viewModel::onSyncNowClicked,
                 onSignOutClicked = viewModel::onSignOutClicked,
+                onUnlockClicked = { paywallVisible = true },
             )
             HorizontalDivider()
 
@@ -107,6 +112,8 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
                 StatsSection(state.stats)
             }
         }
+
+        paywall.Paywall(visible = paywallVisible, onDismiss = { paywallVisible = false })
 
         if (state.isEditingName) {
             EditNameDialog(
@@ -210,6 +217,10 @@ private fun EditNameDialog(
  * for this build ([SyncAccountState.Unavailable]) — the entry point is
  * hidden entirely rather than shown disabled, same contract as a blank
  * Sentry DSN (CLAUDE.md).
+ *
+ * [SyncAccountState.Locked] is the deliberate opposite (ADR 0012): the build
+ * has sync, the user has not bought it, so the row appears and offers the
+ * purchase. Hiding it would leave a paid feature undiscoverable.
  */
 @Composable
 private fun SyncSection(
@@ -217,6 +228,7 @@ private fun SyncSection(
     onSignInClicked: () -> Unit,
     onSyncNowClicked: () -> Unit,
     onSignOutClicked: () -> Unit,
+    onUnlockClicked: () -> Unit,
 ) {
     val account = sync.account
     if (account == SyncAccountState.Unavailable) return
@@ -239,6 +251,24 @@ private fun SyncSection(
             )
             when (account) {
                 SyncAccountState.Unavailable -> Unit
+
+                is SyncAccountState.Locked -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Sync across devices", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Keep your library, progress and rewatch history on every device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = onUnlockClicked) { Text("Unlock sync") }
+                        // A lapsed subscriber is still signed in; without this
+                        // the paywall would be the only thing they can reach.
+                        if (account.email != null) {
+                            TextButton(onClick = onSignOutClicked, enabled = !sync.syncing) { Text("Sign out") }
+                        }
+                    }
+                }
 
                 SyncAccountState.SignedOut -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Account", style = MaterialTheme.typography.titleSmall)

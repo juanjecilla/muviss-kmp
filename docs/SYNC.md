@@ -6,10 +6,22 @@ the design rationale (multi-backend seam, plain Ktor over `supabase-kt`,
 last-write-wins conflict resolution) — this document is the concrete
 Supabase project setup and the SQL schema `SupabaseSyncBackend` talks to.
 
-Sync is entirely **optional**: with no keys configured, `SyncAvailability`
-reports unconfigured, `di/SyncModule.kt` binds `NoOpSyncBackend`, and the
-profile screen hides the sync section outright. Nothing else about the app
-changes.
+Sync is entirely **optional**, and gated twice (ADR 0012):
+
+1. **Build gate** — `SYNC_ENABLED` *and* both Supabase keys must be present.
+   Miss any of the three and `SyncAvailability` reports unconfigured,
+   `di/SyncModule.kt` binds `NoOpSyncBackend`, and the profile screen hides
+   the sync section outright. Nothing else about the app changes. Release CI
+   sets none of them, which is what keeps sync out of production.
+2. **Entitlement gate** — sync is a paid feature. `SyncEngine.syncNow()`
+   consults an `EntitlementGate` and returns `NotEntitled` if the user has not
+   paid, so `MuvissApp`'s foreground auto-sync is covered too. With no store
+   wired up (every build today) `:core:billing` binds `NoEntitlementProvider`,
+   which reports Inactive — set `SYNC_ENTITLEMENT_OVERRIDE=true` in
+   `local.properties` to grant it to your own build.
+
+An unavailable build renders no sync UI at all; an unentitled one renders the
+row and a paywall. Those are deliberately opposite, see ADR 0012.
 
 ## Setting up a Supabase project
 
@@ -28,9 +40,15 @@ changes.
    into `local.properties` (gitignored, never commit real keys):
 
    ```properties
+   SYNC_ENABLED=true
+   SYNC_ENTITLEMENT_OVERRIDE=true
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_ANON_KEY=your-anon-key
    ```
+
+   Note that Supabase's free tier **pauses a project after 7 days of
+   inactivity**. A paused project fails in a way that reads like an app bug;
+   check the dashboard before debugging the client.
 
    Same generated-constant mechanism as `TMDB_API_KEY` and `SENTRY_DSN` (ADR
    0007) — read by `core/sync/build.gradle.kts` at build time, baked into
@@ -40,7 +58,8 @@ changes.
 ## Schema
 
 One table per synced local table (`collectionEntry`, `episodeProgress`,
-`mediaList`, `listEntry` — see their `.sq` files in `core/database`), each
+`mediaList`, `listEntry`, `triageDecision`, `episodePlay` — see their `.sq`
+files in `core/database`), each
 keyed by `(user_id, <the local table's own natural key>)`. Column names are
 `snake_case` versions of the local column names (PostgREST convention);
 `SyncChangeSet`'s `@SerialName` annotations (`core/sync`) match these exactly.
@@ -173,6 +192,26 @@ create policy "own rows only" on triage_decision
 create trigger triage_decision_lww
   before update on triage_decision
   for each row execute function discard_stale_write();
+
+-- episode_play -- (ADR 0013)
+create table episode_play (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  id text not null,
+  episode_id text not null,
+  media_id text not null,
+  watched_at_epoch_ms bigint not null,
+  updated_at_epoch_ms bigint not null,
+  deleted boolean not null default false,
+  primary key (user_id, id)
+);
+
+alter table episode_play enable row level security;
+create policy "own rows only" on episode_play
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create trigger episode_play_lww
+  before update on episode_play
+  for each row execute function discard_stale_write();
 ```
 
 Notes:
@@ -188,6 +227,16 @@ Notes:
   update` branch is exactly what fires `discard_stale_write()`'s `before
   update` trigger, so first-time inserts and later updates both go through
   the same client call.
+- Every response's HTTP status is checked (`SupabaseHttp.kt`). The shared
+  Ktor client has `expectSuccess` off, and `upsert` returns `Unit`, so a
+  rejected push used to be indistinguishable from an accepted one —
+  `SyncEngine` would clear `isDirty` on rows the server never took and never
+  retry them, leaving a library that looks synced and restores incomplete.
+- `episode_play`'s primary key is the *derived* id
+  `episodeId@watchedAtEpochMs`, not a per-device surrogate — see ADR 0013.
+  It carries `deleted` because last-write-wins cannot express a hard delete:
+  a physically removed row has no timestamp left to compare, so the other
+  device's older copy would just be pushed back.
 - `triage_decision` (ADR 0010) carries its own `title`/`poster_url` because a
   `SKIP` verdict writes no `collection_entry` row to join against — the
   Skipped screen renders straight off these. Unlike
@@ -209,6 +258,7 @@ Plain HTTP against GoTrue (`{SUPABASE_URL}/auth/v1/...`), not the
 | `POST /auth/v1/signup` (empty body) | `signInAnonymously` — GoTrue's anonymous sign-in shape, requires the project setting from step 2 above |
 | `POST /auth/v1/otp` `{ "email", "create_user": true }` | `requestEmailOtp` |
 | `POST /auth/v1/verify` `{ "type": "email", "email", "token" }` | `verifyEmailOtp` — `type: "email"` is GoTrue's OTP-code verification path, distinct from `"magiclink"` |
+| `POST /auth/v1/token?grant_type=refresh_token` `{ "refresh_token" }` | `refreshSession` — Supabase access tokens last about an hour, so without this a session stops syncing the same day it is created and only a re-login recovers. GoTrue **rotates** the refresh token on every use, so the returned one is the one to keep |
 | `POST /auth/v1/logout` | `signOut` |
 
 All four also require an `apikey: <anon key>` header; the three that act on
@@ -216,16 +266,33 @@ an existing session additionally send `Authorization: Bearer <access_token>`.
 
 ## What's not verified
 
-This pass has no live Supabase project wired up — `SyncEngine` is tested
-against an in-memory `FakeSyncBackend` only (see `core/sync/src/jvmTest`),
-by design (no live network calls in tests). Before relying on this in
-production, provision a real project per the steps above and manually check:
+`SupabaseSyncBackend` now has its own tests (`SupabaseSyncBackendTest`, over a
+Ktor `MockEngine`) covering status handling, token refresh, refresh-on-401 and
+the sign-out-on-dead-refresh path; `SyncEngine` is still tested against the
+in-memory `FakeSyncBackend`. Neither talks to a network, by design.
 
-- Email OTP round trip (`requestEmailOtp` → real inbox → `verifyEmailOtp`)
-  against GoTrue's actual response shapes.
+What no test can establish is whether the real server behaves as assumed.
+Provision a project per the steps above and check, in order:
+
+- **Email OTP round trip** (`requestEmailOtp` → real inbox → `verifyEmailOtp`)
+  against GoTrue's actual response shapes. Nothing before this point exercises
+  a real GoTrue response.
+- **Token refresh end to end.** Sign in, leave the app more than an hour,
+  return, and confirm sync still succeeds. The client-side logic is tested;
+  what is not is whether GoTrue's `/token` response deserializes into
+  `GoTrueSessionDto` as expected.
+- **Failure actually surfaces.** Break the anon key on purpose, sync, and
+  confirm the profile screen reports a failure rather than "Synced just now".
 - The `discard_stale_write()` trigger actually fires on a `resolution=merge-
   duplicates` upsert as described (verified against PostgREST's documented
   behavior, not against a running project).
-- RLS policies block cross-user access as intended.
+- RLS policies block cross-user access as intended — a second account must see
+  an empty table.
 - A fresh install signing in restores the full library + progress (issue
   #8's acceptance criterion) end to end against real data.
+- **Rewatch history crosses devices** (ADR 0013): tick an episode twice on one
+  device, sync both, confirm the other reads "watched 2x"; then clear the
+  history on the second and confirm the first drops to zero.
+- With `SYNC_ENABLED` unset, a release build shows **no sync row at all** on
+  the profile screen. Confirm `SYNC_ENABLED`, `SYNC_ENTITLEMENT_OVERRIDE` and
+  both Supabase keys are absent from `.github/workflows/release.yml`'s `env:`.

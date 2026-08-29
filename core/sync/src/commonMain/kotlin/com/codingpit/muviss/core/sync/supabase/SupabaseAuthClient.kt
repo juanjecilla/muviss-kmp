@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -16,10 +17,15 @@ private object EmptyBody
 
 /**
  * Thin wrapper over Supabase Auth (GoTrue)'s REST endpoints, exactly the
- * four this app needs (anonymous sign-in, request OTP, verify OTP, sign
- * out) — see ADR 0009 for why this is plain Ktor rather than the
+ * five this app needs (anonymous sign-in, request OTP, verify OTP, refresh,
+ * sign out) — see ADR 0009 for why this is plain Ktor rather than the
  * `supabase-kt` SDK, and docs/SYNC.md for the endpoint reference this was
  * built against.
+ *
+ * Every call checks its status (see [ensureSuccess]): a wrong code, a rate
+ * limit or an unconfigured provider all answer 4xx with a JSON body, which
+ * `body()` alone would either swallow or report as an unrelated
+ * deserialization failure.
  */
 internal class SupabaseAuthClient(
     private val client: HttpClient,
@@ -30,28 +36,41 @@ internal class SupabaseAuthClient(
     suspend fun signInAnonymously(): GoTrueSessionDto = client.post("$baseUrl/auth/v1/signup") {
         applyAuthHeaders()
         setBody(EmptyBody)
-    }.body()
+    }.also { it.ensureSuccess("anonymous sign-in") }.body()
 
     /** `POST /auth/v1/otp`. No session yet — the user must supply the code they receive via [verifyEmailOtp]. */
     suspend fun requestEmailOtp(email: String) {
         client.post("$baseUrl/auth/v1/otp") {
             applyAuthHeaders()
             setBody(OtpRequestDto(email = email))
-        }
+        }.ensureSuccess("email OTP request")
     }
 
     /** `POST /auth/v1/verify` with `type = "email"` — completes the OTP challenge and returns a real session. */
     suspend fun verifyEmailOtp(email: String, token: String): GoTrueSessionDto = client.post("$baseUrl/auth/v1/verify") {
         applyAuthHeaders()
         setBody(VerifyOtpRequestDto(email = email, token = token))
-    }.body()
+    }.also { it.ensureSuccess("email OTP verification") }.body()
+
+    /**
+     * `POST /auth/v1/token?grant_type=refresh_token`. Supabase access tokens
+     * expire in about an hour; without this a session signed in on Monday
+     * stops syncing on Monday and never recovers on its own. GoTrue rotates
+     * the refresh token on every use, so the returned session — not the one
+     * that was passed in — is the one to persist.
+     */
+    suspend fun refreshSession(refreshToken: String): GoTrueSessionDto = client.post("$baseUrl/auth/v1/token") {
+        applyAuthHeaders()
+        parameter("grant_type", "refresh_token")
+        setBody(RefreshTokenRequestDto(refreshToken = refreshToken))
+    }.also { it.ensureSuccess("session refresh") }.body()
 
     /** `POST /auth/v1/logout`, scoped to just this session's own token (not `scope=global`, which would sign the account out everywhere). */
     suspend fun signOut(accessToken: String) {
         client.post("$baseUrl/auth/v1/logout") {
             applyAuthHeaders()
             header(HttpHeaders.Authorization, "Bearer $accessToken")
-        }
+        }.ensureSuccess("sign out")
     }
 
     private fun HttpRequestBuilder.applyAuthHeaders() {

@@ -57,6 +57,7 @@ include(":core:model")
 include(":core:database")
 include(":core:network")
 include(":core:designsystem")
+include(":core:billing")
 include(":core:sync")
 include(":core:testing")
 

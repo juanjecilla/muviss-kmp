@@ -126,7 +126,7 @@ class SqlDelightProgressRepository(
     override suspend fun clearForMedia(mediaId: MediaId) = withContext(dispatchers.io) {
         val now = clock.nowEpochMs()
         queries.transaction {
-            playQueries.deleteAllForMedia(mediaId.toString())
+            playQueries.deleteAllForMedia(updatedAtEpochMs = now, mediaId = mediaId.toString())
             queries.clearForMedia(now = now, mediaId = mediaId.toString())
         }
     }
@@ -141,27 +141,39 @@ class SqlDelightProgressRepository(
     }
 
     private suspend fun forget(episodeId: EpisodeId, now: Long) {
-        playQueries.deleteAllForEpisode(episodeId.toString())
+        playQueries.deleteAllForEpisode(updatedAtEpochMs = now, episodeId = episodeId.toString())
         upsertSeen(episodeId, seen = false, now = now)
     }
 
     /** `seen` follows the remaining history: the last viewing removed is what un-ticks the episode. */
     private suspend fun dropLatestPlay(episodeId: EpisodeId, now: Long) {
         if (playCountOf(episodeId) == 0L) return
-        playQueries.deleteLatestForEpisode(episodeId.toString())
+        playQueries.deleteLatestForEpisode(updatedAtEpochMs = now, episodeId = episodeId.toString())
         upsertSeen(episodeId, seen = playCountOf(episodeId) > 0L, now = now)
     }
 
     private suspend fun playCountOf(episodeId: EpisodeId): Long = playQueries.countForEpisode(episodeId.toString()).awaitAsOne()
 
     private suspend fun insertPlay(episodeId: EpisodeId, now: Long) {
-        playQueries.insert(
+        playQueries.upsert(
+            id = playId(episodeId, now),
             episodeId = episodeId.toString(),
             mediaId = episodeId.show.toString(),
             watchedAtEpochMs = now,
+            updatedAtEpochMs = now,
             isDirty = true,
+            deleted = false,
         )
     }
+
+    /**
+     * A play's identity, derived from the viewing rather than allocated by the
+     * device that recorded it — the same expression `7.sqm` backfills with, and
+     * the reason rewatch history can cross devices at all (ADR 0013). Two
+     * viewings of one episode in the same millisecond therefore collapse into
+     * one row; that is not reachable by tapping.
+     */
+    private fun playId(episodeId: EpisodeId, watchedAtEpochMs: Long): String = "$episodeId@$watchedAtEpochMs"
 
     private suspend fun upsertSeen(episodeId: EpisodeId, seen: Boolean, now: Long) {
         queries.upsert(

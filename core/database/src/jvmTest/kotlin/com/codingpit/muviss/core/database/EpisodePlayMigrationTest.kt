@@ -122,10 +122,18 @@ class EpisodePlayMigrationTest {
 
         runBlocking {
             listOf(1_000L, 2_000L, 3_000L).forEach {
-                database.episodePlayQueries.insert("tmdb:tv:1399/3/5", "tmdb:tv:1399", it, true)
+                database.episodePlayQueries.upsert(
+                    id = "tmdb:tv:1399/3/5@$it",
+                    episodeId = "tmdb:tv:1399/3/5",
+                    mediaId = "tmdb:tv:1399",
+                    watchedAtEpochMs = it,
+                    updatedAtEpochMs = it,
+                    isDirty = true,
+                    deleted = false,
+                )
             }
 
-            database.episodePlayQueries.deleteLatestForEpisode("tmdb:tv:1399/3/5")
+            database.episodePlayQueries.deleteLatestForEpisode(updatedAtEpochMs = 4_000L, episodeId = "tmdb:tv:1399/3/5")
 
             assertEquals(2, database.episodePlayQueries.countForEpisode("tmdb:tv:1399/3/5").executeAsOne().toInt())
             assertEquals(

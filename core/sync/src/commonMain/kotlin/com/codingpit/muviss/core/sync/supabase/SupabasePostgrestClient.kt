@@ -15,7 +15,7 @@ import io.ktor.http.contentType
 /**
  * Thin wrapper over Supabase's PostgREST table endpoints
  * (`/rest/v1/<table>`), generic over the row type so [upsert]/[selectSince]
- * work for all four synced tables without four near-identical copies. Every
+ * work for every synced table without one near-identical copy each. Every
  * table's Postgres row carries `user_id`, populated by a `DEFAULT auth.uid()`
  * column server-side (see docs/SYNC.md's schema) — the client never sends it
  * explicitly, RLS is what actually enforces a user only ever sees/writes
@@ -32,22 +32,29 @@ internal class SupabasePostgrestClient(
     private val baseUrl: String,
     private val anonKey: String,
 ) {
-    suspend inline fun <reified T> upsert(table: String, accessToken: String, rows: List<T>) {
+    internal suspend inline fun <reified T> upsert(table: String, accessToken: String, rows: List<T>) {
         if (rows.isEmpty()) return
         client.post("$baseUrl/rest/v1/$table") {
             applyHeaders(accessToken)
             header(HttpHeaders.Prefer, "resolution=merge-duplicates,return=minimal")
             setBody(rows)
-        }
+        }.ensureSuccess("upsert into $table")
     }
 
-    suspend inline fun <reified T> selectSince(table: String, accessToken: String, sinceEpochMs: Long?): List<T> = client.get("$baseUrl/rest/v1/$table") {
-        applyHeaders(accessToken)
-        parameter("select", "*")
-        if (sinceEpochMs != null) {
-            parameter("updated_at_epoch_ms", "gt.$sinceEpochMs")
+    internal suspend inline fun <reified T> selectSince(table: String, accessToken: String, sinceEpochMs: Long?): List<T> {
+        val response = client.get("$baseUrl/rest/v1/$table") {
+            applyHeaders(accessToken)
+            parameter("select", "*")
+            if (sinceEpochMs != null) {
+                parameter("updated_at_epoch_ms", "gt.$sinceEpochMs")
+            }
         }
-    }.body()
+        // Before body(), not after: PostgREST answers an error with a JSON
+        // *object*, so deserializing it as List<T> would fail with a
+        // serialization error that names neither the status nor the cause.
+        response.ensureSuccess("select from $table")
+        return response.body()
+    }
 
     fun HttpRequestBuilder.applyHeaders(accessToken: String) {
         header("apikey", anonKey)

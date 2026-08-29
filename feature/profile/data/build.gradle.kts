@@ -11,6 +11,7 @@ kotlin {
             implementation(projects.feature.progress.api)
             implementation(projects.core.common)
             implementation(projects.core.database)
+            implementation(projects.core.billing)
             implementation(projects.core.sync)
             implementation(libs.koin.core)
             implementation(libs.kotlinx.coroutinesCore)

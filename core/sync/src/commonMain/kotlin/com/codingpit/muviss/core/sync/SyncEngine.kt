@@ -10,8 +10,11 @@ import com.codingpit.muviss.core.database.MuvissDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
+import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
@@ -21,6 +24,13 @@ import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 sealed interface SyncOutcome {
     /** No [SyncBackend] session exists — sync was skipped, not attempted. Not an error: this is the default, pre-sign-in state. */
     data object NotSignedIn : SyncOutcome
+
+    /**
+     * [EntitlementGate] said no — sync was skipped, not attempted, and not an
+     * error either. Distinct from [NotSignedIn] because the two need opposite
+     * things from the user: one a sign-in, the other a purchase.
+     */
+    data object NotEntitled : SyncOutcome
 
     data class Success(val pushedCount: Int, val pulledCount: Int, val syncedAtEpochMs: Long) : SyncOutcome
 
@@ -54,7 +64,19 @@ class SyncEngine(
     private val database: MuvissDatabase,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
+    private val entitlementGate: EntitlementGate = EntitlementGate.AlwaysEntitled,
 ) {
+    /**
+     * One cycle at a time. Two callers can otherwise overlap — `MuvissApp`'s
+     * `AutoSyncOnForeground` fires on every `ON_START` while the profile
+     * screen's "Sync now" button is a tap away — and interleaving them can
+     * lose an edit: run A reads the dirty set, run B reads it too, the user
+     * edits a row, then A's `clearDirty` marks that row clean for a push that
+     * predates the edit. The second caller waits rather than returning early,
+     * so a manual tap still reflects everything the user just did.
+     */
+    private val syncMutex = Mutex()
+
     /** The last time [syncNow] completed a full cycle, or null if it never has. Backs the profile screen's "last synced" label. */
     fun observeLastSyncedAt(): Flow<Long?> = database.appSettingsQueries.selectSettings()
         .asFlow()
@@ -63,11 +85,14 @@ class SyncEngine(
 
     suspend fun syncNow(): SyncOutcome = withContext(dispatchers.io) {
         backend.session.first() ?: return@withContext SyncOutcome.NotSignedIn
-        runCatching { runSync() }
-            .fold(
-                onSuccess = { it },
-                onFailure = { e -> SyncOutcome.Failed(e.message ?: "Sync failed") },
-            )
+        if (!entitlementGate.isEntitled()) return@withContext SyncOutcome.NotEntitled
+        syncMutex.withLock {
+            runCatching { runSync() }
+                .fold(
+                    onSuccess = { it },
+                    onFailure = { e -> SyncOutcome.Failed(e.message ?: "Sync failed") },
+                )
+        }
     }
 
     private suspend fun runSync(): SyncOutcome {
@@ -78,10 +103,16 @@ class SyncEngine(
         }
 
         database.appSettingsQueries.ensureRow()
-        val lastSyncedAt = database.appSettingsQueries.selectSettings().awaitAsOneOrNull()?.lastSyncedAtEpochMs
-        val remote = backend.pull(lastSyncedAt).getOrThrow()
+        val cursor = database.appSettingsQueries.selectSettings().awaitAsOneOrNull()?.syncCursorEpochMs
+        val remote = backend.pull(cursor).getOrThrow()
         applyRemote(remote)
 
+        // Two different timestamps, deliberately not one column (they used to
+        // be): the cursor is stamped by whichever device wrote the rows and
+        // only ever moves forward to a value the server actually returned,
+        // while "last synced" answers "when did this device last run a cycle"
+        // and must advance even when the pull came back empty.
+        database.appSettingsQueries.updateSyncCursor(maxOf(remote.maxUpdatedAtEpochMs ?: 0L, cursor ?: 0L).takeIf { it > 0L })
         val now = clock.nowEpochMs()
         database.appSettingsQueries.updateLastSyncedAt(now)
         return SyncOutcome.Success(pushedCount = dirty.size, pulledCount = remote.size, syncedAtEpochMs = now)
@@ -93,6 +124,7 @@ class SyncEngine(
         mediaLists = database.mediaListQueries.selectDirtyLists().awaitAsList().map { it.toChange() },
         listEntries = database.mediaListQueries.selectDirtyEntries().awaitAsList().map { it.toChange() },
         triageDecisions = database.triageDecisionQueries.selectDirty().awaitAsList().map { it.toChange() },
+        episodePlays = database.episodePlayQueries.selectDirty().awaitAsList().map { it.toChange() },
     )
 
     private suspend fun clearDirty(dirty: SyncChangeSet) {
@@ -101,6 +133,7 @@ class SyncEngine(
         dirty.mediaLists.forEach { database.mediaListQueries.clearDirtyList(it.id) }
         dirty.listEntries.forEach { database.mediaListQueries.clearDirtyEntry(listId = it.listId, mediaId = it.mediaId) }
         dirty.triageDecisions.forEach { database.triageDecisionQueries.clearDirty(it.mediaId) }
+        dirty.episodePlays.forEach { database.episodePlayQueries.clearDirty(it.id) }
     }
 
     private suspend fun applyRemote(remote: SyncChangeSet) {
@@ -109,6 +142,7 @@ class SyncEngine(
         remote.mediaLists.forEach { change -> applyMediaList(change) }
         remote.listEntries.forEach { change -> applyListEntry(change) }
         remote.triageDecisions.forEach { change -> applyTriageDecision(change) }
+        remote.episodePlays.forEach { change -> applyEpisodePlay(change) }
     }
 
     /** Never resurrects a tombstone and never overwrites a newer local edit — see the class KDoc's "Order" section. Applies unconditionally when no local row exists (first sync on a fresh install). */
@@ -195,6 +229,20 @@ class SyncEngine(
         )
     }
 
+    private suspend fun applyEpisodePlay(change: EpisodePlayChange) {
+        val local = database.episodePlayQueries.selectById(change.id).awaitAsOneOrNull()
+        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
+        database.episodePlayQueries.upsert(
+            id = change.id,
+            episodeId = change.episodeId,
+            mediaId = change.mediaId,
+            watchedAtEpochMs = change.watchedAtEpochMs,
+            updatedAtEpochMs = change.updatedAtEpochMs,
+            isDirty = false,
+            deleted = change.deleted,
+        )
+    }
+
     private fun CollectionEntryRow.toChange() = CollectionEntryChange(
         mediaId = mediaId,
         mediaType = mediaType,
@@ -235,6 +283,15 @@ class SyncEngine(
         listId = listId,
         mediaId = mediaId,
         addedAtEpochMs = addedAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+        deleted = deleted,
+    )
+
+    private fun EpisodePlayRow.toChange() = EpisodePlayChange(
+        id = id,
+        episodeId = episodeId,
+        mediaId = mediaId,
+        watchedAtEpochMs = watchedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
         deleted = deleted,
     )

@@ -183,7 +183,14 @@ class ProfileViewModel(
         val outcome = syncActions.syncNow()
         val message = when (outcome) {
             SyncOutcomeSummary.Unavailable, SyncOutcomeSummary.NotSignedIn -> null
+
+            // Worth a message, unlike the two above: those states have no
+            // visible sync button to have been pressed, whereas an entitlement
+            // can lapse while the screen is open and leave a stale one there.
+            SyncOutcomeSummary.NotEntitled -> "Sync is a paid feature"
+
             is SyncOutcomeSummary.Success -> "Synced"
+
             is SyncOutcomeSummary.Failed -> outcome.message
         }
         _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }

@@ -32,6 +32,12 @@ internal data class OtpRequestDto(
     @SerialName("create_user") val createUser: Boolean = true,
 )
 
+/** POST `/auth/v1/token?grant_type=refresh_token` body. The response is a full [GoTrueSessionDto] with a *rotated* refresh token — GoTrue invalidates the one sent here. */
+@Serializable
+internal data class RefreshTokenRequestDto(
+    @SerialName("refresh_token") val refreshToken: String,
+)
+
 /** POST `/auth/v1/verify` body. `type = "email"` is GoTrue's OTP-code verification path (distinct from `"magiclink"`, which verifies a link token instead — see docs/SYNC.md). */
 @Serializable
 internal data class VerifyOtpRequestDto(
