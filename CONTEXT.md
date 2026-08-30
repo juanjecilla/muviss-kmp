@@ -31,7 +31,16 @@ A MediaItem the user has saved, together with a denormalized snapshot taken at s
 _Avoid_: favourite (that is a separate flag), bookmark.
 
 **Snapshot**:
-The copy of render- and status-relevant fields (title, poster, episode list, aired count, production status) stored locally when a title is saved.
+The copy of render- and status-relevant fields (title, poster, aired count, production status) stored locally when a title is saved, so a CollectionEntry is browsable offline. Written once, at save time, and refreshed with the library — not the episode list, which is the EpisodeCatalog and has its own lifecycle.
+_Avoid_: cache (that is the EpisodeCatalog).
+
+**EpisodeCatalog**:
+A show's seasons and episodes as the source reported them, stored locally and refreshed on its own cadence. Not the user's data — nobody authors it, a refetch always wins over what is stored, and it is neither synced nor exported. Distinct from a Snapshot, which is the user's saved row.
+_Avoid_: snapshot, episode list, seasons (as a stored thing).
+
+**WatchNext**:
+The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
+_Avoid_: up next, continue watching, queue (a watchlist is a CollectionEntry with NotStarted status); upcoming (that is future air dates, a different question).
 
 **WatchProgress**:
 The user's per-episode ticks (and movie seen flag). The single source of truth for how far they've watched.

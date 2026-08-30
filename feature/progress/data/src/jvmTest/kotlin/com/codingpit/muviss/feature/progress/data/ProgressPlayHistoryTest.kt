@@ -7,6 +7,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
@@ -58,6 +59,7 @@ class ProgressPlayHistoryTest {
             database.episodePlayQueries,
             PlayDispatchers(UnconfinedTestDispatcher()),
             clock,
+            NoOpWidgetRefresher,
         )
     }
 

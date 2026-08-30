@@ -4,6 +4,7 @@ package com.codingpit.muviss.feature.triage.data
 
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
@@ -64,7 +65,7 @@ class TriageCollectionProgressIntegrationTest {
         val dispatchers = ImmediateDispatchers(UnconfinedTestDispatcher())
         val clock = FakeClock()
 
-        val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock)
+        val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApi(progressRepository)
         collectionApi = RealCollectionApi(
             SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi),

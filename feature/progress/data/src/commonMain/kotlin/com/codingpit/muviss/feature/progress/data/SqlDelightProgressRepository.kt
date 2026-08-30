@@ -7,6 +7,7 @@ import app.cash.sqldelight.coroutines.mapToOne
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.epochDayOf
+import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
@@ -40,6 +41,7 @@ class SqlDelightProgressRepository(
     private val playQueries: EpisodePlayQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
+    private val widgetRefresher: WidgetRefresher,
 ) : ProgressRepository {
 
     override fun observeForMedia(mediaId: MediaId): Flow<List<EpisodeProgress>> = queries.selectForMedia(mediaId.toString())
@@ -76,14 +78,14 @@ class SqlDelightProgressRepository(
         .asFlow()
         .mapToList(dispatchers.io)
 
-    override suspend fun setSeen(episodeId: EpisodeId, seen: Boolean) = withContext(dispatchers.io) {
+    override suspend fun setSeen(episodeId: EpisodeId, seen: Boolean) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction {
             if (seen) recordFirstPlayIfUnseen(episodeId, now) else forget(episodeId, now)
         }
     }
 
-    override suspend fun setSeenBulk(episodeIds: List<EpisodeId>, seen: Boolean) = withContext(dispatchers.io) {
+    override suspend fun setSeenBulk(episodeIds: List<EpisodeId>, seen: Boolean) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction {
             episodeIds.forEach { episodeId ->
@@ -92,7 +94,7 @@ class SqlDelightProgressRepository(
         }
     }
 
-    override suspend fun recordPlay(episodeId: EpisodeId) = withContext(dispatchers.io) {
+    override suspend fun recordPlay(episodeId: EpisodeId) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction {
             insertPlay(episodeId, now)
@@ -100,7 +102,7 @@ class SqlDelightProgressRepository(
         }
     }
 
-    override suspend fun recordPlaysForUnseen(episodeIds: List<EpisodeId>): List<EpisodeId> = withContext(dispatchers.io) {
+    override suspend fun recordPlaysForUnseen(episodeIds: List<EpisodeId>): List<EpisodeId> = mutate {
         val now = clock.nowEpochMs()
         val written = mutableListOf<EpisodeId>()
         queries.transaction {
@@ -115,29 +117,45 @@ class SqlDelightProgressRepository(
         written
     }
 
-    override suspend fun removeLatestPlay(episodeId: EpisodeId) = withContext(dispatchers.io) {
+    override suspend fun removeLatestPlay(episodeId: EpisodeId) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction { dropLatestPlay(episodeId, now) }
     }
 
-    override suspend fun removeLatestPlays(episodeIds: List<EpisodeId>) = withContext(dispatchers.io) {
+    override suspend fun removeLatestPlays(episodeIds: List<EpisodeId>) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction {
             episodeIds.forEach { episodeId -> dropLatestPlay(episodeId, now) }
         }
     }
 
-    override suspend fun clearPlays(episodeId: EpisodeId) = withContext(dispatchers.io) {
+    override suspend fun clearPlays(episodeId: EpisodeId) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction { forget(episodeId, now) }
     }
 
-    override suspend fun clearForMedia(mediaId: MediaId) = withContext(dispatchers.io) {
+    override suspend fun clearForMedia(mediaId: MediaId) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction {
             playQueries.deleteAllForMedia(updatedAtEpochMs = now, mediaId = mediaId.toString())
             queries.clearForMedia(now = now, mediaId = mediaId.toString())
         }
+    }
+
+    /**
+     * Runs a write off the main thread and then tells the home-screen widgets
+     * (EPIC 22).
+     *
+     * The refresh happens after the transaction has committed, never inside
+     * it: a widget reading a half-written database would show the row it was
+     * about to stop showing. It also comes after [withContext] returns rather
+     * than inside it, so a platform refresher is free to touch the main
+     * thread — Glance's `updateAll` and `WidgetCenter` both do.
+     */
+    private suspend fun <T> mutate(block: suspend () -> T): T {
+        val result = withContext(dispatchers.io) { block() }
+        widgetRefresher.refresh()
+        return result
     }
 
     /**

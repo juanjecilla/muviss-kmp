@@ -6,6 +6,7 @@ import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.profile.domain.MonthlyRewatchCalculator
@@ -64,6 +65,7 @@ class RewatchPerformanceBudgetTest {
             database.episodePlayQueries,
             BudgetDispatchers(UnconfinedTestDispatcher()),
             BudgetClock(),
+            NoOpWidgetRefresher,
         )
     }
 

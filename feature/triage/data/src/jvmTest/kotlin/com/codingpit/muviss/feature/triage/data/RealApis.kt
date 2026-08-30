@@ -9,6 +9,7 @@ import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.progress.domain.EpisodeOrdering
 import com.codingpit.muviss.feature.triage.domain.TriageDetailsSource
@@ -17,6 +18,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
@@ -66,6 +68,10 @@ internal class RealCollectionApi(private val repository: SqlDelightCollectionRep
 internal class RealProgressApi(private val repository: SqlDelightProgressRepository) : ProgressApi {
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = repository.observeForMedia(mediaId)
         .map { rows -> rows.filter { it.seen }.map { it.episodeId }.toSet() }
+
+    // Watch-next (EPIC 22) — this fake's subject never asks for it.
+    override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
+    override suspend fun refreshWatchNextCatalogs() = Unit
 
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
 

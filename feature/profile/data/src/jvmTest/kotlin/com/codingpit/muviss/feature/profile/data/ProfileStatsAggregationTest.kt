@@ -7,6 +7,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
@@ -21,6 +22,7 @@ import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
 import com.codingpit.muviss.feature.profile.domain.WatchStreak
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.models.Episode
@@ -34,6 +36,7 @@ import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -94,6 +97,10 @@ private class RealCollectionApiForStats(private val repository: CollectionReposi
 private class RealProgressApiForStats(private val repository: ProgressRepository) : ProgressApi {
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = repository.observeForMedia(mediaId)
         .map { rows -> rows.filter { it.seen }.map { it.episodeId }.toSet() }
+
+    // Watch-next (EPIC 22) — this fake's subject never asks for it.
+    override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
+    override suspend fun refreshWatchNextCatalogs() = Unit
 
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
@@ -159,7 +166,7 @@ class ProfileStatsAggregationTest {
         val dispatchers = StatsAggregationDispatchers(UnconfinedTestDispatcher())
         clock = StatsTestClock(epochDay = 0)
 
-        val progressRepository: ProgressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock)
+        val progressRepository: ProgressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApiForStats(progressRepository)
         val collectionRepository: CollectionRepository =
             SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi)

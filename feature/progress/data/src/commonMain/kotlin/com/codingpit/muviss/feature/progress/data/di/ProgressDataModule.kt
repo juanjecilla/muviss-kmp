@@ -5,11 +5,13 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.data.DefaultProgressApi
 import com.codingpit.muviss.feature.progress.data.ProgressPlayObservers
 import com.codingpit.muviss.feature.progress.data.RegistryEpisodeCatalogSource
+import com.codingpit.muviss.feature.progress.data.SqlDelightEpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ClearPlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ClearProgressUseCase
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
+import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkAllAiredSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkPreviousSeenUseCase
@@ -28,11 +30,13 @@ import com.codingpit.muviss.feature.progress.domain.ProgressMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressPlayMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.RecordPlayUseCase
+import com.codingpit.muviss.feature.progress.domain.RefreshWatchNextCatalogsUseCase
 import com.codingpit.muviss.feature.progress.domain.RemoveLatestPlayUseCase
 import com.codingpit.muviss.feature.progress.domain.SetMovieWatchedUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.UndoBulkMarkUseCase
 import com.codingpit.muviss.feature.progress.domain.UnmarkSeasonsUseCase
+import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -40,9 +44,11 @@ import org.koin.dsl.module
 val progressDataModule: Module = module {
     single { get<MuvissDatabase>().episodeProgressQueries }
     single { get<MuvissDatabase>().episodePlayQueries }
-    single<ProgressRepository> { SqlDelightProgressRepository(get(), get(), get(), get()) }
+    single { get<MuvissDatabase>().episodeQueries }
+    single<ProgressRepository> { SqlDelightProgressRepository(get(), get(), get(), get(), get()) }
     single<EpisodeCatalogSource> { RegistryEpisodeCatalogSource(get(), get()) }
-    single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get()) }
+    single<EpisodeCatalogStore> { SqlDelightEpisodeCatalogStore(get(), get(), get()) }
+    single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get(), get(), get()) }
 
     factory { ObserveEpisodeProgressUseCase(get()) }
     factory { ObserveSeenEpisodesUseCase(get()) }
@@ -69,5 +75,10 @@ val progressDataModule: Module = module {
     factory { ProgressMutations(get(), get(), get(), get(), get()) }
     factory { SetMovieWatchedUseCase(get()) }
     factory { FetchEpisodeCatalogUseCase(get()) }
-    single { EpisodeCatalogCache(get()) }
+    single { EpisodeCatalogCache(get(), get()) }
+    // `{ get() }` rather than `get()`: collection's repository depends on
+    // `ProgressApi`, so resolving `CollectionApi` while building it closes a
+    // cycle. See WatchNextUseCase's KDoc.
+    factory { WatchNextUseCase({ get() }, get(), get(), get()) }
+    factory { RefreshWatchNextCatalogsUseCase({ get() }, get()) }
 }

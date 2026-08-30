@@ -30,6 +30,11 @@ kotlin {
 licensee {
     allow("Apache-2.0")
     allow("MIT")
+    // EPIC 22: `androidx.glance:glance-appwidget-external-protobuf` is
+    // Glance's repackaged protobuf and the only BSD-3-Clause artifact in the
+    // graph. Permissive, attribution-only, no Play Store implication — added
+    // deliberately rather than by widening the list to "anything permissive".
+    allow("BSD-3-Clause")
     allowUrl("https://opensource.org/license/mit")
 }
 
@@ -42,6 +47,10 @@ dependencies {
     // just happens to be the module that needs it this time, not a feature.
     implementation(projects.feature.collection.api)
     implementation(projects.feature.settings.api)
+    implementation(projects.feature.progress.api)
+    implementation(projects.core.common)
+    implementation(projects.core.designsystem)
+    implementation(projects.models)
     // `MuvissApplication` builds the Android `DatabaseDriverFactory` itself
     // (see its doc comment) so Koin is running before any Activity exists.
     implementation(projects.core.database)
@@ -49,11 +58,22 @@ dependencies {
     implementation(projects.core.sync)
     implementation(libs.koin.core)
     implementation(libs.androidx.work.runtimeKtx)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
 
     implementation(libs.androidx.activity.compose)
 
+    // Glance builds its ColorProviders from the app's own M3 schemes
+    // (see widget/MuvissWidget.kt), so androidApp needs material3 directly.
+    implementation(compose.material3)
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
+
+    // The widget's pure state mapper (EPIC 22). Glance renders through the
+    // app-widget host rather than Skiko, so its composition is not reachable
+    // from `runComposeUiTest`; what it decides before composing is.
+    testImplementation(libs.kotlin.testJunit)
+    testImplementation(libs.junit)
 }
 
 // -----------------------------------------------------------------------

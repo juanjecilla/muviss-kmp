@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.api
 
+import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
@@ -19,6 +20,32 @@ data class EpisodePlay(
 )
 
 /**
+ * One title the user is part-way through, with the next episode they have not
+ * seen — the answer to "what do I watch next".
+ *
+ * Public as of EPIC 22 because three surfaces now render it: the Progress
+ * tab, the Android widget and the iOS widget. It was a `:ui` type while the
+ * Progress screen was the only caller; leaving it there would have meant each
+ * new surface rebuilding the collection × catalog × ticks join for itself,
+ * and three answers to a question that has one.
+ *
+ * [nextEpisode] is null both for a title fully caught up and for one whose
+ * catalog is not available yet — a distinction no caller has needed, and one
+ * a widget deliberately blurs into "open the app".
+ */
+data class WatchNextItem(
+    val mediaId: MediaId,
+    val title: String,
+    val posterUrl: String?,
+    val nextEpisode: Episode?,
+    val seenCount: Int = 0,
+    val airedCount: Int = 0,
+) {
+    /** Fraction of aired episodes seen, for the row's progress bar; null when nothing aired. */
+    val progress: Float? get() = if (airedCount > 0) seenCount / airedCount.toFloat() else null
+}
+
+/**
  * Public contract of the progress feature. Peers (search's `DetailScreen`,
  * collection's status derivation) depend on this module only — never
  * progress's domain/data/ui — to tick episodes and read watched state without
@@ -27,6 +54,29 @@ data class EpisodePlay(
 interface ProgressApi {
     /** Seen episode ids for [mediaId] (movies use the single id from [EpisodeId.forMovie]). */
     fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>>
+
+    /**
+     * Every title currently being watched, each with its next unseen aired
+     * episode, ordered as the Progress tab orders them.
+     *
+     * Reactive end to end: ticking an episode — from any surface — advances
+     * the item, and a title leaving `Watching` drops out. The catalog behind
+     * it is read from local storage before the network (ADR 0015), so this
+     * answers offline, which is the only reason a home-screen widget can
+     * render at all.
+     */
+    fun observeWatchNext(): Flow<List<WatchNextItem>>
+
+    /**
+     * Re-fetches and stores the episode catalog of every title being
+     * watched — the background-refresh entry point (ADR 0015).
+     *
+     * Called from the platform hosts' existing 12-hour refresh, so the
+     * widgets keep naming the right episode as new ones air without the app
+     * ever being opened. Failures are absorbed per title: a catalog that
+     * cannot be refreshed keeps the one already stored.
+     */
+    suspend fun refreshWatchNextCatalogs()
 
     /**
      * Every distinct epoch-day (UTC, [com.codingpit.muviss.core.common.todayEpochDay]'s

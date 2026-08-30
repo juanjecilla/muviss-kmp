@@ -81,7 +81,7 @@ class UpcomingViewModelTest {
         catalogSource: EpisodeCatalogSource,
     ) = UpcomingViewModel(
         collectionApi,
-        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource)),
+        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore()),
         FakeUpcomingClock(today),
     )
 
@@ -144,7 +144,7 @@ class UpcomingViewModelTest {
         val updatedSource = FakeUpcomingCatalogSource(mapOf(tvShow to listOf(Season(1, "Season 1", listOf(episode(1, 1, airDay = 100))))))
         val vmWithUpdatedSource = UpcomingViewModel(
             FakeUpcomingCollectionApi(listOf(summary(tvShow))),
-            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(updatedSource)),
+            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(updatedSource), InMemoryEpisodeCatalogStore()),
             FakeUpcomingClock(today),
         )
         vmWithUpdatedSource.refresh()

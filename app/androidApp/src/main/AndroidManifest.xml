@@ -53,6 +53,21 @@
                 <data android:scheme="muviss" android:host="auth-callback" />
             </intent-filter>
         </activity>
+
+        <!-- "Watch next" home-screen widget (EPIC 22). Runs in this process,
+             so it resolves ProgressApi from the Koin graph MuvissApplication
+             started — the same route NewEpisodesWorker takes. -->
+        <receiver
+            android:exported="false"
+            android:name=".widget.MuvissWidgetReceiver">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/muviss_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

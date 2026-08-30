@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "Watch next" widget (EPIC 22). The minimum size is one row plus padding;
+    resizing vertically is what moves it between the one-, three- and
+    five-row layouts WidgetSize picks (see WatchNextWidgetState.kt).
+
+    No updatePeriodMillis: the widget is redrawn by a push from the write
+    itself (WidgetRefresher) plus the daily reload, not by the host polling
+    it. Android would clamp a period to 30 minutes anyway, and every one of
+    those wake-ups would find nothing changed.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minHeight="60dp"
+    android:minResizeHeight="60dp"
+    android:minResizeWidth="180dp"
+    android:minWidth="180dp"
+    android:previewImage="@mipmap/ic_launcher"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="2"
+    android:targetCellWidth="4"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

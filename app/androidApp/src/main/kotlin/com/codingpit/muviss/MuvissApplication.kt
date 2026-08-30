@@ -1,9 +1,12 @@
 package com.codingpit.muviss
 
 import android.app.Application
+import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.notifications.NewEpisodesScheduler
+import com.codingpit.muviss.widget.GlanceWidgetRefresher
+import com.codingpit.muviss.widget.WidgetMidnightRefresh
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
@@ -22,6 +25,12 @@ import org.koin.dsl.module
  * list; per its doc comment, when a global Koin instance already exists
  * (the normal case once this runs) it reuses that instance instead of
  * starting a second one, so there's exactly one Koin graph either way.
+ *
+ * It also installs the Glance-backed [WidgetRefresher]
+ * [com.codingpit.muviss.core.common.widget.WidgetRefresher] (EPIC 22). This
+ * is the first point that has an application `Context`, which is later than
+ * the Koin graph that already handed one to the progress repository —
+ * `AppWidgets` resolves per call precisely so that ordering does not matter.
  */
 class MuvissApplication : Application() {
     override fun onCreate() {
@@ -31,6 +40,8 @@ class MuvissApplication : Application() {
                 modules(appModules + module { single { DatabaseDriverFactory(this@MuvissApplication) } })
             }
         }
+        AppWidgets.install(GlanceWidgetRefresher(this))
         NewEpisodesScheduler.schedule(this)
+        WidgetMidnightRefresh.schedule(this)
     }
 }
