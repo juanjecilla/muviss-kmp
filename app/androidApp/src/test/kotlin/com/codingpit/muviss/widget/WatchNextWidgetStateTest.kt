@@ -46,7 +46,7 @@ class WatchNextWidgetStateTest {
     }
 
     /**
-     * The upgrade case ADR 0013 accepts: titles are in progress, the catalog
+     * The upgrade case ADR 0015 accepts: titles are in progress, the catalog
      * table is still empty, so no episode can be named. Saying "open the app"
      * is the difference between a widget that looks broken and one that tells
      * you what to do.

@@ -26,7 +26,7 @@ struct WatchNextView: View {
                 message: "Start watching something and it will show up here."
             )
         } else if entry.rows.allSatisfy({ $0.episodeId == nil }) && entry.justTicked == nil {
-            // The upgrade case ADR 0013 accepts: titles are in progress but
+            // The upgrade case ADR 0015 accepts: titles are in progress but
             // the catalog table is still empty, so no episode can be named.
             EmptyStateView(
                 title: "Open Muviss once",

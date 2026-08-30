@@ -21,7 +21,7 @@ private const val DATABASE_FILE_NAME = "muviss.db"
  * same reasoning.
  *
  * The database lives in the shared App Group container rather than the app's
- * own Documents directory (ADR 0014). A WidgetKit extension is a separate
+ * own Documents directory (ADR 0016). A WidgetKit extension is a separate
  * process with its own sandbox: `NSDocumentDirectory` resolves to the
  * *extension's* Documents, which is empty, so a widget reading from there
  * would show an empty library forever. The App Group container is the only

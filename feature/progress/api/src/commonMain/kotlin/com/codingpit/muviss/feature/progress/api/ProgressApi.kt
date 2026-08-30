@@ -61,7 +61,7 @@ interface ProgressApi {
      *
      * Reactive end to end: ticking an episode — from any surface — advances
      * the item, and a title leaving `Watching` drops out. The catalog behind
-     * it is read from local storage before the network (ADR 0013), so this
+     * it is read from local storage before the network (ADR 0015), so this
      * answers offline, which is the only reason a home-screen widget can
      * render at all.
      */
@@ -69,7 +69,7 @@ interface ProgressApi {
 
     /**
      * Re-fetches and stores the episode catalog of every title being
-     * watched — the background-refresh entry point (ADR 0013).
+     * watched — the background-refresh entry point (ADR 0015).
      *
      * Called from the platform hosts' existing 12-hour refresh, so the
      * widgets keep naming the right episode as new ones air without the app

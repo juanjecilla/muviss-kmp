@@ -75,7 +75,7 @@ private class RecordingCatalogSource(private val bySeasons: Map<MediaId, List<Se
 /**
  * [SqlDelightEpisodeCatalogStore] against a real database, plus the
  * read-through wired to it — the seam a widget's whole offline story rests on
- * (ADR 0013).
+ * (ADR 0015).
  */
 class EpisodeCatalogStoreTest {
 

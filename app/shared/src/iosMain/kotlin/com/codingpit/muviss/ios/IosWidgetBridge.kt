@@ -40,7 +40,7 @@ data class IosWidgetRow(
  * The extension is a **separate process**. It gets no `AppDelegate`, so
  * [IosAppStartup.start] never runs there — [ensureStarted] is this side's
  * equivalent, starting a Koin graph inside the extension over the same App
- * Group database the app writes to (ADR 0014). Without the App Group the
+ * Group database the app writes to (ADR 0016). Without the App Group the
  * extension would open its own empty file and the widget would show an empty
  * library forever.
  *
@@ -92,7 +92,7 @@ object IosWidgetBridge : KoinComponent {
      * Two processes therefore write this database. SQLite's WAL journal is
      * what makes that safe, and `NativeSqliteDriver` enables it by default;
      * the App Group container is the only place both processes can reach the
-     * same file to do it (ADR 0014).
+     * same file to do it (ADR 0016).
      */
     fun tick(episodeId: String) = setSeen(episodeId, seen = true)
 

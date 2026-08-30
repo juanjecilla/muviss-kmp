@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.first
 
 /**
  * Re-fetches the episode catalog of every title currently being watched, and
- * stores it (ADR 0013).
+ * stores it (ADR 0015).
  *
  * This is what keeps a home-screen widget honest between app launches: a
  * newly aired episode changes what "next unseen" means, and nothing else

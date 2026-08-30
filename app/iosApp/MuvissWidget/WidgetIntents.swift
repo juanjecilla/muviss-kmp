@@ -6,7 +6,7 @@ import Shared
 ///
 /// The Android widget keeps this in Glance's own per-widget state; WidgetKit
 /// has no equivalent, so it goes in the App Group's shared defaults — the
-/// same container the database lives in (ADR 0014). One marker for the whole
+/// same container the database lives in (ADR 0016). One marker for the whole
 /// widget, matching Android's one-per-instance closely enough: a person can
 /// only have just-ticked one thing.
 enum WidgetUndoStore {

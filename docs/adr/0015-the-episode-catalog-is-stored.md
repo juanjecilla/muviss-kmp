@@ -12,7 +12,7 @@ It also means ADR 0002 — "offline-first, local source of truth" — was not tr
 
 **The catalog is cache, not user data, and the distinction is load-bearing.** Every other user-owned table carries `isDirty` / `updatedAtEpochMs` / a soft delete because it records something a person did. This one records what TMDB says a show contains. It therefore has **no sync columns**, is **absent from `SyncChangeSet`**, and is **absent from the data export** — a refetch always wins over what is stored, so there is nothing to reconcile and nothing to back up.
 
-**The migration backfills nothing.** `6.sqm` could seed `episodePlay` because the facts it needed were already on disk; here the facts are TMDB's and have never been stored. `7.sqm` creates an empty table (schema v8).
+**The migration backfills nothing.** `6.sqm` could seed `episodePlay` because the facts it needed were already on disk; here the facts are TMDB's and have never been stored. `8.sqm` creates an empty table (schema v9).
 
 **A refetch replaces a title's catalog wholesale** rather than merging into it, so an episode the source has removed — a mis-numbered special, a restructured season — disappears locally too.
 
@@ -31,7 +31,7 @@ It also means ADR 0002 — "offline-first, local source of truth" — was not tr
 
 ## Consequences
 
-- **Schema version 8**, via `7.sqm` and the regenerated `8.db` fixture. `verifyMigrations` covers the chain; `EpisodeCatalogMigrationTest` covers what it cannot — that a real library comes through, and that the table arrives *empty*.
+- **Schema version 9**, via `8.sqm` and the regenerated `9.db` fixture. Numbered 8 rather than 7 because the sync-gating work claimed v8 in parallel (ADR 0013's `episodePlay` rebuild) and landed first; two `.sqm` files claiming one version is not something `verifyMigrations` can see, so the ordering was decided by hand. `verifyMigrations` covers the chain; `EpisodeCatalogMigrationTest` covers what it cannot — that a real library comes through, and that the table arrives *empty*.
 - **A widget placed immediately after upgrading has nothing to name.** The table starts empty and fills read-through, so until the app runs once or the twelve-hour refresh fires, both widgets show an "open Muviss once" state rather than a wrong one. This is the accepted cost of not backfilling.
 - **`ProgressApi` grew `observeWatchNext()` and `refreshWatchNextCatalogs()`**, and `WatchNextItem` moved into `:api`. The collection × catalog × ticks join moved out of `ProgressViewModel` into `WatchNextUseCase` so the screen and the two widgets share one answer; `feature/progress/domain` gained a dependency on `feature/collection/api`, which ADR 0004 permits.
 - **`EpisodeCatalogCache` keeps its interface.** `ProgressViewModel` and `UpcomingViewModel` were not changed by the read-through, only by the seam move.

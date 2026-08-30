@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
  * local tables are deliberately *not* among them for two different reasons:
  * `episodePlay` because append-only rows need a merge rule ADR 0009's
  * last-write-wins does not provide, and `episode` because it is not the
- * user's data at all — it is TMDB's catalog, cached locally (ADR 0013), and
+ * user's data at all — it is TMDB's catalog, cached locally (ADR 0015), and
  * pushing a provider's episode list to a personal sync backend would waste
  * bandwidth replicating something every device can refetch for itself.
  *
@@ -28,7 +28,7 @@ class SyncChangeSetShapeTest {
         assertEquals(
             listOf("collectionEntries", "episodeProgress", "mediaLists", "listEntries", "triageDecisions"),
             SyncChangeSet.serializer().descriptor.elementNames.toList(),
-            "adding a table to sync is a deliberate act — see ADR 0009's six touchpoints, and ADR 0013 for why the episode catalog is not one of them",
+            "adding a table to sync is a deliberate act — see ADR 0009's six touchpoints, and ADR 0015 for why the episode catalog is not one of them",
         )
     }
 }

@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.update
  * was memory-only and cold on every launch, which meant "next unseen episode"
  * could not be computed without a network round trip — fine for a screen the
  * user just opened, impossible for a widget refreshing with no app running.
- * See ADR 0013.
+ * See ADR 0015.
  *
  * The in-memory [catalogs] flow stays in front of the store rather than being
  * replaced by one: it is what makes a catalog arriving mid-session push

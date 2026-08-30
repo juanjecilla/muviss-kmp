@@ -648,7 +648,7 @@ are all checked in and compile, but a widget extension that shares the app's
 database needs an **App Group**, and an App Group needs a real Apple
 Developer team. Nothing in this repo can create one. Until the steps below
 are done, `DatabaseFactory.ios.kt` falls back to the app's Documents
-directory (ADR 0014) — the app works exactly as before and the widget shows
+directory (ADR 0016) — the app works exactly as before and the widget shows
 an empty library.
 
 ### iOS: one-time setup
@@ -695,7 +695,7 @@ because building it needs Xcode and a team. Expect to adjust:
 ### iOS: manual smoke test
 
 1. Run the app once on a device or simulator so the episode catalog fills
-   (it ships empty — ADR 0013).
+   (it ships empty — ADR 0015).
 2. Long-press the home screen > add the **Watch next** widget.
 3. Confirm it names the next unseen episode of a show you are part-way
    through, in the app's amber, and resizes between one, three and five rows.

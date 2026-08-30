@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Covers `7.sqm` — the migration that adds the `episode` catalog (ADR 0013).
+ * Covers `8.sqm` — the migration that adds the `episode` catalog (ADR 0015).
  *
  * `verifyMigrations` already proves the `.sqm` chain reproduces what the `.sq`
  * files declare. What it cannot prove is that a real library survives, and
@@ -22,9 +22,9 @@ class EpisodeCatalogMigrationTest {
 
     private val fixtures = File("src/commonMain/sqldelight/databases")
 
-    private fun v7Driver(): Pair<JdbcSqliteDriver, MuvissDatabase> {
+    private fun v8Driver(): Pair<JdbcSqliteDriver, MuvissDatabase> {
         val working = File(createTempDirectory("muviss-catalog-migration").toFile(), "muviss.db")
-        fixtures.resolve("7.db").copyTo(working)
+        fixtures.resolve("8.db").copyTo(working)
         val driver = JdbcSqliteDriver("jdbc:sqlite:${working.absolutePath}")
         return driver to MuvissDatabase(driver)
     }
@@ -39,24 +39,35 @@ class EpisodeCatalogMigrationTest {
             updatedAtEpochMs = at,
             isDirty = false,
         )
-        database.episodePlayQueries.insert(episode, "tmdb:tv:1399", at, false)
+        // episodePlay's key became the derived `episodeId@watchedAtEpochMs`
+        // when it joined the sync change-log (ADR 0013), and its deletes went
+        // soft with it.
+        database.episodePlayQueries.upsert(
+            id = "$episode@$at",
+            episodeId = episode,
+            mediaId = "tmdb:tv:1399",
+            watchedAtEpochMs = at,
+            updatedAtEpochMs = at,
+            isDirty = false,
+            deleted = false,
+        )
     }
 
     private fun migrate(driver: JdbcSqliteDriver) = runBlocking {
-        MuvissDatabase.Schema.synchronous().migrate(driver, oldVersion = 7L, newVersion = MuvissDatabase.Schema.version)
+        MuvissDatabase.Schema.synchronous().migrate(driver, oldVersion = 8L, newVersion = MuvissDatabase.Schema.version)
     }
 
     @Test
-    fun `7_sqm produced its own fixture`() {
-        // The .sqm is named after the version it migrates FROM, so 7.sqm
-        // produces version 8 (ADR 0008's 2026-07-11 amendment).
-        assertTrue(MuvissDatabase.Schema.version >= 8L)
-        assertTrue(fixtures.resolve("8.db").exists(), "8.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
+    fun `8_sqm produced its own fixture`() {
+        // The .sqm is named after the version it migrates FROM, so 8.sqm
+        // produces version 9 (ADR 0008's 2026-07-11 amendment).
+        assertTrue(MuvissDatabase.Schema.version >= 9L)
+        assertTrue(fixtures.resolve("9.db").exists(), "9.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
     }
 
     @Test
     fun `the catalog starts empty and is filled read-through, never backfilled`() {
-        val (driver, database) = v7Driver()
+        val (driver, database) = v8Driver()
 
         runBlocking {
             tick(database, "tmdb:tv:1399/1/1", at = 1_000)
@@ -74,7 +85,7 @@ class EpisodeCatalogMigrationTest {
 
     @Test
     fun `ticks and play history come through untouched`() {
-        val (driver, database) = v7Driver()
+        val (driver, database) = v8Driver()
 
         runBlocking {
             tick(database, "tmdb:tv:1399/1/1", at = 1_000)
@@ -90,14 +101,14 @@ class EpisodeCatalogMigrationTest {
     }
 
     /**
-     * The catalog is provider data, not the user's (ADR 0013). It has no
+     * The catalog is provider data, not the user's (ADR 0015). It has no
      * `isDirty` column at all, so there is no change-log for a future sync
      * pass to pick up by accident — this asserts the shape rather than the
      * absence of a wiring, because the wiring is what would be easy to add.
      */
     @Test
     fun `the catalog table carries no sync columns`() {
-        val (driver, _) = v7Driver()
+        val (driver, _) = v8Driver()
         migrate(driver)
 
         val columns = driver.executeQuery(
@@ -123,7 +134,7 @@ class EpisodeCatalogMigrationTest {
 
     @Test
     fun `a refetch replaces a title's catalog rather than merging into it`() {
-        val (driver, _) = v7Driver()
+        val (driver, _) = v8Driver()
         migrate(driver)
         val database = MuvissDatabase(driver)
 

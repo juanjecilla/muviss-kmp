@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 import com.codingpit.muviss.core.database.Episode as EpisodeRow
 
 /**
- * SQLDelight-backed [EpisodeCatalogStore] over `Episode.sq` (ADR 0013).
+ * SQLDelight-backed [EpisodeCatalogStore] over `Episode.sq` (ADR 0015).
  *
  * Unlike [SqlDelightProgressRepository] this exposes no `Flow`: the catalog
  * changes only when something refetches it, and the refetcher already pushes

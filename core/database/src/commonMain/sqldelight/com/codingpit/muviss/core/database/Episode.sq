@@ -2,7 +2,7 @@
 -- them, stored so they survive a process death.
 --
 -- This table is a cache of provider data, not the user's data, and the
--- distinction is load-bearing (ADR 0013). Every other table here carries
+-- distinction is load-bearing (ADR 0015). Every other table here carries
 -- `isDirty` / `updatedAtEpochMs` / a soft delete because it records something
 -- a person did; this one records what TMDB says a show contains. Nothing in
 -- it is authored locally, so there is nothing to reconcile: it is absent from

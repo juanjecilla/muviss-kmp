@@ -135,7 +135,7 @@ The DB works everywhere or the "all platforms" story is fiction.
 ## EPIC 14 — Calendar & Upcoming ✅ — wave 5, all platforms
 TV Time parity: upcoming schedule. Air dates already mapped (`airDateEpochDay`).
 - "Upcoming" view (new tab or Progress section): next air dates for saved shows, grouped by day; agenda list first, month grid optional.
-- No new endpoints. It reads the same episode catalog watch-next does — in memory until EPIC 22 stored it (ADR 0013), so despite what this line used to claim, it was a network read per show until then; it is genuinely offline now.
+- No new endpoints. It reads the same episode catalog watch-next does — in memory until EPIC 22 stored it (ADR 0015), so despite what this line used to claim, it was a network read per show until then; it is genuinely offline now.
 
 ## EPIC 15 — Ratings & notes ✅ — wave 6, all platforms
 Personal (local, no social): 1–10 rating + free-text note per title.
@@ -171,9 +171,9 @@ The ranking ADR 0011 kept the door open for. A "Most rewatched" card on Profile 
 
 "Watch next" on the home screen, on both platforms that have one: shows in progress, each with its next unseen aired episode and a one-tap tick with Undo. Android is Glance in `:app:androidApp` (a receiver runs in the app process, so it resolves the existing Koin graph like `NewEpisodesWorker` does); iOS is a SwiftUI WidgetKit extension under `app/iosApp/MuvissWidget`, since Compose cannot draw in a widget.
 
-The feature turned on something the roadmap had not noticed: the episode catalog was in-memory and cold each launch, so "next unseen episode" could not be computed offline at all. It is stored now — new `episode` table, schema v8, provider cache with no sync columns and no backfill (**ADR 0013**) — which also makes ADR 0002's offline-first promise true for episodes and fixes E14's claim above. The watch-next join moved out of `ProgressViewModel` into `WatchNextUseCase` behind `ProgressApi.observeWatchNext()`, so the screen and both widgets share one answer.
+The feature turned on something the roadmap had not noticed: the episode catalog was in-memory and cold each launch, so "next unseen episode" could not be computed offline at all. It is stored now — new `episode` table, schema v9, provider cache with no sync columns and no backfill (**ADR 0015**) — which also makes ADR 0002's offline-first promise true for episodes and fixes E14's claim above. The watch-next join moved out of `ProgressViewModel` into `WatchNextUseCase` behind `ProgressApi.observeWatchNext()`, so the screen and both widgets share one answer.
 
-On iOS the database moved into a `group.com.codingpit.muviss` App Group with a one-time move-on-open (**ADR 0014**): a widget extension is a separate process, and its interactive buttons write. Signing it needs a real Apple team and a registered App Group — manual steps in `docs/RELEASING.md` §11; the Kotlin side falls back to the old Documents path without them.
+On iOS the database moved into a `group.com.codingpit.muviss` App Group with a one-time move-on-open (**ADR 0016**): a widget extension is a separate process, and its interactive buttons write. Signing it needs a real Apple team and a registered App Group — manual steps in `docs/RELEASING.md` §11; the Kotlin side falls back to the old Documents path without them.
 
 Colour is one source: `MuvissPalette` (`:core:designsystem`) holds the literals, the M3 schemes are built from it, Glance builds `ColorProviders` from those, and the SwiftUI widget carries the same hexes. Refreshes are pushed from the write itself through a `WidgetRefresher` seam in `:core:common`, plus a reload at local midnight so the "aired by today" boundary moves.
 

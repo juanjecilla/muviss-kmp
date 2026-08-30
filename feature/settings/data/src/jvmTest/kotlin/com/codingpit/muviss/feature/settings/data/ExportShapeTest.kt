@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
  * a different reason than sync's: it is not theirs to back up. Every row in
  * it can be refetched from TMDB, and including it would inflate an export by
  * an order of magnitude with data the importing install would overwrite on
- * first refresh anyway (ADR 0013).
+ * first refresh anyway (ADR 0015).
  */
 class ExportShapeTest {
 
@@ -23,7 +23,7 @@ class ExportShapeTest {
         assertEquals(
             listOf("exportedAtEpochMs", "collection", "progress", "triage", "plays"),
             MuvissDataExport.serializer().descriptor.elementNames.toList(),
-            "the episode catalog is TMDB's data cached locally, not the user's — see ADR 0013",
+            "the episode catalog is TMDB's data cached locally, not the user's — see ADR 0015",
         )
     }
 }
