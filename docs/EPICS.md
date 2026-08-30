@@ -178,9 +178,23 @@ On iOS the database moved into a `group.com.codingpit.muviss` App Group with a o
 Colour is one source: `MuvissPalette` (`:core:designsystem`) holds the literals, the M3 schemes are built from it, Glance builds `ColorProviders` from those, and the SwiftUI widget carries the same hexes. Refreshes are pushed from the write itself through a `WidgetRefresher` seam in `:core:common`, plus a reload at local midnight so the "aired by today" boundary moves.
 
 ## Cross-cutting / backlog
-- **Syncing rewatch history.** `episodePlay` carries `isDirty` but is not wired into `SyncChangeSet` (ADR 0011): plays are append-only, so ADR 0009's last-write-wins does not apply — the merge is a union, and deletion needs a tombstone or an id stable across devices. Costs the six touchpoints ADR 0009 enumerates.
-- **Analytics + remote feature flags.** `AnalyticsTracker` and `FeatureFlags` seams exist in `:core:common` with no vendor behind them (the tracker is a no-op; flags read `appSettings`). Choosing a vendor means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
-- **Durable web persistence.** The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything — including triage decisions, whose whole promise is not asking twice. Fixes `collectionEntry`/`episodeProgress`/`mediaList` equally; needs an ADR 0008 amendment.
-- **`:app:macrobenchmark`.** Frame timing for the triage drag, deck cold start, and commit latency on a real device. Needs an emulator in CI, which the repo has no provision for.
-- Additional `MetadataProvider`s (TVmaze/Trakt) + cross-source reconciliation via IMDb id.
-- Baseline profile + startup performance pass.
+
+**Everything here has an issue.** The tracker is the source of truth for undone
+work; this list is the map. Nothing should appear below without a number beside
+it — see `AGENTS.md` for why.
+
+- **Durable web persistence** — #28. The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything, including the triage decisions whose whole promise is not asking twice. Needs an ADR 0008 amendment.
+- **Analytics + remote feature flags** — #29. `AnalyticsTracker` and `FeatureFlags` are seams in `:core:common` with no vendor behind them. Choosing one means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
+- **`:app:macrobenchmark` + baseline profile** — #30. Frame timing for the triage drag, deck cold start, commit latency. Blocked on an emulator in CI, which is why the perf tests we do have use deterministic operation-count budgets instead.
+- **Additional `MetadataProvider`s (TVmaze/Trakt)** — #31. Cross-source reconciliation via IMDb id. ADR 0001 and ADR 0006 built the seams; TMDB is still the only implementation, so neither has been exercised by a second source.
+
+### Raised by EPIC 22, deliberately not done
+
+- **The iOS widget extension has never been built** — #23. The Xcode target is checked in and its graph parses, but building it needs Xcode, a real `TEAM_ID` and a registered App Group. The App Group database relocation (ADR 0016) is unverified with it.
+- **Android widget polish** — #27. The widget picker preview is still the KMP template's green robot (the app icon was never replaced), a tall widget with one show leaves empty space, and `WidgetMidnightRefresh` has never been observed firing.
+
+### Found while landing EPIC 22, not caused by it
+
+- **`OAuthRedirectCompletionTest` fails on js/browser** — #24. Reproduced on clean `main` at `e062b2b`, before the rebase.
+- **CI compiles JS/Wasm but never tests them**, and its explicit `jvmTest` module list has drifted behind the modules that exist — #25. That is why #24 went unnoticed.
+- **Two ADRs are both numbered 0012** — #26. Parallel branches each took the next free number; the schema version collided the same way and `verifyMigrations` cannot see it.
