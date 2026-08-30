@@ -6,6 +6,16 @@ Guidance for Claude Code (and humans) working in the Muviss repo.
 
 Muviss is a Kotlin Multiplatform + Compose Multiplatform tracker for movies and TV shows. Package root `com.codingpit.muviss`. Targets: **Android (primary)**, iOS, Desktop (JVM), Web (JS + Wasm), plus a dormant Ktor `:server`. Offline-first, user-focused, no social. Read `CONTEXT.md` for the domain glossary and `docs/adr/` for why things are the way they are.
 
+## Working agreement
+
+**Anything raised in a session and not done in it gets a GitHub issue before the
+session ends** — an epic, a bug, or a task. Gaps you scoped out, bugs you found
+in code you weren't touching, things you could not verify, traps you worked
+around. `docs/EPICS.md`'s backlog carries the issue number for every entry. See
+`AGENTS.md` for what a good issue looks like and why this is not optional here:
+epics are implemented end to end by one agent and run in parallel, so anything
+living only in a session transcript is gone.
+
 ## Architecture (see ADR 0004)
 
 Vertical slice per feature, each split into four modules:

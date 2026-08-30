@@ -11,7 +11,7 @@ A personal, offline-first tracker for **movies and TV shows**, built with Kotlin
 
 ## Architecture
 
-Vertical slice per feature, each split into `:api` / `:domain` / `:data` / `:ui` (clean architecture), wired with **Koin** and **Navigation Compose**. Offline-first with **SQLDelight** as the source of truth; optional cloud sync is deferred behind a `SyncEngine`. See **[CLAUDE.md](CLAUDE.md)** for the module map, **[CONTEXT.md](CONTEXT.md)** for the domain glossary, and **[docs/adr/](docs/adr/)** for decisions.
+Vertical slice per feature, each split into `:api` / `:domain` / `:data` / `:ui` (clean architecture), wired with **Koin** and **Navigation Compose**. Offline-first with **SQLDelight** as the source of truth; optional cloud sync is deferred behind a `SyncEngine`. See **[CLAUDE.md](CLAUDE.md)** for the module map, **[CONTEXT.md](CONTEXT.md)** for the domain glossary, **[docs/adr/](docs/adr/)** for decisions, and **[AGENTS.md](AGENTS.md)** for the working agreement if you are an agent.
 
 ## Getting started
 
