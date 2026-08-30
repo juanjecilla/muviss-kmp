@@ -1,0 +1,56 @@
+-- Rewatch history joins the sync change-log (ADR 0013), and the pull cursor
+-- stops sharing a column with the "last synced" label. The filename is the
+-- version this migrates FROM, not to: 7.sqm takes a v7 database to v8.
+--
+-- `episodePlay` needs a primary key that means the same thing on two devices.
+-- `INTEGER AUTOINCREMENT` is per-device by construction, so it is replaced by
+-- `episodeId || '@' || watchedAtEpochMs` — derived from the viewing itself,
+-- identical wherever that viewing is recorded, and therefore usable as a sync
+-- key under ADR 0009's last-write-wins rule unchanged. SQLite cannot ALTER a
+-- primary key, so the table is rebuilt.
+--
+-- The backfill is deterministic string concatenation, no randomness, so this
+-- migration reproduces the same database every time it runs. `updatedAtEpochMs`
+-- seeds from `watchedAtEpochMs` (the only timestamp these rows have ever had)
+-- and `deleted` starts 0. `isDirty` is carried across as-is rather than being
+-- forced to 1: rows backfilled by 6.sqm describe history that already synced
+-- as `episodeProgress` ticks, and re-pushing the entire history of every
+-- upgrading install is not worth the first sync it would cost.
+CREATE TABLE episodePlayNew (
+    id TEXT NOT NULL PRIMARY KEY,
+    episodeId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    watchedAtEpochMs INTEGER NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0
+);
+
+-- GROUP BY, not a plain SELECT: two pre-existing rows for one episode at the
+-- same millisecond would now share an id, and a duplicate key would abort the
+-- whole migration. Collapsing them is the same merge the new key applies from
+-- here on.
+INSERT INTO episodePlayNew(id, episodeId, mediaId, watchedAtEpochMs, updatedAtEpochMs, isDirty, deleted)
+SELECT episodeId || '@' || watchedAtEpochMs, episodeId, mediaId, watchedAtEpochMs, watchedAtEpochMs, MAX(isDirty), 0
+FROM episodePlay
+GROUP BY episodeId, watchedAtEpochMs;
+
+-- SQLite drops a table's indexes with the table, but SQLDelight's migration
+-- analyzer does not model that and reports the recreated names as duplicates.
+-- Dropping them explicitly is a no-op at runtime and keeps the check honest.
+DROP INDEX episodePlay_episodeId;
+
+DROP INDEX episodePlay_mediaId;
+
+DROP TABLE episodePlay;
+
+ALTER TABLE episodePlayNew RENAME TO episodePlay;
+
+CREATE INDEX episodePlay_episodeId ON episodePlay(episodeId);
+CREATE INDEX episodePlay_mediaId ON episodePlay(mediaId);
+
+-- Deliberately NOT backfilled from `lastSyncedAtEpochMs`. That column holds a
+-- local clock reading, which is precisely the value the split distrusts — see
+-- `AppSettings.sq`'s header. Null asks the next sync for a full pull, which
+-- last-write-wins makes idempotent, and the cursor is honest from then on.
+ALTER TABLE appSettings ADD COLUMN syncCursorEpochMs INTEGER;

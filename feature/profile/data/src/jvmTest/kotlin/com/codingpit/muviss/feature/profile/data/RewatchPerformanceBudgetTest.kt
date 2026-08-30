@@ -74,11 +74,16 @@ class RewatchPerformanceBudgetTest {
                 repeat(playsPerTitle) { play ->
                     // Ten episodes each watched four times: real rewatches,
                     // not one long first watch-through.
-                    database.episodePlayQueries.insert(
-                        episodeId = "$mediaId/1/${play % 10}",
+                    val episodeId = "$mediaId/1/${play % 10}"
+                    val watchedAt = play.toLong() * 1_000L
+                    database.episodePlayQueries.upsert(
+                        id = "$episodeId@$watchedAt",
+                        episodeId = episodeId,
                         mediaId = mediaId,
-                        watchedAtEpochMs = play.toLong() * 1_000L,
+                        watchedAtEpochMs = watchedAt,
+                        updatedAtEpochMs = watchedAt,
                         isDirty = false,
+                        deleted = false,
                     )
                 }
             }

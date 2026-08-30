@@ -122,10 +122,18 @@ class EpisodePlayMigrationTest {
 
         runBlocking {
             listOf(1_000L, 2_000L, 3_000L).forEach {
-                database.episodePlayQueries.insert("tmdb:tv:1399/3/5", "tmdb:tv:1399", it, true)
+                database.episodePlayQueries.upsert(
+                    id = "tmdb:tv:1399/3/5@$it",
+                    episodeId = "tmdb:tv:1399/3/5",
+                    mediaId = "tmdb:tv:1399",
+                    watchedAtEpochMs = it,
+                    updatedAtEpochMs = it,
+                    isDirty = true,
+                    deleted = false,
+                )
             }
 
-            database.episodePlayQueries.deleteLatestForEpisode("tmdb:tv:1399/3/5")
+            database.episodePlayQueries.deleteLatestForEpisode(updatedAtEpochMs = 4_000L, episodeId = "tmdb:tv:1399/3/5")
 
             assertEquals(2, database.episodePlayQueries.countForEpisode("tmdb:tv:1399/3/5").executeAsOne().toInt())
             assertEquals(
@@ -169,7 +177,17 @@ class EpisodePlayMigrationTest {
         assertEquals(emptyList(), after.episodePlayQueries.rewatchTimestamps(since = 0).executeAsList())
 
         // ...and a genuine second viewing after the upgrade is a rewatch.
-        runBlocking { after.episodePlayQueries.insert("tmdb:tv:1399/1/1", "tmdb:tv:1399", 4_000, true) }
+        runBlocking {
+            after.episodePlayQueries.upsert(
+                id = "tmdb:tv:1399/1/1@4000",
+                episodeId = "tmdb:tv:1399/1/1",
+                mediaId = "tmdb:tv:1399",
+                watchedAtEpochMs = 4_000,
+                updatedAtEpochMs = 4_000,
+                isDirty = true,
+                deleted = false,
+            )
+        }
         assertEquals(
             listOf("tmdb:tv:1399" to 1L),
             after.episodePlayQueries.rewatchCountsByMedia(since = 0).executeAsList().map { it.mediaId to it.rewatches },

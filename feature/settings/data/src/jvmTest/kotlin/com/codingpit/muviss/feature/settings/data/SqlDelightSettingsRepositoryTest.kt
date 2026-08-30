@@ -173,8 +173,17 @@ class SqlDelightSettingsRepositoryTest {
 
     @Test
     fun the_export_carries_rewatch_history() = runTest {
-        database.episodePlayQueries.insert("tmdb:tv:1399/1/1", "tmdb:tv:1399", 1_000L, false)
-        database.episodePlayQueries.insert("tmdb:tv:1399/1/1", "tmdb:tv:1399", 2_000L, false)
+        listOf(1_000L, 2_000L).forEach { watchedAt ->
+            database.episodePlayQueries.upsert(
+                id = "tmdb:tv:1399/1/1@$watchedAt",
+                episodeId = "tmdb:tv:1399/1/1",
+                mediaId = "tmdb:tv:1399",
+                watchedAtEpochMs = watchedAt,
+                updatedAtEpochMs = watchedAt,
+                isDirty = false,
+                deleted = false,
+            )
+        }
 
         val json = repository.exportData()
 

@@ -29,9 +29,13 @@ class SyncActions(
 
     fun observeLastSyncedAt(): Flow<Long?> = observeLastSyncedAt.invoke()
 
-    suspend fun requestSignInCode(email: String): Result<Unit> = repository.requestSignInCode(email)
+    suspend fun beginSignIn(provider: SyncProvider): Result<String> = repository.beginSignIn(provider)
 
-    suspend fun verifySignInCode(email: String, code: String): Result<Unit> = repository.verifySignInCode(email, code)
+    suspend fun completeSignIn(authCode: String): Result<Unit> = repository.completeSignIn(authCode)
+
+    fun observeSignInFailure(): Flow<String?> = repository.observeSignInFailure()
+
+    fun signInFailureShown() = repository.signInFailureShown()
 
     suspend fun signOut() = repository.signOut()
 

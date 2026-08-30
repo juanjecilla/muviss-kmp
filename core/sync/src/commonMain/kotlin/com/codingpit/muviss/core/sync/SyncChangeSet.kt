@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 /**
  * One change-log slice covering every table [SyncEngine] replicates —
  * mirrors `collectionEntry` / `episodeProgress` / `mediaList` / `listEntry` /
- * `triageDecision`
+ * `triageDecision` / `episodePlay`
  * (see `core/database`'s `.sq` files) minus device-local-only columns.
  * [SyncBackend.push] sends a set of local dirty rows; [SyncBackend.pull]
  * returns a set of remote rows changed since some point in time. `@Serializable`
@@ -21,13 +21,36 @@ data class SyncChangeSet(
     val mediaLists: List<MediaListChange> = emptyList(),
     val listEntries: List<ListEntryChange> = emptyList(),
     val triageDecisions: List<TriageDecisionChange> = emptyList(),
+    val episodePlays: List<EpisodePlayChange> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = collectionEntries.isEmpty() && episodeProgress.isEmpty() && mediaLists.isEmpty() &&
-            listEntries.isEmpty() && triageDecisions.isEmpty()
+            listEntries.isEmpty() && triageDecisions.isEmpty() && episodePlays.isEmpty()
 
     val size: Int
-        get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size + triageDecisions.size
+        get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size +
+            triageDecisions.size + episodePlays.size
+
+    /**
+     * The newest `updated_at_epoch_ms` in this set, or null when it is empty.
+     *
+     * This is what [SyncEngine] advances its pull cursor to, rather than its
+     * own `AppClock`. Rows are stamped by whichever *device* wrote them, so a
+     * cursor taken from the reading device's clock is comparing two unrelated
+     * clocks: if the writing device runs even slightly ahead, its rows land
+     * with timestamps above the reader's "now", the next `gt.<cursor>` filter
+     * excludes them, and they are never pulled again. Advancing to a
+     * timestamp that actually came off the server has no such gap.
+     */
+    val maxUpdatedAtEpochMs: Long?
+        get() = listOf(
+            collectionEntries.maxOfOrNull { it.updatedAtEpochMs },
+            episodeProgress.maxOfOrNull { it.updatedAtEpochMs },
+            mediaLists.maxOfOrNull { it.updatedAtEpochMs },
+            listEntries.maxOfOrNull { it.updatedAtEpochMs },
+            triageDecisions.maxOfOrNull { it.updatedAtEpochMs },
+            episodePlays.maxOfOrNull { it.updatedAtEpochMs },
+        ).filterNotNull().maxOrNull()
 }
 
 /**
@@ -69,6 +92,25 @@ data class EpisodeProgressChange(
     @SerialName("episode_number") val episodeNumber: Int,
     val seen: Boolean,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
+)
+
+/**
+ * Mirrors `episodePlay` (`EpisodePlay.sq`, ADR 0011 as amended by ADR 0013).
+ *
+ * [id] is carried explicitly, unlike every other change type here whose key is
+ * a natural column: a play's identity is derived
+ * (`episodeId@watchedAtEpochMs`) precisely so it survives being recorded on a
+ * second device, and sending it keeps the derivation in one place rather than
+ * having every backend re-implement it.
+ */
+@Serializable
+data class EpisodePlayChange(
+    val id: String,
+    @SerialName("episode_id") val episodeId: String,
+    @SerialName("media_id") val mediaId: String,
+    @SerialName("watched_at_epoch_ms") val watchedAtEpochMs: Long,
+    @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
+    val deleted: Boolean,
 )
 
 /** Mirrors `mediaList` (`MediaList.sq`). */

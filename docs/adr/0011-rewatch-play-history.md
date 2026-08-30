@@ -1,5 +1,14 @@
 # Rewatching is a history of viewings, not a counter
 
+> **Amended by ADR 0013 (2026-08-29).** This ADR kept `episodePlay` off the
+> sync change-log, on the grounds that append-only rows need a different
+> conflict rule than last-write-wins. That turned out to be a consequence of
+> the table's per-device `AUTOINCREMENT` key rather than of append-only data:
+> given an id derived from the viewing itself, last-write-wins applies
+> unchanged. Rewatch history now syncs, the key is
+> `episodeId@watchedAtEpochMs`, and this table's deletes are soft. See ADR
+> 0013.
+
 ADR 0005 made per-episode ticks the source of truth and said, in as many words, that progress carries no separate history log. That held for as long as the only question was *whether* something had been seen. It stopped holding the moment the answer needed to be "three times, most recently in March".
 
 Until now, tapping an already-ticked episode un-ticked it. A mis-tap and a genuine second viewing were the same gesture, and the second one was unrepresentable.

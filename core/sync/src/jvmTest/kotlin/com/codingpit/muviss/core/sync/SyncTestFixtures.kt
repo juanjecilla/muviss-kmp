@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.sync
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,9 +51,21 @@ internal class FakeSyncBackend(
     private val mediaLists = mutableMapOf<String, MediaListChange>()
     private val listEntries = mutableMapOf<Pair<String, String>, ListEntryChange>()
     private val triageDecisions = mutableMapOf<String, TriageDecisionChange>()
+    private val episodePlays = mutableMapOf<String, EpisodePlayChange>()
 
     var pushFailure: Throwable? = null
     var pullFailure: Throwable? = null
+
+    /** Every [push] this backend has been handed, oldest first — lets a test assert that two overlapping cycles produced one push, not two. */
+    val pushes = mutableListOf<SyncChangeSet>()
+
+    /**
+     * Holds [push] open until completed. Without a way to keep one cycle
+     * suspended mid-flight, a "two cycles overlap" test does not overlap
+     * anything — the calls just run one after the other and pass whether or
+     * not `SyncEngine` actually excludes them.
+     */
+    var pushGate: CompletableDeferred<Unit>? = null
 
     fun setSession(session: SyncSession?) {
         sessionState.value = session
@@ -68,14 +81,20 @@ internal class FakeSyncBackend(
 
     fun remoteTriageDecision(mediaId: String): TriageDecisionChange? = triageDecisions[mediaId]
 
+    fun seedRemoteEpisodePlay(change: EpisodePlayChange) {
+        episodePlays[change.id] = change
+    }
+
+    fun remoteEpisodePlay(id: String): EpisodePlayChange? = episodePlays[id]
+
     override suspend fun signInAnonymously(): Result<SyncSession> = Result.success(FAKE_SESSION).also { sessionState.value = FAKE_SESSION }
 
-    override suspend fun requestEmailOtp(email: String): Result<Unit> = Result.success(Unit)
+    override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String> = Result.success("https://fake.test/auth/v1/authorize?provider=${provider.wireName}&redirect_to=$redirectUri")
 
-    override suspend fun verifyEmailOtp(email: String, code: String): Result<SyncSession> {
-        val upgraded = FAKE_SESSION.copy(email = email)
-        sessionState.value = upgraded
-        return Result.success(upgraded)
+    override suspend fun completeOAuth(authCode: String): Result<SyncSession> {
+        val signedIn = FAKE_SESSION.copy(email = "person@example.com")
+        sessionState.value = signedIn
+        return Result.success(signedIn)
     }
 
     override suspend fun signOut() {
@@ -83,12 +102,15 @@ internal class FakeSyncBackend(
     }
 
     override suspend fun push(changes: SyncChangeSet): Result<Unit> {
+        pushes += changes
+        pushGate?.await()
         pushFailure?.let { return Result.failure(it) }
         changes.collectionEntries.forEach { upsertIfNewer(collectionEntries, it.mediaId, it) { c -> c.updatedAtEpochMs } }
         changes.episodeProgress.forEach { upsertIfNewer(episodeProgress, it.episodeId, it) { c -> c.updatedAtEpochMs } }
         changes.mediaLists.forEach { upsertIfNewer(mediaLists, it.id, it) { c -> c.updatedAtEpochMs } }
         changes.listEntries.forEach { upsertIfNewer(listEntries, it.listId to it.mediaId, it) { c -> c.updatedAtEpochMs } }
         changes.triageDecisions.forEach { upsertIfNewer(triageDecisions, it.mediaId, it) { c -> c.updatedAtEpochMs } }
+        changes.episodePlays.forEach { upsertIfNewer(episodePlays, it.id, it) { c -> c.updatedAtEpochMs } }
         return Result.success(Unit)
     }
 
@@ -102,6 +124,7 @@ internal class FakeSyncBackend(
                 mediaLists = mediaLists.values.filter { it.updatedAtEpochMs > since },
                 listEntries = listEntries.values.filter { it.updatedAtEpochMs > since },
                 triageDecisions = triageDecisions.values.filter { it.updatedAtEpochMs > since },
+                episodePlays = episodePlays.values.filter { it.updatedAtEpochMs > since },
             ),
         )
     }

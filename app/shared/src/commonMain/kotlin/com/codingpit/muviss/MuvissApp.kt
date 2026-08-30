@@ -39,6 +39,8 @@ import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.sync.SignInFeedback
+import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.di.rememberDatabaseDriverFactory
@@ -89,12 +91,20 @@ private val topDestinations =
  * (`DetailRoute`'s string form); once consumed the caller clears it via
  * [onDeepLinkConsumed] so backgrounding/foregrounding the app doesn't
  * re-navigate. Both default to no-op for platforms with no such deep link.
+ *
+ * [oauthCode] is the same idea for sign-in (ADR 0014): the authorization code
+ * from a `muviss://auth-callback` redirect, cleared through
+ * [onOAuthCodeConsumed] once redeemed. It is handled here rather than in the
+ * profile screen because the redirect can arrive long after that screen —
+ * and its ViewModel — is gone.
  */
 @Suppress("DEPRECATION") // KoinApplication(config=) overload not present in this Koin version.
 @Composable
 fun MuvissApp(
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
+    oauthCode: String? = null,
+    onOAuthCodeConsumed: () -> Unit = {},
 ) {
     remember { CrashReporter.init(MuvissBuildConfig.SENTRY_DSN) }
     remember { configureImageLoader() }
@@ -108,6 +118,7 @@ fun MuvissApp(
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
         AutoSyncOnForeground()
+        CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
             MuvissScaffold(deepLinkMediaId, onDeepLinkConsumed)
         }
@@ -132,6 +143,50 @@ private fun AutoSyncOnForeground() {
     val coroutineScope = rememberCoroutineScope()
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         coroutineScope.launch { syncEngine.syncNow() }
+    }
+}
+
+/**
+ * Redeems an OAuth authorization code for a session (ADR 0014).
+ *
+ * At app scope for the same reason as [AutoSyncOnForeground], only more so:
+ * the browser round-trip can outlive the profile screen entirely, and on a
+ * cold start the redirect *is* the launch, so there is no ViewModel around to
+ * receive it. Nothing is returned to a caller — `SyncBackend.session` is a
+ * Flow, so a successful exchange reaches the profile screen on its own.
+ *
+ * A failure is reported through [SignInFeedback] rather than dropped. It used
+ * to be dropped, on the reasoning that staying signed out was itself the
+ * correct state and the recovery — which was true and still useless: sign-in
+ * shipped broken, and a failure that looks identical to "not attempted" hid it
+ * through three rounds of diagnosis.
+ */
+@Composable
+private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
+    val backend = koinInject<SyncBackend>()
+    val syncEngine = koinInject<SyncEngine>()
+    val feedback = koinInject<SignInFeedback>()
+    // The exchange deliberately runs in the composition's scope rather than the
+    // effect's own. Consuming the code clears the state this effect is keyed
+    // on, and a LaunchedEffect is cancelled the moment its key changes — so
+    // doing the work inside it would abort at the first suspension point,
+    // which is the exchange itself. Sign-in then failed silently every time.
+    // rememberCoroutineScope outlives a key change; it ends when the composable
+    // leaves composition.
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(authCode) {
+        val code = authCode ?: return@LaunchedEffect
+        // Still consumed immediately: the code is single-use server-side, and
+        // re-delivering the same intent must not redeem it twice.
+        onConsumed()
+        scope.launch {
+            backend.completeOAuth(code)
+                .onSuccess { syncEngine.syncNow() }
+                // Reported rather than swallowed: this is the only place that
+                // knows why sign-in failed, and the profile screen is the only
+                // place that can say so.
+                .onFailure { feedback.report(it.message) }
+        }
     }
 }
 

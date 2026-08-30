@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -55,6 +56,7 @@ import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.RewatchEntry
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
+import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import kotlinx.coroutines.launch
 import kotlin.math.round
 
@@ -63,11 +65,25 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    // Purely presentational — whether a sheet is open is not something the
+    // ViewModel or the domain has any use for.
+    val paywall = rememberPaywallPresenter()
+    var paywallVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.sync.message) {
         val message = state.sync.message ?: return@LaunchedEffect
         coroutineScope.launch { snackbarHostState.showSnackbar(message) }
         viewModel.syncMessageShown()
+    }
+
+    // Sign-in leaves the app: the provider's page runs in a browser and comes
+    // back as a redirect into MainActivity, not as a result here. Consuming
+    // the URL immediately keeps returning to this screen from reopening it.
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(state.sync.pendingAuthUrl) {
+        val url = state.sync.pendingAuthUrl ?: return@LaunchedEffect
+        uriHandler.openUri(url)
+        viewModel.authUrlOpened()
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
@@ -100,6 +116,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
                 onSignInClicked = viewModel::onSignInClicked,
                 onSyncNowClicked = viewModel::onSyncNowClicked,
                 onSignOutClicked = viewModel::onSignOutClicked,
+                onUnlockClicked = { paywallVisible = true },
             )
             HorizontalDivider()
 
@@ -110,26 +127,13 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
             }
         }
 
+        paywall.Paywall(visible = paywallVisible, onDismiss = { paywallVisible = false })
+
         if (state.isEditingName) {
             EditNameDialog(
                 currentName = state.profile.displayName,
                 onConfirm = viewModel::onDisplayNameConfirmed,
                 onDismiss = viewModel::onEditNameDismissed,
-            )
-        }
-
-        if (state.sync.isEnteringEmail) {
-            SignInEmailDialog(
-                onConfirm = viewModel::onSignInEmailConfirmed,
-                onDismiss = viewModel::onSignInEmailDismissed,
-            )
-        }
-
-        if (state.sync.isEnteringCode) {
-            SignInCodeDialog(
-                email = state.sync.pendingEmail.orEmpty(),
-                onConfirm = viewModel::onSignInCodeConfirmed,
-                onDismiss = viewModel::onSignInCodeDismissed,
             )
         }
     }
@@ -212,13 +216,18 @@ private fun EditNameDialog(
  * for this build ([SyncAccountState.Unavailable]) — the entry point is
  * hidden entirely rather than shown disabled, same contract as a blank
  * Sentry DSN (CLAUDE.md).
+ *
+ * [SyncAccountState.Locked] is the deliberate opposite (ADR 0012): the build
+ * has sync, the user has not bought it, so the row appears and offers the
+ * purchase. Hiding it would leave a paid feature undiscoverable.
  */
 @Composable
 private fun SyncSection(
     sync: SyncUiState,
-    onSignInClicked: () -> Unit,
+    onSignInClicked: (SyncProvider) -> Unit,
     onSyncNowClicked: () -> Unit,
     onSignOutClicked: () -> Unit,
+    onUnlockClicked: () -> Unit,
 ) {
     val account = sync.account
     if (account == SyncAccountState.Unavailable) return
@@ -242,6 +251,24 @@ private fun SyncSection(
             when (account) {
                 SyncAccountState.Unavailable -> Unit
 
+                is SyncAccountState.Locked -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Sync across devices", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Keep your library, progress and rewatch history on every device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = onUnlockClicked) { Text("Unlock sync") }
+                        // A lapsed subscriber is still signed in; without this
+                        // the paywall would be the only thing they can reach.
+                        if (account.email != null) {
+                            TextButton(onClick = onSignOutClicked, enabled = !sync.syncing) { Text("Sign out") }
+                        }
+                    }
+                }
+
                 SyncAccountState.SignedOut -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Account", style = MaterialTheme.typography.titleSmall)
                     Text(
@@ -250,7 +277,16 @@ private fun SyncSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
-                    OutlinedButton(onClick = onSignInClicked, enabled = !sync.syncing) { Text("Sign in to sync") }
+                    // One button per provider rather than a picker: there are
+                    // two at most, and a picker would add a step to the one
+                    // action on this row.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        sync.providers.forEach { provider ->
+                            OutlinedButton(onClick = { onSignInClicked(provider) }, enabled = !sync.syncing) {
+                                Text("Sign in with ${provider.displayName}")
+                            }
+                        }
+                    }
                 }
 
                 is SyncAccountState.SignedIn -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -271,48 +307,6 @@ private fun SyncSection(
             }
         }
     }
-}
-
-@Composable
-private fun SignInEmailDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Sign in to sync") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("We'll email you a one-time code — no password needed.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(value = email, onValueChange = { email = it }, singleLine = true, label = { Text("Email") })
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(email) }, enabled = email.isNotBlank()) { Text("Send code") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-}
-
-@Composable
-private fun SignInCodeDialog(email: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var code by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Enter the code") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("We sent a code to $email.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(value = code, onValueChange = { code = it }, singleLine = true, label = { Text("Code") })
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(code) }, enabled = code.isNotBlank()) { Text("Verify") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
 }
 
 @Composable

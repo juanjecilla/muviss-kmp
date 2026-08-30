@@ -1,11 +1,13 @@
 package com.codingpit.muviss.core.sync.supabase
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionStore
+import com.codingpit.muviss.core.sync.newPkcePair
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +44,11 @@ internal class SupabaseSyncBackend(
 
     private val sessionState = MutableStateFlow<SyncSession?>(null)
     private val restoreMutex = Mutex()
+    private val refreshMutex = Mutex()
     private var restored = false
+
+    /** The PKCE verifier for the OAuth attempt currently in flight, if any. See [beginOAuth]. */
+    private var pendingVerifier: String? = null
 
     override val session: Flow<SyncSession?> = flow {
         ensureRestored()
@@ -53,13 +59,26 @@ internal class SupabaseSyncBackend(
         auth.signInAnonymously().toSession().also { persist(it) }
     }
 
-    override suspend fun requestEmailOtp(email: String): Result<Unit> = runCatching {
-        auth.requestEmailOtp(email)
+    override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String> = runCatching {
+        val (verifier, challenge) = newPkcePair()
+        // Kept in memory only. Persisting it would mean another migration for
+        // a value that lives for the seconds the browser is open; the cost is
+        // that a process death mid-sign-in loses the attempt, which surfaces
+        // as completeOAuth's "no sign-in is in progress" and is fixed by
+        // tapping the button again.
+        pendingVerifier = verifier
+        auth.authorizeUrl(provider = provider, redirectUri = redirectUri, codeChallenge = challenge)
     }
 
-    override suspend fun verifyEmailOtp(email: String, code: String): Result<SyncSession> = runCatching {
-        auth.verifyEmailOtp(email, code).toSession().also { persist(it) }
-    }
+    override suspend fun completeOAuth(authCode: String): Result<SyncSession> = runCatching {
+        val verifier = pendingVerifier ?: error("No sign-in is in progress — start again from the profile screen")
+        val session = auth.exchangeOAuthCode(authCode = authCode, codeVerifier = verifier).toSession()
+        // Single-use, whether or not the exchange succeeded: a verifier that
+        // has been sent once must never be reused against a second code.
+        pendingVerifier = null
+        persist(session)
+        session
+    }.onFailure { pendingVerifier = null }
 
     override suspend fun signOut() {
         ensureRestored()
@@ -69,23 +88,27 @@ internal class SupabaseSyncBackend(
     }
 
     override suspend fun push(changes: SyncChangeSet): Result<Unit> = runCatching {
-        val token = requireAccessToken()
-        postgrest.upsert(TABLE_COLLECTION_ENTRY, token, changes.collectionEntries)
-        postgrest.upsert(TABLE_EPISODE_PROGRESS, token, changes.episodeProgress)
-        postgrest.upsert(TABLE_MEDIA_LIST, token, changes.mediaLists)
-        postgrest.upsert(TABLE_LIST_ENTRY, token, changes.listEntries)
-        postgrest.upsert(TABLE_TRIAGE_DECISION, token, changes.triageDecisions)
+        withAccessToken { token ->
+            postgrest.upsert(TABLE_COLLECTION_ENTRY, token, changes.collectionEntries)
+            postgrest.upsert(TABLE_EPISODE_PROGRESS, token, changes.episodeProgress)
+            postgrest.upsert(TABLE_MEDIA_LIST, token, changes.mediaLists)
+            postgrest.upsert(TABLE_LIST_ENTRY, token, changes.listEntries)
+            postgrest.upsert(TABLE_TRIAGE_DECISION, token, changes.triageDecisions)
+            postgrest.upsert(TABLE_EPISODE_PLAY, token, changes.episodePlays)
+        }
     }
 
     override suspend fun pull(sinceEpochMs: Long?): Result<SyncChangeSet> = runCatching {
-        val token = requireAccessToken()
-        SyncChangeSet(
-            collectionEntries = postgrest.selectSince(TABLE_COLLECTION_ENTRY, token, sinceEpochMs),
-            episodeProgress = postgrest.selectSince(TABLE_EPISODE_PROGRESS, token, sinceEpochMs),
-            mediaLists = postgrest.selectSince(TABLE_MEDIA_LIST, token, sinceEpochMs),
-            listEntries = postgrest.selectSince(TABLE_LIST_ENTRY, token, sinceEpochMs),
-            triageDecisions = postgrest.selectSince(TABLE_TRIAGE_DECISION, token, sinceEpochMs),
-        )
+        withAccessToken { token ->
+            SyncChangeSet(
+                collectionEntries = postgrest.selectSince(TABLE_COLLECTION_ENTRY, token, sinceEpochMs),
+                episodeProgress = postgrest.selectSince(TABLE_EPISODE_PROGRESS, token, sinceEpochMs),
+                mediaLists = postgrest.selectSince(TABLE_MEDIA_LIST, token, sinceEpochMs),
+                listEntries = postgrest.selectSince(TABLE_LIST_ENTRY, token, sinceEpochMs),
+                triageDecisions = postgrest.selectSince(TABLE_TRIAGE_DECISION, token, sinceEpochMs),
+                episodePlays = postgrest.selectSince(TABLE_EPISODE_PLAY, token, sinceEpochMs),
+            )
+        }
     }
 
     private suspend fun ensureRestored() {
@@ -97,9 +120,66 @@ internal class SupabaseSyncBackend(
         }
     }
 
+    /**
+     * Runs [block] with a live access token, refreshing first if the stored
+     * one is about to expire and once more if the server rejects it anyway.
+     *
+     * Both halves are needed. The proactive half is what keeps day-to-day
+     * sync alive, since Supabase tokens last about an hour; the reactive
+     * half covers the cases the expiry stamp cannot predict — a device clock
+     * that is wrong, or a token revoked server-side before its time. Retrying
+     * is safe because both callers are idempotent: PostgREST upserts
+     * `merge-duplicates`, and a pull is a read.
+     */
+    private suspend fun <T> withAccessToken(block: suspend (String) -> T): T {
+        val token = requireAccessToken()
+        return try {
+            block(token)
+        } catch (e: SupabaseHttpException) {
+            if (e.status != HTTP_UNAUTHORIZED) throw e
+            block(refreshSession().accessToken)
+        }
+    }
+
     private suspend fun requireAccessToken(): String {
         ensureRestored()
-        return sessionState.value?.accessToken ?: error("Sync attempted while signed out")
+        val current = sessionState.value ?: error("Sync attempted while signed out")
+        val expiresAt = current.expiresAtEpochMs ?: return current.accessToken
+        if (clock.nowEpochMs() < expiresAt - REFRESH_LEEWAY_MS) return current.accessToken
+        return refreshSession().accessToken
+    }
+
+    /**
+     * A failed refresh clears the session rather than leaving a dead one in
+     * place: the refresh token is single-use and GoTrue has already
+     * invalidated it, so every later attempt would fail the same way. Dropping
+     * to signed-out puts the profile screen back on the sign-in button, which
+     * is the only thing that can actually recover.
+     */
+    private suspend fun refreshSession(): SyncSession = refreshMutex.withLock {
+        ensureRestored()
+        val current = sessionState.value ?: error("Sync attempted while signed out")
+        // Another caller may have refreshed while this one waited on the lock.
+        val expiresAt = current.expiresAtEpochMs
+        if (expiresAt != null && clock.nowEpochMs() < expiresAt - REFRESH_LEEWAY_MS) return@withLock current
+        val refreshToken = current.refreshToken
+        if (refreshToken == null) {
+            clearSession()
+            error("Sync session expired and carries no refresh token; sign in again")
+        }
+        val refreshed = runCatching { auth.refreshSession(refreshToken).toSession() }
+            .getOrElse { failure ->
+                clearSession()
+                throw failure
+            }
+        persist(refreshed)
+        refreshed
+    }
+
+    private suspend fun clearSession() {
+        sessionState.value = null
+        sessionStore.clear()
+        restored = true
     }
 
     private suspend fun persist(session: SyncSession) {
@@ -123,6 +203,10 @@ internal class SupabaseSyncBackend(
         const val TABLE_MEDIA_LIST = "media_list"
         const val TABLE_LIST_ENTRY = "list_entry"
         const val TABLE_TRIAGE_DECISION = "triage_decision"
+        const val TABLE_EPISODE_PLAY = "episode_play"
         const val MILLIS_PER_SECOND = 1000L
+
+        /** Refresh a minute early rather than at the stroke of expiry, so a request in flight cannot age out mid-round-trip. */
+        const val REFRESH_LEEWAY_MS = 60_000L
     }
 }

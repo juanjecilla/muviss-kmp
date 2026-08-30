@@ -17,31 +17,66 @@
 -- Movies use `EpisodeId.forMovie`'s single synthetic id, same as
 -- `episodeProgress`, so rewatching a film is recorded identically.
 --
--- `isDirty` is present from the start so the change-log shape is right, but
--- nothing pushes these rows yet: v1 is local-only, and append-only rows need
--- a different conflict rule than ADR 0009's last-write-wins. See ADR 0011.
+-- ADR 0013 reversed this table's original "v1 is local-only" stance and put it
+-- on the change-log. Two shape changes were needed and both landed in `7.sqm`:
+--
+--   * `id` went from `INTEGER AUTOINCREMENT` to a deterministic TEXT key,
+--     `episodeId || '@' || watchedAtEpochMs`. A surrogate autoincrement is
+--     per-device — device A's play #5 and device B's play #5 are different
+--     viewings — so it could never be a sync key. Deriving identity from the
+--     viewing itself makes the same viewing the same row everywhere, which is
+--     what lets ADR 0009's last-write-wins apply here unchanged. It also makes
+--     a double push idempotent instead of duplicating history.
+--
+--   * The three hard `DELETE`s became soft deletes. Last-write-wins cannot
+--     express a hard delete: a removed row has nothing left to carry a
+--     timestamp, so the other device's older copy would simply be pushed back.
+--     Every read below therefore filters `deleted = 0`; forgetting that filter
+--     silently inflates a play count or the profile watch-streak.
+--
+-- The accepted cost is that two viewings of one episode recorded in the same
+-- millisecond collapse into a single row. That is not reachable by tapping.
 CREATE TABLE episodePlay (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL PRIMARY KEY,
     episodeId TEXT NOT NULL,
     mediaId TEXT NOT NULL,
     watchedAtEpochMs INTEGER NOT NULL,
-    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 CREATE INDEX episodePlay_episodeId ON episodePlay(episodeId);
 CREATE INDEX episodePlay_mediaId ON episodePlay(mediaId);
 
-insert:
-INSERT INTO episodePlay(episodeId, mediaId, watchedAtEpochMs, isDirty)
-VALUES (?, ?, ?, ?);
+-- The only way a row is written, locally or from a pulled remote change.
+--
+-- OR REPLACE, not a plain INSERT: with a deterministic id two ticks inside one
+-- millisecond now collide on the primary key where they used to produce two
+-- rows. Replacing also revives an id that was soft-deleted earlier, which is
+-- the right outcome — the user is recording that viewing again.
+--
+-- `id` is passed in rather than composed here (`episodeId || '@' ||
+-- watchedAtEpochMs` would bind one parameter as both TEXT and INTEGER, which
+-- SQLDelight cannot type). `SqlDelightProgressRepository.playId` is where a
+-- local row's id comes from; a remote one arrives already carrying it.
+upsert:
+INSERT OR REPLACE INTO episodePlay(id, episodeId, mediaId, watchedAtEpochMs, updatedAtEpochMs, isDirty, deleted)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectById:
+SELECT *
+FROM episodePlay
+WHERE id = :id;
 
 -- "I ticked that by mistake": drops the newest viewing only, so an episode
 -- genuinely watched three times goes to two rather than losing its history.
 deleteLatestForEpisode:
-DELETE FROM episodePlay
+UPDATE episodePlay
+SET deleted = 1, isDirty = 1, updatedAtEpochMs = :updatedAtEpochMs
 WHERE id = (
     SELECT id FROM episodePlay
-    WHERE episodeId = :episodeId
+    WHERE episodeId = :episodeId AND deleted = 0
     ORDER BY watchedAtEpochMs DESC, id DESC
     LIMIT 1
 );
@@ -49,30 +84,32 @@ WHERE id = (
 -- The destructive one, reachable only from episode detail's explicit
 -- "clear watch history".
 deleteAllForEpisode:
-DELETE FROM episodePlay
-WHERE episodeId = :episodeId;
+UPDATE episodePlay
+SET deleted = 1, isDirty = 1, updatedAtEpochMs = :updatedAtEpochMs
+WHERE episodeId = :episodeId AND deleted = 0;
 
 deleteAllForMedia:
-DELETE FROM episodePlay
-WHERE mediaId = :mediaId;
+UPDATE episodePlay
+SET deleted = 1, isDirty = 1, updatedAtEpochMs = :updatedAtEpochMs
+WHERE mediaId = :mediaId AND deleted = 0;
 
 countForEpisode:
 SELECT COUNT(*)
 FROM episodePlay
-WHERE episodeId = :episodeId;
+WHERE episodeId = :episodeId AND deleted = 0;
 
 -- Play counts for one title in a single round trip, for the detail screen's
 -- per-episode "watched 3x" markers.
 countsForMedia:
 SELECT episodeId, COUNT(*) AS playCount
 FROM episodePlay
-WHERE mediaId = :mediaId
+WHERE mediaId = :mediaId AND deleted = 0
 GROUP BY episodeId;
 
 selectForEpisode:
 SELECT *
 FROM episodePlay
-WHERE episodeId = :episodeId
+WHERE episodeId = :episodeId AND deleted = 0
 ORDER BY watchedAtEpochMs DESC, id DESC;
 
 -- Every viewing's timestamp, across all titles — the profile watch-streak's
@@ -80,8 +117,17 @@ ORDER BY watchedAtEpochMs DESC, id DESC;
 -- adds a day here instead of moving an old one.
 selectAllWatchedAt:
 SELECT watchedAtEpochMs
-FROM episodePlay;
+FROM episodePlay
+WHERE deleted = 0;
 
+-- Both rewatch queries filter `deleted = 0` in the CTE *and* in the outer
+-- query, and both halves matter. Outer only would still let a deleted first
+-- viewing anchor `firstAt`, so a surviving later play would stop counting as a
+-- rewatch; CTE only would count deleted plays as rewatches. These arrived from
+-- EPIC 21 while this branch was making play deletes soft (ADR 0013) — git
+-- merged both sides cleanly and produced stats that counted rows the user had
+-- cleared, which is the failure mode this table's header warns about.
+--
 -- Rewatches per title, for the profile's "most rewatched" ranking.
 --
 -- A *rewatch* is a play that has an earlier play of the same episode — at any
@@ -104,6 +150,7 @@ rewatchCountsByMedia:
 WITH firstPlay AS (
     SELECT episodeId, MIN(watchedAtEpochMs) AS firstAt, id AS firstId
     FROM episodePlay
+    WHERE deleted = 0
     GROUP BY episodeId
 )
 SELECT p.mediaId, COUNT(*) AS rewatches
@@ -111,6 +158,7 @@ FROM episodePlay p
 JOIN firstPlay f ON p.episodeId = f.episodeId
 WHERE (p.watchedAtEpochMs > f.firstAt OR (p.watchedAtEpochMs = f.firstAt AND p.id > f.firstId))
   AND p.watchedAtEpochMs >= :since
+  AND p.deleted = 0
 GROUP BY p.mediaId;
 
 -- Every rewatch's timestamp since :since, across all titles — the input to the
@@ -125,18 +173,21 @@ rewatchTimestamps:
 WITH firstPlay AS (
     SELECT episodeId, MIN(watchedAtEpochMs) AS firstAt, id AS firstId
     FROM episodePlay
+    WHERE deleted = 0
     GROUP BY episodeId
 )
 SELECT p.watchedAtEpochMs
 FROM episodePlay p
 JOIN firstPlay f ON p.episodeId = f.episodeId
 WHERE (p.watchedAtEpochMs > f.firstAt OR (p.watchedAtEpochMs = f.firstAt AND p.id > f.firstId))
-  AND p.watchedAtEpochMs >= :since;
+  AND p.watchedAtEpochMs >= :since
+  AND p.deleted = 0;
 
 -- Whole table, for settings' data export (EPIC 8).
 selectAll:
 SELECT *
-FROM episodePlay;
+FROM episodePlay
+WHERE deleted = 0;
 
 selectDirty:
 SELECT *

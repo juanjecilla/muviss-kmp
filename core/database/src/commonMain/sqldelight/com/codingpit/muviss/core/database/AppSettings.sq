@@ -19,6 +19,17 @@
 -- it further. Both are per-device UI preferences and, like the two above, are
 -- deliberately NOT synced: motion tolerance belongs to a device and the person
 -- holding it, not to a library.
+--
+-- `syncCursorEpochMs` was added in `7.sqm`. It is NOT a second copy of
+-- `lastSyncedAtEpochMs`: that one answers "when did this device last complete
+-- a cycle" and is stamped from the local clock for the profile screen's label,
+-- while this one is the high-water mark of `updatedAtEpochMs` values the
+-- *server* returned, and is what the next pull filters on. They were one
+-- column until sharing them turned out to drop rows — a device whose clock
+-- runs ahead stamps rows above the reading device's "now", and a cursor taken
+-- from the reader's clock skips them forever. Null means "never pulled", which
+-- asks for a full pull; that is why `7.sqm` does not backfill it from
+-- `lastSyncedAtEpochMs`, whose value is exactly the untrusted clock reading.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
@@ -29,7 +40,8 @@ CREATE TABLE appSettings (
     triageControlScheme TEXT NOT NULL DEFAULT 'FOUR_WAY',
     triageTutorialSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     animationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    triageDeckAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+    triageDeckAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    syncCursorEpochMs INTEGER
 );
 
 selectSettings:
@@ -55,6 +67,9 @@ UPDATE appSettings SET notificationsEnabled = :notificationsEnabled WHERE id = 0
 
 updateLastSyncedAt:
 UPDATE appSettings SET lastSyncedAtEpochMs = :lastSyncedAtEpochMs WHERE id = 0;
+
+updateSyncCursor:
+UPDATE appSettings SET syncCursorEpochMs = :syncCursorEpochMs WHERE id = 0;
 
 updateTriageControlScheme:
 UPDATE appSettings SET triageControlScheme = :triageControlScheme WHERE id = 0;

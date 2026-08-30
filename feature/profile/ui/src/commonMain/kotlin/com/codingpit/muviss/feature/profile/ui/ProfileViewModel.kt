@@ -11,6 +11,7 @@ import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
+import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,9 +29,16 @@ data class SyncUiState(
     val lastSyncedAtEpochMs: Long? = null,
     val lastSyncedLabel: String = "Never synced",
     val syncing: Boolean = false,
-    val isEnteringEmail: Boolean = false,
-    val isEnteringCode: Boolean = false,
-    val pendingEmail: String? = null,
+    /** Set when sign-in has produced an authorize URL the screen should open in a browser; cleared by [ProfileViewModel.authUrlOpened]. */
+    val pendingAuthUrl: String? = null,
+    /**
+     * The providers offered on the sign-in row. GitHub only for now — a
+     * provider listed here that is not enabled in the Supabase dashboard
+     * fails at the authorize URL with a message from GoTrue, so this list
+     * tracks what the project actually accepts rather than what the enum can
+     * express (ADR 0014).
+     */
+    val providers: List<SyncProvider> = listOf(SyncProvider.GITHUB),
     /** One-shot: a message to surface in a snackbar (sent-code confirmation, sign-in success, sync outcome, or an error). Cleared by [ProfileViewModel.syncMessageShown]. */
     val message: String? = null,
 )
@@ -87,6 +95,13 @@ class ProfileViewModel(
                 }
             }
             .launchIn(viewModelScope)
+
+        // Sign-in can fail while this screen does not exist — the redirect is
+        // redeemed at app scope (ADR 0014) — so the reason arrives here as a
+        // stream rather than as a call's return value.
+        syncActions.observeSignInFailure()
+            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = failure)) } }
+            .launchIn(viewModelScope)
     }
 
     fun onEditNameRequested() {
@@ -109,61 +124,40 @@ class ProfileViewModel(
         viewModelScope.launch { actions.setAvatar(avatarId) }
     }
 
-    /** Opens the email step, unless sync isn't configured for this build (no Supabase keys) — surfaces a message instead, the button should really be hidden in that state (see [SyncAccountState.Unavailable]). */
-    fun onSignInClicked() {
+    /**
+     * Starts OAuth for [provider], unless sync isn't in this build — then it
+     * surfaces a message instead, though the button should already be hidden
+     * in that state (see [SyncAccountState.Unavailable]).
+     *
+     * Completion does not come back here. The user leaves for a browser and
+     * returns as a redirect into `MainActivity`, which may well be after this
+     * ViewModel has been disposed; the signed-in state arrives instead
+     * through [SyncActions.observeAccount], which this class already
+     * collects. That is why there is no `onSignInCompleted`.
+     */
+    fun onSignInClicked(provider: SyncProvider) {
         if (!syncActions.isAvailable) {
             _state.update { it.copy(sync = it.sync.copy(message = "Sync isn't set up for this build")) }
             return
         }
-        _state.update { it.copy(sync = it.sync.copy(isEnteringEmail = true)) }
-    }
-
-    fun onSignInEmailDismissed() {
-        _state.update { it.copy(sync = it.sync.copy(isEnteringEmail = false)) }
-    }
-
-    fun onSignInEmailConfirmed(email: String) {
-        val trimmed = email.trim()
-        if (trimmed.isEmpty()) return
         viewModelScope.launch {
             _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
-            val result = syncActions.requestSignInCode(trimmed)
+            val result = syncActions.beginSignIn(provider)
             _state.update {
                 it.copy(
                     sync = it.sync.copy(
                         syncing = false,
-                        isEnteringEmail = false,
-                        isEnteringCode = result.isSuccess,
-                        pendingEmail = trimmed.takeIf { result.isSuccess },
-                        message = if (result.isSuccess) "Code sent to $trimmed" else result.exceptionOrNull()?.message ?: "Couldn't send code",
+                        pendingAuthUrl = result.getOrNull(),
+                        message = result.exceptionOrNull()?.let { e -> e.message ?: "Couldn't start sign-in" },
                     ),
                 )
             }
         }
     }
 
-    fun onSignInCodeDismissed() {
-        _state.update { it.copy(sync = it.sync.copy(isEnteringCode = false, pendingEmail = null)) }
-    }
-
-    fun onSignInCodeConfirmed(code: String) {
-        val email = _state.value.sync.pendingEmail ?: return
-        val trimmed = code.trim()
-        if (trimmed.isEmpty()) return
-        viewModelScope.launch {
-            _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
-            val result = syncActions.verifySignInCode(email, trimmed)
-            _state.update {
-                it.copy(
-                    sync = it.sync.copy(
-                        isEnteringCode = !result.isSuccess,
-                        pendingEmail = if (result.isSuccess) null else email,
-                        message = if (result.isSuccess) "Signed in" else result.exceptionOrNull()?.message ?: "Invalid code",
-                    ),
-                )
-            }
-            if (result.isSuccess) runSyncNow()
-        }
+    /** Called once the screen has handed [SyncUiState.pendingAuthUrl] to a browser, so returning to the app doesn't reopen it. */
+    fun authUrlOpened() {
+        _state.update { it.copy(sync = it.sync.copy(pendingAuthUrl = null)) }
     }
 
     fun onSignOutClicked() {
@@ -176,6 +170,9 @@ class ProfileViewModel(
 
     fun syncMessageShown() {
         _state.update { it.copy(sync = it.sync.copy(message = null)) }
+        // Also clears the shared sign-in failure, or it would be re-emitted to
+        // the next collector and the message would come back.
+        syncActions.signInFailureShown()
     }
 
     private suspend fun runSyncNow() {
@@ -183,7 +180,14 @@ class ProfileViewModel(
         val outcome = syncActions.syncNow()
         val message = when (outcome) {
             SyncOutcomeSummary.Unavailable, SyncOutcomeSummary.NotSignedIn -> null
+
+            // Worth a message, unlike the two above: those states have no
+            // visible sync button to have been pressed, whereas an entitlement
+            // can lapse while the screen is open and leave a stale one there.
+            SyncOutcomeSummary.NotEntitled -> "Sync is a paid feature"
+
             is SyncOutcomeSummary.Success -> "Synced"
+
             is SyncOutcomeSummary.Failed -> outcome.message
         }
         _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }

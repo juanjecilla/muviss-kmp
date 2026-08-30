@@ -35,6 +35,23 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- OAuth sign-in comes back here (ADR 0014). The scheme/host
+                 must stay identical to `OAUTH_REDIRECT_URI` in
+                 :core:sync's OAuthRedirect.kt and to
+                 `additional_redirect_urls` in supabase/config.toml — XML
+                 cannot reference the Kotlin constant, so all three move
+                 together. singleTask (above) is what makes the redirect
+                 reach the running app through onNewIntent rather than
+                 starting a second instance on top of it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="muviss" android:host="auth-callback" />
+            </intent-filter>
         </activity>
     </application>
 

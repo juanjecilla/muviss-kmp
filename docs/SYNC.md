@@ -6,31 +6,93 @@ the design rationale (multi-backend seam, plain Ktor over `supabase-kt`,
 last-write-wins conflict resolution) — this document is the concrete
 Supabase project setup and the SQL schema `SupabaseSyncBackend` talks to.
 
-Sync is entirely **optional**: with no keys configured, `SyncAvailability`
-reports unconfigured, `di/SyncModule.kt` binds `NoOpSyncBackend`, and the
-profile screen hides the sync section outright. Nothing else about the app
-changes.
+Sync is entirely **optional**, and gated twice (ADR 0012):
+
+1. **Build gate** — `SYNC_ENABLED` *and* both Supabase keys must be present.
+   Miss any of the three and `SyncAvailability` reports unconfigured,
+   `di/SyncModule.kt` binds `NoOpSyncBackend`, and the profile screen hides
+   the sync section outright. Nothing else about the app changes. Release CI
+   sets none of them, which is what keeps sync out of production.
+2. **Entitlement gate** — sync is a paid feature. `SyncEngine.syncNow()`
+   consults an `EntitlementGate` and returns `NotEntitled` if the user has not
+   paid, so `MuvissApp`'s foreground auto-sync is covered too. With no store
+   wired up (every build today) `:core:billing` binds `NoEntitlementProvider`,
+   which reports Inactive — set `SYNC_ENTITLEMENT_OVERRIDE=true` in
+   `local.properties` to grant it to your own build.
+
+An unavailable build renders no sync UI at all; an unentitled one renders the
+row and a paywall. Those are deliberately opposite, see ADR 0012.
 
 ## Setting up a Supabase project
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. **Enable anonymous sign-ins** (Authentication → Providers → Anonymous
-   Sign-Ins) if you intend to use `SyncBackend.signInAnonymously` — the
-   shipped Profile UI only wires the email one-time-code flow, so this is
-   optional for the app as it stands today.
-3. **Email OTP**: Authentication → Providers → Email is on by default;
-   confirm "Confirm email" / OTP length settings match what you want users to
-   see (Muviss expects a 6-digit code, GoTrue's default).
-4. Run the SQL below in the SQL Editor (Database → SQL Editor) to create the
-   four synced tables, their Row Level Security policies, and the
-   last-write-wins trigger.
+   Sign-Ins) only if you intend to use `SyncBackend.signInAnonymously`. The
+   shipped UI does not: an anonymous user is per-device, so two devices get two
+   identities and nothing syncs between them (ADR 0014). It stays on the
+   interface for a future entry point, and this step is optional today.
+3. **Sign-in is OAuth (ADR 0014).** Muviss sends no email at all — the email
+   one-time-code flow was removed because Supabase's free tier refuses to
+   customise the email templates, and its stock ones send a clickable link
+   where the app asked for a typable code. Two things to set up:
+
+   **a. Register an OAuth app with the provider.** For GitHub: Settings →
+   Developer settings → OAuth Apps → New OAuth App. The **Authorization
+   callback URL** is Supabase's, not the app's:
+
+   ```
+   https://<your-project-ref>.supabase.co/auth/v1/callback
+   ```
+
+   **b. Enable it in Supabase**: Authentication → Providers → GitHub, on, and
+   paste the client ID and secret. Adding Google later is the same two steps
+   plus one entry in `SyncUiState.providers` — the client takes the provider
+   as a query parameter, so there is no second code path.
+
+   The redirect back *into the app* is `muviss://auth-callback`, and it has to
+   be identical in three places that cannot reference each other:
+   `OAUTH_REDIRECT_URI` in `core/sync/.../OAuthRedirect.kt`, the
+   `auth-callback` intent filter in the Android manifest, and
+   `additional_redirect_urls` in `supabase/config.toml`. The last one is a
+   security control — GoTrue refuses to redirect anywhere not on that
+   allow-list — and is applied with `supabase config push`.
+
+   Sign-in works on **Android only** for now. The other targets each need a
+   different browser round-trip and report it as unsupported (ADR 0003 makes
+   Android the first-verify target).
+4. Apply the schema — six synced tables, their Row Level Security policies,
+   the last-write-wins trigger and the pull-cursor indexes:
+
+   ```bash
+   brew install supabase/tap/supabase   # once
+   supabase login                       # opens a browser
+   supabase link --project-ref <your-project-ref>
+   supabase db push
+   ```
+
+   The schema lives in `supabase/migrations/` and **that file is the source of
+   truth**, not the SQL quoted below. It used to be the other way round: the
+   only copy was fenced in this document, so standing up a project was a
+   copy-paste job that left no record of what had actually been applied and no
+   way to tell two projects apart. The block below is kept for reading; if the
+   two ever disagree, the migration is right.
+
+   The CLI never sees `SUPABASE_ANON_KEY` — it authenticates with your own
+   account token from `supabase login`, and `supabase link` stores only the
+   project ref. Neither belongs in `local.properties`.
 5. Copy the project's URL and anon (public) key (Project Settings → API)
    into `local.properties` (gitignored, never commit real keys):
 
    ```properties
+   SYNC_ENABLED=true
+   SYNC_ENTITLEMENT_OVERRIDE=true
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_ANON_KEY=your-anon-key
    ```
+
+   Note that Supabase's free tier **pauses a project after 7 days of
+   inactivity**. A paused project fails in a way that reads like an app bug;
+   check the dashboard before debugging the client.
 
    Same generated-constant mechanism as `TMDB_API_KEY` and `SENTRY_DSN` (ADR
    0007) — read by `core/sync/build.gradle.kts` at build time, baked into
@@ -39,8 +101,15 @@ changes.
 
 ## Schema
 
+> Reference copy. The executable one is
+> `supabase/migrations/20260829000000_sync_schema.sql`, applied with
+> `supabase db push` — see step 4 above. That file additionally creates a
+> `(user_id, updated_at_epoch_ms)` index per table, which is what keeps
+> `SyncEngine`'s `gt.<cursor>` pull a range scan as a library grows.
+
 One table per synced local table (`collectionEntry`, `episodeProgress`,
-`mediaList`, `listEntry` — see their `.sq` files in `core/database`), each
+`mediaList`, `listEntry`, `triageDecision`, `episodePlay` — see their `.sq`
+files in `core/database`), each
 keyed by `(user_id, <the local table's own natural key>)`. Column names are
 `snake_case` versions of the local column names (PostgREST convention);
 `SyncChangeSet`'s `@SerialName` annotations (`core/sync`) match these exactly.
@@ -173,6 +242,26 @@ create policy "own rows only" on triage_decision
 create trigger triage_decision_lww
   before update on triage_decision
   for each row execute function discard_stale_write();
+
+-- episode_play -- (ADR 0013)
+create table episode_play (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  id text not null,
+  episode_id text not null,
+  media_id text not null,
+  watched_at_epoch_ms bigint not null,
+  updated_at_epoch_ms bigint not null,
+  deleted boolean not null default false,
+  primary key (user_id, id)
+);
+
+alter table episode_play enable row level security;
+create policy "own rows only" on episode_play
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create trigger episode_play_lww
+  before update on episode_play
+  for each row execute function discard_stale_write();
 ```
 
 Notes:
@@ -188,6 +277,16 @@ Notes:
   update` branch is exactly what fires `discard_stale_write()`'s `before
   update` trigger, so first-time inserts and later updates both go through
   the same client call.
+- Every response's HTTP status is checked (`SupabaseHttp.kt`). The shared
+  Ktor client has `expectSuccess` off, and `upsert` returns `Unit`, so a
+  rejected push used to be indistinguishable from an accepted one —
+  `SyncEngine` would clear `isDirty` on rows the server never took and never
+  retry them, leaving a library that looks synced and restores incomplete.
+- `episode_play`'s primary key is the *derived* id
+  `episodeId@watchedAtEpochMs`, not a per-device surrogate — see ADR 0013.
+  It carries `deleted` because last-write-wins cannot express a hard delete:
+  a physically removed row has no timestamp left to compare, so the other
+  device's older copy would just be pushed back.
 - `triage_decision` (ADR 0010) carries its own `title`/`poster_url` because a
   `SKIP` verdict writes no `collection_entry` row to join against — the
   Skipped screen renders straight off these. Unlike
@@ -207,25 +306,47 @@ Plain HTTP against GoTrue (`{SUPABASE_URL}/auth/v1/...`), not the
 | Endpoint | Used for |
 |---|---|
 | `POST /auth/v1/signup` (empty body) | `signInAnonymously` — GoTrue's anonymous sign-in shape, requires the project setting from step 2 above |
-| `POST /auth/v1/otp` `{ "email", "create_user": true }` | `requestEmailOtp` |
-| `POST /auth/v1/verify` `{ "type": "email", "email", "token" }` | `verifyEmailOtp` — `type: "email"` is GoTrue's OTP-code verification path, distinct from `"magiclink"` |
+| `GET /auth/v1/authorize?provider=…&redirect_to=…&code_challenge=…&code_challenge_method=s256` | `beginOAuth` — **built, never requested**. It answers 302 to the provider, so following it from the HTTP client would authenticate the client rather than the user; the browser has to make this request |
+| `POST /auth/v1/token?grant_type=pkce` `{ "auth_code", "code_verifier" }` | `completeOAuth` — redeems the `code` from the redirect. The verifier proves the code was issued to this device's attempt, which matters because `muviss://auth-callback` is a custom scheme any app can register (ADR 0014) |
+| `POST /auth/v1/token?grant_type=refresh_token` `{ "refresh_token" }` | `refreshSession` — Supabase access tokens last about an hour, so without this a session stops syncing the same day it is created and only a re-login recovers. GoTrue **rotates** the refresh token on every use, so the returned one is the one to keep |
 | `POST /auth/v1/logout` | `signOut` |
 
-All four also require an `apikey: <anon key>` header; the three that act on
-an existing session additionally send `Authorization: Bearer <access_token>`.
+All require an `apikey: <anon key>` header; those acting on an existing
+session additionally send `Authorization: Bearer <access_token>`.
 
-## What's not verified
+## Verification status
 
-This pass has no live Supabase project wired up — `SyncEngine` is tested
-against an in-memory `FakeSyncBackend` only (see `core/sync/src/jvmTest`),
-by design (no live network calls in tests). Before relying on this in
-production, provision a real project per the steps above and manually check:
+Verified against the live project (`sodjedenvnvsuktbxevt`, eu-west-1) on
+2026-08-29, on an Android device:
 
-- Email OTP round trip (`requestEmailOtp` → real inbox → `verifyEmailOtp`)
-  against GoTrue's actual response shapes.
-- The `discard_stale_write()` trigger actually fires on a `resolution=merge-
-  duplicates` upsert as described (verified against PostgREST's documented
-  behavior, not against a running project).
-- RLS policies block cross-user access as intended.
-- A fresh install signing in restores the full library + progress (issue
-  #8's acceptance criterion) end to end against real data.
+- **The schema applies.** All six tables with their primary keys and
+  `(user_id, updated_at_epoch_ms)` indexes.
+- **RLS blocks cross-user access.** An unauthenticated `GET` with the anon key
+  returns `200 []` on every table and a `POST` is refused `401`. The `200` is
+  the correct result, not a leak: `auth.uid()` is null without a token, so the
+  policy matches no rows. A `200` *with rows* would be the leak.
+- **OAuth round trip.** GitHub authorize → redirect → code exchange → session
+  persisted, then a full push and pull. Device and server row counts matched
+  exactly across all six tables.
+- **`discard_stale_write()` fires on the upsert path.** A write with an older
+  `updated_at_epoch_ms` returned `200` and left the row untouched; a newer one
+  applied. This is the assumption the push-then-pull ordering rests on — push
+  is unconditional *because* the server drops stale writes — and the 2xx on a
+  discarded write is exactly why "the request succeeded" is not evidence.
+- **Rewatch history crosses the wire**, carrying the derived ids `7.sqm`
+  backfilled (ADR 0013).
+- **The v7 → v8 migration runs on a real device**, against a seeded database:
+  version bumped, `episodePlay` rebuilt, every row preserved with its id
+  derived, `lastSyncedAtEpochMs` untouched.
+
+Re-run any of these with `scripts/sync/` — see that directory's README.
+
+## Still open
+
+- **Token refresh against a live session.** The logic is covered by
+  `SupabaseSyncBackendTest` over a `MockEngine`, but nothing has yet watched a
+  real Supabase token cross its one-hour expiry. Sign in, leave the app more
+  than an hour, return, and confirm sync still succeeds.
+- **Fresh-install restore** (issue #8's acceptance criterion). Clearing the app
+  data and signing in again should bring the whole library back from the
+  server. The pull path is exercised, but not from an empty database.

@@ -12,10 +12,14 @@ import kotlinx.coroutines.flow.Flow
  * backend's native SDK shape, so [SyncEngine] never has to know which
  * backend it's talking to.
  *
- * Auth is anonymous-first ([signInAnonymously]) with an optional email
- * one-time-code upgrade ([requestEmailOtp] / [verifyEmailOtp]) — no backend
- * requires a password, matching this app's "no login required" default
- * (ADR 0002). See docs/SYNC.md for the concrete Supabase project setup.
+ * Auth is anonymous-first ([signInAnonymously]) with an OAuth upgrade
+ * ([beginOAuth] / [completeOAuth]) — no backend requires a password, matching
+ * this app's "no login required" default (ADR 0002). The email one-time-code
+ * flow this interface carried until ADR 0014 is gone: Supabase's free tier
+ * refuses to customise the email templates, and its stock ones send a
+ * clickable link rather than a typable code, so the flow could not be made to
+ * work without paying for a plan or standing up an SMTP provider. See
+ * docs/SYNC.md.
  */
 interface SyncBackend {
     val id: SyncBackendId
@@ -32,15 +36,23 @@ interface SyncBackend {
     suspend fun signInAnonymously(): Result<SyncSession>
 
     /**
-     * Sends a one-time login code to [email]. Call [verifyEmailOtp] with the
-     * code the user receives to complete sign-in — upgrades an existing
-     * anonymous session in place when one is active, otherwise starts a new
-     * session once verified.
+     * Starts an OAuth sign-in and returns the URL to open in a browser.
+     *
+     * Two calls rather than one because the user leaves the app in between:
+     * the provider's page runs in a browser, and the result comes back as a
+     * redirect to [redirectUri] that the platform delivers separately (on
+     * Android, an intent into `MainActivity`). Whoever receives that redirect
+     * calls [completeOAuth] with its `code` parameter.
+     *
+     * The implementation holds the PKCE verifier for the attempt, so callers
+     * never handle it. One attempt is tracked at a time — starting a second
+     * discards the first, which matches what a user tapping the button twice
+     * expects.
      */
-    suspend fun requestEmailOtp(email: String): Result<Unit>
+    suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String>
 
-    /** Completes a [requestEmailOtp] challenge. */
-    suspend fun verifyEmailOtp(email: String, code: String): Result<SyncSession>
+    /** Exchanges the `code` from a [beginOAuth] redirect for a real session. Fails if no attempt is in flight. */
+    suspend fun completeOAuth(authCode: String): Result<SyncSession>
 
     suspend fun signOut()
 

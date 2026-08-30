@@ -45,16 +45,20 @@ _Avoid_: state, phase.
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 
 **Play**:
-One recorded viewing of one element — an episode, or a movie via its single synthetic element. Carries the moment it happened. Progress answers whether something was seen; a Play is the event that made it so, and the reason "three times, most recently in March" is answerable at all.
-_Avoid_: watch, view (verbs, not records); tick (that is the act of marking seen).
+One recorded viewing of one element — an episode, or a movie via its single synthetic element. Carries the moment it happened. Progress answers whether something was seen; a Play is the event that made it so, and the reason "three times, most recently in March" is answerable at all. A Play's identity comes from the viewing itself, not from the device that recorded it, which is what lets rewatch history cross devices (ADR 0013).
+_Avoid_: watch, view (verbs, not records); tick (that is the act of marking seen); play count (that is derived from these, never stored).
 
 **Rewatch**:
 A Play with an earlier Play of the same element behind it, at any date. Derived, never stored. The unit every "most rewatched" number counts: a title's score is its Plays beyond the first, per element, so a first watch-through scores zero however long it is. A time window bounds the Rewatch itself and never the Play before it — an episode first seen in December and watched again in March is a Rewatch *in March*.
 _Avoid_: "most seen" (_seen_ is the stored boolean tick); replay; play count (that is a total, not the beyond-the-first count).
 
 **SyncEngine**:
-The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row.
+The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row. Refuses to run without an Entitlement (ADR 0012).
 _Avoid_: backend, cloud (those are vendors behind this seam).
+
+**Entitlement**:
+Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. Independent of being signed in — one is bought, the other is an account (ADR 0012).
+_Avoid_: subscription, purchase, licence (those are how an Entitlement is acquired, and vendors behind that seam); premium, pro (those name a tier this app does not have).
 
 **Triage**:
 Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on.

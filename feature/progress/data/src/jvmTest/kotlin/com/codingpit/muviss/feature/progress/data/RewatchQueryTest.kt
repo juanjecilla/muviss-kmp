@@ -117,14 +117,39 @@ class RewatchQueryTest {
     }
 
     /**
-     * Two viewings recorded in the same millisecond still leave one rewatch
-     * behind. Without the `id` tiebreak both rows compare equal to the
-     * minimum and both are excluded, quietly losing a viewing.
+     * Two viewings recorded in the same millisecond are one viewing.
+     *
+     * This asserted the opposite until ADR 0013 gave `episodePlay` a
+     * cross-device identity derived from the viewing —
+     * `episodeId@watchedAtEpochMs` — so that the same viewing recorded on two
+     * devices is the same row. Two plays of one episode at one millisecond
+     * therefore collide on the primary key and collapse, where an
+     * autoincrement id kept them apart.
+     *
+     * Accepted rather than worked around: a person cannot tap twice inside a
+     * millisecond, and every path that writes several plays at one timestamp
+     * writes them for *different* episodes, which have different ids. It is
+     * reachable only from a test holding a fixed clock, as this one does.
+     *
+     * The `id` tiebreak in `rewatchCountsByMedia` still earns its place — it
+     * disambiguates two *different* episodes sharing a timestamp inside the
+     * MIN() aggregate, which bulk "mark season seen" produces constantly.
      */
     @Test
-    fun `two viewings in the same millisecond count as one rewatch`() = runTest {
+    fun `two viewings in the same millisecond are one viewing, so no rewatch`() = runTest {
         repository.setSeen(ep1, seen = true)
         repository.recordPlay(ep1) // clock has not moved
+
+        assertEquals(emptyMap(), repository.observeRewatchCounts(ALL_TIME).first())
+    }
+
+    @Test
+    fun `a second viewing a millisecond later is a rewatch`() = runTest {
+        // The boundary the collapse above sits on: move the clock at all and
+        // the two plays get distinct ids and count normally.
+        repository.setSeen(ep1, seen = true)
+        clock.set(clock.nowEpochMs() + 1)
+        repository.recordPlay(ep1)
 
         assertEquals(mapOf(show to 1), repository.observeRewatchCounts(ALL_TIME).first())
     }

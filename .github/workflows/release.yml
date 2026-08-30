@@ -51,6 +51,14 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
           # Optional: both features degrade gracefully to no-op when their
           # secret isn't configured (see ADR 0007 / docs/RELEASING.md).
+          #
+          # SYNC_ENABLED, SYNC_ENTITLEMENT_OVERRIDE, SUPABASE_URL and
+          # SUPABASE_ANON_KEY are deliberately absent, and that absence IS the
+          # production gate (ADR 0012): without them `SyncAvailability` reports
+          # unconfigured, `NoOpSyncBackend` is bound, and the profile screen
+          # renders no sync row at all. Do not add them here until sync has
+          # been verified against a live project and the privacy/data-safety
+          # docs describe library data leaving the device.
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: ./gradlew :app:androidApp:bundleRelease --stacktrace

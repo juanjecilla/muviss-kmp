@@ -45,6 +45,8 @@ dependencies {
     // `MuvissApplication` builds the Android `DatabaseDriverFactory` itself
     // (see its doc comment) so Koin is running before any Activity exists.
     implementation(projects.core.database)
+    // OAUTH_CODE_PARAM, shared with the manifest's auth-callback filter (ADR 0014).
+    implementation(projects.core.sync)
     implementation(libs.koin.core)
     implementation(libs.androidx.work.runtimeKtx)
 
