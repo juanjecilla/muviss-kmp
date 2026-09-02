@@ -492,38 +492,106 @@ uncaught Kotlin exception across the `CrashReporter` seam) on a signed
 device/TestFlight build, and confirm it shows up in the Sentry project
 within a few minutes — same check item 8 describes for Android.
 
-### Environment notes from this epic's verification pass
+### Simulator run — verified 2026-09-02
 
-This environment has Xcode 26.2 with only the iOS 18.1 Simulator runtime
-installed (Xcode 26.2's SDK is iOS 26.2; the matching Simulator runtime is
-an ~8.4 GB download via Settings → Platforms, not fetched here per this
-epic's "don't fight missing tooling" scope). Two consequences, both purely
-environmental — not project defects:
+The app builds, installs, launches and works on the Simulator. What it took,
+because none of it was obvious and the previous pass's notes here were wrong
+by the time anyone read them again:
 
-- `xcodebuild -scheme iosApp -destination ...` never resolves *any*
-  Simulator destination in this sandbox, even pinned to the installed
-  18.1 runtime with a real checked-in shared scheme
-  (`xcshareddata/xcschemes/iosApp.xcscheme`, added as part of this epic)
-  and `IPHONEOS_DEPLOYMENT_TARGET` lowered from the template's 18.2 to
-  18.0 (also kept — a reasonable, harmless widening of device
-  compatibility on its own merits). `xcodebuild -target iosApp -sdk
-  iphonesimulator ...` **does** work and is what this epic's Kotlin+Swift
-  verification used; a real Xcode.app GUI run (not exercised here — no
-  windowed session) very likely isn't affected, since Xcode's own Run
-  button uses a different destination-discovery path than headless
-  `xcodebuild -scheme`.
-- Even via `-target`, asset-catalog compilation's app-thinning step
-  (`CompileAssetCatalogVariant thinned`) fails with `No simulator runtime
-  version from ["22B81"] available to use with iphonesimulator SDK version
-  23C53` — the installed 18.1 runtime can't satisfy Xcode 26.2's app-
-  thinning validation for its own 26.2 SDK. Everything before that step —
-  Kotlin compilation (`:app:shared:compileKotlinIosSimulatorArm64`/
-  `compileKotlinIosArm64`), `linkDebugFrameworkIosSimulatorArm64`,
-  `embedAndSignAppleFrameworkForXcode`, and Swift compilation of
-  `AppDelegate.swift`/`iOSApp.swift`/`ContentView.swift` against the
-  exported `Shared` framework — succeeds cleanly. A real simulator run
-  (`xcrun simctl boot` + install + launch) needs that ~8.4 GB runtime
-  download and was not attempted.
+- **The old blocker is gone.** EPIC 11's pass recorded that only the iOS 18.1
+  Simulator runtime was installed, that `xcodebuild -scheme … -destination …`
+  therefore resolved no Simulator destination, and that the asset catalog's
+  app-thinning step failed with `No simulator runtime version from ["22B81"]
+  available to use with iphonesimulator SDK version 23C53`. All three were
+  purely environmental. With an iOS 26.x runtime installed (Xcode → Settings →
+  Components) `-destination` resolves normally and thinning passes. Create a
+  device if none exists on it:
+
+  ```bash
+  xcrun simctl create Muviss-iOS26 \
+    com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro \
+    com.apple.CoreSimulator.SimRuntime.iOS-26-3
+  ```
+
+- **The real blocker was the link, and it had never been reached.** `Shared`
+  is a **static** framework (`isStatic = true`, `app/shared/build.gradle.kts`),
+  so every symbol its Kotlin/Native cinterops leave unresolved lands on
+  whoever links it — and a cinterop's `linkerOpts` reach only the binaries
+  *Gradle* links, never Xcode's. Two sets were missing, 50 symbols in total:
+  `_OBJC_CLASS_$_Sentry*` (`io.sentry:sentry-kotlin-multiplatform`, via
+  `:core:common`) and `_sqlite3_*` (`co.touchlab:sqliter`, via
+  `:core:database`). Both Xcode targets now set `SENTRY_XCFRAMEWORK_SLICE`
+  (SDK-conditional, pointing at the xcframework the root `build.gradle.kts`
+  already unzips) and link `-framework Sentry -lsqlite3`; the app target also
+  has an **Embed Sentry.framework** script phase, because Sentry-Dynamic is
+  dynamic and the app would otherwise die at launch with `dyld: Library not
+  loaded: @rpath/Sentry.framework/Sentry`. The extension finds the same copy
+  through its `@executable_path/../../Frameworks` rpath.
+
+  A script phase rather than a Copy Files phase: the slice differs between
+  device and simulator, and a `PBXFileReference` cannot switch on SDK.
+
+- **`ci.yml` now has a `macos-latest` `ios` job** doing exactly this —
+  `linkDebugFrameworkIosSimulatorArm64` then `xcodebuild -sdk iphonesimulator
+  CODE_SIGNING_ALLOWED=NO`. It exists because the gap above survived two
+  months and three epics with CI green throughout: everything else runs on
+  Linux, and `allMetadataJar` compiles `iosMain` to a metadata klib without
+  ever invoking Kotlin/Native or Xcode.
+
+- **Signing.** A Simulator build needs no team; `TEAM_ID` stays blank and
+  `CODE_SIGNING_ALLOWED=NO` covers CI.
+
+- **The App Group works on the Simulator with no team at all** — worth knowing,
+  because §11 reads as though it could not. `muviss.db` was created at
+  `.../data/Containers/Shared/AppGroup/<uuid>/muviss.db`, not the
+  `NSDocumentDirectory` fallback: the Simulator honours the entitlement
+  without a provisioning profile. So the fallback in `DatabaseFactory.ios.kt`
+  is exercised on *device* builds without a team, not here. Don't read a
+  passing Simulator run as evidence that the fallback works.
+
+- **OAuth's PKCE flow state expires, and the failure is silent and
+  misleading.** A first attempt was abandoned mid-login and finished about
+  ten minutes later; GoTrue could no longer match the flow state, fell back
+  to `site_url` (`http://localhost:3000`), and Safari showed "cannot connect
+  to the server". Nothing was wrong with the app, the scheme or the
+  allow-list — `uri_allow_list` on the live project reads
+  `muviss://auth-callback`, exactly as `supabase/config.toml` declares. The
+  retry, finished in seconds, redirected to the custom scheme and completed.
+  If sign-in ever lands on `localhost`, suspect a slow login before
+  suspecting configuration.
+
+- **The `muviss` URL scheme is registered** (`CFBundleURLTypes` in
+  `app/iosApp/iosApp/Info.plist`) and `iOSApp.swift`'s `.onOpenURL` hands
+  every incoming URL to `IosDeepLinks.handle`. That makes both the widget's
+  `muviss://title/<id>` and OAuth's `muviss://auth-callback` live, and
+  `Pkce.ios.kt`'s `sha256`/`secureRandomBytes` are now real
+  (CommonCrypto + `SecRandomCopyBytes`). Its old comment claimed iOS sign-in
+  needed `ASWebAuthenticationSession`; it does not — `ProfileScreen` opens
+  the authorize URL through Compose's `LocalUriHandler`, which on iOS is
+  `UIApplication.openURL`. ASWebAuthenticationSession remains a UX
+  improvement, not a requirement.
+
+- **App icon.** `app-icon-1024.png` no longer has an alpha channel (it was
+  RGBA but fully opaque, so it was re-encoded as RGB with no pixel changed),
+  which clears the `Invalid Large App Icon` rejection at Archive validation.
+  The two declared-but-empty dark/tinted slots, and the fact that the artwork
+  is still the KMP template's blue rather than anything in `MuvissPalette`,
+  are open.
+
+- **Smoke test, all passing** on iOS 26.3: launch with no dyld error; TMDB
+  search and the Popular rows (Ktor on Kotlin/Native); add to library, tick
+  two episodes, and both `episodeProgress.seen` and the derived
+  `episodePlay` id `episodeId@watchedAtEpochMs` present in SQLite (ADR
+  0011/0013); state surviving a cold start; the Progress tab deriving the
+  right next episode; `simctl openurl muviss://title/tmdb:tv:1399` landing on
+  that title's detail; and a full GitHub sign-in round trip — session
+  persisted, then push and pull, with local and server row counts matching
+  across all six tables.
+
+- **Not attempted here**, both needing a real paid Apple Developer account:
+  Archive → TestFlight upload, and the Sentry test crash on a signed device
+  build. The `MuvissWidget` target now *links* (it needed the same Sentry and
+  sqlite3 settings), but nothing about the widget itself has been run.
 
 ## 10. Web (GitHub Pages, PWA) — EPIC 13 / issue #16
 
