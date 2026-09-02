@@ -1,9 +1,6 @@
 package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import platform.Foundation.setValue
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionBadge
@@ -24,26 +21,20 @@ import platform.darwin.NSObject
  * iOS counterpart of `:app:androidApp`'s `NewEpisodesNotifier` +
  * `MainActivity`'s permission request. Turns EPIC 5's `NewEpisodesResult`s
  * into local `UNUserNotificationCenter` notifications, and turns a
- * notification tap into a pending deep-link id that [MainViewController]
- * feeds into `MuvissApp(deepLinkMediaId)` — the same round-trip Android's
- * `MainActivity`/`EXTRA_DEEP_LINK_MEDIA_ID` does, just via a [StateFlow]
- * instead of an `Intent` extra since there is no Activity-recreation
- * equivalent to carry it through.
+ * notification tap into a pending deep-link id — the same round-trip
+ * Android's `MainActivity`/`EXTRA_DEEP_LINK_MEDIA_ID` does, just via a
+ * `StateFlow` instead of an `Intent` extra since there is no
+ * Activity-recreation equivalent to carry it through.
+ *
+ * That state lives in [IosDeepLinks], not here: a widget tap arrives as a
+ * `muviss://title/<id>` URL and a notification tap as a `userInfo` entry, and
+ * `MuvissApp` must see one pending id either way.
  *
  * No `NSUserNotificationsUsageDescription`-style Info.plist key is needed —
  * unlike camera/location, `UNUserNotificationCenter`'s permission prompt
  * uses fixed system copy.
  */
 object IosNotificationCenter {
-
-    private val pendingDeepLinkMediaIdState = MutableStateFlow<String?>(null)
-
-    /** Consumed by [MainViewController]; cleared via [clearPendingDeepLink] once `MuvissApp` navigates. */
-    val pendingDeepLinkMediaId: StateFlow<String?> = pendingDeepLinkMediaIdState.asStateFlow()
-
-    fun clearPendingDeepLink() {
-        pendingDeepLinkMediaIdState.value = null
-    }
 
     /**
      * Installs the tap delegate and requests permission. Safe to call on
@@ -109,7 +100,7 @@ object IosNotificationCenter {
                 withCompletionHandler: () -> Unit,
             ) {
                 val mediaId = didReceiveNotificationResponse.notification.request.content.userInfo[DEEP_LINK_KEY] as? String
-                if (mediaId != null) pendingDeepLinkMediaIdState.value = mediaId
+                if (mediaId != null) IosDeepLinks.openTitle(mediaId)
                 withCompletionHandler()
             }
         }
