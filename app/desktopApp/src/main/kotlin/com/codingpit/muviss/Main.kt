@@ -6,11 +6,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.window.Notification
+import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberTrayState
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.sync.OAuthRedirectTarget
 import com.codingpit.muviss.di.appModules
+import com.codingpit.muviss.notifications.DesktopEpisodeRefresh
+import com.codingpit.muviss.notifications.newEpisodesNotification
 import com.codingpit.muviss.oauth.LoopbackRedirectServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +27,7 @@ import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 import java.awt.Dimension
+import java.awt.SystemTray
 
 /**
  * Lives for the whole process, not for a composition: the loopback sign-in
@@ -48,6 +55,7 @@ fun main() {
                 appModules + module {
                     single { DatabaseDriverFactory() }
                     single { LoopbackRedirectServer(appScope, get()) }
+                    single { DesktopEpisodeRefresh(get(), get(), get()) }
                     // Overrides syncModule's DeepLinkRedirectTarget. Koin's last
                     // binding wins — the same mechanism BillingSyncBridge uses
                     // for EntitlementGate, and the same ordering requirement.
@@ -56,7 +64,9 @@ fun main() {
             )
         }
     }
-    val loopback = GlobalContext.get().get<LoopbackRedirectServer>()
+    val koin = GlobalContext.get()
+    val loopback = koin.get<LoopbackRedirectServer>()
+    val episodeRefresh = koin.get<DesktopEpisodeRefresh>()
 
     application {
         // See DesktopWindowState.kt for why this is java.util.prefs rather than
@@ -85,6 +95,31 @@ fun main() {
                     delay(WINDOW_PERSIST_DEBOUNCE_MS)
                     persistWindowState(windowState)
                 }
+        }
+
+        // AWT's SystemTray is absent on some Linux desktop environments, and
+        // Compose's TrayState delivers nothing without a Tray composable to
+        // deliver through. Where it is missing there is no icon and no popup —
+        // but the refresh below still runs, because a current episode catalog
+        // is worth having whether or not anyone can be told about it.
+        val trayAvailable = remember { SystemTray.isSupported() }
+        val trayState = rememberTrayState()
+        if (trayAvailable) {
+            // Same artwork the installers use; `icons/` is a resource root
+            // (see build.gradle.kts) so there is only ever one copy of it.
+            Tray(state = trayState, icon = painterResource("icon.png"), tooltip = "Muviss")
+        }
+
+        LaunchedEffect(episodeRefresh, trayAvailable) {
+            while (true) {
+                val results = episodeRefresh.runOnce()
+                if (trayAvailable) {
+                    newEpisodesNotification(results)?.let { (title, message) ->
+                        trayState.sendNotification(Notification(title, message, Notification.Type.Info))
+                    }
+                }
+                delay(DesktopEpisodeRefresh.INTERVAL)
+            }
         }
 
         Window(

@@ -79,7 +79,7 @@ fun SettingsScreen(
         ThemeRow(state.settings.theme, viewModel::onThemeSelected)
         SwitchRow(
             label = "Notifications",
-            description = "Reminders for new episodes (coming soon)",
+            description = notificationsSupportNote,
             checked = state.settings.notificationsEnabled,
             onToggle = viewModel::onNotificationsToggled,
         )
