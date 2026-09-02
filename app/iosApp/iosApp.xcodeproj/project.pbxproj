@@ -104,6 +104,7 @@
 				A6094FE428522748A8486E7D /* Compile Kotlin Framework */,
 				0C2EF673D7D3968A9953D216 /* Sources */,
 				BDDB71C3FE7BBE6A7FE13F22 /* Frameworks */,
+				A1B2C3D400000000000000F0 /* Embed Sentry.framework */,
 				E040CAE447341492DDC51CCF /* Resources */,
 				A1B2C3D400000000000000EC /* Embed Foundation Extensions */,
 				EED80AA00364E94C08AC813B /* Set version from git */,
@@ -234,6 +235,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/../..\"\n./gradlew :app:shared:embedAndSignAppleFrameworkForXcode\n";
+		};
+		A1B2C3D400000000000000F0 /* Embed Sentry.framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Sentry.framework";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# `Shared` is a static framework whose Sentry symbols stay unresolved until\n# this app links; SENTRY_XCFRAMEWORK_SLICE (see this target's build settings)\n# is what supplies them. Sentry-Dynamic is dynamic, so the framework also has\n# to travel inside the bundle or the app dies at launch with\n# `dyld: Library not loaded: @rpath/Sentry.framework/Sentry`.\n#\n# A script, not a Copy Files phase: the slice differs between device and\n# simulator and a PBXFileReference cannot switch on SDK. The root\n# build.gradle.kts unzips the xcframework as a dependency of any Apple link\n# task, which the \"Compile Kotlin Framework\" phase above always runs first.\nset -e\nif [ ! -d \"$SENTRY_XCFRAMEWORK_SLICE/Sentry.framework\" ]; then\n  echo \"error: Sentry.framework not found at $SENTRY_XCFRAMEWORK_SLICE — did :app:shared:embedAndSignAppleFrameworkForXcode run?\" >&2\n  exit 1\nfi\nDEST=\"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH\"\nmkdir -p \"$DEST\"\nrsync -a --delete \"$SENTRY_XCFRAMEWORK_SLICE/Sentry.framework\" \"$DEST/\"\n# Re-sign with this build's identity. Skipped when signing is off entirely,\n# which is how CI and a plain simulator build run.\nif [ \"$CODE_SIGNING_ALLOWED\" = \"YES\" ] && [ -n \"$EXPANDED_CODE_SIGN_IDENTITY\" ]; then\n  codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --preserve-metadata=identifier,entitlements,flags --timestamp=none \"$DEST/Sentry.framework\"\nfi\n";
 		};
 		EED80AA00364E94C08AC813B /* Set version from git */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -438,6 +454,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = arm64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SENTRY_XCFRAMEWORK_SLICE)",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Sentry,
+					"-lsqlite3",
+				);
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphoneos*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64";
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphonesimulator*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
@@ -467,6 +495,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = arm64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SENTRY_XCFRAMEWORK_SLICE)",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Sentry,
+					"-lsqlite3",
+				);
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphoneos*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64";
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphonesimulator*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
@@ -492,6 +532,10 @@
 			};
 			name = Release;
 		};
+		/* The Kotlin framework is built into the app target's products directory
+		   by the shared "Compile Kotlin Framework" phase; `Shared` is a *static*
+		   framework (app/shared/build.gradle.kts), so the extension links it
+		   rather than embedding a second copy. */
 		A1B2C3D400000000000000E9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -501,13 +545,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "${TEAM_ID}";
 				ENABLE_PREVIEWS = YES;
-				// The Kotlin framework is built into the app target's products
-				// directory by the shared "Compile Kotlin Framework" phase;
-				// `Shared` is a *static* framework (app/shared/build.gradle.kts),
-				// so the extension links it rather than embedding a second copy.
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+					"$(SENTRY_XCFRAMEWORK_SLICE)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MuvissWidget/Info.plist;
@@ -523,8 +564,13 @@
 					"$(inherited)",
 					"-framework",
 					Shared,
+					"-framework",
+					Sentry,
+					"-lsqlite3",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.codingpit.muviss.MuvissWidget";
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphoneos*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64";
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphonesimulator*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator";
 				PRODUCT_NAME = MuvissWidget;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -535,6 +581,10 @@
 			};
 			name = Debug;
 		};
+		/* The Kotlin framework is built into the app target's products directory
+		   by the shared "Compile Kotlin Framework" phase; `Shared` is a *static*
+		   framework (app/shared/build.gradle.kts), so the extension links it
+		   rather than embedding a second copy. */
 		A1B2C3D400000000000000EA /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -544,13 +594,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "${TEAM_ID}";
 				ENABLE_PREVIEWS = YES;
-				// The Kotlin framework is built into the app target's products
-				// directory by the shared "Compile Kotlin Framework" phase;
-				// `Shared` is a *static* framework (app/shared/build.gradle.kts),
-				// so the extension links it rather than embedding a second copy.
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+					"$(SENTRY_XCFRAMEWORK_SLICE)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MuvissWidget/Info.plist;
@@ -566,8 +613,13 @@
 					"$(inherited)",
 					"-framework",
 					Shared,
+					"-framework",
+					Sentry,
+					"-lsqlite3",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.codingpit.muviss.MuvissWidget";
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphoneos*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64";
+				"SENTRY_XCFRAMEWORK_SLICE[sdk=iphonesimulator*]" = "$(SRCROOT)/../../build/sentry-cocoa/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator";
 				PRODUCT_NAME = MuvissWidget;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;

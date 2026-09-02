@@ -193,6 +193,29 @@ it — see `AGENTS.md` for why.
 - **The iOS widget extension has never been built** — #23. The Xcode target is checked in and its graph parses, but building it needs Xcode, a real `TEAM_ID` and a registered App Group. The App Group database relocation (ADR 0016) is unverified with it.
 - **Android widget polish** — #27. The widget picker preview is still the KMP template's green robot (the app icon was never replaced), a tall widget with one show leaves empty space, and `WidgetMidnightRefresh` has never been observed firing.
 
+### Raised by getting iOS running on the simulator (2026-09-02)
+
+The app had not been built since EPIC 11 in July, because nothing in CI ever
+compiled it — `ci.yml` was Linux-only and `allMetadataJar` compiles `iosMain`
+to a metadata klib without invoking Kotlin/Native or Xcode. Two hard link
+failures had accumulated unseen (Sentry and sqlite3 symbols left unresolved by
+the static `Shared` framework); both are fixed, and CI now has a `macos-latest`
+job so it cannot happen silently again.
+
+- **iOS sign-in should use `ASWebAuthenticationSession`** — #33. OAuth works
+  now, but through `UIApplication.openURL` — an app switch to Safari with an
+  "open in app?" prompt. A UX improvement, not a correctness fix; `Pkce.ios.kt`
+  claimed it was required, which was wrong.
+- **The iOS app icon is still the KMP template's blue** — #34, alongside #27's
+  Android equivalent. Its App-Store-blocking alpha channel is fixed.
+- **iOS is Apple-Silicon only and nowhere says so** — #35. No `iosX64` target,
+  `ARCHS = arm64` everywhere.
+- **`MuvissWidget` has no shared scheme; `productReference` is misnamed** —
+  #36. Both KMP-template leftovers in the hand-maintained `project.pbxproj`.
+
+The widget target now *links* (see #23, which stays open: nothing about the
+widget has been run).
+
 ### Found while landing EPIC 22, not caused by it
 
 - **`OAuthRedirectCompletionTest` fails on js/browser** — #24. Reproduced on clean `main` at `e062b2b`, before the rebase.

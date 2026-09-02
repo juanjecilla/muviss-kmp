@@ -1,16 +1,52 @@
 package com.codingpit.muviss.core.sync
 
-// Deliberately unimplemented rather than half-implemented. iOS has both
-// primitives (CommonCrypto's CC_SHA256, SecRandomCopyBytes), but nothing here
-// can use them yet: OAuth needs a browser round-trip and a redirect back into
-// the app, which on iOS means ASWebAuthenticationSession and a registered URL
-// scheme, neither of which exists. `SupabaseSyncBackend.beginOAuth` reports
-// sign-in as unsupported on this target before either of these is reached, so
-// a stub that returned plausible bytes would only make a broken flow look
-// workable. See ADR 0003: Android is the first-verify target.
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.usePinned
+import platform.CoreCrypto.CC_SHA256
+import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
+import platform.Security.SecRandomCopyBytes
+import platform.Security.errSecSuccess
+import platform.Security.kSecRandomDefault
 
-internal actual fun sha256(input: ByteArray): ByteArray = unsupportedOnThisTarget()
+// Both primitives come from the platform, no dependency: CommonCrypto for the
+// digest, Security for the CSPRNG.
+//
+// These were deliberately left unimplemented while the comment here claimed
+// iOS sign-in needed `ASWebAuthenticationSession`. It does not:
+// `ProfileScreen` opens the authorize URL through Compose's `LocalUriHandler`
+// — common code on every target — which on iOS is `UIApplication.openURL`, so
+// the round trip is Safari plus the `muviss://auth-callback` scheme
+// registered in `app/iosApp/iosApp/Info.plist`. ASWebAuthenticationSession
+// would be a UX improvement (no app-switch, ephemeral session), not a
+// requirement.
 
-internal actual fun secureRandomBytes(size: Int): ByteArray = unsupportedOnThisTarget()
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun sha256(input: ByteArray): ByteArray {
+    val digest = ByteArray(CC_SHA256_DIGEST_LENGTH)
+    digest.usePinned { out ->
+        if (input.isEmpty()) {
+            // addressOf(0) on an empty array throws; CC_SHA256 takes a null
+            // pointer with length 0 and still writes the digest of "".
+            CC_SHA256(null, 0.convert(), out.addressOf(0).reinterpret())
+        } else {
+            input.usePinned { data ->
+                CC_SHA256(data.addressOf(0), input.size.convert(), out.addressOf(0).reinterpret())
+            }
+        }
+    }
+    return digest
+}
 
-private fun unsupportedOnThisTarget(): Nothing = error("OAuth sign-in is not wired up on iOS yet — see Pkce.ios.kt")
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun secureRandomBytes(size: Int): ByteArray {
+    require(size > 0) { "size must be positive, was $size" }
+    val bytes = ByteArray(size)
+    val status = bytes.usePinned { SecRandomCopyBytes(kSecRandomDefault, size.convert(), it.addressOf(0)) }
+    // Failing loudly rather than falling back: a silently weak verifier
+    // defeats PKCE entirely (see the expect declaration's doc comment).
+    check(status == errSecSuccess) { "SecRandomCopyBytes failed with OSStatus $status" }
+    return bytes
+}

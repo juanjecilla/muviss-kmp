@@ -16,6 +16,31 @@
 	<array>
 		<string>com.codingpit.muviss.refresh</string>
 	</array>
+	<!--
+	  The `muviss` custom scheme (ADR 0014). Two things arrive on it: the OAuth
+	  redirect `muviss://auth-callback?code=…`, and the home-screen widget's
+	  `.widgetURL` `muviss://title/<mediaId>` (MuvissWidget/WatchNextView.swift).
+	  iOSApp.swift's .onOpenURL hands both to IosDeepLinks.handle.
+
+	  The scheme has to stay identical to OAUTH_REDIRECT_URI in :core:sync's
+	  OAuthRedirect.kt, to the auth-callback intent filter in
+	  app/androidApp's manifest, and to additional_redirect_urls in
+	  supabase/config.toml — a plist cannot reference the Kotlin constant, so
+	  all four move together.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.codingpit.muviss</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>muviss</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

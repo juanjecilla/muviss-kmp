@@ -93,12 +93,17 @@ allprojects {
 // over Sentry's Objective-C SDK; the cinterop manifest carries
 // `linkerOpts=-framework Sentry`, so the framework itself has to be on the
 // linker's search path or every Apple *executable* link fails with
-// `ld: framework 'Sentry' not found`. Frameworks that Xcode links (the iOS app)
-// could get it from Swift Package Manager, but the `linkDebugTest*` /
-// `linkReleaseTest*` binaries `./gradlew build` produces are linked by Gradle
-// with no Xcode in the picture, which is why this is wired here rather than in
-// `app/iosApp`. The zip resolves through the `ivy` repository declared in
-// `settings.gradle.kts`.
+// `ld: framework 'Sentry' not found`. The `linkDebugTest*` / `linkReleaseTest*`
+// binaries `./gradlew build` produces are linked by Gradle with no Xcode in the
+// picture, which is why this is wired here. The zip resolves through the `ivy`
+// repository declared in `settings.gradle.kts`.
+//
+// A cinterop's `linkerOpts` reach only the binaries *Gradle* links. `Shared` is
+// a static framework, so Xcode's link of the app inherits its unresolved Sentry
+// symbols and needs the same search path — app/iosApp points at this same
+// unzipped directory rather than adding a second copy via SPM. Same story for
+// sqlite3, from `co.touchlab:sqliter`, except that one is in the SDK and only
+// needs `-lsqlite3`.
 //
 // `Sentry-Dynamic.xcframework`, not the static `Sentry.xcframework`: the static
 // build carries Swift code, and linking it pulls in Swift's static
@@ -155,10 +160,17 @@ fun Project.linkSentryCocoaFramework() {
                     // bundle — so they also need a runtime search path, or the
                     // dynamic framework they just linked against is missing at
                     // launch (`dyld: Library not loaded: @rpath/Sentry.framework/Sentry`).
-                    // Deliberately not applied to the `Shared` framework: that one
-                    // is embedded by Xcode, which supplies Sentry itself, and an
+                    // Deliberately not applied to the `Shared` framework: an
                     // absolute path into this machine's build directory has no
-                    // business in a shipped binary.
+                    // business in a shipped binary, and Xcode embeds Sentry into
+                    // the app bundle itself. Note that "Xcode embeds it" is
+                    // something app/iosApp has to be *told* to do, and for a long
+                    // time was not: `Shared` is static (isStatic = true in
+                    // app/shared/build.gradle.kts), so its unresolved
+                    // `_OBJC_CLASS_$_Sentry*` symbols land on whoever links it.
+                    // Both Xcode targets now carry SENTRY_XCFRAMEWORK_SLICE plus
+                    // `-framework Sentry`, and the app target an "Embed
+                    // Sentry.framework" phase — see project.pbxproj.
                     if (outputKind == NativeOutputKind.TEST) {
                         linkerOpts("-rpath", searchPath)
                     }

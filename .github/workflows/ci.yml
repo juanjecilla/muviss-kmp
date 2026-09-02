@@ -97,3 +97,59 @@ jobs:
       # klibs come from the JVM compiler), so it runs here like anywhere else.
       - name: Compile shared source sets (metadata klibs)
         run: ./gradlew allMetadataJar --stacktrace
+
+  # Everything above runs on Linux, which cannot build a single line of iOS.
+  # The consequence was not theoretical: between EPIC 11 (2026-07) and this
+  # job, three epics landed and the iOS app went unbuilt for two months, in
+  # which time the Xcode link acquired two hard failures — `Shared` is a
+  # *static* framework, so the Sentry and sqlite3 symbols its Kotlin/Native
+  # cinterops leave unresolved have to be supplied by whoever links it, and
+  # nothing in `app/iosApp` did. Green on every step above the whole time.
+  #
+  # Two steps, because they fail on different things:
+  #
+  # - The Gradle link catches broken `iosMain`/`appleMain` Kotlin.
+  #   `allMetadataJar` above does *not*: it compiles those source sets to
+  #   metadata klibs with the JVM compiler and never runs Kotlin/Native.
+  # - `xcodebuild` catches everything Gradle cannot see — Swift, the
+  #   hand-maintained `project.pbxproj`, Info.plist, the asset catalog, and
+  #   the link settings that were the actual bug. It builds both targets,
+  #   `MuvissWidget` included, since the widget links `Shared` too.
+  #
+  # `-sdk iphonesimulator` rather than a `-destination`: it needs no simulator
+  # *runtime* to be installed, so the job does not depend on which runtimes a
+  # given macOS runner image happens to ship. Signing is off — there is no
+  # Apple Developer team here, and the App Group entitlement both targets
+  # carry would otherwise demand a provisioning profile (`DatabaseFactory
+  # .ios.kt` already falls back to NSDocumentDirectory when the entitlement
+  # is missing, so an unsigned build is a real one).
+  #
+  # No TMDB/Sentry/Supabase secrets: `MuvissBuildConfig` degrades to empty
+  # strings exactly as it does for the Android job above, and this step is
+  # about linking, not about talking to anything.
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Link Kotlin/Native framework (iOS simulator)
+        run: ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
+      - name: Build the Xcode project
+        run: >
+          xcodebuild
+          -project app/iosApp/iosApp.xcodeproj
+          -scheme iosApp
+          -configuration Debug
+          -sdk iphonesimulator
+          CODE_SIGNING_ALLOWED=NO
+          build
