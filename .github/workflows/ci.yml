@@ -31,32 +31,28 @@ jobs:
       - name: Detekt (static analysis)
         run: ./gradlew detekt --stacktrace
 
-      # Includes every module that renders Compose in a test. Golden images are
-      # compared here, not just recorded: MuvissTheme sets a bundled font on
-      # every text style, so a screenshot is the same on this runner as on a
+      # Every jvmTest task in the build, resolved by name rather than listed.
+      # This used to be a hand-maintained allowlist, which meant a module
+      # missing from it was a module whose tests never ran — and modules kept
+      # going missing. :core:sync and :core:database were both absent for a
+      # while, so every sync and migration test written since EPIC 9 had only
+      # ever run on a developer's machine. By the time this was replaced, all
+      # six :domain modules, :feature:collection:*, :core:common and :models
+      # were in the same position: roughly fifty test files, none of them run
+      # here. That is issue #25.
+      #
+      # Anything in commonTest is still verified on exactly one platform, since
+      # the JVM is where Skiko ships and so where all Compose and golden-image
+      # tests execute. Golden images are compared, not just recorded: MuvissTheme
+      # sets a bundled font on every text style, so a screenshot matches a
       # developer's machine bar antialiasing, which the tolerance absorbs.
       #
-      # This is an allowlist, so a module missing from it is a module whose
-      # tests never run. :core:sync and :core:database were both absent —
-      # every sync and migration test written since EPIC 9 had only ever run
-      # on a developer's machine.
+      # :server:test is named separately — the server is a plain JVM module and
+      # has no jvmTest task to match.
       - name: Unit tests (JVM)
         run: >
           ./gradlew
-          :app:shared:jvmTest
-          :core:model:jvmTest
-          :core:designsystem:jvmTest
-          :core:testing:jvmTest
-          :core:billing:jvmTest
-          :core:database:jvmTest
-          :core:sync:jvmTest
-          :feature:search:data:jvmTest
-          :feature:search:ui:jvmTest
-          :feature:triage:ui:jvmTest
-          :feature:profile:data:jvmTest
-          :feature:profile:ui:jvmTest
-          :feature:progress:data:jvmTest
-          :feature:settings:data:jvmTest
+          jvmTest
           :server:test
           --continue
           --stacktrace
@@ -81,8 +77,53 @@ jobs:
       - name: Assemble Android debug APK
         run: ./gradlew :app:androidApp:assembleDebug --stacktrace
 
+      # Three steps rather than one, because they fail on different things and
+      # the last two had no coverage at all. Desktop was compiled on every PR
+      # and never linked, packaged or launched.
       - name: Compile desktop app
         run: ./gradlew :app:desktopApp:compileKotlin --stacktrace
+
+      # jlink builds the runtime image here, which is the only place
+      # `nativeDistributions { modules(...) }` is used at all. Note what this
+      # does and does not catch: jlink fails on a module *name* it cannot
+      # resolve, so a typo is caught, but a module that is genuinely needed and
+      # simply absent from the list is not — that surfaces as a
+      # NoClassDefFoundError at runtime in the packaged app (docs/RELEASING.md
+      # item 7 says so, and re-deriving the list with jdeps is the documented
+      # answer). EPIC 23 added jdk.httpserver for the loopback sign-in server.
+      # Deriving the list automatically is filed.
+      #
+      # It is also the first time the DEB path runs anywhere: the
+      # desktop-release job that produces it is gated on a `v*` tag, and this
+      # repo has none.
+      - name: Package desktop app
+        run: ./gradlew :app:desktopApp:packageDistributionForCurrentOS --stacktrace
+
+      # The one step that asks whether the app starts. AGENTS.md's own example
+      # is EPIC 22 shipping green across six targets and two thousand tests
+      # with a Koin construction cycle that crashed on the first frame — not
+      # visible until something is really built and run. Reaching the print
+      # means the graph resolved, the driver opened the database, and the theme
+      # composed.
+      #
+      # It launches the *packaged* binary rather than `./gradlew run`, because
+      # `run` executes against the full JDK on the runner and would tell us
+      # nothing about the stripped runtime image real users get. This way the
+      # smoke covers the jlink image too.
+      #
+      # xvfb because Compose Desktop needs a display even to compose once, and
+      # `xvfb-run -a` picks a free server number rather than assuming :99.
+      # MUVISS_EXIT_AFTER_FIRST_FRAME is an environment variable, not a `-D`:
+      # Gradle does not forward system properties to the JVM a JavaExec forks,
+      # so `-Dmuviss...` would set it on the daemon, the app would never see it,
+      # and this step would hang until the job timed out.
+      - name: Smoke-launch the packaged desktop app (headless)
+        env:
+          MUVISS_EXIT_AFTER_FIRST_FRAME: '1'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          xvfb-run -a app/desktopApp/build/compose/binaries/main/app/Muviss/bin/Muviss | tee run.log
+          grep -q "first frame composed" run.log
 
       - name: Compile web targets (JS + Wasm)
         run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
@@ -153,3 +194,12 @@ jobs:
           -sdk iphonesimulator
           CODE_SIGNING_ALLOWED=NO
           build
+
+      # Riding the one macOS runner this workflow already pays for. packageDmg
+      # cannot run anywhere else — jpackage delegates to the host OS's own
+      # packaging tool (hdiutil/pkgbuild here), so there is no cross-compiling
+      # it from the Linux job above. Until now the DMG was built only by
+      # release.yml's desktop-release job, which triggers on a `v*` tag and has
+      # therefore never run: this repo has zero tags.
+      - name: Package the macOS desktop app
+        run: ./gradlew :app:desktopApp:packageDmg --stacktrace

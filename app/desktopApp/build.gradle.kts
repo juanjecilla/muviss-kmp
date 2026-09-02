@@ -22,6 +22,7 @@ dependencies {
     implementation(projects.feature.collection.api)
     implementation(projects.feature.progress.api)
     implementation(projects.feature.settings.api)
+    implementation(projects.models)
     // :app:shared depends on these with `implementation`, so nothing leaks
     // transitively. Named here because this module starts Koin itself and binds
     // the loopback OAuth server into the graph (ADR 0017).

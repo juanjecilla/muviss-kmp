@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
@@ -23,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import org.jetbrains.skia.Image
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
@@ -36,6 +39,24 @@ import java.awt.SystemTray
  * moved it.
  */
 private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+/**
+ * Quit as soon as the app has drawn once. Set by CI's headless smoke step
+ * (`MUVISS_EXIT_AFTER_FIRST_FRAME=1` under Xvfb), which asks the one question no
+ * compile or unit test can: does this thing actually start?
+ *
+ * An environment variable rather than a system property, and not by preference:
+ * Gradle does not forward `-D` to the JVM a JavaExec forks, so `./gradlew run
+ * -Dmuviss...` sets it on the daemon and the app never sees it. The environment
+ * *is* inherited. `MUVISS_RECORD_GOLDENS` in :core:testing reads the same way.
+ *
+ * That question earned its own step. EPIC 22 shipped a full `./gradlew build`
+ * across six targets with two thousand passing tests, and the app did not
+ * launch — a Koin construction cycle is only visible once something is really
+ * built and run. A frame on screen means the graph resolved, the driver opened
+ * the database, and the theme composed.
+ */
+private val exitAfterFirstFrame: Boolean = System.getenv("MUVISS_EXIT_AFTER_FIRST_FRAME") == "1"
 
 fun main() {
     // Koin starts here rather than relying only on `MuvissApp()`'s
@@ -104,10 +125,9 @@ fun main() {
         // is worth having whether or not anyone can be told about it.
         val trayAvailable = remember { SystemTray.isSupported() }
         val trayState = rememberTrayState()
+        val trayIcon = remember { loadTrayIcon() }
         if (trayAvailable) {
-            // Same artwork the installers use; `icons/` is a resource root
-            // (see build.gradle.kts) so there is only ever one copy of it.
-            Tray(state = trayState, icon = painterResource("icon.png"), tooltip = "Muviss")
+            Tray(state = trayState, icon = trayIcon, tooltip = "Muviss")
         }
 
         LaunchedEffect(episodeRefresh, trayAvailable) {
@@ -137,6 +157,12 @@ fun main() {
             // equivalent on the WindowState/Window API, so it's set here once.
             LaunchedEffect(Unit) {
                 window.minimumSize = Dimension(MIN_WINDOW_SIZE.width.value.toInt(), MIN_WINDOW_SIZE.height.value.toInt())
+                if (exitAfterFirstFrame) {
+                    // Inside the Window's content, so reaching here means the
+                    // composition ran rather than merely that main() did.
+                    println("muviss: first frame composed")
+                    exitApplication()
+                }
             }
             MuvissApp(
                 oauthCode = oauthCode,
@@ -145,3 +171,23 @@ fun main() {
         }
     }
 }
+
+/**
+ * The tray icon: the same artwork the installers use, loaded off the classpath
+ * (`icons/` is a resource root — see build.gradle.kts) so there is one copy of
+ * it rather than a second under src/main/resources.
+ *
+ * Decoded through Skia rather than `androidx.compose.ui.res.painterResource`,
+ * whose String overload is deprecated in favour of the Compose resources
+ * library — which this module cannot use without a `composeResources` layout it
+ * has no other reason to adopt.
+ */
+private fun loadTrayIcon(): Painter {
+    val bytes = checkNotNull(Main::class.java.getResourceAsStream("/icon.png")) {
+        "icon.png is missing from the classpath; is `icons/` still a resource root?"
+    }.use { it.readBytes() }
+    return BitmapPainter(Image.makeFromEncoded(bytes).toComposeImageBitmap())
+}
+
+/** Anchors [loadTrayIcon]'s classpath lookup; `Main.kt` compiles to `MainKt`, which has no Kotlin class literal. */
+private class Main
