@@ -49,17 +49,31 @@ row and a paywall. Those are deliberately opposite, see ADR 0012.
    plus one entry in `SyncUiState.providers` — the client takes the provider
    as a query parameter, so there is no second code path.
 
-   The redirect back *into the app* is `muviss://auth-callback`, and it has to
-   be identical in three places that cannot reference each other:
-   `OAUTH_REDIRECT_URI` in `core/sync/.../OAuthRedirect.kt`, the
-   `auth-callback` intent filter in the Android manifest, and
-   `additional_redirect_urls` in `supabase/config.toml`. The last one is a
-   security control — GoTrue refuses to redirect anywhere not on that
-   allow-list — and is applied with `supabase config push`.
+   The redirect back *into the app* is `muviss://auth-callback` on Android and
+   iOS, and it has to be identical in three places that cannot reference each
+   other: `OAUTH_REDIRECT_URI` in `core/sync/.../OAuthRedirect.kt`, the
+   `auth-callback` intent filter in the Android manifest (plus iOS's
+   `CFBundleURLSchemes`), and `additional_redirect_urls` in
+   `supabase/config.toml`. The last one is a security control — GoTrue refuses
+   to redirect anywhere not on that allow-list — and is applied with
+   `supabase config push`.
 
-   Sign-in works on **Android only** for now. The other targets each need a
-   different browser round-trip and report it as unsupported (ADR 0003 makes
-   Android the first-verify target).
+   **Desktop is the exception**: it owns no URL scheme that survives
+   `./gradlew run`, so it binds a loopback HTTP server and hands GoTrue
+   `http://127.0.0.1:<port>/auth-callback` instead (**ADR 0017**). Ports
+   53682-53684 are tried in order, and all three must be on the allow-list too
+   — `LoopbackRedirectServer.PORTS` in `:app:desktopApp` is the same list.
+
+   Know when a missing allow-list entry actually bites: GoTrue's `/authorize`
+   accepts **any** `redirect_to` and 302s to the provider regardless, so the
+   flow starts normally. Enforcement happens when GoTrue redirects *back*,
+   after the user has authorized — which is why a drift presents as a browser
+   landing on `site_url` with "cannot connect to the server", not as an error
+   up front.
+
+   Sign-in works on **Android, iOS and desktop**. Web is the one target left:
+   `Pkce.js.kt` / `Pkce.wasmJs.kt` are still `unsupportedOnThisTarget()`, and
+   it needs an in-page redirect rather than either mechanism above.
 4. Apply the schema — six synced tables, their Row Level Security policies,
    the last-write-wins trigger and the pull-cursor indexes:
 
