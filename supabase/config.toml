@@ -170,7 +170,21 @@ site_url = "http://localhost:3000"
 # talking Supabase into delivering an authorization code somewhere else. Must
 # stay identical to OAUTH_REDIRECT_URI in :core:sync's OAuthRedirect.kt and to
 # the auth-callback intent filter in the Android manifest (ADR 0014).
-additional_redirect_urls = ["muviss://auth-callback"]
+#
+# The three loopback entries are desktop's redirect (ADR 0017): it owns no URL
+# scheme that survives `./gradlew run`, so it binds a local port instead and
+# GoTrue redirects the browser straight back to it. Three ports, because a
+# second Muviss window (or an unrelated process holding 53682) must not make
+# signing in impossible — LoopbackRedirectServer.PORTS in :app:desktopApp is
+# the same list, and every port in it has to appear here or sign-in fails at
+# the browser with GoTrue's own redirect error. Applied with
+# `supabase config push`.
+additional_redirect_urls = [
+  "muviss://auth-callback",
+  "http://127.0.0.1:53682/auth-callback",
+  "http://127.0.0.1:53683/auth-callback",
+  "http://127.0.0.1:53684/auth-callback",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.

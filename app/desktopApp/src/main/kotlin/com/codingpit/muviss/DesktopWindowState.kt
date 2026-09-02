@@ -35,6 +35,9 @@ internal val DEFAULT_WINDOW_SIZE = DpSize(1100.dp, 720.dp)
 /** Floor so the window can never be resized into unusable, content-less territory. */
 internal val MIN_WINDOW_SIZE = DpSize(480.dp, 360.dp)
 
+/** Trailing debounce before a drag/resize reaches java.util.prefs. See Main.kt. */
+internal const val WINDOW_PERSIST_DEBOUNCE_MS = 500L
+
 /**
  * Builds the initial [WindowState] from whatever was last persisted, falling
  * back to [DEFAULT_WINDOW_SIZE] / the platform's default placement when this

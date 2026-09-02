@@ -8,11 +8,20 @@ plugins {
 
 dependencies {
     implementation(projects.app.shared)
+    // :app:shared depends on these with `implementation`, so nothing leaks
+    // transitively. Named here because this module starts Koin itself and binds
+    // the loopback OAuth server into the graph (ADR 0017).
+    implementation(projects.core.sync)
+    implementation(projects.core.database)
+    implementation(libs.koin.core)
 
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutinesSwing)
 
     implementation(libs.compose.uiToolingPreview)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutinesTest)
 }
 
 // -----------------------------------------------------------------------
@@ -75,7 +84,13 @@ compose.desktop {
             // out: it's what :core:database's sqlite-jdbc driver needs
             // (DatabaseFactory.jvm.kt) and is easy to forget since nothing
             // in application code imports java.sql directly.
-            modules("java.desktop", "java.instrument", "java.management", "java.sql", "jdk.unsupported")
+            // jdk.httpserver is the loopback OAuth redirect server's
+            // com.sun.net.httpserver (ADR 0017) — same "invisible until
+            // runtime" hazard as java.sql: nothing in application code names
+            // the module, and dropping it surfaces as a NoClassDefFoundError in
+            // the *packaged* app only, never in a Gradle build. CI now runs
+            // packageDistributionForCurrentOS on every PR so that stays caught.
+            modules("java.desktop", "java.instrument", "java.management", "java.sql", "jdk.httpserver", "jdk.unsupported")
 
             packageName = "Muviss"
             packageVersion = desktopPackageVersion
