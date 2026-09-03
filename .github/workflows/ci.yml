@@ -77,9 +77,46 @@ jobs:
       - name: Assemble Android debug APK
         run: ./gradlew :app:androidApp:assembleDebug --stacktrace
 
-      # Three steps rather than one, because they fail on different things and
-      # the last two had no coverage at all. Desktop was compiled on every PR
-      # and never linked, packaged or launched.
+      - name: Compile web targets (JS + Wasm)
+        run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
+
+      # The per-target compiles above never touch the *intermediate* source
+      # sets' own compilations (`webMain`, `appleMain`, `iosMain`,
+      # `nativeMain`): they read those directories straight into the target.
+      # A shared source set can therefore be broken — unresolved references
+      # against dependencies declared only per target — with every step above
+      # still green and only `./gradlew build` red. `allMetadataJar` compiles
+      # each of them once. It needs no Kotlin/Native toolchain (metadata
+      # klibs come from the JVM compiler), so it runs here like anywhere else.
+      - name: Compile shared source sets (metadata klibs)
+        run: ./gradlew allMetadataJar --stacktrace
+
+
+  # Desktop lives in its own job rather than in `build`, and not for tidiness:
+  # folded into `build` these steps produced a runner that died mid-
+  # `allMetadataJar` with no log and no step conclusion, 45 minutes in — the
+  # signature of resource exhaustion rather than a compile error. `build`
+  # already assembles an Android APK, compiles JS and Wasm and builds every
+  # metadata klib; adding two jlink runtime images and a windowed app launch on
+  # top was what tipped it. Split, each side gets its own runner and its own
+  # Gradle daemon, they run in parallel, and a failure names which half broke.
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Three steps, because they fail on different things and until EPIC 23
+      # only the first existed: desktop was compiled on every PR and never
+      # linked, packaged or launched.
       - name: Compile desktop app
         run: ./gradlew :app:desktopApp:compileKotlin --stacktrace
 
@@ -132,20 +169,6 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
           xvfb-run -a ./gradlew :app:desktopApp:runDistributable --stacktrace | tee run.log
           grep -q "first frame composed" run.log
-
-      - name: Compile web targets (JS + Wasm)
-        run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
-
-      # The per-target compiles above never touch the *intermediate* source
-      # sets' own compilations (`webMain`, `appleMain`, `iosMain`,
-      # `nativeMain`): they read those directories straight into the target.
-      # A shared source set can therefore be broken — unresolved references
-      # against dependencies declared only per target — with every step above
-      # still green and only `./gradlew build` red. `allMetadataJar` compiles
-      # each of them once. It needs no Kotlin/Native toolchain (metadata
-      # klibs come from the JVM compiler), so it runs here like anywhere else.
-      - name: Compile shared source sets (metadata klibs)
-        run: ./gradlew allMetadataJar --stacktrace
 
   # Everything above runs on Linux, which cannot build a single line of iOS.
   # The consequence was not theoretical: between EPIC 11 (2026-07) and this
