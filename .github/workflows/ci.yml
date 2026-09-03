@@ -83,59 +83,54 @@ jobs:
       - name: Compile desktop app
         run: ./gradlew :app:desktopApp:compileKotlin --stacktrace
 
-      # jlink builds the runtime image here, which is the only place
-      # `nativeDistributions { modules(...) }` is used at all. Note what this
-      # does and does not catch: jlink fails on a module *name* it cannot
-      # resolve, so a typo is caught, but a module that is genuinely needed and
-      # simply absent from the list is not — that surfaces as a
-      # NoClassDefFoundError at runtime in the packaged app (docs/RELEASING.md
-      # item 7 says so, and re-deriving the list with jdeps is the documented
-      # answer). EPIC 23 added jdk.httpserver for the loopback sign-in server.
-      # Deriving the list automatically is filed.
+      # Two tasks, because on Linux they produce different things and only one
+      # of them is the artifact users install. `packageDistributionForCurrentOS`
+      # gives the .deb; `runDistributable` builds the jlink *app image* and
+      # launches it — on Linux `packageDeb` leaves no app image behind at all
+      # (macOS differs, since packageDmg needs the .app), which is how the first
+      # attempt at this step ended up hunting for a binary that was never there.
       #
-      # It is also the first time the DEB path runs anywhere: the
+      # jlink runs in both, and it is the only place `nativeDistributions
+      # { modules(...) }` is used. Worth being precise about what that catches:
+      # jlink fails on a module *name* it cannot resolve, so a typo is caught,
+      # but a module genuinely needed and simply absent is not — that is a
+      # NoClassDefFoundError at runtime (docs/RELEASING.md item 7). EPIC 23
+      # added jdk.httpserver for the loopback sign-in server; re-deriving the
+      # list with jdeps, which would close that hole, is issue #43.
+      #
+      # This is also the first time the DEB path runs anywhere: the
       # desktop-release job that produces it is gated on a `v*` tag, and this
-      # repo has none.
+      # repo has none. Note the .deb built here carries a meaningless version
+      # (`1.0.1`): packageVersion falls back to `1.0.<commitCount>` when
+      # untagged, and this job's checkout is shallow. That is fine for a smoke
+      # artifact and wrong for a release, which is why release.yml checks out
+      # with fetch-depth: 0.
       - name: Package desktop app
         run: ./gradlew :app:desktopApp:packageDistributionForCurrentOS --stacktrace
 
-      # The one step that asks whether the app starts. AGENTS.md's own example
-      # is EPIC 22 shipping green across six targets and two thousand tests
-      # with a Koin construction cycle that crashed on the first frame — not
-      # visible until something is really built and run. Reaching the print
-      # means the graph resolved, the driver opened the database, and the theme
-      # composed.
+      # The one step that asks whether the app starts, and it asks it of the
+      # *packaged* app rather than `./gradlew run` — `run` executes against the
+      # runner's full JDK and would say nothing about the stripped runtime image
+      # real users get.
       #
-      # It launches the *packaged* binary rather than `./gradlew run`, because
-      # `run` executes against the full JDK on the runner and would tell us
-      # nothing about the stripped runtime image real users get. This way the
-      # smoke covers the jlink image too.
+      # AGENTS.md's own example is EPIC 22 shipping green across six targets and
+      # two thousand tests with a Koin construction cycle that crashed on the
+      # first frame; no compile and no unit test can see that. Reaching the print
+      # means the graph resolved, the driver opened the database and the theme
+      # composed.
       #
       # xvfb because Compose Desktop needs a display even to compose once, and
       # `xvfb-run -a` picks a free server number rather than assuming :99.
       # MUVISS_EXIT_AFTER_FIRST_FRAME is an environment variable, not a `-D`:
-      # Gradle does not forward system properties to the JVM a JavaExec forks,
-      # so `-Dmuviss...` would set it on the daemon, the app would never see it,
-      # and this step would hang until the job timed out.
+      # Gradle does not forward system properties to the JVM it forks, so
+      # `-Dmuviss...` would set it on the daemon, the app would never see it, and
+      # this step would hang until the job timed out.
       - name: Smoke-launch the packaged desktop app (headless)
         env:
           MUVISS_EXIT_AFTER_FIRST_FRAME: '1'
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
-          # The launcher is located rather than hardcoded. jpackage's app-image
-          # layout differs per OS (`Muviss.app/Contents/MacOS/Muviss` on macOS,
-          # a `bin/` directory elsewhere) and is Compose's to change; guessing it
-          # from a macOS machine got it wrong once already. If it is not found,
-          # print the tree — a path that moved should say where it moved to,
-          # not just fail.
-          launcher=$(find app/desktopApp/build/compose/binaries -type f -name Muviss -perm -u+x | head -1)
-          if [ -z "$launcher" ]; then
-            echo "No Muviss launcher under app/desktopApp/build/compose/binaries:"
-            find app/desktopApp/build/compose/binaries -maxdepth 5 | head -60
-            exit 1
-          fi
-          echo "Launching $launcher"
-          xvfb-run -a "$launcher" | tee run.log
+          xvfb-run -a ./gradlew :app:desktopApp:runDistributable --stacktrace | tee run.log
           grep -q "first frame composed" run.log
 
       - name: Compile web targets (JS + Wasm)
