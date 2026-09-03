@@ -122,7 +122,20 @@ jobs:
           MUVISS_EXIT_AFTER_FIRST_FRAME: '1'
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
-          xvfb-run -a app/desktopApp/build/compose/binaries/main/app/Muviss/bin/Muviss | tee run.log
+          # The launcher is located rather than hardcoded. jpackage's app-image
+          # layout differs per OS (`Muviss.app/Contents/MacOS/Muviss` on macOS,
+          # a `bin/` directory elsewhere) and is Compose's to change; guessing it
+          # from a macOS machine got it wrong once already. If it is not found,
+          # print the tree — a path that moved should say where it moved to,
+          # not just fail.
+          launcher=$(find app/desktopApp/build/compose/binaries -type f -name Muviss -perm -u+x | head -1)
+          if [ -z "$launcher" ]; then
+            echo "No Muviss launcher under app/desktopApp/build/compose/binaries:"
+            find app/desktopApp/build/compose/binaries -maxdepth 5 | head -60
+            exit 1
+          fi
+          echo "Launching $launcher"
+          xvfb-run -a "$launcher" | tee run.log
           grep -q "first frame composed" run.log
 
       - name: Compile web targets (JS + Wasm)
