@@ -1,0 +1,9 @@
+{
+  "name": "muviss-sqljs-worker",
+  "version": "1.0.0",
+  "private": true,
+  "main": "muviss-sqljs.worker.js",
+  "dependencies": {
+    "sql.js": "1.10.3"
+  }
+}

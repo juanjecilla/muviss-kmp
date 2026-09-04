@@ -27,6 +27,21 @@ naming:
   FunctionNaming:
     # @Composable functions are PascalCase.
     ignoreAnnotated: ['Composable']
+    # Detekt's default excludes list the test source sets it knew about, which
+    # does not include Kotlin Multiplatform's intermediate ones — `webTest` was
+    # added by EPIC 24 and immediately tripped this rule, while the identical
+    # `underscore_case` naming in `commonTest` and `jvmTest` passed. Restated in
+    # full rather than appended to, since a YAML key replaces rather than
+    # extends. Test names are sentences here on purpose: `commonTest` uses
+    # underscores because Kotlin/Native rejects punctuation in backticked names
+    # (see CLAUDE.md), so the whole repo follows suit for consistency.
+    excludes: [
+      '**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**',
+      '**/androidUnitTest/**', '**/androidInstrumentedTest/**',
+      '**/jsTest/**', '**/iosTest/**', '**/webTest/**', '**/nativeTest/**',
+      '**/appleTest/**', '**/jsBrowserTest/**', '**/wasmJsTest/**',
+      '**/wasmJsBrowserTest/**',
+    ]
   MatchingDeclarationName:
     # expect/actual files are platform-suffixed (Foo.android.kt) and some files
     # group related declarations; enforced loosely via review instead.
