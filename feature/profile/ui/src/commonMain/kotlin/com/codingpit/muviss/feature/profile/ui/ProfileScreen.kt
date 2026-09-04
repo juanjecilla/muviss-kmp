@@ -217,7 +217,7 @@ private fun EditNameDialog(
  * hidden entirely rather than shown disabled, same contract as a blank
  * Sentry DSN (CLAUDE.md).
  *
- * [SyncAccountState.Locked] is the deliberate opposite (ADR 0012): the build
+ * [SyncAccountState.Locked] is the deliberate opposite (ADR 0018): the build
  * has sync, the user has not bought it, so the row appears and offers the
  * purchase. Hiding it would leave a paid feature undiscoverable.
  */

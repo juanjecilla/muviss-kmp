@@ -31,6 +31,25 @@ import kotlin.test.assertTrue
  * These reproduce the structure rather than call `MuvissApp` directly, which
  * would need the whole Koin graph, a database and a theme. What is under test
  * is the effect/scope arrangement, and that is reproduced exactly.
+ *
+ * **This lives in `jvmTest`, not `commonTest`, deliberately — do not move it
+ * back** (issue #24). Both tests failed on the `js, browser, ChromeHeadless`
+ * target, and neither failure said anything about the product:
+ *
+ * - What they assert is Compose *runtime* semantics — that work launched into
+ *   `rememberCoroutineScope` outlives its `LaunchedEffect` key being cleared.
+ *   The subjects below are hand-rolled; no OAuth code is reached on any
+ *   platform. The likeliest cause is `waitForIdle()` not pumping a resumed
+ *   `CompletableDeferred` the way the JVM harness does — the JS variant of
+ *   `runComposeUiTest` returns a promise rather than `Unit` — but nobody
+ *   confirmed that, because the answer would not change what is done here.
+ * - And there is no OAuth on web to verify. `core/sync`'s `Pkce.js.kt` and
+ *   `Pkce.wasmJs.kt` both throw `unsupportedOnThisTarget()`; web sign-in is
+ *   issue #46, itself blocked on durable web persistence (#28), because a
+ *   session-only database has nowhere to keep a signed-in session.
+ *
+ * So JS/Wasm coverage of this file is dropped on purpose. If web ever gains a
+ * real sign-in path, what will need testing is that path, not this arrangement.
  */
 class OAuthRedirectCompletionTest {
 

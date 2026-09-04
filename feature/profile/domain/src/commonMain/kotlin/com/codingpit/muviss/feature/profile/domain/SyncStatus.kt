@@ -24,7 +24,7 @@ sealed interface SyncAccountState {
     data object Unavailable : SyncAccountState
 
     /**
-     * Sync is in this build but the user has not paid for it (ADR 0012).
+     * Sync is in this build but the user has not paid for it (ADR 0018).
      *
      * The opposite presentation to [Unavailable], and the distinction is the
      * whole point of having two states: an unavailable feature renders

@@ -223,7 +223,7 @@ Release object (#45), and web as the last target without sign-in (#46).
 work; this list is the map. Nothing should appear below without a number beside
 it — see `AGENTS.md` for why.
 
-- **Durable web persistence** — #28. The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything, including the triage decisions whose whole promise is not asking twice. Needs an ADR 0008 amendment.
+- **Durable web persistence** — #28. The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything, including the triage decisions whose whole promise is not asking twice. Needs an ADR 0008 amendment. **#46 (web sign-in) is blocked on this**: a signed-in session stored in a database that dies on reload signs the user straight back out, which `Pkce.js.kt` records in a comment and nothing else did.
 - **Analytics + remote feature flags** — #29. `AnalyticsTracker` and `FeatureFlags` are seams in `:core:common` with no vendor behind them. Choosing one means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
 - **`:app:macrobenchmark` + baseline profile** — #30. Frame timing for the triage drag, deck cold start, commit latency. Blocked on an emulator in CI, which is why the perf tests we do have use deterministic operation-count budgets instead.
 - **Additional `MetadataProvider`s (TVmaze/Trakt)** — #31. Cross-source reconciliation via IMDb id. ADR 0001 and ADR 0006 built the seams; TMDB is still the only implementation, so neither has been exercised by a second source.
@@ -258,6 +258,36 @@ widget has been run).
 
 ### Found while landing EPIC 22, not caused by it
 
-- **`OAuthRedirectCompletionTest` fails on js/browser** — #24. Reproduced on clean `main` at `e062b2b`, before the rebase.
-- **CI compiles JS/Wasm but never tests them**, and its explicit `jvmTest` module list has drifted behind the modules that exist — #25. That is why #24 went unnoticed.
-- **Two ADRs are both numbered 0012** — #26. Parallel branches each took the next free number; the schema version collided the same way and `verifyMigrations` cannot see it.
+- **`OAuthRedirectCompletionTest` fails on js/browser** — #24. **Fixed
+  2026-09-04**: moved to `jvmTest`. The two tests assert Compose *runtime*
+  semantics against hand-rolled subjects and reach no OAuth code on any
+  platform — and web has no OAuth to reach (`Pkce.js.kt` throws), so running
+  them there verified an arrangement for a feature that target does not have.
+- **CI compiles JS/Wasm but never tests them**, and its explicit `jvmTest`
+  module list has drifted behind the modules that exist — #25. **Reopened**:
+  only the `jvmTest` half was done in EPIC 23. A `web-tests` job now runs
+  `jsBrowserTest wasmJsBrowserTest`, `continue-on-error: true` pending #49;
+  `:app:androidApp`'s own unit test still does not run anywhere.
+- **The Kotlin compiler OOMs under parallel load** — #49. Six
+  `:feature:*:domain` modules died with "Internal compiler error" on the first
+  full JS/Wasm run and every one of them passed on a rerun; the same session's
+  `./gradlew build allMetadataJar` then failed three iOS tasks with an explicit
+  `java.lang.OutOfMemoryError: Java heap space` after 2h35m. Not wasm-specific
+  and not about physical memory — the machine had 36 GB and the cap is
+  `org.gradle.jvmargs=-Xmx4096M` (Gradle said so itself), which cannot simply be
+  raised because the same value has to hold on CI runners with ~14-16 GB.
+  `--max-workers=3` is **not** enough; raising the heap for the run is
+  (`-Dorg.gradle.jvmargs=-Xmx12288M`), and `AGENTS.md` carries the command. It
+  is why the `web-tests` job is non-blocking, and it must be resolved before
+  that job can gate a PR.
+- **CI never links the release iOS framework** — #50. The `ios` job runs
+  `linkDebugFrameworkIosSimulatorArm64` and builds Xcode `-configuration Debug`;
+  `linkRelease*` is reached only through `./gradlew build`, which no job runs.
+  Found via #49: the release link dies in `DevirtualizationAnalysis`, a pass the
+  debug link cannot reach. The shipping configuration is the unverified one.
+- **Two ADRs are both numbered 0012** — #26. **Fixed 2026-09-04**:
+  `0012-sync-is-gated-twice.md` became **ADR 0018** (0017 had been taken by
+  EPIC 23 in the meantime, so the fix suggested in the issue was stale), and
+  the rewatch ADR kept 0012 because it owned the number in roughly three times
+  as many places. `AGENTS.md` gained the convention that closes the class:
+  claim ADR and `.sqm` numbers when the branch opens, not when it merges.

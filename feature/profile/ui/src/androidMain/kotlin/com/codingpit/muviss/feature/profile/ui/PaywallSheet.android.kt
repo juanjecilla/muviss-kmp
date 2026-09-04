@@ -5,7 +5,7 @@ import androidx.compose.runtime.remember
 
 /**
  * Where `purchases-kmp-ui`'s server-driven paywall goes once a Play Console
- * app and a RevenueCat product exist (ADR 0012, Phase D). Until then this
+ * app and a RevenueCat product exist (ADR 0018, Phase D). Until then this
  * target uses the same fallback as every other one.
  */
 @Composable

@@ -28,7 +28,7 @@ import org.koin.dsl.module
  * The [EntitlementGate] bound here is the permissive default. `:app:shared`
  * overrides it with `:core:billing`'s real one — this module cannot do it
  * itself without `:core:sync` depending on a billing vendor, which is exactly
- * what [EntitlementGate] exists to avoid (ADR 0012).
+ * what [EntitlementGate] exists to avoid (ADR 0018).
  */
 val syncModule: Module = module {
     single<SyncAvailability> {

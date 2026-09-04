@@ -6,7 +6,7 @@ plugins {
 
 // SYNC_ENTITLEMENT_OVERRIDE grants the sync entitlement without a store —
 // the developer build's way in, and the only way in until a Play Console app
-// and a RevenueCat product exist (ADR 0012). Absent (the default everywhere
+// and a RevenueCat product exist (ADR 0018). Absent (the default everywhere
 // including CI), `NoEntitlementProvider` is bound and reports Inactive.
 //
 // Fail closed on purpose. The alternative — treating "no billing configured"

@@ -34,7 +34,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The two gates the profile screen has to tell apart (ADR 0012): a build
+ * The two gates the profile screen has to tell apart (ADR 0018): a build
  * without sync renders nothing, while a build with sync that the user has not
  * paid for renders the row and a way to buy it. Getting these the same way
  * round would either hide a purchasable feature or advertise one the app

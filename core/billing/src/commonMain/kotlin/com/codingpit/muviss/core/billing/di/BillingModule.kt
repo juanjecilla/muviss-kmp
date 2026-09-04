@@ -11,7 +11,7 @@ import org.koin.dsl.module
  * Binds the [EntitlementProvider]. Today the choice is between the two
  * no-store implementations; a `RevenueCatEntitlementProvider` in
  * `androidMain`/`iosMain` slots in here later without any caller changing
- * (ADR 0012's Phase D).
+ * (ADR 0018's Phase D).
  */
 val billingModule: Module = module {
     single<EntitlementProvider> {

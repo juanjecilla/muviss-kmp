@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
  * `feature/settings/ui`'s `DataExporter`.
  *
  * Every actual is [HandRolledPaywall] today; nothing here reaches a store yet
- * (ADR 0012 defers that to a build with a Play Console app behind it). The
+ * (ADR 0018 defers that to a build with a Play Console app behind it). The
  * seam exists now so adding one later is an edit to one platform file rather
  * than a refactor of the profile screen.
  */

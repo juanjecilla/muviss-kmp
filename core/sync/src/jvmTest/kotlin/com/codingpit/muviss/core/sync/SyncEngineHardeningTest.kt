@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
 /**
  * The failure modes that made sync unsafe to actually turn on: a pull cursor
  * taken from the wrong clock, two cycles running at once, and an entitlement
- * gate that the app's foreground hook could walk straight past. See ADR 0012.
+ * gate that the app's foreground hook could walk straight past. See ADR 0018.
  */
 class SyncEngineHardeningTest {
 
