@@ -120,6 +120,12 @@ jobs:
   web-tests:
     runs-on: ubuntu-latest
     continue-on-error: true
+    # Non-blocking is not the same as non-hanging: `continue-on-error` keeps a
+    # red run from failing the workflow, but a job that never returns still
+    # holds the PR and burns the full 6h default. The whole suite is under two
+    # minutes locally from a cold `--rerun-tasks` (941 tasks), so 30 minutes is
+    # already several times any legitimate runtime.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -136,15 +142,26 @@ jobs:
       # Kotlin plugin's default karma + `karma-chrome-launcher`, which resolves
       # the binary from $CHROME_BIN and otherwise guesses at a PATH name. That
       # guess is what makes it work on a developer's machine, and the name it
-      # guesses differs between runner images. Resolve it here so a missing
-      # browser fails on this line with an empty value, rather than as an
-      # opaque karma launch error two minutes later.
+      # guesses differs between runner images.
+      #
+      # The explicit `exit 1` is the point of the step, and the first version of
+      # it did not have one: a `command -v` chain that finds nothing still exits
+      # this step successfully, exporting an empty CHROME_BIN, and karma then
+      # hangs trying to launch "" rather than reporting anything. Fail here,
+      # loudly, with the resolved path echoed so a wrong binary is visible too.
       - name: Locate headless Chrome
         run: |
-          echo "CHROME_BIN=$(command -v google-chrome \
+          CHROME_BIN="$(command -v google-chrome \
             || command -v google-chrome-stable \
             || command -v chromium-browser \
-            || command -v chromium)" >> "$GITHUB_ENV"
+            || command -v chromium \
+            || true)"
+          if [ -z "$CHROME_BIN" ]; then
+            echo "::error::No Chrome/Chromium on PATH; karma cannot launch a browser."
+            exit 1
+          fi
+          echo "Using $CHROME_BIN ($("$CHROME_BIN" --version 2>&1 || echo 'no --version'))"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
 
       - name: Unit tests (JS + Wasm, headless Chrome)
         run: ./gradlew jsBrowserTest wasmJsBrowserTest --continue --stacktrace
