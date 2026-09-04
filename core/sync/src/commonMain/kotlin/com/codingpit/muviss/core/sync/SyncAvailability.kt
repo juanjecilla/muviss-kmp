@@ -11,7 +11,7 @@ package com.codingpit.muviss.core.sync
  * one is decided at build time and answers "does this app have the feature";
  * an unavailable build renders no sync UI whatsoever. The gate is decided at
  * runtime and answers "has this user paid for it"; a gated build shows the
- * feature and a way to buy it. See ADR 0012.
+ * feature and a way to buy it. See ADR 0018.
  */
 fun interface SyncAvailability {
     fun isConfigured(): Boolean

@@ -45,7 +45,7 @@ class NoEntitlementProvider : EntitlementProvider {
 
 /**
  * Grants the entitlement unconditionally, bound only when
- * `SYNC_ENTITLEMENT_OVERRIDE` is set in `local.properties` (ADR 0012).
+ * `SYNC_ENTITLEMENT_OVERRIDE` is set in `local.properties` (ADR 0018).
  *
  * This exists so sync can be dogfooded before any store exists. It is a build
  * input, never a runtime one, and it is absent from CI and release builds — so

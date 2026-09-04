@@ -6,7 +6,7 @@ the design rationale (multi-backend seam, plain Ktor over `supabase-kt`,
 last-write-wins conflict resolution) — this document is the concrete
 Supabase project setup and the SQL schema `SupabaseSyncBackend` talks to.
 
-Sync is entirely **optional**, and gated twice (ADR 0012):
+Sync is entirely **optional**, and gated twice (ADR 0018):
 
 1. **Build gate** — `SYNC_ENABLED` *and* both Supabase keys must be present.
    Miss any of the three and `SyncAvailability` reports unconfigured,
@@ -21,7 +21,7 @@ Sync is entirely **optional**, and gated twice (ADR 0012):
    `local.properties` to grant it to your own build.
 
 An unavailable build renders no sync UI at all; an unentitled one renders the
-row and a paywall. Those are deliberately opposite, see ADR 0012.
+row and a paywall. Those are deliberately opposite, see ADR 0018.
 
 ## Setting up a Supabase project
 

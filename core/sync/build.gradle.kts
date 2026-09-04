@@ -11,7 +11,7 @@ plugins {
 // sync stays entirely disabled: `syncModule` binds a `NoOpSyncBackend`
 // instead of `SupabaseSyncBackend` (see ADR 0009 and docs/SYNC.md).
 //
-// SYNC_ENABLED is a third, deliberately separate switch (ADR 0012). Missing
+// SYNC_ENABLED is a third, deliberately separate switch (ADR 0018). Missing
 // keys already hide sync, but that gate is an *omission* — nothing
 // distinguishes "we chose not to ship this" from "someone forgot a
 // property", and anyone adding keys to debug a build would silently turn on

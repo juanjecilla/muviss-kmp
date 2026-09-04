@@ -62,7 +62,7 @@ jobs:
           #
           # SYNC_ENABLED, SYNC_ENTITLEMENT_OVERRIDE, SUPABASE_URL and
           # SUPABASE_ANON_KEY are deliberately absent, and that absence IS the
-          # production gate (ADR 0012): without them `SyncAvailability` reports
+          # production gate (ADR 0018): without them `SyncAvailability` reports
           # unconfigured, `NoOpSyncBackend` is bound, and the profile screen
           # renders no sync row at all. Do not add them here until sync has
           # been verified against a live project and the privacy/data-safety

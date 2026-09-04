@@ -10,7 +10,7 @@ import org.koin.dsl.module
  * Joins `:core:billing` to `:core:sync` — the only place in the app where the
  * two meet.
  *
- * Neither module depends on the other, deliberately (ADR 0012). `:core:sync`
+ * Neither module depends on the other, deliberately (ADR 0018). `:core:sync`
  * declares [EntitlementGate] as a bare `suspend () -> Boolean` so it never
  * learns what a store is, and `:core:billing` publishes an entitlement without
  * knowing what is gated on it. The app shell is where a wiring decision like

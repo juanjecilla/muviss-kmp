@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 /**
  * Covers `7.sqm` — the rebuild that gives `episodePlay` a cross-device
  * identity so rewatch history can sync (ADR 0013), plus the `syncCursorEpochMs`
- * column split out of `lastSyncedAtEpochMs` (ADR 0012).
+ * column split out of `lastSyncedAtEpochMs` (ADR 0018).
  *
  * `verifyMigrations` proves the `.sqm` chain reproduces the `.sq` files'
  * schema; it says nothing about the data. This migration drops and recreates a

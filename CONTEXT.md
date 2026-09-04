@@ -62,11 +62,11 @@ A Play with an earlier Play of the same element behind it, at any date. Derived,
 _Avoid_: "most seen" (_seen_ is the stored boolean tick); replay; play count (that is a total, not the beyond-the-first count).
 
 **SyncEngine**:
-The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row. Refuses to run without an Entitlement (ADR 0012).
+The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row. Refuses to run without an Entitlement (ADR 0018).
 _Avoid_: backend, cloud (those are vendors behind this seam).
 
 **Entitlement**:
-Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. Independent of being signed in — one is bought, the other is an account (ADR 0012).
+Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. Independent of being signed in — one is bought, the other is an account (ADR 0018).
 _Avoid_: subscription, purchase, licence (those are how an Entitlement is acquired, and vendors behind that seam); premium, pro (those name a tier this app does not have).
 
 **Triage**:

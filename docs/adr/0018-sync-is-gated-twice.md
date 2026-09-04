@@ -1,5 +1,12 @@
 # Sync is gated twice: a build switch, and a paid entitlement
 
+Renumbered 0012 -> 0018 on 2026-09-04 (issue #26). This ADR and
+`0012-what-counts-as-a-rewatch.md` were written on branches developed in
+parallel and both merged claiming 0012, so every "ADR 0012" reference on `main`
+was ambiguous. This one moved because it is referenced in roughly a third as
+many places. Commit messages and issues written before that date which say
+"ADR 0012" and mean the sync gate mean this file.
+
 ADR 0009 built the sync seam and a Supabase backend behind it, and shipped
 both without ever pointing them at a live project. Turning that on raised two
 questions its "sync stays entirely optional" paragraph did not answer: what

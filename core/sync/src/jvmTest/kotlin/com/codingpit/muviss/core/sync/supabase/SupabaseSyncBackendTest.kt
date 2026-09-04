@@ -34,7 +34,7 @@ import kotlin.test.assertTrue
  * ADR 0009 verified against nothing but the fake backend one layer above it,
  * which is exactly the layer that could not see any of what is checked here —
  * a Supabase response's HTTP status, and whether an expired token is ever
- * renewed. Both were broken; see ADR 0012.
+ * renewed. Both were broken; see ADR 0018.
  */
 class SupabaseSyncBackendTest {
 

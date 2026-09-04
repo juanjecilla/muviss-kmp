@@ -92,6 +92,91 @@ jobs:
         run: ./gradlew allMetadataJar --stacktrace
 
 
+  # JS and Wasm tests live in their own job for the same reason desktop does
+  # (see below): `build` already assembles an Android APK, compiles both web
+  # targets and builds every metadata klib, and it has died mid-`allMetadataJar`
+  # from resource exhaustion before. Browser tests add a Kotlin/JS test compile
+  # per module plus a headless Chrome per module on top of that. Locally, run
+  # concurrently with everything else, six `:feature:*:domain` modules failed
+  # `compileTestDevelopmentExecutableKotlinWasmJs` with "Internal compiler
+  # error" and each one compiled fine on its own immediately afterwards. The
+  # same run's `./gradlew build` then OOMed three iOS tasks with an explicit
+  # `java.lang.OutOfMemoryError: Java heap space`, so it is heap exhaustion in
+  # the Kotlin compiler rather than anything about this code — a load symptom,
+  # and a CI runner has far less headroom than the 36 GB machine that produced
+  # it. That is issue #49.
+  #
+  # Until EPIC 23's follow-up this job did not exist at all: CI compiled JS and
+  # Wasm (it still does, in `build`, and that stays blocking) but never ran a
+  # single test on either. That is the open half of #25, and it is why #24 —
+  # two tests failing on js/browser since before EPIC 22 — went unnoticed for
+  # months. Anything in `commonTest` is still *verified* on the JVM; what this
+  # job adds is the guarantee that it does not fail somewhere else.
+  #
+  # Non-blocking on purpose, for now. Flipping `continue-on-error` off is the
+  # goal and needs the flake above resolved first; do not flip it while a red
+  # run here is expected, because a check nobody can act on is a check nobody
+  # reads.
+  web-tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    # Non-blocking is not the same as non-hanging: `continue-on-error` keeps a
+    # red run from failing the workflow, but a job that never returns still
+    # holds the PR and burns the full 6h default. The whole suite is under two
+    # minutes locally from a cold `--rerun-tasks` (941 tasks), so 30 minutes is
+    # already several times any legitimate runtime.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Nothing in this repo configures the browser: `jsBrowserTest` uses the
+      # Kotlin plugin's default karma + `karma-chrome-launcher`, which resolves
+      # the binary from $CHROME_BIN and otherwise guesses at a PATH name. That
+      # guess is what makes it work on a developer's machine, and the name it
+      # guesses differs between runner images.
+      #
+      # The explicit `exit 1` is the point of the step, and the first version of
+      # it did not have one: a `command -v` chain that finds nothing still exits
+      # this step successfully, exporting an empty CHROME_BIN, and karma then
+      # hangs trying to launch "" rather than reporting anything. Fail here,
+      # loudly, with the resolved path echoed so a wrong binary is visible too.
+      - name: Locate headless Chrome
+        run: |
+          CHROME_BIN="$(command -v google-chrome \
+            || command -v google-chrome-stable \
+            || command -v chromium-browser \
+            || command -v chromium \
+            || true)"
+          if [ -z "$CHROME_BIN" ]; then
+            echo "::error::No Chrome/Chromium on PATH; karma cannot launch a browser."
+            exit 1
+          fi
+          echo "Using $CHROME_BIN ($("$CHROME_BIN" --version 2>&1 || echo 'no --version'))"
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
+
+      - name: Unit tests (JS + Wasm, headless Chrome)
+        run: ./gradlew jsBrowserTest wasmJsBrowserTest --continue --stacktrace
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-reports
+          if-no-files-found: ignore
+          path: |
+            **/build/reports/tests/**
+            **/build/test-results/**
+
+
   # Desktop lives in its own job rather than in `build`, and not for tidiness:
   # folded into `build` these steps produced a runner that died mid-
   # `allMetadataJar` with no log and no step conclusion, 45 minutes in — the

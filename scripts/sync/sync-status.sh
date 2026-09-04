@@ -25,7 +25,7 @@ sqlite3 "$DB" "SELECT CASE WHEN accessToken IS NULL THEN 'signed out'
 
 echo
 echo "=== sync state ==="
-# Two different timestamps on purpose (ADR 0012): the cursor is server-stamped
+# Two different timestamps on purpose (ADR 0018): the cursor is server-stamped
 # and drives the next pull; lastSynced is local and only says when a cycle ran.
 sqlite3 "$DB" "SELECT 'pull cursor : '||COALESCE(CAST(syncCursorEpochMs AS TEXT),'never pulled')||CHAR(10)||
                       'last synced : '||COALESCE(CAST(lastSyncedAtEpochMs AS TEXT),'never') FROM appSettings WHERE id=0;"
