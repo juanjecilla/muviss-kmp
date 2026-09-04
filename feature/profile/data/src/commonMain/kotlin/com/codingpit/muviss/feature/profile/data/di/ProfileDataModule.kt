@@ -34,7 +34,7 @@ val profileDataModule: Module = module {
 
     // Sync (EPIC 9) — see CoreSyncRepository's KDoc for why profile:data is
     // allowed to depend on :core:sync directly.
-    single<SyncRepository> { CoreSyncRepository(get(), get(), get(), get(), get()) }
+    single<SyncRepository> { CoreSyncRepository(get(), get(), get(), get(), get(), get()) }
     factory { ObserveSyncAccountUseCase(get()) }
     factory { ObserveLastSyncedAtUseCase(get()) }
     factory { SyncActions(get(), get(), get()) }

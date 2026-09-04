@@ -249,6 +249,18 @@ jdeps --print-module-deps --ignore-missing-deps \
 application code imports `java.sql` directly, so it's easy to drop by
 mistake if this list is ever hand-edited instead of re-derived.
 
+`jdk.httpserver` (EPIC 23) is the second of exactly the same kind: it is
+`com.sun.net.httpserver`, which `LoopbackRedirectServer` uses for desktop's
+OAuth redirect (ADR 0017), and again nothing names the module anywhere.
+
+CI narrows this but does not close it. `packageDistributionForCurrentOS` now
+runs on every PR, and jlink fails on a module *name* it cannot resolve — so a
+typo is caught. A module that is genuinely needed and simply missing is not:
+the headless smoke launch exercises the packaged runtime image, but only along
+the startup path, and `jdk.httpserver` is not touched until someone clicks sign
+in. Re-deriving the list from `jdeps` in CI is issue #43. Until then, re-derive
+it by hand with the commands above rather than editing the list.
+
 ### App icon
 
 `app/desktopApp/icons/{icon.icns,icon.ico,icon.png}` are a **placeholder**
@@ -257,6 +269,22 @@ real Muviss brand artwork yet. Regenerating them from real artwork later is
 a manual follow-up; nothing in the build depends on their content, only
 their presence/format (`.icns` for `macOS { iconFile }`, `.ico` for
 `windows { iconFile }`, `.png` for `linux { iconFile }`).
+
+### Sign-in ports
+
+Desktop's OAuth redirect is a loopback HTTP server on 53682, 53683 or 53684 —
+whichever is free — rather than the `muviss://` scheme Android and iOS use
+(**ADR 0017**). Every one of those ports must appear in `supabase/config.toml`'s
+`additional_redirect_urls` and be applied with `supabase config push`;
+`LoopbackRedirectServer.PORTS` is the same list. The listener is opened when a
+sign-in starts and closed on the code, an error, a five-minute timeout, or a
+second attempt — nothing listens while the app is idle.
+
+Where a drift shows up is worth knowing, because it is not where you would look:
+GoTrue's `/authorize` accepts **any** `redirect_to` and redirects to the provider
+regardless, so the flow starts normally. The allow-list is enforced when GoTrue
+redirects *back*, after the user has authorized, and presents as the browser
+landing on `site_url` with "cannot connect to the server".
 
 ### Window size/position persistence
 
@@ -283,26 +311,41 @@ open app/desktopApp/build/compose/binaries/main/app/Muviss.app   # launch check
 ```
 
 `packageMsi`/`packageDeb` can't run on macOS (or vice versa) — CI is what
-exercises them (see below); their Gradle configuration is reviewed for
-correctness but is otherwise **untested** until a matching-OS run happens.
+exercises them (see below).
+
+Launching the packaged app is worth doing rather than trusting `./gradlew run`:
+`run` executes against your full JDK and says nothing about the stripped jlink
+runtime image users actually get. `MUVISS_EXIT_AFTER_FIRST_FRAME=1` makes either
+one quit as soon as it has drawn, which is what CI's smoke step uses — an
+environment variable and not a `-D`, because Gradle does not forward system
+properties to the JVM a JavaExec forks.
 
 ### CI
 
-`.github/workflows/release.yml`'s `desktop-release` job runs a 2-entry OS
-matrix on the same `v*` tag trigger as the Android `release` job:
-`ubuntu-latest` → `packageDeb`, `macos-latest` → `packageDmg`. Each format
-can only be produced on its native OS (jpackage delegates to the OS's own
-packaging tool), which is why this is a matrix of jobs rather than one job
-running three tasks. Windows/MSI is **not** in the matrix: it would be the
-one desktop CI leg nobody on this project can verify locally before merging
-it (no Windows/macOS-cross-build path, no Windows machine in hand), so it's
-left as a follow-up rather than shipped untested and possibly silently
-broken on every future tag. (GitHub's `windows-latest` runner image does
-list the WiX Toolset as preinstalled per `actions/runner-images`, which is
-what `packageMsi` needs — so adding the third matrix entry later is likely
-just copying the `ubuntu-latest` entry's shape with `os: windows-latest`,
-`task: :app:desktopApp:packageMsi`, and the MSI output path — but "likely"
-isn't "verified," hence leaving it out for now.)
+`.github/workflows/release.yml`'s `desktop-release` job runs a 3-entry OS
+matrix: `ubuntu-latest` → `packageDeb`, `macos-latest` → `packageDmg`,
+`windows-latest` → `packageMsi`. Each format can only be produced on its native
+OS (jpackage delegates to the OS's own packaging tool), which is why this is a
+matrix of jobs rather than one job running three tasks, and `fail-fast: false`
+keeps one broken leg from taking the other two down.
+
+Windows/MSI used to be left out, on the grounds that it was the one leg nobody
+here could verify locally before merging. EPIC 23 put it in: nobody can verify
+it locally *either way*, and a CI run is better evidence than a reading of the
+config. WiX ships preinstalled on `windows-latest` per `actions/runner-images`.
+What CI still cannot say is whether the resulting `.msi` installs and launches —
+that needs a Windows machine, and is issue #44.
+
+The job triggers on a `v*` tag **or** `workflow_dispatch`. Dispatch was added
+because until EPIC 23 this job had never executed once: the repo has no tags, so
+every packaging path here was verified by reading it. `packageVersion` already
+falls back to `1.0.<commitCount>` when untagged, so a dispatch run exercises the
+same code a tagged one would.
+
+Per-PR coverage is separate and lighter: `ci.yml` runs
+`packageDistributionForCurrentOS` on Ubuntu (so the DEB path and jlink run on
+every change), smoke-launches the packaged Linux binary under Xvfb, and runs
+`packageDmg` on the macOS runner the iOS job already pays for.
 
 Like the Android `release` job, there's no GitHub Release object created —
 installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`), same

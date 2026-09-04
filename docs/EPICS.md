@@ -177,6 +177,46 @@ On iOS the database moved into a `group.com.codingpit.muviss` App Group with a o
 
 Colour is one source: `MuvissPalette` (`:core:designsystem`) holds the literals, the M3 schemes are built from it, Glance builds `ColorProviders` from those, and the SwiftUI widget carries the same hexes. Refreshes are pushed from the write itself through a `WidgetRefresher` seam in `:core:common`, plus a reload at local midnight so the "aired by today" boundary moves.
 
+
+## EPIC 23 — Desktop parity ✅ — wave 9 — issue #38
+
+Desktop was not rotting the way iOS was before #37: CI compiled it on every PR,
+every `expect` had a real JVM `actual`, and no feature slice was excluded from
+`jvm()`. Four things were wrong anyway, two of them visible to a user.
+
+**Sign-in dead-ended in silence.** `ProfileScreen` is `commonMain` and ungated,
+so desktop offered the button, opened the browser, and `muviss://auth-callback`
+had nowhere to land — no scheme in `nativeDistributions`, no `oauthCode` passed
+to `MuvissApp()`. `CompleteOAuthOnRedirect` never fired and so `SignInFeedback`
+never reported: precisely the failure ADR 0014 was written to prevent, on a
+platform it did not cover. Fixed with a loopback HTTP server (RFC 8252) behind a
+Koin-bound `OAuthRedirectTarget` — **ADR 0017**, which also records why the
+custom scheme is not available to desktop and why a missing allow-list entry
+fails only *after* the user authorizes.
+
+**The Settings notifications switch did nothing**, and its "coming soon" copy
+also understated Android and iOS, where it has worked since EPIC 5 and EPIC 11.
+Desktop now has tray notifications and a 12h in-app refresh over the same
+`RefreshAndFindNewEpisodesUseCase` both other platforms use, with per-platform
+copy that admits desktop only checks while the app is open (#42).
+
+**CI compiled desktop and nothing more** — never linked, packaged or launched,
+though a wrong jlink module is a runtime failure rather than a build one. It now
+packages and smoke-launches the *packaged* binary on every PR, builds the DMG on
+the macOS runner, and `release.yml` gained `workflow_dispatch` plus the
+Windows/MSI leg it had been avoiding. `desktop-release` had never run at all:
+it triggers on a `v*` tag and this repo has none.
+
+`:app:desktopApp` got its first tests, and the hand-maintained `jvmTest`
+allowlist became the task name — 34 modules instead of 14, all passing. That is
+half of **#25**; its other half (JS/Wasm tests, and `:app:androidApp`'s own unit
+test, which is not a `jvmTest` task) is still open.
+
+Filed rather than fixed: unsigned installers (#39), placeholder icon art (#40),
+no menu bar or shortcuts (#41), no refresh while closed (#42), the jlink list
+being unverifiable (#43), the MSI never having been installed (#44), no GitHub
+Release object (#45), and web as the last target without sign-in (#46).
+
 ## Cross-cutting / backlog
 
 **Everything here has an issue.** The tracker is the source of truth for undone

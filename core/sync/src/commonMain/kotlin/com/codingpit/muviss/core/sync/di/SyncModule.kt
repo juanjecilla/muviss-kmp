@@ -2,9 +2,11 @@ package com.codingpit.muviss.core.sync.di
 
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.createHttpClient
+import com.codingpit.muviss.core.sync.DeepLinkRedirectTarget
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.MuvissBuildConfig
 import com.codingpit.muviss.core.sync.NoOpSyncBackend
+import com.codingpit.muviss.core.sync.OAuthRedirectTarget
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SqlDelightSyncSessionStore
 import com.codingpit.muviss.core.sync.SyncAvailability
@@ -38,6 +40,10 @@ val syncModule: Module = module {
     }
     single<EntitlementGate> { EntitlementGate.AlwaysEntitled }
     single { SignInFeedback() }
+    // The scheme-based default. :app:desktopApp rebinds this to its loopback
+    // server (ADR 0017); Koin's last binding wins, the same way
+    // BillingSyncBridge overrides EntitlementGate above.
+    single<OAuthRedirectTarget> { DeepLinkRedirectTarget() }
     single { get<MuvissDatabase>().syncAccountQueries }
     single<SyncSessionStore> { SqlDelightSyncSessionStore(get()) }
     single<SyncBackend> {

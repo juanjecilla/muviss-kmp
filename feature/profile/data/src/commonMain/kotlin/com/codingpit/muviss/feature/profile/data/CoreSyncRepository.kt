@@ -1,8 +1,8 @@
 package com.codingpit.muviss.feature.profile.data
 
 import com.codingpit.muviss.core.billing.EntitlementProvider
-import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
 import com.codingpit.muviss.core.sync.OAuthProvider
+import com.codingpit.muviss.core.sync.OAuthRedirectTarget
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -30,6 +30,7 @@ class CoreSyncRepository(
     private val engine: SyncEngine,
     private val entitlements: EntitlementProvider,
     private val signInFeedback: SignInFeedback,
+    private val redirectTarget: OAuthRedirectTarget,
 ) : SyncRepository {
 
     override val isAvailable: Boolean get() = availability.isConfigured()
@@ -58,7 +59,17 @@ class CoreSyncRepository(
 
     override fun observeLastSyncedAt(): Flow<Long?> = engine.observeLastSyncedAt()
 
-    override suspend fun beginSignIn(provider: SyncProvider): Result<String> = backend.beginOAuth(provider = provider.toBackend(), redirectUri = OAUTH_REDIRECT_URI)
+    /**
+     * The redirect comes from [OAuthRedirectTarget] rather than a constant
+     * because desktop's is a loopback URL whose port is not known until a
+     * socket is bound (ADR 0017). Reserving it is therefore a step that can
+     * fail, and a failure here has to release it again: an attempt that never
+     * reached the browser must not leave a port listening for a code that is
+     * never coming.
+     */
+    override suspend fun beginSignIn(provider: SyncProvider): Result<String> = runCatching { redirectTarget.reserve() }
+        .mapCatching { redirectUri -> backend.beginOAuth(provider = provider.toBackend(), redirectUri = redirectUri).getOrThrow() }
+        .onFailure { redirectTarget.release() }
 
     override suspend fun completeSignIn(authCode: String): Result<Unit> = backend.completeOAuth(authCode).map { }
 

@@ -1,15 +1,23 @@
 name: Release
 
-# Manual, tag-triggered release build. Produces a signed AAB plus desktop
-# installers (DMG/DEB — see the `desktop-release` job) and uploads them all
-# as workflow artifacts — there is no Play publishing step, and no GitHub
-# Release object is created either (see docs/RELEASING.md); the first
-# release of each is uploaded/attached by hand. Push a `vX.Y.Z` tag to run
-# this.
+# Release build. Produces a signed AAB plus desktop installers (DMG/DEB/MSI —
+# see the `desktop-release` job) and uploads them all as workflow artifacts —
+# there is no Play publishing step, and no GitHub Release object is created
+# either (see docs/RELEASING.md); the first release of each is
+# uploaded/attached by hand. Push a `vX.Y.Z` tag to run this, or dispatch it
+# manually.
 on:
   push:
     tags:
       - 'v*'
+  # This repo has no tags, so until now every job below was unreachable —
+  # desktop-release in particular had never executed once, leaving the DMG,
+  # DEB and MSI paths verified only by reading them. Dispatch makes them
+  # runnable without committing to a version number: packageVersion already
+  # falls back to `1.0.<commitCount>` when untagged (see
+  # app/desktopApp/build.gradle.kts), so a dispatch run exercises the same
+  # code a tagged one would.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -71,15 +79,22 @@ jobs:
           if-no-files-found: error
 
   # EPIC 12 (issue #14): native desktop installers, one job per OS/format —
-  # jpackage's DMG and DEB backends only run on the OS they target (there's
-  # no cross-compiling a macOS .app or a Debian .deb from Linux/macOS
-  # respectively). Windows/MSI is deliberately left out of this matrix: it
-  # can't be exercised locally on this maintainer's macOS machine (see
-  # docs/RELEASING.md), so it stays a documented follow-up rather than an
-  # untested step that could silently fail every release. Unsigned/
-  # unnotarized — see docs/RELEASING.md's desktop section for that
-  # follow-up. Like the `release` job above, there's no GitHub Release
-  # object to attach to yet, so installers land as workflow artifacts.
+  # jpackage's backends only run on the OS they target (there's no
+  # cross-compiling a macOS .app, a Debian .deb or a Windows .msi from
+  # anywhere else), which is why this is a matrix of jobs rather than one job
+  # running three tasks.
+  #
+  # Windows/MSI used to be left out on the grounds that nobody here could
+  # verify it locally before merging. EPIC 23 put it in: nobody can verify it
+  # locally either way, and running it in CI *is* the verification — WiX ships
+  # preinstalled on windows-latest per actions/runner-images. `fail-fast:
+  # false` means a broken MSI leg does not take the DMG and DEB down with it.
+  # What CI still cannot say is whether the resulting .msi installs and
+  # launches; that needs a Windows machine and is filed.
+  #
+  # Every installer is unsigned/unnotarized — see docs/RELEASING.md's desktop
+  # section. Like the `release` job above, there's no GitHub Release object to
+  # attach to yet, so installers land as workflow artifacts.
   desktop-release:
     strategy:
       fail-fast: false
@@ -91,6 +106,9 @@ jobs:
           - os: macos-latest
             task: :app:desktopApp:packageDmg
             artifactPath: app/desktopApp/build/compose/binaries/main/dmg/*.dmg
+          - os: windows-latest
+            task: :app:desktopApp:packageMsi
+            artifactPath: app/desktopApp/build/compose/binaries/main/msi/*.msi
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

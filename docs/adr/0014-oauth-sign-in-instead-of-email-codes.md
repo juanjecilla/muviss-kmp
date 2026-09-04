@@ -147,6 +147,14 @@ fails at the browser, not at compile time, so a test pins the constant.
   browser round-trip — `ASWebAuthenticationSession`, a loopback HTTP server,
   an in-page redirect — and ADR 0003 makes Android the first-verify target.
   Everything still compiles on all six.
+
+  **Superseded twice since.** iOS works as of PR #37, and needed no
+  `ASWebAuthenticationSession`: `LocalUriHandler` is `UIApplication.openURL`
+  there, so Safari plus a registered scheme was the whole round trip. Desktop
+  works as of EPIC 23, over a loopback HTTP server — see **ADR 0017**, which
+  also records why the scheme approach is not available to it. Web is the one
+  target where this paragraph is still true; `Pkce.js.kt` and `Pkce.wasmJs.kt`
+  are the remaining `unsupportedOnThisTarget()` actuals.
 - `supabase/config.toml` no longer carries email templates, which is what
   unblocked `supabase config push` — the auth update is atomic, so while the
   templates were in the file nothing else in `[auth]` could be applied either.

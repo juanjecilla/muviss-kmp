@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.billing.EntitlementProvider
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.sync.DeepLinkRedirectTarget
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
 import com.codingpit.muviss.core.sync.OAuthProvider
@@ -92,6 +93,7 @@ class CoreSyncRepositoryGatingTest {
             engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), FixedClock(), gate),
             entitlements = StubEntitlements(entitlement),
             signInFeedback = SignInFeedback(),
+            redirectTarget = DeepLinkRedirectTarget(),
         )
     }
 
@@ -156,7 +158,10 @@ class CoreSyncRepositoryGatingTest {
         // reference each other — this constant, the Android manifest's intent
         // filter, and Supabase's additional_redirect_urls. GoTrue rejects a
         // redirect that is not on its allow-list, so a drift here fails at the
-        // browser rather than at compile time.
+        // browser rather than at compile time. Desktop is the exception and
+        // supplies its own loopback URL through OAuthRedirectTarget (ADR 0017),
+        // which is why this asserts against the scheme-based target explicitly
+        // rather than whatever happens to be bound.
         assertEquals("muviss://auth-callback", OAUTH_REDIRECT_URI)
         assertTrue(url.contains("redirect_to=$OAUTH_REDIRECT_URI"), "expected the redirect in: $url")
         assertTrue(url.contains("provider=github"), "expected the provider in: $url")

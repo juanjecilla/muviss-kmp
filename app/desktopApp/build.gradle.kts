@@ -6,13 +6,37 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+// The tray icon (EPIC 23) is the app icon. Rather than keep a second copy of the
+// same PNG under src/main/resources, put `icons/` on the runtime classpath —
+// filtered to the PNG, since the .icns/.ico are jpackage inputs only and have no
+// business in the jar.
+sourceSets.named("main") {
+    resources.srcDir(layout.projectDirectory.dir("icons"))
+    resources.include("**/*.png")
+}
+
 dependencies {
     implementation(projects.app.shared)
+    // Named for the same reason as :core:sync below — :app:shared depends on
+    // these with `implementation`, and DesktopEpisodeRefresh talks to all three.
+    implementation(projects.feature.collection.api)
+    implementation(projects.feature.progress.api)
+    implementation(projects.feature.settings.api)
+    implementation(projects.models)
+    // :app:shared depends on these with `implementation`, so nothing leaks
+    // transitively. Named here because this module starts Koin itself and binds
+    // the loopback OAuth server into the graph (ADR 0017).
+    implementation(projects.core.sync)
+    implementation(projects.core.database)
+    implementation(libs.koin.core)
 
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutinesSwing)
 
     implementation(libs.compose.uiToolingPreview)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutinesTest)
 }
 
 // -----------------------------------------------------------------------
@@ -75,7 +99,13 @@ compose.desktop {
             // out: it's what :core:database's sqlite-jdbc driver needs
             // (DatabaseFactory.jvm.kt) and is easy to forget since nothing
             // in application code imports java.sql directly.
-            modules("java.desktop", "java.instrument", "java.management", "java.sql", "jdk.unsupported")
+            // jdk.httpserver is the loopback OAuth redirect server's
+            // com.sun.net.httpserver (ADR 0017) — same "invisible until
+            // runtime" hazard as java.sql: nothing in application code names
+            // the module, and dropping it surfaces as a NoClassDefFoundError in
+            // the *packaged* app only, never in a Gradle build. CI now runs
+            // packageDistributionForCurrentOS on every PR so that stays caught.
+            modules("java.desktop", "java.instrument", "java.management", "java.sql", "jdk.httpserver", "jdk.unsupported")
 
             packageName = "Muviss"
             packageVersion = desktopPackageVersion
