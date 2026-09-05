@@ -88,12 +88,31 @@ not a missing-class error.
   `0.1.0-dev.<count>+<short-sha>` (and `0.1.0-dev.<count>` if git itself
   isn't available, e.g. a source-only archive).
 
-To cut a release, tag it — nothing else to bump:
+To cut a release, tag it — nothing else to bump. Use the script rather than
+tagging by hand:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0   # triggers .github/workflows/release.yml
+scripts/release/cut-release.sh 1.0.0             # tags v1.0.0 and pushes it
+scripts/release/cut-release.sh 1.0.0 --dry-run   # run the checks, change nothing
 ```
+
+Pushing the tag is the entire trigger; `.github/workflows/release.yml` does the
+rest. The script refuses to tag when any of these is true, because each one is a
+mistake that is invisible until after a signed build:
+
+| refusal | why it matters |
+|---|---|
+| not on `main` | tags code that was never reviewed on the release branch |
+| working tree dirty | a tag never includes uncommitted work, so the build differs from the desk |
+| local `main` != `origin/main` | tags a commit nobody else has, or misses one they do |
+| tag exists locally or on origin | pushing an existing tag silently does nothing |
+| version not newer than the last tag | the Play Console rejects it *after* the build, not before |
+
+Version ordering uses `sort -V`, so `1.9.0` → `1.10.0` is accepted; a string
+comparison would call that a downgrade.
+
+The tag is **annotated**, not lightweight, because `git describe` prefers
+annotated tags — and `git describe` is what becomes `versionName`.
 
 Implementation note: the git commands run through Gradle's
 `providers.exec {}` (not raw `ProcessBuilder`) — this project runs with
@@ -137,8 +156,36 @@ history (`fetch-depth: 0` — needed for accurate versionCode/versionName),
 decodes `KEYSTORE_BASE64` to a temp file, runs
 `:app:androidApp:bundleRelease` with the signing/DSN/TMDB secrets as env
 vars, and uploads the resulting `.aab` as a workflow artifact. There is no
-Play publishing step yet — the first release is uploaded to the Play
-Console by hand. The existing `ci.yml` (push/PR to `main`) is untouched.
+Play publishing step yet — the AAB is uploaded to the Play Console by hand.
+The existing `ci.yml` (push/PR to `main`) is untouched.
+
+### The GitHub Release (issue #45)
+
+A third job, `github-release`, `needs` both build jobs and attaches everything
+they produced — the AAB and all three desktop installers — to a real GitHub
+Release. Before this, artifacts existed only on the workflow run: findable only
+by opening Actions, expiring after 90 days, and invisible to anyone who just
+wanted to download the app.
+
+Three things about it that are deliberate:
+
+- **Tag-only** (`if: startsWith(github.ref, 'refs/tags/v')`). A
+  `workflow_dispatch` run still builds and still uploads workflow artifacts, but
+  creates no Release — `github.ref_name` on a dispatch is a *branch* name, and a
+  Release called "main" is worse than none.
+- **It uses `gh`**, not a third-party release action: it ships on the runner and
+  adds no supply-chain trust to a repo that vets its own app dependencies
+  against a licence allow-list.
+- **A failed installer leg blocks the Release.** `desktop-release` is
+  `fail-fast: false`, so a broken MSI still lets the DMG and DEB finish — but
+  `github-release` needs both jobs green, so the result is no Release rather
+  than a partial one. If that is ever wrong, the fix is `if: always()` plus an
+  explicit per-result check, not dropping the dependency.
+
+The generated notes say plainly that the desktop installers are unsigned (#39),
+that the MSI has never been installed by anyone (#44), that the `.aab` is not
+directly installable, and that sync is compiled out of release builds (ADR
+0018).
 
 ## 6. OSS attribution / license report
 

@@ -350,10 +350,17 @@ widget has been run).
   them there verified an arrangement for a feature that target does not have.
 - **CI compiles JS/Wasm but never tests them**, and its explicit `jvmTest`
   module list has drifted behind the modules that exist — #25. **Reopened**:
-  only the `jvmTest` half was done in EPIC 23. A `web-tests` job now runs
-  `jsBrowserTest wasmJsBrowserTest`, `continue-on-error: true` pending #49;
-  `:app:androidApp`'s own unit test still does not run anywhere.
-- **The Kotlin compiler OOMs under parallel load** — #49. Six
+  only the `jvmTest` half was done in EPIC 23. A `web-tests` job runs
+  `jsBrowserTest wasmJsBrowserTest`, `continue-on-error: true` pending #49 and
+  gated by the `changes` job (#65); `:app:androidApp`'s own unit test still
+  does not run anywhere. Whether ~18 CI-minutes per PR is worth the
+  platform-divergence signal — both web targets run the *same* 445 `commonTest`
+  tests, all of which already run on the JVM — is EPIC 25's (#67) call.
+- **The Kotlin compiler OOMs under parallel load** — #49. **Documented and
+  deliberately not fixed**: the workaround is in `AGENTS.md` and the committed
+  heap numbers are left alone, because the same values must hold on CI runners
+  with ~14-16 GB and picking one blind trades an intermittent flake for a hard
+  failure on the iOS job. Wants one deliberate CI experiment, not a guess. Six
   `:feature:*:domain` modules died with "Internal compiler error" on the first
   full JS/Wasm run and every one of them passed on a rerun; the same session's
   `./gradlew build allMetadataJar` then failed three iOS tasks with an explicit
