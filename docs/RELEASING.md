@@ -230,36 +230,57 @@ this stops mattering, but nothing needs to change when that day comes.
 
 ### jlink modules
 
-`nativeDistributions { modules(...) }` controls which JDK modules `jlink`
-keeps in the bundled runtime image — anything omitted is stripped, and a
-missing module surfaces as a runtime `NoClassDefFoundError`/`module not
-found`, not a build failure, so guessing this list is risky. The list
-actually shipping (`java.desktop`, `java.instrument`, `java.management`,
-`java.sql`, `jdk.unsupported`) was derived by building the uber jar and
-asking `jdeps` what it actually touches, not guessed:
+`jlink` keeps only the JDK modules reachable from the roots declared in
+`app/desktopApp/build.gradle.kts`'s `jlinkModules`; anything else is stripped,
+and a module that is genuinely needed and simply absent surfaces as a runtime
+`NoClassDefFoundError`/`module not found` rather than a build failure.
+
+**The list is verified, not remembered** (issue #43). `verifyJlinkModules`
+re-derives what the app actually needs and fails if the declaration cannot
+supply it. It is wired into `:app:desktopApp:check` and runs as its own step
+in CI's `desktop` job, so you should never need to run it by hand — but it is
+one command if you want to:
 
 ```bash
-./gradlew :app:desktopApp:packageUberJarForCurrentOS
-jdeps --print-module-deps --ignore-missing-deps \
-  app/desktopApp/build/compose/jars/com.codingpit.muviss-*.jar
+./gradlew :app:desktopApp:verifyJlinkModules
+cat app/desktopApp/build/reports/jlink-modules.txt
 ```
 
-`java.sql` is the one worth calling out by name: it's what `:core:database`'s
-`sqlite-jdbc` driver (`DatabaseFactory.jvm.kt`) needs, and nothing in
-application code imports `java.sql` directly, so it's easy to drop by
-mistake if this list is ever hand-edited instead of re-derived.
+It asks two questions, because the answer is not simply "is every required
+module declared":
 
-`jdk.httpserver` (EPIC 23) is the second of exactly the same kind: it is
-`com.sun.net.httpserver`, which `LoopbackRedirectServer` uses for desktop's
-OAuth redirect (ADR 0017), and again nothing names the module anywhere.
+- `jdeps --print-module-deps` over the uber jar says what is **required**.
+- `java --limit-modules <roots> --list-modules` says what those roots
+  **resolve to**, which is what jlink will actually put in the image.
 
-CI narrows this but does not close it. `packageDistributionForCurrentOS` now
-runs on every PR, and jlink fails on a module *name* it cannot resolve — so a
-typo is caught. A module that is genuinely needed and simply missing is not:
-the headless smoke launch exercises the packaged runtime image, but only along
-the startup path, and `jdk.httpserver` is not touched until someone clicks sign
-in. Re-deriving the list from `jdeps` in CI is issue #43. Until then, re-derive
-it by hand with the commands above rather than editing the list.
+A missing module fails the build. Two other findings are reported and do not:
+
+- **Declared but never named by jdeps.** jdeps sees static references only, so
+  a module reached by reflection or JNI looks exactly like dead weight.
+  Removing one on that evidence alone would be a mistake.
+- **Required but resolving only transitively.** Nothing is broken while it
+  does, but it is load-bearing by accident and disappears the moment whichever
+  root happens to require it is dropped.
+
+That second case was not hypothetical: `java.prefs` — `java.util.prefs`, where
+`DesktopWindowState.kt` stores the window geometry — had never been declared,
+and survived only because `java.desktop requires java.prefs`. The check found
+it on its first run and it is now a root.
+
+Two roots are worth knowing by name, because nothing in application code names
+the module and so nothing would remind you:
+
+- `java.sql` is what `:core:database`'s `sqlite-jdbc` driver
+  (`DatabaseFactory.jvm.kt`) needs.
+- `jdk.httpserver` (EPIC 23) is `com.sun.net.httpserver`, which
+  `LoopbackRedirectServer` uses for desktop's OAuth redirect (ADR 0017).
+
+The other CI steps narrow this but never closed it, which is why the check
+exists: `packageDistributionForCurrentOS` runs jlink, and jlink fails on a
+module *name* it cannot resolve, so a typo was caught — but a needed-and-absent
+module was not. The headless smoke launch exercises the packaged runtime image
+along the startup path only, and `jdk.httpserver` is not touched until someone
+clicks sign in.
 
 ### App icon
 

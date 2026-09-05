@@ -230,6 +230,28 @@ jobs:
       - name: Package desktop app
         run: ./gradlew :app:desktopApp:packageDistributionForCurrentOS --stacktrace
 
+      # The step above proves jlink *obeyed* the module list. It cannot prove
+      # the list is complete: jlink fails on a module name it cannot resolve,
+      # so a typo dies here, but a module genuinely needed and simply absent
+      # produces a perfectly good image that throws NoClassDefFoundError at
+      # whatever moment a user first reaches that code. The smoke launch below
+      # only walks the startup path, and jdk.httpserver is not touched until
+      # someone clicks sign in.
+      #
+      # This re-derives what the app needs with jdeps and fails when the
+      # declaration cannot supply it. Own step rather than folded into `check`
+      # so a red run names the actual problem (issue #43).
+      - name: Verify the jlink module list (jdeps)
+        run: ./gradlew :app:desktopApp:verifyJlinkModules --stacktrace
+
+      - name: Upload the jlink module report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jlink-modules
+          if-no-files-found: ignore
+          path: app/desktopApp/build/reports/jlink-modules.txt
+
       # The one step that asks whether the app starts, and it asks it of the
       # *packaged* app rather than `./gradlew run` — `run` executes against the
       # runner's full JDK and would say nothing about the stripped runtime image
