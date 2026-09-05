@@ -46,8 +46,6 @@ sqldelight {
     }
 }
 
-val sqldelightVersion: String = libs.versions.sqldelight.get()
-
 kotlin {
     sourceSets {
         commonMain.dependencies {
@@ -98,13 +96,28 @@ kotlin {
                 implementation(libs.kotlinx.browser)
             }
         }
+        // `muviss-sqljs-worker` is a local package (src/webWorker), not a
+        // published one: it is our fork of `@cashapp/sqldelight-sqljs-worker`,
+        // which has no persistence seam at all — `new SQL.Database()` and no
+        // `export()` — so durable storage could not be reached by configuring
+        // it (ADR 0008, EPIC 24 amendment). It has to be a *package* rather
+        // than a loose file in resources so that `new URL("muviss-sqljs-worker
+        // /muviss-sqljs.worker.js", import.meta.url)` resolves through
+        // node_modules and webpack bundles the worker's own `import
+        // initSqlJs from "sql.js"` with it. A file referenced by path is
+        // copied verbatim instead, leaving a bare specifier the browser cannot
+        // resolve — that is snag 1 in ADR 0008, and it presents as a worker
+        // that loads with a 200 and then hangs forever with no console error.
+        //
+        // `sql.js` stays declared here as well as in the local package.json:
+        // this is what puts it in the target's own yarn resolution.
         jsMain.dependencies {
             implementation(npm("sql.js", "1.10.3"))
-            implementation(npm("@cashapp/sqldelight-sqljs-worker", sqldelightVersion))
+            implementation(npm("muviss-sqljs-worker", File(rootDir, "core/database/src/webWorker")))
         }
         wasmJsMain.dependencies {
             implementation(npm("sql.js", "1.10.3"))
-            implementation(npm("@cashapp/sqldelight-sqljs-worker", sqldelightVersion))
+            implementation(npm("muviss-sqljs-worker", File(rootDir, "core/database/src/webWorker")))
         }
     }
 }

@@ -217,13 +217,44 @@ no menu bar or shortcuts (#41), no refresh while closed (#42), the jlink list
 being unverifiable (#43), the MSI never having been installed (#44), no GitHub
 Release object (#45), and web as the last target without sign-in (#46).
 
+## EPIC 24 — Durable web persistence ✅ — issue #28
+
+Web was the one platform that forgot everything on a page reload. SQL.js keeps
+the database in the worker's memory and EPIC 13 shipped that as a deliberate cut
+(ADR 0008), which made triage's whole promise — never asking about the same
+title twice — false on the web, and blocked web sign-in (#46) besides: a session
+kept in a database that dies on reload signs the user straight back out.
+
+**The fix was not a configuration.** `@cashapp/sqldelight-sqljs-worker` is sixty
+lines with `new SQL.Database()` hard-coded and no `export()`, no VFS and no
+hook, so the only way through was to ship our own worker — which is legitimate,
+because `WebWorkerDriver` speaks nothing but a `postMessage` protocol. Ours
+restores an IndexedDB snapshot on open and re-exports the database ~500ms after
+the last committed write, with a `flush` on `pagehide`. It is a **local npm
+package** rather than a loose file so that webpack still bundles its own
+`sql.js` import — the trap ADR 0008 documents, which presents as a worker that
+loads with a 200 and then hangs silently.
+
+Two things fell out of it. **Web gained an upgrade path it never had**:
+`SchemaEnsuringDriver` used to run `Schema.awaitCreate` unconditionally, correct
+only while the database was always empty, and now reads `PRAGMA user_version`
+and creates, migrates or leaves alone — so the `.sqm` chain covers web instead
+of covering it vacuously. And **multi-tab became a real question**: two tabs are
+two workers over one IndexedDB slot, so a Web Lock elects a single writer rather
+than letting a stale tab overwrite a live one's work. Chosen against OPFS, whose
+`opfs-sahpool` VFS would simply refuse the second tab; ADR 0008's amendment
+records the trade and the trigger to revisit.
+
+That amendment also **corrects** the previous one: `{ type: "module" }` never
+reaches the browser (webpack emits `{type: void 0}` and a classic chunk), so the
+worker is classic and its `importScripts` guard is what installs the handler.
+
 ## Cross-cutting / backlog
 
 **Everything here has an issue.** The tracker is the source of truth for undone
 work; this list is the map. Nothing should appear below without a number beside
 it — see `AGENTS.md` for why.
 
-- **Durable web persistence** — #28. The SQL.js worker keeps the database in memory with no OPFS/IndexedDB backing (ADR 0008), so a page reload loses everything, including the triage decisions whose whole promise is not asking twice. Needs an ADR 0008 amendment. **#46 (web sign-in) is blocked on this**: a signed-in session stored in a database that dies on reload signs the user straight back out, which `Pkce.js.kt` records in a comment and nothing else did.
 - **Analytics + remote feature flags** — #29. `AnalyticsTracker` and `FeatureFlags` are seams in `:core:common` with no vendor behind them. Choosing one means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
 - **`:app:macrobenchmark` + baseline profile** — #30. Frame timing for the triage drag, deck cold start, commit latency. Blocked on an emulator in CI, which is why the perf tests we do have use deterministic operation-count budgets instead.
 - **Additional `MetadataProvider`s (TVmaze/Trakt)** — #31. Cross-source reconciliation via IMDb id. ADR 0001 and ADR 0006 built the seams; TMDB is still the only implementation, so neither has been exercised by a second source.

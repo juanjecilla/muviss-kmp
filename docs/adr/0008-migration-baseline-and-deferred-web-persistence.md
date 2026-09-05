@@ -49,3 +49,37 @@ New dependencies: `app.cash.sqldelight:async-extensions` (all platforms, `core/d
 So the file was split the way `DataExporter` already is: `DatabaseFactory.js.kt` and `DatabaseFactory.wasmJs.kt` hold the eight-line actual and `sqljsWorker()` per target, and `webMain` keeps `SchemaEnsuringDriver.kt`, which needs only `SqlDriver` and compiles shared as intended.
 
 **Why CI missed it.** CI compiled `compileKotlinJs compileKotlinWasmJs`, which read `src/webMain/kotlin` straight into each target and never ran the metadata compilation. Every intermediate source set in the repo was uncovered the same way (`appleMain`, `iosMain`, `nativeMain` included). CI now also runs `allMetadataJar`, which compiles each of them; it needs no Kotlin/Native toolchain, so it runs on `ubuntu-latest` alongside the rest.
+
+## Amendment (2026-09-04, EPIC 24): web persistence is durable — a forked worker and an IndexedDB snapshot
+
+The "scope cut: session-only, not durable across reloads" above is lifted. A page reload now keeps the user's library, and `triageDecision` — whose entire promise is not asking about the same title twice — survives with it. This was issue #28.
+
+**There was no seam to configure.** `@cashapp/sqldelight-sqljs-worker/sqljs.worker.js` is sixty lines and does `db = new SQL.Database()` unconditionally. No `export()`, no load-from-bytes, no VFS, no option. So durable storage could not be reached by wiring the driver differently, and the choice was never "OPFS or IndexedDB" — it was "which worker do we ship". `WebWorkerDriver` speaks only a `postMessage` protocol (`exec` / `begin_transaction` / `end_transaction` / `rollback_transaction`, replying `{ id, results }` or `{ id, error }`), so anything answering that protocol is a valid worker. Ours is `core/database/src/webWorker/muviss-sqljs.worker.js`, a fork of those sixty lines.
+
+It is declared as a **local npm package**, not a file in resources, and that is load-bearing: `new URL("muviss-sqljs-worker/muviss-sqljs.worker.js", import.meta.url)` has to resolve through `node_modules` for webpack to bundle the worker's own `import initSqlJs from "sql.js"` along with it. A path reference gets the verbatim-copy treatment that is snag 1 above, and presents as a worker that loads with a 200 and then hangs forever with no console error.
+
+**What it does.** On start it opens IndexedDB (one store, one key), and hands the bytes to `new SQL.Database(bytes)` when they are there. After any mutating `exec` and after every `end_transaction` it marks the database dirty and, ~500ms after the last such write, exports the whole database and puts it back. The main thread posts a `flush` action on `pagehide`, since a worker cannot observe the page going away — it is simply terminated.
+
+**Chosen against OPFS**, via `@sqlite.org/sqlite-wasm`, which would give real incremental durability and no loss window at all. Rejected for this pass because it means a new wasm asset, new webpack asset rules and a worker written from scratch, discarding both hard-won fixes above — and because its `opfs-sahpool` VFS (the only one available to us, since GitHub Pages cannot send the COOP/COEP headers the plain `opfs` VFS needs) takes an exclusive handle, so the *second* tab fails to open the database at all. It is not better on multi-tab, only differently bad.
+
+The costs of the snapshot approach, stated plainly so the trigger to revisit is legible: `db.export()` serializes the **entire** database on every committed burst, which is O(size) per write and fine for a personal library of a few hundred titles and not fine for something an order of magnitude larger; and there is a **loss window** of up to the debounce interval if the tab dies without `pagehide` running. If either becomes real, OPFS is the answer and this paragraph is why.
+
+**Multi-tab is decided, not ignored.** Two tabs are two workers with two independent in-memory databases and one IndexedDB slot, so the naive version has the second tab's export silently overwrite the first tab's work wholesale — the same class of silent data loss ADR 0013 exists to prevent, reached from a different direction. The worker takes a Web Lock (`navigator.locks.request("muviss-db")`) held for the life of the tab: the holder persists, other tabs run normally in memory and never write. The loser tab's changes are lost on reload, which is exactly what *every* tab did before this amendment, so it is not a regression — and data that is already durable can never be clobbered by a stale tab. Telling that tab so, in the UI, is deliberately not done here.
+
+**`SchemaEnsuringDriver` now decides rather than creates.** It called `Schema.awaitCreate` unconditionally, which was only correct because web's database was empty on every load. A restored snapshot can be older than the build, so it reads `PRAGMA user_version` and creates (0), migrates (below the target) or does nothing. Web has never had an upgrade path because it never had a stored database; this is the one every other platform gets free from its driver, and it means the `.sqm` chain and `verifyMigrations` finally cover web rather than covering it vacuously. A database *newer* than the build is left alone rather than recreated — someone opening a stale deployment should not have their library deleted to fix a version number. The target comes from `MuvissDatabase.Schema.version`, never a literal, so the next `.sqm` moves it without anyone editing the driver.
+
+### Correction to the 2026-07-16 amendment: `{ type: "module" }` is not what makes this work
+
+That amendment says, of the worker construction:
+
+> `{ type: "module" }` is also required on its own merits — the worker source is an ES module (top-level `import`), which a classic (non-module) Worker cannot parse at all.
+
+**That is wrong**, and it matters now that we own the worker. Reading the built output (`app/webApp/build/dist/wasmJs/productionExecutable/webApp.js`), webpack rewrites the construction to:
+
+```js
+new Worker(new URL(r.p+r.u(873), r.b), {type: void 0})
+```
+
+`{type: void 0}` — the module type never reaches the browser. Webpack emits a *classic* worker chunk (`873.js`) that pulls its dependencies in with `importScripts`, and the ESM `import` in the source is bundled away before it ever runs. This is why the vendored worker's `if (typeof importScripts === "function")` guard fires at all: `importScripts` is undefined in a real module worker, and had the type actually been applied, that worker would have installed no message handler and every query would have hung.
+
+The rest of that paragraph stands and is the load-bearing part: the whole `new Worker(new URL(...), options)` expression must appear as one untouched `js(...)` string, because webpack's `WorkerPlugin` pattern-matches that exact shape. `{ type: "module" }` is kept for shape parity, not for its stated effect. Our worker is written as a classic worker accordingly.
