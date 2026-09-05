@@ -65,21 +65,6 @@ import org.koin.compose.koinInject
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-private data class TopDestination(
-    val route: Any,
-    val label: String,
-    val icon: ImageVector,
-)
-
-private val topDestinations =
-    listOf(
-        TopDestination(SearchRoute, "Search", MuvissIcons.Search),
-        TopDestination(CollectionRoute, "Library", MuvissIcons.Library),
-        TopDestination(ProgressRoute, "Progress", MuvissIcons.WatchNext),
-        TopDestination(ProfileRoute, "Profile", MuvissIcons.Profile),
-        TopDestination(SettingsRoute, "Settings", MuvissIcons.Settings),
-    )
-
 /**
  * Root entry point for every platform. Starts Koin (or, on Android, reuses
  * the instance `MuvissApplication` already started at process start so the
@@ -97,6 +82,11 @@ private val topDestinations =
  * [onOAuthCodeConsumed] once redeemed. It is handled here rather than in the
  * profile screen because the redirect can arrive long after that screen —
  * and its ViewModel — is gone.
+ *
+ * [controller] defaults to one created here, which is what every platform but
+ * desktop wants. Desktop passes its own, created in the `Window` scope, so the
+ * `MenuBar` there and the `NavHost` here drive the same navigation — see
+ * [MuvissAppController].
  */
 @Suppress("DEPRECATION") // KoinApplication(config=) overload not present in this Koin version.
 @Composable
@@ -105,6 +95,7 @@ fun MuvissApp(
     onDeepLinkConsumed: () -> Unit = {},
     oauthCode: String? = null,
     onOAuthCodeConsumed: () -> Unit = {},
+    controller: MuvissAppController = rememberMuvissAppController(),
 ) {
     remember { CrashReporter.init(MuvissBuildConfig.SENTRY_DSN) }
     remember { configureImageLoader() }
@@ -120,7 +111,7 @@ fun MuvissApp(
         AutoSyncOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
-            MuvissScaffold(deepLinkMediaId, onDeepLinkConsumed)
+            MuvissScaffold(controller, deepLinkMediaId, onDeepLinkConsumed)
         }
     }
 }
@@ -201,12 +192,23 @@ private fun platformDatabaseModule(driverFactory: DatabaseDriverFactory): Module
 
 @Composable
 private fun MuvissScaffold(
+    controller: MuvissAppController,
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
 ) {
-    val navController = rememberNavController()
+    val navController = controller.navController
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
+
+    // The one place that observes the back stack, so the one place that can
+    // tell a platform host which destination is showing. Desktop's MenuBar is
+    // composed in the Window's own composition and has no other way to know.
+    LaunchedEffect(currentDestination) {
+        controller.currentDestination =
+            controller.destinations.firstOrNull { dest ->
+                currentDestination?.hierarchy?.any { it.hasRoute(dest.route::class) } == true
+            }
+    }
 
     LaunchedEffect(deepLinkMediaId) {
         if (deepLinkMediaId != null) {
@@ -248,20 +250,14 @@ private fun MuvissScaffold(
             navigationRailContainerColor = MaterialTheme.colorScheme.surfaceContainer,
         ),
         navigationSuiteItems = {
-            topDestinations.forEach { dest ->
+            controller.destinations.forEach { dest ->
                 val selected =
                     currentDestination?.hierarchy?.any {
                         it.hasRoute(dest.route::class)
                     } == true
                 item(
                     selected = selected,
-                    onClick = {
-                        navController.navigate(dest.route) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
+                    onClick = { controller.navigateTo(dest) },
                     icon = { Icon(dest.icon, contentDescription = dest.label) },
                     label = { Text(dest.label) },
                     colors = itemColors,
