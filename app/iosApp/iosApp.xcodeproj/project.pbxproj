@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		D1ECFA8041FD747746DEC31F /* KotlinProject.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KotlinProject.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D1ECFA8041FD747746DEC31F /* Muviss.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Muviss.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D400000000000000E1 /* MuvissWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MuvissWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -88,7 +88,7 @@
 		C91FFF32251F3E8CE89F9306 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D1ECFA8041FD747746DEC31F /* KotlinProject.app */,
+				D1ECFA8041FD747746DEC31F /* Muviss.app */,
 				A1B2C3D400000000000000E1 /* MuvissWidget.appex */,
 			);
 			name = Products;
@@ -121,7 +121,7 @@
 			packageProductDependencies = (
 			);
 			productName = iosApp;
-			productReference = D1ECFA8041FD747746DEC31F /* KotlinProject.app */;
+			productReference = D1ECFA8041FD747746DEC31F /* Muviss.app */;
 			productType = "com.apple.product-type.application";
 		};
 		A1B2C3D400000000000000E4 /* MuvissWidget */ = {
