@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -35,6 +36,9 @@ import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
+import com.codingpit.muviss.core.database.PersistenceState
+import com.codingpit.muviss.core.database.PersistenceStatus
+import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
@@ -265,37 +269,61 @@ private fun MuvissScaffold(
         // pixel under the status bar and camera cutout. One wrap fixes all of
         // them, on every platform.
         ScreenInsets {
-            NavHost(
-                navController = navController,
-                startDestination = SearchRoute,
-                // M3 fade-through: outgoing fades and settles to 0.92, incoming
-                // fades in from 1.02 — every destination inherits it from here.
-                enterTransition = {
-                    fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
-                        scaleIn(initialScale = 1.02f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
-                },
-                exitTransition = {
-                    fadeOut(tween(durationMillis = 90)) +
-                        scaleOut(targetScale = 0.92f, animationSpec = tween(durationMillis = 90))
-                },
-                popEnterTransition = {
-                    fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
-                        scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
-                },
-                popExitTransition = {
-                    fadeOut(tween(durationMillis = 90)) +
-                        scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
-                },
-            ) {
-                searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
-                collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-                progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-                profileSection(navController)
-                settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
-                // Not a top-level destination — reached from Discover and Settings.
-                triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+            Column {
+                PersistenceBanner(message = rememberPersistenceWarning())
+                NavHost(
+                    navController = navController,
+                    startDestination = SearchRoute,
+                    // M3 fade-through: outgoing fades and settles to 0.92, incoming
+                    // fades in from 1.02 — every destination inherits it from here.
+                    enterTransition = {
+                        fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
+                            scaleIn(initialScale = 1.02f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
+                    },
+                    exitTransition = {
+                        fadeOut(tween(durationMillis = 90)) +
+                            scaleOut(targetScale = 0.92f, animationSpec = tween(durationMillis = 90))
+                    },
+                    popEnterTransition = {
+                        fadeIn(tween(durationMillis = 210, delayMillis = 90)) +
+                            scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 210, delayMillis = 90))
+                    },
+                    popExitTransition = {
+                        fadeOut(tween(durationMillis = 90)) +
+                            scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
+                    },
+                ) {
+                    searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                    collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    profileSection(navController)
+                    settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                    // Not a top-level destination — reached from Discover and Settings.
+                    triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                }
             }
         }
+    }
+}
+
+/**
+ * The one sentence that describes this session's storage, or null when there is
+ * nothing to say.
+ *
+ * Null for [PersistenceState.Durable] and for [PersistenceState.Pending] —
+ * Pending specifically, so the tab that *is* the writer never flashes a warning
+ * in the milliseconds before the lock election answers. Every platform but web
+ * is permanently Durable, so the banner is drawn on exactly the platform that
+ * has the problem without any of the screens knowing which one that is.
+ */
+@Composable
+private fun rememberPersistenceWarning(): String? {
+    val status = koinInject<PersistenceStatus>()
+    val state by status.state.collectAsStateWithLifecycle()
+    return when (state) {
+        PersistenceState.Pending, PersistenceState.Durable -> null
+        PersistenceState.ReadOnlyTab -> "Muviss is open in another tab. Changes here won't be saved."
+        PersistenceState.NotPersisted -> "This browser can't save your library. Changes will be lost when you close this tab."
     }
 }
 

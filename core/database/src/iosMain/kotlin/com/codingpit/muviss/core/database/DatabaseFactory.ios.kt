@@ -46,6 +46,9 @@ actual class DatabaseDriverFactory {
             },
         )
     }
+
+    /** A file this app owns; there is nothing to warn anyone about. */
+    actual val persistence: PersistenceStatus = AlwaysDurable
 }
 
 /**

@@ -1,6 +1,7 @@
 package com.codingpit.muviss.di
 
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
+import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
@@ -74,6 +75,11 @@ class AppGraphTest {
         assertNotNull(koin.get<TriageApi>())
         assertNotNull(koin.get<ListsApi>())
         assertNotNull(koin.get<SyncEngine>())
+        // Bound by `databaseModule` rather than by `MuvissApp`'s own module, so
+        // that it exists on the platforms that start Koin before Compose — this
+        // test's `startGraph` is the shape of those entry points, and it is the
+        // only place that would notice if the binding moved back.
+        assertNotNull(koin.get<PersistenceStatus>())
     }
 
     /**

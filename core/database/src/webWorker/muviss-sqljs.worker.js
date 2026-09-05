@@ -31,11 +31,19 @@ const KEY = "muviss.db";
 // database, which is the cost this whole design trades against durability.
 const DEBOUNCE_MS = 500;
 
+// How long to let the election settle before telling the UI this tab is not the
+// writer. See electWriter().
+const ELECTION_GRACE_MS = 400;
+
 let db = null;
 let dirty = false;
 let debounceTimer = null;
 // Only one tab persists. See electWriter().
 let isWriter = false;
+// The main thread's end of the persistence channel, and the last thing we had
+// to say on it. See announce().
+let persistencePort = null;
+let lastPersistence = null;
 
 // --- IndexedDB -------------------------------------------------------------
 
@@ -113,26 +121,90 @@ async function flush() {
 
 // --- Single-writer election ------------------------------------------------
 
+// Tells the main thread what this tab's storage is actually doing, so the UI
+// can say so (issue #53).
+//
+// Over a MessageChannel of our own, NOT the channel SQLDelight's driver uses.
+// The first attempt did share it, on the strength of reading the *js*
+// `web-worker-driver` klib: `WorkerWrapper.execute` registers a per-request
+// listener that compares `event.data.id` and ignores what it does not
+// recognise, so an extra message is harmless there. The **wasmJs** driver is a
+// different implementation and does not behave that way: `WasmWorkerResponse`
+// declares `results` as a non-null external property and materialises it before
+// looking at the id, so any message without `results` takes the whole app down:
+//
+//   NullPointerException: null
+//     at ...WasmWorkerResultWithRowCount.<init>
+//     at ...results_$external_prop_getter__externalAdapter
+//
+// A private channel is not a workaround for that, it is the correct shape: the
+// driver's protocol is the driver's, and this is not part of it.
+//
+// `lastPersistence` exists because the election finishes first. `electWriter`
+// is called from `createDatabase` before `sqlModuleReady` resolves, and the
+// port arrives through the handler that waits on it — so the first announcement
+// is always made before there is anywhere to send it.
+function announce() {
+  lastPersistence = { writer: isWriter, supported: hasWebLocks() };
+  if (persistencePort) persistencePort.postMessage(lastPersistence);
+}
+
+function hasWebLocks() {
+  return Boolean(navigator.locks && navigator.locks.request);
+}
+
 // Two tabs are two workers with two independent in-memory databases and one
-// IndexedDB slot, so without this the second tab's `db.export()` overwrites
-// the first tab's work wholesale and silently. The lock is held for the life
-// of the tab: whoever gets it persists, everyone else runs normally in memory
-// and never writes. That loses the loser tab's changes on reload — which is
-// what every tab did before EPIC 24, so it is not a regression — but it can
-// never destroy data that is already durable.
+// IndexedDB slot, so without this the second tab's `db.export()` overwrites the
+// first tab's work wholesale and silently. The lock is held for the life of the
+// tab: whoever gets it persists, everyone else runs normally in memory and
+// never writes. The loser tab's changes are lost on reload — which is what
+// every tab did before EPIC 24, so it is not a regression.
+//
+// THE REQUEST DELIBERATELY QUEUES. `{ ifAvailable: true }` looks like the right
+// call — a queued loser is granted the lock the moment the writer's tab closes,
+// and then exports a database forked from the snapshot as it stood when *it*
+// opened, over everything the writer did since. That is a real bug and it is
+// filed. But refusing outright is worse, and measurably so: on an ordinary page
+// reload the new worker starts before the outgoing one has been torn down, asks
+// while the lock is still held by a tab that is already dying, and — with
+// `ifAvailable` — is refused and never asks again. Verified in Chrome: a single
+// tab, reloaded once, showed the "open in another tab" banner with no other tab
+// open, and `navigator.locks.query()` reported one holder and zero pending. A
+// user who reloads would silently stop persisting, permanently. Queuing makes
+// that case correct, because the dying worker's lock is released and the queued
+// request is granted a moment later.
 //
 // Web Locks is unavailable in exactly the contexts where nothing is durable
 // anyway; there, nobody is the writer and the database is session-only.
 function electWriter() {
-  if (!navigator.locks || !navigator.locks.request) {
+  if (!hasWebLocks()) {
     console.warn("[muviss] no Web Locks; this tab will not persist");
+    announce();
     return;
   }
-  navigator.locks.request(DB_NAME, () => {
-    isWriter = true;
-    // Never resolves: the lock is released when the worker dies with the tab.
-    return new Promise(() => {});
-  }).catch((e) => console.warn("[muviss] lock request failed", e));
+  navigator.locks
+    .request(DB_NAME, () => {
+      isWriter = true;
+      announce();
+      // Never resolves: the lock is released when the worker dies with the tab.
+      return new Promise(() => {});
+    })
+    .catch((e) => {
+      console.warn("[muviss] lock request failed", e);
+      announce();
+    });
+
+  // Nothing above says "you are not the writer" — a queued request is simply
+  // silent until it is granted, so without this a losing tab would sit in
+  // Pending forever and never show the banner.
+  //
+  // Delayed rather than announced up front, because the winning tab is granted
+  // the lock within a few milliseconds and an immediate "not the writer" would
+  // flash the banner on every ordinary page load. By the time this fires the
+  // winner has already set `isWriter`, so it says nothing.
+  setTimeout(() => {
+    if (!isWriter) announce();
+  }, ELECTION_GRACE_MS);
 }
 
 // --- Database --------------------------------------------------------------
@@ -189,6 +261,14 @@ function onModuleReady() {
     // window at DEBOUNCE_MS of idle rather than at zero.
     case "flush":
       return flush().then(() => postMessage({ id: data.id, results: { values: [] } }));
+    // Also ours. Hands us the MessagePort that persistence announcements go
+    // out on — see announce(). Deliberately answered with **no** reply on this
+    // channel: a reply would be a message the driver has to parse, and the
+    // whole point of the separate port is that it does not have to.
+    case "muviss_persistence_port":
+      persistencePort = this.ports[0];
+      if (lastPersistence) persistencePort.postMessage(lastPersistence);
+      return;
     default:
       throw new Error(`Unsupported action: ${data && data.action}`);
   }

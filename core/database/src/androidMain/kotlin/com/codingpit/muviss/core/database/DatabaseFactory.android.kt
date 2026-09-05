@@ -16,4 +16,7 @@ import app.cash.sqldelight.driver.android.AndroidSqliteDriver
  */
 actual class DatabaseDriverFactory(private val context: Context) {
     actual fun create(): SqlDriver = AndroidSqliteDriver(MuvissDatabase.Schema.synchronous(), context, "muviss.db")
+
+    /** A file this app owns; there is nothing to warn anyone about. */
+    actual val persistence: PersistenceStatus = AlwaysDurable
 }

@@ -31,6 +31,9 @@ private const val DATABASE_FILE_NAME = "muviss.db"
  */
 actual class DatabaseDriverFactory(private val directory: File = appDataDirectory()) {
     actual fun create(): SqlDriver = createFileDriver(directory)
+
+    /** A file this app owns; there is nothing to warn anyone about. */
+    actual val persistence: PersistenceStatus = AlwaysDurable
 }
 
 /**
