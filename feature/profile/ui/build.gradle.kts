@@ -10,6 +10,7 @@ kotlin {
             implementation(projects.core.common)
             implementation(projects.core.designsystem)
             implementation(projects.models)
+            implementation(libs.compose.material3.adaptive)
             implementation(libs.navigation.compose)
             implementation(libs.kotlinx.serializationJson)
             implementation(libs.kotlinx.coroutinesCore)

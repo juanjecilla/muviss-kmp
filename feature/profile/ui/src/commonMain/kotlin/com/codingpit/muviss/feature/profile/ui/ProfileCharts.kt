@@ -5,17 +5,24 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -23,24 +30,37 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.window.core.layout.WindowSizeClass
 import com.codingpit.muviss.core.designsystem.theme.MuvissChartPalette
+import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.GenreCount
 import com.codingpit.muviss.feature.profile.domain.MonthlyRewatches
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 // Compose-canvas-only bar/donut charts for the profile stats section (EPIC 4
 // — no chart library allowed). Colors come from the design system's
 // MuvissChartPalette so the same status/genre always reads as the same color
-// in both themes; a 8th+ genre folds into "Other" rather than generating a
+// in both themes; a 7th+ genre folds into "Other" rather than generating a
 // new hue. Charts grow in once per screen visit (600ms, emphasized
 // decelerate) — guarded by rememberSaveable so config changes don't replay.
 
@@ -50,6 +70,14 @@ private const val MAX_GENRE_SLOTS = 6
 /** M3 emphasized-decelerate; 600ms per the design doc's chart-entry motion row. */
 private val ChartEntryEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
 private const val CHART_ENTRY_MS = 600
+
+// Component dimensions, not spacing — deliberately off the 4dp grid where the
+// grid would change how the mark reads. MuvissSpacing covers the gaps between
+// these, never the marks themselves.
+private val STATUS_BAR_HEIGHT = 14.dp
+private val STATUS_LABEL_WIDTH = 88.dp
+private val STATUS_COUNT_WIDTH = 28.dp
+private val LEGEND_SWATCH = 10.dp
 
 /** 0→1 grow-in fraction, animated only on the first composition of this screen visit. */
 @Composable
@@ -78,13 +106,13 @@ fun StatusBarChart(breakdown: StatusBreakdown, modifier: Modifier = Modifier) {
     )
     val maxCount = entries.maxOf { it.second }.coerceAtLeast(1)
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
         entries.forEachIndexed { index, (label, count) ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(label, modifier = Modifier.width(88.dp), style = MaterialTheme.typography.labelSmall)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                Text(label, modifier = Modifier.width(STATUS_LABEL_WIDTH), style = MaterialTheme.typography.labelSmall)
                 val fraction = count / maxCount.toFloat()
                 val barColor = palette[index % palette.size]
-                Canvas(Modifier.weight(1f).height(14.dp)) {
+                Canvas(Modifier.weight(1f).height(STATUS_BAR_HEIGHT)) {
                     val corner = CornerRadius(size.height / 2f, size.height / 2f)
                     drawRoundRect(color = barColor.copy(alpha = 0.18f), cornerRadius = corner)
                     if (fraction > 0f) {
@@ -97,7 +125,7 @@ fun StatusBarChart(breakdown: StatusBreakdown, modifier: Modifier = Modifier) {
                 }
                 Text(
                     count.toString(),
-                    modifier = Modifier.width(28.dp),
+                    modifier = Modifier.width(STATUS_COUNT_WIDTH),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
@@ -113,38 +141,317 @@ fun foldGenresIntoOther(genres: List<GenreCount>, maxSlots: Int = MAX_GENRE_SLOT
     return kept + GenreCount(genre = "Other", count = otherCount)
 }
 
-/** Donut of [genres] (already folded via [foldGenresIntoOther]) with a color-keyed legend beside it; sweeps clockwise on entry. */
+// ---------------------------------------------------------------------------
+// Genre donut
+// ---------------------------------------------------------------------------
+
+const val GENRE_DONUT_TAG = "genre_donut"
+const val GENRE_DONUT_CENTER_TAG = "genre_donut_center"
+
+/** Test tag for one legend row, so a test can tap a genre by name rather than by index. */
+fun genreLegendTag(genre: String): String = "genre_legend_$genre"
+
+private val DONUT_SIZE = 160.dp
+
+/**
+ * Ring thickness as a fraction of the donut's width. Thinner than the 0.24
+ * this chart used at 96dp: at 160dp the old fraction left a 71dp hole, and
+ * the center label has to live in there.
+ */
+private const val DONUT_STROKE_FRACTION = 0.18f
+
+/** How much thicker the selected arc is drawn than its neighbours. */
+private val SELECTED_STROKE_BONUS = 6.dp
+
+/** Widest the center label may be; the hole is ~90dp across at [DONUT_SIZE]. */
+private val DONUT_LABEL_WIDTH = 88.dp
+
+private const val UNSELECTED_ALPHA = 0.3f
+
+/** Two columns of legend entries, in both the stacked and the side-by-side layout. */
+private const val LEGEND_COLUMNS = 2
+
+/** Below this the legend goes under the donut; at or above it, beside it. Matches MuvissApp's nav-rail switch. */
+private val WIDE_LAYOUT_BREAKPOINT = WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND
+
+/**
+ * Whether the window is wide enough to put the legend beside the ring.
+ *
+ * Overridable by callers because this reads the *window*, and a screenshot
+ * test renders a fixed-size frame inside a window of whatever size the host
+ * felt like — see `GoldenSurface`'s KDoc. Left to the default, a 412dp golden
+ * frame would still capture the wide layout, and it would capture a different
+ * one on a machine whose test window is narrower.
+ */
 @Composable
-fun GenreDonutChart(genres: List<GenreCount>, modifier: Modifier = Modifier) {
+fun rememberWideChartLayout(): Boolean = currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WIDE_LAYOUT_BREAKPOINT)
+
+/**
+ * Which slice of a donut of [size] a tap at [tap] landed on, or null for the
+ * hole in the middle and for the corners outside the ring — both of which the
+ * caller treats as "clear the selection".
+ *
+ * [sweeps] are the *final* sweep angles in draw order, degrees, clockwise from
+ * twelve o'clock. Passing the final angles rather than the animated ones is
+ * deliberate: during the 600ms grow-in a tap should select the slice the user
+ * aimed at, not whichever one happens to be under the finger mid-sweep.
+ *
+ * [stroke] is the widest stroke the ring can draw — the selected slice's — so
+ * the whole band stays tappable whatever is currently selected.
+ *
+ * Pure on purpose: this is the part of the chart with real edge cases, and it
+ * unit-tests without Compose.
+ */
+internal fun sliceIndexAt(tap: Offset, size: Size, sweeps: List<Float>, stroke: Float): Int? {
+    if (sweeps.isEmpty()) return null
+    val outer = size.minDimension / 2f
+    val inner = outer - stroke
+    val dx = tap.x - size.width / 2f
+    val dy = tap.y - size.height / 2f
+    val radius = sqrt(dx * dx + dy * dy)
+    if (radius < inner || radius > outer) return null
+
+    // atan2 puts 0° at three o'clock; the ring starts at twelve and runs clockwise.
+    var degrees = atan2(dy, dx) * 180f / PI.toFloat() + 90f
+    if (degrees < 0f) degrees += 360f
+
+    var start = 0f
+    for (index in sweeps.indices) {
+        // The last slice is closed at 360° rather than at the accumulated sum:
+        // the sweeps are floats derived from a division and land a hair short,
+        // which would otherwise leave a dead wedge just before twelve o'clock.
+        val end = if (index == sweeps.lastIndex) 360f else start + sweeps[index]
+        if (degrees >= start && degrees < end) return index
+        start += sweeps[index]
+    }
+    return null
+}
+
+/**
+ * A slice's share of the whole, rounded to a percent. A non-empty slice that
+ * rounds to zero reads "<1%" rather than "0%" — the donut is showing it, so
+ * claiming it is nothing contradicts the picture.
+ */
+internal fun sharePercentLabel(count: Int, total: Int): String {
+    if (total <= 0) return "0%"
+    val rounded = (count * 100.0 / total).roundToInt()
+    return if (rounded == 0 && count > 0) "<1%" else "$rounded%"
+}
+
+/**
+ * Donut of [genres] (already folded via [foldGenresIntoOther]) with a
+ * color-keyed legend, holding its own selection.
+ *
+ * The selection is keyed on the genre names, not just remembered: the stats are
+ * recomputed from the library, so a refresh can re-sort [genres] and an index
+ * that meant "Action" would quietly start meaning "Comedy". Changing the set of
+ * genres resets to the un-selected state instead.
+ */
+@Composable
+fun GenreDonutChart(
+    genres: List<GenreCount>,
+    modifier: Modifier = Modifier,
+    wide: Boolean = rememberWideChartLayout(),
+) {
+    if (genres.isEmpty()) return
+    var selected by rememberSaveable(genres.map { it.genre }) { mutableStateOf<Int?>(null) }
+    GenreDonutChart(
+        genres = genres,
+        selectedIndex = selected,
+        onSelect = { selected = it },
+        wide = wide,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The drawing half of [GenreDonutChart], with selection and layout branch
+ * hoisted.
+ *
+ * [wide] is a parameter rather than a `currentWindowAdaptiveInfo()` call in
+ * here because a screenshot test renders into a fixed frame inside a window
+ * of whatever size the host felt like — see `GoldenSurface`'s KDoc. Reading
+ * the window here would make both layouts capture identically.
+ */
+@Composable
+fun GenreDonutChart(
+    genres: List<GenreCount>,
+    selectedIndex: Int?,
+    onSelect: (Int?) -> Unit,
+    wide: Boolean,
+    modifier: Modifier = Modifier,
+) {
     if (genres.isEmpty()) return
     val palette = MuvissChartPalette.categorical()
     val growth by rememberChartGrowth()
     val total = genres.sumOf { it.count }.coerceAtLeast(1)
+    val sweeps = genres.map { 360f * it.count / total }
 
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Canvas(Modifier.size(96.dp)) {
+    if (wide) {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl)) {
+            GenreDonut(genres, sweeps, selectedIndex, onSelect, palette, growth, total)
+            GenreLegend(genres, selectedIndex, onSelect, palette, Modifier.weight(1f))
+        }
+    } else {
+        Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l), horizontalAlignment = Alignment.CenterHorizontally) {
+            GenreDonut(genres, sweeps, selectedIndex, onSelect, palette, growth, total)
+            GenreLegend(genres, selectedIndex, onSelect, palette, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun GenreDonut(
+    genres: List<GenreCount>,
+    sweeps: List<Float>,
+    selectedIndex: Int?,
+    onSelect: (Int?) -> Unit,
+    palette: List<Color>,
+    growth: Float,
+    total: Int,
+) {
+    Box(Modifier.size(DONUT_SIZE), contentAlignment = Alignment.Center) {
+        Canvas(
+            Modifier
+                .matchParentSize()
+                .pointerInput(sweeps, selectedIndex) {
+                    detectTapGestures { offset ->
+                        val canvas = Size(size.width.toFloat(), size.height.toFloat())
+                        val maxStroke = canvas.minDimension * DONUT_STROKE_FRACTION + SELECTED_STROKE_BONUS.toPx()
+                        val hit = sliceIndexAt(offset, canvas, sweeps, maxStroke)
+                        // Tapping the selected slice clears it, as does the hole
+                        // and the corners outside the ring.
+                        onSelect(if (hit != null && hit != selectedIndex) hit else null)
+                    }
+                }
+                // The ring itself is decorative to a screen reader; the legend
+                // rows below carry the real, selectable semantics.
+                .clearAndSetSemantics { testTag = GENRE_DONUT_TAG },
+        ) {
+            val base = size.minDimension * DONUT_STROKE_FRACTION
+            val maxStroke = base + SELECTED_STROKE_BONUS.toPx()
+            // Stroke is centred on the path, so half of it falls outside the
+            // rect it is drawn into. Insetting by half the *widest* stroke keeps
+            // every slice inside the box and leaves room for the selected one to
+            // thicken without anything re-laying out.
+            val inset = maxStroke / 2f
+            val arcSize = Size(size.minDimension - maxStroke, size.minDimension - maxStroke)
             var startAngle = -90f
-            val strokeWidth = size.minDimension * 0.24f
             genres.forEachIndexed { index, genre ->
-                val sweep = 360f * genre.count / total * growth
+                val selected = index == selectedIndex
+                val sweep = sweeps[index] * growth
                 drawArc(
-                    color = genre.colorFor(index, palette),
+                    color = genre.colorFor(index, palette)
+                        .copy(alpha = if (selectedIndex == null || selected) 1f else UNSELECTED_ALPHA),
                     startAngle = startAngle,
                     sweepAngle = sweep,
                     useCenter = false,
-                    style = Stroke(width = strokeWidth),
+                    topLeft = Offset(inset, inset),
+                    size = arcSize,
+                    style = Stroke(width = if (selected) maxStroke else base),
                 )
                 startAngle += sweep
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            genres.forEachIndexed { index, genre ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(10.dp).background(genre.colorFor(index, palette), CircleShape))
-                    Text("${genre.genre} (${genre.count})", style = MaterialTheme.typography.labelSmall)
+        DonutCenterLabel(genres.getOrNull(selectedIndex ?: -1), total)
+    }
+}
+
+/**
+ * The middle of the ring: the whole it divides when nothing is picked, the
+ * picked slice otherwise.
+ *
+ * The resting number is the sum of the genre counts, and it is captioned
+ * "genre tags" rather than "titles" because that is what it is — a title
+ * carrying three genres lands in three buckets. It is also the only
+ * denominator the slice percentages are true against.
+ */
+@Composable
+private fun DonutCenterLabel(selected: GenreCount?, total: Int) {
+    Column(
+        Modifier.width(DONUT_LABEL_WIDTH).testTag(GENRE_DONUT_CENTER_TAG),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = selected?.genre ?: total.toString(),
+            style = if (selected == null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = selected?.let { "${it.count} · ${sharePercentLabel(it.count, total)}" } ?: "genre tags",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Two columns of selectable legend rows.
+ *
+ * These are the accessible — and often the only usable — way to pick a genre.
+ * A slice's arc is as small as its share, and a fifth-place genre can be one
+ * title in five hundred; the row for it is still a full-width 48dp target.
+ */
+@Composable
+private fun GenreLegend(
+    genres: List<GenreCount>,
+    selectedIndex: Int?,
+    onSelect: (Int?) -> Unit,
+    palette: List<Color>,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
+        genres.indices.chunked(LEGEND_COLUMNS).forEach { rowIndices ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                rowIndices.forEach { index ->
+                    GenreLegendRow(
+                        genre = genres[index],
+                        color = genres[index].colorFor(index, palette),
+                        selected = index == selectedIndex,
+                        onClick = { onSelect(if (index == selectedIndex) null else index) },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
+                repeat(LEGEND_COLUMNS - rowIndices.size) { Spacer(Modifier.weight(1f)) }
             }
         }
+    }
+}
+
+@Composable
+private fun GenreLegendRow(
+    genre: GenreCount,
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(MuvissSpacing.s)
+    Row(
+        modifier
+            .heightIn(min = MuvissSpacing.huge)
+            .clip(shape)
+            .selectable(selected = selected, onClick = onClick)
+            .background(
+                if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent,
+                shape,
+            )
+            .padding(horizontal = MuvissSpacing.s, vertical = MuvissSpacing.xs)
+            .testTag(genreLegendTag(genre.genre)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
+    ) {
+        Box(Modifier.size(LEGEND_SWATCH).background(color, CircleShape))
+        Text(
+            "${genre.genre} (${genre.count})",
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

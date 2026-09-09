@@ -89,7 +89,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         if (state.loading) {
             Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(Modifier.padding(top = 32.dp))
+                CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
             }
             return@Scaffold
         }
@@ -99,9 +99,9 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(MuvissSpacing.l)
                 .padding(bottom = MuvissSpacing.bottomContent),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
         ) {
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
 
@@ -318,29 +318,45 @@ private fun EmptyLibraryState() {
     )
 }
 
+/**
+ * The stats block: tiles, the status bars, the genre donut and the rewatch
+ * card.
+ *
+ * `internal` rather than private so a screenshot test can render it directly —
+ * the alignment of the donut against the screen's gutter is the kind of thing
+ * only a picture of the whole section shows (same reason [MostRewatchedCard]
+ * is internal).
+ *
+ * Spacing inside the section is one step below the gap *between* sections, so
+ * the blocks in here read as belonging together.
+ */
 @Composable
-private fun StatsSection(stats: ProfileStats, onOpenRewatch: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+internal fun StatsSection(
+    stats: ProfileStats,
+    onOpenRewatch: () -> Unit,
+    wide: Boolean = rememberWideChartLayout(),
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l)) {
         Text("Stats", style = MaterialTheme.typography.titleSmall)
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             StatTile(stats.moviesWatched.toString(), "movies watched", Modifier.weight(1f))
             StatTile(stats.episodesSeen.toString(), "episodes seen", Modifier.weight(1f))
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             StatTile(formatHours(stats.estimatedHoursWatched), "hours watched", Modifier.weight(1f))
             StatTile("${stats.streak.currentDays}d", "streak (best ${stats.streak.longestDays}d)", Modifier.weight(1f))
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
             Text("By status", style = MaterialTheme.typography.labelLarge)
             StatusBarChart(stats.statusBreakdown, Modifier.fillMaxWidth())
         }
 
         if (stats.genreBreakdown.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
                 Text("By genre", style = MaterialTheme.typography.labelLarge)
-                GenreDonutChart(foldGenresIntoOther(stats.genreBreakdown))
+                GenreDonutChart(foldGenresIntoOther(stats.genreBreakdown), wide = wide)
             }
         }
 
@@ -364,7 +380,7 @@ private fun StatsSection(stats: ProfileStats, onOpenRewatch: () -> Unit) {
 internal fun MostRewatchedCard(entries: List<RewatchEntry>, onOpenRewatch: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().testTag(MOST_REWATCHED_CARD_TAG),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
     ) {
         Row(
             Modifier.fillMaxWidth().clickable(enabled = entries.isNotEmpty(), onClick = onOpenRewatch),

@@ -413,3 +413,17 @@ widget has been run).
   the rewatch ADR kept 0012 because it owned the number in roughly three times
   as many places. `AGENTS.md` gained the convention that closes the class:
   claim ADR and `.sqm` numbers when the branch opens, not when it merges.
+
+### Raised by the "By genre" donut refinement (2026-09-08)
+
+- **The profile screen's identity/sync/rewatch spacing still bypasses
+  `MuvissSpacing`** — #63. The stats half was normalised onto the 4dp token
+  grid while the donut was reworked; `IdentitySection`, `SyncSection`,
+  `RewatchTrendChart` and `RewatchScreen` were left on raw `.dp` literals.
+  `RewatchTrendChart` in particular is skipped because snapping its off-grid
+  `6.dp`/`4.dp` forces a re-record of all five `rewatch-*.png` goldens.
+- **The genre legend stretches the full width of a tablet** — #64. The wide
+  layout gives the legend `weight(1f)` and two equal columns, so at ~1200dp a
+  selected row's highlight pill spans ~500dp for a two-word label. Needs a width
+  cap or more columns, plus a golden recorded at a genuinely tablet-sized frame —
+  the committed wide goldens are 892dp, which is phone-landscape.
