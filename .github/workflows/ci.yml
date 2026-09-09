@@ -11,8 +11,96 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # Every lane below is gated on this one, because the expensive lane is not
+  # Linux. `ios` runs on macOS, which GitHub bills at 10x: 8m31s of Kotlin/Native
+  # linking plus an Xcode build is ~130 billed minutes per run, and over the 30
+  # days to 2026-09-09 this one job spent 1,590 of the account's 3,194 billed
+  # minutes. Half the bill, one job.
+  #
+  # So it is worth ~1 Linux minute to ask whether the change can possibly affect
+  # a target before paying for it. Measured against the 14 PRs in that window
+  # this skips 2 of them — a docs-only PR and a .gitignore PR. That is a modest
+  # 14%, not a transformation, and it is listed last among this file's cost
+  # changes for that reason. It earns its place because the two it skips cost
+  # ~180 billed minutes between them and the guard costs ~14.
+  #
+  # Plain git rather than a paths-filter action: the comparison is two lines,
+  # and this keeps a third-party action off the critical path of every PR.
+  #
+  # Pushes to `main` are never filtered. They are the last line of defence and
+  # they are rare — 4 of them against 14 PRs in the same window — so the saving
+  # would be noise and the risk would not be.
+  changes:
+    name: Which lanes need running
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The three-dot diff below needs the merge base, so the default
+          # single-commit checkout is not enough.
+          fetch-depth: 0
+
+      - name: Decide which lanes the diff can affect
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -uo pipefail
+
+          run_everything() {
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Not a pull request; running every lane."
+            run_everything
+          fi
+
+          # Fail open. A guard that silently skips the build because it could
+          # not work out the diff is worse than one that costs a few minutes.
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD") || {
+            echo "::warning::Could not diff against origin/${BASE_REF}; running every lane."
+            run_everything
+          }
+          if [ -z "$changed" ]; then
+            echo "::warning::Empty diff against origin/${BASE_REF}; running every lane."
+            run_everything
+          fi
+
+          echo "Changed files:"
+          echo "$changed" | sed 's/^/  /'
+
+          # Anything the shared Kotlin/Native framework or the Xcode project can
+          # see. `core`, `feature` and `models` are in here because :app:shared
+          # depends on them, so a change there does reach the iOS link. This
+          # file is in here too: a PR that edits CI must run the CI it edits.
+          IOS_PATHS='^(app/shared/|app/iosApp/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$'
+          # Everything above, plus the platforms iOS cannot see but `build`,
+          # `desktop` and `web-tests` can.
+          CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/|supabase/|scripts/)'
+
+          if echo "$changed" | grep -qE "$IOS_PATHS"; then ios=true; else ios=false; fi
+          if echo "$changed" | grep -qE "$CODE_PATHS"; then code=true; else code=false; fi
+
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Lanes -> code=$code ios=$ios"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # Nothing here has ever legitimately approached this. The point is the
+    # ceiling, not the number: the default is 360 minutes, and a job that hangs
+    # rather than fails burns all of it.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -118,6 +206,8 @@ jobs:
   # run here is expected, because a check nobody can act on is a check nobody
   # reads.
   web-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     # Non-blocking is not the same as non-hanging: `continue-on-error` keeps a
@@ -186,7 +276,11 @@ jobs:
   # top was what tipped it. Split, each side gets its own runner and its own
   # Gradle daemon, they run in parallel, and a failure names which half broke.
   desktop:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    # See `build`: the risk being bounded is a hang, not a slow build.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -285,7 +379,15 @@ jobs:
   # strings exactly as it does for the Android job above, and this step is
   # about linking, not about talking to anything.
   ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
+    # The only job in this file where the timeout is a spending control rather
+    # than a tidiness one. macOS bills at 10x, so the default 360-minute ceiling
+    # is 3,600 billed minutes from a single hung run — more than an entire
+    # month's free-tier allowance, gone in one afternoon. A successful run here
+    # is ~11 minutes end to end.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -297,6 +399,26 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # The single most expensive thing in this file, and it was uncached.
+      # `setup-gradle` above caches ~/.gradle; Kotlin/Native keeps its platform
+      # libraries and its per-dependency compiler caches in ~/.konan, which
+      # nothing was preserving. kotlin.native.cacheKind is on by default for
+      # debug simulator targets, so every run rebuilt those caches from cold —
+      # 8m31s of linking, and at the 10x macOS rate that is ~85 billed minutes
+      # per run on its own.
+      #
+      # Keyed on the version catalog and the build scripts because that is what
+      # decides which Kotlin/Native version and which dependency set the caches
+      # belong to. The restore-key prefix means a build-script edit warm-starts
+      # from the previous cache rather than falling back to cold.
+      - name: Cache Kotlin/Native toolchain and compiler caches
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
 
       - name: Link Kotlin/Native framework (iOS simulator)
         run: ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
@@ -311,11 +433,23 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           build
 
-      # Riding the one macOS runner this workflow already pays for. packageDmg
-      # cannot run anywhere else — jpackage delegates to the host OS's own
-      # packaging tool (hdiutil/pkgbuild here), so there is no cross-compiling
-      # it from the Linux job above. Until now the DMG was built only by
-      # release.yml's desktop-release job, which triggers on a `v*` tag and has
-      # therefore never run: this repo has zero tags.
-      - name: Package the macOS desktop app
-        run: ./gradlew :app:desktopApp:packageDmg --stacktrace
+      # packageDmg used to run here, riding the macOS runner this job already
+      # pays for. It was costing 2m30s — 25 billed minutes at the 10x macOS
+      # rate, ~275 a month — and nothing consumed what it produced: no step
+      # uploaded the DMG, so it was built and thrown away on every pull request.
+      #
+      # The argument for it was real and is worth keeping in view: jpackage
+      # delegates to the host OS's packaging tools, so a DMG cannot be
+      # cross-compiled from Linux, and release.yml's desktop-release job — which
+      # does build and upload it — is gated on a `v*` tag this repo has never
+      # had. Removing this step therefore does leave DMG packaging unexercised
+      # until the first tag.
+      #
+      # That is accepted rather than overlooked. The exposure is one Gradle task
+      # on a path with no users yet, and it is checkable on demand without
+      # paying for it on every PR:
+      #
+      #   gh workflow run release.yml -R juanjecilla/muviss-kmp
+      #
+      # If the DMG ever needs a standing check, it belongs on the tag path in
+      # release.yml — where the artifact is kept — and not here.
