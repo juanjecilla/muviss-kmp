@@ -322,3 +322,7 @@ widget has been run).
   the rewatch ADR kept 0012 because it owned the number in roughly three times
   as many places. `AGENTS.md` gained the convention that closes the class:
   claim ADR and `.sqm` numbers when the branch opens, not when it merges.
+
+## EPIC 40 — Opt-in automatic sync — wave 11 — issue #86
+
+Depends on EPIC 39 (#85). **Claims ADR 0021** (also claimed on PR #84's copy of this file) and **no schema number**: the `syncAutomatically` column and `syncState` rode EPIC 39's `9.sqm`. Adds a build flag (`SYNC_BACKGROUND_ENABLED`), a per-device switch that defaults off, and the per-platform triggers that make sync happen without a tap, all gated inside `SyncEngine`. Design and the manual verification checklist are on the issue.
