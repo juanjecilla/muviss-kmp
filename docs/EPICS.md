@@ -255,21 +255,23 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 
 **Decisions (2026-09-19).** All five targets ship (Play, App Store, signed DMG/MSI/DEB, web). The repo stays private until ready, then goes public as a release step. Sync ships as a **paid** feature sold through **RevenueCat**; that makes accounts real and drags in account deletion, Sign in with Apple, a privacy rewrite and a Supabase deploy pipeline (EPIC 32). Only a Play Console account exists today.
 
-**Numbers claimed here, before any branch needs them** (`AGENTS.md`): `9.sqm` (schema v10) is EPIC 26's; `10.sqm` (schema v11) is EPIC 28's; `11.sqm` (schema v12) is EPIC 39's, and carries EPIC 40's switch column too; ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's.
+**Schema numbers, as they actually landed** (`AGENTS.md`). The claims made here on 2026-09-19 were overtaken by the order things merged, so this records the outcome rather than the plan: **`9.sqm` (schema v10) is EPIC 39's** — it merged first (#95) and carries `syncCursor`, `syncState` and EPIC 40's `appSettings.syncAutomatically` switch column; `10.sqm` (schema v11) is EPIC 26's (#103); `11.sqm` (schema v12) is EPIC 28's. **EPIC 40 needs no migration of its own** — its column came with EPIC 39's. ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's.
+
+`verifyMigrations` cannot see a collision between branches: each one is self-consistent and green on its own, and the clash only appears at merge. So the number a branch takes is whatever is free when it merges, not when it was written — check this line, not a plan, before adding a `.sqm`.
 
 | Wave | Epic | Issue |
 |---|---|---|
 | 0 | Manual actions only the owner can take (billing, accounts, certs, artwork) | #66 |
 | 10 | EPIC 25 CI that gates again | #67 |
 | 10 | EPIC 26 Crash reporting that reports | #68 |
-| 10 | EPIC 27 Network hardening | #69 |
+| 10 | EPIC 27 Network hardening — **merged 2026-09-20** (#96); follow-ups #89-#94 | #69 |
 | 10 | EPIC 28 Data-layer performance | #70 |
 | 10 | EPIC 38 Repo hygiene and shared test infrastructure | #71 |
 | 11 | EPIC 29 A backup you can restore | #72 |
 | 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes | #73 |
 | 11 | EPIC 31 Localization and accessibility | #74 |
 | 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
-| 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** | #85 |
+| 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
 | 12 | EPIC 33 Brand and store assets, hosted privacy policy | #76 |
 | 12 | EPIC 34 Android to Google Play | #77 |
@@ -302,6 +304,34 @@ Filed as follow-ups rather than epics: desktop auto-update (#82, from EPIC 36) a
 Wave 0 first (nothing else runs without CI). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
 
 Every epic's issue carries its own Testing section by layer and a platform-parity section (`muviss-test-and-platform-bar`): unit, migration, repository or integration, sync, UI (light and dark), performance by operation count, and an explicit note per target.
+
+## The 2026-09-20 merge of the open-PR board
+
+Nine PRs had been open since 2026-09-05 — the whole backlog of #55-#60 plus the
+roadmap and the two epics — because **every check on every one of them was red
+for the same reason**: Actions refuses to start a job while account billing is
+failing (#66). None of those reds was a test failure.
+
+All nine merged that day, reviewed by reading rather than by CI, with local
+runs standing in where they could. What that did and did not buy:
+
+- Merged: #56 (agent worktrees gitignored, #48), #57 (shared `MuvissWidget`
+  scheme, #36), #84 (this roadmap), #58 (`verifyJlinkModules`, #43), #59
+  (desktop menu bar, #41), #60 (the non-persisting tab says so, #53), #55
+  (a tag produces a real GitHub Release, #45), #95 (EPIC 39) and #96 (EPIC 27).
+- Three defects were found by review and fixed on their branches before merge:
+  six unused imports in `MuvissApp.kt` that `spotlessCheck` would have failed
+  on; a `PersistenceStatus` Koin binding declared in a module that never loads
+  on Android, iOS or desktop, which would have crashed the first frame on three
+  targets; and a `BoundedRefreshTest` fake that stopped compiling once EPIC 39
+  split `refreshSnapshot` out of `upsertSnapshot`.
+- The last of those is the shape of the risk this whole exercise carries: it
+  was invisible in either PR alone and only appeared when the two were rebased
+  together. `./gradlew jvmTest` on the final tree passed 2449 tests across 28
+  modules, which is the `build` lane's test step and nothing more.
+- **Still unverified on `main`:** Android Lint, R8, the packaged desktop app,
+  every iOS target, both web targets at runtime, and anything against the live
+  Supabase project. The first real signal arrives when #66 is done.
 
 ## Cross-cutting / backlog
 
