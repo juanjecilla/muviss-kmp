@@ -35,4 +35,5 @@ internal suspend fun HttpResponse.ensureSuccess(what: String) {
 /** Enough to identify a PostgREST/GoTrue error object; these are never large, but a 5xx HTML page can be. */
 private const val ERROR_BODY_LIMIT = 500
 
+internal const val HTTP_BAD_REQUEST = 400
 internal const val HTTP_UNAUTHORIZED = 401

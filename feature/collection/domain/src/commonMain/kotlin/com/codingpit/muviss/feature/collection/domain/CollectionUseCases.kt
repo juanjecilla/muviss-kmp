@@ -22,7 +22,7 @@ class ObserveCollectionEntryUseCase(private val repository: CollectionRepository
     operator fun invoke(mediaId: MediaId): Flow<CollectionEntry?> = repository.observeEntry(mediaId)
 }
 
-/** Saves a title to the library (or refreshes its snapshot if already saved). */
+/** Saves a title to the library. Saving one that is already there just refreshes its provider data. */
 class AddToCollectionUseCase(private val repository: CollectionRepository) {
     suspend operator fun invoke(details: MediaDetails) = repository.upsertSnapshot(details)
 }
@@ -84,8 +84,9 @@ class CollectionToggles(
 }
 
 /**
- * Re-fetches metadata for every saved, non-deleted title and upserts the
- * refreshed snapshot (aired-episode count, production status, poster). Meant
+ * Re-fetches metadata for every saved, non-deleted title and refreshes its
+ * snapshot (aired-episode count, production status, poster) — a local-only
+ * write that is not synced (see [CollectionRepository.refreshSnapshot]). Meant
  * to run on Collection screen entry and as the pull-to-refresh action;
  * best-effort per title — one failure doesn't block the rest.
  *
@@ -107,7 +108,7 @@ class RefreshCollectionSnapshotsUseCase(
             .map { entry ->
                 async {
                     inFlight.withPermit {
-                        snapshotSource.fetch(entry.mediaId).onSuccess { details -> repository.upsertSnapshot(details) }
+                        snapshotSource.fetch(entry.mediaId).onSuccess { details -> repository.refreshSnapshot(details) }
                     }
                 }
             }
@@ -138,7 +139,7 @@ class RefreshAndFindNewEpisodesUseCase(
     suspend operator fun invoke(): List<NewEpisodeNotification> {
         val before = repository.observeAll().first()
         val refreshed = before.mapNotNull { entry ->
-            snapshotSource.fetch(entry.mediaId).getOrNull()?.also { repository.upsertSnapshot(it) }
+            snapshotSource.fetch(entry.mediaId).getOrNull()?.also { repository.refreshSnapshot(it) }
         }
         val mutedMediaIds = before.filter { it.notificationsMuted }.map { it.mediaId }.toSet()
         return NewEpisodesCalculator.diff(before, refreshed, mutedMediaIds, clock.todayEpochDay())

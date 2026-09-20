@@ -16,12 +16,27 @@ interface CollectionRepository {
     fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?>
 
     /**
-     * Upserts the denormalized snapshot for [details]. Merges into any
-     * existing row: re-saving a removed title un-deletes it, and refreshing a
-     * saved title's snapshot preserves its favorite flag and original add
-     * date. Used by both "add to library" and snapshot refresh.
+     * "Add to library": saves the denormalized snapshot for [details] as a user
+     * action. Merges into any existing row — re-saving a removed title
+     * un-deletes it and keeps its favorite flag, rating, note and original add
+     * date. A title that is already in the library is left as it was apart from
+     * a snapshot refresh, since saving it again says nothing new.
+     *
+     * A new or revived entry is a synced write. To keep a saved title's
+     * provider data current, use [refreshSnapshot].
      */
     suspend fun upsertSnapshot(details: MediaDetails)
+
+    /**
+     * Brings a saved title's provider data (poster, title, episode counts,
+     * production status...) up to date — and nothing else. **Not a synced
+     * write**: it does not bump the row's timestamp, mark it dirty or touch a
+     * user field, and it does nothing to a title that is not currently in the
+     * library, so a device that merely looked at a title can neither beat
+     * another device's newer edit nor un-delete something removed elsewhere.
+     * Episode counts are floored at what has already been ticked.
+     */
+    suspend fun refreshSnapshot(details: MediaDetails)
 
     /** Soft-deletes the entry (the row is kept for a future sync change-log). */
     suspend fun remove(mediaId: MediaId)

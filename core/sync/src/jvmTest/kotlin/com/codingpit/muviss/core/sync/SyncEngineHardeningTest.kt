@@ -90,25 +90,26 @@ class SyncEngineHardeningTest {
 
     // --- Pull cursor -----------------------------------------------------
 
+    private fun storedCursors(): Map<String, Long> = database.syncCursorQueries.selectAll().executeAsList().associate { it.tableName to it.seq }
+
     @Test
-    fun the_cursor_follows_the_rows_the_server_returned_not_this_devices_clock() = runTest {
+    fun the_cursor_is_the_backends_position_not_any_clock() = runTest {
         // The writing device's clock is ahead of this one's: its row is
         // stamped 9_000 while this device believes it is 1_000. A cursor taken
-        // from the local clock would sit below the row it just pulled and
-        // re-pull it forever; worse, once the local clock passed 9_000 the
-        // cursor would jump over rows written in between.
+        // from either clock would sit on the wrong side of some row. The cursor
+        // is whatever position the backend said the feed had reached — here the
+        // fake's first sequence value, which has nothing to do with 9_000.
         backend.seedRemoteEpisodePlay(remotePlay(id = "play-a", watchedAt = 9_000L, updatedAt = 9_000L))
 
         engine().syncNow()
 
-        val settings = database.appSettingsQueries.selectSettings().awaitAsOneOrNull()
-        assertEquals(9_000L, settings?.syncCursorEpochMs)
+        assertEquals(mapOf("episodePlay" to 1L), storedCursors())
     }
 
     @Test
     fun the_last_synced_label_still_follows_the_local_clock() = runTest {
-        // The two used to share one column. The cursor has to be server-stamped
-        // and "last synced" has to be local, so they had to be split.
+        // The cursor is the backend's and "last synced" is local, so they are
+        // separate values (they used to share one column).
         backend.seedRemoteEpisodePlay(remotePlay(id = "play-a", watchedAt = 9_000L, updatedAt = 9_000L))
 
         engine().syncNow()
@@ -126,7 +127,7 @@ class SyncEngineHardeningTest {
         engine().syncNow()
 
         val settings = database.appSettingsQueries.selectSettings().awaitAsOneOrNull()
-        assertEquals(9_000L, settings?.syncCursorEpochMs, "nothing new came back, so the high-water mark stands")
+        assertEquals(mapOf("episodePlay" to 1L), storedCursors(), "nothing new came back, so the position stands")
         assertEquals(2_000L, settings?.lastSyncedAtEpochMs, "but a cycle did run, and the label has to say so")
     }
 
@@ -234,6 +235,7 @@ class SyncEngineHardeningTest {
 
     @Test
     fun a_clean_play_is_not_pushed() = runTest {
+        database.alreadyOwnedBy()
         seedDirtyPlay(watchedAt = 500L, isDirty = false)
 
         val outcome = engine().syncNow()

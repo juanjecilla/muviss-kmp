@@ -30,8 +30,9 @@ import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 /**
  * SQLDelight-backed [CollectionRepository] over `CollectionEntry.sq`.
  * [upsertSnapshot] merges into any existing row: re-saving a removed title
- * un-deletes it, and refreshing a saved title's snapshot preserves its
- * favorite flag, rating, note, and original add date.
+ * un-deletes it, and saving a title that is already in the library preserves
+ * its favorite flag, rating, note, and original add date. [refreshSnapshot] is
+ * the provider-data half on its own, and is not a synced write (EPIC 39).
  *
  * [seenEpisodes][CollectionEntry.seenEpisodes] is never stored here — it is
  * joined in reactively from the progress feature via [progressApi] (its
@@ -73,8 +74,13 @@ class SqlDelightCollectionRepository(
     override suspend fun upsertSnapshot(details: MediaDetails) = withContext(dispatchers.io) {
         val id = details.summary.id.toString()
         val existing = queries.selectById(id).awaitAsOneOrNull()
+        // A title that is already in the library changes nothing the user said
+        // by being "saved" again, so it takes the refresh path and is not synced.
+        if (existing != null && !existing.deleted) {
+            updateSnapshot(id, details)
+            return@withContext
+        }
         val now = clock.nowEpochMs()
-        val todayEpochDay = clock.todayEpochDay()
         queries.upsert(
             mediaId = id,
             mediaType = details.type.wireName,
@@ -83,11 +89,12 @@ class SqlDelightCollectionRepository(
             releaseYear = details.summary.year?.toLong(),
             productionStatus = details.productionStatus.name,
             totalEpisodes = details.totalEpisodeCount().toLong(),
-            airedEpisodes = details.airedEpisodeCount(todayEpochDay).toLong(),
+            airedEpisodes = details.airedEpisodeCount(clock.todayEpochDay()).toLong(),
             favorite = existing?.favorite ?: false,
             genres = details.genres.joinToString(","),
             runtimeMinutes = details.estimatedRuntimeMinutes()?.toLong(),
             addedAtEpochMs = existing?.addedAtEpochMs ?: now,
+            // A genuine user action — a new title, or a removed one added back — so it is stamped and synced.
             updatedAtEpochMs = now,
             isDirty = true,
             deleted = false,
@@ -96,6 +103,30 @@ class SqlDelightCollectionRepository(
             note = existing?.note,
         )
         Unit
+    }
+
+    override suspend fun refreshSnapshot(details: MediaDetails) = withContext(dispatchers.io) {
+        updateSnapshot(details.summary.id.toString(), details)
+    }
+
+    /**
+     * Writes only what the provider said, to a row that is live. The row's stamp
+     * and dirty flag are deliberately left alone (see `updateSnapshot` in
+     * `CollectionEntry.sq`): a refresh is not a user edit and must not compete
+     * with one in last-write-wins.
+     */
+    private suspend fun updateSnapshot(id: String, details: MediaDetails) {
+        queries.updateSnapshot(
+            title = details.summary.title,
+            posterUrl = details.summary.posterUrl,
+            releaseYear = details.summary.year?.toLong(),
+            productionStatus = details.productionStatus.name,
+            totalEpisodes = details.totalEpisodeCount().toLong(),
+            airedEpisodes = details.airedEpisodeCount(clock.todayEpochDay()).toLong(),
+            genres = details.genres.joinToString(","),
+            runtimeMinutes = details.estimatedRuntimeMinutes()?.toLong(),
+            mediaId = id,
+        )
     }
 
     override suspend fun remove(mediaId: MediaId) = withContext(dispatchers.io) {

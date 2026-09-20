@@ -1,12 +1,23 @@
 package com.codingpit.muviss.core.sync.supabase
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.sync.CollectionEntryChange
+import com.codingpit.muviss.core.sync.EpisodePlayChange
+import com.codingpit.muviss.core.sync.EpisodeProgressChange
+import com.codingpit.muviss.core.sync.ListEntryChange
+import com.codingpit.muviss.core.sync.MediaListChange
 import com.codingpit.muviss.core.sync.OAuthProvider
+import com.codingpit.muviss.core.sync.PULL_PAGE_ROWS
+import com.codingpit.muviss.core.sync.PUSH_CHUNK_ROWS
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
+import com.codingpit.muviss.core.sync.SyncCursor
+import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionStore
+import com.codingpit.muviss.core.sync.SyncTable
+import com.codingpit.muviss.core.sync.TriageDecisionChange
 import com.codingpit.muviss.core.sync.newPkcePair
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +26,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.KSerializer
 
 /**
  * Supabase implementation of [SyncBackend]: Ktor against PostgREST +
@@ -87,27 +99,71 @@ internal class SupabaseSyncBackend(
         sessionStore.clear()
     }
 
+    /**
+     * Parents before children, and at most [PUSH_CHUNK_ROWS] rows per request.
+     * Each request refreshes and retries on its own (see [withAccessToken]) —
+     * retrying the whole push after a 401 on chunk seven would re-send the six
+     * that already landed.
+     */
     override suspend fun push(changes: SyncChangeSet): Result<Unit> = runCatching {
-        withAccessToken { token ->
-            postgrest.upsert(TABLE_COLLECTION_ENTRY, token, changes.collectionEntries)
-            postgrest.upsert(TABLE_EPISODE_PROGRESS, token, changes.episodeProgress)
-            postgrest.upsert(TABLE_MEDIA_LIST, token, changes.mediaLists)
-            postgrest.upsert(TABLE_LIST_ENTRY, token, changes.listEntries)
-            postgrest.upsert(TABLE_TRIAGE_DECISION, token, changes.triageDecisions)
-            postgrest.upsert(TABLE_EPISODE_PLAY, token, changes.episodePlays)
+        pushRows(TABLE_COLLECTION_ENTRY, changes.collectionEntries, CollectionEntryChange.serializer())
+        pushRows(TABLE_EPISODE_PROGRESS, changes.episodeProgress, EpisodeProgressChange.serializer())
+        pushRows(TABLE_MEDIA_LIST, changes.mediaLists, MediaListChange.serializer())
+        pushRows(TABLE_LIST_ENTRY, changes.listEntries, ListEntryChange.serializer())
+        pushRows(TABLE_TRIAGE_DECISION, changes.triageDecisions, TriageDecisionChange.serializer())
+        pushRows(TABLE_EPISODE_PLAY, changes.episodePlays, EpisodePlayChange.serializer())
+    }
+
+    private suspend fun <T> pushRows(table: String, rows: List<T>, serializer: KSerializer<T>) {
+        rows.chunked(PUSH_CHUNK_ROWS).forEach { chunk ->
+            withAccessToken { token -> postgrest.upsert(table, token, chunk, serializer) }
         }
     }
 
-    override suspend fun pull(sinceEpochMs: Long?): Result<SyncChangeSet> = runCatching {
-        withAccessToken { token ->
-            SyncChangeSet(
-                collectionEntries = postgrest.selectSince(TABLE_COLLECTION_ENTRY, token, sinceEpochMs),
-                episodeProgress = postgrest.selectSince(TABLE_EPISODE_PROGRESS, token, sinceEpochMs),
-                mediaLists = postgrest.selectSince(TABLE_MEDIA_LIST, token, sinceEpochMs),
-                listEntries = postgrest.selectSince(TABLE_LIST_ENTRY, token, sinceEpochMs),
-                triageDecisions = postgrest.selectSince(TABLE_TRIAGE_DECISION, token, sinceEpochMs),
-                episodePlays = postgrest.selectSince(TABLE_EPISODE_PLAY, token, sinceEpochMs),
-            )
+    override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit> = runCatching {
+        for (table in SyncTable.entries) {
+            val start = after[table]?.position ?: 0L
+            when (table) {
+                SyncTable.COLLECTION_ENTRY -> drain(RemoteTable(table, TABLE_COLLECTION_ENTRY, CollectionEntryChange.serializer()) { SyncChangeSet(collectionEntries = it) }, start, onPage)
+                SyncTable.EPISODE_PROGRESS -> drain(RemoteTable(table, TABLE_EPISODE_PROGRESS, EpisodeProgressChange.serializer()) { SyncChangeSet(episodeProgress = it) }, start, onPage)
+                SyncTable.MEDIA_LIST -> drain(RemoteTable(table, TABLE_MEDIA_LIST, MediaListChange.serializer()) { SyncChangeSet(mediaLists = it) }, start, onPage)
+                SyncTable.LIST_ENTRY -> drain(RemoteTable(table, TABLE_LIST_ENTRY, ListEntryChange.serializer()) { SyncChangeSet(listEntries = it) }, start, onPage)
+                SyncTable.TRIAGE_DECISION -> drain(RemoteTable(table, TABLE_TRIAGE_DECISION, TriageDecisionChange.serializer()) { SyncChangeSet(triageDecisions = it) }, start, onPage)
+                SyncTable.EPISODE_PLAY -> drain(RemoteTable(table, TABLE_EPISODE_PLAY, EpisodePlayChange.serializer()) { SyncChangeSet(episodePlays = it) }, start, onPage)
+            }
+        }
+    }
+
+    /** One synced table as this backend addresses it: its seam name, its PostgREST name, and how its rows decode and wrap into a [SyncChangeSet]. */
+    private class RemoteTable<T>(
+        val table: SyncTable,
+        val remoteName: String,
+        val serializer: KSerializer<T>,
+        val wrap: (List<T>) -> SyncChangeSet,
+    )
+
+    /**
+     * Pages through one table by `server_seq` until a page comes back **empty**.
+     *
+     * Not until one comes back short: Supabase's `max_rows` cuts a response
+     * silently, at a value this client cannot know, so a page smaller than
+     * [PULL_PAGE_ROWS] is as likely to mean "capped" as "finished". Stopping on
+     * a short page would silently drop everything past the cap. It costs one
+     * extra, empty request per table per sync.
+     *
+     * The order is verified rather than trusted: a server that ignored `order`
+     * would hand back an arbitrary subset, and taking its highest `server_seq`
+     * as the cursor would skip the rest for good.
+     */
+    private suspend fun <T> drain(remote: RemoteTable<T>, start: Long, onPage: suspend (SyncPage) -> Unit) {
+        var position = start
+        while (true) {
+            val rows = withAccessToken { token -> postgrest.selectPage(remote.remoteName, token, position, PULL_PAGE_ROWS, remote.serializer) }
+            if (rows.isEmpty()) return
+            val ascending = rows.zipWithNext().all { (previous, next) -> previous.serverSeq < next.serverSeq }
+            check(ascending && rows.first().serverSeq > position) { "${remote.remoteName} was not returned in ascending server_seq order past $position" }
+            position = rows.last().serverSeq
+            onPage(SyncPage(remote.table, remote.wrap(rows.map { it.value }), SyncCursor(position)))
         }
     }
 
@@ -150,11 +206,16 @@ internal class SupabaseSyncBackend(
     }
 
     /**
-     * A failed refresh clears the session rather than leaving a dead one in
-     * place: the refresh token is single-use and GoTrue has already
-     * invalidated it, so every later attempt would fail the same way. Dropping
-     * to signed-out puts the profile screen back on the sign-in button, which
-     * is the only thing that can actually recover.
+     * A refresh that GoTrue *rejects* clears the session: the refresh token is
+     * single-use and already invalidated, so every later attempt would fail the
+     * same way, and dropping to signed-out puts the sign-in button back, which
+     * is the only thing that can recover.
+     *
+     * A refresh that merely *fails* does not. A dropped connection, a timeout
+     * or a 5xx says nothing about the token, and signing the user out for it
+     * turned every stretch offline into a forced re-login — the more often
+     * sync runs unattended, the more often that would have fired. The session
+     * stays, the error propagates, and the next attempt tries again.
      */
     private suspend fun refreshSession(): SyncSession = refreshMutex.withLock {
         ensureRestored()
@@ -167,14 +228,19 @@ internal class SupabaseSyncBackend(
             clearSession()
             error("Sync session expired and carries no refresh token; sign in again")
         }
-        val refreshed = runCatching { auth.refreshSession(refreshToken).toSession() }
-            .getOrElse { failure ->
-                clearSession()
-                throw failure
-            }
+        val refreshed = try {
+            auth.refreshSession(refreshToken).toSession()
+        } catch (rejected: SupabaseHttpException) {
+            // Anything else — a dropped connection, a timeout, a cancellation —
+            // is not caught here and leaves the session alone.
+            if (rejected.isAuthRejection()) clearSession()
+            throw rejected
+        }
         persist(refreshed)
         refreshed
     }
+
+    private fun SupabaseHttpException.isAuthRejection(): Boolean = status == HTTP_BAD_REQUEST || status == HTTP_UNAUTHORIZED
 
     private suspend fun clearSession() {
         sessionState.value = null
