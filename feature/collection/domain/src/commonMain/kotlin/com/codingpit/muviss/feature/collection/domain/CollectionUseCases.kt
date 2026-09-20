@@ -1,16 +1,13 @@
 package com.codingpit.muviss.feature.collection.domain
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.concurrency.REFRESH_CONCURRENCY
+import com.codingpit.muviss.core.common.concurrency.mapBounded
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 
 /** Observes the full saved library, newest first. */
 class ObserveCollectionUseCase(private val repository: CollectionRepository) {
@@ -90,43 +87,31 @@ class CollectionToggles(
  * to run on Collection screen entry and as the pull-to-refresh action;
  * best-effort per title — one failure doesn't block the rest.
  *
- * Titles are refreshed [concurrency] at a time rather than one after another.
- * A TV title costs one request per season on top of the show itself, so a
- * serial walk over a twenty-show library is easily a couple of hundred
- * round-trips in a row — long enough that the pull-to-refresh spinner reads
- * as hung. The limit is small on purpose: TMDB rate-limits, and the point is
- * to overlap latency, not to flood.
+ * Titles are refreshed [concurrency] at a time rather than one after another,
+ * so the pull-to-refresh spinner does not read as hung on a large library. The
+ * limit is small on purpose: TMDB rate-limits, and the point is to overlap
+ * latency, not to flood.
  */
 class RefreshCollectionSnapshotsUseCase(
     private val repository: CollectionRepository,
     private val snapshotSource: MediaSnapshotSource,
-    private val concurrency: Int = DEFAULT_CONCURRENCY,
+    private val concurrency: Int = REFRESH_CONCURRENCY,
 ) {
-    suspend operator fun invoke() = coroutineScope {
-        val inFlight = Semaphore(concurrency)
-        repository.observeAll().first()
-            .map { entry ->
-                async {
-                    inFlight.withPermit {
-                        snapshotSource.fetch(entry.mediaId).onSuccess { details -> repository.refreshSnapshot(details) }
-                    }
-                }
-            }
-            .awaitAll()
-        Unit
-    }
-
-    private companion object {
-        const val DEFAULT_CONCURRENCY = 4
+    suspend operator fun invoke() {
+        repository.observeAll().first().mapBounded(concurrency) { entry ->
+            snapshotSource.fetch(entry.mediaId).onSuccess { details -> repository.refreshSnapshot(details) }
+        }
     }
 }
 
 /**
  * The refresh path EPIC 5's Android background worker drives: re-fetches
- * every saved title exactly like [RefreshCollectionSnapshotsUseCase] (and
- * upserts the same way, so the Collection screen reflects the new snapshot
- * too), but also runs [NewEpisodesCalculator] over the before/after state so
- * the caller learns which shows got new episodes. Muted shows
+ * every saved title exactly like [RefreshCollectionSnapshotsUseCase] (through
+ * the same local-only [CollectionRepository.refreshSnapshot], so the Collection
+ * screen reflects the new snapshot without the refresh counting as a synced
+ * edit), [concurrency] titles at a time rather than one by one, but also runs
+ * [NewEpisodesCalculator] over the before/after state so the caller learns
+ * which shows got new episodes. Muted shows
  * ([CollectionEntry.notificationsMuted]) are excluded here — the global
  * settings toggle is a separate concern the worker checks before calling
  * this at all.
@@ -135,12 +120,13 @@ class RefreshAndFindNewEpisodesUseCase(
     private val repository: CollectionRepository,
     private val snapshotSource: MediaSnapshotSource,
     private val clock: AppClock,
+    private val concurrency: Int = REFRESH_CONCURRENCY,
 ) {
     suspend operator fun invoke(): List<NewEpisodeNotification> {
         val before = repository.observeAll().first()
-        val refreshed = before.mapNotNull { entry ->
+        val refreshed = before.mapBounded(concurrency) { entry ->
             snapshotSource.fetch(entry.mediaId).getOrNull()?.also { repository.refreshSnapshot(it) }
-        }
+        }.filterNotNull()
         val mutedMediaIds = before.filter { it.notificationsMuted }.map { it.mediaId }.toSet()
         return NewEpisodesCalculator.diff(before, refreshed, mutedMediaIds, clock.todayEpochDay())
     }

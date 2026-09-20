@@ -13,6 +13,7 @@ import com.codingpit.muviss.feature.profile.domain.SyncActions
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,7 +79,7 @@ class ProfileViewModel(
 
     init {
         combine(observeProfile(), observeProfileStats()) { profile, stats -> profile to stats }
-            .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { (profile, stats) -> _state.update { it.copy(loading = false, profile = profile, stats = stats, error = null) } }
             .launchIn(viewModelScope)
 
@@ -148,7 +149,7 @@ class ProfileViewModel(
                     sync = it.sync.copy(
                         syncing = false,
                         pendingAuthUrl = result.getOrNull(),
-                        message = result.exceptionOrNull()?.let { e -> e.message ?: "Couldn't start sign-in" },
+                        message = result.exceptionOrNull()?.let { e -> e.toUserMessage("Couldn't start sign-in") },
                     ),
                 )
             }
@@ -188,12 +189,15 @@ class ProfileViewModel(
 
             is SyncOutcomeSummary.Success -> "Synced"
 
-            is SyncOutcomeSummary.Failed -> outcome.message
+            // The outcome's own text is the sync backend's (an HTTP status and
+            // a response body), which is diagnostics, not copy for a person.
+            is SyncOutcomeSummary.Failed -> SYNC_FAILED
         }
         _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
     }
 
     private companion object {
         const val DEFAULT_ERROR = "Something went wrong"
+        const val SYNC_FAILED = "Couldn't sync. Try again in a moment."
     }
 }

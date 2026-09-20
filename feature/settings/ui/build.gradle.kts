@@ -9,6 +9,7 @@ kotlin {
             implementation(projects.feature.settings.domain)
             implementation(projects.core.common)
             implementation(projects.core.designsystem)
+            implementation(projects.models)
             implementation(libs.navigation.compose)
             implementation(libs.kotlinx.serializationJson)
             implementation(libs.kotlinx.coroutinesCore)

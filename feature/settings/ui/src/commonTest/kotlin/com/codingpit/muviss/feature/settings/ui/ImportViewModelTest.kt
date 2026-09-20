@@ -131,7 +131,8 @@ class ImportViewModelTest {
         advanceUntilIdle()
 
         assertIs<ImportStep.PickFile>(vm.state.value.step)
-        assertTrue(vm.state.value.error != null)
+        // Domain-authored copy for a file problem is the one exception message a screen may show.
+        assertTrue(vm.state.value.error.orEmpty().startsWith("Unrecognized import file"))
     }
 
     @Test

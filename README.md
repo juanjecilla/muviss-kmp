@@ -15,10 +15,14 @@ Vertical slice per feature, each split into `:api` / `:domain` / `:data` / `:ui`
 
 ## Getting started
 
-1. **TMDB key** — get a v3 API key from https://www.themoviedb.org/settings/api and add it to `local.properties` (gitignored):
+1. **TMDB credentials** — from https://www.themoviedb.org/settings/api, add to `local.properties` (gitignored). Either works; set both if you have both:
    ```properties
-   TMDB_API_KEY=your_key_here
+   # v4 "API Read Access Token" — preferred. Sent as `Authorization: Bearer`, so it never appears in a URL.
+   TMDB_READ_TOKEN=your_v4_token_here
+   # v3 API key — the fallback when no read token is set. Sent as the `api_key` query parameter.
+   TMDB_API_KEY=your_v3_key_here
    ```
+   Both are baked into the binary (ADR 0007), and both can also come from same-named environment variables.
 2. **Enable the pre-commit hook** (once per clone):
    ```bash
    git config core.hooksPath .githooks

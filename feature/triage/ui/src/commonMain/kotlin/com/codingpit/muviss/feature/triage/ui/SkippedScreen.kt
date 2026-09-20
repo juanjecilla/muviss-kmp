@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.models.MediaId
@@ -68,6 +69,7 @@ fun SkippedScreen(
                             url = skipped.posterUrl,
                             title = skipped.title,
                             modifier = Modifier.width(POSTER_WIDTH).height(POSTER_HEIGHT),
+                            size = PosterSize.Thumbnail,
                         )
                         Text(
                             text = skipped.title,

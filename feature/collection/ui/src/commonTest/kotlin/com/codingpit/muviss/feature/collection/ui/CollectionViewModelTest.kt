@@ -218,6 +218,7 @@ class CollectionViewModelTest {
         advanceUntilIdle()
 
         assertNotNull(vm.state.value.message, "a silent failure leaves the user with a stale library and no explanation")
+        assertEquals("Couldn't refresh your library", vm.state.value.message, "the thrown text (\"network down\") is never shown")
 
         vm.consumeMessage()
         assertEquals(null, vm.state.value.message)

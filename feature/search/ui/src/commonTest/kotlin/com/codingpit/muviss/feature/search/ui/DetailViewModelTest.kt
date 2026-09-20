@@ -24,6 +24,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
@@ -52,10 +53,11 @@ private class FakeDetailRepo(
     private val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
     private val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     private val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
+    private val detailsFailure: Throwable? = null,
 ) : SearchRepository {
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
-    override suspend fun details(id: MediaId) = Result.success(details)
+    override suspend fun details(id: MediaId) = detailsFailure?.let { Result.failure<MediaDetails>(it) } ?: Result.success(details)
     override suspend fun discover(type: MediaType, page: Int, genreId: String?) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
     override suspend fun watchProviders(id: MediaId) = watchProviders
@@ -70,6 +72,7 @@ private data class DetailRepoFakes(
     val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
     val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
+    val detailsFailure: Throwable? = null,
 )
 
 private class FakeCollectionApi : CollectionApi {
@@ -245,7 +248,7 @@ class DetailViewModelTest {
         id: MediaId = mediaId,
         repoFakes: DetailRepoFakes = DetailRepoFakes(),
     ): DetailViewModel {
-        val repo = FakeDetailRepo(detailsToLoad, repoFakes.watchProviders, repoFakes.recommendations, repoFakes.similar)
+        val repo = FakeDetailRepo(detailsToLoad, repoFakes.watchProviders, repoFakes.recommendations, repoFakes.similar, repoFakes.detailsFailure)
         return DetailViewModel(
             id,
             MediaDetailUseCase(repo),
@@ -255,6 +258,23 @@ class DetailViewModelTest {
             // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
             TestClock(todayEpochMs = 20L * 86_400_000L),
         )
+    }
+
+    @Test
+    fun a_failed_load_shows_mapped_copy_for_a_metadata_error() = runTest {
+        val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = MetadataError.RateLimited(retryAfterSeconds = 12)))
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+    }
+
+    @Test
+    fun a_failed_load_never_shows_a_raw_exception_message() = runTest {
+        val leaky = IllegalStateException("Fields [id, title] are required for type MediaDetails; url=https://x?api_key=SECRET")
+        val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = leaky))
+        advanceUntilIdle()
+
+        assertEquals("Something went wrong", vm.state.value.error)
     }
 
     @Test

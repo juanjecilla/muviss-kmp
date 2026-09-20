@@ -10,6 +10,7 @@ import com.codingpit.muviss.feature.collection.domain.ToggleFavoriteUseCase
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.WatchStatus
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,7 +112,7 @@ class CollectionViewModel(
 
     init {
         observeCollection()
-            .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { entries -> _state.update { it.copy(loading = false, entries = entries, error = null) } }
             .launchIn(viewModelScope)
         // Automatic, so it defers to the throttle; an explicit pull does not.
@@ -150,7 +151,7 @@ class CollectionViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                _state.update { it.copy(message = e.message ?: REFRESH_FAILED) }
+                _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) }
             } finally {
                 _state.update { it.copy(refreshing = false) }
             }

@@ -286,7 +286,7 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         assertNull(vm.state.value.sync.pendingAuthUrl)
-        assertEquals("Provider not enabled", vm.state.value.sync.message)
+        assertEquals("Couldn't start sign-in", vm.state.value.sync.message)
     }
 
     @Test

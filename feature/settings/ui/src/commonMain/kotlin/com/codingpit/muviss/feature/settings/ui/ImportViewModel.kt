@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
+import com.codingpit.muviss.feature.settings.domain.ImportFileException
 import com.codingpit.muviss.feature.settings.domain.ImportPreview
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,7 +62,7 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
                     lastPreview = preview
                     _state.update { it.copy(step = ImportStep.Preview(fileName, preview), error = null) }
                 },
-                onFailure = { e -> _state.update { ImportUiState(error = e.message ?: DEFAULT_ERROR) } },
+                onFailure = { e -> _state.update { ImportUiState(error = e.importErrorMessage()) } },
             )
         }
     }
@@ -88,6 +90,8 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
         lastPreview = null
         _state.update { ImportUiState() }
     }
+
+    private fun Throwable.importErrorMessage(): String = if (this is ImportFileException) message ?: DEFAULT_ERROR else toUserMessage(DEFAULT_ERROR)
 
     private companion object {
         const val DEFAULT_ERROR = "Something went wrong reading that file"

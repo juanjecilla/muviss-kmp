@@ -7,6 +7,7 @@ import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -83,7 +84,7 @@ class TriageViewModelTest {
     @Test
     fun `a failed commit surfaces a retryable error and keeps the decision`() = runTest {
         val harness = TriageHarness(movies = listOf(filmA, filmB))
-        harness.details.failure = IllegalStateException("offline")
+        harness.details.failure = MetadataError.Offline()
         val vm = harness.viewModel()
         advanceUntilIdle()
 
@@ -92,7 +93,7 @@ class TriageViewModelTest {
 
         val failed = assertNotNull(vm.state.value.failedCommit)
         assertEquals(filmA.id, failed.summary.id)
-        assertEquals("offline", failed.message)
+        assertEquals(MetadataError.Offline().userMessage, failed.message)
         assertFalse(harness.repository.decisions.value.getValue(filmA.id).resolved)
     }
 
@@ -328,11 +329,12 @@ class TriageViewModelTest {
     @Test
     fun `a load failure surfaces as a retryable error`() = runTest {
         val harness = TriageHarness(movies = listOf(filmA))
-        harness.source.failure = IllegalStateException("no network")
+        harness.source.failure = IllegalStateException("Unable to resolve host api.themoviedb.org?api_key=SECRET")
         val vm = harness.viewModel()
         advanceUntilIdle()
 
-        assertEquals("no network", vm.state.value.error)
+        // The raw text is discarded; a screen only ever gets fixed copy.
+        assertEquals("Couldn't load more titles.", vm.state.value.error)
 
         harness.source.failure = null
         vm.retry()

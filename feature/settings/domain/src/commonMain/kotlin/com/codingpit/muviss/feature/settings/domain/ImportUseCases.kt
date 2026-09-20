@@ -5,12 +5,20 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.first
 
 /** `(done, total)` progress callback shape shared by [PreviewImportUseCase] and [ApplyImportUseCase] — both loop over one row/title per network call. */
 typealias ImportProgressListener = suspend (done: Int, total: Int) -> Unit
 
 private val NO_PROGRESS: ImportProgressListener = { _, _ -> }
+
+/**
+ * The picked file cannot be imported, for a reason worth telling the person.
+ * [message] is written as user-facing copy (unlike an arbitrary exception's,
+ * which the settings screens never show), so the view model may display it.
+ */
+class ImportFileException(message: String) : Exception(message)
 
 /**
  * Parses a picked file (auto-detecting its [ImportSource]) and resolves every
@@ -25,9 +33,9 @@ class PreviewImportUseCase(
 ) {
     suspend operator fun invoke(content: String, onProgress: ImportProgressListener = NO_PROGRESS): ImportPreview {
         val source = ImportFormatDetector.detect(content)
-            ?: error("Unrecognized import file — not JSON, and its header doesn't match a supported CSV format")
+            ?: throw ImportFileException("Unrecognized import file — not JSON, and its header doesn't match a supported CSV format")
         val parser = parsers.firstOrNull { it.source == source }
-            ?: error("No parser registered for $source")
+            ?: throw ImportFileException("No importer is available for $source files")
         val payload = parser.parse(content)
 
         val resolved = mutableListOf<ResolvedImportTitle>()
@@ -88,7 +96,7 @@ class ApplyImportUseCase(
                     tickCount += applyProgress(resolved, details)
                     applyRating(resolved)
                 },
-                onFailure = { e -> failed += FailedImportTitle(resolved, e.message ?: "Unknown error") },
+                onFailure = { e -> failed += FailedImportTitle(resolved, e.toUserMessage("Unknown error")) },
             )
             onProgress(index + 1, preview.resolved.size)
         }

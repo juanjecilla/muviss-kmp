@@ -162,7 +162,7 @@ class PreviewImportUseCaseTest {
 
     @Test
     fun unrecognized_content_throws() = runTest {
-        assertFailsWith<IllegalStateException> { useCase().invoke("not a recognized format at all") }
+        assertFailsWith<ImportFileException> { useCase().invoke("not a recognized format at all") }
     }
 }
 

@@ -83,7 +83,7 @@ fun EpisodeRow(
                 .clip(MaterialTheme.shapes.extraSmall)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         ) {
-            PosterImage(url = stillUrl, title = "", modifier = Modifier)
+            PosterImage(url = stillUrl, title = "", modifier = Modifier, size = PosterSize.Thumbnail)
         }
         Column(Modifier.weight(1f).padding(horizontal = 11.dp)) {
             Text(

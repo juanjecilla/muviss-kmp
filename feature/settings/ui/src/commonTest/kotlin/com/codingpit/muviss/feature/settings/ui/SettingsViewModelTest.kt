@@ -174,7 +174,7 @@ class SettingsViewModelTest {
         advanceUntilIdle()
 
         assertNull(vm.state.value.exportJson)
-        assertEquals("disk full", vm.state.value.exportError)
+        assertEquals("Something went wrong", vm.state.value.exportError)
     }
 }
 

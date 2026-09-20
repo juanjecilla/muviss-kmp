@@ -21,11 +21,13 @@ import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -40,10 +42,10 @@ import kotlin.test.assertEquals
 
 private fun summary(id: MediaId, title: String = id.toString(), status: WatchStatus = WatchStatus.WATCHING) = CollectionSummary(id, title, posterUrl = null, status = status)
 
-private class FakeCollectionApi(summaries: List<CollectionSummary>) : CollectionApi {
+private class FakeCollectionApi(summaries: List<CollectionSummary>, private val failure: Throwable? = null) : CollectionApi {
     val flow = MutableStateFlow(summaries)
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
-    override fun observeSummaries(): Flow<List<CollectionSummary>> = flow
+    override fun observeSummaries(): Flow<List<CollectionSummary>> = failure?.let { flow { throw it } } ?: flow
     override suspend fun add(details: MediaDetails) = error("not used")
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
@@ -161,6 +163,25 @@ class ProgressViewModelTest {
             cache,
         )
         return vm to cache
+    }
+
+    @Test
+    fun a_failing_pipeline_shows_mapped_copy_not_the_exception_text() = runTest {
+        val (vm, _) = viewModel(
+            FakeCollectionApi(emptyList(), failure = IllegalStateException("Timeout for https://x?api_key=SECRET")),
+            FakeProgressRepository(),
+        )
+        advanceUntilIdle()
+
+        assertEquals("Something went wrong", vm.state.value.error)
+    }
+
+    @Test
+    fun a_metadata_error_in_the_pipeline_shows_its_copy() = runTest {
+        val (vm, _) = viewModel(FakeCollectionApi(emptyList(), failure = MetadataError.Offline()), FakeProgressRepository())
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
     }
 
     @Test

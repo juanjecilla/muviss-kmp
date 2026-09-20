@@ -19,6 +19,7 @@ import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -199,7 +200,7 @@ class TriageViewModel(
         viewModelScope.launch {
             actions.record(summary, verdict).onFailure { error ->
                 _state.update { current ->
-                    current.copy(failedCommit = FailedCommit(summary, verdict, error.message ?: COMMIT_FAILED))
+                    current.copy(failedCommit = FailedCommit(summary, verdict, error.toUserMessage(COMMIT_FAILED)))
                 }
             }
         }
@@ -230,7 +231,7 @@ class TriageViewModel(
         _state.update { it.copy(failedCommit = null) }
         viewModelScope.launch {
             actions.record(failed.summary, failed.verdict).onFailure { error ->
-                _state.update { it.copy(failedCommit = failed.copy(message = error.message ?: COMMIT_FAILED)) }
+                _state.update { it.copy(failedCommit = failed.copy(message = error.toUserMessage(COMMIT_FAILED))) }
             }
         }
     }
@@ -286,7 +287,7 @@ class TriageViewModel(
                 },
                 onFailure = { error ->
                     _state.update {
-                        it.copy(loading = false, refilling = false, error = error.message ?: LOAD_FAILED)
+                        it.copy(loading = false, refilling = false, error = error.toUserMessage(LOAD_FAILED))
                     }
                 },
             )

@@ -31,9 +31,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
-import coil3.ImageLoader
 import coil3.SingletonImageLoader
-import coil3.network.ktor3.KtorNetworkFetcherFactory
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
@@ -328,10 +326,5 @@ private fun rememberPersistenceWarning(): String? {
 }
 
 private fun configureImageLoader() {
-    SingletonImageLoader.setSafe { context ->
-        ImageLoader
-            .Builder(context)
-            .components { add(KtorNetworkFetcherFactory()) }
-            .build()
-    }
+    SingletonImageLoader.setSafe { context -> createImageLoader(context) }
 }

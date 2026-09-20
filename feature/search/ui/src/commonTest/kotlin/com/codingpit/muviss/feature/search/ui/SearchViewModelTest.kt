@@ -18,6 +18,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
@@ -87,13 +88,36 @@ class SearchViewModelTest {
 
     @Test
     fun discover_failure_surfaces_error() = runTest {
-        val vm = viewModel(FakeRepo(movieGenresResult = Result.failure(RuntimeException("net"))))
+        val vm = viewModel(FakeRepo(movieGenresResult = Result.failure(MetadataError.Offline())))
         vm.state.test {
             var current = awaitItem()
             while (current.error == null) current = awaitItem()
-            assertEquals("net", current.error)
+            assertEquals(MetadataError.Offline().userMessage, current.error)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun a_raw_exception_message_never_reaches_the_screen() = runTest {
+        val leaky = RuntimeException("Request timeout has expired [url=https://api.themoviedb.org/3/search/multi?api_key=SECRET]")
+        val vm = viewModel(FakeRepo(movieGenresResult = Result.failure(leaky)))
+        vm.state.test {
+            var current = awaitItem()
+            while (current.error == null) current = awaitItem()
+            assertEquals("Something went wrong", current.error)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun a_rate_limit_shows_its_own_copy_on_search() = runTest {
+        val vm = viewModel(FakeRepo(searchResult = { Result.failure(MetadataError.RateLimited(retryAfterSeconds = 30)) }))
+        advanceUntilIdle()
+
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
     }
 
     @Test

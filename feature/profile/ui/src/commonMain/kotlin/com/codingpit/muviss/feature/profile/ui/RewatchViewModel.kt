@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.feature.profile.domain.ObserveRewatchStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.RewatchStats
 import com.codingpit.muviss.feature.profile.domain.RewatchWindow
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +43,7 @@ class RewatchViewModel(
         window
             .flatMapLatest { observeRewatchStats(it) }
             .onEach { stats -> _state.update { it.copy(loading = false, stats = stats, error = null) } }
-            .catch { error -> _state.update { it.copy(loading = false, error = error.message ?: "Could not load rewatches") } }
+            .catch { error -> _state.update { it.copy(loading = false, error = error.toUserMessage("Could not load rewatches")) } }
             .launchIn(viewModelScope)
     }
 

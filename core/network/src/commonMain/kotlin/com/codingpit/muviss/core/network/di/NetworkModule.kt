@@ -21,6 +21,6 @@ import org.koin.dsl.module
  */
 val networkModule: Module = module {
     single { createHttpClient(enableLogging = false) }
-    single<MetadataProvider> { TmdbProvider(get(), locale = get()) }
+    single<MetadataProvider> { TmdbProvider(get(), get()) }
     single { MetadataProviderRegistry(getAll<MetadataProvider>()) }
 }
