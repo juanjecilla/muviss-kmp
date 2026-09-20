@@ -43,12 +43,17 @@ class BoundedRefreshTest {
 
     private class Repository(entries: List<CollectionEntry>) : CollectionRepository {
         private val state = MutableStateFlow(entries)
-        var upserts = 0
+        var snapshotWrites = 0
 
         override fun observeAll(): Flow<List<CollectionEntry>> = state
         override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = error("not used")
-        override suspend fun upsertSnapshot(details: MediaDetails) {
-            upserts++
+        override suspend fun upsertSnapshot(details: MediaDetails) = error("the refresh paths write through refreshSnapshot")
+
+        // Both refresh use cases go through this rather than `upsertSnapshot`:
+        // a snapshot refresh is a local-only write and must not be synced
+        // (EPIC 39, #85). Counting it here is what keeps that true.
+        override suspend fun refreshSnapshot(details: MediaDetails) {
+            snapshotWrites++
         }
 
         override suspend fun remove(mediaId: MediaId) = error("not used")
@@ -81,7 +86,7 @@ class BoundedRefreshTest {
 
         assertEquals(100, source.fetches)
         assertEquals(REFRESH_CONCURRENCY, source.peak)
-        assertEquals(100, repository.upserts)
+        assertEquals(100, repository.snapshotWrites)
     }
 
     @Test
@@ -99,7 +104,7 @@ class BoundedRefreshTest {
 
         assertEquals(100, source.fetches)
         assertEquals(REFRESH_CONCURRENCY, source.peak, "one at a time before EPIC 27, and never more than the shared cap")
-        assertEquals(100, repository.upserts)
+        assertEquals(100, repository.snapshotWrites)
     }
 
     @Test
