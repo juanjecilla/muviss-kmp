@@ -24,6 +24,7 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(libs.sqldelight.sqliteDriver)
+            implementation(projects.core.testing)
             implementation(libs.turbine)
             // Test-only: the cross-slice integration test wires collection's and
             // progress's real repositories alongside this module's against one

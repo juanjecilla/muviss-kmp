@@ -1,4 +1,4 @@
-package com.codingpit.muviss.feature.triage.data
+package com.codingpit.muviss.core.testing
 
 import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
@@ -11,8 +11,13 @@ import app.cash.sqldelight.db.SqlPreparedStatement
  * budgets, which assert *operation counts* rather than wall-clock time —
  * counts are stable in CI, and a regression that turns a bulk write into a
  * per-row write shows up as a number, not as flakiness.
+ *
+ * Lives here rather than beside any one budget because three suites had each
+ * grown their own copy (profile, triage, and the sync budgets that needed a
+ * fourth), and a counter whose definition of "a transaction" differs between
+ * copies makes two budgets look comparable when they are not.
  */
-internal class CountingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
+class CountingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
     var statements = 0
         private set
     var queries = 0

@@ -23,6 +23,7 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(libs.sqldelight.sqliteDriver)
+            implementation(projects.core.testing)
             // Test-only: the stats-aggregation integration test wires the real
             // collection and progress repositories against one shared
             // in-memory database. Production code only ever depends on their

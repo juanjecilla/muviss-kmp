@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.CountingDriver
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.profile.domain.MonthlyRewatchCalculator
 import com.codingpit.muviss.feature.profile.domain.RewatchRankingCalculator
