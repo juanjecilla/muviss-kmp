@@ -97,7 +97,16 @@ FROM triageDecision
 WHERE isDirty = 1;
 
 -- Run by SyncEngine after a row has been successfully pushed (EPIC 9).
+-- Conditional on the stamp the push carried; see `collectionEntry`'s `clearDirty`.
 clearDirty:
 UPDATE triageDecision
 SET isDirty = 0
-WHERE mediaId = :mediaId;
+WHERE mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
+
+-- First sync for an account, and "resync everything" (EPIC 39, ADR 0020).
+markAllDirty:
+UPDATE triageDecision SET isDirty = 1;
+
+-- Account switch, "discard local data" (EPIC 39).
+deleteAll:
+DELETE FROM triageDecision;

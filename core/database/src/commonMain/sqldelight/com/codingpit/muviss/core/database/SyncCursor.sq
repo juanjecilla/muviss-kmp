@@ -1,0 +1,33 @@
+-- Where each synced table's pull stopped (EPIC 39, ADR 0020).
+--
+-- One row per table, holding the last server-assigned `server_seq` this device
+-- has fully applied for it. The value is opaque to the engine: `SyncBackend`
+-- hands it out and takes it back, and `seq` is only ever stored, compared to
+-- "absent" and passed back. That is what keeps the seam vendor-neutral.
+--
+-- It replaces `appSettings.syncCursorEpochMs`, a single maximum of *client*
+-- clocks across all six tables, which lost rows whenever a device pushed late,
+-- ran a fast clock, or was cut off at the server's `max_rows`. A missing row
+-- means "never pulled this table", which asks for everything — and that is also
+-- how an install from before this table existed migrates: it has no rows, so it
+-- does one full reconcile.
+--
+-- Advanced only once every table has been drained and reconciled, in one
+-- transaction, so an interrupted pull leaves all of them where they were and the
+-- retry is idempotent.
+CREATE TABLE syncCursor (
+    tableName TEXT NOT NULL PRIMARY KEY,
+    seq INTEGER NOT NULL
+);
+
+selectAll:
+SELECT *
+FROM syncCursor;
+
+upsert:
+INSERT OR REPLACE INTO syncCursor(tableName, seq)
+VALUES (?, ?);
+
+-- Owner change, and "resync everything".
+deleteAll:
+DELETE FROM syncCursor;

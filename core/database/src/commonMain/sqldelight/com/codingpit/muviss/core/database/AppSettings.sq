@@ -30,6 +30,16 @@
 -- from the reader's clock skips them forever. Null means "never pulled", which
 -- asks for a full pull; that is why `7.sqm` does not backfill it from
 -- `lastSyncedAtEpochMs`, whose value is exactly the untrusted clock reading.
+--
+-- **`syncCursorEpochMs` is dead as of `9.sqm`** (EPIC 39, ADR 0020): a maximum of
+-- client clocks is the wrong thing to page a change feed by, so the cursor is
+-- now a server-assigned sequence, one per table, in `syncCursor`. The column is
+-- left in place because dropping it would need a table rebuild for nothing.
+--
+-- `syncAutomatically` was added in `9.sqm` (EPIC 39 claimed the number for the
+-- whole sync-correctness schema; EPIC 40 is what reads it). It is the per-device
+-- "sync in the background" switch, default off, and like the preferences above
+-- it is deliberately NOT synced. Nothing reads it yet.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
@@ -41,7 +51,8 @@ CREATE TABLE appSettings (
     triageTutorialSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     animationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     triageDeckAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    syncCursorEpochMs INTEGER
+    syncCursorEpochMs INTEGER,
+    syncAutomatically INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
