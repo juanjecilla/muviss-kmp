@@ -57,6 +57,9 @@ class SyncPerformanceBudgetTest {
 
         val pages = 3_000 / pageSize
         assertEquals(3_000, device.allProgress().size)
+        // One write per row plus a fixed handful (owner, cursors, reconcile, the
+        // aired floor per page). A per-row *read* is a query, counted apart.
+        assertTrue(counting.statements <= 3_000 + 100, "${counting.statements} write statements for 3,000 rows")
         assertTrue(counting.transactions <= pages + 2, "${counting.transactions} transactions for $pages pages")
         assertTrue(notifications.get() <= pages + 2, "${notifications.get()} change notifications for $pages pages: every watching Flow re-read the table per row")
     }
