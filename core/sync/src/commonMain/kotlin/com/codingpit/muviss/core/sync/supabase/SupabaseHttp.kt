@@ -37,3 +37,4 @@ private const val ERROR_BODY_LIMIT = 500
 
 internal const val HTTP_BAD_REQUEST = 400
 internal const val HTTP_UNAUTHORIZED = 401
+internal const val HTTP_FORBIDDEN = 403

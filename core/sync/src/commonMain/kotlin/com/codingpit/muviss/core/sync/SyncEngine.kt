@@ -39,7 +39,19 @@ sealed interface SyncOutcome {
 
     data class Success(val pushedCount: Int, val pulledCount: Int, val syncedAtEpochMs: Long) : SyncOutcome
 
-    data class Failed(val message: String) : SyncOutcome
+    /**
+     * An automatic trigger asked, and the build or the user's "sync automatically"
+     * switch said no ([AutoSyncPolicy]). Nothing was attempted. Never returned
+     * for [SyncTrigger.Manual].
+     */
+    data object Disabled : SyncOutcome
+
+    /**
+     * The cycle ran and failed. [reason] is what a screen keys its copy off;
+     * [detail] is the exception text, for a log — it is never shown to a person,
+     * because it is whatever a socket or a proxy happened to say.
+     */
+    data class Failed(val reason: SyncFailureReason, val detail: String) : SyncOutcome
 }
 
 /** What to do with a library that belongs to a different account than the one now signed in. See [SyncEngine.resolveAccountChange]. */
@@ -165,7 +177,7 @@ class SyncEngine(
     private suspend fun guarded(block: suspend () -> SyncOutcome): SyncOutcome = runCatching { block() }.getOrElse { failure ->
         if (failure is CancellationException) throw failure
         recordFailure(failure)
-        SyncOutcome.Failed(failure.message ?: "Sync failed")
+        SyncOutcome.Failed(SyncFailureReason.classify(failure), failure.message ?: "Sync failed")
     }
 
     private suspend fun syncCycle(userId: String, beforePush: suspend () -> Unit = {}): SyncOutcome {
