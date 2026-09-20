@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.sync
 
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToOne
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
@@ -9,6 +10,9 @@ import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -92,6 +96,7 @@ enum class AccountChangeResolution {
  * booleans" note (no merge needed there beyond LWW) and accepted as a
  * known, documented limitation for the richer rows (ADR 0009).
  */
+@Suppress("LongParameterList") // a composition root for one service: the optional ones default to "off" so callers name only what they use
 class SyncEngine(
     private val backend: SyncBackend,
     private val database: MuvissDatabase,
@@ -99,7 +104,11 @@ class SyncEngine(
     private val clock: AppClock,
     private val entitlementGate: EntitlementGate = EntitlementGate.AlwaysEntitled,
     private val widgetRefresher: WidgetRefresher = AppWidgets,
-) {
+    private val automatic: AutomaticSyncSettings = AutomaticSyncSettings(),
+) : SyncRunner {
+    private val availability get() = automatic.availability
+    private val syncAutomatically get() = automatic.switch
+
     private val changeLog = LocalChangeLog(database)
     private val applier = RemoteApplier(database)
 
@@ -123,14 +132,59 @@ class SyncEngine(
         .mapToOneOrNull(dispatchers.io)
         .map { it?.lastSyncedAtEpochMs }
 
-    suspend fun syncNow(): SyncOutcome = serialised { userId -> guarded { syncCycle(userId) } }
+    private val lastFinished = MutableStateFlow<Long?>(null)
+
+    override val lastFinishedAtEpochMs: Long? get() = lastFinished.value
+
+    /** A manual sync: what the "Sync now" button and the end of sign-in ask for. */
+    suspend fun syncNow(): SyncOutcome = syncNow(SyncTrigger.Manual)
+
+    /**
+     * Runs one cycle for [trigger], if [AutoSyncPolicy] allows it — the one
+     * place the automatic-sync switch, the build flag, the session and the
+     * entitlement are all enforced (ADR 0018, ADR 0021). Every automatic
+     * trigger that fails the policy returns [SyncOutcome.Disabled] (or
+     * [SyncOutcome.NotSignedIn] / [SyncOutcome.NotEntitled]) having touched
+     * neither the database nor the network.
+     */
+    override suspend fun syncNow(trigger: SyncTrigger): SyncOutcome = serialised(trigger) { userId -> guarded { syncCycle(userId) } }
+
+    /**
+     * Where the last attempt stands, for the Profile status line: when this
+     * device last synced, whether the last attempt failed and why, and how many
+     * local changes are waiting to be sent.
+     */
+    fun observeStatus(): Flow<SyncStatusSnapshot> = combine(
+        database.syncStateQueries.selectState().asFlow().mapToOneOrNull(dispatchers.io),
+        observeLastSyncedAt(),
+        observePendingChanges(),
+    ) { state, lastSyncedAt, pending ->
+        val failed = state?.lastOutcome == OUTCOME_FAILED
+        SyncStatusSnapshot(
+            lastSyncedAtEpochMs = lastSyncedAt,
+            lastAttemptAtEpochMs = state?.lastAttemptAtEpochMs,
+            lastAttemptFailed = failed,
+            lastFailure = if (failed) SyncFailureReason.fromStored(state?.lastError) ?: SyncFailureReason.Unknown else null,
+            consecutiveFailures = state?.consecutiveFailures?.toInt() ?: 0,
+            pendingChanges = pending,
+        )
+    }.distinctUntilChanged()
+
+    /** How many local rows are waiting to be sent, across all synced tables. */
+    fun observePendingChanges(): Flow<Long> = database.syncStateQueries.countDirtyRows().asFlow().mapToOne(dispatchers.io).distinctUntilChanged()
+
+    /** Forgets the last failure. Called on an explicit sign-out, so a "session expired" notice does not outlive the choice to leave. */
+    suspend fun forgetLastFailure() = withContext(dispatchers.io) {
+        database.syncStateQueries.ensureRow()
+        database.syncStateQueries.clearFailure()
+    }
 
     /**
      * Answers a [SyncOutcome.AccountChanged] and then syncs. A no-op resolution
      * if the owner is not actually different by now (another caller resolved it
      * first), so it is safe to call twice.
      */
-    suspend fun resolveAccountChange(resolution: AccountChangeResolution): SyncOutcome = serialised { userId ->
+    suspend fun resolveAccountChange(resolution: AccountChangeResolution): SyncOutcome = serialised(SyncTrigger.Manual) { userId ->
         guarded {
             val owner = currentOwner()
             if (owner != null && owner != userId) {
@@ -150,7 +204,7 @@ class SyncEngine(
      * sequence ever leaves a gap an incremental pull cannot see (ADR 0020).
      * Idempotent, and slow in proportion to the library.
      */
-    suspend fun resyncEverything(): SyncOutcome = serialised { userId ->
+    suspend fun resyncEverything(): SyncOutcome = serialised(SyncTrigger.Manual) { userId ->
         guarded {
             syncCycle(userId) {
                 database.transaction {
@@ -162,10 +216,38 @@ class SyncEngine(
     }
 
     /** Gates, then runs [block] with the signed-in account's id, one cycle at a time. */
-    private suspend fun serialised(block: suspend (userId: String) -> SyncOutcome): SyncOutcome = withContext(dispatchers.io) {
-        val session = backend.session.first() ?: return@withContext SyncOutcome.NotSignedIn
-        if (!entitlementGate.isEntitled()) return@withContext SyncOutcome.NotEntitled
-        syncMutex.withLock { block(session.userId) }
+    private suspend fun serialised(trigger: SyncTrigger, block: suspend (userId: String) -> SyncOutcome): SyncOutcome = withContext(dispatchers.io) {
+        val session = backend.session.first()
+        val available = availability.isBackgroundAvailable()
+        val switchOn = trigger.isAutomatic && available && syncAutomatically.first()
+        // The entitlement gate can be a store lookup, so it is only asked once
+        // an automatic trigger has got past the build flag and the switch.
+        val mayAsk = !trigger.isAutomatic || switchOn
+        val decision = AutoSyncPolicy.decide(
+            trigger = trigger,
+            backgroundAvailable = available,
+            switchOn = switchOn,
+            signedIn = session != null,
+            entitled = mayAsk && session != null && entitlementGate.isEntitled(),
+        )
+        when (decision) {
+            SyncDecision.Disabled -> SyncOutcome.Disabled
+
+            SyncDecision.NotSignedIn -> SyncOutcome.NotSignedIn
+
+            SyncDecision.NotEntitled -> SyncOutcome.NotEntitled
+
+            SyncDecision.Run -> syncMutex.withLock {
+                // Asked again after the wait: an automatic run queued behind a
+                // long manual sync must not go ahead if the switch was turned
+                // off meanwhile.
+                if (trigger.isAutomatic && !syncAutomatically.first()) {
+                    SyncOutcome.Disabled
+                } else {
+                    block(checkNotNull(session).userId).also { lastFinished.value = clock.nowEpochMs() }
+                }
+            }
+        }
     }
 
     /**
@@ -176,8 +258,10 @@ class SyncEngine(
      */
     private suspend fun guarded(block: suspend () -> SyncOutcome): SyncOutcome = runCatching { block() }.getOrElse { failure ->
         if (failure is CancellationException) throw failure
-        recordFailure(failure)
-        SyncOutcome.Failed(SyncFailureReason.classify(failure), failure.message ?: "Sync failed")
+        val reason = SyncFailureReason.classify(failure)
+        val detail = failure.message ?: failure::class.simpleName ?: "Sync failed"
+        recordFailure(reason, detail)
+        SyncOutcome.Failed(reason, detail)
     }
 
     private suspend fun syncCycle(userId: String, beforePush: suspend () -> Unit = {}): SyncOutcome {
@@ -192,7 +276,16 @@ class SyncEngine(
 
         val pushed = changeLog.pushDirty { backend.push(it) }
 
-        val cursors = changeLog.loadCursors()
+        var cursors = changeLog.loadCursors()
+        val now = clock.nowEpochMs()
+        // The bound on the sequence-gap risk (ADR 0020): a commit that lands
+        // out of order can hide a row from an incremental pull, so once a week
+        // this device pulls from the beginning.
+        if (cursors.isNotEmpty() && FullPullSchedule.isDue(changeLog.lastFullPullAt(), now)) {
+            changeLog.resetCursors()
+            cursors = emptyMap()
+        }
+        val fullPull = cursors.isEmpty()
         val advanced = cursors.toMutableMap()
         val touched = mutableSetOf<String>()
         var pulled = 0
@@ -204,15 +297,18 @@ class SyncEngine(
         // Cursors move only now — after every table drained and reconciled, in
         // that last transaction. A pull that fails anywhere leaves all six where
         // they were, and the retry re-applies the same rows to the same result.
-        applier.reconcile(touched) { changeLog.saveCursors(advanced) }
+        applier.reconcile(touched) {
+            changeLog.saveCursors(advanced)
+            if (fullPull) changeLog.recordFullPull(now)
+        }
         if (pulled > 0) refreshWidgets()
 
         // "Last synced" answers "when did this device last complete a cycle",
         // and must advance even when the pull came back empty.
-        val now = clock.nowEpochMs()
-        database.appSettingsQueries.updateLastSyncedAt(now)
-        database.syncStateQueries.recordSuccess(now)
-        return SyncOutcome.Success(pushedCount = pushed, pulledCount = pulled, syncedAtEpochMs = now)
+        val finishedAt = clock.nowEpochMs()
+        database.appSettingsQueries.updateLastSyncedAt(finishedAt)
+        database.syncStateQueries.recordSuccess(finishedAt)
+        return SyncOutcome.Success(pushedCount = pushed, pulledCount = pulled, syncedAtEpochMs = finishedAt)
     }
 
     private suspend fun currentOwner(): String? = database.syncStateQueries.selectState().awaitAsOneOrNull()?.ownerAccountId
@@ -235,10 +331,10 @@ class SyncEngine(
         refreshWidgets()
     }
 
-    private suspend fun recordFailure(failure: Throwable) {
+    private suspend fun recordFailure(reason: SyncFailureReason, detail: String) {
         runCatching {
             database.syncStateQueries.ensureRow()
-            database.syncStateQueries.recordFailure(error = failure.message ?: failure::class.simpleName, attemptedAtEpochMs = clock.nowEpochMs())
+            database.syncStateQueries.recordFailure(error = SyncFailureReason.encode(reason, detail), attemptedAtEpochMs = clock.nowEpochMs())
         }.onFailure { if (it is CancellationException) throw it }
     }
 
@@ -247,3 +343,26 @@ class SyncEngine(
         runCatching { widgetRefresher.refresh() }.onFailure { if (it is CancellationException) throw it }
     }
 }
+
+private const val OUTCOME_FAILED = "FAILED"
+
+/** What [SyncEngine.observeStatus] reports; everything the Profile status line needs, and no copy. */
+data class SyncStatusSnapshot(
+    val lastSyncedAtEpochMs: Long?,
+    val lastAttemptAtEpochMs: Long?,
+    val lastAttemptFailed: Boolean,
+    val lastFailure: SyncFailureReason?,
+    val consecutiveFailures: Int,
+    val pendingChanges: Long,
+)
+
+/**
+ * The two inputs to [AutoSyncPolicy] that are not the session or the
+ * entitlement: whether the build ships background sync, and the per-device
+ * switch. Defaults to "no", so an engine built without them can only ever run
+ * [SyncTrigger.Manual].
+ */
+class AutomaticSyncSettings(
+    val availability: SyncAvailability = SyncAvailability { false },
+    val switch: Flow<Boolean> = kotlinx.coroutines.flow.flowOf(false),
+)

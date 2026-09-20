@@ -15,4 +15,14 @@ package com.codingpit.muviss.core.sync
  */
 fun interface SyncAvailability {
     fun isConfigured(): Boolean
+
+    /**
+     * Whether this build may sync without being asked: `SYNC_BACKGROUND_ENABLED`
+     * set *on top of* [isConfigured] (EPIC 40, ADR 0021). The first of the three
+     * layers that gate automatic sync; when false the Profile screen renders no
+     * switch at all, the same rule [isConfigured] follows. False unless an
+     * implementation says otherwise, so a test double written as a lambda can
+     * never turn background sync on by accident.
+     */
+    fun isBackgroundAvailable(): Boolean = false
 }

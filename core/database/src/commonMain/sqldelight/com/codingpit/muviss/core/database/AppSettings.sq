@@ -39,7 +39,7 @@
 -- `syncAutomatically` was added in `9.sqm` (EPIC 39 claimed the number for the
 -- whole sync-correctness schema; EPIC 40 is what reads it). It is the per-device
 -- "sync in the background" switch, default off, and like the preferences above
--- it is deliberately NOT synced. Nothing reads it yet.
+-- it is deliberately NOT synced. Read by `FeatureFlags.syncAutomatically` (EPIC 40).
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
@@ -93,3 +93,6 @@ UPDATE appSettings SET animationsEnabled = :animationsEnabled WHERE id = 0;
 
 updateTriageDeckAnimations:
 UPDATE appSettings SET triageDeckAnimations = :triageDeckAnimations WHERE id = 0;
+
+updateSyncAutomatically:
+UPDATE appSettings SET syncAutomatically = :syncAutomatically WHERE id = 0;
