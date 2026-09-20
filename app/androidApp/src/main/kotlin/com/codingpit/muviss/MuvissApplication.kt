@@ -3,10 +3,18 @@ package com.codingpit.muviss
 import android.app.Application
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
+import com.codingpit.muviss.core.sync.AutomaticSyncSettings
+import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.notifications.NewEpisodesScheduler
+import com.codingpit.muviss.sync.SyncScheduleController
+import com.codingpit.muviss.sync.WorkManagerSyncScheduler
 import com.codingpit.muviss.widget.GlanceWidgetRefresher
 import com.codingpit.muviss.widget.WidgetMidnightRefresh
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
@@ -52,5 +60,22 @@ class MuvissApplication : Application() {
         AppWidgets.install(GlanceWidgetRefresher(this))
         NewEpisodesScheduler.schedule(this)
         WidgetMidnightRefresh.schedule(this)
+        startAutomaticSync()
+    }
+
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Keeps the hourly [com.codingpit.muviss.sync.SyncWorker] in step with the
+     * switch, and starts the coordinator so a widget action or anything else
+     * that writes while no Activity exists still gets pushed (EPIC 40). Both
+     * follow `AutomaticSyncSettings.enabled` and the engine still decides on
+     * every run, so this widens nothing the switch forbids.
+     */
+    private fun startAutomaticSync() {
+        val koin = GlobalContext.get()
+        koin.get<SyncCoordinator>().start()
+        val controller = SyncScheduleController(WorkManagerSyncScheduler(this), koin.get<AutomaticSyncSettings>().enabled)
+        applicationScope.launch { controller.run() }
     }
 }

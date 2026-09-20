@@ -22,7 +22,6 @@ import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.supabase.SupabaseSyncBackend
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.map
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -62,6 +61,7 @@ val syncModule: Module = module {
             NoOpSyncBackend()
         }
     }
+    single { AutomaticSyncSettings(get(), get<FeatureFlags>().syncAutomatically) }
     single {
         SyncEngine(
             backend = get(),
@@ -69,19 +69,18 @@ val syncModule: Module = module {
             dispatchers = get(),
             clock = get(),
             entitlementGate = get(),
-            automatic = AutomaticSyncSettings(get(), get<FeatureFlags>().syncAutomatically),
+            automatic = get(),
         )
     }
     single<SyncRunner> { get<SyncEngine>() }
     single {
         val engine = get<SyncEngine>()
-        val availability = get<SyncAvailability>()
         SyncCoordinator(
             runner = engine,
             pendingChanges = engine.observePendingChanges(),
             // Not just the switch: a build without background sync never
             // watches, however the stored preference reads.
-            automaticEnabled = get<FeatureFlags>().syncAutomatically.map { it && availability.isBackgroundAvailable() },
+            automaticEnabled = get<AutomaticSyncSettings>().enabled,
             clock = get(),
             scope = CoroutineScope(SupervisorJob() + get<AppDispatchers>().default),
         )

@@ -21,10 +21,12 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.sync.OAuthRedirectTarget
+import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.notifications.DesktopEpisodeRefresh
 import com.codingpit.muviss.notifications.newEpisodesNotification
 import com.codingpit.muviss.oauth.LoopbackRedirectServer
+import com.codingpit.muviss.sync.DesktopAutoSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -98,6 +100,7 @@ fun main() {
     val koin = GlobalContext.get()
     val loopback = koin.get<LoopbackRedirectServer>()
     val episodeRefresh = koin.get<DesktopEpisodeRefresh>()
+    val syncCoordinator = koin.get<SyncCoordinator>()
 
     application {
         // See DesktopWindowState.kt for why this is java.util.prefs rather than
@@ -150,6 +153,15 @@ fun main() {
                 }
                 delay(DesktopEpisodeRefresh.INTERVAL)
             }
+        }
+
+        // Automatic sync while the window is open, every 15 minutes (EPIC 40).
+        // Beside the episode refresh because it is the same kind of thing and has
+        // the same limit: nothing runs once the app is closed. Whether a tick does
+        // anything is the engine's call: with the switch off (the default) it does
+        // not touch the network.
+        LaunchedEffect(syncCoordinator) {
+            DesktopAutoSync { syncCoordinator.runPeriodic() }.run()
         }
 
         // Created out here rather than being left to MuvissApp's default,

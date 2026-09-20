@@ -368,4 +368,13 @@ data class SyncStatusSnapshot(
 class AutomaticSyncSettings(
     val availability: SyncAvailability = SyncAvailability { false },
     val switch: Flow<Boolean> = kotlinx.coroutines.flow.flowOf(false),
-)
+) {
+    /**
+     * Whether automatic sync is on as far as this device can tell: the build
+     * ships it and the person switched it on. What the platform triggers
+     * (WorkManager scheduling, the coordinator's watching) follow. The session
+     * and entitlement are deliberately not part of it: they are the engine's to
+     * check on every run, and a sign-in must not need a re-schedule.
+     */
+    val enabled: Flow<Boolean> = switch.map { it && availability.isBackgroundAvailable() }.distinctUntilChanged()
+}
