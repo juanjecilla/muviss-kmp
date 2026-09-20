@@ -150,3 +150,41 @@ class EpisodeCatalogCacheTest {
         assertEquals(stored, cache.catalogs.value[show1])
     }
 }
+
+class EpisodeCatalogCacheConcurrencyTest {
+
+    @Test
+    fun refreshing_a_100_show_library_never_exceeds_the_shared_concurrency() = runTest {
+        var inFlight = 0
+        var peak = 0
+        val source = object : EpisodeCatalogSource {
+            override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
+                inFlight++
+                peak = maxOf(peak, inFlight)
+                kotlinx.coroutines.delay(50)
+                inFlight--
+                return Result.success(emptyList())
+            }
+        }
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore())
+        val shows = (1..100).map { MediaId.tmdbTv(it.toString()) }
+
+        cache.refresh(shows)
+
+        assertEquals(com.codingpit.muviss.core.common.concurrency.REFRESH_CONCURRENCY, peak)
+        assertEquals(100, cache.catalogs.value.size)
+    }
+
+    @Test
+    fun one_failing_show_does_not_lose_the_others() = runTest {
+        val bad = MediaId.tmdbTv("2")
+        val source = object : EpisodeCatalogSource {
+            override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = if (mediaId == bad) Result.failure(IllegalStateException("offline")) else Result.success(emptyList())
+        }
+        val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(source), InMemoryEpisodeCatalogStore())
+
+        cache.refresh(listOf(MediaId.tmdbTv("1"), bad, MediaId.tmdbTv("3")))
+
+        assertEquals(setOf(MediaId.tmdbTv("1"), MediaId.tmdbTv("3")), cache.catalogs.value.keys)
+    }
+}

@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.core.common.concurrency.mapBounded
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,13 +59,16 @@ class EpisodeCatalogCache(
     }
 
     /**
+     * Titles are fetched a few at a time (`REFRESH_CONCURRENCY`), as the library
+     * refresh does, rather than one after another.
+     *
      * A failed fetch leaves both the store and [catalogs] as they were: a
      * stale catalog names a real episode, an absent one names nothing, so
      * losing what is stored because the network was unavailable is strictly
      * worse than keeping it.
      */
     private suspend fun fetchAndStore(mediaIds: List<MediaId>) {
-        mediaIds.forEach { id ->
+        mediaIds.mapBounded { id ->
             fetchEpisodeCatalog(id).onSuccess { seasons ->
                 store.save(id, seasons)
                 _catalogs.update { it + (id to seasons) }
