@@ -49,3 +49,15 @@ kotlin-js-store/
 # never the migrations — those are the schema's source of truth (docs/SYNC.md).
 supabase/.temp/
 supabase/.branches/
+
+# Agent worktrees: `.claude/worktrees/<name>` is a complete second checkout of
+# the module tree, so `git add -A` from the repo root would otherwise stage
+# thousands of files from inside one. `git commit -a` would not — it skips
+# untracked files — which is why this went unnoticed (issue #48).
+#
+# Deliberately narrow. The rest of `.claude/` stays trackable so project-level
+# agent config (settings.json, skills) can be committed if we ever choose to:
+# ignoring the whole directory would make that a git footgun, since git does
+# not descend into an excluded directory and a bare `!.claude/settings.json`
+# under `.claude/` simply does not work.
+.claude/worktrees/
