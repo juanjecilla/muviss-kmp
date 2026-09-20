@@ -3,6 +3,8 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -20,10 +22,8 @@ import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class DetailUiState(
     val loading: Boolean = true,
@@ -108,7 +108,7 @@ class DetailViewModel(
         load()
         triageApi.observeDecision(mediaId)
             .onEach { decision -> _state.update { it.copy(skipped = decision?.verdict == TriageVerdict.SKIP) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
         collectionApi.observeMembership(mediaId)
             .onEach { membership ->
                 _state.update {
@@ -121,17 +121,17 @@ class DetailViewModel(
                     )
                 }
             }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
         progressApi.observeSeenEpisodes(mediaId)
             .onEach { seen -> _state.update { it.copy(seenEpisodes = seen) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun load() {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             _state.update { it.copy(loading = true, error = null) }
             loadDetail(mediaId).fold(
                 onSuccess = { d -> _state.update { it.copy(loading = false, details = d) } },
@@ -148,7 +148,7 @@ class DetailViewModel(
      * rather than surfacing an error.
      */
     private fun loadWhereToWatch() {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             loadWatchProviders(mediaId).onSuccess { providers ->
                 _state.update { it.copy(watchProviders = providers) }
             }
@@ -162,7 +162,7 @@ class DetailViewModel(
      * recommendations-with-similar-fallback choice.
      */
     private fun loadMoreLikeThisRow() {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             val items = loadMoreLikeThis(mediaId).getOrNull()?.items.orEmpty()
             _state.update { it.copy(moreLikeThis = items) }
         }
@@ -170,45 +170,45 @@ class DetailViewModel(
 
     /** Clears a SKIP so the title can come back around in the deck. */
     fun unskip() {
-        viewModelScope.launch { triageApi.restore(mediaId) }
+        viewModelScope.launchReporting { triageApi.restore(mediaId) }
     }
 
     /** Adds the loaded title to the library, or removes it if already saved. */
     fun toggleSaved() {
         val details = _state.value.details ?: return
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             if (_state.value.saved) collectionApi.remove(mediaId) else collectionApi.add(details)
         }
     }
 
     fun toggleFavorite() {
-        viewModelScope.launch { collectionApi.setFavorite(mediaId, !_state.value.favorite) }
+        viewModelScope.launchReporting { collectionApi.setFavorite(mediaId, !_state.value.favorite) }
     }
 
     /** Mutes/un-mutes this show's new-episode notifications (EPIC 5), independent of the global Settings toggle. */
     fun toggleNotificationsMuted() {
-        viewModelScope.launch { collectionApi.setNotificationsMuted(mediaId, !_state.value.notificationsMuted) }
+        viewModelScope.launchReporting { collectionApi.setNotificationsMuted(mediaId, !_state.value.notificationsMuted) }
     }
 
     /** Sets the personal rating (1-10), or clears it (EPIC 15) if [rating] is the one already set — tapping the same star twice un-rates. */
     fun setRating(rating: Int) {
         val next = if (_state.value.rating == rating) null else rating
-        viewModelScope.launch { collectionApi.setRating(mediaId, next) }
+        viewModelScope.launchReporting { collectionApi.setRating(mediaId, next) }
     }
 
     /** Explicitly clears the personal rating (EPIC 15). */
     fun clearRating() {
-        viewModelScope.launch { collectionApi.setRating(mediaId, null) }
+        viewModelScope.launchReporting { collectionApi.setRating(mediaId, null) }
     }
 
     /** Persists the personal note (EPIC 15); collection's `:api` normalizes a blank note to null. */
     fun setNote(note: String) {
-        viewModelScope.launch { collectionApi.setNote(mediaId, note) }
+        viewModelScope.launchReporting { collectionApi.setNote(mediaId, note) }
     }
 
     /** Ticks a single episode's checkmark. */
     fun toggleEpisodeSeen(episodeId: EpisodeId) {
-        viewModelScope.launch { progressApi.setEpisodeSeen(episodeId, !_state.value.isSeen(episodeId)) }
+        viewModelScope.launchReporting { progressApi.setEpisodeSeen(episodeId, !_state.value.isSeen(episodeId)) }
     }
 
     /**
@@ -219,7 +219,7 @@ class DetailViewModel(
      * library screen would then throw on. See `ProgressApi.markSeasonAiredSeen`.
      */
     fun markSeasonSeen(season: Season) {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             val written = progressApi.markSeasonAiredSeen(season, clock.todayEpochDay())
             offerUndo(written, "${season.name} marked seen")
         }
@@ -227,7 +227,7 @@ class DetailViewModel(
 
     /** Reverses [markSeasonSeen]: drops the newest viewing of each seen episode in [season]. */
     fun unmarkSeason(season: Season) {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             progressApi.unmarkSeason(season)
             _state.update { it.copy(pendingUndo = null) }
         }
@@ -236,7 +236,7 @@ class DetailViewModel(
     /** The "mark whole show seen" action; the caller confirms first. */
     fun markShowSeen() {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             val written = progressApi.markShowAiredSeen(seasons, clock.todayEpochDay())
             offerUndo(written, "Marked every aired episode seen")
         }
@@ -245,7 +245,7 @@ class DetailViewModel(
     /** Reverses [markShowSeen] across every season. */
     fun unmarkShow() {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             progressApi.unmarkShow(seasons)
             _state.update { it.copy(pendingUndo = null) }
         }
@@ -254,7 +254,7 @@ class DetailViewModel(
     /** Takes back exactly the ticks the last bulk mark wrote. */
     fun undoBulkMark() {
         val undo = _state.value.pendingUndo ?: return
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             progressApi.undoBulkMark(undo.episodeIds)
             _state.update { it.copy(pendingUndo = null) }
         }
@@ -267,17 +267,17 @@ class DetailViewModel(
 
     /** "I watched this again": records another viewing, leaving earlier ones intact. */
     fun recordRewatch(episodeId: EpisodeId) {
-        viewModelScope.launch { progressApi.recordPlay(episodeId) }
+        viewModelScope.launchReporting { progressApi.recordPlay(episodeId) }
     }
 
     /** "I ticked that by mistake": drops the newest viewing only. */
     fun undoLatestPlay(episodeId: EpisodeId) {
-        viewModelScope.launch { progressApi.removeLatestPlay(episodeId) }
+        viewModelScope.launchReporting { progressApi.removeLatestPlay(episodeId) }
     }
 
     /** Forgets an episode's entire watch history — the explicit, destructive one. */
     fun clearEpisodeHistory(episodeId: EpisodeId) {
-        viewModelScope.launch { progressApi.clearPlays(episodeId) }
+        viewModelScope.launchReporting { progressApi.clearPlays(episodeId) }
     }
 
     /** A bulk mark that ticked nothing (already caught up) has nothing to undo, so it offers none. */
@@ -289,12 +289,12 @@ class DetailViewModel(
     /** "I'm caught up through here": marks every episode at or before [episodeId] as seen. */
     fun markPreviousSeen(episodeId: EpisodeId) {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launch { progressApi.markPreviousSeen(seasons, episodeId) }
+        viewModelScope.launchReporting { progressApi.markPreviousSeen(seasons, episodeId) }
     }
 
     /** Toggles a movie's watched flag. */
     fun toggleMovieWatched() {
-        viewModelScope.launch { progressApi.setMovieWatched(mediaId, !_state.value.movieWatched) }
+        viewModelScope.launchReporting { progressApi.setMovieWatched(mediaId, !_state.value.movieWatched) }
     }
 }
 

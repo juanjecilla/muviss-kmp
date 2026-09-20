@@ -5,6 +5,8 @@ package com.codingpit.muviss.feature.progress.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -24,11 +26,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** One Upcoming agenda row: a future episode plus the display label ("Today", "Tomorrow", a weekday, or a date). */
 data class UpcomingRow(
@@ -79,12 +79,12 @@ class UpcomingViewModel(
             .flatMapLatest { shows -> upcomingGroups(shows) }
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { groups -> _state.update { it.copy(loading = false, groups = groups, error = null) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     /** Re-fetches every cached show's episode catalog (picks up newly scheduled episodes); the pull-to-refresh action. */
     fun refresh() {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             _state.update { it.copy(refreshing = true) }
             catalogCache.refresh()
             _state.update { it.copy(refreshing = false) }
@@ -105,7 +105,7 @@ class UpcomingViewModel(
     )
 
     private fun loadMissingCatalogs(mediaIds: List<MediaId>) {
-        viewModelScope.launch { catalogCache.loadMissing(mediaIds) }
+        viewModelScope.launchReporting { catalogCache.loadMissing(mediaIds) }
     }
 
     private companion object {

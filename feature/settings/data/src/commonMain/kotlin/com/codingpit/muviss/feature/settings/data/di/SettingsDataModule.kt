@@ -21,6 +21,7 @@ import com.codingpit.muviss.feature.settings.domain.ImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.domain.ImportParser
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
+import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
@@ -73,8 +74,9 @@ val settingsDataModule: Module = module {
     factory { SetLanguageUseCase(get()) }
     factory { SetRegionUseCase(get()) }
     factory { SetNotificationsEnabledUseCase(get()) }
+    factory { SetCrashReportsEnabledUseCase(get()) }
     factory { ExportDataUseCase(get()) }
-    factory { SettingsActions(get(), get(), get(), get(), get()) }
+    factory { SettingsActions(get(), get(), get(), get(), get(), get()) }
 
     single<ExternalIdResolver> { TmdbExternalIdResolver(get(), get()) }
     single<ImportMediaDetailsSource> { RegistryImportMediaDetailsSource(get(), get()) }

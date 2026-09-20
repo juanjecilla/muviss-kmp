@@ -2,6 +2,8 @@ package com.codingpit.muviss.feature.progress.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
@@ -11,10 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class ProgressUiState(
     val loading: Boolean = true,
@@ -46,23 +46,23 @@ class ProgressViewModel(
         watchNext()
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { items -> _state.update { it.copy(loading = false, items = items, error = null) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     /** Ticks [item]'s next episode seen, advancing the item to the following one. */
     fun tickNext(item: WatchNextItem) {
         val next = item.nextEpisode ?: return
-        viewModelScope.launch { toggleEpisodeSeen(next.id, true) }
+        viewModelScope.launchReporting { toggleEpisodeSeen(next.id, true) }
     }
 
     /** Reverts a tick — the undo-snackbar action; the reactive pipeline re-surfaces the episode. */
     fun untick(episodeId: EpisodeId) {
-        viewModelScope.launch { toggleEpisodeSeen(episodeId, false) }
+        viewModelScope.launchReporting { toggleEpisodeSeen(episodeId, false) }
     }
 
     /** Re-fetches every cached show's episode catalog (picks up newly aired episodes); the pull-to-refresh action. */
     fun refresh() {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             _state.update { it.copy(refreshing = true) }
             catalogCache.refresh()
             _state.update { it.copy(refreshing = false) }

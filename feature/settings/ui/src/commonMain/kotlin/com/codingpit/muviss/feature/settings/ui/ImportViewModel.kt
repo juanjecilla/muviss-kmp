@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
 import com.codingpit.muviss.feature.settings.domain.ImportPreview
@@ -9,7 +10,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** One step of the import flow — [ImportScreen] renders a different layout per step. */
 sealed interface ImportStep {
@@ -50,7 +50,7 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
 
     fun onFilePicked(fileName: String, content: String) {
         _state.update { ImportUiState(step = ImportStep.Resolving(fileName, 0, 0)) }
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             runCatching {
                 actions.preview(content) { done, total ->
                     _state.update { it.copy(step = ImportStep.Resolving(fileName, done, total)) }
@@ -68,7 +68,7 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
     fun confirmApply() {
         val preview = lastPreview ?: return
         _state.update { it.copy(step = ImportStep.Applying(0, preview.resolved.size)) }
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             val result = actions.apply(preview) { done, total ->
                 _state.update { it.copy(step = ImportStep.Applying(done, total)) }
             }

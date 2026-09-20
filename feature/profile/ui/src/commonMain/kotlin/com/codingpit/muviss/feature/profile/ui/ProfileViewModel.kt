@@ -3,6 +3,8 @@ package com.codingpit.muviss.feature.profile.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileUseCase
@@ -18,10 +20,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** The sync (EPIC 9) slice of [ProfileUiState] — its own data class so the identity/stats slice above stays as readable as it was pre-EPIC 9. */
 data class SyncUiState(
@@ -80,7 +80,7 @@ class ProfileViewModel(
         combine(observeProfile(), observeProfileStats()) { profile, stats -> profile to stats }
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { (profile, stats) -> _state.update { it.copy(loading = false, profile = profile, stats = stats, error = null) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         combine(syncActions.observeAccount(), syncActions.observeLastSyncedAt()) { account, lastSyncedAt -> account to lastSyncedAt }
             .onEach { (account, lastSyncedAt) ->
@@ -94,14 +94,14 @@ class ProfileViewModel(
                     )
                 }
             }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         // Sign-in can fail while this screen does not exist — the redirect is
         // redeemed at app scope (ADR 0014) — so the reason arrives here as a
         // stream rather than as a call's return value.
         syncActions.observeSignInFailure()
             .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = failure)) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun onEditNameRequested() {
@@ -117,11 +117,11 @@ class ProfileViewModel(
         val trimmed = name.trim()
         _state.update { it.copy(isEditingName = false) }
         if (trimmed.isEmpty()) return
-        viewModelScope.launch { actions.setDisplayName(trimmed) }
+        viewModelScope.launchReporting { actions.setDisplayName(trimmed) }
     }
 
     fun onAvatarSelected(avatarId: String) {
-        viewModelScope.launch { actions.setAvatar(avatarId) }
+        viewModelScope.launchReporting { actions.setAvatar(avatarId) }
     }
 
     /**
@@ -140,7 +140,7 @@ class ProfileViewModel(
             _state.update { it.copy(sync = it.sync.copy(message = "Sync isn't set up for this build")) }
             return
         }
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
             val result = syncActions.beginSignIn(provider)
             _state.update {
@@ -161,11 +161,11 @@ class ProfileViewModel(
     }
 
     fun onSignOutClicked() {
-        viewModelScope.launch { syncActions.signOut() }
+        viewModelScope.launchReporting { syncActions.signOut() }
     }
 
     fun onSyncNowClicked() {
-        viewModelScope.launch { runSyncNow() }
+        viewModelScope.launchReporting { runSyncNow() }
     }
 
     fun syncMessageShown() {

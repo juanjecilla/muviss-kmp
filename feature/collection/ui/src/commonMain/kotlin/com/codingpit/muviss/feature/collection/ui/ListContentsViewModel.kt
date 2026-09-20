@@ -2,6 +2,8 @@ package com.codingpit.muviss.feature.collection.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaListItem
 import com.codingpit.muviss.models.MediaId
@@ -9,10 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class ListContentsUiState(
     val loading: Boolean = true,
@@ -39,11 +39,11 @@ class ListContentsViewModel(
         listsUseCases.observeContents(listId)
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { items -> _state.update { it.copy(loading = false, items = items, error = null) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun removeEntry(mediaId: MediaId) {
-        viewModelScope.launch { listsUseCases.removeEntry(listId, mediaId) }
+        viewModelScope.launchReporting { listsUseCases.removeEntry(listId, mediaId) }
     }
 
     private companion object {

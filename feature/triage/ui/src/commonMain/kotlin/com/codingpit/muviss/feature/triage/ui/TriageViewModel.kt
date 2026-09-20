@@ -5,6 +5,8 @@ package com.codingpit.muviss.feature.triage.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
@@ -24,11 +26,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** How many cards are drawn behind the top one. */
 const val BACKING_CARD_COUNT = 2
@@ -137,25 +137,25 @@ class TriageViewModel(
     init {
         featureFlags.triageControlScheme
             .onEach { scheme -> _state.update { it.copy(controlScheme = scheme) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         // Combined here rather than in the screen: whether the deck animates is
         // one fact, and the UI should not have to know it is stored as two.
         combine(featureFlags.animationsEnabled, featureFlags.triageDeckAnimations) { app, deck -> app && deck }
             .onEach { enabled -> _state.update { it.copy(deckAnimations = enabled) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         // Only the first emission matters: dismissing the tutorial must not
         // make it reappear, and re-opening it is an explicit user action.
         observeTutorialSeen()
             .take(1)
             .onEach { seen -> _state.update { it.copy(tutorialVisible = !seen) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         analytics.track(TriageEvent.DeckOpened)
-        viewModelScope.launch { loadGenreChips() }
+        viewModelScope.launchReporting { loadGenreChips() }
         refill(reset = true)
-        viewModelScope.launch { actions.retryUnresolved() }
+        viewModelScope.launchReporting { actions.retryUnresolved() }
     }
 
     fun onTypeFilterChange(type: MediaType?) {
@@ -196,7 +196,7 @@ class TriageViewModel(
                 restored = null,
             )
         }
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             actions.record(summary, verdict).onFailure { error ->
                 _state.update { current ->
                     current.copy(failedCommit = FailedCommit(summary, verdict, error.message ?: COMMIT_FAILED))
@@ -220,7 +220,7 @@ class TriageViewModel(
             )
         }
         shown -= undoable.summary.id
-        viewModelScope.launch { actions.undo(undoable.summary.id, undoable.verdict) }
+        viewModelScope.launchReporting { actions.undo(undoable.summary.id, undoable.verdict) }
     }
 
     fun onUndoDismissed() = _state.update { it.copy(undoable = null) }
@@ -228,7 +228,7 @@ class TriageViewModel(
     fun onRetryFailedCommit() {
         val failed = _state.value.failedCommit ?: return
         _state.update { it.copy(failedCommit = null) }
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             actions.record(failed.summary, failed.verdict).onFailure { error ->
                 _state.update { it.copy(failedCommit = failed.copy(message = error.message ?: COMMIT_FAILED)) }
             }
@@ -239,7 +239,7 @@ class TriageViewModel(
 
     fun onTutorialDismissed() {
         _state.update { it.copy(tutorialVisible = false) }
-        viewModelScope.launch { actions.setTutorialSeen(true) }
+        viewModelScope.launchReporting { actions.setTutorialSeen(true) }
     }
 
     fun onShowTutorial() = _state.update { it.copy(tutorialVisible = true) }
@@ -266,7 +266,7 @@ class TriageViewModel(
             _state.update { it.copy(refilling = true) }
         }
 
-        loadJob = viewModelScope.launch {
+        loadJob = viewModelScope.launchReporting {
             val filter = _state.value.filter
             loadDeck(filter, cursor, alreadyShown = shown).fold(
                 onSuccess = { batch ->

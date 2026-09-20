@@ -2,6 +2,9 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.feature.collection.api.ListSummary
 import com.codingpit.muviss.feature.collection.api.ListsApi
 import com.codingpit.muviss.models.MediaId
@@ -9,10 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class AddToListUiState(
     val loading: Boolean = true,
@@ -41,12 +42,12 @@ class AddToListViewModel(
     init {
         combine(listsApi.observeLists(), listsApi.observeListMembership(mediaId)) { lists, memberIds ->
             AddToListUiState(loading = false, lists = lists, memberListIds = memberIds)
-        }.onEach { _state.value = it }.launchIn(viewModelScope)
+        }.onEach { _state.value = it }.launchInReporting(viewModelScope)
     }
 
     /** Adds the title to [listId], or removes it if already a member. */
     fun toggle(listId: String) {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             if (listId in _state.value.memberListIds) {
                 listsApi.removeFromList(listId, mediaId)
             } else {
@@ -57,8 +58,8 @@ class AddToListViewModel(
 
     /** Creates a new list named [name] and immediately adds the title to it — the "create-new-list inline" flow. */
     fun createAndAdd(name: String) {
-        viewModelScope.launch {
-            runCatching { listsApi.createList(name) }.onSuccess { listId -> listsApi.addToList(listId, mediaId) }
+        viewModelScope.launchReporting {
+            runCatching { listsApi.createList(name) }.reportFailure().onSuccess { listId -> listsApi.addToList(listId, mediaId) }
         }
     }
 }

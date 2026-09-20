@@ -3,6 +3,9 @@ package com.codingpit.muviss.feature.settings.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -13,10 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val loading: Boolean = true,
@@ -53,11 +54,11 @@ class SettingsViewModel(
     init {
         featureFlags.triageControlScheme
             .onEach { scheme -> _state.update { it.copy(triageControlScheme = scheme) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         featureFlags.animationsEnabled
             .onEach { enabled -> _state.update { it.copy(animationsEnabled = enabled) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         // Kept as its own value rather than folded into the master: the screen
         // has to render this switch's real stored position even while the
@@ -65,45 +66,49 @@ class SettingsViewModel(
         // the user last chose instead of silently re-enabling everything.
         featureFlags.triageDeckAnimations
             .onEach { enabled -> _state.update { it.copy(triageDeckAnimations = enabled) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
 
         observeSettings()
             .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun onTriageControlSchemeSelected(scheme: TriageControlScheme) {
-        viewModelScope.launch { featureFlags.setTriageControlScheme(scheme) }
+        viewModelScope.launchReporting { featureFlags.setTriageControlScheme(scheme) }
     }
 
     fun onAnimationsToggled(enabled: Boolean) {
-        viewModelScope.launch { featureFlags.setAnimationsEnabled(enabled) }
+        viewModelScope.launchReporting { featureFlags.setAnimationsEnabled(enabled) }
     }
 
     fun onTriageDeckAnimationsToggled(enabled: Boolean) {
-        viewModelScope.launch { featureFlags.setTriageDeckAnimations(enabled) }
+        viewModelScope.launchReporting { featureFlags.setTriageDeckAnimations(enabled) }
     }
 
     fun onThemeSelected(theme: AppTheme) {
-        viewModelScope.launch { actions.setTheme(theme) }
+        viewModelScope.launchReporting { actions.setTheme(theme) }
     }
 
     fun onLanguageSelected(language: String) {
-        viewModelScope.launch { actions.setLanguage(language) }
+        viewModelScope.launchReporting { actions.setLanguage(language) }
     }
 
     fun onRegionSelected(region: String) {
-        viewModelScope.launch { actions.setRegion(region) }
+        viewModelScope.launchReporting { actions.setRegion(region) }
     }
 
     fun onNotificationsToggled(enabled: Boolean) {
-        viewModelScope.launch { actions.setNotificationsEnabled(enabled) }
+        viewModelScope.launchReporting { actions.setNotificationsEnabled(enabled) }
+    }
+
+    fun onCrashReportsToggled(enabled: Boolean) {
+        viewModelScope.launchReporting { actions.setCrashReportsEnabled(enabled) }
     }
 
     fun exportData() {
-        viewModelScope.launch {
-            runCatching { actions.exportData() }.fold(
+        viewModelScope.launchReporting {
+            runCatching { actions.exportData() }.reportFailure().fold(
                 onSuccess = { json -> _state.update { it.copy(exportJson = json, exportError = null) } },
                 onFailure = { e -> _state.update { it.copy(exportError = e.message ?: DEFAULT_ERROR) } },
             )
