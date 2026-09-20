@@ -113,10 +113,16 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
             HorizontalDivider()
             SyncSection(
                 sync = state.sync,
-                onSignInClicked = viewModel::onSignInClicked,
-                onSyncNowClicked = viewModel::onSyncNowClicked,
-                onSignOutClicked = viewModel::onSignOutClicked,
-                onUnlockClicked = { paywallVisible = true },
+                actions = SyncSectionActions(
+                    onSignInClicked = viewModel::onSignInClicked,
+                    onSyncNowClicked = viewModel::onSyncNowClicked,
+                    onSignOutClicked = viewModel::onSignOutClicked,
+                    onUnlockClicked = { paywallVisible = true },
+                    onAutomaticSyncToggled = viewModel::onAutomaticSyncToggled,
+                    onResyncEverythingRequested = viewModel::onResyncEverythingRequested,
+                    onResyncEverythingConfirmed = viewModel::onResyncEverythingConfirmed,
+                    onResyncEverythingDismissed = viewModel::onResyncEverythingDismissed,
+                ),
             )
             HorizontalDivider()
 
@@ -209,104 +215,6 @@ private fun EditNameDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
-}
-
-/**
- * Account/sync section (EPIC 9). Renders nothing when sync isn't configured
- * for this build ([SyncAccountState.Unavailable]) — the entry point is
- * hidden entirely rather than shown disabled, same contract as a blank
- * Sentry DSN (CLAUDE.md).
- *
- * [SyncAccountState.Locked] is the deliberate opposite (ADR 0018): the build
- * has sync, the user has not bought it, so the row appears and offers the
- * purchase. Hiding it would leave a paid feature undiscoverable.
- */
-@Composable
-private fun SyncSection(
-    sync: SyncUiState,
-    onSignInClicked: (SyncProvider) -> Unit,
-    onSyncNowClicked: () -> Unit,
-    onSignOutClicked: () -> Unit,
-    onUnlockClicked: () -> Unit,
-) {
-    val account = sync.account
-    if (account == SyncAccountState.Unavailable) return
-
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                MuvissIcons.Account,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(28.dp),
-            )
-            when (account) {
-                SyncAccountState.Unavailable -> Unit
-
-                is SyncAccountState.Locked -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Sync across devices", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Keep your library, progress and rewatch history on every device.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = onUnlockClicked) { Text("Unlock sync") }
-                        // A lapsed subscriber is still signed in; without this
-                        // the paywall would be the only thing they can reach.
-                        if (account.email != null) {
-                            TextButton(onClick = onSignOutClicked, enabled = !sync.syncing) { Text("Sign out") }
-                        }
-                    }
-                }
-
-                SyncAccountState.SignedOut -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Account", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Everything stays on this device today.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                    // One button per provider rather than a picker: there are
-                    // two at most, and a picker would add a step to the one
-                    // action on this row.
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        sync.providers.forEach { provider ->
-                            OutlinedButton(onClick = { onSignInClicked(provider) }, enabled = !sync.syncing) {
-                                Text("Sign in with ${provider.displayName}")
-                            }
-                        }
-                    }
-                }
-
-                is SyncAccountState.SignedIn -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(account.email ?: "Signed in", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        sync.lastSyncedLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = onSyncNowClicked, enabled = !sync.syncing) {
-                            Icon(MuvissIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text(if (sync.syncing) " Syncing…" else " Sync now")
-                        }
-                        TextButton(onClick = onSignOutClicked, enabled = !sync.syncing) { Text("Sign out") }
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable

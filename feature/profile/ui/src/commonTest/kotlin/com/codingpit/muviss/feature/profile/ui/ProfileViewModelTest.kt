@@ -7,6 +7,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveLastSyncedAtUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
@@ -18,9 +19,12 @@ import com.codingpit.muviss.feature.profile.domain.SetAvatarUseCase
 import com.codingpit.muviss.feature.profile.domain.SetDisplayNameUseCase
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
+import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncRepository
+import com.codingpit.muviss.feature.profile.domain.SyncStatus
+import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
@@ -117,7 +121,14 @@ private class FixedClock(private val epochDay: Long) : AppClock {
 private class FakeSyncRepository(
     override val isAvailable: Boolean = true,
     initialAccount: SyncAccountState = SyncAccountState.SignedOut,
+    override val isBackgroundAvailable: Boolean = true,
+    override val automaticSyncMode: AutomaticSyncMode = AutomaticSyncMode.InBackground,
 ) : SyncRepository {
+    val automaticSync = MutableStateFlow(false)
+    val status = MutableStateFlow(SyncStatus())
+    var resyncCalls = 0
+    var resyncResult: SyncOutcomeSummary = SyncOutcomeSummary.Success(2_000L)
+
     val account = MutableStateFlow(initialAccount)
     val lastSyncedAt = MutableStateFlow<Long?>(null)
     var requestedProvider: SyncProvider? = null
@@ -132,6 +143,19 @@ private class FakeSyncRepository(
     override fun observeAccount(): Flow<SyncAccountState> = account
 
     override fun observeLastSyncedAt(): Flow<Long?> = lastSyncedAt
+
+    override fun observeAutomaticSync(): Flow<Boolean> = automaticSync
+
+    override suspend fun setAutomaticSync(enabled: Boolean) {
+        automaticSync.value = enabled
+    }
+
+    override fun observeSyncStatus(): Flow<SyncStatus> = status
+
+    override suspend fun resyncEverything(): SyncOutcomeSummary {
+        resyncCalls++
+        return resyncResult
+    }
 
     override suspend fun beginSignIn(provider: SyncProvider): Result<String> {
         requestedProvider = provider
@@ -385,5 +409,157 @@ class ProfileViewModelTest {
 
         assertEquals(false, vm.state.value.stats.isEmpty)
         assertEquals(1, vm.state.value.stats.moviesWatched)
+    }
+
+    // --- EPIC 40: automatic sync ------------------------------------------------
+
+    private val signedIn = SyncAccountState.SignedIn("person@example.com")
+
+    @Test
+    fun the_switch_is_not_offered_in_a_build_without_background_sync() = runTest {
+        val vm = viewModel(syncRepository = FakeSyncRepository(initialAccount = signedIn, isBackgroundAvailable = false))
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.sync.automaticSyncAvailable)
+    }
+
+    @Test
+    fun the_switch_is_offered_but_only_usable_when_signed_in() = runTest {
+        val repository = FakeSyncRepository(initialAccount = SyncAccountState.SignedOut)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        assertEquals(true, vm.state.value.sync.automaticSyncAvailable)
+        assertEquals(false, vm.state.value.sync.automaticSyncEnabled, "signed out: shown, not usable")
+
+        repository.account.value = signedIn
+        advanceUntilIdle()
+        assertEquals(true, vm.state.value.sync.automaticSyncEnabled)
+
+        repository.account.value = SyncAccountState.Locked("person@example.com")
+        advanceUntilIdle()
+        assertEquals(false, vm.state.value.sync.automaticSyncEnabled, "not entitled: not usable")
+    }
+
+    @Test
+    fun the_switch_reflects_the_stored_preference_and_the_platforms_mode() = runTest {
+        val repository = FakeSyncRepository(initialAccount = signedIn, automaticSyncMode = AutomaticSyncMode.WhenSystemAllows)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        assertEquals(false, vm.state.value.sync.automaticSync, "off by default")
+        assertEquals(AutomaticSyncMode.WhenSystemAllows, vm.state.value.sync.automaticSyncMode)
+
+        repository.automaticSync.value = true
+        advanceUntilIdle()
+        assertEquals(true, vm.state.value.sync.automaticSync)
+    }
+
+    @Test
+    fun toggling_the_switch_stores_it() = runTest {
+        val repository = FakeSyncRepository(initialAccount = signedIn)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onAutomaticSyncToggled(true)
+        advanceUntilIdle()
+        assertEquals(true, repository.automaticSync.value)
+
+        vm.onAutomaticSyncToggled(false)
+        advanceUntilIdle()
+        assertEquals(false, repository.automaticSync.value)
+    }
+
+    @Test
+    fun a_signed_out_toggle_is_ignored() = runTest {
+        val repository = FakeSyncRepository(initialAccount = SyncAccountState.SignedOut)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onAutomaticSyncToggled(true)
+        advanceUntilIdle()
+
+        assertEquals(false, repository.automaticSync.value)
+    }
+
+    @Test
+    fun the_status_line_follows_the_engine() = runTest {
+        val repository = FakeSyncRepository(initialAccount = signedIn)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        repository.status.value = SyncStatus(lastSyncedAtEpochMs = 0L, pendingChanges = 4)
+        advanceUntilIdle()
+        assertEquals("Synced just now", vm.state.value.sync.lastSyncedLabel)
+        assertEquals(SyncStatusDetail.Waiting(4), vm.state.value.sync.statusDetail)
+
+        repository.status.value = SyncStatus(lastSyncedAtEpochMs = 0L, pendingChanges = 4, lastFailure = SyncFailureKind.Offline)
+        advanceUntilIdle()
+        assertEquals(SyncStatusDetail.Failed(SyncFailureKind.Offline), vm.state.value.sync.statusDetail)
+    }
+
+    @Test
+    fun a_failed_sync_says_why_in_words_not_in_exception_text() = runTest {
+        val repository = FakeSyncRepository(initialAccount = signedIn).apply {
+            syncNowResult = SyncOutcomeSummary.Failed(SyncFailureKind.Server)
+        }
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onSyncNowClicked()
+        advanceUntilIdle()
+
+        assertEquals("Sync failed: the sync service had a problem, try again later", vm.state.value.sync.message)
+    }
+
+    @Test
+    fun a_different_account_is_explained_and_nothing_is_offered_to_fix_it() = runTest {
+        val repository = FakeSyncRepository(initialAccount = signedIn).apply { syncNowResult = SyncOutcomeSummary.AccountChanged }
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onSyncNowClicked()
+        advanceUntilIdle()
+
+        assertEquals("This device's library belongs to a different account, so nothing was synced.", vm.state.value.sync.message)
+    }
+
+    @Test
+    fun a_dead_session_is_passed_through_as_expired() = runTest {
+        val repository = FakeSyncRepository(initialAccount = SyncAccountState.SessionExpired)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        assertEquals(SyncAccountState.SessionExpired, vm.state.value.sync.account)
+    }
+
+    @Test
+    fun resync_everything_asks_first_and_does_nothing_until_confirmed() = runTest {
+        val repository = FakeSyncRepository(initialAccount = signedIn)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onResyncEverythingRequested()
+        assertEquals(true, vm.state.value.sync.confirmingResync)
+        assertEquals(0, repository.resyncCalls)
+
+        vm.onResyncEverythingDismissed()
+        assertEquals(false, vm.state.value.sync.confirmingResync)
+        assertEquals(0, repository.resyncCalls, "cancelling changes nothing")
+    }
+
+    @Test
+    fun confirming_resync_runs_it_and_closes_the_dialog() = runTest {
+        val repository = FakeSyncRepository(initialAccount = signedIn)
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        vm.onResyncEverythingRequested()
+
+        vm.onResyncEverythingConfirmed()
+        advanceUntilIdle()
+
+        assertEquals(1, repository.resyncCalls)
+        assertEquals(false, vm.state.value.sync.confirmingResync)
+        assertEquals(false, vm.state.value.sync.syncing)
+        assertEquals("Everything resynced", vm.state.value.sync.message)
     }
 }
