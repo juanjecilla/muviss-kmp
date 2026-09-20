@@ -49,6 +49,12 @@ object CrashReporter {
 
     fun setEnabled(enabled: Boolean) = core.setEnabled(enabled)
 
+    /**
+     * Whether this platform has a real reporter. False on web, where the Settings
+     * toggle would change nothing, so the screen does not offer it.
+     */
+    val isAvailable: Boolean get() = core.isAvailable
+
     fun recordException(throwable: Throwable) = core.recordException(throwable)
 }
 
@@ -70,6 +76,8 @@ internal class CrashReporterCore(private val backend: CrashBackend) {
         started = true
         runCatching { backend.start(config, gate) }
     }
+
+    val isAvailable: Boolean get() = backend.isAvailable
 
     fun setEnabled(enabled: Boolean) {
         gate.enabled = enabled
@@ -93,6 +101,9 @@ internal class CrashReportGate {
 
 /** The platform's Sentry, behind the smallest surface [CrashReporterCore] needs. */
 internal interface CrashBackend {
+    /** False for the web no-op. */
+    val isAvailable: Boolean get() = true
+
     fun start(config: CrashReportingConfig, gate: CrashReportGate)
 
     fun capture(throwable: Throwable)

@@ -11,6 +11,8 @@ package com.codingpit.muviss.core.common.crash
 internal actual fun platformCrashBackend(): CrashBackend = NoOpBackend
 
 private object NoOpBackend : CrashBackend {
+    override val isAvailable: Boolean = false
+
     override fun start(config: CrashReportingConfig, gate: CrashReportGate) = Unit
 
     override fun capture(throwable: Throwable) = Unit

@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -159,13 +160,16 @@ fun SettingsScreen(
         )
         state.exportError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
-        SectionOverline("Privacy", topPadding = true)
-        SwitchRow(
-            label = CRASH_REPORTS_LABEL,
-            description = CRASH_REPORTS_DESCRIPTION,
-            checked = state.settings.crashReportsEnabled,
-            onToggle = viewModel::onCrashReportsToggled,
-        )
+        // Web has no reporter (docs/PRIVACY.md), so a switch there would be a lie.
+        if (CrashReporter.isAvailable) {
+            SectionOverline("Privacy", topPadding = true)
+            SwitchRow(
+                label = CRASH_REPORTS_LABEL,
+                description = CRASH_REPORTS_DESCRIPTION,
+                checked = state.settings.crashReportsEnabled,
+                onToggle = viewModel::onCrashReportsToggled,
+            )
+        }
 
         SectionOverline("About", topPadding = true)
         AboutSection(appVersionName = state.appVersion.versionName, onOpenLicenses = onOpenLicenses)

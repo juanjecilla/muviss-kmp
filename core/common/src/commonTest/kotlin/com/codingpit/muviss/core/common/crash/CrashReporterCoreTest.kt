@@ -32,6 +32,17 @@ class CrashReporterCoreTest {
     )
 
     @Test
+    fun a_backend_says_whether_the_platform_has_a_reporter() {
+        assertTrue(CrashReporterCore(FakeBackend()).isAvailable)
+        val web = object : CrashBackend {
+            override val isAvailable = false
+            override fun start(config: CrashReportingConfig, gate: CrashReportGate) = Unit
+            override fun capture(throwable: Throwable) = Unit
+        }
+        assertFalse(CrashReporterCore(web).isAvailable)
+    }
+
+    @Test
     fun init_is_idempotent() {
         val backend = FakeBackend()
         val core = CrashReporterCore(backend)

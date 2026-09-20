@@ -54,7 +54,7 @@ never leaves the device even incidentally.
      reported despite an opt-out.
    - **Web** — **no crash reporting at all.** The web build does not include the
      Sentry SDK, so nothing is ever sent, and there is nothing to switch off.
-     The Settings toggle is stored but has no effect there.
+     Settings shows no toggle there.
 
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.
