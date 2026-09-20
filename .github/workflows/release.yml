@@ -1,11 +1,14 @@
 name: Release
 
 # Release build. Produces a signed AAB plus desktop installers (DMG/DEB/MSI —
-# see the `desktop-release` job) and uploads them all as workflow artifacts —
-# there is no Play publishing step, and no GitHub Release object is created
-# either (see docs/RELEASING.md); the first release of each is
-# uploaded/attached by hand. Push a `vX.Y.Z` tag to run this, or dispatch it
-# manually.
+# see the `desktop-release` job), uploads them all as workflow artifacts, and —
+# when the run was triggered by a `vX.Y.Z` tag — attaches them to a GitHub
+# Release (the `github-release` job, issue #45). There is still no Play
+# publishing step; the AAB is uploaded to the Play Console by hand, see
+# docs/RELEASING.md.
+#
+# Push a tag with `scripts/release/cut-release.sh X.Y.Z` to run the whole thing,
+# or dispatch it manually to exercise the build without creating a release.
 on:
   push:
     tags:
@@ -22,6 +25,11 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
+
+# Only `github-release` needs write, but the default token is read-only once any
+# permissions block exists, so the two build jobs are named explicitly as read.
+permissions:
+  contents: read
 
 jobs:
   release:
@@ -139,3 +147,87 @@ jobs:
           name: muviss-desktop-${{ matrix.os }}-${{ github.ref_name }}
           path: ${{ matrix.artifactPath }}
           if-no-files-found: error
+
+  # Issue #45: until now every artifact above landed only as a *workflow*
+  # artifact — findable by opening the run, gone in 90 days, and invisible to
+  # anyone who just wants to download the app. This attaches them to a real
+  # GitHub Release instead.
+  #
+  # Tag-only. A `workflow_dispatch` run still builds and still uploads workflow
+  # artifacts, but must not invent a release: `github.ref_name` on a dispatch is
+  # a branch name, and a Release called "main" is worse than none.
+  #
+  # `needs` both build jobs, so a failed MSI leg (`fail-fast: false` above lets
+  # the others finish) stops the release rather than publishing a partial one.
+  # If that is ever the wrong call — a platform that simply cannot build should
+  # not block the other three — the fix is `if: always()` plus an explicit check
+  # of each result, not dropping the dependency.
+  github-release:
+    needs: [release, desktop-release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the release notes can diff against the previous tag.
+          fetch-depth: 0
+
+      # Every artifact from both jobs, each in its own directory. `merge-
+      # multiple` flattens them into one folder so the upload glob is simple —
+      # the names are already distinct (muviss-release-vX, muviss-desktop-<os>-vX).
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List what will be attached
+        run: |
+          echo "Attaching:"
+          find artifacts -type f -printf '  %p (%s bytes)\n' | sort
+
+      # `gh` rather than a third-party release action: it ships on the runner,
+      # needs no new supply-chain trust, and this repo already vets dependencies
+      # against a licence allow-list for the app itself.
+      #
+      # --generate-notes gives the commit list; the body above it says what a
+      # reader needs that the commits do not. --verify-tag refuses to invent a
+      # release for a tag that is not really there.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          {
+            echo "Muviss ${TAG}."
+            echo
+            echo "### Downloads"
+            echo
+            echo "- **Android** — \`.aab\`. Not installable directly; it is the"
+            echo "  Play Console upload format. No APK is published yet."
+            echo "- **Desktop** — \`.dmg\` (macOS), \`.deb\` (Linux), \`.msi\` (Windows)."
+            echo "  All three are **unsigned and un-notarized** (#39): macOS Gatekeeper"
+            echo "  will refuse the DMG until it is opened via right-click > Open, and"
+            echo "  Windows SmartScreen will warn. The MSI has never been installed by"
+            echo "  anyone (#44)."
+            echo "- No iOS build — TestFlight is a manual step, see docs/RELEASING.md."
+            echo
+            echo "### Not in this build"
+            echo
+            echo "Sync is compiled out. The four flags that enable it are deliberately"
+            echo "absent from release builds, so no library data leaves the device"
+            echo "(ADR 0018)."
+            if [ -n "$PREV" ]; then
+              echo
+              echo "**Full changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
+            fi
+          } > notes.md
+          gh release create "${TAG}" \
+            --title "Muviss ${TAG}" \
+            --notes-file notes.md \
+            --generate-notes \
+            --verify-tag \
+            artifacts/*

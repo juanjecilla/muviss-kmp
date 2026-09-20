@@ -78,6 +78,7 @@ Triage (ADR 0010) obeys the same rule: a `CaughtUp` verdict does not write a sta
 ./gradlew :feature:search:ui:jvmTest           # a module's tests
 ./gradlew spotlessApply                        # auto-format
 ./gradlew spotlessCheck detekt                 # what the pre-commit hook runs
+scripts/release/cut-release.sh 1.0.0           # tag + push; that is the whole release trigger
 ```
 
 iOS: open `app/iosApp` in Xcode. Enable the pre-commit hook once per clone: `git config core.hooksPath .githooks`.
