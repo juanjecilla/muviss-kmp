@@ -427,3 +427,7 @@ widget has been run).
   selected row's highlight pill spans ~500dp for a two-word label. Needs a width
   cap or more columns, plus a golden recorded at a genuinely tablet-sized frame —
   the committed wide goldens are 892dp, which is phone-landscape.
+
+## EPIC 40 — Opt-in automatic sync — wave 11 — issue #86
+
+Depends on EPIC 39 (#85). **Claims ADR 0021** (also claimed on PR #84's copy of this file) and **no schema number**: the `syncAutomatically` column and `syncState` rode EPIC 39's `9.sqm`. Adds a build flag (`SYNC_BACKGROUND_ENABLED`), a per-device switch that defaults off, and the per-platform triggers that make sync happen without a tap, all gated inside `SyncEngine`. Design and the manual verification checklist are on the issue.
