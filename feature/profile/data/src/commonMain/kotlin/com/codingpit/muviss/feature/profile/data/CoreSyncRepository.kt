@@ -88,9 +88,22 @@ class CoreSyncRepository(
         if (!isAvailable) return SyncOutcomeSummary.Unavailable
         return when (val outcome = engine.syncNow()) {
             SyncOutcome.NotSignedIn -> SyncOutcomeSummary.NotSignedIn
+
             SyncOutcome.NotEntitled -> SyncOutcomeSummary.NotEntitled
+
             is SyncOutcome.Success -> SyncOutcomeSummary.Success(outcome.syncedAtEpochMs)
+
             is SyncOutcome.Failed -> SyncOutcomeSummary.Failed(outcome.message)
+
+            // EPIC 39 built the mechanism (`SyncEngine.resolveAccountChange`);
+            // the confirmation that decides between discarding this device's
+            // library and merging it belongs to the account work (EPIC 32's
+            // ADR 0019), so until then this surfaces as a failure that says why
+            // nothing synced rather than silently syncing one person's library
+            // into another's account.
+            is SyncOutcome.AccountChanged -> SyncOutcomeSummary.Failed(
+                "This device's library belongs to a different account than the one you signed in with, so nothing was synced.",
+            )
         }
     }
 }

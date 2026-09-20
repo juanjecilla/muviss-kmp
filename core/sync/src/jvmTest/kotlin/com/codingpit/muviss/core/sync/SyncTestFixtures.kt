@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.sync
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.database.MuvissDatabase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,18 @@ internal class FakeClock(private var millis: Long) : AppClock {
     }
 }
 
+/**
+ * Records that [userId] already owns what is in this database, as it does once
+ * a device has synced at all. A fresh database has no owner, and the first
+ * sync for an owner puts every local row on the change-log (ADR 0020) — right
+ * for a first sync, and the reason a test about *clean* rows has to say the
+ * device has been here before.
+ */
+internal suspend fun MuvissDatabase.alreadyOwnedBy(userId: String = FAKE_SESSION.userId) {
+    syncStateQueries.ensureRow()
+    syncStateQueries.setOwner(userId)
+}
+
 internal val FAKE_SESSION = SyncSession(
     backendId = SyncBackendId.SUPABASE,
     userId = "user-1",
@@ -30,13 +43,19 @@ internal val FAKE_SESSION = SyncSession(
 )
 
 /**
- * In-memory [SyncBackend] standing in for a real Supabase project (no live
- * calls in tests — see ADR 0009). [push] applies the same last-write-wins
- * guard the real project's Postgres trigger does (docs/SYNC.md): an
- * incoming row only overwrites what's stored when its `updatedAtEpochMs` is
- * at least as new, so a stale push from one "device" can never clobber a
- * newer row another "device" already pushed — this is what makes the
- * two-way convergence test meaningful regardless of push order.
+ * In-memory [SyncBackend] for the tests that are about the *engine* rather
+ * than the wire: it hands the engine exactly the rows, pages and failures a
+ * test dictates, without HTTP in the way. Anything about what actually goes on
+ * the wire (nulls, chunking, `max_rows`, token refresh) belongs against
+ * `FakeSupabaseServer` instead, because this fake never serialises and never
+ * truncates and so cannot fail in those ways.
+ *
+ * [push] applies the same last-write-wins guard the real project's Postgres
+ * trigger does (docs/SYNC.md): an incoming row only overwrites what's stored
+ * when its `updatedAtEpochMs` is at least as new, so a stale push from one
+ * "device" can never clobber a newer row another "device" already pushed. Every
+ * accepted write takes the next value of one shared sequence, and [pull] pages
+ * through a table in that order — the same contract the real backend keeps.
  */
 internal class FakeSyncBackend(
     session: SyncSession? = FAKE_SESSION,
@@ -46,18 +65,33 @@ internal class FakeSyncBackend(
     private val sessionState = MutableStateFlow(session)
     override val session: StateFlow<SyncSession?> = sessionState
 
-    private val collectionEntries = mutableMapOf<String, CollectionEntryChange>()
-    private val episodeProgress = mutableMapOf<String, EpisodeProgressChange>()
-    private val mediaLists = mutableMapOf<String, MediaListChange>()
-    private val listEntries = mutableMapOf<Pair<String, String>, ListEntryChange>()
-    private val triageDecisions = mutableMapOf<String, TriageDecisionChange>()
-    private val episodePlays = mutableMapOf<String, EpisodePlayChange>()
+    private class Stored<V>(val value: V, val seq: Long)
+
+    private var nextSeq = 1L
+    private val collectionEntries = mutableMapOf<String, Stored<CollectionEntryChange>>()
+    private val episodeProgress = mutableMapOf<String, Stored<EpisodeProgressChange>>()
+    private val mediaLists = mutableMapOf<String, Stored<MediaListChange>>()
+    private val listEntries = mutableMapOf<Pair<String, String>, Stored<ListEntryChange>>()
+    private val triageDecisions = mutableMapOf<String, Stored<TriageDecisionChange>>()
+    private val episodePlays = mutableMapOf<String, Stored<EpisodePlayChange>>()
 
     var pushFailure: Throwable? = null
+
+    /** When set, the Nth call to [push] (1-based) fails and every other succeeds — a failure partway through a chunked push. */
+    var failPushOnCall: Int? = null
     var pullFailure: Throwable? = null
+
+    /** Rows per page [pull] delivers. Small values make a test see several pages without needing a large library. */
+    var pullPageSize: Int = 500
+
+    /** When set, [pull] delivers this many pages and then fails — an interruption partway through a pull. */
+    var failPullAfterPages: Int? = null
 
     /** Every [push] this backend has been handed, oldest first — lets a test assert that two overlapping cycles produced one push, not two. */
     val pushes = mutableListOf<SyncChangeSet>()
+
+    /** The cursors each [pull] was called with, oldest first. */
+    val pullRequests = mutableListOf<Map<SyncTable, SyncCursor>>()
 
     /**
      * Holds [push] open until completed. Without a way to keep one cycle
@@ -72,20 +106,24 @@ internal class FakeSyncBackend(
     }
 
     fun seedRemoteCollectionEntry(change: CollectionEntryChange) {
-        collectionEntries[change.mediaId] = change
+        collectionEntries[change.mediaId] = Stored(change, nextSeq++)
+    }
+
+    fun seedRemoteEpisodeProgress(change: EpisodeProgressChange) {
+        episodeProgress[change.episodeId] = Stored(change, nextSeq++)
     }
 
     fun seedRemoteTriageDecision(change: TriageDecisionChange) {
-        triageDecisions[change.mediaId] = change
+        triageDecisions[change.mediaId] = Stored(change, nextSeq++)
     }
 
-    fun remoteTriageDecision(mediaId: String): TriageDecisionChange? = triageDecisions[mediaId]
+    fun remoteTriageDecision(mediaId: String): TriageDecisionChange? = triageDecisions[mediaId]?.value
 
     fun seedRemoteEpisodePlay(change: EpisodePlayChange) {
-        episodePlays[change.id] = change
+        episodePlays[change.id] = Stored(change, nextSeq++)
     }
 
-    fun remoteEpisodePlay(id: String): EpisodePlayChange? = episodePlays[id]
+    fun remoteEpisodePlay(id: String): EpisodePlayChange? = episodePlays[id]?.value
 
     override suspend fun signInAnonymously(): Result<SyncSession> = Result.success(FAKE_SESSION).also { sessionState.value = FAKE_SESSION }
 
@@ -105,6 +143,7 @@ internal class FakeSyncBackend(
         pushes += changes
         pushGate?.await()
         pushFailure?.let { return Result.failure(it) }
+        if (failPushOnCall == pushes.size) return Result.failure(IllegalStateException("connection lost on push #${pushes.size}"))
         changes.collectionEntries.forEach { upsertIfNewer(collectionEntries, it.mediaId, it) { c -> c.updatedAtEpochMs } }
         changes.episodeProgress.forEach { upsertIfNewer(episodeProgress, it.episodeId, it) { c -> c.updatedAtEpochMs } }
         changes.mediaLists.forEach { upsertIfNewer(mediaLists, it.id, it) { c -> c.updatedAtEpochMs } }
@@ -114,25 +153,39 @@ internal class FakeSyncBackend(
         return Result.success(Unit)
     }
 
-    override suspend fun pull(sinceEpochMs: Long?): Result<SyncChangeSet> {
+    override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit> {
+        pullRequests += after
         pullFailure?.let { return Result.failure(it) }
-        val since = sinceEpochMs ?: Long.MIN_VALUE
-        return Result.success(
-            SyncChangeSet(
-                collectionEntries = collectionEntries.values.filter { it.updatedAtEpochMs > since },
-                episodeProgress = episodeProgress.values.filter { it.updatedAtEpochMs > since },
-                mediaLists = mediaLists.values.filter { it.updatedAtEpochMs > since },
-                listEntries = listEntries.values.filter { it.updatedAtEpochMs > since },
-                triageDecisions = triageDecisions.values.filter { it.updatedAtEpochMs > since },
-                episodePlays = episodePlays.values.filter { it.updatedAtEpochMs > since },
-            ),
-        )
+        var delivered = 0
+        for (table in SyncTable.entries) {
+            val start = after[table]?.position ?: 0L
+            val pages = when (table) {
+                SyncTable.COLLECTION_ENTRY -> pagesOf(collectionEntries.values, start) { SyncChangeSet(collectionEntries = it) }
+                SyncTable.EPISODE_PROGRESS -> pagesOf(episodeProgress.values, start) { SyncChangeSet(episodeProgress = it) }
+                SyncTable.MEDIA_LIST -> pagesOf(mediaLists.values, start) { SyncChangeSet(mediaLists = it) }
+                SyncTable.LIST_ENTRY -> pagesOf(listEntries.values, start) { SyncChangeSet(listEntries = it) }
+                SyncTable.TRIAGE_DECISION -> pagesOf(triageDecisions.values, start) { SyncChangeSet(triageDecisions = it) }
+                SyncTable.EPISODE_PLAY -> pagesOf(episodePlays.values, start) { SyncChangeSet(episodePlays = it) }
+            }
+            for ((changes, cursor) in pages) {
+                if (failPullAfterPages != null && delivered >= failPullAfterPages!!) return Result.failure(IllegalStateException("connection lost mid-pull"))
+                onPage(SyncPage(table, changes, cursor))
+                delivered++
+            }
+        }
+        return Result.success(Unit)
     }
 
-    private fun <K, V> upsertIfNewer(map: MutableMap<K, V>, key: K, value: V, timestampOf: (V) -> Long) {
+    private fun <V> pagesOf(stored: Collection<Stored<V>>, after: Long, wrap: (List<V>) -> SyncChangeSet): List<Pair<SyncChangeSet, SyncCursor>> = stored
+        .filter { it.seq > after }
+        .sortedBy { it.seq }
+        .chunked(pullPageSize)
+        .map { page -> wrap(page.map { it.value }) to SyncCursor(page.last().seq) }
+
+    private fun <K, V> upsertIfNewer(map: MutableMap<K, Stored<V>>, key: K, value: V, timestampOf: (V) -> Long) {
         val existing = map[key]
-        if (existing == null || timestampOf(value) >= timestampOf(existing)) {
-            map[key] = value
+        if (existing == null || timestampOf(value) >= timestampOf(existing.value)) {
+            map[key] = Stored(value, nextSeq++)
         }
     }
 }

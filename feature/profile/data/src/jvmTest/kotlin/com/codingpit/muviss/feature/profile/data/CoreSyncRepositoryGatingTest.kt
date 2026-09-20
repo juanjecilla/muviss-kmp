@@ -18,8 +18,11 @@ import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
+import com.codingpit.muviss.core.sync.SyncCursor
 import com.codingpit.muviss.core.sync.SyncEngine
+import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
+import com.codingpit.muviss.core.sync.SyncTable
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
@@ -60,7 +63,7 @@ class CoreSyncRepositoryGatingTest {
         override suspend fun completeOAuth(authCode: String) = error("not used")
         override suspend fun signOut() = Unit
         override suspend fun push(changes: SyncChangeSet) = Result.success(Unit)
-        override suspend fun pull(sinceEpochMs: Long?) = Result.success(SyncChangeSet())
+        override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit) = Result.success(Unit)
     }
 
     private class StubEntitlements(entitlement: Entitlement) : EntitlementProvider {

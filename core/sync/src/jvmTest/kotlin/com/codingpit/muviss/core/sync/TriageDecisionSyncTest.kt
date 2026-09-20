@@ -155,6 +155,7 @@ class TriageDecisionSyncTest {
 
     @Test
     fun `a clean decision is not pushed`() = runTest {
+        database.alreadyOwnedBy()
         writeLocal(isDirty = false)
 
         engine.syncNow()
