@@ -1,0 +1,49 @@
+-- What this device knows about its own sync (EPIC 39, ADR 0020). One row,
+-- id = 0, created lazily like `syncAccount` and `appSettings`.
+--
+-- `ownerAccountId` is the account this database's user data belongs to, and the
+-- reason the table exists. Nothing recorded whose library the local rows were,
+-- so signing out and into a different account pushed the first account's dirty
+-- rows into the second and merged the second's clean ones with the first's.
+-- Null means no account has ever synced from here, which is every install that
+-- predates this table: the first sync adopts its signed-in account, puts every
+-- local row on the change-log and does a full reconcile. That is also what makes
+-- rewatch history from before `7.sqm` reach the server.
+--
+-- The rest is the outcome of the last attempt, written by the engine. It is
+-- what a background run has to leave behind, because nobody is watching it: a
+-- failure that vanishes with the process is a sync that silently stopped.
+-- `lastOutcome` is 'SUCCESS' or 'FAILED' (null before the first attempt);
+-- `lastError` is diagnostic text for a log, not copy to show a user.
+CREATE TABLE syncState (
+    id INTEGER NOT NULL PRIMARY KEY,
+    ownerAccountId TEXT,
+    lastOutcome TEXT,
+    lastError TEXT,
+    lastAttemptAtEpochMs INTEGER,
+    consecutiveFailures INTEGER NOT NULL DEFAULT 0
+);
+
+selectState:
+SELECT *
+FROM syncState
+WHERE id = 0;
+
+ensureRow:
+INSERT OR IGNORE INTO syncState(id)
+VALUES (0);
+
+setOwner:
+UPDATE syncState
+SET ownerAccountId = :ownerAccountId
+WHERE id = 0;
+
+recordSuccess:
+UPDATE syncState
+SET lastOutcome = 'SUCCESS', lastError = NULL, lastAttemptAtEpochMs = :attemptedAtEpochMs, consecutiveFailures = 0
+WHERE id = 0;
+
+recordFailure:
+UPDATE syncState
+SET lastOutcome = 'FAILED', lastError = :error, lastAttemptAtEpochMs = :attemptedAtEpochMs, consecutiveFailures = consecutiveFailures + 1
+WHERE id = 0;

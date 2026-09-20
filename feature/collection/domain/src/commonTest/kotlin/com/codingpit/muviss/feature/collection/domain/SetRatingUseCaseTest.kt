@@ -16,6 +16,7 @@ private class RecordingCollectionRepository : CollectionRepository {
     override fun observeAll(): Flow<List<CollectionEntry>> = flowOf(emptyList())
     override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = error("not used")
     override suspend fun upsertSnapshot(details: MediaDetails) = error("not used")
+    override suspend fun refreshSnapshot(details: MediaDetails) = error("not used")
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")

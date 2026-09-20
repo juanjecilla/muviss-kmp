@@ -63,9 +63,65 @@ interface SyncBackend {
      * newer remote write that arrived from another device in between — see
      * docs/SYNC.md's schema for how Supabase enforces this without any
      * client-side coordination.
+     *
+     * A field that is null in a row **must reach the backend as null**: that is
+     * how a user clearing a rating or a note propagates. An implementation
+     * that omits nulls from its wire format leaves the old value in place on
+     * the server, where it comes back to every other device.
+     *
+     * [SyncEngine] hands over at most [PUSH_CHUNK_ROWS] rows per table per
+     * call, and an implementation may split further; nothing may assume a call
+     * is atomic across tables.
      */
     suspend fun push(changes: SyncChangeSet): Result<Unit>
 
-    /** Pulls every remote row changed after [sinceEpochMs] (null = full pull, e.g. first sync on a fresh install). */
-    suspend fun pull(sinceEpochMs: Long?): Result<SyncChangeSet>
+    /**
+     * Streams every remote row changed after [after], one page at a time, in
+     * the order pages arrive: tables parent-first, and within a table in the
+     * backend's own change order.
+     *
+     * [after] holds, per table, the [SyncCursor] of the last page this device
+     * fully applied; a table with no entry is pulled from the beginning. The
+     * cursors are **opaque**: the engine stores and returns them and never
+     * interprets one, so a backend is free to use a sequence number, a commit
+     * timestamp or a token. What it must guarantee is that a cursor only moves
+     * forward over rows already delivered, and that a client which stops
+     * anywhere and resumes from the last cursor it saw misses nothing.
+     *
+     * [onPage] is called once per non-empty page and must return before the
+     * next is requested; an exception from it fails the pull. A backend has to
+     * drain a table until it is *empty*, not until a page comes back short —
+     * a server may cap a response below the page size it was asked for, and a
+     * short page then means "capped", not "finished".
+     */
+    suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit>
 }
+
+/**
+ * The tables [SyncEngine] replicates, in the order they are pushed and pulled:
+ * parents before the rows that refer to them, so a device that is interrupted
+ * midway is left with a title and no ticks rather than ticks for a title it
+ * does not have.
+ *
+ * [cursorKey] is the local table name and what `syncCursor` is keyed by. It is
+ * deliberately not a backend's remote table name — those are the backend's own
+ * business.
+ */
+enum class SyncTable(val cursorKey: String) {
+    COLLECTION_ENTRY("collectionEntry"),
+    EPISODE_PROGRESS("episodeProgress"),
+    MEDIA_LIST("mediaList"),
+    LIST_ENTRY("listEntry"),
+    TRIAGE_DECISION("triageDecision"),
+    EPISODE_PLAY("episodePlay"),
+}
+
+/**
+ * A backend's bookmark in one table's change feed. Opaque by contract — see
+ * [SyncBackend.pull]. The engine persists [position] and hands it back; it
+ * never compares two cursors or does arithmetic on one.
+ */
+data class SyncCursor(val position: Long)
+
+/** One page of remote changes for a single [table]: [changes] has only that table's list populated. [cursor] is where the feed stands after this page. */
+class SyncPage(val table: SyncTable, val changes: SyncChangeSet, val cursor: SyncCursor)

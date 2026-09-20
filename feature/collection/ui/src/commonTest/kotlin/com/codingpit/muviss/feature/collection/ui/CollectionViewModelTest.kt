@@ -56,7 +56,8 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
 
     override fun observeAll(): Flow<List<CollectionEntry>> = flow
     override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = error("not used")
-    override suspend fun upsertSnapshot(details: MediaDetails) {
+    override suspend fun upsertSnapshot(details: MediaDetails) = error("not used")
+    override suspend fun refreshSnapshot(details: MediaDetails) {
         // The refresh path writes here; the tests only care that it doesn't blow up.
     }
     override suspend fun remove(mediaId: MediaId) = error("not used")

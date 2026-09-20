@@ -155,7 +155,8 @@ a row clean for a push that predates the user's edit.
   `MockEngine`). They cover status handling and the refresh paths; they cannot
   cover whether Supabase's real responses match the DTOs, which stays a manual
   step in `docs/SYNC.md`.
-- `applyRemote` still writes row-by-row with no `database.transaction { }`, so
+- *(Fixed by ADR 0020: a pull is now applied one transaction per page.)*
+  `applyRemote` still writes row-by-row with no `database.transaction { }`, so
   a mid-pull failure leaves a half-merged database. Knowingly left: the cursor
   is not advanced on failure, so the next run re-pulls and repairs it. That is
   self-healing by luck rather than by design, and worth fixing if pulls ever

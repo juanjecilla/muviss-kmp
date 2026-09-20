@@ -136,7 +136,9 @@ class SyncEngineTest {
 
     @Test
     fun syncNow_pull_keeps_the_local_row_when_remote_is_older() = runTest {
-        seedLocalCollectionEntry(favorite = true, updatedAtEpochMs = 5_000L, isDirty = false)
+        // Unsent edits are what contest last-write-wins; a clean row would just take the server's copy.
+        database.alreadyOwnedBy()
+        seedLocalCollectionEntry(favorite = true, updatedAtEpochMs = 5_000L, isDirty = true)
         backend.seedRemoteCollectionEntry(remoteChange(favorite = false, updatedAtEpochMs = 1_000L))
 
         engine.syncNow()
@@ -159,7 +161,8 @@ class SyncEngineTest {
     @Test
     fun syncNow_never_resurrects_a_local_tombstone_from_a_stale_remote_row() = runTest {
         // Locally deleted *after* the remote's last known (non-deleted) state.
-        seedLocalCollectionEntry(deleted = true, updatedAtEpochMs = 9_000L, isDirty = false)
+        database.alreadyOwnedBy()
+        seedLocalCollectionEntry(deleted = true, updatedAtEpochMs = 9_000L, isDirty = true)
         backend.seedRemoteCollectionEntry(remoteChange(deleted = false, updatedAtEpochMs = 1_000L))
 
         engine.syncNow()

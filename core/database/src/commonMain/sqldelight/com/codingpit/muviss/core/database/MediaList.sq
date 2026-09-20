@@ -108,8 +108,17 @@ WHERE listId = :listId AND deleted = 0;
 selectDirtyLists:
 SELECT * FROM mediaList WHERE isDirty = 1;
 
+-- Conditional on the stamp the push carried; see `collectionEntry`'s `clearDirty`.
 clearDirtyList:
-UPDATE mediaList SET isDirty = 0 WHERE id = :id;
+UPDATE mediaList SET isDirty = 0 WHERE id = :id AND updatedAtEpochMs = :pushedAt;
+
+-- First sync for an account, and "resync everything" (EPIC 39, ADR 0020).
+markAllListsDirty:
+UPDATE mediaList SET isDirty = 1;
+
+-- Account switch, "discard local data" (EPIC 39).
+deleteAllLists:
+DELETE FROM mediaList;
 
 -- List entries --
 
@@ -161,5 +170,12 @@ WHERE listId = :listId AND mediaId = :mediaId;
 selectDirtyEntries:
 SELECT * FROM listEntry WHERE isDirty = 1;
 
+-- Conditional on the stamp the push carried; see `collectionEntry`'s `clearDirty`.
 clearDirtyEntry:
-UPDATE listEntry SET isDirty = 0 WHERE listId = :listId AND mediaId = :mediaId;
+UPDATE listEntry SET isDirty = 0 WHERE listId = :listId AND mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
+
+markAllEntriesDirty:
+UPDATE listEntry SET isDirty = 1;
+
+deleteAllEntries:
+DELETE FROM listEntry;

@@ -77,8 +77,18 @@ SELECT *
 FROM episodeProgress
 WHERE isDirty = 1;
 
--- Run by SyncEngine after a row has been successfully pushed.
+-- Run by SyncEngine after a row has been successfully pushed. Conditional on
+-- the stamp the push carried, so an edit made while it was in flight stays dirty
+-- (see `collectionEntry`'s `clearDirty`).
 clearDirty:
 UPDATE episodeProgress
 SET isDirty = 0
-WHERE episodeId = :episodeId;
+WHERE episodeId = :episodeId AND updatedAtEpochMs = :pushedAt;
+
+-- First sync for an account, and "resync everything" (EPIC 39, ADR 0020).
+markAllDirty:
+UPDATE episodeProgress SET isDirty = 1;
+
+-- Account switch, "discard local data" (EPIC 39).
+deleteAll:
+DELETE FROM episodeProgress;

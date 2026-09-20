@@ -1,0 +1,30 @@
+-- EPIC 39 (sync correctness, ADR 0020). Everything the new sync engine needs to
+-- remember, in one step.
+--
+-- `syncCursor` and `syncState` are new tables; nothing is backfilled. An empty
+-- `syncCursor` is a full pull and a null `ownerAccountId` is "first sync for an
+-- owner", which marks every local row dirty — so an existing install does one
+-- complete reconcile the first time it syncs after upgrading, which is exactly
+-- what repairs the rows the old cursor lost and the rewatch history that never
+-- went up.
+--
+-- `syncAutomatically` is the per-device background-sync switch EPIC 40 will
+-- read. It rides this migration rather than a second one so the two epics need
+-- one schema version between them, and it defaults to off so nothing changes
+-- for anyone until they choose it. Appended, so it is the last column, which is
+-- where `verifyMigrations` expects an `ALTER TABLE ADD COLUMN` to have put it.
+CREATE TABLE syncCursor (
+    tableName TEXT NOT NULL PRIMARY KEY,
+    seq INTEGER NOT NULL
+);
+
+CREATE TABLE syncState (
+    id INTEGER NOT NULL PRIMARY KEY,
+    ownerAccountId TEXT,
+    lastOutcome TEXT,
+    lastError TEXT,
+    lastAttemptAtEpochMs INTEGER,
+    consecutiveFailures INTEGER NOT NULL DEFAULT 0
+);
+
+ALTER TABLE appSettings ADD COLUMN syncAutomatically INTEGER NOT NULL DEFAULT 0;

@@ -115,11 +115,16 @@ row and a paywall. Those are deliberately opposite, see ADR 0018.
 
 ## Schema
 
-> Reference copy. The executable one is
-> `supabase/migrations/20260829000000_sync_schema.sql`, applied with
-> `supabase db push` — see step 4 above. That file additionally creates a
-> `(user_id, updated_at_epoch_ms)` index per table, which is what keeps
-> `SyncEngine`'s `gt.<cursor>` pull a range scan as a library grows.
+> Reference copy of the **original** schema. The executable ones are
+> `supabase/migrations/20260829000000_sync_schema.sql` and, since EPIC 39,
+> `supabase/migrations/20260920000000_sync_server_seq.sql`, applied with
+> `supabase db push` — see step 4 above. The second **replaces
+> `discard_stale_write()` below** (it now also clamps `updated_at_epoch_ms` and
+> stamps `server_seq`, and fires on insert as well as update), adds a
+> `server_seq bigint not null` column to every table below, and indexes
+> `(user_id, server_seq)`. The pull pages by that column, not by
+> `updated_at_epoch_ms` — see "How a sync cycle works" and ADR 0020. Where this
+> block and the migrations disagree, the migrations are right.
 
 One table per synced local table (`collectionEntry`, `episodeProgress`,
 `mediaList`, `listEntry`, `triageDecision`, `episodePlay` — see their `.sq`
@@ -310,6 +315,72 @@ Notes:
   tombstoned rows too (so it can propagate the delete locally) and relies on
   `updated_at_epoch_ms` for the `since` filter, same as every other row.
 
+## How a sync cycle works (EPIC 39, ADR 0020)
+
+`SyncEngine.syncNow()` runs, under one mutex: **owner check, push, pull, reconcile**.
+
+**Owner check.** `syncState.ownerAccountId` is the account this database's user
+data belongs to. No owner (a fresh install, or any install from before it
+existed) adopts the signed-in account, marks every local row dirty and resets
+the cursors, so the first sync does one complete reconcile — this is what
+uploads rewatch history from before plays synced. A *different* account returns
+`SyncOutcome.AccountChanged` and moves nothing until
+`resolveAccountChange(DiscardLocalData | MergeLocalDataIntoAccount)`. Plain
+sign-out keeps the owner. `resyncEverything()` is the repair path: forget the
+cursors, mark everything dirty, run a normal cycle.
+
+**Push.** Table by table, parents first, at most 500 rows per request. Bodies
+carry `null` explicitly (`"rating":null`) because PostgREST's merge-duplicates
+upsert only writes the keys present in the body: an omitted key can never clear
+a column. A chunk is marked clean only if the row is unchanged since it was
+read (`clearDirty ... AND updatedAtEpochMs = :pushedAt`), so an edit made while
+the request was on the wire is sent next time.
+
+**Pull.** Per table, `order=server_seq.asc&limit=500&server_seq=gt.<cursor>`,
+looped until an **empty** page: Supabase's `max_rows` cuts a response silently,
+so a short page does not mean finished. Each page is applied in one
+transaction. A pulled row replaces a local one when the local row is clean or
+the pulled one is strictly newer than unsent edits; a winning `collectionEntry`
+takes user fields only (favorite, rating, note, tombstone, add date) and keeps
+this device's snapshot fields.
+
+**Reconcile.** After every table has drained, for the titles touched: an
+episode with `seen = 1` and no live play gets one at the tick's timestamp, and
+an episode with `seen = 0` has its plays tombstoned; `airedEpisodes` is raised
+to the number ticked. Only then do the six cursors move, in one transaction. A
+pull that fails anywhere moves none of them.
+
+**Cursors** are `syncCursor(tableName, seq)`: one row per table, the last
+`server_seq` applied, opaque to the engine. An install with no rows does a full
+pull. `appSettings.syncCursorEpochMs` is dead.
+
+**What a device leaves behind.** `syncState` records the last attempt's outcome,
+error text, time and consecutive failures. Nothing reads it yet (EPIC 40).
+
+### Snapshot refresh is not a synced write
+
+`CollectionRepository.refreshSnapshot` (Library visit, pull-to-refresh, the
+Android worker) updates provider data only and never touches `isDirty` or
+`updatedAtEpochMs`, and only on a live row. `upsertSnapshot` is "add to
+library" and is a synced write. Before EPIC 39 both were one call that stamped
+`now` and dirtied the row, so a device that merely looked at the Library beat
+other devices' real edits.
+
+### Known limitations
+
+- **Two devices ticking the same episode** create two plays (different
+  timestamps, so different ids). That is indistinguishable from a legitimate
+  rewatch and is left alone. Tracked in a follow-up issue.
+- **Commit order of sequence values.** A row from a slow transaction can become
+  visible behind a cursor that already passed its `server_seq`. Bounded by
+  `resyncEverything()` and, once EPIC 40 lands, a weekly full reconcile.
+- **Two edits to one row in the same millisecond** are indistinguishable to
+  `clearDirty`'s guard.
+- **An interrupted first sync** re-downloads from the start, since no cursor
+  moves until everything drained.
+- **`SyncOutcome.AccountChanged`** shows in Profile as a failed sync until
+  EPIC 32 decides the account-switch policy and builds its confirmation.
+
 ## Auth endpoints used
 
 Plain HTTP against GoTrue (`{SUPABASE_URL}/auth/v1/...`), not the
@@ -354,6 +425,16 @@ Verified against the live project (`sodjedenvnvsuktbxevt`, eu-west-1) on
   derived, `lastSyncedAtEpochMs` untouched.
 
 Re-run any of these with `scripts/sync/` — see that directory's README.
+
+**Not yet verified for EPIC 39 (the server sequence and paged pull)** — the
+migration `20260920000000_sync_server_seq.sql`, its pgTAP tests in
+`supabase/tests/database/`, and the live scripts `verify-server-seq.sh`,
+`verify-null-clearing.sh` and `verify-pagination.sh` were written without Docker
+or a project and have not been run. `FakeSupabaseServer` (`:core:testing`) is a
+hand-written model of PostgREST and of those triggers, so the client tests are
+only as true as that model: `verify-null-clearing.sh` and
+`verify-pagination.sh` are what check the two assumptions the fix rests on
+(issue #88).
 
 ## Still open
 

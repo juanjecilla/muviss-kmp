@@ -1,11 +1,12 @@
 package com.codingpit.muviss.core.sync
 
-import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.widget.AppWidgets
+import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -13,12 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
-import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
-import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
-import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
-import com.codingpit.muviss.core.database.MediaList as MediaListRow
-import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
+import kotlin.coroutines.cancellation.CancellationException
 
 /** The outcome of one [SyncEngine.syncNow] run. */
 sealed interface SyncOutcome {
@@ -32,16 +28,35 @@ sealed interface SyncOutcome {
      */
     data object NotEntitled : SyncOutcome
 
+    /**
+     * The signed-in account is not the one this device's library belongs to
+     * ([previousAccountId]). Nothing was pushed or pulled: sending one person's
+     * library into another's account, or merging two, is not a decision the
+     * engine makes on its own. The caller decides and answers with
+     * [SyncEngine.resolveAccountChange].
+     */
+    data class AccountChanged(val previousAccountId: String, val currentAccountId: String) : SyncOutcome
+
     data class Success(val pushedCount: Int, val pulledCount: Int, val syncedAtEpochMs: Long) : SyncOutcome
 
     data class Failed(val message: String) : SyncOutcome
+}
+
+/** What to do with a library that belongs to a different account than the one now signed in. See [SyncEngine.resolveAccountChange]. */
+enum class AccountChangeResolution {
+    /** Delete this device's library and take the new account's. The safe default: nothing of the previous person survives on the device. */
+    DiscardLocalData,
+
+    /** Keep this device's library and merge it into the new account, as if it had always been theirs. */
+    MergeLocalDataIntoAccount,
 }
 
 /**
  * Replays local dirty rows to [backend] and merges remote changes back in —
  * the concrete implementation of the "SyncEngine" abstraction CONTEXT.md and
  * ADR 0002 named before any backend existed. See ADR 0009 for the full
- * design and docs/SYNC.md for the schema/RLS this expects server-side.
+ * design, ADR 0020 for what changed in EPIC 39, and docs/SYNC.md for the
+ * schema/RLS this expects server-side.
  *
  * **Order**: push local dirty rows first, then pull. A push is safe to
  * attempt unconditionally (never gated on first reading the remote value)
@@ -49,10 +64,16 @@ sealed interface SyncOutcome {
  * docs/SYNC.md — silently discards a push whose `updated_at_epoch_ms` is
  * older than what's already stored, rather than this engine needing to
  * read-before-write. The pull side applies the same rule client-side (see
- * [applyRemote]): a remote row only overwrites a local one when its
- * `updatedAtEpochMs` is strictly greater, so tombstones (`deleted = true`)
- * propagate exactly like any other field and a stale delete/undelete can
- * never resurrect a newer local write, or vice versa.
+ * [RemoteApplier]), so tombstones (`deleted = true`) propagate exactly like
+ * any other field and a stale delete/undelete can never resurrect a newer
+ * local write, or vice versa.
+ *
+ * **Whose data this is.** `syncState.ownerAccountId` records the account the
+ * local library belongs to. The first sync from a database with no owner
+ * adopts the signed-in account and puts every local row on the change-log —
+ * which is also the one full reconcile an upgraded install needs. A different
+ * account than the recorded one stops the cycle with
+ * [SyncOutcome.AccountChanged] until [resolveAccountChange] says what to do.
  *
  * Conflict granularity is the whole row, not per-field — simple and
  * predictable, matching CONTEXT.md's "episode ticks are idempotent
@@ -65,15 +86,22 @@ class SyncEngine(
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
     private val entitlementGate: EntitlementGate = EntitlementGate.AlwaysEntitled,
+    private val widgetRefresher: WidgetRefresher = AppWidgets,
 ) {
+    private val changeLog = LocalChangeLog(database)
+    private val applier = RemoteApplier(database)
+
     /**
      * One cycle at a time. Two callers can otherwise overlap — `MuvissApp`'s
      * `AutoSyncOnForeground` fires on every `ON_START` while the profile
-     * screen's "Sync now" button is a tap away — and interleaving them can
-     * lose an edit: run A reads the dirty set, run B reads it too, the user
-     * edits a row, then A's `clearDirty` marks that row clean for a push that
-     * predates the edit. The second caller waits rather than returning early,
-     * so a manual tap still reflects everything the user just did.
+     * screen's "Sync now" button is a tap away — and interleaving them would
+     * push and pull the same rows twice over. The second caller waits rather
+     * than returning early, so a manual tap still reflects everything the user
+     * just did.
+     *
+     * The mutex serialises *syncs*, not *writes*: the user can still edit a
+     * row while a cycle is in flight. That is what the conditional
+     * `clearDirty` is for.
      */
     private val syncMutex = Mutex()
 
@@ -83,228 +111,127 @@ class SyncEngine(
         .mapToOneOrNull(dispatchers.io)
         .map { it?.lastSyncedAtEpochMs }
 
-    suspend fun syncNow(): SyncOutcome = withContext(dispatchers.io) {
-        backend.session.first() ?: return@withContext SyncOutcome.NotSignedIn
-        if (!entitlementGate.isEntitled()) return@withContext SyncOutcome.NotEntitled
-        syncMutex.withLock {
-            runCatching { runSync() }
-                .fold(
-                    onSuccess = { it },
-                    onFailure = { e -> SyncOutcome.Failed(e.message ?: "Sync failed") },
-                )
+    suspend fun syncNow(): SyncOutcome = serialised { userId -> guarded { syncCycle(userId) } }
+
+    /**
+     * Answers a [SyncOutcome.AccountChanged] and then syncs. A no-op resolution
+     * if the owner is not actually different by now (another caller resolved it
+     * first), so it is safe to call twice.
+     */
+    suspend fun resolveAccountChange(resolution: AccountChangeResolution): SyncOutcome = serialised { userId ->
+        guarded {
+            val owner = currentOwner()
+            if (owner != null && owner != userId) {
+                when (resolution) {
+                    AccountChangeResolution.DiscardLocalData -> discardLocalData(userId)
+                    AccountChangeResolution.MergeLocalDataIntoAccount -> adoptAccount(userId)
+                }
+            }
+            syncCycle(userId)
         }
     }
 
-    private suspend fun runSync(): SyncOutcome {
-        val dirty = collectDirty()
-        if (!dirty.isEmpty) {
-            backend.push(dirty).getOrThrow()
-            clearDirty(dirty)
+    /**
+     * The repair path: forgets where every pull stopped, puts every local row
+     * back on the change-log, then runs a normal cycle — a full pull, a full
+     * push and a full reconciliation. It is also the fallback if the server's
+     * sequence ever leaves a gap an incremental pull cannot see (ADR 0020).
+     * Idempotent, and slow in proportion to the library.
+     */
+    suspend fun resyncEverything(): SyncOutcome = serialised { userId ->
+        guarded {
+            syncCycle(userId) {
+                database.transaction {
+                    changeLog.markAllDirty()
+                    changeLog.resetCursors()
+                }
+            }
         }
+    }
 
+    /** Gates, then runs [block] with the signed-in account's id, one cycle at a time. */
+    private suspend fun serialised(block: suspend (userId: String) -> SyncOutcome): SyncOutcome = withContext(dispatchers.io) {
+        val session = backend.session.first() ?: return@withContext SyncOutcome.NotSignedIn
+        if (!entitlementGate.isEntitled()) return@withContext SyncOutcome.NotEntitled
+        syncMutex.withLock { block(session.userId) }
+    }
+
+    /**
+     * Turns a failure into [SyncOutcome.Failed] and records it — but never a
+     * cancellation. A [CancellationException] is how a coroutine is told to
+     * stop, so swallowing it into a "failed" result both lies to the caller
+     * and counts a user backing out as a sync failure.
+     */
+    private suspend fun guarded(block: suspend () -> SyncOutcome): SyncOutcome = runCatching { block() }.getOrElse { failure ->
+        if (failure is CancellationException) throw failure
+        recordFailure(failure)
+        SyncOutcome.Failed(failure.message ?: "Sync failed")
+    }
+
+    private suspend fun syncCycle(userId: String, beforePush: suspend () -> Unit = {}): SyncOutcome {
+        database.syncStateQueries.ensureRow()
+        val owner = currentOwner()
+        when {
+            owner == null -> adoptAccount(userId)
+            owner != userId -> return SyncOutcome.AccountChanged(previousAccountId = owner, currentAccountId = userId)
+        }
+        beforePush()
         database.appSettingsQueries.ensureRow()
-        val cursor = database.appSettingsQueries.selectSettings().awaitAsOneOrNull()?.syncCursorEpochMs
-        val remote = backend.pull(cursor).getOrThrow()
-        applyRemote(remote)
 
-        // Two different timestamps, deliberately not one column (they used to
-        // be): the cursor is stamped by whichever device wrote the rows and
-        // only ever moves forward to a value the server actually returned,
-        // while "last synced" answers "when did this device last run a cycle"
+        val pushed = changeLog.pushDirty { backend.push(it) }
+
+        val cursors = changeLog.loadCursors()
+        val advanced = cursors.toMutableMap()
+        val touched = mutableSetOf<String>()
+        var pulled = 0
+        backend.pull(cursors) { page ->
+            pulled += page.changes.size
+            touched += applier.applyPage(page)
+            advanced[page.table] = page.cursor
+        }.getOrThrow()
+        // Cursors move only now — after every table drained and reconciled, in
+        // that last transaction. A pull that fails anywhere leaves all six where
+        // they were, and the retry re-applies the same rows to the same result.
+        applier.reconcile(touched) { changeLog.saveCursors(advanced) }
+        if (pulled > 0) refreshWidgets()
+
+        // "Last synced" answers "when did this device last complete a cycle",
         // and must advance even when the pull came back empty.
-        database.appSettingsQueries.updateSyncCursor(maxOf(remote.maxUpdatedAtEpochMs ?: 0L, cursor ?: 0L).takeIf { it > 0L })
         val now = clock.nowEpochMs()
         database.appSettingsQueries.updateLastSyncedAt(now)
-        return SyncOutcome.Success(pushedCount = dirty.size, pulledCount = remote.size, syncedAtEpochMs = now)
+        database.syncStateQueries.recordSuccess(now)
+        return SyncOutcome.Success(pushedCount = pushed, pulledCount = pulled, syncedAtEpochMs = now)
     }
 
-    private suspend fun collectDirty(): SyncChangeSet = SyncChangeSet(
-        collectionEntries = database.collectionEntryQueries.selectDirty().awaitAsList().map { it.toChange() },
-        episodeProgress = database.episodeProgressQueries.selectDirty().awaitAsList().map { it.toChange() },
-        mediaLists = database.mediaListQueries.selectDirtyLists().awaitAsList().map { it.toChange() },
-        listEntries = database.mediaListQueries.selectDirtyEntries().awaitAsList().map { it.toChange() },
-        triageDecisions = database.triageDecisionQueries.selectDirty().awaitAsList().map { it.toChange() },
-        episodePlays = database.episodePlayQueries.selectDirty().awaitAsList().map { it.toChange() },
-    )
+    private suspend fun currentOwner(): String? = database.syncStateQueries.selectState().awaitAsOneOrNull()?.ownerAccountId
 
-    private suspend fun clearDirty(dirty: SyncChangeSet) {
-        dirty.collectionEntries.forEach { database.collectionEntryQueries.clearDirty(it.mediaId) }
-        dirty.episodeProgress.forEach { database.episodeProgressQueries.clearDirty(it.episodeId) }
-        dirty.mediaLists.forEach { database.mediaListQueries.clearDirtyList(it.id) }
-        dirty.listEntries.forEach { database.mediaListQueries.clearDirtyEntry(listId = it.listId, mediaId = it.mediaId) }
-        dirty.triageDecisions.forEach { database.triageDecisionQueries.clearDirty(it.mediaId) }
-        dirty.episodePlays.forEach { database.episodePlayQueries.clearDirty(it.id) }
+    /** Makes [userId] the owner of whatever is on this device, and puts all of it on the change-log for the full reconcile that follows. */
+    private suspend fun adoptAccount(userId: String) {
+        database.transaction {
+            changeLog.markAllDirty()
+            changeLog.resetCursors()
+            database.syncStateQueries.setOwner(userId)
+        }
     }
 
-    private suspend fun applyRemote(remote: SyncChangeSet) {
-        remote.collectionEntries.forEach { change -> applyCollectionEntry(change) }
-        remote.episodeProgress.forEach { change -> applyEpisodeProgress(change) }
-        remote.mediaLists.forEach { change -> applyMediaList(change) }
-        remote.listEntries.forEach { change -> applyListEntry(change) }
-        remote.triageDecisions.forEach { change -> applyTriageDecision(change) }
-        remote.episodePlays.forEach { change -> applyEpisodePlay(change) }
+    private suspend fun discardLocalData(userId: String) {
+        database.transaction {
+            changeLog.deleteAllUserData()
+            changeLog.resetCursors()
+            database.syncStateQueries.setOwner(userId)
+        }
+        refreshWidgets()
     }
 
-    /** Never resurrects a tombstone and never overwrites a newer local edit — see the class KDoc's "Order" section. Applies unconditionally when no local row exists (first sync on a fresh install). */
-    private suspend fun applyCollectionEntry(change: CollectionEntryChange) {
-        val local = database.collectionEntryQueries.selectById(change.mediaId).awaitAsOneOrNull()
-        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
-        database.collectionEntryQueries.upsert(
-            mediaId = change.mediaId,
-            mediaType = change.mediaType,
-            title = change.title,
-            posterUrl = change.posterUrl,
-            releaseYear = change.releaseYear?.toLong(),
-            productionStatus = change.productionStatus,
-            totalEpisodes = change.totalEpisodes.toLong(),
-            airedEpisodes = change.airedEpisodes.toLong(),
-            favorite = change.favorite,
-            genres = change.genres,
-            runtimeMinutes = change.runtimeMinutes?.toLong(),
-            addedAtEpochMs = change.addedAtEpochMs,
-            updatedAtEpochMs = change.updatedAtEpochMs,
-            isDirty = false,
-            deleted = change.deleted,
-            // A per-device notification preference, not user library data — never overwritten by a remote row (see `SyncChangeSet.CollectionEntryChange`'s KDoc).
-            notificationsMuted = local?.notificationsMuted ?: false,
-            rating = change.rating?.toLong(),
-            note = change.note,
-        )
+    private suspend fun recordFailure(failure: Throwable) {
+        runCatching {
+            database.syncStateQueries.ensureRow()
+            database.syncStateQueries.recordFailure(error = failure.message ?: failure::class.simpleName, attemptedAtEpochMs = clock.nowEpochMs())
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
-    private suspend fun applyEpisodeProgress(change: EpisodeProgressChange) {
-        val local = database.episodeProgressQueries.selectByEpisodeId(change.episodeId).awaitAsOneOrNull()
-        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
-        database.episodeProgressQueries.upsert(
-            episodeId = change.episodeId,
-            mediaId = change.mediaId,
-            seasonNumber = change.seasonNumber.toLong(),
-            episodeNumber = change.episodeNumber.toLong(),
-            seen = change.seen,
-            updatedAtEpochMs = change.updatedAtEpochMs,
-            isDirty = false,
-        )
+    /** A stale widget is a stale row on a home screen; it must not turn a completed sync into a failed one. */
+    private suspend fun refreshWidgets() {
+        runCatching { widgetRefresher.refresh() }.onFailure { if (it is CancellationException) throw it }
     }
-
-    private suspend fun applyMediaList(change: MediaListChange) {
-        val local = database.mediaListQueries.selectListById(change.id).awaitAsOneOrNull()
-        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
-        database.mediaListQueries.upsertList(
-            id = change.id,
-            name = change.name,
-            createdAtEpochMs = change.createdAtEpochMs,
-            updatedAtEpochMs = change.updatedAtEpochMs,
-            isDirty = false,
-            deleted = change.deleted,
-        )
-    }
-
-    private suspend fun applyListEntry(change: ListEntryChange) {
-        val local = database.mediaListQueries.selectEntry(change.listId, change.mediaId).awaitAsOneOrNull()
-        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
-        database.mediaListQueries.upsertEntry(
-            listId = change.listId,
-            mediaId = change.mediaId,
-            addedAtEpochMs = change.addedAtEpochMs,
-            updatedAtEpochMs = change.updatedAtEpochMs,
-            isDirty = false,
-            deleted = change.deleted,
-        )
-    }
-
-    private suspend fun applyTriageDecision(change: TriageDecisionChange) {
-        val local = database.triageDecisionQueries.selectById(change.mediaId).awaitAsOneOrNull()
-        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
-        database.triageDecisionQueries.upsert(
-            mediaId = change.mediaId,
-            mediaType = change.mediaType,
-            verdict = change.verdict,
-            title = change.title,
-            posterUrl = change.posterUrl,
-            decidedAtEpochMs = change.decidedAtEpochMs,
-            resolved = change.resolved,
-            updatedAtEpochMs = change.updatedAtEpochMs,
-            isDirty = false,
-            deleted = change.deleted,
-        )
-    }
-
-    private suspend fun applyEpisodePlay(change: EpisodePlayChange) {
-        val local = database.episodePlayQueries.selectById(change.id).awaitAsOneOrNull()
-        if (local != null && local.updatedAtEpochMs >= change.updatedAtEpochMs) return
-        database.episodePlayQueries.upsert(
-            id = change.id,
-            episodeId = change.episodeId,
-            mediaId = change.mediaId,
-            watchedAtEpochMs = change.watchedAtEpochMs,
-            updatedAtEpochMs = change.updatedAtEpochMs,
-            isDirty = false,
-            deleted = change.deleted,
-        )
-    }
-
-    private fun CollectionEntryRow.toChange() = CollectionEntryChange(
-        mediaId = mediaId,
-        mediaType = mediaType,
-        title = title,
-        posterUrl = posterUrl,
-        releaseYear = releaseYear?.toInt(),
-        productionStatus = productionStatus,
-        totalEpisodes = totalEpisodes.toInt(),
-        airedEpisodes = airedEpisodes.toInt(),
-        favorite = favorite,
-        genres = genres,
-        runtimeMinutes = runtimeMinutes?.toInt(),
-        addedAtEpochMs = addedAtEpochMs,
-        updatedAtEpochMs = updatedAtEpochMs,
-        deleted = deleted,
-        rating = rating?.toInt(),
-        note = note,
-    )
-
-    private fun EpisodeProgressRow.toChange() = EpisodeProgressChange(
-        episodeId = episodeId,
-        mediaId = mediaId,
-        seasonNumber = seasonNumber.toInt(),
-        episodeNumber = episodeNumber.toInt(),
-        seen = seen,
-        updatedAtEpochMs = updatedAtEpochMs,
-    )
-
-    private fun MediaListRow.toChange() = MediaListChange(
-        id = id,
-        name = name,
-        createdAtEpochMs = createdAtEpochMs,
-        updatedAtEpochMs = updatedAtEpochMs,
-        deleted = deleted,
-    )
-
-    private fun ListEntryRow.toChange() = ListEntryChange(
-        listId = listId,
-        mediaId = mediaId,
-        addedAtEpochMs = addedAtEpochMs,
-        updatedAtEpochMs = updatedAtEpochMs,
-        deleted = deleted,
-    )
-
-    private fun EpisodePlayRow.toChange() = EpisodePlayChange(
-        id = id,
-        episodeId = episodeId,
-        mediaId = mediaId,
-        watchedAtEpochMs = watchedAtEpochMs,
-        updatedAtEpochMs = updatedAtEpochMs,
-        deleted = deleted,
-    )
-
-    private fun TriageDecisionRow.toChange() = TriageDecisionChange(
-        mediaId = mediaId,
-        mediaType = mediaType,
-        verdict = verdict,
-        title = title,
-        posterUrl = posterUrl,
-        decidedAtEpochMs = decidedAtEpochMs,
-        resolved = resolved,
-        updatedAtEpochMs = updatedAtEpochMs,
-        deleted = deleted,
-    )
 }

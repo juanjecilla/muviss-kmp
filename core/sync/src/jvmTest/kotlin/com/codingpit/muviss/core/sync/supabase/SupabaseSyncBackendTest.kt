@@ -147,7 +147,7 @@ class SupabaseSyncBackendTest {
             respond("""{"message":"permission denied"}""", HttpStatusCode.Forbidden, headersOf(HttpHeaders.ContentType, "application/json"))
         }
 
-        val result = backend.pull(sinceEpochMs = null)
+        val result = backend.pull(emptyMap()) { }
 
         assertTrue(result.isFailure)
         val message = result.exceptionOrNull()?.message.orEmpty()

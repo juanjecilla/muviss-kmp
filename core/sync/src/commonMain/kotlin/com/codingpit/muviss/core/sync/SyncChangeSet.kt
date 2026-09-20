@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  * `triageDecision` / `episodePlay`
  * (see `core/database`'s `.sq` files) minus device-local-only columns.
  * [SyncBackend.push] sends a set of local dirty rows; [SyncBackend.pull]
- * returns a set of remote rows changed since some point in time. `@Serializable`
+ * delivers remote rows as pages, each a set holding one table's rows. `@Serializable`
  * with snake_case [SerialName]s because [SupabaseSyncBackend] sends these
  * directly as PostgREST JSON bodies — see docs/SYNC.md for the table
  * schema each field maps to.
@@ -30,27 +30,6 @@ data class SyncChangeSet(
     val size: Int
         get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size +
             triageDecisions.size + episodePlays.size
-
-    /**
-     * The newest `updated_at_epoch_ms` in this set, or null when it is empty.
-     *
-     * This is what [SyncEngine] advances its pull cursor to, rather than its
-     * own `AppClock`. Rows are stamped by whichever *device* wrote them, so a
-     * cursor taken from the reading device's clock is comparing two unrelated
-     * clocks: if the writing device runs even slightly ahead, its rows land
-     * with timestamps above the reader's "now", the next `gt.<cursor>` filter
-     * excludes them, and they are never pulled again. Advancing to a
-     * timestamp that actually came off the server has no such gap.
-     */
-    val maxUpdatedAtEpochMs: Long?
-        get() = listOf(
-            collectionEntries.maxOfOrNull { it.updatedAtEpochMs },
-            episodeProgress.maxOfOrNull { it.updatedAtEpochMs },
-            mediaLists.maxOfOrNull { it.updatedAtEpochMs },
-            listEntries.maxOfOrNull { it.updatedAtEpochMs },
-            triageDecisions.maxOfOrNull { it.updatedAtEpochMs },
-            episodePlays.maxOfOrNull { it.updatedAtEpochMs },
-        ).filterNotNull().maxOrNull()
 }
 
 /**

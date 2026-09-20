@@ -89,6 +89,26 @@ kotlin {
             // and HTTP-status handling are only observable against real
             // responses, and ADR 0009 rules out network calls in tests.
             implementation(libs.ktor.clientMock)
+            // `FakeSupabaseServer` (the wire-level Supabase stand-in the sync
+            // suites run the real backend and engine against) and
+            // `CountingDriver` (the operation-count budgets).
+            implementation(projects.core.testing)
+            // Asserts the status-derivation invariant a pull must not break.
+            implementation(projects.core.model)
+            // Test-only, for `SyncIntegrationTest`: two devices, each running the
+            // real collection and progress repositories over its own database
+            // against one FakeSupabaseServer. The regressions worth catching
+            // (a snapshot refresh beating another device's edit, ticks pulled
+            // ahead of the snapshot that covers them) only exist with the real
+            // write paths, and the real backend is `internal` to this module, so
+            // this is the module that has to host them. Production code depends
+            // on none of these; the layering only bends on this test classpath.
+            implementation(projects.feature.collection.api)
+            implementation(projects.feature.collection.domain)
+            implementation(projects.feature.collection.data)
+            implementation(projects.feature.progress.api)
+            implementation(projects.feature.progress.domain)
+            implementation(projects.feature.progress.data)
         }
     }
 }
