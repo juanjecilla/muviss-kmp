@@ -255,7 +255,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 
 **Decisions (2026-09-19).** All five targets ship (Play, App Store, signed DMG/MSI/DEB, web). The repo stays private until ready, then goes public as a release step. Sync ships as a **paid** feature sold through **RevenueCat**; that makes accounts real and drags in account deletion, Sign in with Apple, a privacy rewrite and a Supabase deploy pipeline (EPIC 32). Only a Play Console account exists today.
 
-**Numbers claimed here, before any branch needs them** (`AGENTS.md`): `9.sqm` (schema v10) is EPIC 26's; `10.sqm` (schema v11) is EPIC 28's; ADR **0019** is EPIC 32's.
+**Numbers claimed here, before any branch needs them** (`AGENTS.md`): `9.sqm` (schema v10) is EPIC 26's; `10.sqm` (schema v11) is EPIC 28's; `11.sqm` (schema v12) is EPIC 39's, and carries EPIC 40's switch column too; ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's.
 
 | Wave | Epic | Issue |
 |---|---|---|
@@ -269,6 +269,8 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes | #73 |
 | 11 | EPIC 31 Localization and accessibility | #74 |
 | 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
+| 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** | #85 |
+| 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
 | 12 | EPIC 33 Brand and store assets, hosted privacy policy | #76 |
 | 12 | EPIC 34 Android to Google Play | #77 |
 | 13 | EPIC 35 iOS to TestFlight and the App Store | #78 |
@@ -278,7 +280,9 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
 
-Filed as follow-ups rather than epics: desktop auto-update (#82, from EPIC 36) and web crash reporting (#83, from EPIC 26).
+Filed as follow-ups rather than epics: desktop auto-update (#82, from EPIC 36) and web crash reporting (#83, from EPIC 26). From the sync audit: duplicate plays when two devices tick the same episode (#87) and confirming null clearing and the hosted `max_rows` against the live project (#88, owner-only).
+
+**EPIC 39 and 40 (added 2026-09-20).** The owner reported that data after syncing is "not well done". An audit confirmed it: pull is unpaginated against a 1000-row server cap and its cursor is a max of client clocks, so a large library or an offline edit pushed late is silently never pulled; nulls are dropped from the push, so clearing a rating or note does not reach the server; `clearDirty` can mark an edit made during a push as clean; the snapshot refresh re-dirties and un-deletes rows and overwrites other devices' edits; and a pull can leave more seen than aired episodes, which throws. EPIC 39 fixes those with a server-assigned sequence cursor, paged and chunked transfer, transactional apply and a post-pull reconciliation. EPIC 40 then adds automatic sync that is off by default: a build flag, a per-device user switch, and platform triggers (WorkManager, BGAppRefreshTask, a desktop timer, web visibility events, plus a debounced push after local writes), gated inside `SyncEngine` rather than only in the UI. EPIC 32 keeps the account-switch policy and account deletion; 39 builds the mechanism. Details are in the two issues.
 
 ## What the audit found, by epic
 
