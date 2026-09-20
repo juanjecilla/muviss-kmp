@@ -40,6 +40,14 @@ sealed interface SyncAccountState {
 
     data object SignedOut : SyncAccountState
 
+    /**
+     * Signed out, but not by choice: the session died (the refresh token was
+     * rejected) and the last sync said so. Rendered as [SignedOut] plus
+     * [SyncCopy.SESSION_EXPIRED], so a silent stop cannot pass for "never
+     * signed in". Cleared by signing in again or signing out on purpose.
+     */
+    data object SessionExpired : SyncAccountState
+
     /** [email] comes from the OAuth provider and is normally set, but is nullable because a provider can withhold it (a GitHub account with a private email does) — and `SyncBackend.signInAnonymously`, which exists for a future entry point but isn't wired into this screen, would have none at all. */
     data class SignedIn(val email: String?) : SyncAccountState
 }
@@ -55,5 +63,13 @@ sealed interface SyncOutcomeSummary {
 
     data class Success(val syncedAtEpochMs: Long) : SyncOutcomeSummary
 
-    data class Failed(val message: String) : SyncOutcomeSummary
+    /** The cycle ran and failed. [kind] is what the copy is keyed off; there is deliberately no message. */
+    data class Failed(val kind: SyncFailureKind) : SyncOutcomeSummary
+
+    /**
+     * This device's library belongs to a different account than the one signed
+     * in, so nothing moved. Surfaced clearly and left there: whether to discard
+     * or merge is EPIC 32's decision (ADR 0019), not this screen's.
+     */
+    data object AccountChanged : SyncOutcomeSummary
 }

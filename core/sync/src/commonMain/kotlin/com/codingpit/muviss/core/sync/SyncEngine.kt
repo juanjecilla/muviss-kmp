@@ -162,6 +162,7 @@ class SyncEngine(
         val failed = state?.lastOutcome == OUTCOME_FAILED
         SyncStatusSnapshot(
             lastSyncedAtEpochMs = lastSyncedAt,
+            ownerAccountId = state?.ownerAccountId,
             lastAttemptAtEpochMs = state?.lastAttemptAtEpochMs,
             lastAttemptFailed = failed,
             lastFailure = if (failed) SyncFailureReason.fromStored(state?.lastError) ?: SyncFailureReason.Unknown else null,
@@ -349,6 +350,8 @@ private const val OUTCOME_FAILED = "FAILED"
 /** What [SyncEngine.observeStatus] reports; everything the Profile status line needs, and no copy. */
 data class SyncStatusSnapshot(
     val lastSyncedAtEpochMs: Long?,
+    /** The account this device's library belongs to (`syncState.ownerAccountId`), or null before the first sync. */
+    val ownerAccountId: String?,
     val lastAttemptAtEpochMs: Long?,
     val lastAttemptFailed: Boolean,
     val lastFailure: SyncFailureReason?,

@@ -82,9 +82,11 @@ enum class SyncFailureReason {
 
 /**
  * The session cannot be used again and nothing but a new sign-in fixes it: the
- * refresh token was rejected, or there never was one. Thrown by the backend so
+ * refresh token was rejected, or there never was one. Public because it is part
+ * of the [SyncBackend] contract: a backend throws (or returns a failed result
+ * carrying) this from `push`/`pull` when its session is unusable. Thrown so
  * the engine can classify the failure as [SyncFailureReason.Unauthorised]
  * instead of guessing from an HTTP status that, on the refresh endpoint, also
  * means "malformed request".
  */
-internal class SyncSessionExpiredException(cause: Throwable? = null) : RuntimeException("Sync session expired; sign in again${cause?.message?.let { " ($it)" }.orEmpty()}", cause)
+class SyncSessionExpiredException(cause: Throwable? = null) : RuntimeException("Sync session expired; sign in again${cause?.message?.let { " ($it)" }.orEmpty()}", cause)
