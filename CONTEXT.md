@@ -62,7 +62,7 @@ A Play with an earlier Play of the same element behind it, at any date. Derived,
 _Avoid_: "most seen" (_seen_ is the stored boolean tick); replay; play count (that is a total, not the beyond-the-first count).
 
 **SyncEngine**:
-The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row. Refuses to run without an Entitlement (ADR 0018).
+The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cloud backend, replaying the `isDirty`/`updatedAt`/soft-`deleted` change-log ADR 0002 put on every user-owned table before any backend existed. Talks to backends only through `SyncBackend` (ADR 0009) — Supabase is the only implementation today. Conflict resolution is last-write-wins on `updatedAtEpochMs`, per row, between unsent edits (a clean local row just takes the server's copy). What gets pulled is decided by a server-assigned change sequence, one cursor per table, never by a client clock (ADR 0020). Records whose library the local database belongs to, and stops on a different account. Refuses to run without an Entitlement (ADR 0018).
 _Avoid_: backend, cloud (those are vendors behind this seam).
 
 **Entitlement**:
