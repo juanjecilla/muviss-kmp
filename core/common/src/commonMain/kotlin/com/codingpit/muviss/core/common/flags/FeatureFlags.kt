@@ -61,9 +61,23 @@ interface FeatureFlags {
      */
     val triageDeckAnimations: Flow<Boolean>
 
+    /**
+     * Whether this device may sync without being asked (EPIC 40, ADR 0021).
+     * Off by default. Per device and never synced: it is a statement about
+     * *this* device's battery and data plan, not about the library.
+     *
+     * Only one of three layers: the build must ship background sync
+     * (`SyncAvailability.isBackgroundAvailable`) and there must be a session and
+     * an entitlement. `SyncEngine` enforces all of them, so reading this flag
+     * elsewhere is for presentation, never for permission.
+     */
+    val syncAutomatically: Flow<Boolean>
+
     suspend fun setTriageControlScheme(scheme: TriageControlScheme)
 
     suspend fun setAnimationsEnabled(enabled: Boolean)
 
     suspend fun setTriageDeckAnimations(enabled: Boolean)
+
+    suspend fun setSyncAutomatically(enabled: Boolean)
 }

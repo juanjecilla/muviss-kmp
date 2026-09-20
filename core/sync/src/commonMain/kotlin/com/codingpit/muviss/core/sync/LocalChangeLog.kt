@@ -1,6 +1,7 @@
 package com.codingpit.muviss.core.sync
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
@@ -8,6 +9,8 @@ import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
+
+private const val FULL_PULL_KEY = "_lastFullPullAt"
 
 /**
  * The local half of the change-log: reading what is dirty, marking it sent,
@@ -100,6 +103,13 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
 
     suspend fun resetCursors() {
         database.syncCursorQueries.deleteAll()
+    }
+
+    /** When this device last pulled from the beginning, or null if it has no record of one. Stored under a reserved name in `syncCursor`; see that file. */
+    suspend fun lastFullPullAt(): Long? = database.syncCursorQueries.selectByName(FULL_PULL_KEY).awaitAsOneOrNull()?.seq
+
+    suspend fun recordFullPull(atEpochMs: Long) {
+        database.syncCursorQueries.upsert(FULL_PULL_KEY, atEpochMs)
     }
 
     // --- bulk operations ------------------------------------------------------

@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.database.MuvissDatabase
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
@@ -85,6 +86,39 @@ class AppSettingsFeatureFlagsTest {
         }
         flags.triageControlScheme.test {
             assertEquals(TriageControlScheme.THREE_WAY, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun automatic_sync_is_off_by_default_on_a_fresh_install() = runTest {
+        // Off because turning it on sends a library to a server without being
+        // asked each time; the person has to say so (EPIC 40, ADR 0021).
+        flags.syncAutomatically.test {
+            assertEquals(false, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setSyncAutomatically_round_trips() = runTest {
+        flags.setSyncAutomatically(true)
+        assertEquals(true, flags.syncAutomatically.first())
+
+        flags.setSyncAutomatically(false)
+        assertEquals(false, flags.syncAutomatically.first())
+    }
+
+    @Test
+    fun automatic_sync_is_independent_of_the_motion_flags() = runTest {
+        flags.setSyncAutomatically(true)
+
+        flags.animationsEnabled.test {
+            assertEquals(true, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+        flags.syncAutomatically.test {
+            assertEquals(true, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
     }

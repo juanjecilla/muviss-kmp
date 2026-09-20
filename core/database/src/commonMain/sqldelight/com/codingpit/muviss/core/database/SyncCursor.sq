@@ -31,3 +31,14 @@ VALUES (?, ?);
 -- Owner change, and "resync everything".
 deleteAll:
 DELETE FROM syncCursor;
+
+-- One row is not a table's cursor: `_lastFullPullAt`, whose `seq` is the epoch
+-- milliseconds at which this device last did a pull from the beginning
+-- (EPIC 40's weekly reconcile, ADR 0021). It lives here because that epic owns
+-- no schema number; `loadCursors` only reads the six table keys, so it never
+-- looks like a cursor, and `deleteAll` clearing it is right — a reset is
+-- followed by a pull from the beginning.
+selectByName:
+SELECT *
+FROM syncCursor
+WHERE tableName = ?;

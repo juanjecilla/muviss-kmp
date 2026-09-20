@@ -14,7 +14,10 @@
 -- what a background run has to leave behind, because nobody is watching it: a
 -- failure that vanishes with the process is a sync that silently stopped.
 -- `lastOutcome` is 'SUCCESS' or 'FAILED' (null before the first attempt);
--- `lastError` is diagnostic text for a log, not copy to show a user.
+-- `lastError` starts with the failure's reason token (OFFLINE, UNAUTHORISED,
+-- SERVER, UNKNOWN), then ': ' and diagnostic text for a log. The token is what
+-- a screen phrases after a restart; the text is never shown (EPIC 40, ADR 0021 —
+-- that epic owns no schema number, so the reason has no column of its own).
 CREATE TABLE syncState (
     id INTEGER NOT NULL PRIMARY KEY,
     ownerAccountId TEXT,
@@ -47,3 +50,23 @@ recordFailure:
 UPDATE syncState
 SET lastOutcome = 'FAILED', lastError = :error, lastAttemptAtEpochMs = :attemptedAtEpochMs, consecutiveFailures = consecutiveFailures + 1
 WHERE id = 0;
+
+-- Forgets the last failure, e.g. on an explicit sign-out: a "session expired"
+-- notice must not outlive the person choosing to leave the account.
+clearFailure:
+UPDATE syncState
+SET lastOutcome = NULL, lastError = NULL, consecutiveFailures = 0
+WHERE id = 0;
+
+-- Rows waiting to be sent, across all six synced tables (soft-deleted ones
+-- included: a tombstone is a write like any other). Observed by the change
+-- push and by the Profile status line ("4 changes waiting"). A pull writes clean
+-- rows, so it never raises this.
+countDirtyRows:
+SELECT
+    (SELECT COUNT(*) FROM collectionEntry WHERE isDirty = 1) +
+    (SELECT COUNT(*) FROM episodeProgress WHERE isDirty = 1) +
+    (SELECT COUNT(*) FROM mediaList WHERE isDirty = 1) +
+    (SELECT COUNT(*) FROM listEntry WHERE isDirty = 1) +
+    (SELECT COUNT(*) FROM triageDecision WHERE isDirty = 1) +
+    (SELECT COUNT(*) FROM episodePlay WHERE isDirty = 1);

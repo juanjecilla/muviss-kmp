@@ -28,6 +28,12 @@ val supabaseUrl: String = localProperty("SUPABASE_URL") ?: ""
 val supabaseAnonKey: String = localProperty("SUPABASE_ANON_KEY") ?: ""
 val syncEnabled: Boolean = localProperty("SYNC_ENABLED").toBoolean()
 
+// SYNC_BACKGROUND_ENABLED (EPIC 40, ADR 0021) is the build-time half of
+// automatic sync and is read exactly like SYNC_ENABLED. It only means something
+// on top of it: background sync needs sync. The per-device switch is the
+// runtime half. Release CI sets neither, so the feature ships dark.
+val syncBackgroundEnabled: Boolean = localProperty("SYNC_BACKGROUND_ENABLED").toBoolean()
+
 val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/commonMain/kotlin")
 
 val generateBuildConfig by tasks.registering {
@@ -35,6 +41,7 @@ val generateBuildConfig by tasks.registering {
     val url = supabaseUrl
     val anonKey = supabaseAnonKey
     val enabled = syncEnabled
+    val backgroundEnabled = syncBackgroundEnabled
     // Declared as inputs so changing a property regenerates the file. Without
     // these the task is up-to-date on its output alone and a swapped key is
     // silently ignored until a clean build (:core:network gets this right;
@@ -42,6 +49,7 @@ val generateBuildConfig by tasks.registering {
     inputs.property("supabaseUrl", url)
     inputs.property("supabaseAnonKey", anonKey)
     inputs.property("syncEnabled", enabled)
+    inputs.property("syncBackgroundEnabled", backgroundEnabled)
     outputs.dir(outDir)
     doLast {
         val target = outDir.get()
@@ -55,6 +63,7 @@ val generateBuildConfig by tasks.registering {
                 const val SUPABASE_URL: String = "$url"
                 const val SUPABASE_ANON_KEY: String = "$anonKey"
                 const val SYNC_ENABLED: Boolean = $enabled
+                const val SYNC_BACKGROUND_ENABLED: Boolean = $backgroundEnabled
             }
             """.trimIndent() + "\n",
         )
