@@ -249,6 +249,60 @@ That amendment also **corrects** the previous one: `{ type: "module" }` never
 reaches the browser (webpack emits `{type: void 0}` and a classic chunk), so the
 worker is classic and its `importScripts` guard is what installs the handler.
 
+# v3 — Production
+
+Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs 0-24) is not the same as releasable: nothing has ever been signed, tagged, uploaded or listed, and CI has been refused for billing reasons since 2026-09-05 (last green `main` was `27715d6` on 2026-09-04, so everything after `a54f656` is unverified by CI).
+
+**Decisions (2026-09-19).** All five targets ship (Play, App Store, signed DMG/MSI/DEB, web). The repo stays private until ready, then goes public as a release step. Sync ships as a **paid** feature sold through **RevenueCat**; that makes accounts real and drags in account deletion, Sign in with Apple, a privacy rewrite and a Supabase deploy pipeline (EPIC 32). Only a Play Console account exists today.
+
+**Numbers claimed here, before any branch needs them** (`AGENTS.md`): `9.sqm` (schema v10) is EPIC 26's; `10.sqm` (schema v11) is EPIC 28's; `11.sqm` (schema v12) is EPIC 39's, and carries EPIC 40's switch column too; ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's.
+
+| Wave | Epic | Issue |
+|---|---|---|
+| 0 | Manual actions only the owner can take (billing, accounts, certs, artwork) | #66 |
+| 10 | EPIC 25 CI that gates again | #67 |
+| 10 | EPIC 26 Crash reporting that reports | #68 |
+| 10 | EPIC 27 Network hardening | #69 |
+| 10 | EPIC 28 Data-layer performance | #70 |
+| 10 | EPIC 38 Repo hygiene and shared test infrastructure | #71 |
+| 11 | EPIC 29 A backup you can restore | #72 |
+| 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes | #73 |
+| 11 | EPIC 31 Localization and accessibility | #74 |
+| 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
+| 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** | #85 |
+| 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
+| 12 | EPIC 33 Brand and store assets, hosted privacy policy | #76 |
+| 12 | EPIC 34 Android to Google Play | #77 |
+| 13 | EPIC 35 iOS to TestFlight and the App Store | #78 |
+| 13 | EPIC 36 Desktop signed, notarised installers on a GitHub Release | #79 |
+| 13 | EPIC 37 Web to production | #80 |
+| 14 | Public flip and v1.0.0 launch | #81 |
+
+EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
+
+Filed as follow-ups rather than epics: desktop auto-update (#82, from EPIC 36) and web crash reporting (#83, from EPIC 26). From the sync audit: duplicate plays when two devices tick the same episode (#87) and confirming null clearing and the hosted `max_rows` against the live project (#88, owner-only).
+
+**EPIC 39 and 40 (added 2026-09-20).** The owner reported that data after syncing is "not well done". An audit confirmed it: pull is unpaginated against a 1000-row server cap and its cursor is a max of client clocks, so a large library or an offline edit pushed late is silently never pulled; nulls are dropped from the push, so clearing a rating or note does not reach the server; `clearDirty` can mark an edit made during a push as clean; the snapshot refresh re-dirties and un-deletes rows and overwrites other devices' edits; and a pull can leave more seen than aired episodes, which throws. EPIC 39 fixes those with a server-assigned sequence cursor, paged and chunked transfer, transactional apply and a post-pull reconciliation. EPIC 40 then adds automatic sync that is off by default: a build flag, a per-device user switch, and platform triggers (WorkManager, BGAppRefreshTask, a desktop timer, web visibility events, plus a debounced push after local writes), gated inside `SyncEngine` rather than only in the UI. EPIC 32 keeps the account-switch policy and account deletion; 39 builds the mechanism. Details are in the two issues.
+
+## What the audit found, by epic
+
+- **EPIC 25 (#67).** `:app:androidApp` and `:app:desktopApp` tests run nowhere (a recurrence of #25 for the two non-KMP modules). Android Lint, `licensee`, R8 and every iOS test never run in CI. `kotlin-js-store/` is gitignored so web builds are unpinned. Release signing silently falls back to debug.
+- **EPIC 26 (#68).** Android initialises Sentry inside a composable, so background-worker, Koin-startup and pre-first-frame crashes are invisible. No R8 mapping upload, so traces are obfuscated. No opt-out.
+- **EPIC 27 (#69).** TMDB 429 and 401 responses parse as empty result pages ("No titles found"). No retry or HTTP cache. The API key is in URLs that leak into user-visible errors and Sentry. Serial season and catalog fetches.
+- **EPIC 28 (#70).** The Library opens one Flow per entry and rebuilds all of them on any write: about 10,000 queries on a 100-title refresh. Missing indexes. Detail composes every episode eagerly.
+- **EPIC 29 (#72).** Export omits ratings, notes and every custom list, has no version, and cannot be imported (the detector sends it to the Trakt parser). No "delete all data". iOS import is a dead button.
+- **EPIC 30 (#73).** Six screens have no error retry. Refresh failures are silent. No offline detail. No onboarding. Notification permission asked cold. Light-only window theme flashes white in dark mode. `WidgetMidnightRefreshWorker` has no R8 keep rule, so the midnight refresh breaks in release builds.
+- **EPIC 31 (#74).** Zero localised strings (76 literals in commonMain UI) against a Spanish store listing. Accessibility: the genre donut announces nothing, colour-only state, 44dp targets.
+- **EPIC 32 (#75).** Sync is built but unobtainable (every paywall is `HandRolledPaywall`). Turning it on needs account deletion, Sign in with Apple, a privacy rewrite, safe sign-out (the sync cursor is never reset) and a Supabase deploy pipeline.
+- **EPIC 33 (#76).** The Android launcher icon is the Android Studio template. No screenshots, feature graphic or fastlane. No hosted privacy-policy URL, which both stores require.
+- **EPIC 34 (#77).** `material3` alpha and `lifecycle` beta ship in production UI. No baseline profile. The release path has never run.
+
+## Sequencing
+
+Wave 0 first (nothing else runs without CI). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
+
+Every epic's issue carries its own Testing section by layer and a platform-parity section (`muviss-test-and-platform-bar`): unit, migration, repository or integration, sync, UI (light and dark), performance by operation count, and an explicit note per target.
+
 ## Cross-cutting / backlog
 
 **Everything here has an issue.** The tracker is the source of truth for undone
