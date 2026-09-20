@@ -117,4 +117,63 @@ class SnapshotRefreshSyncSafetyTest {
 
         assertTrue(queries.selectDirty().executeAsList().isEmpty(), "a Library visit must leave nothing waiting to sync")
     }
+
+    @Test
+    fun refreshSnapshot_does_not_revive_a_title_removed_on_this_or_another_device() = runTest {
+        seedSyncedRow(deleted = true, updatedAt = 8_000L)
+
+        repository.refreshSnapshot(details())
+
+        val after = row()
+        assertTrue(after.deleted, "a refresh is not an add; a tombstone stays until someone re-adds the title")
+        assertEquals("The Matrix", after.title, "and a tombstone's snapshot is not touched either")
+        assertFalse(after.isDirty)
+        assertEquals(8_000L, after.updatedAtEpochMs)
+    }
+
+    @Test
+    fun refreshSnapshot_on_a_title_that_was_never_saved_creates_nothing() = runTest {
+        repository.refreshSnapshot(details())
+
+        assertEquals(null, queries.selectById(matrix.toString()).executeAsOneOrNull())
+    }
+
+    @Test
+    fun refreshSnapshot_leaves_a_live_row_clean_and_unstamped_and_updates_only_provider_data() = runTest {
+        seedSyncedRow(rating = 7)
+
+        repository.refreshSnapshot(details(title = "Fresh"))
+
+        val after = row()
+        assertEquals("Fresh", after.title)
+        assertFalse(after.isDirty)
+        assertEquals(2_000L, after.updatedAtEpochMs)
+        assertEquals(7L, after.rating)
+        assertEquals("keep", after.note)
+        assertTrue(after.favorite)
+    }
+
+    @Test
+    fun readding_a_removed_title_is_a_user_action_and_is_stamped_and_dirty() = runTest {
+        seedSyncedRow(deleted = true, updatedAt = 8_000L, rating = 7)
+        clock.advanceTo(20_000L)
+
+        repository.upsertSnapshot(details())
+
+        val after = row()
+        assertFalse(after.deleted)
+        assertTrue(after.isDirty)
+        assertEquals(20_000L, after.updatedAtEpochMs)
+        assertEquals(7L, after.rating, "the re-added title keeps what the user said about it")
+        assertEquals(500L, after.addedAtEpochMs)
+    }
+
+    @Test
+    fun a_new_title_is_stamped_and_dirty() = runTest {
+        repository.upsertSnapshot(details())
+
+        val after = row()
+        assertTrue(after.isDirty)
+        assertEquals(10_000L, after.updatedAtEpochMs)
+    }
 }
