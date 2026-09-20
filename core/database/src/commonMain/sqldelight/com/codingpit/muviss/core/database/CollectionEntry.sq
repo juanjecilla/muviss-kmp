@@ -98,7 +98,74 @@ FROM collectionEntry
 WHERE isDirty = 1;
 
 -- Run by SyncEngine after a row has been successfully pushed (EPIC 9).
+--
+-- Conditional on `updatedAtEpochMs = :pushedAt` (EPIC 39): the push is an
+-- awaited network call, and the user can edit the same row while it is on the
+-- wire. Clearing by key alone marked that newer edit as sent, so it was never
+-- pushed. Every write path bumps `updatedAtEpochMs`, so a row that changed
+-- since it was read no longer matches and stays dirty for the next cycle.
 clearDirty:
 UPDATE collectionEntry
 SET isDirty = 0
+WHERE mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
+
+-- The snapshot half of a refresh (EPIC 39, ADR 0020): what TMDB says about a
+-- title, and nothing the user said. It touches neither `updatedAtEpochMs` nor
+-- `isDirty` — a refresh is not an edit, so it is not synced — and it only ever
+-- updates a live row: a tombstone must not be revived by a device that merely
+-- looked at the title (adding a title back goes through `upsert`).
+--
+-- `airedEpisodes` and `totalEpisodes` are floored at the number of episodes
+-- already ticked. `WatchProgress` requires `seen <= aired` and throws; ticks
+-- can outrun a snapshot when another device ticked an episode this device's
+-- provider data has not yet caught up to.
+updateSnapshot:
+UPDATE collectionEntry
+SET title = :title,
+    posterUrl = :posterUrl,
+    releaseYear = :releaseYear,
+    productionStatus = :productionStatus,
+    totalEpisodes = MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1)),
+    airedEpisodes = MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1)),
+    genres = :genres,
+    runtimeMinutes = :runtimeMinutes
+WHERE mediaId = :mediaId AND deleted = 0;
+
+-- A pulled row that wins last-write-wins against an existing local one takes
+-- the *user* fields only (EPIC 39, ADR 0020): favorite, rating, note, the
+-- tombstone, the add date and the stamp. The snapshot fields (title, poster,
+-- episode counts...) stay as this device last fetched them — a remote copy of
+-- those is only as fresh as whichever device last edited the row, and would
+-- overwrite a newer snapshot. A row with no local counterpart is inserted whole
+-- through `upsert`. `notificationsMuted` is per-device and never touched.
+applyRemoteUserFields:
+UPDATE collectionEntry
+SET favorite = :favorite,
+    rating = :rating,
+    note = :note,
+    deleted = :deleted,
+    addedAtEpochMs = :addedAtEpochMs,
+    updatedAtEpochMs = :updatedAtEpochMs,
+    isDirty = 0
 WHERE mediaId = :mediaId;
+
+-- Run after a pull has applied ticks (EPIC 39). A tick pulled from another
+-- device can leave more episodes seen than this device's snapshot says have
+-- aired, and `WatchProgress`'s `require(seen <= aired)` throws when the Library
+-- next derives that title's status. Raises the snapshot to what the ticks
+-- already prove, without dirtying the row: the count is derived, not an edit.
+raiseAiredToSeen:
+UPDATE collectionEntry
+SET airedEpisodes = (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1),
+    totalEpisodes = MAX(totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1))
+WHERE mediaId IN :mediaIds
+  AND airedEpisodes < (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1);
+
+-- Every row goes back on the change-log: the first sync for an account, and
+-- "resync everything" (EPIC 39, ADR 0020).
+markAllDirty:
+UPDATE collectionEntry SET isDirty = 1;
+
+-- Account switch, "discard local data" (EPIC 39).
+deleteAll:
+DELETE FROM collectionEntry;

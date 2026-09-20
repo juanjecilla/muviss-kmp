@@ -194,7 +194,50 @@ SELECT *
 FROM episodePlay
 WHERE isDirty = 1;
 
+-- Conditional on the stamp the push carried; see `collectionEntry`'s `clearDirty`.
 clearDirty:
 UPDATE episodePlay
 SET isDirty = 0
-WHERE id = :id;
+WHERE id = :id AND updatedAtEpochMs = :pushedAt;
+
+-- First sync for an account, and "resync everything" (EPIC 39, ADR 0020). This
+-- is also what lets rewatch history that predates `7.sqm` reach the server: those
+-- plays were derived from ticks that had long since been pushed, so they were
+-- clean and nothing would ever have sent them.
+markAllDirty:
+UPDATE episodePlay SET isDirty = 1;
+
+-- Account switch, "discard local data" (EPIC 39).
+deleteAll:
+DELETE FROM episodePlay;
+
+-- Post-pull reconciliation of `seen` against the play rows (EPIC 39, ADR 0020).
+-- `episodeProgress.seen` and `episodePlay` are written together locally and
+-- merged independently by sync, so two devices can leave them disagreeing.
+-- These two queries put them back in step for the titles a pull touched.
+--
+-- A tick with no live viewing gets one, at the tick's own timestamp. The id is
+-- the derived `episodeId@watchedAtEpochMs` (ADR 0013), so two devices that each
+-- repair the same tick write the same row rather than two. It is dirty: the
+-- server may not have it either.
+insertMissingPlaysForSeen:
+INSERT OR REPLACE INTO episodePlay(id, episodeId, mediaId, watchedAtEpochMs, updatedAtEpochMs, isDirty, deleted)
+SELECT p.episodeId || '@' || p.updatedAtEpochMs, p.episodeId, p.mediaId, p.updatedAtEpochMs, p.updatedAtEpochMs, 1, 0
+FROM episodeProgress p
+WHERE p.mediaId IN :mediaIds
+  AND p.seen = 1
+  AND NOT EXISTS (SELECT 1 FROM episodePlay e WHERE e.episodeId = p.episodeId AND e.deleted = 0);
+
+-- An un-tick wins: the viewings of an episode that ended up not seen are
+-- tombstoned. Otherwise `recordPlaysForUnseen` sees a live play, skips the
+-- episode, and the title can never reach Watched. The tombstone's stamp is the
+-- newer of the play's and the un-tick's, so it wins last-write-wins on the
+-- server and every device computes the same one.
+tombstonePlaysForUnseen:
+UPDATE episodePlay
+SET deleted = 1,
+    isDirty = 1,
+    updatedAtEpochMs = MAX(updatedAtEpochMs, (SELECT p.updatedAtEpochMs FROM episodeProgress p WHERE p.episodeId = episodePlay.episodeId))
+WHERE deleted = 0
+  AND mediaId IN :mediaIds
+  AND EXISTS (SELECT 1 FROM episodeProgress p WHERE p.episodeId = episodePlay.episodeId AND p.seen = 0);

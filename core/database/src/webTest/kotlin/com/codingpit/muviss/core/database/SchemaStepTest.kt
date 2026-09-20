@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.database
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Covers the one part of web's create-or-migrate decision that can be tested
@@ -64,5 +65,28 @@ class SchemaStepTest {
             SchemaStep.UpToDate,
             schemaStepFor(current = MuvissDatabase.Schema.version, target = MuvissDatabase.Schema.version),
         )
+    }
+
+    @Test
+    fun a_restored_snapshot_from_before_the_sync_schema_migrates_forward() {
+        // A browser whose last visit was a v9 build restores a v9 snapshot.
+        // The sync migration (EPIC 39; the `.sqm` numbered 9 on this base) adds `syncCursor`, `syncState` and
+        // `appSettings.syncAutomatically`; creating outright would fail on the
+        // tables that already exist, and leaving it would run this build's
+        // sync queries against tables that are not there. Migrating is the only
+        // step that keeps the library and gives the engine what it reads.
+        assertEquals(
+            SchemaStep.Migrate(from = 9L, to = MuvissDatabase.Schema.version),
+            schemaStepFor(current = 9L, target = MuvissDatabase.Schema.version),
+        )
+    }
+
+    @Test
+    fun the_sync_schema_is_a_version_a_v9_snapshot_can_reach() {
+        // The sync migration produces version 10. If the generated version ever
+        // drops below that, the migration this snapshot needs is gone from the
+        // build. If the migration is renumbered, this and the constant in
+        // `SyncSchemaMigrationTest` are the two places that name the version.
+        assertTrue(MuvissDatabase.Schema.version >= 10L)
     }
 }
