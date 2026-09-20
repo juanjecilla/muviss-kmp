@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaList
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,7 +36,7 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
 
     init {
         listsUseCases.observeLists()
-            .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { lists -> _state.update { it.copy(loading = false, lists = lists, error = null) } }
             .launchIn(viewModelScope)
     }

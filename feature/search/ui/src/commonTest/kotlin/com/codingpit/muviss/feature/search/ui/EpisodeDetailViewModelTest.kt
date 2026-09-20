@@ -11,6 +11,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.Dispatchers
@@ -66,10 +67,18 @@ class EpisodeDetailViewModelTest {
 
     @Test
     fun a_failure_surfaces_rather_than_showing_an_empty_page() = runTest {
-        val vm = viewModel(result = Result.failure(IllegalStateException("no episode endpoint")))
+        val vm = viewModel(result = Result.failure(MetadataError.NotFound()))
         advanceUntilIdle()
 
-        assertEquals("no episode endpoint", vm.state.value.error)
+        assertEquals(MetadataError.NotFound().userMessage, vm.state.value.error)
+    }
+
+    @Test
+    fun a_raw_exception_never_reaches_the_screen() = runTest {
+        val vm = viewModel(result = Result.failure(IllegalStateException("Timeout for https://api.themoviedb.org/3/tv/1?api_key=SECRET")))
+        advanceUntilIdle()
+
+        assertEquals("Something went wrong", vm.state.value.error)
     }
 
     @Test

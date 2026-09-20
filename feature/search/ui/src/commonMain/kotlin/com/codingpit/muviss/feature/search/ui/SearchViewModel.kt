@@ -16,6 +16,7 @@ import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -137,7 +138,7 @@ class SearchViewModel(
                         it.copy(loading = false, genreResults = page.items, genrePage = page.page, genreTotalPages = page.totalPages)
                     }
                 },
-                onFailure = { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
             )
         }
     }
@@ -219,7 +220,7 @@ class SearchViewModel(
                         )
                     }
                 },
-                onFailure = { e -> _state.update { it.copy(loadingMore = false, error = e.message ?: DEFAULT_ERROR) } },
+                onFailure = { e -> _state.update { it.copy(loadingMore = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
             )
         }
     }
@@ -244,12 +245,12 @@ class SearchViewModel(
                     )
                 }
             },
-            onFailure = { e -> _state.update { it.copy(loading = false, loadingMore = false, error = e.message ?: DEFAULT_ERROR) } },
+            onFailure = { e -> _state.update { it.copy(loading = false, loadingMore = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
         )
     }
 
     private fun fail(e: Throwable) {
-        _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) }
+        _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) }
     }
 
     /**

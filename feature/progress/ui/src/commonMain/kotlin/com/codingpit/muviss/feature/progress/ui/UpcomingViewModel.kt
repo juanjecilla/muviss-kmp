@@ -17,6 +17,7 @@ import com.codingpit.muviss.feature.progress.domain.upcomingDateLabel
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,7 +78,7 @@ class UpcomingViewModel(
             .map { all -> all.filter { it.mediaId.type == MediaType.TV } }
             .onEach { shows -> loadMissingCatalogs(shows.map { it.mediaId }) }
             .flatMapLatest { shows -> upcomingGroups(shows) }
-            .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { groups -> _state.update { it.copy(loading = false, groups = groups, error = null) } }
             .launchIn(viewModelScope)
     }

@@ -9,6 +9,7 @@ import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,7 +69,7 @@ class SettingsViewModel(
             .launchIn(viewModelScope)
 
         observeSettings()
-            .catch { e -> _state.update { it.copy(loading = false, error = e.message ?: DEFAULT_ERROR) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
             .launchIn(viewModelScope)
     }
@@ -105,7 +106,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             runCatching { actions.exportData() }.fold(
                 onSuccess = { json -> _state.update { it.copy(exportJson = json, exportError = null) } },
-                onFailure = { e -> _state.update { it.copy(exportError = e.message ?: DEFAULT_ERROR) } },
+                onFailure = { e -> _state.update { it.copy(exportError = e.toUserMessage(DEFAULT_ERROR)) } },
             )
         }
     }

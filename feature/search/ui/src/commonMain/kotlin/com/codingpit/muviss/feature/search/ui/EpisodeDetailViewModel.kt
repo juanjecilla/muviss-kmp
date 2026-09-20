@@ -7,6 +7,7 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
 import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,7 +57,7 @@ class EpisodeDetailViewModel(
             _state.update { it.copy(loading = true, error = null) }
             loadEpisode(episodeId).fold(
                 onSuccess = { d -> _state.update { it.copy(loading = false, details = d) } },
-                onFailure = { e -> _state.update { it.copy(loading = false, error = e.message ?: "Something went wrong") } },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUserMessage("Something went wrong")) } },
             )
         }
     }

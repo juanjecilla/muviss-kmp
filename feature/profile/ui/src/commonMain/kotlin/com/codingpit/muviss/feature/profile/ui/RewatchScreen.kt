@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.RewatchEntry
@@ -162,6 +163,7 @@ private fun RewatchRow(position: Int, entry: RewatchEntry, modifier: Modifier = 
             url = entry.posterUrl,
             title = entry.title,
             modifier = Modifier.size(width = 40.dp, height = 60.dp).clip(RoundedCornerShape(6.dp)),
+            size = PosterSize.Thumbnail,
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(entry.title, style = MaterialTheme.typography.bodyMedium)
