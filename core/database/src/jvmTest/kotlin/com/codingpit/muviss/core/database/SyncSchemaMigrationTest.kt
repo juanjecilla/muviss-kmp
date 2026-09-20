@@ -140,12 +140,16 @@ class SyncSchemaMigrationTest {
     }
 
     @Test
-    fun `syncAutomatically is the last appSettings column and defaults to off for existing rows`() {
+    fun `syncAutomatically is the column 9_sqm appended and defaults to off for existing rows`() {
         val (driver, database) = v9Driver()
         runBlocking { seedSyncedLibrary(database) }
         migrate(driver)
 
-        assertEquals("syncAutomatically", columnsOf(driver, "appSettings").last(), "verifyMigrations compares ordinal position, and ALTER TABLE ADD COLUMN appends")
+        // Not `.last()`: later migrations append their own columns after it (10.sqm's
+        // crashReportsEnabled). What 9.sqm owns is that it came straight after the
+        // previous last column, because verifyMigrations compares ordinal position.
+        val columns = columnsOf(driver, "appSettings")
+        assertEquals("syncCursorEpochMs", columns[columns.indexOf("syncAutomatically") - 1], "verifyMigrations compares ordinal position, and ALTER TABLE ADD COLUMN appends")
         val settings = MuvissDatabase(driver).appSettingsQueries.selectSettings().executeAsOne()
         assertFalse(settings.syncAutomatically, "background sync stays off for everyone until they choose it")
         driver.close()
