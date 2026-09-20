@@ -39,7 +39,11 @@ class RefreshCollectionSnapshotsUseCaseTest {
 
         override fun observeAll(): Flow<List<CollectionEntry>> = flow
         override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = error("not used")
-        override suspend fun upsertSnapshot(details: MediaDetails) {
+
+        // A refresh must not go through the add path: that one is a synced write (EPIC 39).
+        override suspend fun upsertSnapshot(details: MediaDetails) = error("a refresh must use refreshSnapshot")
+
+        override suspend fun refreshSnapshot(details: MediaDetails) {
             upserted += details.id
         }
 

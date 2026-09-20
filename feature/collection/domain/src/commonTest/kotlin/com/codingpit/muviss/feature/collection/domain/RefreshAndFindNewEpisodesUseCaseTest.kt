@@ -27,7 +27,7 @@ private class FakeMediaSnapshotSource(private val detailsByMediaId: Map<MediaId,
     override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = detailsByMediaId[mediaId] ?: error("No fixture for $mediaId")
 }
 
-/** Test double for [CollectionRepository]: [upsertSnapshot] just records what it was called with. */
+/** Test double for [CollectionRepository]: [refreshSnapshot] just records what it was called with. */
 private class FakeCollectionRepository(entries: List<CollectionEntry>) : CollectionRepository {
     private val state = MutableStateFlow(entries)
     val upsertedDetails = mutableListOf<MediaDetails>()
@@ -35,7 +35,10 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
     override fun observeAll(): Flow<List<CollectionEntry>> = state
     override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = error("not used")
 
-    override suspend fun upsertSnapshot(details: MediaDetails) {
+    // A refresh must not go through the add path: that one is a synced write (EPIC 39).
+    override suspend fun upsertSnapshot(details: MediaDetails) = error("a refresh must use refreshSnapshot")
+
+    override suspend fun refreshSnapshot(details: MediaDetails) {
         upsertedDetails += details
     }
 
