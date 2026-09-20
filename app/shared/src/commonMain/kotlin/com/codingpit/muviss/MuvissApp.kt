@@ -21,7 +21,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,7 +35,6 @@ import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
-import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
@@ -44,18 +42,14 @@ import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.di.rememberDatabaseDriverFactory
-import com.codingpit.muviss.feature.collection.ui.CollectionRoute
 import com.codingpit.muviss.feature.collection.ui.collectionSection
-import com.codingpit.muviss.feature.profile.ui.ProfileRoute
 import com.codingpit.muviss.feature.profile.ui.profileSection
-import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
-import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
