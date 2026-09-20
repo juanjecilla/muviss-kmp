@@ -83,7 +83,7 @@ fun PosterCard(
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
         ) {
             Box(Modifier.fillMaxSize()) {
-                PosterImage(url = posterUrl, title = title, modifier = Modifier.fillMaxSize())
+                PosterImage(url = posterUrl, title = title, modifier = Modifier.fillMaxSize(), size = PosterSize.Grid)
                 if (rating != null) {
                     RatingBadge(
                         rating = rating,

@@ -43,6 +43,7 @@ import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.models.EpisodeCredit
@@ -225,6 +226,7 @@ private fun CreditRow(title: String, credits: List<EpisodeCredit>, subtitleOf: (
                                 url = credit.profileUrl,
                                 title = credit.name,
                                 modifier = Modifier.size(64.dp).clip(CircleShape),
+                                size = PosterSize.Thumbnail,
                             )
                         } else {
                             Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {

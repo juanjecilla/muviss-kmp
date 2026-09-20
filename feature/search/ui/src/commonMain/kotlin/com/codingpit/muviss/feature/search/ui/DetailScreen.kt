@@ -72,6 +72,7 @@ import com.codingpit.muviss.core.designsystem.component.EpisodeRow
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.RatingRow
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -362,6 +363,7 @@ private fun DetailHero(details: MediaDetails) {
                     url = details.summary.posterUrl,
                     title = details.summary.title,
                     modifier = Modifier.width(72.dp).height(108.dp).clip(MaterialTheme.shapes.small),
+                    size = PosterSize.Grid,
                 )
             }
             Column(Modifier.padding(bottom = 6.dp, end = MuvissSpacing.l)) {
