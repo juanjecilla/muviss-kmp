@@ -6,7 +6,8 @@ the design rationale (multi-backend seam, plain Ktor over `supabase-kt`,
 last-write-wins conflict resolution) — this document is the concrete
 Supabase project setup and the SQL schema `SupabaseSyncBackend` talks to.
 
-Sync is entirely **optional**, and gated twice (ADR 0018):
+Sync is entirely **optional**, and gated twice (ADR 0018). **Automatic** sync is
+gated three times (ADR 0021), see [Automatic sync](#automatic-sync-epic-40-adr-0021):
 
 1. **Build gate** — `SYNC_ENABLED` *and* both Supabase keys must be present.
    Miss any of the three and `SyncAvailability` reports unconfigured,
@@ -15,10 +16,11 @@ Sync is entirely **optional**, and gated twice (ADR 0018):
    sets none of them, which is what keeps sync out of production.
 2. **Entitlement gate** — sync is a paid feature. `SyncEngine.syncNow()`
    consults an `EntitlementGate` and returns `NotEntitled` if the user has not
-   paid, so `MuvissApp`'s foreground auto-sync is covered too. With no store
-   wired up (every build today) `:core:billing` binds `NoEntitlementProvider`,
-   which reports Inactive — set `SYNC_ENTITLEMENT_OVERRIDE=true` in
-   `local.properties` to grant it to your own build.
+   paid, so no caller (the foreground hook included) can walk around it. With no
+   store wired up (every build today) `:core:billing` binds
+   `NoEntitlementProvider`, which reports Inactive — set
+   `SYNC_ENTITLEMENT_OVERRIDE=true` in `local.properties` to grant it to your own
+   build.
 
 An unavailable build renders no sync UI at all; an unentitled one renders the
 row and a paywall. Those are deliberately opposite, see ADR 0018.
@@ -100,9 +102,14 @@ row and a paywall. Those are deliberately opposite, see ADR 0018.
    ```properties
    SYNC_ENABLED=true
    SYNC_ENTITLEMENT_OVERRIDE=true
+   SYNC_BACKGROUND_ENABLED=true   # optional: ships the "Sync automatically" switch (EPIC 40)
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_ANON_KEY=your-anon-key
    ```
+
+   `SYNC_BACKGROUND_ENABLED` only means anything on top of `SYNC_ENABLED` and the
+   keys. Leave it out and the Profile screen renders no switch and nothing ever
+   syncs by itself; a manual "Sync now" is unaffected.
 
    Note that Supabase's free tier **pauses a project after 7 days of
    inactivity**. A paused project fails in a way that reads like an app bug;
@@ -380,6 +387,64 @@ other devices' real edits.
   moves until everything drained.
 - **`SyncOutcome.AccountChanged`** shows in Profile as a failed sync until
   EPIC 32 decides the account-switch policy and builds its confirmation.
+
+## Automatic sync (EPIC 40, ADR 0021)
+
+Off by default, and per device. Three layers must all pass, all enforced inside
+`SyncEngine.syncNow(trigger)` by the pure `AutoSyncPolicy`:
+
+| Layer | Where | If it fails |
+|---|---|---|
+| Build flag `SYNC_BACKGROUND_ENABLED` (on top of `SYNC_ENABLED` + keys) | `SyncAvailability.isBackgroundAvailable()` | no switch on Profile; every automatic trigger returns `Disabled` |
+| The **Sync automatically** switch, `appSettings.syncAutomatically`, default off, never synced | `FeatureFlags.syncAutomatically` | every automatic trigger returns `Disabled`, touching neither database nor network |
+| Session and entitlement | unchanged (ADR 0018) | `NotSignedIn` / `NotEntitled` |
+
+`SyncTrigger` is `Manual | Foreground | Change | Periodic | Resume`. **Manual
+always runs** (it skips the first two layers only).
+
+| Trigger source | Mechanism | Limits |
+|---|---|---|
+| Local writes, all platforms | `SyncCoordinator` watches the dirty-row count | 5 s debounce; at most one change run per 30 s; backoff `30 s * 2^n` capped at 15 min; only while the process is alive |
+| App foreground, all platforms | `MuvissApp`'s `AutoSyncOnForeground` -> `SyncCoordinator.onForeground()` on `ON_START` and `ON_RESUME` | skipped if a cycle finished under 60 s ago |
+| Android | `SyncWorker` (WorkManager) | 1 h, unique work `background_sync`, `KEEP`, `CONNECTED` + battery not low. Scheduled and cancelled as the switch flips |
+| iOS | inside `IosBackgroundRefresh.handle`, before the episode refresh | best effort, the system chooses when; no new `Info.plist` identifier |
+| Desktop | timer in `Main.kt` next to `DesktopEpisodeRefresh` | 15 min, only while the window is open |
+| Web | `visibilitychange` (to visible) and `online` -> `onResume()` | inert until web sign-in exists (#46) |
+
+A weekly full pull bounds the sequence-gap risk from ADR 0020: once a week a cycle
+resets the cursors and pulls from the beginning. Its timestamp is the reserved
+`syncCursor` row `_lastFullPullAt`.
+
+**What the Profile section shows.** The switch (only when the build has it, only
+usable when signed in and entitled), a per-platform description ("in the
+background" / "when the system allows" / "while Muviss is open"), a status line
+(`Synced 3m ago`, then `4 changes waiting` or `Last sync failed: <reason>` with
+**Retry**), **Resync everything** behind a confirmation, and "Session expired,
+sign in again" when the session died. `AccountChanged` reads as a different
+account owning this device's library and offers nothing to fix it (EPIC 32).
+
+**Failures** are typed (`Offline | Unauthorised | Server | Unknown`); the reason
+is the leading token of `syncState.lastError` (`REASON: diagnostic text`). Copy
+is `SyncCopy`, never an exception's message.
+
+### Verifying it by hand
+
+None of these run in CI or on an emulator. Tests cover the policy, the
+coordinator's timing in virtual time, the engine gating, the WorkManager result
+mapper, the schedule controller, the desktop timer, the Profile section and the
+whole flow against `FakeSupabaseServer`. These need a device or a project:
+
+- **Android.** With `SYNC_BACKGROUND_ENABLED=true`, sign in, turn the switch on,
+  then `adb shell dumpsys jobscheduler | grep -A4 muviss` shows the job. Run it:
+  `adb shell cmd jobscheduler run -f com.codingpit.muviss <jobId>`. Turn the
+  switch off and confirm the job is gone from `dumpsys`. Also build
+  `assembleRelease` and run it once: a missing `-keep` rule shows up as
+  `ClassNotFoundException` for `SyncWorker` only in a minified build.
+- **iOS.** Run on a device or simulator, pause in the debugger and evaluate
+  `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.codingpit.muviss.refresh"]`. Expect `syncState` to update and the Profile line to say "Synced ...". Check the expiration path by suspending mid-run.
+- **Desktop.** Package (`packageDistributionForCurrentOS`), sign in, switch on, leave the app open 20 minutes, check the status line advanced. Close it and confirm nothing runs.
+- **Web.** Two tabs on the same origin: change tabs and back, toggle the network offline and online, watch the requests. Expect nothing until web sign-in exists (#46).
+- **Live project.** The end-to-end flow against a real Supabase project, with `SYNC_ENTITLEMENT_OVERRIDE=true`, is still unverified (#88, #100).
 
 ## Auth endpoints used
 
