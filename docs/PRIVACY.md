@@ -1,6 +1,6 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-07-10._
+_Last updated: 2026-09-20._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
@@ -29,13 +29,32 @@ never leaves the device even incidentally.
 
    This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-2. **Sentry (crash reporting)** — optional, and off by default in developer
-   builds (see `docs/RELEASING.md`). When enabled in a release build, a
-   crash or unhandled error sends a report to Sentry containing: a stack
-   trace, the app version, and basic device info (OS version, device model).
-   It does **not** include your collection, watch progress, or any TMDB
-   query content. See [Sentry's privacy
-   policy](https://sentry.io/privacy/) for how they handle that data.
+2. **Sentry (crash reporting)** — optional, and you can turn it off. It is on
+   by default in release builds, and off in developer builds (which have no
+   Sentry project configured, see `docs/RELEASING.md`). **Settings → Privacy →
+   "Send crash reports"** switches it off; the change takes effect immediately,
+   not at the next launch.
+
+   When it is on, a crash or an unexpected error sends a report to Sentry
+   containing: a stack trace, the app version and build, the environment
+   (`production` or `development`), and basic device info (OS version, device
+   model). It does **not** include your collection, watch progress, or any TMDB
+   query content, and no user identifier, IP address or cookies are attached.
+   Before a report leaves the device, anything that looks like a credential
+   (`api_key=…`, `token=…`, `Authorization: Bearer …`) is removed from its
+   messages. See [Sentry's privacy policy](https://sentry.io/privacy/) for how
+   they handle that data.
+
+   Per platform:
+   - **Android, iOS, desktop** — reporting starts as the app starts, before
+     anything else, so a crash during launch or in a background job is covered.
+     Your choice is read from the local database at that moment. If the
+     database cannot be read at all (it is corrupt, say), Muviss falls back to
+     the default, **on**, for that launch — the one case where a crash could be
+     reported despite an opt-out.
+   - **Web** — **no crash reporting at all.** The web build does not include the
+     Sentry SDK, so nothing is ever sent, and there is nothing to switch off.
+     The Settings toggle is stored but has no effect there.
 
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.

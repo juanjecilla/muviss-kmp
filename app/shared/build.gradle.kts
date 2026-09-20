@@ -45,6 +45,10 @@ val generateBuildConfig by tasks.registering {
     val outDir = buildConfigDir
     val dsn = sentryDsn
     val environment = sentryEnvironment
+    // Declared as inputs so a changed DSN or environment regenerates the file: with
+    // outputs alone Gradle called the task up to date and kept the old constants.
+    inputs.property("sentryDsn", dsn)
+    inputs.property("sentryEnvironment", environment)
     outputs.dir(outDir)
     doLast {
         val target = outDir.get()
