@@ -124,6 +124,19 @@ kotlin {
         jvmTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.sqldelight.sqliteDriver)
+            // The automatic-sync suites (EPIC 40) run the real Koin graph, the
+            // real SyncEngine and the real Supabase backend over
+            // `FakeSupabaseServer`'s MockEngine, and drive the real Profile screen.
+            implementation(projects.core.testing)
+            implementation(projects.feature.collection.api)
+            implementation(projects.feature.progress.api)
+            implementation(libs.kotlinx.coroutinesTest)
+            implementation(libs.turbine)
+            implementation(libs.ktor.clientCore)
+            implementation(libs.ktor.clientMock)
+            implementation(libs.ktor.clientContentNegotiation)
+            implementation(libs.ktor.serializationJson)
+            implementation(libs.kotlinx.serializationJson)
         }
     }
 }

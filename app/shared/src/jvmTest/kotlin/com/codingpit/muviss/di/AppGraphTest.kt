@@ -2,6 +2,8 @@ package com.codingpit.muviss.di
 
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceStatus
+import com.codingpit.muviss.core.sync.AutomaticSyncSettings
+import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
@@ -80,6 +82,9 @@ class AppGraphTest {
         // test's `startGraph` is the shape of those entry points, and it is the
         // only place that would notice if the binding moved back.
         assertNotNull(koin.get<PersistenceStatus>())
+        // EPIC 40: the coordinator and the settings it follows are part of the graph.
+        assertNotNull(koin.get<SyncCoordinator>())
+        assertNotNull(koin.get<AutomaticSyncSettings>())
     }
 
     /**

@@ -31,24 +31,25 @@ import com.codingpit.muviss.feature.profile.domain.SyncCopy
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 
-internal const val SYNC_SECTION_TAG = "sync-section"
-internal const val SYNC_LAST_SYNCED_TAG = "sync-last-synced"
-internal const val SYNC_DETAIL_TAG = "sync-status-detail"
-internal const val SYNC_SESSION_EXPIRED_TAG = "sync-session-expired"
-internal const val SYNC_AUTOMATIC_SWITCH_TAG = "sync-automatic-switch"
-internal const val SYNC_AUTOMATIC_DESCRIPTION_TAG = "sync-automatic-description"
-internal const val SYNC_NOW_TAG = "sync-now"
-internal const val SYNC_RETRY_TAG = "sync-retry"
-internal const val SYNC_RESYNC_TAG = "sync-resync-everything"
-internal const val SYNC_SIGN_OUT_TAG = "sync-sign-out"
-internal const val SYNC_UNLOCK_TAG = "sync-unlock"
-internal const val SYNC_RESYNC_DIALOG_TAG = "sync-resync-dialog"
-internal const val SYNC_RESYNC_CONFIRM_TAG = "sync-resync-confirm"
-internal const val SYNC_RESYNC_CANCEL_TAG = "sync-resync-cancel"
+/** Test tags, public because `:app:shared`'s full-flow test drives this screen from outside the module. */
+const val SYNC_SECTION_TAG = "sync-section"
+const val SYNC_LAST_SYNCED_TAG = "sync-last-synced"
+const val SYNC_DETAIL_TAG = "sync-status-detail"
+const val SYNC_SESSION_EXPIRED_TAG = "sync-session-expired"
+const val SYNC_AUTOMATIC_SWITCH_TAG = "sync-automatic-switch"
+const val SYNC_AUTOMATIC_DESCRIPTION_TAG = "sync-automatic-description"
+const val SYNC_NOW_TAG = "sync-now"
+const val SYNC_RETRY_TAG = "sync-retry"
+const val SYNC_RESYNC_TAG = "sync-resync-everything"
+const val SYNC_SIGN_OUT_TAG = "sync-sign-out"
+const val SYNC_UNLOCK_TAG = "sync-unlock"
+const val SYNC_RESYNC_DIALOG_TAG = "sync-resync-dialog"
+const val SYNC_RESYNC_CONFIRM_TAG = "sync-resync-confirm"
+const val SYNC_RESYNC_CANCEL_TAG = "sync-resync-cancel"
 
-internal fun syncSignInTag(provider: SyncProvider) = "sync-sign-in-${provider.name.lowercase()}"
+fun syncSignInTag(provider: SyncProvider) = "sync-sign-in-${provider.name.lowercase()}"
 
-internal const val AUTOMATIC_SYNC_LABEL = "Sync automatically"
+const val AUTOMATIC_SYNC_LABEL = "Sync automatically"
 
 /** Everything the sync section can ask of its host, so the composable itself stays a function of [SyncUiState]. */
 @Suppress("LongParameterList") // one callback per thing the section can be asked to do, every one defaulted so a test names only what it drives
