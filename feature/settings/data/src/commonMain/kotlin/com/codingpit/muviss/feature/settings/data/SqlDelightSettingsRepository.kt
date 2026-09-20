@@ -79,6 +79,12 @@ class SqlDelightSettingsRepository(
         Unit
     }
 
+    override suspend fun setCrashReportsEnabled(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        settingsQueries.updateCrashReportsEnabled(enabled)
+        Unit
+    }
+
     override suspend fun exportData(): String = withContext(dispatchers.io) {
         val export = MuvissDataExport(
             exportedAtEpochMs = clock.nowEpochMs(),
@@ -97,6 +103,7 @@ class SqlDelightSettingsRepository(
         language = language,
         region = region,
         notificationsEnabled = notificationsEnabled,
+        crashReportsEnabled = crashReportsEnabled,
     )
 
     private fun CollectionEntryRow.toExport(): CollectionEntryExport = CollectionEntryExport(

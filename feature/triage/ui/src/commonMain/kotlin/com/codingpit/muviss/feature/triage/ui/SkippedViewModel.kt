@@ -2,6 +2,8 @@ package com.codingpit.muviss.feature.triage.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.domain.ObserveSkippedUseCase
 import com.codingpit.muviss.feature.triage.domain.RestoreDecisionUseCase
@@ -9,10 +11,8 @@ import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class SkippedUiState(
     val loading: Boolean = true,
@@ -37,10 +37,10 @@ class SkippedViewModel(
     init {
         observeSkipped()
             .onEach { titles -> _state.update { it.copy(loading = false, titles = titles) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun onRestore(mediaId: MediaId) {
-        viewModelScope.launch { restoreDecision(mediaId) }
+        viewModelScope.launchReporting { restoreDecision(mediaId) }
     }
 }

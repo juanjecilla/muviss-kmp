@@ -9,6 +9,7 @@ import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
+import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
@@ -50,6 +51,10 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
         flow.value = flow.value.copy(notificationsEnabled = enabled)
     }
 
+    override suspend fun setCrashReportsEnabled(enabled: Boolean) {
+        flow.value = flow.value.copy(crashReportsEnabled = enabled)
+    }
+
     override suspend fun exportData(): String = exportResult.getOrThrow()
 }
 
@@ -68,6 +73,7 @@ class SettingsViewModelTest {
             SetLanguageUseCase(repository),
             SetRegionUseCase(repository),
             SetNotificationsEnabledUseCase(repository),
+            SetCrashReportsEnabledUseCase(repository),
             ExportDataUseCase(repository),
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),
@@ -109,6 +115,20 @@ class SettingsViewModelTest {
 
         assertEquals("es-ES", vm.state.value.settings.language)
         assertEquals("ES", vm.state.value.settings.region)
+    }
+
+    @Test
+    fun crash_reports_default_to_on_and_the_toggle_persists() = runTest {
+        val repository = FakeSettingsRepository()
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        assertEquals(true, vm.state.value.settings.crashReportsEnabled)
+
+        vm.onCrashReportsToggled(false)
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.settings.crashReportsEnabled)
+        assertEquals(false, repository.flow.value.crashReportsEnabled)
     }
 
     @Test

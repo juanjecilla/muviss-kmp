@@ -2,6 +2,8 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
@@ -11,10 +13,8 @@ import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class EpisodeDetailUiState(
     val loading: Boolean = true,
@@ -49,11 +49,11 @@ class EpisodeDetailViewModel(
         load()
         progressApi.observePlays(episodeId)
             .onEach { plays -> _state.update { it.copy(plays = plays) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun load() {
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             _state.update { it.copy(loading = true, error = null) }
             loadEpisode(episodeId).fold(
                 onSuccess = { d -> _state.update { it.copy(loading = false, details = d) } },
@@ -64,16 +64,16 @@ class EpisodeDetailViewModel(
 
     /** Records another viewing. */
     fun recordRewatch() {
-        viewModelScope.launch { progressApi.recordPlay(episodeId) }
+        viewModelScope.launchReporting { progressApi.recordPlay(episodeId) }
     }
 
     /** Drops the most recent viewing only — the same "that tick was a mistake" as the detail screen. */
     fun undoLatestPlay() {
-        viewModelScope.launch { progressApi.removeLatestPlay(episodeId) }
+        viewModelScope.launchReporting { progressApi.removeLatestPlay(episodeId) }
     }
 
     /** Forgets every viewing. The destructive one, reachable only from here. */
     fun clearHistory() {
-        viewModelScope.launch { progressApi.clearPlays(episodeId) }
+        viewModelScope.launchReporting { progressApi.clearPlays(episodeId) }
     }
 }

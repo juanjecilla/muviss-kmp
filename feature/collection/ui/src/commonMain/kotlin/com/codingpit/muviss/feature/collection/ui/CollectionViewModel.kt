@@ -2,6 +2,8 @@ package com.codingpit.muviss.feature.collection.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
@@ -16,10 +18,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** The five ways the library can be sliced. [FAVORITES] is orthogonal to status (ADR 0005). */
 enum class CollectionFilter {
@@ -114,7 +114,7 @@ class CollectionViewModel(
         observeCollection()
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { entries -> _state.update { it.copy(loading = false, entries = entries, error = null) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
         // Automatic, so it defers to the throttle; an explicit pull does not.
         if (refreshThrottle.claimAutomaticRefresh()) refresh(automatic = true)
     }
@@ -132,7 +132,7 @@ class CollectionViewModel(
     }
 
     fun setFavorite(mediaId: MediaId, favorite: Boolean) {
-        viewModelScope.launch { toggleFavorite(mediaId, favorite) }
+        viewModelScope.launchReporting { toggleFavorite(mediaId, favorite) }
     }
 
     /**
@@ -144,7 +144,7 @@ class CollectionViewModel(
      */
     fun refresh(automatic: Boolean = false) {
         if (!automatic) refreshThrottle.recordRefresh()
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             _state.update { it.copy(refreshing = true) }
             try {
                 refreshSnapshots()

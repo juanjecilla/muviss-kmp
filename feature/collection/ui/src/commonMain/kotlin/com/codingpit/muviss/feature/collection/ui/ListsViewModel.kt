@@ -2,6 +2,9 @@ package com.codingpit.muviss.feature.collection.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaList
 import com.codingpit.muviss.models.toUserMessage
@@ -9,10 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class ListsUiState(
     val loading: Boolean = true,
@@ -38,7 +39,7 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
         listsUseCases.observeLists()
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { lists -> _state.update { it.copy(loading = false, lists = lists, error = null) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun startCreating() = _state.update { it.copy(creating = true) }
@@ -46,8 +47,8 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
     fun cancelCreating() = _state.update { it.copy(creating = false) }
 
     fun createList(name: String) {
-        viewModelScope.launch {
-            runCatching { listsUseCases.create(name) }
+        viewModelScope.launchReporting {
+            runCatching { listsUseCases.create(name) }.reportFailure()
             _state.update { it.copy(creating = false) }
         }
     }
@@ -58,14 +59,14 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
 
     fun renameList(name: String) {
         val listId = _state.value.editing?.id ?: return
-        viewModelScope.launch {
-            runCatching { listsUseCases.rename(listId, name) }
+        viewModelScope.launchReporting {
+            runCatching { listsUseCases.rename(listId, name) }.reportFailure()
             _state.update { it.copy(editing = null) }
         }
     }
 
     fun deleteList(list: MediaList) {
-        viewModelScope.launch { listsUseCases.delete(list.id) }
+        viewModelScope.launchReporting { listsUseCases.delete(list.id) }
     }
 
     private companion object {

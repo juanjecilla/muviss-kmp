@@ -27,6 +27,7 @@ private class FakeSettingsRepository(initial: AppSettings) : SettingsRepository 
     override suspend fun setLanguage(language: String) = error("not used")
     override suspend fun setRegion(region: String) = error("not used")
     override suspend fun setNotificationsEnabled(enabled: Boolean) = error("not used")
+    override suspend fun setCrashReportsEnabled(enabled: Boolean) = error("not used")
     override suspend fun exportData(): String = error("not used")
 }
 

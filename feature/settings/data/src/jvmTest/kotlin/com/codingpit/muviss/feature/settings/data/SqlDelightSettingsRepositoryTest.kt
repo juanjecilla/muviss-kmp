@@ -100,6 +100,30 @@ class SqlDelightSettingsRepositoryTest {
     }
 
     @Test
+    fun crash_reports_default_to_on() = runTest {
+        repository.observeSettings().test {
+            assertEquals(true, awaitItem().crashReportsEnabled)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setCrashReportsEnabled_persists_and_reaches_the_api() = runTest {
+        repository.setCrashReportsEnabled(false)
+
+        DefaultSettingsApi(repository).observeCrashReportsEnabled().test {
+            assertEquals(false, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        repository.setCrashReportsEnabled(true)
+        repository.observeSettings().test {
+            assertEquals(true, awaitItem().crashReportsEnabled)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun exportData_produces_valid_json_containing_library_and_progress() = runTest {
         database.collectionEntryQueries.upsert(
             mediaId = "tmdb:movie:603",

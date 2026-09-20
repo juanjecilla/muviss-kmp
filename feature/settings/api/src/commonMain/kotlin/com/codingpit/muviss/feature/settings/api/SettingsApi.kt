@@ -13,6 +13,13 @@ interface SettingsApi {
 
     /** The global notifications toggle. Persisted only today — EPIC 5 (notifications) reads this to gate itself. */
     fun observeNotificationsEnabled(): Flow<Boolean>
+
+    /**
+     * The "Send crash reports" switch (default on). The app shell forwards it to
+     * the crash reporter so the Settings toggle takes effect at once; the same
+     * value is read *before* Koin exists at startup, straight from `appSettings`.
+     */
+    fun observeCrashReportsEnabled(): Flow<Boolean>
 }
 
 /**

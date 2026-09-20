@@ -14,6 +14,8 @@ internal class DefaultSettingsApi(private val repository: SettingsRepository) : 
 
     override fun observeNotificationsEnabled(): Flow<Boolean> = repository.observeSettings().map { it.notificationsEnabled }
 
+    override fun observeCrashReportsEnabled(): Flow<Boolean> = repository.observeSettings().map { it.crashReportsEnabled }
+
     private fun AppTheme.toApi(): ThemeMode = when (this) {
         AppTheme.LIGHT -> ThemeMode.LIGHT
         AppTheme.DARK -> ThemeMode.DARK

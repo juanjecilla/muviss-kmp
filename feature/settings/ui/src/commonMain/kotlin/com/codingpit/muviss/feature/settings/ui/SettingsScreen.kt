@@ -40,6 +40,14 @@ import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SupportedLocales
 import com.codingpit.muviss.feature.settings.domain.TMDB_ATTRIBUTION_TEXT
 
+internal const val CRASH_REPORTS_LABEL = "Send crash reports"
+
+/**
+ * Says what `docs/PRIVACY.md` says, in the words a person deciding this needs:
+ * what is sent, and that the library is not part of it.
+ */
+internal const val CRASH_REPORTS_DESCRIPTION = "Anonymous. Sent only when something breaks, and never includes your library or watch history"
+
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -150,6 +158,14 @@ fun SettingsScreen(
             onClick = viewModel::exportData,
         )
         state.exportError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+
+        SectionOverline("Privacy", topPadding = true)
+        SwitchRow(
+            label = CRASH_REPORTS_LABEL,
+            description = CRASH_REPORTS_DESCRIPTION,
+            checked = state.settings.crashReportsEnabled,
+            onToggle = viewModel::onCrashReportsToggled,
+        )
 
         SectionOverline("About", topPadding = true)
         AboutSection(appVersionName = state.appVersion.versionName, onOpenLicenses = onOpenLicenses)
