@@ -6,6 +6,7 @@ import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.CountingDriver
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.triage.api.TriageVerdict

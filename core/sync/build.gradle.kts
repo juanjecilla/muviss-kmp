@@ -89,6 +89,12 @@ kotlin {
             // and HTTP-status handling are only observable against real
             // responses, and ADR 0009 rules out network calls in tests.
             implementation(libs.ktor.clientMock)
+            // `FakeSupabaseServer` (the wire-level Supabase stand-in the sync
+            // suites run the real backend and engine against) and
+            // `CountingDriver` (the operation-count budgets).
+            implementation(projects.core.testing)
+            // Asserts the status-derivation invariant a pull must not break.
+            implementation(projects.core.model)
         }
     }
 }

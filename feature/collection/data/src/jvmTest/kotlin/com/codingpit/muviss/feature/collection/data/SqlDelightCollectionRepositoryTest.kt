@@ -31,7 +31,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Test double for [ProgressApi]: seen-episode sets are controlled per media id via [setSeen]. */
-private class FakeProgressApi : ProgressApi {
+internal class FakeProgressApi : ProgressApi {
     private val seenByMedia = mutableMapOf<MediaId, MutableStateFlow<Set<EpisodeId>>>()
 
     private fun flowFor(mediaId: MediaId) = seenByMedia.getOrPut(mediaId) { MutableStateFlow(emptySet()) }
