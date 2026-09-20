@@ -34,7 +34,6 @@ import androidx.window.core.layout.WindowSizeClass
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
-import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
@@ -106,7 +105,7 @@ fun MuvissApp(
     oauthCode: String? = null,
     onOAuthCodeConsumed: () -> Unit = {},
 ) {
-    remember { CrashReporter.init(MuvissBuildConfig.SENTRY_DSN) }
+    remember { MuvissCrashReporting.ensureStarted() }
     remember { configureImageLoader() }
     val databaseDriverFactory = rememberDatabaseDriverFactory()
     KoinApplication(application = { modules(appModules + platformDatabaseModule(databaseDriverFactory)) }) {

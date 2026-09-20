@@ -35,6 +35,16 @@ sentryKmp = "0.27.0"
 # The Cocoa SDK version `sentryKmp`'s cinterop klibs were generated against
 # (`buildSrc/.../Config.kt` in that release). Keep the two in step.
 sentryCocoa = "8.58.2"
+# Checked 2026-09-20 for EPIC 26: sentryKmp 0.27.0 is still the latest release, and its
+# `buildSrc/.../Config.kt` at that tag pins Cocoa 8.58.2 (and sentry-java 8.41.0), so
+# there is nothing to bump and the pairing above stands. Re-check both together the
+# next time either moves.
+#
+# The Sentry Gradle plugin (`:app:androidApp` only) uploads the R8 mapping and
+# stamps `release`/`dist`. It is a build-time tool: it runs on the build machine
+# and is not part of the shipped app, so the `licensee` allow-list below does not
+# see it.
+sentryGradlePlugin = "6.22.0"
 licensee = "1.12.0"
 androidxWork = "2.10.0"
 
@@ -143,3 +153,4 @@ sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 licensee = { id = "app.cash.licensee", version.ref = "licensee" }
+sentry = { id = "io.sentry.android.gradle", version.ref = "sentryGradlePlugin" }

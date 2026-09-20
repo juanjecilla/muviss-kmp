@@ -1,7 +1,6 @@
 package com.codingpit.muviss.ios
 
-import com.codingpit.muviss.MuvissBuildConfig
-import com.codingpit.muviss.core.common.crash.CrashReporter
+import com.codingpit.muviss.MuvissCrashReporting
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
@@ -16,7 +15,7 @@ import org.koin.mp.KoinPlatformTools
  * when `BGTaskScheduler` launches the process in the background with no
  * `ComposeUIViewController` ever composed — a background BGAppRefreshTask
  * launch does not necessarily instantiate the SwiftUI `WindowGroup`/scene,
- * so `MuvissApp()`'s own `remember { CrashReporter.init(...) }` +
+ * so `MuvissApp()`'s own `remember { MuvissCrashReporting.ensureStarted() }` +
  * `KoinApplication` composable (see its doc comment) can't be relied on as
  * the *only* startup path the way it can on the other platforms.
  *
@@ -33,9 +32,10 @@ object IosAppStartup {
      * Idempotent: [KoinPlatformTools.defaultContext]'s `getOrNull()` guards
      * Koin the same way `MuvissApplication.onCreate`'s `GlobalContext.getOrNull()`
      * does (that JVM-only API isn't the portable KMP entry point — see
-     * Koin's own `org.koin.mp.KoinPlatformTools`). [CrashReporter.init] is
-     * cheap to call again (Sentry's own `init` just reconfigures) so no
-     * extra flag is kept for it.
+     * Koin's own `org.koin.mp.KoinPlatformTools`). [MuvissCrashReporting.start] is
+     * idempotent too — `CrashReporter.init` starts the SDK once and ignores every
+     * later call — and runs *before* Koin (EPIC 26) so a failure while the graph
+     * is built is reported.
      *
      * [reloadWidgetTimelines] is the Swift side's
      * `WidgetCenter.shared.reloadAllTimelines()` (EPIC 22). It is a parameter
@@ -45,12 +45,13 @@ object IosAppStartup {
      * widget extension yet still compiles and runs.
      */
     fun start(reloadWidgetTimelines: () -> Unit = {}) {
-        CrashReporter.init(MuvissBuildConfig.SENTRY_DSN)
+        MuvissCrashReporting.start(DatabaseDriverFactory())
         if (KoinPlatformTools.defaultContext().getOrNull() == null) {
             startKoin {
                 modules(appModules + module { single { DatabaseDriverFactory() } })
             }
         }
+        MuvissCrashReporting.followSettings()
         AppWidgets.install(IosWidgetRefresher(reloadWidgetTimelines))
         IosBackgroundRefresh.register()
         IosBackgroundRefresh.scheduleNext()

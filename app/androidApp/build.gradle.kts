@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.licensee)
+    alias(libs.plugins.sentry)
 }
 
 kotlin {
@@ -148,6 +149,46 @@ val gitVersionName: String = run {
         // git unavailable
         else -> "0.1.0-dev.$gitVersionCode"
     }
+}
+
+// -----------------------------------------------------------------------
+// Sentry Gradle plugin (EPIC 26). Release builds are minified, so without the R8
+// mapping every production stack trace is obfuscated. The plugin uploads it and
+// stamps the build so Sentry can pair the two: `release` is
+// `<applicationId>@<versionName>+<versionCode>` and `dist` is the versionCode —
+// the same strings `MuvissCrashReporting.config()` hands the SDK at runtime, and
+// they have to stay identical or a trace cannot find its mapping.
+//
+// Off unless `SENTRY_AUTH_TOKEN` is present (env or local.properties), the same
+// posture as the DSN and the signing keys: a fresh clone, a contributor and CI's
+// per-PR builds have none and must still build. With no token the plugin does
+// nothing at all — no upload, no network. It is set for release builds only.
+//
+// `autoInstallation` is off because `sentry-kotlin-multiplatform` already brings
+// `sentry-android`; letting the plugin add its own pin would fight the version the
+// KMP release was built against (see `sentryKmp`/`sentryCocoa` in the catalog).
+// Tracing instrumentation is off too: this app does not use Sentry performance,
+// and bytecode-instrumenting OkHttp/Compose/file IO on every build for a feature
+// nobody reads costs build time and risks R8.
+// -----------------------------------------------------------------------
+val sentryAuthToken: String? = localProperties.getProperty("SENTRY_AUTH_TOKEN") ?: System.getenv("SENTRY_AUTH_TOKEN")?.takeIf { it.isNotBlank() }
+val sentryOrg: String? = localProperties.getProperty("SENTRY_ORG") ?: System.getenv("SENTRY_ORG")?.takeIf { it.isNotBlank() }
+val sentryProject: String? = localProperties.getProperty("SENTRY_PROJECT") ?: System.getenv("SENTRY_PROJECT")?.takeIf { it.isNotBlank() }
+val uploadMapping = sentryAuthToken != null && sentryOrg != null && sentryProject != null
+
+sentry {
+    org.set(sentryOrg)
+    projectName.set(sentryProject)
+    authToken.set(sentryAuthToken)
+    includeProguardMapping.set(uploadMapping)
+    autoUploadProguardMapping.set(uploadMapping)
+    includeDependenciesReport.set(false)
+    includeSourceContext.set(false)
+    uploadNativeSymbols.set(false)
+    telemetry.set(false)
+    autoInstallation.enabled.set(false)
+    tracingInstrumentation.enabled.set(false)
+    ignoredBuildTypes.set(setOf("debug"))
 }
 
 android {
