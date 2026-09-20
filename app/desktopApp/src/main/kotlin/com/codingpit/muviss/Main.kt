@@ -1,5 +1,6 @@
 package com.codingpit.muviss
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -9,6 +10,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyShortcut
+import androidx.compose.ui.window.FrameWindowScope
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Notification
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
@@ -142,16 +147,25 @@ fun main() {
             }
         }
 
+        // Created out here rather than being left to MuvissApp's default,
+        // because the MenuBar below is a composable of the Window's own scope
+        // and has to share it. See MuvissAppController.
+        val appController = rememberMuvissAppController()
+
+        val quit = {
+            persistWindowState(windowState)
+            // Frees the loopback port if the user quits mid-sign-in.
+            loopback.release()
+            exitApplication()
+        }
+
         Window(
-            onCloseRequest = {
-                persistWindowState(windowState)
-                // Frees the loopback port if the user quits mid-sign-in.
-                loopback.release()
-                exitApplication()
-            },
+            onCloseRequest = quit,
             state = windowState,
             title = "Muviss",
         ) {
+            MuvissMenuBar(controller = appController, onQuit = quit)
+
             // WindowScope.window is the underlying java.awt/Swing peer
             // (ComposeWindow extends JFrame) — minimumSize has no Compose-level
             // equivalent on the WindowState/Window API, so it's set here once.
@@ -167,10 +181,93 @@ fun main() {
             MuvissApp(
                 oauthCode = oauthCode,
                 onOAuthCodeConsumed = { oauthCode = null },
+                controller = appController,
             )
         }
     }
 }
+
+/**
+ * The menu bar, which desktop had none of (issue #41): before this, macOS gave
+ * the app only the default application menu and there was no keyboard route to
+ * anything.
+ *
+ * A `FrameWindowScope` composable, so it can only be written here — which is
+ * the whole reason [MuvissAppController] exists. Navigation goes through it
+ * rather than through a `NavHostController` this module can see: androidx.
+ * navigation is an `implementation` dependency of `:app:shared` and has no
+ * business on this classpath to render a menu.
+ *
+ * `RadioButtonItem` rather than `Item` so View shows which destination is
+ * open, the way a tab-shaped menu should. It reads
+ * [MuvissAppController.currentDestination], which is snapshot state written by
+ * the app's own composition — a `Flow` would not recompose this menu, since it
+ * is composed in the Window's composition and not in the app's.
+ *
+ * Shortcuts are meta on macOS and ctrl everywhere else. Only two are bound:
+ * Search and Settings are the two the issue named, and they are the two that
+ * are genuinely reached often enough to be worth a chord. Quit gets one
+ * because a desktop app without it feels broken.
+ */
+@Composable
+private fun FrameWindowScope.MuvissMenuBar(
+    controller: MuvissAppController,
+    onQuit: () -> Unit,
+) {
+    MenuBar {
+        Menu("File", mnemonic = 'F') {
+            Item("Quit Muviss", shortcut = quitShortcut, onClick = onQuit)
+        }
+        Menu("View", mnemonic = 'V') {
+            controller.destinations.forEach { destination ->
+                RadioButtonItem(
+                    text = destination.label,
+                    selected = controller.currentDestination === destination,
+                    shortcut = viewShortcuts[destination.label],
+                    onClick = { controller.navigateTo(destination) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The platform's own modifier: Cmd on macOS, Ctrl elsewhere. `KeyShortcut`
+ * takes them as separate flags and has no "primary modifier" of its own, so
+ * every shortcut in this file has to make the choice explicitly — getting it
+ * wrong is a menu whose accelerators simply never fire.
+ *
+ * Declared **above** the two properties that read it, because Kotlin
+ * initialises top-level properties in declaration order. The compiler enforces
+ * this ("Variable 'isMacOs' must be initialized"), so the ordering cannot rot
+ * silently; it is called out only so nobody moves it and then wonders why.
+ */
+internal val isMacOs: Boolean = System.getProperty("os.name").orEmpty().startsWith("Mac")
+
+internal fun accelerator(key: Key): KeyShortcut = KeyShortcut(key, meta = isMacOs, ctrl = !isMacOs)
+
+/**
+ * Quit's accelerator — and on macOS, deliberately none.
+ *
+ * macOS gives every app an application menu that already carries
+ * "Quit <app>" ⌘Q, and AWT silently drops a duplicate: with
+ * `KeyShortcut(Key.Q, meta = true)` set here, the item rendered with **no
+ * accelerator at all** (confirmed by reading `AXMenuItemCmdChar` off the live
+ * menu). Binding it is not wrong so much as a lie in the UI — it claims a
+ * chord the item does not own. The system menu's ⌘Q still quits.
+ *
+ * Windows and Linux have no such menu, so there Ctrl+Q is the only one.
+ */
+internal val quitShortcut: KeyShortcut? = if (isMacOs) null else accelerator(Key.Q)
+
+/**
+ * The two destinations worth a chord, keyed by label rather than by index so
+ * reordering the bar cannot silently move a shortcut onto a different screen.
+ */
+internal val viewShortcuts: Map<String, KeyShortcut> = mapOf(
+    "Search" to accelerator(Key.F),
+    "Settings" to accelerator(Key.Comma),
+)
 
 /**
  * The tray icon: the same artwork the installers use, loaded off the classpath

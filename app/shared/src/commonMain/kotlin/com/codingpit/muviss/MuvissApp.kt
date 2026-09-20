@@ -21,7 +21,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,7 +35,6 @@ import coil3.SingletonImageLoader
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
-import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
@@ -44,18 +42,14 @@ import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.di.rememberDatabaseDriverFactory
-import com.codingpit.muviss.feature.collection.ui.CollectionRoute
 import com.codingpit.muviss.feature.collection.ui.collectionSection
-import com.codingpit.muviss.feature.profile.ui.ProfileRoute
 import com.codingpit.muviss.feature.profile.ui.profileSection
-import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
-import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
@@ -64,21 +58,6 @@ import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.core.module.Module
 import org.koin.dsl.module
-
-private data class TopDestination(
-    val route: Any,
-    val label: String,
-    val icon: ImageVector,
-)
-
-private val topDestinations =
-    listOf(
-        TopDestination(SearchRoute, "Search", MuvissIcons.Search),
-        TopDestination(CollectionRoute, "Library", MuvissIcons.Library),
-        TopDestination(ProgressRoute, "Progress", MuvissIcons.WatchNext),
-        TopDestination(ProfileRoute, "Profile", MuvissIcons.Profile),
-        TopDestination(SettingsRoute, "Settings", MuvissIcons.Settings),
-    )
 
 /**
  * Root entry point for every platform. Starts Koin (or, on Android, reuses
@@ -97,6 +76,11 @@ private val topDestinations =
  * [onOAuthCodeConsumed] once redeemed. It is handled here rather than in the
  * profile screen because the redirect can arrive long after that screen —
  * and its ViewModel — is gone.
+ *
+ * [controller] defaults to one created here, which is what every platform but
+ * desktop wants. Desktop passes its own, created in the `Window` scope, so the
+ * `MenuBar` there and the `NavHost` here drive the same navigation — see
+ * [MuvissAppController].
  */
 @Suppress("DEPRECATION") // KoinApplication(config=) overload not present in this Koin version.
 @Composable
@@ -105,6 +89,7 @@ fun MuvissApp(
     onDeepLinkConsumed: () -> Unit = {},
     oauthCode: String? = null,
     onOAuthCodeConsumed: () -> Unit = {},
+    controller: MuvissAppController = rememberMuvissAppController(),
 ) {
     remember { CrashReporter.init(MuvissBuildConfig.SENTRY_DSN) }
     remember { configureImageLoader() }
@@ -120,7 +105,7 @@ fun MuvissApp(
         AutoSyncOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
-            MuvissScaffold(deepLinkMediaId, onDeepLinkConsumed)
+            MuvissScaffold(controller, deepLinkMediaId, onDeepLinkConsumed)
         }
     }
 }
@@ -201,12 +186,23 @@ private fun platformDatabaseModule(driverFactory: DatabaseDriverFactory): Module
 
 @Composable
 private fun MuvissScaffold(
+    controller: MuvissAppController,
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
 ) {
-    val navController = rememberNavController()
+    val navController = controller.navController
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
+
+    // The one place that observes the back stack, so the one place that can
+    // tell a platform host which destination is showing. Desktop's MenuBar is
+    // composed in the Window's own composition and has no other way to know.
+    LaunchedEffect(currentDestination) {
+        controller.currentDestination =
+            controller.destinations.firstOrNull { dest ->
+                currentDestination?.hierarchy?.any { it.hasRoute(dest.route::class) } == true
+            }
+    }
 
     LaunchedEffect(deepLinkMediaId) {
         if (deepLinkMediaId != null) {
@@ -248,20 +244,14 @@ private fun MuvissScaffold(
             navigationRailContainerColor = MaterialTheme.colorScheme.surfaceContainer,
         ),
         navigationSuiteItems = {
-            topDestinations.forEach { dest ->
+            controller.destinations.forEach { dest ->
                 val selected =
                     currentDestination?.hierarchy?.any {
                         it.hasRoute(dest.route::class)
                     } == true
                 item(
                     selected = selected,
-                    onClick = {
-                        navController.navigate(dest.route) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
+                    onClick = { controller.navigateTo(dest) },
                     icon = { Icon(dest.icon, contentDescription = dest.label) },
                     label = { Text(dest.label) },
                     colors = itemColors,
