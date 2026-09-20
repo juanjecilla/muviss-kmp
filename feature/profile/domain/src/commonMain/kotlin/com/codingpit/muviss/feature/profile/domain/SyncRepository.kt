@@ -18,7 +18,24 @@ interface SyncRepository {
     /** False when no Supabase keys are configured for this build — the UI should hide the entry point entirely rather than call anything else here. */
     val isAvailable: Boolean
 
+    /**
+     * False when this build does not ship automatic sync (`SYNC_BACKGROUND_ENABLED`
+     * unset): the switch is not rendered at all, the same rule [isAvailable] follows.
+     */
+    val isBackgroundAvailable: Boolean
+
+    /** How automatic sync happens on this platform, for the switch's description. */
+    val automaticSyncMode: AutomaticSyncMode
+
     fun observeAccount(): Flow<SyncAccountState>
+
+    /** The per-device "sync automatically" switch. Off by default. */
+    fun observeAutomaticSync(): Flow<Boolean>
+
+    /** Stores the switch. Turning it on also starts watching for local changes and asks for a sync now. */
+    suspend fun setAutomaticSync(enabled: Boolean)
+
+    fun observeSyncStatus(): Flow<SyncStatus>
 
     fun observeLastSyncedAt(): Flow<Long?>
 
@@ -51,4 +68,7 @@ interface SyncRepository {
 
     /** Runs one push+pull cycle. */
     suspend fun syncNow(): SyncOutcomeSummary
+
+    /** Forgets where every pull stopped, sends the whole library again and pulls it all: the repair path. Slow in proportion to the library. */
+    suspend fun resyncEverything(): SyncOutcomeSummary
 }

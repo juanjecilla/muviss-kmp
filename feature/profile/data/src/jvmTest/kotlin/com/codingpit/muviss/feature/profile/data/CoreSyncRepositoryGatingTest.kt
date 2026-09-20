@@ -27,6 +27,8 @@ import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -90,13 +92,17 @@ class CoreSyncRepositoryGatingTest {
         val database = MuvissDatabase(driver)
         val backend = StubBackend(session)
         val gate = EntitlementGate { entitlement.isEntitled }
+        val clock = FixedClock()
+        val engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, gate)
         return CoreSyncRepository(
             availability = SyncAvailability { configured },
             backend = backend,
-            engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), FixedClock(), gate),
+            engine = engine,
             entitlements = StubEntitlements(entitlement),
             signInFeedback = SignInFeedback(),
             redirectTarget = DeepLinkRedirectTarget(),
+            flags = FakeFeatureFlags(),
+            coordinator = idleCoordinator(engine, clock, CoroutineScope(Job())),
         )
     }
 
