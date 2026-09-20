@@ -259,6 +259,12 @@ it — see `AGENTS.md` for why.
 - **`:app:macrobenchmark` + baseline profile** — #30. Frame timing for the triage drag, deck cold start, commit latency. Blocked on an emulator in CI, which is why the perf tests we do have use deterministic operation-count budgets instead.
 - **Additional `MetadataProvider`s (TVmaze/Trakt)** — #31. Cross-source reconciliation via IMDb id. ADR 0001 and ADR 0006 built the seams; TMDB is still the only implementation, so neither has been exercised by a second source.
 
+**Schema numbers, corrected by EPIC 26 (#68):** EPIC 39 took `9.sqm` (schema v10)
+and EPIC 26 is `10.sqm` (schema v11, fixture `11.db`). Any earlier claim that
+gives `9.sqm` to EPIC 26 or `10.sqm` to EPIC 28 is stale: EPIC 28 takes `11.sqm`
+(schema v12) and renumbers. Each migration's test names its number in one
+constant, so the rename touches a filename, a fixture and that constant.
+
 ### Raised by EPIC 22, deliberately not done
 
 - **The iOS widget extension has never been built** — #23. The Xcode target is checked in and its graph parses, but building it needs Xcode, a real `TEAM_ID` and a registered App Group. The App Group database relocation (ADR 0016) is unverified with it.

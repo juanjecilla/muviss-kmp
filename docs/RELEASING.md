@@ -120,15 +120,53 @@ same expect/actual convention already used there for `AppDispatchers`:
 The DSN is baked in via a generated `MuvissBuildConfig` in `:app:shared`,
 the same mechanism ADR 0007 describes for the TMDB key: it reads
 `SENTRY_DSN` from `local.properties` or the environment, defaulting to `""`.
-`CrashReporter.init("")` no-ops, so building/running without a DSN (the
+`CrashReporter.init` with a blank DSN no-ops, so building/running without a DSN (the
 default for every contributor and most CI runs) never touches Sentry.
 
 To enable it locally: add `SENTRY_DSN=https://<key>@o<org>.ingest.sentry.io/<project>`
 to `local.properties`. In CI: set the `SENTRY_DSN` repository secret (see
 `.github/workflows/release.yml`).
 
-`MuvissApp()` calls `CrashReporter.init(MuvissBuildConfig.SENTRY_DSN)` once
-at startup, inside a `remember {}` alongside the existing image-loader setup.
+**Where it starts (EPIC 26).** Every host starts reporting *first*, before Koin:
+`MuvissApplication.onCreate` (Android), `main()` in the desktop `Main.kt`, and
+`IosAppStartup.start` (iOS), all through `MuvissCrashReporting.start` in
+`:app:shared`. It used to happen inside a composable, so a process started by
+`NewEpisodesWorker`, a Koin graph failure and any pre-first-frame crash were
+invisible. `MuvissApp()` still calls `MuvissCrashReporting.ensureStarted()` as a
+guard; `CrashReporter.init` is idempotent, so it is a no-op wherever a host
+already started, and it starts with reporting *off* if it is ever the first
+caller (it cannot know the stored consent). Web has no reporter at all: its
+actuals are no-ops by design and `docs/PRIVACY.md` says so (browser reporting is
+issue #83).
+
+**Consent.** "Send crash reports" (Settings → Privacy, default on) lives in
+`appSettings.crashReportsEnabled` (`10.sqm`). Because reporting has to start
+before the graph that opens the database exists, `CrashReportsConsent` reads it
+through a short-lived driver of its own, and any failure reads as *on* — the
+default. A runtime gate in the SDK's `beforeSend` makes the toggle effective at
+once; `MuvissCrashReporting.followSettings()` keeps it in step. The simpler
+alternative would be to initialise first and gate afterwards, at the cost of an
+opted-out person's crash in that first window being sent.
+
+**`release`, `dist`, `environment`.** `release` is
+`com.codingpit.muviss@<versionName>+<versionCode>` and `dist` the versionCode —
+exactly what the Sentry Gradle plugin stamps on the mapping it uploads. They
+must stay identical or a trace cannot find its mapping (`MuvissCrashReporting.releaseOf`
+and `app/androidApp/build.gradle.kts`). `environment` is `SENTRY_ENVIRONMENT`
+(env or `local.properties`) if set, otherwise `production` when a release
+artefact was requested and `development` otherwise.
+
+**Deobfuscation.** `io.sentry.android.gradle` (`:app:androidApp`) uploads the R8
+mapping on release builds when **all three** of `SENTRY_AUTH_TOKEN`,
+`SENTRY_ORG` and `SENTRY_PROJECT` are present (env or `local.properties`);
+without them it does nothing, so a fresh clone still builds. Nothing here has
+been exercised against a real Sentry project — see "Sentry test crash" below.
+
+**Scrubbing.** `CrashScrubber` removes `api_key=`, tokens and `Bearer …` from
+messages, exceptions and breadcrumbs in `beforeSend`/`beforeBreadcrumb`.
+
+**Version pairing.** `sentryKmp` and `sentryCocoa` move together (see the catalog);
+last checked 2026-09-20: 0.27.0 is the latest KMP release and pins Cocoa 8.58.2.
 
 ## 5. CI release job
 
@@ -409,9 +447,10 @@ it. So startup is split:
   guarantees runs before launch completes regardless of why the process
   launched, and it does exactly one thing: call `IosAppStartup.shared.start()`.
 - **`IosAppStartup.kt`** (`app/shared/src/iosMain/.../ios/`): the real
-  logic — starts Koin (guarded via `KoinPlatformTools.defaultContext().getOrNull()`,
+  logic — starts crash reporting (`MuvissCrashReporting.start`, before Koin),
+  then Koin (guarded via `KoinPlatformTools.defaultContext().getOrNull()`,
   the KMP-portable equivalent of `GlobalContext.getOrNull()`, which isn't
-  exported on non-JVM targets), calls `CrashReporter.init(MuvissBuildConfig.SENTRY_DSN)`,
+  exported on non-JVM targets),
   registers the `BGTaskScheduler` task, and configures `UNUserNotificationCenter`.
 - **`MainViewController.kt`** additionally wires `IosNotificationCenter.pendingDeepLinkMediaId`
   into `MuvissApp(deepLinkMediaId, onDeepLinkConsumed)` — the same param pair
@@ -527,7 +566,9 @@ re-derive it from yet (same caveat item 7 gives the desktop icons).
 
 ### Sentry test crash — manual, not attempted
 
-Needs a live `SENTRY_DSN` (see item 4) and a physical build; not exercised
+EPIC 26's full manual checklist (release install, deobfuscated trace, cold-start
+worker crash, opt-out, desktop packaged binary) is on issue #68. Needs a live
+`SENTRY_DSN` (see item 4) and a physical build; not exercised
 in this environment (no DSN configured, no Apple Developer account to
 sign a device build with). To verify once a DSN exists: force a crash
 (e.g. a debug-only button calling `fatalError()` or throwing an

@@ -143,7 +143,8 @@ Same answer as Play's Data Safety form (`DATA_SAFETY.md`): Muviss collects
 **no data** — no accounts, no backend, no analytics/advertising SDKs. The
 only thing that ever leaves the device is an optional, anonymous Sentry
 crash report if `SENTRY_DSN` is configured (see `docs/RELEASING.md` item
-4) — declare **Crash Data**, linked to no identity, used for App
+4), which the person can switch off in Settings → Privacy → "Send crash
+reports" (EPIC 26) — declare **Crash Data**, linked to no identity, used for App
 Functionality only, matching how `DATA_SAFETY.md` frames the same fact for
 Play.
 
