@@ -3,6 +3,8 @@ package com.codingpit.muviss.core.database
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.worker.WebWorkerDriver
 import kotlinx.browser.window
+import org.w3c.dom.MessageEvent
+import org.w3c.dom.MessagePort
 import org.w3c.dom.Worker
 
 /**
@@ -32,11 +34,19 @@ import org.w3c.dom.Worker
  * fails `compileKotlinWasmJs` (the typealias is internal to the library).
  */
 actual class DatabaseDriverFactory {
-    actual fun create(): SqlDriver {
-        val worker = sqljsWorker()
-        flushSnapshotOnPageHide(worker)
-        return SchemaEnsuringDriver(WebWorkerDriver(worker))
+    // Eager rather than lazy: `persistence` is read by the UI as soon as the app
+    // composes, and a worker that has not been spawned yet would leave the
+    // banner stuck on Pending until something first touched the database.
+    private val status = WebPersistenceStatus()
+
+    private val worker: Worker = sqljsWorker().also {
+        flushSnapshotOnPageHide(it)
+        observePersistence(it, status)
     }
+
+    actual fun create(): SqlDriver = SchemaEnsuringDriver(WebWorkerDriver(worker))
+
+    actual val persistence: PersistenceStatus = status
 }
 
 /**
@@ -87,3 +97,60 @@ private fun flushSnapshotOnPageHide(worker: Worker) {
 }
 
 private fun flushMessage(): JsAny = js("""({ action: "flush" })""")
+
+/**
+ * Subscribes to the worker's persistence announcements (issue #53).
+ *
+ * Over a `MessageChannel` of our own rather than the worker's own message
+ * channel, and that is not fastidiousness. The first version did share it,
+ * having read the **js** `web-worker-driver` klib, where `WorkerWrapper` adds a
+ * per-request listener that compares `event.data.id` and ignores what it does
+ * not recognise. The **wasmJs** driver is a different implementation:
+ * `WasmWorkerResponse.results` is a non-null external property and it is
+ * materialised before the id is looked at, so an extra message with no
+ * `results` crashes the app outright —
+ *
+ *     NullPointerException: null
+ *       at ...WasmWorkerResultWithRowCount.<init>
+ *       at ...results_$external_prop_getter__externalAdapter
+ *
+ * — which is what happened, on the second tab, at the exact moment the banner
+ * this all exists for appeared. The two targets sharing `webMain` does not mean
+ * they share a driver.
+ *
+ * The port is created and handed over inside one `js(...)` snippet because the
+ * transfer list is the whole point of the call and Kotlin's `postMessage`
+ * bindings for it differ between the two targets; `start()` is required before a
+ * `MessagePort` delivers anything to a listener.
+ */
+private fun observePersistence(worker: Worker, status: WebPersistenceStatus) {
+    val port = persistencePort(worker)
+    port.addEventListener("message", { event ->
+        val data = (event as MessageEvent).data
+        if (data != null) {
+            status.report(writer = isWriter(data), webLocksSupported = isSupported(data))
+        }
+    })
+}
+
+/**
+ * `@Suppress("UnusedParameter")` on these three: the parameters are referenced
+ * by name *inside* the `js(...)` string, which is how Kotlin's JS interop
+ * passes them, and Detekt reads Kotlin rather than the embedded JavaScript. It
+ * cannot see the use and reports every one of them as dead.
+ */
+@Suppress("UnusedParameter")
+private fun persistencePort(worker: Worker): MessagePort = js(
+    """(function () {
+        var channel = new MessageChannel();
+        worker.postMessage({ action: "muviss_persistence_port" }, [channel.port2]);
+        channel.port1.start();
+        return channel.port1;
+    })()""",
+)
+
+@Suppress("UnusedParameter")
+private fun isWriter(data: JsAny): Boolean = js("!!data.writer")
+
+@Suppress("UnusedParameter")
+private fun isSupported(data: JsAny): Boolean = js("!!data.supported")

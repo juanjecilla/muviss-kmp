@@ -64,9 +64,37 @@ It is declared as a **local npm package**, not a file in resources, and that is 
 
 The costs of the snapshot approach, stated plainly so the trigger to revisit is legible: `db.export()` serializes the **entire** database on every committed burst, which is O(size) per write and fine for a personal library of a few hundred titles and not fine for something an order of magnitude larger; and there is a **loss window** of up to the debounce interval if the tab dies without `pagehide` running. If either becomes real, OPFS is the answer and this paragraph is why.
 
-**Multi-tab is decided, not ignored.** Two tabs are two workers with two independent in-memory databases and one IndexedDB slot, so the naive version has the second tab's export silently overwrite the first tab's work wholesale — the same class of silent data loss ADR 0013 exists to prevent, reached from a different direction. The worker takes a Web Lock (`navigator.locks.request("muviss-db")`) held for the life of the tab: the holder persists, other tabs run normally in memory and never write. The loser tab's changes are lost on reload, which is exactly what *every* tab did before this amendment, so it is not a regression — and data that is already durable can never be clobbered by a stale tab. Telling that tab so, in the UI, is deliberately not done here.
+**Multi-tab is decided, not ignored.** Two tabs are two workers with two independent in-memory databases and one IndexedDB slot, so the naive version has the second tab's export silently overwrite the first tab's work wholesale — the same class of silent data loss ADR 0013 exists to prevent, reached from a different direction. The worker takes a Web Lock (`navigator.locks.request("muviss-db")`) held for the life of the tab: the holder persists, other tabs run normally in memory and never write. The loser tab's changes are lost on reload, which is exactly what *every* tab did before this amendment, so it is not a regression — and data that is already durable can never be clobbered by a stale tab. Telling that tab so, in the UI, is deliberately not done here. *(Two claims in this paragraph are wrong: the lock request queues rather than refusing, so durable data **can** be clobbered by a stale tab; and the tab is told now. See the 2026-09-05 amendment.)*
 
 **`SchemaEnsuringDriver` now decides rather than creates.** It called `Schema.awaitCreate` unconditionally, which was only correct because web's database was empty on every load. A restored snapshot can be older than the build, so it reads `PRAGMA user_version` and creates (0), migrates (below the target) or does nothing. Web has never had an upgrade path because it never had a stored database; this is the one every other platform gets free from its driver, and it means the `.sqm` chain and `verifyMigrations` finally cover web rather than covering it vacuously. A database *newer* than the build is left alone rather than recreated — someone opening a stale deployment should not have their library deleted to fix a version number. The target comes from `MuvissDatabase.Schema.version`, never a literal, so the next `.sqm` moves it without anyone editing the driver.
+
+## Amendment (2026-09-05, issue #53): the losing tab is told, and `ifAvailable` is not the fix it looks like
+
+**"Telling that tab so, in the UI, is deliberately not done here" no longer holds.** A tab that is not the writer now says so.
+
+The worker posts `{ writer, supported }` when the election resolves and when Web Locks is absent, over a **`MessageChannel` of its own**. The first attempt shared the worker's existing message channel with SQLDelight's driver, on the strength of reading the **js** `web-worker-driver` klib, where `WorkerWrapper.execute` adds a per-request listener that compares `event.data.id` and ignores what it does not recognise. The **wasmJs** driver is a different implementation: `WasmWorkerResponse.results` is a non-null external property, materialised *before* the id is looked at, so an extra message with no `results` took the whole app down —
+
+```
+NullPointerException: null
+  at ...WasmWorkerResultWithRowCount.<init>
+  at ...results_$external_prop_getter__externalAdapter
+```
+
+— on the second tab, at the exact moment the banner appeared. Sharing `webMain` does not mean sharing a driver. A private port is not a workaround for that; it is the correct shape, since the driver's protocol is the driver's.
+
+On the Kotlin side the seam is `PersistenceStatus` in `:core:database`, exposed as `DatabaseDriverFactory.persistence` and bound into Koin by `MuvissApp`'s `platformDatabaseModule`. Android, iOS and JVM return `AlwaysDurable`. It is a Koin binding rather than an `expect`/`actual` value for the reason `CLAUDE.md` records about `OAuthRedirectTarget`: a JVM actual hard-coding `Durable` would make the banner impossible to render in a `jvmTest`, which is the only place Compose tests run here.
+
+Four states, and `Pending` earns its place — it is what a tab reports before the election answers, and it draws nothing. Treating "not yet known" as "not durable" would flash the banner on every ordinary load of the writer tab. `NotPersisted` (no Web Locks at all, so nobody is elected and nothing persists anywhere) says something different from `ReadOnlyTab` on purpose: "open in another tab" would be a lie when there may be no other tab.
+
+Because a queued lock request is simply *silent* until granted, the losing tab is told by a timer: `ELECTION_GRACE_MS` (400ms) after requesting, if it still is not the writer, it announces. The delay is what keeps the winner — granted within a few milliseconds — from flashing the banner on the way in.
+
+### `{ ifAvailable: true }` was tried, and is a worse bug
+
+The 2026-09-04 amendment claimed the lock means durable data "can never be clobbered by a stale tab". That is **false**, and remains false: `navigator.locks.request(name, callback)` **queues**. A losing tab is not refused, it is waiting; when the writer's tab closes it is granted the lock and exports a database forked from the snapshot as it stood when *it* opened, over everything the writer committed in between. That bug is real and is filed separately.
+
+`{ ifAvailable: true }` is the obvious fix and it was implemented, tested in a browser, and **reverted**. On an ordinary page reload the new worker starts before the outgoing one has been torn down, asks while the lock is still held by a tab that is already dying, is refused — and never asks again. Measured in Chrome: one tab, reloaded once, no other tab open, showing the "open in another tab" banner, with `navigator.locks.query()` reporting one holder and zero pending. A user who reloads would silently stop persisting, permanently. That is far more common than two tabs plus closing the writer, so the trade is bad in both directions of frequency and severity.
+
+Whatever fixes the clobber has to keep the reload case working — retrying `ifAvailable` while the tab has no local writes, or re-reading the snapshot on promotion before enabling exports. Neither belongs in a UI change, so the queue stays and the bug is filed with this analysis attached.
 
 ### Correction to the 2026-07-16 amendment: `{ type: "module" }` is not what makes this work
 
