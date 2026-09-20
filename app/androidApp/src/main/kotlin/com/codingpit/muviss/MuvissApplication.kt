@@ -26,6 +26,9 @@ import org.koin.dsl.module
  * (the normal case once this runs) it reuses that instance instead of
  * starting a second one, so there's exactly one Koin graph either way.
  *
+ * Starts crash reporting before anything else (EPIC 26), so it covers this
+ * cold-start path too — see [MuvissCrashReporting].
+ *
  * It also installs the Glance-backed [WidgetRefresher]
  * [com.codingpit.muviss.core.common.widget.WidgetRefresher] (EPIC 22). This
  * is the first point that has an application `Context`, which is later than
@@ -35,11 +38,17 @@ import org.koin.dsl.module
 class MuvissApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // First, before Koin: a crash while the graph is built, in a worker that
+        // cold-started this process, or before the first frame is the kind this
+        // exists to see. It reads the stored opt-out on its own short-lived
+        // driver because the graph that owns the database does not exist yet.
+        MuvissCrashReporting.start(DatabaseDriverFactory(this))
         if (GlobalContext.getOrNull() == null) {
             startKoin {
                 modules(appModules + module { single { DatabaseDriverFactory(this@MuvissApplication) } })
             }
         }
+        MuvissCrashReporting.followSettings()
         AppWidgets.install(GlanceWidgetRefresher(this))
         NewEpisodesScheduler.schedule(this)
         WidgetMidnightRefresh.schedule(this)

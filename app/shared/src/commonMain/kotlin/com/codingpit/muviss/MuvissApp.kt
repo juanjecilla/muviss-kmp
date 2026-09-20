@@ -32,7 +32,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.SingletonImageLoader
-import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
 import com.codingpit.muviss.core.database.PersistenceStatus
@@ -93,7 +92,7 @@ fun MuvissApp(
     onOAuthCodeConsumed: () -> Unit = {},
     controller: MuvissAppController = rememberMuvissAppController(),
 ) {
-    remember { CrashReporter.init(MuvissBuildConfig.SENTRY_DSN) }
+    remember { MuvissCrashReporting.ensureStarted() }
     remember { configureImageLoader() }
     val databaseDriverFactory = rememberDatabaseDriverFactory()
     KoinApplication(application = { modules(appModules + platformDatabaseModule(databaseDriverFactory)) }) {
