@@ -179,10 +179,17 @@ internal val LightColors = lightColorScheme(
 
 /**
  * Categorical palette for the hand-drawn Canvas charts (profile stats).
- * Order matters: amber (primary data), sage, blue, sand, rose — matched to
- * the design doc's donut/bar mockups. Charts consume colors from here so
- * chart styling stays with the theme without the design system knowing any
- * chart types.
+ * Order matters: amber (primary data), sage, blue, sand, rose, violet —
+ * matched to the design doc's donut/bar mockups. Charts consume colors from
+ * here so chart styling stays with the theme without the design system
+ * knowing any chart types.
+ *
+ * There are **six** entries because the genre donut draws up to
+ * `MAX_GENRE_SLOTS = 6` slices. With exactly six genres in the library no
+ * fold to "Other" happens, so all six are real and a five-color list made
+ * slice 6 wrap to `palette[0]` — the same amber as slice 1. The last three
+ * are literals rather than theme roles: the schemes have no further role
+ * that reads as a distinct data series in both light and dark.
  */
 object MuvissChartPalette {
     @Composable
@@ -192,5 +199,6 @@ object MuvissChartPalette {
         Color(0xFF6B93C9),
         Color(0xFFD8C4A2),
         Color(0xFFC98B9A),
+        Color(0xFF9B8AC4),
     )
 }
