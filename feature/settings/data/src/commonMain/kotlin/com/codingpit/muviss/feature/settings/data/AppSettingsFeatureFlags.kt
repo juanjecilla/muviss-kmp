@@ -38,6 +38,10 @@ class AppSettingsFeatureFlags(
 
     override val triageDeckAnimations: Flow<Boolean> = settings().map { row -> row?.triageDeckAnimations ?: true }
 
+    // Off when the row is missing: a read that loses a race with `ensureRow`
+    // must not look like the person asked for background sync.
+    override val syncAutomatically: Flow<Boolean> = settings().map { row -> row?.syncAutomatically ?: false }
+
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageControlScheme(scheme.name)
@@ -53,6 +57,12 @@ class AppSettingsFeatureFlags(
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageDeckAnimations(enabled)
+        Unit
+    }
+
+    override suspend fun setSyncAutomatically(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateSyncAutomatically(enabled)
         Unit
     }
 

@@ -90,7 +90,8 @@ class SyncEngineHardeningTest {
 
     // --- Pull cursor -----------------------------------------------------
 
-    private fun storedCursors(): Map<String, Long> = database.syncCursorQueries.selectAll().executeAsList().associate { it.tableName to it.seq }
+    // `_`-prefixed rows are not cursors (the weekly-reconcile stamp, EPIC 40).
+    private fun storedCursors(): Map<String, Long> = database.syncCursorQueries.selectAll().executeAsList().filterNot { it.tableName.startsWith("_") }.associate { it.tableName to it.seq }
 
     @Test
     fun the_cursor_is_the_backends_position_not_any_clock() = runTest {

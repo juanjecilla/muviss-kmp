@@ -92,6 +92,12 @@ internal class FakeFeatureFlags(
     override val triageControlScheme: Flow<TriageControlScheme> = state
     override val animationsEnabled: Flow<Boolean> = appAnimations
     override val triageDeckAnimations: Flow<Boolean> = deck
+    private val autoSync = MutableStateFlow(false)
+    override val syncAutomatically: Flow<Boolean> = autoSync
+
+    override suspend fun setSyncAutomatically(enabled: Boolean) {
+        autoSync.value = enabled
+    }
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) {
         state.value = scheme

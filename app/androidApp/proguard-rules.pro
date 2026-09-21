@@ -98,3 +98,12 @@
 -keep class com.codingpit.muviss.notifications.NewEpisodesWorker {
     <init>(android.content.Context, androidx.work.WorkerParameters);
 }
+
+# The hourly sync worker (EPIC 40) is instantiated the same way, by class name
+# from the persisted WorkSpec, so it needs the same rule. Forgetting it is the
+# trap EPIC 30 found for the midnight widget worker: R8 strips the class, the
+# job is enqueued fine, and every run fails with ClassNotFoundException in a
+# release build only.
+-keep class com.codingpit.muviss.sync.SyncWorker {
+    <init>(android.content.Context, androidx.work.WorkerParameters);
+}

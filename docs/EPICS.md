@@ -427,3 +427,9 @@ widget has been run).
   selected row's highlight pill spans ~500dp for a two-word label. Needs a width
   cap or more columns, plus a golden recorded at a genuinely tablet-sized frame —
   the committed wide goldens are 892dp, which is phone-landscape.
+
+## EPIC 40 — Opt-in automatic sync — wave 11 — issue #86
+
+Depends on EPIC 39 (#85, merged). **ADR 0021**; no schema number of its own (the `syncAutomatically` column and `syncState` came with EPIC 39's `9.sqm`). Off by default and gated three ways, all inside `SyncEngine.syncNow(trigger)`: a build flag (`SYNC_BACKGROUND_ENABLED`), a per-device switch on Profile, and the session and entitlement. Triggers: a debounced push after local writes and a foreground sync everywhere (`SyncCoordinator`), plus WorkManager (`SyncWorker`, hourly), a piggyback on iOS's background refresh, a 15 minute desktop timer while open, and web `visibilitychange`/`online` events (inert until web sign-in, #46). A weekly full pull bounds the sequence-gap risk. Failures are typed and finally visible on Profile; the switch's status line, "Resync everything" and "Session expired" are in. `AccountChanged` is surfaced and left to EPIC 32. See `docs/SYNC.md` "Automatic sync" and ADR 0021.
+
+**Not verified by any test**, tracked as a checklist on #86: a real WorkManager run and the release-build `-keep` rule, iOS `BGAppRefreshTask` and its expiration handler, a packaged desktop app left open, two browser tabs, a live Supabase project (#88, #100).

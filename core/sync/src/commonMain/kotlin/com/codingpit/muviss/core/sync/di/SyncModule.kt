@@ -1,7 +1,11 @@
 package com.codingpit.muviss.core.sync.di
 
+import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.createHttpClient
+import com.codingpit.muviss.core.sync.AutomaticSyncSettings
+import com.codingpit.muviss.core.sync.BuildSyncAvailability
 import com.codingpit.muviss.core.sync.DeepLinkRedirectTarget
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.MuvissBuildConfig
@@ -11,9 +15,13 @@ import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SqlDelightSyncSessionStore
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
+import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
+import com.codingpit.muviss.core.sync.SyncRunner
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.supabase.SupabaseSyncBackend
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -31,13 +39,7 @@ import org.koin.dsl.module
  * what [EntitlementGate] exists to avoid (ADR 0018).
  */
 val syncModule: Module = module {
-    single<SyncAvailability> {
-        SyncAvailability {
-            MuvissBuildConfig.SYNC_ENABLED &&
-                MuvissBuildConfig.SUPABASE_URL.isNotBlank() &&
-                MuvissBuildConfig.SUPABASE_ANON_KEY.isNotBlank()
-        }
-    }
+    single<SyncAvailability> { BuildSyncAvailability }
     single<EntitlementGate> { EntitlementGate.AlwaysEntitled }
     single { SignInFeedback() }
     // The scheme-based default. :app:desktopApp rebinds this to its loopback
@@ -59,5 +61,28 @@ val syncModule: Module = module {
             NoOpSyncBackend()
         }
     }
-    single { SyncEngine(get(), get(), get(), get(), get()) }
+    single { AutomaticSyncSettings(get(), get<FeatureFlags>().syncAutomatically) }
+    single {
+        SyncEngine(
+            backend = get(),
+            database = get(),
+            dispatchers = get(),
+            clock = get(),
+            entitlementGate = get(),
+            automatic = get(),
+        )
+    }
+    single<SyncRunner> { get<SyncEngine>() }
+    single {
+        val engine = get<SyncEngine>()
+        SyncCoordinator(
+            runner = engine,
+            pendingChanges = engine.observePendingChanges(),
+            // Not just the switch: a build without background sync never
+            // watches, however the stored preference reads.
+            automaticEnabled = get<AutomaticSyncSettings>().enabled,
+            clock = get(),
+            scope = CoroutineScope(SupervisorJob() + get<AppDispatchers>().default),
+        )
+    }
 }

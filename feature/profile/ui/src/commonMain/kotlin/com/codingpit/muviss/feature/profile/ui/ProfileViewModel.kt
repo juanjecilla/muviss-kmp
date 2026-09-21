@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileUseCase
@@ -12,9 +13,13 @@ import com.codingpit.muviss.feature.profile.domain.ProfileActions
 import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
+import com.codingpit.muviss.feature.profile.domain.SyncCopy
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
+import com.codingpit.muviss.feature.profile.domain.SyncStatus
+import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
+import com.codingpit.muviss.feature.profile.domain.syncStatusDetail
 import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,9 +45,28 @@ data class SyncUiState(
      * express (ADR 0014).
      */
     val providers: List<SyncProvider> = listOf(SyncProvider.GITHUB),
+    /** Where the last attempt stands: last synced, changes waiting, why it failed, account mismatch. */
+    val status: SyncStatus = SyncStatus(),
+    /** The per-device "sync automatically" switch, off by default. */
+    val automaticSync: Boolean = false,
+    /** Whether this build ships automatic sync at all. False renders no switch, the same rule as [SyncAccountState.Unavailable]. */
+    val automaticSyncAvailable: Boolean = false,
+    val automaticSyncMode: AutomaticSyncMode = AutomaticSyncMode.WhileOpen,
+    /** The "Resync everything" confirmation dialog is open. */
+    val confirmingResync: Boolean = false,
     /** One-shot: a message to surface in a snackbar (sent-code confirmation, sign-in success, sync outcome, or an error). Cleared by [ProfileViewModel.syncMessageShown]. */
     val message: String? = null,
 )
+
+/**
+ * The switch is shown whenever the build has it, but only usable while signed
+ * in and entitled: a paid, account-bound feature offered to someone who cannot
+ * use it yet is a reason to sign in, not something to hide.
+ */
+val SyncUiState.automaticSyncEnabled: Boolean get() = automaticSyncAvailable && account is SyncAccountState.SignedIn
+
+/** The one line worth saying under the "Synced 3m ago" label, if any. */
+val SyncUiState.statusDetail: SyncStatusDetail? get() = syncStatusDetail(status)
 
 data class ProfileUiState(
     val loading: Boolean = true,
@@ -83,14 +107,20 @@ class ProfileViewModel(
             .onEach { (profile, stats) -> _state.update { it.copy(loading = false, profile = profile, stats = stats, error = null) } }
             .launchInReporting(viewModelScope)
 
-        combine(syncActions.observeAccount(), syncActions.observeLastSyncedAt()) { account, lastSyncedAt -> account to lastSyncedAt }
-            .onEach { (account, lastSyncedAt) ->
+        combine(syncActions.observeAccount(), syncActions.observeSyncStatus(), syncActions.observeAutomaticSync()) { account, status, automatic ->
+            Triple(account, status, automatic)
+        }
+            .onEach { (account, status, automatic) ->
                 _state.update {
                     it.copy(
                         sync = it.sync.copy(
                             account = account,
-                            lastSyncedAtEpochMs = lastSyncedAt,
-                            lastSyncedLabel = lastSyncedLabel(lastSyncedAt, clock.nowEpochMs()),
+                            status = status,
+                            lastSyncedAtEpochMs = status.lastSyncedAtEpochMs,
+                            lastSyncedLabel = lastSyncedLabel(status.lastSyncedAtEpochMs, clock.nowEpochMs()),
+                            automaticSync = automatic,
+                            automaticSyncAvailable = syncActions.isBackgroundAvailable,
+                            automaticSyncMode = syncActions.automaticSyncMode,
                         ),
                     )
                 }
@@ -169,6 +199,28 @@ class ProfileViewModel(
         viewModelScope.launchReporting { runSyncNow() }
     }
 
+    /** Ignored unless the switch is usable, so a stale click cannot store a preference the screen would not have offered. */
+    fun onAutomaticSyncToggled(enabled: Boolean) {
+        if (!_state.value.sync.automaticSyncEnabled) return
+        viewModelScope.launchReporting { syncActions.setAutomaticSync(enabled) }
+    }
+
+    fun onResyncEverythingRequested() {
+        _state.update { it.copy(sync = it.sync.copy(confirmingResync = true)) }
+    }
+
+    fun onResyncEverythingDismissed() {
+        _state.update { it.copy(sync = it.sync.copy(confirmingResync = false)) }
+    }
+
+    fun onResyncEverythingConfirmed() {
+        _state.update { it.copy(sync = it.sync.copy(confirmingResync = false, syncing = true)) }
+        viewModelScope.launchReporting {
+            val message = messageFor(syncActions.resyncEverything(), success = "Everything resynced")
+            _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
+        }
+    }
+
     fun syncMessageShown() {
         _state.update { it.copy(sync = it.sync.copy(message = null)) }
         // Also clears the shared sign-in failure, or it would be re-emitted to
@@ -178,26 +230,26 @@ class ProfileViewModel(
 
     private suspend fun runSyncNow() {
         _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
-        val outcome = syncActions.syncNow()
-        val message = when (outcome) {
-            SyncOutcomeSummary.Unavailable, SyncOutcomeSummary.NotSignedIn -> null
-
-            // Worth a message, unlike the two above: those states have no
-            // visible sync button to have been pressed, whereas an entitlement
-            // can lapse while the screen is open and leave a stale one there.
-            SyncOutcomeSummary.NotEntitled -> "Sync is a paid feature"
-
-            is SyncOutcomeSummary.Success -> "Synced"
-
-            // The outcome's own text is the sync backend's (an HTTP status and
-            // a response body), which is diagnostics, not copy for a person.
-            is SyncOutcomeSummary.Failed -> SYNC_FAILED
-        }
+        val message = messageFor(syncActions.syncNow(), success = "Synced")
         _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
+    }
+
+    private fun messageFor(outcome: SyncOutcomeSummary, success: String): String? = when (outcome) {
+        SyncOutcomeSummary.Unavailable, SyncOutcomeSummary.NotSignedIn -> null
+
+        // Worth a message, unlike the two above: those states have no
+        // visible sync button to have been pressed, whereas an entitlement
+        // can lapse while the screen is open and leave a stale one there.
+        SyncOutcomeSummary.NotEntitled -> "Sync is a paid feature"
+
+        is SyncOutcomeSummary.Success -> success
+
+        is SyncOutcomeSummary.Failed -> "Sync failed: ${SyncCopy.failure(outcome.kind)}"
+
+        SyncOutcomeSummary.AccountChanged -> "This device's library belongs to a different account, so nothing was synced."
     }
 
     private companion object {
         const val DEFAULT_ERROR = "Something went wrong"
-        const val SYNC_FAILED = "Couldn't sync. Try again in a moment."
     }
 }

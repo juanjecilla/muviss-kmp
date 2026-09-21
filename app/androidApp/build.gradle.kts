@@ -58,6 +58,7 @@ dependencies {
     // OAUTH_CODE_PARAM, shared with the manifest's auth-callback filter (ADR 0014).
     implementation(projects.core.sync)
     implementation(libs.koin.core)
+    implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.work.runtimeKtx)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
@@ -75,6 +76,7 @@ dependencies {
     // from `runComposeUiTest`; what it decides before composing is.
     testImplementation(libs.kotlin.testJunit)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutinesTest)
 }
 
 // -----------------------------------------------------------------------

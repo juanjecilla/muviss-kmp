@@ -1,5 +1,7 @@
 package com.codingpit.muviss.ios
 
+import com.codingpit.muviss.core.sync.SyncEngine
+import com.codingpit.muviss.core.sync.SyncTrigger
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -43,6 +45,7 @@ object IosBackgroundRefresh : KoinComponent {
     private val collectionApi: CollectionApi by inject()
     private val settingsApi: SettingsApi by inject()
     private val progressApi: ProgressApi by inject()
+    private val syncEngine: SyncEngine by inject()
 
     private var runningJob: Job? = null
 
@@ -87,10 +90,24 @@ object IosBackgroundRefresh : KoinComponent {
 
     private fun handle(task: BGTask) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        var expired = false
         task.expirationHandler = {
+            // The system is taking the time back. Stop, and say so: reporting
+            // success for work that was cut short would let it schedule us as if
+            // the run had been fine.
+            expired = true
             runningJob?.cancel()
         }
         runningJob = scope.launch {
+            // First, and ahead of the episode refresh: the refresh is the part
+            // that can run long on a big library, and a run cut off at the
+            // expiration handler should have spent its time on the user's data
+            // (EPIC 40, ADR 0021). It is a Periodic trigger, so the engine sends
+            // nothing at all unless the user switched automatic sync on. iOS
+            // decides when this runs; the Profile copy says "when the system
+            // allows", and there is deliberately no second Info.plist task
+            // identifier for it.
+            runCatching { syncEngine.syncNow(SyncTrigger.Periodic) }
             runCatching {
                 // Ahead of the notification gate, for the reason
                 // `NewEpisodesWorker` gives (EPIC 22): the widget's episode
@@ -108,7 +125,7 @@ object IosBackgroundRefresh : KoinComponent {
                 }
             }
             scheduleNext()
-            task.setTaskCompletedWithSuccess(true)
+            task.setTaskCompletedWithSuccess(!expired)
         }
     }
 }

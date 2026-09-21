@@ -40,6 +40,7 @@ import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncBackend
+import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.di.rememberDatabaseDriverFactory
@@ -54,6 +55,7 @@ import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
+import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.launch
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
@@ -112,24 +114,27 @@ fun MuvissApp(
 }
 
 /**
- * Best-effort auto-sync (EPIC 9) whenever the app returns to the foreground.
- * Lives here rather than in the profile feature because it must fire no
- * matter which screen is visible — `ProfileViewModel`'s lifetime is scoped
+ * Best-effort sync whenever the app comes to the foreground (EPIC 9, gated by
+ * EPIC 40). Lives here rather than in the profile feature because it must fire
+ * no matter which screen is visible — `ProfileViewModel`'s lifetime is scoped
  * to the Profile screen's own back-stack entry, this is scoped to the whole
- * app. Failures are swallowed: [SyncEngine.syncNow] already turns them into
- * a `SyncOutcome.Failed` return value rather than throwing, and there's no
- * single screen to surface a message on from here — the profile screen's
- * own "last synced" label is the source of truth for whether it's working.
- * A no-op when sync isn't signed in or not configured for this build (see
- * `NoOpSyncBackend`/`SyncOutcome.NotSignedIn`).
+ * app.
+ *
+ * It asks [SyncCoordinator], which asks [SyncEngine] with
+ * `SyncTrigger.Foreground`, and the *engine* decides: with the automatic-sync
+ * switch off (the default) this does nothing at all. It used to call
+ * `syncNow()` unconditionally, i.e. it was the one place sync ran without the
+ * user having asked (ADR 0021). `ON_START` and `ON_RESUME` both fire on a
+ * return; the coordinator's 60 s window collapses them. Also starts the
+ * coordinator, which watches for local writes while the switch is on.
  */
 @Composable
 private fun AutoSyncOnForeground() {
-    val syncEngine = koinInject<SyncEngine>()
-    val coroutineScope = rememberCoroutineScope()
-    LifecycleEventEffect(Lifecycle.Event.ON_START) {
-        coroutineScope.launch { syncEngine.syncNow() }
-    }
+    val coordinator = koinInject<SyncCoordinator>()
+    LaunchedEffect(coordinator) { coordinator.start() }
+    PlatformSyncTriggers(coordinator)
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { coordinator.onForeground() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { coordinator.onForeground() }
 }
 
 /**

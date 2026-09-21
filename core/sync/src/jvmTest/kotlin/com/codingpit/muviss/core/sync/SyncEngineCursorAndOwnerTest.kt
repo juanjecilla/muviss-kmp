@@ -61,7 +61,8 @@ class SyncEngineCursorAndOwnerTest {
         )
     }
 
-    private fun cursors() = database.syncCursorQueries.selectAll().executeAsList().associate { it.tableName to it.seq }
+    // `_`-prefixed rows are not cursors (the weekly-reconcile stamp, EPIC 40).
+    private fun cursors() = database.syncCursorQueries.selectAll().executeAsList().filterNot { it.tableName.startsWith("_") }.associate { it.tableName to it.seq }
 
     private fun localEntries() = database.collectionEntryQueries.selectAll().executeAsList()
 
@@ -258,7 +259,7 @@ class SyncEngineCursorAndOwnerTest {
 
         val state = state()
         assertEquals("FAILED", state.lastOutcome)
-        assertEquals("server said no", state.lastError)
+        assertEquals("Unknown: server said no", state.lastError, "the reason token, then the diagnostic text")
         assertEquals(2L, state.consecutiveFailures)
         assertEquals(1_000L, state.lastAttemptAtEpochMs)
     }

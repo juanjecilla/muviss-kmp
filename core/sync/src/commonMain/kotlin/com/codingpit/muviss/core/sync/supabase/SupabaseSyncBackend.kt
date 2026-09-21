@@ -15,6 +15,7 @@ import com.codingpit.muviss.core.sync.SyncChangeSet
 import com.codingpit.muviss.core.sync.SyncCursor
 import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
+import com.codingpit.muviss.core.sync.SyncSessionExpiredException
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.SyncTable
 import com.codingpit.muviss.core.sync.TriageDecisionChange
@@ -226,14 +227,17 @@ internal class SupabaseSyncBackend(
         val refreshToken = current.refreshToken
         if (refreshToken == null) {
             clearSession()
-            error("Sync session expired and carries no refresh token; sign in again")
+            throw SyncSessionExpiredException()
         }
         val refreshed = try {
             auth.refreshSession(refreshToken).toSession()
         } catch (rejected: SupabaseHttpException) {
             // Anything else — a dropped connection, a timeout, a cancellation —
             // is not caught here and leaves the session alone.
-            if (rejected.isAuthRejection()) clearSession()
+            if (rejected.isAuthRejection()) {
+                clearSession()
+                throw SyncSessionExpiredException(rejected)
+            }
             throw rejected
         }
         persist(refreshed)
@@ -276,3 +280,18 @@ internal class SupabaseSyncBackend(
         const val REFRESH_LEEWAY_MS = 60_000L
     }
 }
+
+/**
+ * Builds the real Supabase backend over a caller-supplied [client]. The class
+ * itself stays `internal`; this exists so a test outside `:core:sync` (the
+ * app-level automatic-sync suites in `:app:shared`) can run the *real* backend
+ * over a `FakeSupabaseServer`'s `MockEngine` instead of a stub that never
+ * serialises a request. Production wiring goes through `syncModule`.
+ */
+fun createSupabaseSyncBackend(
+    client: HttpClient,
+    baseUrl: String,
+    anonKey: String,
+    sessionStore: SyncSessionStore,
+    clock: AppClock,
+): SyncBackend = SupabaseSyncBackend(client, baseUrl, anonKey, sessionStore, clock)

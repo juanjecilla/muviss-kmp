@@ -25,6 +25,18 @@ class SyncActions(
 ) {
     val isAvailable: Boolean get() = repository.isAvailable
 
+    val isBackgroundAvailable: Boolean get() = repository.isBackgroundAvailable
+
+    val automaticSyncMode: AutomaticSyncMode get() = repository.automaticSyncMode
+
+    fun observeAutomaticSync(): Flow<Boolean> = repository.observeAutomaticSync()
+
+    fun observeSyncStatus(): Flow<SyncStatus> = repository.observeSyncStatus()
+
+    suspend fun setAutomaticSync(enabled: Boolean) = repository.setAutomaticSync(enabled)
+
+    suspend fun resyncEverything(): SyncOutcomeSummary = repository.resyncEverything()
+
     fun observeAccount(): Flow<SyncAccountState> = observeAccount.invoke()
 
     fun observeLastSyncedAt(): Flow<Long?> = observeLastSyncedAt.invoke()
