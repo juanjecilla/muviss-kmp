@@ -440,9 +440,10 @@ class FakeSupabaseServer(
         private val nullableInteger = Column(Type.INTEGER, nullable = true)
         private fun integerDefault(value: Long) = Column(Type.INTEGER, default = JsonPrimitive(value))
         private fun booleanDefault(value: Boolean) = Column(Type.BOOLEAN, default = JsonPrimitive(value))
+        private val nullableBoolean = Column(Type.BOOLEAN, nullable = true)
         private fun textDefault(value: String) = Column(Type.TEXT, default = JsonPrimitive(value))
 
-        /** Mirrors `supabase/migrations/20260829000000_sync_schema.sql`. Keep the two in step. */
+        /** Mirrors `supabase/migrations/` — the sync schema plus everything later migrations added. Keep them in step. */
         val SCHEMAS: Map<String, TableSchema> = listOf(
             TableSchema(
                 "collection_entry",
@@ -464,6 +465,11 @@ class FakeSupabaseServer(
                     "deleted" to booleanDefault(false),
                     "rating" to nullableInteger,
                     "note" to nullableText,
+                    // EPIC 41 (ADR 0022). `revisit_willingness` is nullable and
+                    // its null is meaningful — "never answered", not "no" — so
+                    // it is one of the columns the push must send explicitly.
+                    "revisit_willingness" to nullableBoolean,
+                    "cowatch_pinned" to booleanDefault(false),
                 ),
             ),
             TableSchema(

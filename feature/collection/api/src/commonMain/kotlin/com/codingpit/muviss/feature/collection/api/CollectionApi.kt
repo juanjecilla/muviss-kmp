@@ -40,6 +40,16 @@ interface CollectionApi {
     suspend fun setNote(mediaId: MediaId, note: String?)
 
     /**
+     * Records whether the user would watch an already-seen title again with
+     * someone (EPIC 41, ADR 0022). Null clears the answer back to "never
+     * asked", which is why it is nullable rather than a plain toggle.
+     */
+    suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?)
+
+    /** Marks a title as one this user is actively pushing for in a Shortlist (EPIC 41). */
+    suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean)
+
+    /**
      * Re-fetches metadata for every saved title (the same refresh the
      * Collection screen runs on pull-to-refresh) and returns the ones whose
      * aired-episode count went up since the previous snapshot, excluding any
@@ -61,6 +71,13 @@ data class CollectionMembership(
     val notificationsMuted: Boolean = false,
     val rating: Int? = null,
     val note: String? = null,
+    /**
+     * Revisit Willingness (EPIC 41, ADR 0022). Null is "never answered", which
+     * is distinct from `false`: unanswered falls back to the per-device
+     * co-watch default, answered does not.
+     */
+    val revisitWillingness: Boolean? = null,
+    val coWatchPinned: Boolean = false,
 )
 
 /**
@@ -97,6 +114,12 @@ data class CollectionSummary(
     val rating: Int? = null,
     val favorite: Boolean = false,
     val addedAtEpochMs: Long = 0,
+    /**
+     * Read by co-watch (EPIC 41) to build a Watch Pool. Defaulted like the rest,
+     * so peers that do not care carry on ignoring them.
+     */
+    val revisitWillingness: Boolean? = null,
+    val coWatchPinned: Boolean = false,
 )
 
 /**

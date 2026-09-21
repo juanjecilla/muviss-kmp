@@ -46,6 +46,20 @@
 -- it is also read *before* Koin exists — `CrashReportsConsent` opens the
 -- database on its own short-lived driver so Sentry can start ahead of the
 -- graph — which is why the column name is referenced from `:core:database`.
+--
+-- `coWatchPoolListId` and `coWatchIncludeSeen` were added in `11.sqm`
+-- (EPIC 41, co-watch). Per-device and NOT synced, like their neighbours.
+--
+-- `coWatchPoolListId` null means the default Watch Pool: this account's
+-- NotStarted entries, which is what "I mean to watch this" already means here
+-- (CONTEXT.md). Set, it names a `mediaList` to publish instead, for someone who
+-- does not want their whole watchlist in play.
+--
+-- `coWatchIncludeSeen` is the session default for already-seen titles. It is
+-- what a title with a NULL `collectionEntry.revisitWillingness` falls back to,
+-- and it exists so the feature is useful before anyone has answered for a
+-- single title — a feature that needs 200 answers before its first use is a
+-- feature nobody reaches.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
@@ -59,7 +73,9 @@ CREATE TABLE appSettings (
     triageDeckAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     syncCursorEpochMs INTEGER,
     syncAutomatically INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
-    crashReportsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+    crashReportsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    coWatchPoolListId TEXT,
+    coWatchIncludeSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
 );
 
 selectSettings:
@@ -106,3 +122,9 @@ UPDATE appSettings SET crashReportsEnabled = :crashReportsEnabled WHERE id = 0;
 
 updateSyncAutomatically:
 UPDATE appSettings SET syncAutomatically = :syncAutomatically WHERE id = 0;
+
+updateCoWatchPoolListId:
+UPDATE appSettings SET coWatchPoolListId = :listId WHERE id = 0;
+
+updateCoWatchIncludeSeen:
+UPDATE appSettings SET coWatchIncludeSeen = :includeSeen WHERE id = 0;

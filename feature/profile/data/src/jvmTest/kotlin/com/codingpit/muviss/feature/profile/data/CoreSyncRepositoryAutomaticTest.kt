@@ -110,7 +110,7 @@ class CoreSyncRepositoryAutomaticTest {
 
     private suspend fun dirtyRow(database: MuvissDatabase) {
         database.collectionEntryQueries.upsert(
-            "tmdb:movie:603", "MOVIE", "The Matrix", null, 1999L, "RELEASED", 0L, 0L, false, "", null, 500L, 900L, true, false, false, null, null,
+            "tmdb:movie:603", "MOVIE", "The Matrix", null, 1999L, "RELEASED", 0L, 0L, false, "", null, 500L, 900L, true, false, false, null, null, null, false,
         )
     }
 

@@ -62,7 +62,7 @@ include(":core:sync")
 include(":core:testing")
 
 // Feature slices (each: :api / :domain / :data / :ui)
-listOf("search", "collection", "progress", "profile", "settings", "triage").forEach { feature ->
+listOf("search", "collection", "progress", "profile", "settings", "triage", "cowatch").forEach { feature ->
     listOf("api", "domain", "data", "ui").forEach { layer ->
         include(":feature:$feature:$layer")
     }

@@ -1,0 +1,93 @@
+-- A Companion Link (EPIC 41, ADR 0022): the mutual, consented relation between
+-- this account and one other.
+--
+-- A link is two rows, one per side, each owned by the account that wrote it.
+-- Neither side can write the other's, so "linked" is an agreement read off two
+-- independent statements rather than a single shared row — which is what keeps
+-- ADR 0022's second invariant (no row has two writers) true here.
+--
+-- `state` is this side's own statement and syncs. `remoteState` is what the
+-- other side published about us and is *cache*: it arrives on a pull, a later
+-- pull replaces it, and it is never pushed. The link is usable only when both
+-- read ACCEPTED.
+--
+-- `localName` is what this user calls the other person, and is deliberately
+-- NOT synced and not exported: nothing in this app can name another account
+-- (LocalProfile is device-local, and an OAuth account's email may be null —
+-- ADR 0014), so each side names the other for themselves. Two devices showing
+-- different labels for the same link is acceptable, and arguably correct.
+--
+-- `nonce` is the random half of the invite code this side issued or answered.
+-- An acceptance is only rendered when its nonce matches a code we actually
+-- issued: the invite code carries the inviter's user id in the clear (ADR 0022
+-- explains why RLS leaves no alternative), so the nonce is what stops an
+-- unsolicited row addressed at a known id from presenting as an invitation.
+CREATE TABLE companionLink (
+    companionUserId TEXT NOT NULL PRIMARY KEY,
+    localName TEXT,
+    nonce TEXT NOT NULL,
+    state TEXT NOT NULL,
+    remoteState TEXT,
+    createdAtEpochMs INTEGER NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+);
+
+selectAll:
+SELECT *
+FROM companionLink
+WHERE deleted = 0
+ORDER BY createdAtEpochMs;
+
+selectById:
+SELECT *
+FROM companionLink
+WHERE companionUserId = :companionUserId;
+
+upsert:
+INSERT OR REPLACE INTO companionLink(
+    companionUserId, localName, nonce, state, remoteState,
+    createdAtEpochMs, updatedAtEpochMs, isDirty, deleted
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+setLocalName:
+UPDATE companionLink
+SET localName = :localName
+WHERE companionUserId = :companionUserId;
+
+setState:
+UPDATE companionLink
+SET state = :state, updatedAtEpochMs = :now, isDirty = 1
+WHERE companionUserId = :companionUserId;
+
+-- Cache, so no stamp and no dirty flag: this is their statement, not ours.
+setRemoteState:
+UPDATE companionLink
+SET remoteState = :remoteState
+WHERE companionUserId = :companionUserId;
+
+-- Unlink is unilateral and soft (ADR 0013's reasoning: last-write-wins cannot
+-- express a hard delete). Clearing what we published to them is a separate
+-- step, in the repository, in the same transaction.
+softDelete:
+UPDATE companionLink
+SET deleted = 1, state = 'REVOKED', updatedAtEpochMs = :now, isDirty = 1
+WHERE companionUserId = :companionUserId;
+
+selectDirty:
+SELECT *
+FROM companionLink
+WHERE isDirty = 1;
+
+clearDirty:
+UPDATE companionLink
+SET isDirty = 0
+WHERE companionUserId = :companionUserId AND updatedAtEpochMs = :pushedAt;
+
+markAllDirty:
+UPDATE companionLink SET isDirty = 1;
+
+deleteAll:
+DELETE FROM companionLink;

@@ -12,10 +12,10 @@ import org.koin.compose.viewmodel.koinViewModel
  * through `:api` only, and detail navigation isn't part of progress's own
  * contract) — mirrors collection's `collectionSection`.
  */
-fun NavGraphBuilder.progressSection(onOpenDetail: (MediaId) -> Unit) {
+fun NavGraphBuilder.progressSection(onOpenDetail: (MediaId) -> Unit, onOpenCoWatch: () -> Unit) {
     composable<ProgressRoute> {
         val watchNextViewModel = koinViewModel<ProgressViewModel>()
         val upcomingViewModel = koinViewModel<UpcomingViewModel>()
-        ProgressScreen(watchNextViewModel, upcomingViewModel, onOpenDetail)
+        ProgressScreen(watchNextViewModel, upcomingViewModel, onOpenDetail, onOpenCoWatch)
     }
 }

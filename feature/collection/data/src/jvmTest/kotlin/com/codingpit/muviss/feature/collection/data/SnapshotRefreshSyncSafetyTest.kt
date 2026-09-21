@@ -76,6 +76,8 @@ class SnapshotRefreshSyncSafetyTest {
             notificationsMuted = false,
             rating = rating,
             note = "keep",
+            revisitWillingness = null,
+            coWatchPinned = false,
         )
     }
 

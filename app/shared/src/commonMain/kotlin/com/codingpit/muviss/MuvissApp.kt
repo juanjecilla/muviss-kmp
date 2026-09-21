@@ -45,6 +45,8 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.di.rememberDatabaseDriverFactory
 import com.codingpit.muviss.feature.collection.ui.collectionSection
+import com.codingpit.muviss.feature.cowatch.ui.CompanionsRoute
+import com.codingpit.muviss.feature.cowatch.ui.coWatchSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
@@ -297,11 +299,15 @@ private fun MuvissScaffold(
                 ) {
                     searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
                     collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-                    progressSection(onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
-                    profileSection(navController)
+                    progressSection(
+                        onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
+                        onOpenCoWatch = { navController.navigate(CompanionsRoute) },
+                    )
+                    profileSection(navController, onOpenCompanions = { navController.navigate(CompanionsRoute) })
                     settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
                     // Not a top-level destination — reached from Discover and Settings.
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                 }
             }
         }

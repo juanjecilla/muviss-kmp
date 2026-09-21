@@ -1,0 +1,135 @@
+-- The two halves of a Watch Pool (EPIC 41, ADR 0022), kept in separate tables
+-- because they are different kinds of thing and ADR 0015 made that distinction
+-- load-bearing: one is the user's own data, the other is a copy of someone
+-- else's.
+--
+-- `companionPoolOut` is what THIS account publishes to one Companion. It is
+-- user-owned, carries the ADR 0002 change-log columns, and is pushed. Removing
+-- a title from the pool is a soft delete, for the same reason every other
+-- synced table's is (ADR 0013): last-write-wins has nothing to compare a
+-- physically absent row against, so a hard delete undoes itself on the next
+-- pull.
+--
+-- `companionPoolIn` is what a Companion published to us. It is CACHE, exactly
+-- like the episode catalog: nobody here authored it, a pull always wins over
+-- what is stored, and it must never be pushed. It therefore has no `isDirty`
+-- and no `deleted` — a pulled tombstone deletes the local row outright — and it
+-- is absent from the export.
+--
+-- Both carry a denormalized snapshot rather than joining `collectionEntry`:
+-- an inbound row is usually a title this account has never saved, so there is
+-- nothing local to join to.
+CREATE TABLE companionPoolOut (
+    companionUserId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    mediaType TEXT NOT NULL,
+    title TEXT NOT NULL,
+    posterUrl TEXT,
+    genres TEXT NOT NULL DEFAULT '',
+    runtimeMinutes INTEGER,
+    started INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    seen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    pinned INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    PRIMARY KEY (companionUserId, mediaId)
+);
+
+CREATE TABLE companionPoolIn (
+    companionUserId TEXT NOT NULL,
+    mediaId TEXT NOT NULL,
+    mediaType TEXT NOT NULL,
+    title TEXT NOT NULL,
+    posterUrl TEXT,
+    genres TEXT NOT NULL DEFAULT '',
+    runtimeMinutes INTEGER,
+    started INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    seen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    pinned INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    publishedAtEpochMs INTEGER NOT NULL,
+    PRIMARY KEY (companionUserId, mediaId)
+);
+
+CREATE INDEX companionPoolIn_companion ON companionPoolIn(companionUserId);
+
+-- Outbound ---------------------------------------------------------------
+
+selectOutForCompanion:
+SELECT *
+FROM companionPoolOut
+WHERE companionUserId = :companionUserId AND deleted = 0;
+
+upsertOut:
+INSERT OR REPLACE INTO companionPoolOut(
+    companionUserId, mediaId, mediaType, title, posterUrl, genres,
+    runtimeMinutes, started, seen, pinned, updatedAtEpochMs, isDirty, deleted
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- A title that left the pool. Soft, and dirty, so the tombstone is pushed.
+softDeleteOut:
+UPDATE companionPoolOut
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
+WHERE companionUserId = :companionUserId AND mediaId = :mediaId;
+
+-- Unlinking: everything we ever published to them becomes a tombstone, which
+-- is what makes the server copy actually go away on the next push.
+softDeleteAllOutForCompanion:
+UPDATE companionPoolOut
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
+WHERE companionUserId = :companionUserId AND deleted = 0;
+
+selectDirtyOut:
+SELECT *
+FROM companionPoolOut
+WHERE isDirty = 1;
+
+clearDirtyOut:
+UPDATE companionPoolOut
+SET isDirty = 0
+WHERE companionUserId = :companionUserId AND mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
+
+markAllOutDirty:
+UPDATE companionPoolOut SET isDirty = 1;
+
+deleteAllOut:
+DELETE FROM companionPoolOut;
+
+-- Inbound (cache) --------------------------------------------------------
+
+selectInForCompanion:
+SELECT *
+FROM companionPoolIn
+WHERE companionUserId = :companionUserId;
+
+selectAllIn:
+SELECT *
+FROM companionPoolIn;
+
+upsertIn:
+INSERT OR REPLACE INTO companionPoolIn(
+    companionUserId, mediaId, mediaType, title, posterUrl, genres,
+    runtimeMinutes, started, seen, pinned, publishedAtEpochMs
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- A pulled tombstone. Cache has nothing to preserve, so the row simply goes.
+deleteIn:
+DELETE FROM companionPoolIn
+WHERE companionUserId = :companionUserId AND mediaId = :mediaId;
+
+-- Unlinking, and account switch: their copy stops being ours to hold.
+deleteInForCompanion:
+DELETE FROM companionPoolIn
+WHERE companionUserId = :companionUserId;
+
+deleteAllIn:
+DELETE FROM companionPoolIn;
+
+-- How stale their pool is, for the honest label the UI shows (ADR 0022: only
+-- their own device can publish, so this is a ceiling, not a bug).
+lastPublishedAt:
+SELECT MAX(publishedAtEpochMs) AS lastPublishedAtEpochMs
+FROM companionPoolIn
+WHERE companionUserId = :companionUserId;

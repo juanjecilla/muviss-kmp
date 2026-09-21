@@ -61,6 +61,8 @@ class SyncEngineTest {
             notificationsMuted = false,
             rating = null,
             note = null,
+            revisitWillingness = null,
+            coWatchPinned = false,
         )
     }
 
@@ -212,12 +214,14 @@ class SyncEngineTest {
             releaseYear = 2011L, productionStatus = "ENDED", totalEpisodes = 73L, airedEpisodes = 73L,
             favorite = false, genres = "", runtimeMinutes = null, addedAtEpochMs = 1_000L, updatedAtEpochMs = 1_000L,
             isDirty = true, deleted = false, notificationsMuted = false, rating = null, note = null,
+            revisitWillingness = null, coWatchPinned = false,
         )
         deviceBDb.collectionEntryQueries.upsert(
             mediaId = "tmdb:tv:1399", mediaType = "TV", title = "Game of Thrones", posterUrl = null,
             releaseYear = 2011L, productionStatus = "ENDED", totalEpisodes = 73L, airedEpisodes = 73L,
             favorite = false, genres = "", runtimeMinutes = null, addedAtEpochMs = 1_000L, updatedAtEpochMs = 1_000L,
             isDirty = true, deleted = false, notificationsMuted = false, rating = null, note = null,
+            revisitWillingness = null, coWatchPinned = false,
         )
 
         // A syncs first (pushes its base snapshot).

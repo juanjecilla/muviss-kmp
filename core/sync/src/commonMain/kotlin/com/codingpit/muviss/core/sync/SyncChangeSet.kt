@@ -36,6 +36,17 @@ data class SyncChangeSet(
  * Mirrors `collectionEntry` (`CollectionEntry.sq`). [notificationsMuted] is
  * deliberately absent — a per-device notification preference, not user
  * library data, so it never leaves the device (see ADR 0009).
+ *
+ * [revisitWillingness] and [coWatchPinned] are present for the opposite reason
+ * (EPIC 41, ADR 0022): both are user-authored, like [favorite]/[rating]/[note],
+ * so they belong to the library rather than to a device. [revisitWillingness]
+ * is nullable and its null is meaningful — "never answered", as distinct from
+ * "no" — which is exactly the case `explicitNulls = true` exists for
+ * (`SupabasePostgrestClient`, ADR 0020): a key left out of a merge-duplicates
+ * upsert is not written, so clearing an answer would never reach the server.
+ *
+ * They carry defaults only so a pulled row from a server that predates the
+ * column decodes; a locally built change always passes them.
  */
 @Serializable
 data class CollectionEntryChange(
@@ -55,6 +66,8 @@ data class CollectionEntryChange(
     val deleted: Boolean,
     val rating: Int?,
     val note: String?,
+    @SerialName("revisit_willingness") val revisitWillingness: Boolean? = null,
+    @SerialName("cowatch_pinned") val coWatchPinned: Boolean = false,
 )
 
 /**

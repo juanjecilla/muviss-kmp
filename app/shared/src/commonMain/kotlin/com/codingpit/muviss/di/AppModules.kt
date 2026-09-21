@@ -7,6 +7,8 @@ import com.codingpit.muviss.core.network.di.networkModule
 import com.codingpit.muviss.core.sync.di.syncModule
 import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
+import com.codingpit.muviss.feature.cowatch.data.di.coWatchDataModule
+import com.codingpit.muviss.feature.cowatch.ui.di.coWatchUiModule
 import com.codingpit.muviss.feature.profile.data.di.profileDataModule
 import com.codingpit.muviss.feature.profile.ui.di.profileUiModule
 import com.codingpit.muviss.feature.progress.data.di.progressDataModule
@@ -42,4 +44,6 @@ val appModules: List<Module> =
         settingsUiModule,
         triageDataModule,
         triageUiModule,
+        coWatchDataModule,
+        coWatchUiModule,
     )

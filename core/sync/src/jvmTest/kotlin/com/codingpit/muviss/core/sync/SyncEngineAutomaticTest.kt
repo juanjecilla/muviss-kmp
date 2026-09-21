@@ -83,6 +83,8 @@ class SyncEngineAutomaticTest {
             notificationsMuted = false,
             rating = null,
             note = null,
+            revisitWillingness = null,
+            coWatchPinned = false,
         )
     }
 

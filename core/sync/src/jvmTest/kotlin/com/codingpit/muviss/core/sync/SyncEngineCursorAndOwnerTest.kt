@@ -57,7 +57,7 @@ class SyncEngineCursorAndOwnerTest {
     @Suppress("LongParameterList") // a row builder: each column is a named default a test may override
     private suspend fun localEntry(mediaId: String, updatedAt: Long, isDirty: Boolean, title: String = "Local title", favorite: Boolean = false, deleted: Boolean = false) {
         database.collectionEntryQueries.upsert(
-            mediaId, "MOVIE", title, null, 1999L, "RELEASED", 1L, 1L, favorite, "", null, 500L, updatedAt, isDirty, deleted, false, null, null,
+            mediaId, "MOVIE", title, null, 1999L, "RELEASED", 1L, 1L, favorite, "", null, 500L, updatedAt, isDirty, deleted, false, null, null, null, false,
         )
     }
 

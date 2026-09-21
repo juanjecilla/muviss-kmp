@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
+import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
 import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -76,6 +77,7 @@ class AppGraphTest {
         assertNotNull(koin.get<ProfileApi>())
         assertNotNull(koin.get<TriageApi>())
         assertNotNull(koin.get<ListsApi>())
+        assertNotNull(koin.get<CoWatchApi>())
         assertNotNull(koin.get<SyncEngine>())
         // Bound by `databaseModule` rather than by `MuvissApp`'s own module, so
         // that it exists on the platforms that start Koin before Compose — this
@@ -104,6 +106,30 @@ class AppGraphTest {
         startGraph().let { koin ->
             assertNotNull(koin.get<ProgressApi>())
             assertNotNull(koin.get<CollectionApi>())
+        }
+    }
+
+    /**
+     * EPIC 41's version of the same hazard. Co-watch builds its Watch Pool from
+     * `CollectionApi` and `ListsApi`, and collection's repository already
+     * reaches for `ProgressApi` to derive status — so taking those peers
+     * eagerly would close a construction cycle. They are injected as providers
+     * for exactly that reason, and this is what proves it: resolving co-watch
+     * first has to terminate just as resolving collection first does.
+     */
+    @Test
+    fun `co-watch and its peers resolve in either order`() {
+        startGraph().let { koin ->
+            assertNotNull(koin.get<CoWatchApi>())
+            assertNotNull(koin.get<CollectionApi>())
+            assertNotNull(koin.get<ListsApi>())
+        }
+        tearDown()
+
+        startGraph().let { koin ->
+            assertNotNull(koin.get<CollectionApi>())
+            assertNotNull(koin.get<ListsApi>())
+            assertNotNull(koin.get<CoWatchApi>())
         }
     }
 }

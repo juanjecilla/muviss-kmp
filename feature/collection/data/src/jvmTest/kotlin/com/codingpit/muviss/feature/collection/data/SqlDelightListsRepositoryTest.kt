@@ -58,6 +58,8 @@ class SqlDelightListsRepositoryTest {
             notificationsMuted = false,
             rating = null,
             note = null,
+            revisitWillingness = null,
+            coWatchPinned = false,
         )
     }
 

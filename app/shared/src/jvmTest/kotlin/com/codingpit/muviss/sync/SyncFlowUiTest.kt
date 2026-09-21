@@ -70,7 +70,7 @@ class SyncFlowUiTest {
         sync.start()
         val viewModel = sync.koin.get<ProfileViewModel>()
 
-        setContent { MuvissTheme(darkTheme = false) { ProfileScreen(viewModel, onOpenRewatch = {}) } }
+        setContent { MuvissTheme(darkTheme = false) { ProfileScreen(viewModel, onOpenRewatch = {}, onOpenCompanions = {}) } }
 
         // Signed in and entitled: the switch is there and usable, and off.
         waitUntil(timeoutMillis = 10_000) { onAllNodesWithTagExists(SYNC_AUTOMATIC_SWITCH_TAG) }
