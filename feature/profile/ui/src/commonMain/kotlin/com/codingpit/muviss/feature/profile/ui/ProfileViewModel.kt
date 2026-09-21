@@ -202,7 +202,7 @@ class ProfileViewModel(
     /** Ignored unless the switch is usable, so a stale click cannot store a preference the screen would not have offered. */
     fun onAutomaticSyncToggled(enabled: Boolean) {
         if (!_state.value.sync.automaticSyncEnabled) return
-        viewModelScope.launch { syncActions.setAutomaticSync(enabled) }
+        viewModelScope.launchReporting { syncActions.setAutomaticSync(enabled) }
     }
 
     fun onResyncEverythingRequested() {
@@ -215,7 +215,7 @@ class ProfileViewModel(
 
     fun onResyncEverythingConfirmed() {
         _state.update { it.copy(sync = it.sync.copy(confirmingResync = false, syncing = true)) }
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             val message = messageFor(syncActions.resyncEverything(), success = "Everything resynced")
             _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
         }

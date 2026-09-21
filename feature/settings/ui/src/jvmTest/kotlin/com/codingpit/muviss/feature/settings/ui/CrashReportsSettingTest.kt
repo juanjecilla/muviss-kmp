@@ -71,9 +71,11 @@ class CrashReportsSettingTest {
         override val triageControlScheme = MutableStateFlow(TriageControlScheme.DEFAULT)
         override val animationsEnabled = MutableStateFlow(true)
         override val triageDeckAnimations = MutableStateFlow(true)
+        override val syncAutomatically = MutableStateFlow(false)
         override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
         override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
         override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit
+        override suspend fun setSyncAutomatically(enabled: Boolean) = Unit
     }
 
     private fun viewModel(repository: FakeRepository) = SettingsViewModel(
