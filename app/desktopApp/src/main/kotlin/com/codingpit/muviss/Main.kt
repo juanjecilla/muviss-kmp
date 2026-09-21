@@ -75,6 +75,10 @@ fun main() {
     // its doc comment), which is also why DatabaseDriverFactory has to be bound
     // here — the composable's own platformDatabaseModule never applies once a
     // global instance exists.
+    // Crash reporting first, before Koin and long before Compose (EPIC 26): a
+    // failure while the graph is built is exactly what it is for. It reads the
+    // stored opt-out through a short-lived driver of its own.
+    MuvissCrashReporting.start(DatabaseDriverFactory())
     if (GlobalContext.getOrNull() == null) {
         startKoin {
             modules(
@@ -90,6 +94,7 @@ fun main() {
             )
         }
     }
+    MuvissCrashReporting.followSettings()
     val koin = GlobalContext.get()
     val loopback = koin.get<LoopbackRedirectServer>()
     val episodeRefresh = koin.get<DesktopEpisodeRefresh>()

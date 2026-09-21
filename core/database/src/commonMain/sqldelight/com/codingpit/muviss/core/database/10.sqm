@@ -1,0 +1,16 @@
+-- EPIC 26 (crash reporting, #68): the "Send crash reports" preference. The
+-- filename is the version this migrates FROM, not to: 10.sqm takes a v10
+-- database to v11. It follows EPIC 39's `9.sqm`, which took the number first;
+-- if this file is ever renumbered, rename it, regenerate its fixture and change
+-- the single constant in `CrashReportsMigrationTest` — nothing else names it.
+--
+-- Defaults to ON, so an install that upgrades keeps reporting exactly as it
+-- did before the setting existed. That is not a consent shortcut: reporting is
+-- already on in every release build that has a DSN, and `docs/PRIVACY.md` said
+-- so. What this adds is the way to turn it off.
+--
+-- A per-device preference and deliberately NOT synced, like the motion and
+-- notification switches: whether *this* device may phone a crash home is not a
+-- property of the library. Appended, so it is the last column, where
+-- `verifyMigrations` expects an `ALTER TABLE ADD COLUMN` to have put it.
+ALTER TABLE appSettings ADD COLUMN crashReportsEnabled INTEGER NOT NULL DEFAULT 1;

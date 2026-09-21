@@ -14,11 +14,41 @@ val sentryDsn: String = run {
     props.getProperty("SENTRY_DSN") ?: System.getenv("SENTRY_DSN") ?: ""
 }
 
+// The `environment` Sentry files an event under, so a developer's crash on a
+// debug build never lands among production ones. `SENTRY_ENVIRONMENT` in
+// local.properties or the environment wins; otherwise a build that asked for a
+// release artefact (a `*Release*` / `bundle*` / `package*Distribution` task, or
+// Xcode's `CONFIGURATION=Release` when it drives the shared framework) is
+// `production`, and everything else is `development`. Guessing from task names
+// is a heuristic and it is deliberately the default only — CI's release job can
+// pin it explicitly — but the failure mode is benign: a mislabelled
+// environment, not a lost report. Read at configuration time, which the
+// configuration cache is fine with (the requested task names are part of its key).
+val sentryEnvironment: String = run {
+    val props = Properties()
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { props.load(it) }
+    val explicit = (props.getProperty("SENTRY_ENVIRONMENT") ?: System.getenv("SENTRY_ENVIRONMENT"))?.takeIf { it.isNotBlank() }
+    val releaseRequested = gradle.startParameter.taskNames.any { task ->
+        val name = task.substringAfterLast(':')
+        name.contains("release", ignoreCase = true) ||
+            name.startsWith("bundle") ||
+            (name.startsWith("package") && name.contains("Distribution")) ||
+            name.startsWith("createReleaseDistributable")
+    } || System.getenv("CONFIGURATION").equals("Release", ignoreCase = true)
+    explicit ?: if (releaseRequested) "production" else "development"
+}
+
 val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/commonMain/kotlin")
 
 val generateBuildConfig by tasks.registering {
     val outDir = buildConfigDir
     val dsn = sentryDsn
+    val environment = sentryEnvironment
+    // Declared as inputs so a changed DSN or environment regenerates the file: with
+    // outputs alone Gradle called the task up to date and kept the old constants.
+    inputs.property("sentryDsn", dsn)
+    inputs.property("sentryEnvironment", environment)
     outputs.dir(outDir)
     doLast {
         val target = outDir.get()
@@ -30,6 +60,7 @@ val generateBuildConfig by tasks.registering {
 
             internal object MuvissBuildConfig {
                 const val SENTRY_DSN: String = "$dsn"
+                const val SENTRY_ENVIRONMENT: String = "$environment"
             }
             """.trimIndent() + "\n",
         )

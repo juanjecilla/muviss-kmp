@@ -27,6 +27,11 @@ class SetNotificationsEnabledUseCase(private val repository: SettingsRepository)
     suspend operator fun invoke(enabled: Boolean) = repository.setNotificationsEnabled(enabled)
 }
 
+/** Flips the "Send crash reports" switch; the app shell forwards it to the reporter live. */
+class SetCrashReportsEnabledUseCase(private val repository: SettingsRepository) {
+    suspend operator fun invoke(enabled: Boolean) = repository.setCrashReportsEnabled(enabled)
+}
+
 /** Dumps the saved library + watch progress as a single JSON document, for the About screen's export action. */
 class ExportDataUseCase(private val repository: SettingsRepository) {
     suspend operator fun invoke(): String = repository.exportData()
@@ -35,7 +40,7 @@ class ExportDataUseCase(private val repository: SettingsRepository) {
 /**
  * Groups every settings *mutator* (everything but [ObserveSettingsUseCase],
  * which is a continuous read, not a write) so a consumer like
- * `SettingsViewModel` takes one constructor parameter instead of five —
+ * `SettingsViewModel` takes one constructor parameter instead of six —
  * keeps each use case its own testable class while avoiding a long
  * parameter list at the composition edge.
  */
@@ -44,11 +49,13 @@ class SettingsActions(
     private val setLanguageUseCase: SetLanguageUseCase,
     private val setRegionUseCase: SetRegionUseCase,
     private val setNotificationsEnabledUseCase: SetNotificationsEnabledUseCase,
+    private val setCrashReportsEnabledUseCase: SetCrashReportsEnabledUseCase,
     private val exportDataUseCase: ExportDataUseCase,
 ) {
     suspend fun setTheme(theme: AppTheme) = setThemeUseCase(theme)
     suspend fun setLanguage(language: String) = setLanguageUseCase(language)
     suspend fun setRegion(region: String) = setRegionUseCase(region)
     suspend fun setNotificationsEnabled(enabled: Boolean) = setNotificationsEnabledUseCase(enabled)
+    suspend fun setCrashReportsEnabled(enabled: Boolean) = setCrashReportsEnabledUseCase(enabled)
     suspend fun exportData(): String = exportDataUseCase()
 }

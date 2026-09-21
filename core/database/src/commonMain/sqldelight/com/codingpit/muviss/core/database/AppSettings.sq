@@ -40,6 +40,12 @@
 -- whole sync-correctness schema; EPIC 40 is what reads it). It is the per-device
 -- "sync in the background" switch, default off, and like the preferences above
 -- it is deliberately NOT synced. Nothing reads it yet.
+--
+-- `crashReportsEnabled` was added in `10.sqm` (EPIC 26). Default on; it is the
+-- "Send crash reports" switch, per-device and not synced. Unlike its neighbours
+-- it is also read *before* Koin exists — `CrashReportsConsent` opens the
+-- database on its own short-lived driver so Sentry can start ahead of the
+-- graph — which is why the column name is referenced from `:core:database`.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
@@ -52,7 +58,8 @@ CREATE TABLE appSettings (
     animationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     triageDeckAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     syncCursorEpochMs INTEGER,
-    syncAutomatically INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    syncAutomatically INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    crashReportsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
 );
 
 selectSettings:
@@ -93,3 +100,6 @@ UPDATE appSettings SET animationsEnabled = :animationsEnabled WHERE id = 0;
 
 updateTriageDeckAnimations:
 UPDATE appSettings SET triageDeckAnimations = :triageDeckAnimations WHERE id = 0;
+
+updateCrashReportsEnabled:
+UPDATE appSettings SET crashReportsEnabled = :crashReportsEnabled WHERE id = 0;

@@ -24,6 +24,9 @@ interface SettingsRepository {
 
     suspend fun setNotificationsEnabled(enabled: Boolean)
 
+    /** The "Send crash reports" switch. Read before Koin starts by `CrashReportsConsent`, so it lives in `appSettings`. */
+    suspend fun setCrashReportsEnabled(enabled: Boolean)
+
     /** A JSON dump of the saved library (`collectionEntry`) + watch progress (`episodeProgress`) tables. */
     suspend fun exportData(): String
 }

@@ -4,6 +4,8 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
@@ -26,10 +28,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** Which content [SearchUiState] is currently showing below the search field. */
 enum class SearchMode {
@@ -103,7 +103,7 @@ class SearchViewModel(
         combine(collectionApi.observeSummaries(), triageApi.observeDecidedIds(), ::Pair)
             .flatMapLatest { (library, decided) -> forYouFlow(library, decided) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
-            .launchIn(viewModelScope)
+            .launchInReporting(viewModelScope)
     }
 
     fun onQueryChange(query: String) {
@@ -113,7 +113,7 @@ class SearchViewModel(
             _state.update { it.copy(mode = SearchMode.DISCOVER, error = null, selectedGenre = null, selectedGenreType = null) }
             return
         }
-        loadJob = viewModelScope.launch {
+        loadJob = viewModelScope.launchReporting {
             delay(DEBOUNCE_MS)
             runSearch(query, page = 1)
         }
@@ -122,7 +122,7 @@ class SearchViewModel(
     /** Switches to [SearchMode.GENRE_BROWSE] and loads its first page. */
     fun selectGenre(genre: Genre, type: MediaType) {
         loadJob?.cancel()
-        loadJob = viewModelScope.launch {
+        loadJob = viewModelScope.launchReporting {
             _state.update {
                 it.copy(
                     mode = SearchMode.GENRE_BROWSE,
@@ -164,7 +164,7 @@ class SearchViewModel(
         val s = _state.value
         if (s.loadingMore) return
         when (s.mode) {
-            SearchMode.SEARCH_RESULTS -> if (s.canLoadMoreResults) viewModelScope.launch { runSearch(s.query, s.resultsPage + 1) }
+            SearchMode.SEARCH_RESULTS -> if (s.canLoadMoreResults) viewModelScope.launchReporting { runSearch(s.query, s.resultsPage + 1) }
             SearchMode.GENRE_BROWSE -> if (s.canLoadMoreGenreResults) loadMoreGenreResults(s)
             SearchMode.DISCOVER -> Unit
         }
@@ -175,7 +175,7 @@ class SearchViewModel(
         when (s.mode) {
             SearchMode.DISCOVER -> loadDiscover()
 
-            SearchMode.SEARCH_RESULTS -> loadJob = viewModelScope.launch { runSearch(s.query, page = 1) }
+            SearchMode.SEARCH_RESULTS -> loadJob = viewModelScope.launchReporting { runSearch(s.query, page = 1) }
 
             SearchMode.GENRE_BROWSE -> {
                 val genre = s.selectedGenre
@@ -186,12 +186,12 @@ class SearchViewModel(
     }
 
     private fun loadDiscover() {
-        loadJob = viewModelScope.launch {
+        loadJob = viewModelScope.launchReporting {
             _state.update { it.copy(loading = true, error = null) }
-            val movieGenres = genresUseCase(MediaType.MOVIE).getOrElse { return@launch fail(it) }
-            val tvGenres = genresUseCase(MediaType.TV).getOrElse { return@launch fail(it) }
-            val popularMovies = discoverMedia(MediaType.MOVIE).getOrElse { return@launch fail(it) }
-            val popularTv = discoverMedia(MediaType.TV).getOrElse { return@launch fail(it) }
+            val movieGenres = genresUseCase(MediaType.MOVIE).getOrElse { return@launchReporting fail(it) }
+            val tvGenres = genresUseCase(MediaType.TV).getOrElse { return@launchReporting fail(it) }
+            val popularMovies = discoverMedia(MediaType.MOVIE).getOrElse { return@launchReporting fail(it) }
+            val popularTv = discoverMedia(MediaType.TV).getOrElse { return@launchReporting fail(it) }
             _state.update {
                 it.copy(
                     loading = false,
@@ -207,7 +207,7 @@ class SearchViewModel(
     private fun loadMoreGenreResults(current: SearchUiState) {
         val genre = current.selectedGenre ?: return
         val type = current.selectedGenreType ?: return
-        viewModelScope.launch {
+        viewModelScope.launchReporting {
             _state.update { it.copy(loadingMore = true) }
             discoverMedia(type, current.genrePage + 1, genre.id).fold(
                 onSuccess = { page ->
