@@ -262,6 +262,18 @@ class TriageScreenTest {
     }
 
     @Test
+    fun tapping_the_new_top_card_after_a_swipe_opens_it_not_the_skipped_one() = runComposeUiTest {
+        val harness = TriageHarness(movies = listOf(filmA, filmB))
+        showDeck(harness)
+
+        dragCard(Offset(-commitDistance, 0f)) // skip filmA
+        onNodeWithTag(TRIAGE_CARD_TAG).performClick()
+        waitForIdle()
+
+        assertEquals(listOf(filmB.id), opened)
+    }
+
+    @Test
     fun every_verdict_button_carries_a_description_of_what_it_does() = runComposeUiTest {
         val harness = TriageHarness(tv = listOf(showA))
         showDeck(harness)
