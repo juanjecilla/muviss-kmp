@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 /**
  * One change-log slice covering every table [SyncEngine] replicates —
  * mirrors `collectionEntry` / `episodeProgress` / `mediaList` / `listEntry` /
- * `triageDecision` / `episodePlay`
+ * `triageDecision` / `triageSnooze` / `episodePlay`
  * (see `core/database`'s `.sq` files) minus device-local-only columns.
  * [SyncBackend.push] sends a set of local dirty rows; [SyncBackend.pull]
  * delivers remote rows as pages, each a set holding one table's rows. `@Serializable`
@@ -21,15 +21,16 @@ data class SyncChangeSet(
     val mediaLists: List<MediaListChange> = emptyList(),
     val listEntries: List<ListEntryChange> = emptyList(),
     val triageDecisions: List<TriageDecisionChange> = emptyList(),
+    val triageSnoozes: List<TriageSnoozeChange> = emptyList(),
     val episodePlays: List<EpisodePlayChange> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = collectionEntries.isEmpty() && episodeProgress.isEmpty() && mediaLists.isEmpty() &&
-            listEntries.isEmpty() && triageDecisions.isEmpty() && episodePlays.isEmpty()
+            listEntries.isEmpty() && triageDecisions.isEmpty() && triageSnoozes.isEmpty() && episodePlays.isEmpty()
 
     val size: Int
         get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size +
-            triageDecisions.size + episodePlays.size
+            triageDecisions.size + triageSnoozes.size + episodePlays.size
 }
 
 /**
@@ -144,6 +145,35 @@ data class TriageDecisionChange(
     @SerialName("poster_url") val posterUrl: String?,
     @SerialName("decided_at_epoch_ms") val decidedAtEpochMs: Long,
     val resolved: Boolean,
+    @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
+    val deleted: Boolean,
+)
+
+/**
+ * Mirrors `triageSnooze` (`TriageSnooze.sq`, ADR 0023). Postponing a title is
+ * user intent for the same reason skipping one is, and replicates for the same
+ * reason: being asked again on the desktop about something already postponed
+ * on the phone is the failure, not the feature.
+ *
+ * Deliberately a separate change type rather than a `verdict` value on
+ * [TriageDecisionChange]: a build that predates this table simply never asks
+ * for it, whereas an unknown verdict on a table it *does* pull would be
+ * counted as decided and dropped from every read at once.
+ *
+ * The card snapshot ([title]/[year]/[posterUrl]/[overview]) rides along
+ * because the receiving device has to render the card when it comes due and
+ * cannot cheaply re-derive it — see `TriageSnooze`.
+ */
+@Serializable
+data class TriageSnoozeChange(
+    @SerialName("media_id") val mediaId: String,
+    @SerialName("media_type") val mediaType: String,
+    val title: String,
+    val year: Long?,
+    @SerialName("poster_url") val posterUrl: String?,
+    val overview: String?,
+    @SerialName("snoozed_at_epoch_ms") val snoozedAtEpochMs: Long,
+    @SerialName("due_at_epoch_day") val dueAtEpochDay: Long,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
     val deleted: Boolean,
 )

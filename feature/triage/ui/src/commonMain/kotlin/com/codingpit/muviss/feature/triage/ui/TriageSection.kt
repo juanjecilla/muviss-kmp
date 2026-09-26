@@ -22,11 +22,19 @@ fun NavGraphBuilder.triageSection(navController: NavController, onOpenDetail: (M
             viewModel = koinViewModel(),
             onBack = { navController.popBackStack() },
             onOpenSkipped = { navController.navigate(SkippedRoute) },
+            onOpenSnoozed = { navController.navigate(SnoozedRoute) },
             onOpenDetail = onOpenDetail,
         )
     }
     composable<SkippedRoute> {
         SkippedScreen(
+            viewModel = koinViewModel(),
+            onBack = { navController.popBackStack() },
+            onOpenDetail = onOpenDetail,
+        )
+    }
+    composable<SnoozedRoute> {
+        SnoozedScreen(
             viewModel = koinViewModel(),
             onBack = { navController.popBackStack() },
             onOpenDetail = onOpenDetail,

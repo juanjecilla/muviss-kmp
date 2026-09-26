@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,9 +56,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
@@ -82,6 +89,7 @@ fun TriageScreen(
     viewModel: TriageViewModel,
     onBack: () -> Unit,
     onOpenSkipped: () -> Unit,
+    onOpenSnoozed: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -102,11 +110,16 @@ fun TriageScreen(
         }
     }
 
+    val keyActions = remember(decide) { DeckKeyActions(viewModel::onUndo, viewModel::onSnooze, decide) }
+
     // Undo plays the exit backwards: the restored card is the one that just
     // left, so it is still parked off screen and only has to come home.
     LaunchedEffect(state.restored?.token) {
         val restored = state.restored ?: return@LaunchedEffect
-        deck.enter(restored.id, directionFor(restored.verdict))
+        // A Snooze carries no verdict and never flew out, so there is nothing
+        // to play backwards — the card is simply back on top.
+        val verdict = restored.verdict ?: return@LaunchedEffect
+        deck.enter(restored.id, directionFor(verdict))
     }
 
     UndoSnackbarEffect(
@@ -151,7 +164,7 @@ fun TriageScreen(
             .focusable()
             // Preview, not bubble: the arrow keys would otherwise be taken by
             // focus traversal before the deck ever sees them.
-            .onPreviewKeyEvent { event -> handleKey(event.key, event.type, state, viewModel::onUndo, decide) },
+            .onPreviewKeyEvent { event -> handleKey(event.key, event.type, state, keyActions) },
     ) {
         Scaffold { padding ->
             Column(
@@ -159,7 +172,12 @@ fun TriageScreen(
                     .fillMaxSize()
                     .padding(padding),
             ) {
-                TriageHeader(onBack = onBack, onOpenSkipped = onOpenSkipped, onShowTutorial = viewModel::onShowTutorial)
+                TriageHeader(
+                    onBack = onBack,
+                    onOpenSkipped = onOpenSkipped,
+                    onOpenSnoozed = onOpenSnoozed,
+                    onShowTutorial = viewModel::onShowTutorial,
+                )
                 DeckFilterBar(
                     selectedType = state.filter.type,
                     selectedGenreId = state.filter.genreId,
@@ -185,6 +203,8 @@ fun TriageScreen(
                             deck = deck,
                             onDecide = { verdict -> decide(verdict, true) },
                             onOpenDetail = onOpenDetail,
+                            onSnooze = viewModel::onSnooze,
+                            onSnoozeHintDismissed = viewModel::onSnoozeHintDismissed,
                         )
                     }
                 }
@@ -211,20 +231,34 @@ fun TriageScreen(
                     onDismiss = viewModel::onTutorialDismissed,
                 )
             }
+
+            state.snoozeChoiceFor?.let { card ->
+                SnoozeChoiceDialog(
+                    title = card.title,
+                    onChoose = viewModel::onSnoozePeriodChosen,
+                    onDismiss = viewModel::onSnoozeSheetDismissed,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun UndoSnackbarEffect(
-    undoable: UndoableDecision?,
+    undoable: UndoableAction?,
     snackbarHostState: SnackbarHostState,
     onUndo: () -> Unit,
     onDismissed: () -> Unit,
 ) {
-    // The label follows the card that was decided — a movie's CAUGHT_UP reads
-    // "Watched", so the snackbar has to say so too.
-    val label = undoable?.let { styleFor(it.verdict, it.summary.type, fourWay = true).label }
+    // The label follows the card that was acted on — a movie's CAUGHT_UP reads
+    // "Watched", so the snackbar has to say so too. A Snooze is not a verdict
+    // and has no VerdictStyle; it names the date it comes back instead, which
+    // is the one thing the user cannot otherwise check before the snackbar goes.
+    val label = when (undoable) {
+        null -> null
+        is UndoableAction.Decision -> styleFor(undoable.verdict, undoable.summary.type, fourWay = true).label
+        is UndoableAction.Snooze -> "Snoozed until ${formatEpochDay(undoable.dueAtEpochDay)}"
+    }
     LaunchedEffect(undoable) {
         if (undoable == null) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
@@ -240,7 +274,18 @@ private fun UndoSnackbarEffect(
 }
 
 /**
- * Arrow keys mirror the drags exactly, `Z` undoes. Down is inert under
+ * What each key reaches. Bundled because the keyboard is a parallel path to
+ * the same three things every other input has, and passing them one by one put
+ * [handleKey] over detekt's parameter budget.
+ */
+private class DeckKeyActions(
+    val onUndo: () -> Unit,
+    val onSnooze: () -> Unit,
+    val decide: (TriageVerdict, Boolean) -> Unit,
+)
+
+/**
+ * Arrow keys mirror the drags exactly, `Z` undoes, `S` snoozes. Down is inert under
  * THREE_WAY and for movies, for the same reasons the drag is — the keyboard
  * is a parallel path to the same rules, not a way around them.
  */
@@ -248,9 +293,11 @@ private fun handleKey(
     key: Key,
     type: KeyEventType,
     state: TriageUiState,
-    onUndo: () -> Unit,
-    decide: (TriageVerdict, Boolean) -> Unit,
+    keys: DeckKeyActions,
 ): Boolean {
+    val onUndo = keys.onUndo
+    val onSnooze = keys.onSnooze
+    val decide = keys.decide
     if (type != KeyEventType.KeyDown) return false
     val direction = when (key) {
         Key.DirectionLeft -> DragDirection.LEFT
@@ -266,6 +313,12 @@ private fun handleKey(
             return true
         }
 
+        // The affordance a mouse and a keyboard have instead of a long press.
+        Key.S -> {
+            onSnooze()
+            return true
+        }
+
         else -> return false
     }
     val verdict = verdictFor(direction, state.controlScheme, state.verdictsForTopCard) ?: return false
@@ -274,7 +327,12 @@ private fun handleKey(
 }
 
 @Composable
-private fun TriageHeader(onBack: () -> Unit, onOpenSkipped: () -> Unit, onShowTutorial: () -> Unit) {
+private fun TriageHeader(
+    onBack: () -> Unit,
+    onOpenSkipped: () -> Unit,
+    onOpenSnoozed: () -> Unit,
+    onShowTutorial: () -> Unit,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.s, vertical = MuvissSpacing.xs),
@@ -286,6 +344,7 @@ private fun TriageHeader(onBack: () -> Unit, onOpenSkipped: () -> Unit, onShowTu
             modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
         )
         TextButton(onClick = onShowTutorial) { Text("How it works") }
+        TextButton(onClick = onOpenSnoozed) { Text("Snoozed") }
         TextButton(onClick = onOpenSkipped) { Text("Skipped") }
     }
 }
@@ -332,6 +391,8 @@ private fun DeckArea(
     deck: SwipeDeckState,
     onDecide: (TriageVerdict) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
+    onSnooze: () -> Unit,
+    onSnoozeHintDismissed: () -> Unit,
 ) {
     Box(
         contentAlignment = Alignment.Center,
@@ -383,12 +444,22 @@ private fun DeckArea(
                     available = state.verdictsForTopCard,
                     onDecide = onDecide,
                     onTap = { onOpenDetail(top.id) },
+                    onLongPress = onSnooze,
                     // The draggable surface is one thing however many texts it
                     // draws; the poster's own text fallback would otherwise be
                     // indistinguishable from the title beneath it.
                     modifier = Modifier.testTag(TRIAGE_CARD_TAG),
                 ) { pending, progress ->
                     TriageCardSurface(summary = top, modifier = Modifier.testTag(TRIAGE_CARD_FACE_TAG))
+                    // Above the face and below the drag hint: it must stay
+                    // reachable while the card sits still, and disappear under
+                    // the hint once a drag is committing to a verdict.
+                    SnoozeButton(
+                        onSnooze = onSnooze,
+                        hintVisible = state.snoozeHintVisible,
+                        onHintDismissed = onSnoozeHintDismissed,
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    )
                     if (pending != null) {
                         DragHint(
                             verdict = pending,
@@ -541,6 +612,98 @@ private fun VerdictButtonRow(
     }
 }
 
+/**
+ * The snooze affordance (EPIC 42, ADR 0023).
+ *
+ * A button on the card rather than a fifth column in [VerdictButtonRow]: a
+ * Snooze is not a verdict, four labels already overflowed a 1080px phone (see
+ * that row's own note), and long press — the obvious touch gesture — does not
+ * exist for a mouse. This works on all six targets; the long press and the `S`
+ * key are accelerators on top of it.
+ */
+@Composable
+private fun SnoozeButton(
+    onSnooze: () -> Unit,
+    hintVisible: Boolean,
+    onHintDismissed: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.padding(MuvissSpacing.xs)) {
+        FilledTonalIconButton(
+            onClick = onSnooze,
+            // 48dp, not the M3 default 40: Android's minimum touch target, and
+            // this one sits over a draggable surface where a near miss starts
+            // a swipe instead.
+            modifier = Modifier.size(SNOOZE_BUTTON_SIZE).testTag(TRIAGE_SNOOZE_TAG),
+        ) {
+            Icon(MuvissIcons.Snooze, contentDescription = SNOOZE_LABEL)
+        }
+
+        if (hintVisible) {
+            // A one-shot callout rather than a line in TriageTutorial: that
+            // dialog is gated on `triageTutorialSeen`, which is already true on
+            // every install that exists, so nobody who has the app today would
+            // ever have seen it there.
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, SNOOZE_HINT_OFFSET_PX),
+                onDismissRequest = onHintDismissed,
+            ) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    tonalElevation = MuvissSpacing.xs,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = MuvissSpacing.m, vertical = MuvissSpacing.s),
+                    ) {
+                        Text(
+                            text = SNOOZE_HINT,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.inverseOnSurface,
+                            modifier = Modifier.widthIn(max = SNOOZE_HINT_MAX_WIDTH),
+                        )
+                        TextButton(onClick = onHintDismissed) { Text("Got it") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Asks how long to postpone for, under [SnoozePeriod.ASK_EACH_TIME] only.
+ *
+ * An AlertDialog rather than a bottom sheet, matching `PickerRow`'s choice on
+ * the settings screen: the repo has no sheet anywhere, and a dialog is the one
+ * modal shape already proven on all six targets.
+ */
+@Composable
+private fun SnoozeChoiceDialog(
+    title: String,
+    onChoose: (SnoozePeriod) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Ask again about $title") },
+        text = {
+            Column(modifier = Modifier.testTag(TRIAGE_SNOOZE_SHEET_TAG)) {
+                // Only the real durations: ASK_EACH_TIME is the mode that
+                // opened this dialog, not something it can offer. A free date
+                // picker is deliberately not here yet — see issue for the M3
+                // DatePicker's unverified six-target support.
+                SnoozePeriod.entries.filter { it.days != null }.forEach { period ->
+                    TextButton(onClick = { onChoose(period) }) { Text(period.label) }
+                }
+            }
+        },
+    )
+}
+
 @Composable
 private fun EmptyDeck(filtered: Boolean, onClearFilters: () -> Unit, onOpenSkipped: () -> Unit) {
     if (filtered) {
@@ -575,6 +738,24 @@ const val TRIAGE_CARD_TAG = "triage-card"
  * motion assertable on screen rather than only through `SwipeDeckState`.
  */
 const val TRIAGE_CARD_FACE_TAG = "triage-card-face"
+
+/** Identifies the snooze button on the top card (EPIC 42). */
+const val TRIAGE_SNOOZE_TAG = "triage-snooze"
+
+/** Identifies the "ask each time" period dialog (EPIC 42). */
+const val TRIAGE_SNOOZE_SHEET_TAG = "triage-snooze-sheet"
+
+internal const val SNOOZE_LABEL = "Snooze"
+
+internal const val SNOOZE_HINT = "Not sure? Snooze it and we'll ask again later."
+
+/** Android's minimum touch target; M3's icon button default is 40dp. */
+private val SNOOZE_BUTTON_SIZE = 48.dp
+
+/** Clear of the button so the callout points at it rather than covering it. */
+private const val SNOOZE_HINT_OFFSET_PX = 56
+
+private val SNOOZE_HINT_MAX_WIDTH = 200.dp
 
 private val MAX_CARD_WIDTH = 420.dp
 

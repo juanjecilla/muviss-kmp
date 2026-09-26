@@ -521,6 +521,26 @@ class FakeSupabaseServer(
                     "deleted" to booleanDefault(false),
                 ),
             ),
+            // EPIC 42 (ADR 0023). `year`, `poster_url` and `overview` are all
+            // nullable, so they are among the columns a push must send
+            // explicitly — PostgREST's merge-duplicates upsert never writes a
+            // key that is absent from every object in the body.
+            TableSchema(
+                "triage_snooze",
+                listOf("media_id"),
+                linkedMapOf(
+                    "media_id" to text,
+                    "media_type" to text,
+                    "title" to text,
+                    "year" to nullableInteger,
+                    "poster_url" to nullableText,
+                    "overview" to nullableText,
+                    "snoozed_at_epoch_ms" to integer,
+                    "due_at_epoch_day" to integer,
+                    UPDATED_AT to integer,
+                    "deleted" to booleanDefault(false),
+                ),
+            ),
             TableSchema(
                 "episode_play",
                 listOf("id"),

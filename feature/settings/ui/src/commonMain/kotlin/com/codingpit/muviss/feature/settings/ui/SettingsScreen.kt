@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.common.crash.CrashReporter
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -131,6 +133,25 @@ fun SettingsScreen(
             options = TriageControlScheme.entries.map { it.name to it.displayName },
             selectedCode = state.triageControlScheme.name,
             onSelect = { name -> viewModel.onTriageControlSchemeSelected(TriageControlScheme.fromStored(name)) },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        // No on/off switch above these two: snoozing is reached from a button
+        // on the card, so there is nothing to hide. What a person actually
+        // wants to change is how long it waits and where it comes back.
+        PickerRow(
+            label = SNOOZE_PERIOD_LABEL,
+            value = state.snoozePeriod.label,
+            options = SnoozePeriod.entries.map { it.name to it.label },
+            selectedCode = state.snoozePeriod.name,
+            onSelect = { name -> viewModel.onSnoozePeriodSelected(SnoozePeriod.fromStored(name)) },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        PickerRow(
+            label = SNOOZE_PLACEMENT_LABEL,
+            value = state.snoozePlacement.label,
+            options = SnoozePlacement.entries.map { it.name to it.label },
+            selectedCode = state.snoozePlacement.name,
+            onSelect = { name -> viewModel.onSnoozePlacementSelected(SnoozePlacement.fromStored(name)) },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         SwitchRow(
@@ -379,6 +400,10 @@ private val TriageControlScheme.displayName: String
         TriageControlScheme.FOUR_WAY -> "Four directions"
         TriageControlScheme.THREE_WAY -> "Three directions + button"
     }
+
+internal const val SNOOZE_PERIOD_LABEL = "Ask me again after"
+
+internal const val SNOOZE_PLACEMENT_LABEL = "Snoozed titles come back"
 
 /** Material3's own disabled-content opacity, which `Switch` applies to itself. */
 private const val DISABLED_ALPHA = 0.38f

@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
+import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
 
 private const val FULL_PULL_KEY = "_lastFullPullAt"
 
@@ -64,6 +65,12 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
             wrap = { SyncChangeSet(triageDecisions = it) },
             push = push,
         ) { chunk -> chunk.forEach { database.triageDecisionQueries.clearDirty(it.mediaId, it.updatedAtEpochMs) } }
+
+        SyncTable.TRIAGE_SNOOZE -> send(
+            rows = database.triageSnoozeQueries.selectDirty().awaitAsList().map { it.toChange() },
+            wrap = { SyncChangeSet(triageSnoozes = it) },
+            push = push,
+        ) { chunk -> chunk.forEach { database.triageSnoozeQueries.clearDirty(it.mediaId, it.updatedAtEpochMs) } }
 
         SyncTable.EPISODE_PLAY -> send(
             rows = database.episodePlayQueries.selectDirty().awaitAsList().map { it.toChange() },
@@ -121,6 +128,7 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.mediaListQueries.markAllListsDirty()
         database.mediaListQueries.markAllEntriesDirty()
         database.triageDecisionQueries.markAllDirty()
+        database.triageSnoozeQueries.markAllDirty()
         database.episodePlayQueries.markAllDirty()
     }
 
@@ -135,6 +143,7 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.mediaListQueries.deleteAllLists()
         database.mediaListQueries.deleteAllEntries()
         database.triageDecisionQueries.deleteAll()
+        database.triageSnoozeQueries.deleteAll()
         database.episodePlayQueries.deleteAll()
     }
 }
@@ -202,6 +211,19 @@ internal fun TriageDecisionRow.toChange() = TriageDecisionChange(
     posterUrl = posterUrl,
     decidedAtEpochMs = decidedAtEpochMs,
     resolved = resolved,
+    updatedAtEpochMs = updatedAtEpochMs,
+    deleted = deleted,
+)
+
+internal fun TriageSnoozeRow.toChange() = TriageSnoozeChange(
+    mediaId = mediaId,
+    mediaType = mediaType,
+    title = title,
+    year = year,
+    posterUrl = posterUrl,
+    overview = overview,
+    snoozedAtEpochMs = snoozedAtEpochMs,
+    dueAtEpochDay = dueAtEpochDay,
     updatedAtEpochMs = updatedAtEpochMs,
     deleted = deleted,
 )

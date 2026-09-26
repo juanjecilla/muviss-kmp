@@ -4,6 +4,7 @@ package com.codingpit.muviss.feature.triage.data
 
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
@@ -15,6 +16,7 @@ import com.codingpit.muviss.feature.triage.domain.DeckLoader
 import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
+import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
 import com.codingpit.muviss.feature.triage.domain.UndoDecisionUseCase
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
@@ -46,6 +48,8 @@ class TriageCollectionProgressIntegrationTest {
 
     private lateinit var database: MuvissDatabase
     private lateinit var triageRepository: SqlDelightTriageDecisionRepository
+    private lateinit var snoozeRepository: TriageSnoozeRepository
+    private lateinit var deckClock: AppClock
     private lateinit var collectionApi: RealCollectionApi
     private lateinit var progressApi: RealProgressApi
     private lateinit var detailsSource: CountingDetailsSource
@@ -71,6 +75,8 @@ class TriageCollectionProgressIntegrationTest {
             SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi),
         )
         triageRepository = SqlDelightTriageDecisionRepository(database.triageDecisionQueries, dispatchers, clock)
+        snoozeRepository = SqlDelightTriageSnoozeRepository(database.triageSnoozeQueries, dispatchers, clock)
+        deckClock = clock
         detailsSource = CountingDetailsSource(
             listOf(ongoing, ended, withSpecial, film).associateBy { it.id },
         )
@@ -175,7 +181,7 @@ class TriageCollectionProgressIntegrationTest {
         record(ended.summary, TriageVerdict.SKIP).getOrThrow()
 
         val source = FixedDeckSource(listOf(film.summary, ended.summary, ongoing.summary))
-        val loadDeck = LoadDeckUseCase(DeckLoader(source), triageRepository, collectionApi)
+        val loadDeck = LoadDeckUseCase(DeckLoader(source), triageRepository, snoozeRepository, collectionApi, deckClock)
 
         val batch = loadDeck(DeckFilter(type = MediaType.TV), DeckCursor()).getOrThrow()
 
@@ -187,7 +193,7 @@ class TriageCollectionProgressIntegrationTest {
         record(ended.summary, TriageVerdict.SKIP).getOrThrow()
         triageRepository.restore(ended.id)
 
-        val loadDeck = LoadDeckUseCase(DeckLoader(FixedDeckSource(listOf(ended.summary))), triageRepository, collectionApi)
+        val loadDeck = LoadDeckUseCase(DeckLoader(FixedDeckSource(listOf(ended.summary))), triageRepository, snoozeRepository, collectionApi, deckClock)
 
         assertEquals(listOf(ended.id), loadDeck(DeckFilter(type = MediaType.TV), DeckCursor()).getOrThrow().cards.map { it.id })
     }

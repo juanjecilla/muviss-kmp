@@ -1,10 +1,13 @@
 package com.codingpit.muviss.feature.triage.domain
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
+import com.codingpit.muviss.feature.triage.api.SnoozedTitle
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
@@ -137,13 +140,82 @@ class ObserveDecisionUseCase(private val repository: TriageDecisionRepository) {
 class LoadDeckUseCase(
     private val loader: DeckLoader,
     private val repository: TriageDecisionRepository,
+    private val snoozes: TriageSnoozeRepository,
     private val collectionApi: CollectionApi,
+    private val clock: AppClock,
 ) {
-    suspend operator fun invoke(filter: DeckFilter, cursor: DeckCursor, alreadyShown: Set<MediaId> = emptySet()): Result<DeckBatch> {
+    suspend operator fun invoke(
+        filter: DeckFilter,
+        cursor: DeckCursor,
+        alreadyShown: Set<MediaId> = emptySet(),
+        placement: SnoozePlacement = SnoozePlacement.DEFAULT,
+    ): Result<DeckBatch> {
         val decided = repository.observeDecidedIds().first()
         val inCollection = collectionApi.observeSummaries().first().map { it.mediaId }.toSet()
-        return loader.load(filter, cursor, excluded = decided + inCollection + alreadyShown)
+        val settled = decided + inCollection
+
+        // A Snooze can be overtaken: the title may have been saved from search
+        // or ruled on from the Detail screen while it waited. Such a Snooze has
+        // no question left to ask, so it is retired rather than shown — and
+        // retired *soft*, so the tombstone reaches the other devices instead of
+        // their copy being pushed back.
+        val due = snoozes.due(clock.todayEpochDay())
+        val (overtaken, returning) = due.partition { it.mediaId in settled }
+        overtaken.forEach { snoozes.unsnooze(it.mediaId) }
+
+        // Pending Snoozes that are NOT yet due stay excluded; only the due ones
+        // are handed to the loader as a second source.
+        val pending = snoozes.observeSnoozedIds().first() - returning.map { it.mediaId }.toSet()
+
+        return loader.load(
+            filter = filter,
+            cursor = cursor,
+            excluded = settled + pending + alreadyShown,
+            dueSnoozes = DueSnoozes(cards = returning.map { it.toSummary() }, placement = placement),
+        )
     }
+}
+
+/**
+ * Postpones a title (ADR 0023).
+ *
+ * Writes no [TriageDecision] — that is the whole distinction. It also clears
+ * nothing: a title the deck offers is by construction in neither the decision
+ * log nor the collection, so there is no prior state to reconcile.
+ */
+class SnoozeUseCase(
+    private val snoozes: TriageSnoozeRepository,
+    private val clock: AppClock,
+) {
+    suspend operator fun invoke(summary: MediaSummary, dueAtEpochDay: Long) {
+        snoozes.snooze(TriageSnooze.of(summary, nowEpochMs = clock.nowEpochMs(), dueAtEpochDay = dueAtEpochDay))
+    }
+
+    /** The due date a stored [SnoozePeriod] implies. Null for ASK_EACH_TIME, which has no duration. */
+    fun dueDateFor(period: SnoozePeriod): Long? = period.days?.let { clock.todayEpochDay() + it }
+}
+
+/** Takes a Snooze back — undo, the Snoozed screen, and the Detail banner all call this. */
+class UnsnoozeUseCase(private val snoozes: TriageSnoozeRepository) {
+    suspend operator fun invoke(mediaId: MediaId) = snoozes.unsnooze(mediaId)
+}
+
+/** Pending Snoozes for the Snoozed screen, soonest to come back first. */
+class ObserveSnoozedUseCase(private val snoozes: TriageSnoozeRepository) {
+    operator fun invoke(): Flow<List<SnoozedTitle>> = snoozes.observeAll()
+        .map { pending ->
+            pending.map { SnoozedTitle(it.mediaId, it.title, it.posterUrl, it.snoozedAtEpochMs, it.dueAtEpochDay) }
+        }
+}
+
+/** Every snoozed id — keeps a pending title out of Discover's "For you". */
+class ObserveSnoozedIdsUseCase(private val snoozes: TriageSnoozeRepository) {
+    operator fun invoke(): Flow<Set<MediaId>> = snoozes.observeSnoozedIds()
+}
+
+/** The standing Snooze for one title, for the Detail screen's banner. */
+class ObserveSnoozeUseCase(private val snoozes: TriageSnoozeRepository) {
+    operator fun invoke(mediaId: MediaId): Flow<TriageSnooze?> = snoozes.observeSnooze(mediaId)
 }
 
 /** Retries any verdict whose save/tick work never landed. Best-effort; failures stay unresolved. */
@@ -162,6 +234,14 @@ class SetTutorialSeenUseCase(private val preferences: TriagePreferences) {
     suspend operator fun invoke(seen: Boolean) = preferences.setTutorialSeen(seen)
 }
 
+class ObserveSnoozeHintSeenUseCase(private val preferences: TriagePreferences) {
+    operator fun invoke(): Flow<Boolean> = preferences.observeSnoozeHintSeen()
+}
+
+class SetSnoozeHintSeenUseCase(private val preferences: TriagePreferences) {
+    suspend operator fun invoke(seen: Boolean) = preferences.setSnoozeHintSeen(seen)
+}
+
 /**
  * Bundles the deck's mutators so `TriageViewModel`'s constructor stays inside
  * detekt's `LongParameterList` budget — same trick as collection's
@@ -172,4 +252,35 @@ class TriageActions(
     val undo: UndoDecisionUseCase,
     val setTutorialSeen: SetTutorialSeenUseCase,
     val retryUnresolved: RetryUnresolvedUseCase,
+    val snoozing: SnoozeActions,
+) {
+    val snooze: SnoozeUseCase get() = snoozing.snooze
+    val unsnooze: UnsnoozeUseCase get() = snoozing.unsnooze
+    val setSnoozeHintSeen: SetSnoozeHintSeenUseCase get() = snoozing.setSnoozeHintSeen
+}
+
+/** Snooze's own mutators, bundled for the same reason [TriageActions] is. */
+class SnoozeActions(
+    val snooze: SnoozeUseCase,
+    val unsnooze: UnsnoozeUseCase,
+    val setSnoozeHintSeen: SetSnoozeHintSeenUseCase,
+)
+
+/** The deck's read-side snooze surface, bundled so `DefaultTriageApi` stays inside detekt's budget. */
+class SnoozeQueries(
+    val observeSnoozedIds: ObserveSnoozedIdsUseCase,
+    val observeSnoozed: ObserveSnoozedUseCase,
+    val observeSnooze: ObserveSnoozeUseCase,
+    val unsnooze: UnsnoozeUseCase,
+)
+
+/**
+ * The deck's two one-shot onboarding reads. Bundled rather than passed
+ * separately because they are one concern — what this device has already been
+ * shown — and because a seventh constructor parameter is where detekt draws
+ * the line.
+ */
+class TriageOnboarding(
+    val tutorialSeen: ObserveTutorialSeenUseCase,
+    val snoozeHintSeen: ObserveSnoozeHintSeenUseCase,
 )

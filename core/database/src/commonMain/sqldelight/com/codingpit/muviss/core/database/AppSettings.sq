@@ -60,6 +60,22 @@
 -- and it exists so the feature is useful before anyone has answered for a
 -- single title — a feature that needs 200 answers before its first use is a
 -- feature nobody reaches.
+--
+-- `triageSnoozePeriod`, `triageSnoozePlacement` and `triageSnoozeHintSeen`
+-- were added in `12.sqm` (EPIC 42, snooze, ADR 0023). Per-device and NOT
+-- synced, like every preference above them: how long *this* device waits
+-- before raising a title again, and where the returning cards go, are
+-- statements about this device's deck, not about the library. The Snoozes
+-- themselves are user data and do sync — see `triageSnooze`.
+--
+-- `triageSnoozePeriod` ASK_EACH_TIME is not a duration: it means the app asks
+-- on every snooze instead of applying one, which is also the only route to a
+-- freely chosen date.
+--
+-- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
+-- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
+-- is already true on every install that exists — folding the snooze hint into
+-- that dialog would show it to nobody who has the app today.
 CREATE TABLE appSettings (
     id INTEGER NOT NULL PRIMARY KEY,
     theme TEXT NOT NULL DEFAULT 'SYSTEM',
@@ -75,7 +91,10 @@ CREATE TABLE appSettings (
     syncAutomatically INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     crashReportsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     coWatchPoolListId TEXT,
-    coWatchIncludeSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+    coWatchIncludeSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    triageSnoozePeriod TEXT NOT NULL DEFAULT 'ONE_WEEK',
+    triageSnoozePlacement TEXT NOT NULL DEFAULT 'MIXED_IN',
+    triageSnoozeHintSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -128,3 +147,12 @@ UPDATE appSettings SET coWatchPoolListId = :listId WHERE id = 0;
 
 updateCoWatchIncludeSeen:
 UPDATE appSettings SET coWatchIncludeSeen = :includeSeen WHERE id = 0;
+
+updateTriageSnoozePeriod:
+UPDATE appSettings SET triageSnoozePeriod = :triageSnoozePeriod WHERE id = 0;
+
+updateTriageSnoozePlacement:
+UPDATE appSettings SET triageSnoozePlacement = :triageSnoozePlacement WHERE id = 0;
+
+updateTriageSnoozeHintSeen:
+UPDATE appSettings SET triageSnoozeHintSeen = :triageSnoozeHintSeen WHERE id = 0;

@@ -269,6 +269,30 @@ create trigger triage_decision_lww
   before update on triage_decision
   for each row execute function discard_stale_write();
 
+-- triage_snooze -- (EPIC 42, ADR 0023)
+create table triage_snooze (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  media_id text not null,
+  media_type text not null,
+  title text not null,
+  year bigint,
+  poster_url text,
+  overview text,
+  snoozed_at_epoch_ms bigint not null,
+  due_at_epoch_day bigint not null,
+  updated_at_epoch_ms bigint not null,
+  deleted boolean not null default false,
+  primary key (user_id, media_id)
+);
+
+alter table triage_snooze enable row level security;
+create policy "own rows only" on triage_snooze
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create trigger triage_snooze_lww
+  before update on triage_snooze
+  for each row execute function discard_stale_write();
+
 -- episode_play -- (ADR 0013)
 create table episode_play (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -318,6 +342,16 @@ Notes:
   Skipped screen renders straight off these. Unlike
   `collection_entry.notifications_muted`, it *is* synced: a skip is user
   intent, and a title ruled on from one device must not resurface on another.
+- `triage_snooze` (ADR 0023) is a **separate table, not a fifth
+  `triage_decision.verdict`**. An unknown verdict makes
+  `TriageVerdict.fromStored` return null, so the row vanishes from every read
+  while `selectDecidedIds` still counts it — an older client would exclude the
+  title from its deck forever with no way to undo. A table it does not know
+  about is simply never pulled. It carries the whole card snapshot
+  (`title`/`year`/`poster_url`/`overview`) because the receiving device has to
+  render it when the Snooze comes due and `MetadataProvider` has no cheap
+  `summary(id)`; `due_at_epoch_day` is a day, not a timestamp. Deletes are
+  soft, like `episode_play`'s, for the same reason.
 - No `deleted` filter is applied server-side on select — `SyncEngine` pulls
   tombstoned rows too (so it can propagate the delete locally) and relies on
   `updated_at_epoch_ms` for the `since` filter, same as every other row.

@@ -113,6 +113,7 @@ enum class SyncTable(val cursorKey: String) {
     MEDIA_LIST("mediaList"),
     LIST_ENTRY("listEntry"),
     TRIAGE_DECISION("triageDecision"),
+    TRIAGE_SNOOZE("triageSnooze"),
     EPISODE_PLAY("episodePlay"),
 }
 

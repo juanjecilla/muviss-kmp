@@ -262,7 +262,8 @@ fun rememberSwipeDeckState(animated: Boolean): SwipeDeckState {
  * A tap is a separate `pointerInput` rather than a `clickable`: the card is
  * semantically a draggable surface, and `clickable` would put a `Role.Button`
  * and a full-card ripple on it. A tap never crosses touch slop, so
- * `detectDragGestures` never claims it and the two coexist.
+ * `detectDragGestures` never claims it and the two coexist. A long press
+ * (EPIC 42) rides in the same detector and snoozes the card.
  */
 @Composable
 fun SwipeCard(
@@ -272,6 +273,7 @@ fun SwipeCard(
     available: List<TriageVerdict>,
     onDecide: (TriageVerdict) -> Unit,
     onTap: () -> Unit,
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.(pending: TriageVerdict?, progress: Float) -> Unit,
 ) {
@@ -331,7 +333,16 @@ fun SwipeCard(
             // tap kept calling the `onTap` captured for whichever card first
             // composed here — the one just swiped away, not the new top card.
             .pointerInput(scheme, available, cardId) {
-                detectTapGestures(onTap = { if (!state.busy) onTap() })
+                // Long press snoozes. It is safe next to the drag detector
+                // above because `detectDragGestures` claims the pointer the
+                // moment it crosses touch slop, which cancels this detector —
+                // so a slow drag start cannot also fire a long press. It is an
+                // accelerator only: the button on the card is the affordance
+                // that exists on every target, since a mouse has no long press.
+                detectTapGestures(
+                    onTap = { if (!state.busy) onTap() },
+                    onLongPress = { if (!state.busy) onLongPress() },
+                )
             }
             .fillMaxSize(),
     ) {

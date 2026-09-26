@@ -79,7 +79,7 @@ private fun DeckUnderTest(viewModel: TriageViewModel) {
     // pixel moves. See `GoldenSurface`.
     MuvissTheme(darkTheme = false) {
         GoldenSurface {
-            TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = {})
+            TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {})
         }
     }
 }

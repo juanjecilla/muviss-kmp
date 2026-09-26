@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
 import com.codingpit.muviss.core.designsystem.component.EpisodeRow
 import com.codingpit.muviss.core.designsystem.component.ErrorState
@@ -282,6 +283,11 @@ private fun DetailBody(
     // A skipped title (ADR 0010) leaves nothing in the library, so this line
     // is the only way back to it once the deck's undo snackbar has gone.
     if (state.skipped) SkippedBanner(onUndo = viewModel::unskip)
+
+    // Likewise for a postponed title (EPIC 42): a Snooze leaves nothing in the
+    // library either, and it is the date rather than the fact that the user
+    // cannot otherwise find out from here.
+    state.snoozedUntilEpochDay?.let { due -> SnoozedBanner(dueAtEpochDay = due, onUndo = viewModel::unsnooze) }
 
     // Rating + note (EPIC 15) only make sense once the title is saved —
     // consistent with the mute button, the other membership-gated affordance.
@@ -876,6 +882,29 @@ private fun SeasonEpisodeRow(
 private fun Episode.hasAiredBy(todayEpochDay: Long): Boolean {
     val airDate = airDateEpochDay
     return airDate != null && airDate <= todayEpochDay
+}
+
+@Composable
+private fun SnoozedBanner(dueAtEpochDay: Long, onUndo: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = MuvissSpacing.m, vertical = MuvissSpacing.xs),
+        ) {
+            Icon(MuvissIcons.Snooze, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Snoozed until ${formatEpochDay(dueAtEpochDay)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).padding(start = MuvissSpacing.s),
+            )
+            TextButton(onClick = onUndo) { Text("Unsnooze") }
+        }
+    }
 }
 
 @Composable

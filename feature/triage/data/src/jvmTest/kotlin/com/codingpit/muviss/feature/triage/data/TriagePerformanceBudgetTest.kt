@@ -4,6 +4,7 @@ package com.codingpit.muviss.feature.triage.data
 
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.CountingDriver
@@ -16,6 +17,7 @@ import com.codingpit.muviss.feature.triage.domain.DeckLoader
 import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
+import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -51,6 +53,8 @@ class TriagePerformanceBudgetTest {
     private lateinit var driver: CountingDriver
     private lateinit var database: MuvissDatabase
     private lateinit var triageRepository: SqlDelightTriageDecisionRepository
+    private lateinit var snoozeRepository: TriageSnoozeRepository
+    private lateinit var deckClock: AppClock
     private lateinit var collectionApi: RealCollectionApi
     private lateinit var progressApi: RealProgressApi
 
@@ -71,6 +75,8 @@ class TriagePerformanceBudgetTest {
             SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi),
         )
         triageRepository = SqlDelightTriageDecisionRepository(database.triageDecisionQueries, dispatchers, clock)
+        snoozeRepository = SqlDelightTriageSnoozeRepository(database.triageSnoozeQueries, dispatchers, clock)
+        deckClock = clock
     }
 
     @Test
@@ -140,7 +146,7 @@ class TriagePerformanceBudgetTest {
             )
         }
         val source = CountingDeckSource(pages)
-        val loadDeck = LoadDeckUseCase(DeckLoader(source), triageRepository, collectionApi)
+        val loadDeck = LoadDeckUseCase(DeckLoader(source), triageRepository, snoozeRepository, collectionApi, deckClock)
 
         val batch = loadDeck(DeckFilter(type = MediaType.MOVIE), DeckCursor()).getOrThrow()
 

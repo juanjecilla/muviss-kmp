@@ -4,6 +4,8 @@ package com.codingpit.muviss.feature.settings.ui
 
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
@@ -208,6 +210,18 @@ private class FakeFeatureFlags : FeatureFlags {
     override val triageDeckAnimations: Flow<Boolean> = deckAnimations
     val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
+    val snoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
+    val snoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
+    override val triageSnoozePeriod: Flow<SnoozePeriod> = snoozePeriod
+    override val triageSnoozePlacement: Flow<SnoozePlacement> = snoozePlacement
+
+    override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) {
+        snoozePeriod.value = period
+    }
+
+    override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) {
+        snoozePlacement.value = placement
+    }
 
     override suspend fun setSyncAutomatically(enabled: Boolean) {
         autoSync.value = enabled
