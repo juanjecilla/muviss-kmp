@@ -91,7 +91,7 @@ class CrashReportsMigrationTest {
     }
 
     @Test
-    fun `the setting is the last column, where an ALTER TABLE puts it`() {
+    fun `the setting sits after the column that preceded it, where an ALTER TABLE puts it`() {
         val (driver, _) = oldDriver()
         migrate(driver)
 
@@ -106,7 +106,16 @@ class CrashReportsMigrationTest {
             parameters = 0,
         ).value
 
-        assertEquals("crashReportsEnabled", columns.last())
+        // Asserted relative to its predecessor rather than as `columns.last()`:
+        // `verifyMigrations` compares ordinal position, so what matters is that
+        // `10.sqm` appended this column after the one `9.sqm` added. It was the
+        // last column when this test was written, and EPIC 41's `11.sqm` then
+        // appended two more — which is correct, and which `columns.last()`
+        // would have reported as this migration breaking.
+        assertEquals(
+            listOf("syncAutomatically", "crashReportsEnabled"),
+            columns.dropWhile { it != "syncAutomatically" }.take(2),
+        )
         driver.close()
     }
 

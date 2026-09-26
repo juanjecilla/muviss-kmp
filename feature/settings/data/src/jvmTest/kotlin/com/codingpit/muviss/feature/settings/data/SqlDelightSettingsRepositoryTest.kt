@@ -144,6 +144,8 @@ class SqlDelightSettingsRepositoryTest {
             notificationsMuted = false,
             rating = null,
             note = null,
+            revisitWillingness = null,
+            coWatchPinned = false,
         )
         database.episodeProgressQueries.upsert(
             episodeId = "tmdb:tv:1399:s1:e1",
@@ -188,6 +190,8 @@ class SqlDelightSettingsRepositoryTest {
             notificationsMuted = false,
             rating = null,
             note = null,
+            revisitWillingness = null,
+            coWatchPinned = false,
         )
 
         val json = repository.exportData()

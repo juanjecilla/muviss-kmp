@@ -118,6 +118,8 @@ class SqlDelightSettingsRepository(
         favorite = favorite,
         addedAtEpochMs = addedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
+        revisitWillingness = revisitWillingness,
+        coWatchPinned = coWatchPinned,
     )
 
     private fun TriageDecisionRow.toExport(): TriageDecisionExport = TriageDecisionExport(

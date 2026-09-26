@@ -109,6 +109,14 @@ private class FakeCollectionApi : CollectionApi {
         membership.value = membership.value?.copy(note = note)
     }
 
+    override suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) {
+        membership.value = membership.value?.copy(revisitWillingness = willing)
+    }
+
+    override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) {
+        membership.value = membership.value?.copy(coWatchPinned = pinned)
+    }
+
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 

@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.round
 
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
+fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpenCompanions: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -124,6 +124,13 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit) {
                     onResyncEverythingDismissed = viewModel::onResyncEverythingDismissed,
                 ),
             )
+            HorizontalDivider()
+
+            // Co-watch lives beside the sync row because it is built on sync and
+            // priced with it: an account, an entitlement and a linked Companion
+            // are the three things it needs, and two of them are explained here
+            // already (EPIC 41, ADR 0022).
+            CompanionsRow(onOpenCompanions)
             HorizontalDivider()
 
             if (state.stats.isEmpty) {
@@ -338,4 +345,23 @@ private const val ONE_DECIMAL = 10.0
 private fun formatHours(hours: Double): String {
     val roundedToOneDecimal = round(hours * ONE_DECIMAL) / ONE_DECIMAL
     return "${roundedToOneDecimal}h"
+}
+
+/** Entry point to managing Companions (EPIC 41). */
+@Composable
+private fun CompanionsRow(onOpenCompanions: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenCompanions)
+            .padding(MuvissSpacing.l),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
+    ) {
+        Text("Watch together", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Link with someone and see what you could watch together.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

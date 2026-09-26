@@ -1,6 +1,6 @@
 # Muviss
 
-Muviss is a personal, user-focused tracker for movies and TV shows. Users discover titles, save them to a collection, and track how far they've watched. Offline-first; no social features.
+Muviss is a personal, user-focused tracker for movies and TV shows. Users discover titles, save them to a collection, and track how far they've watched. Offline-first; no social features, with one narrow exception — two people who have linked as Companions can each publish a Watch Pool and get a Shortlist of what to watch together (ADR 0022). There is nothing else: no feeds, no profiles others can see, no activity, no way to find anyone.
 
 ## Language
 
@@ -80,3 +80,25 @@ _Avoid_: dismissal, rejection (Skip is reversible); triage state (a decision is 
 **TriageVerdict**:
 The four outcomes of triaging one MediaItem. Skip — not for me. Later — collected, not started. Watching — collected, started (TV only; a movie is never in progress). CaughtUp — collected, every aired episode seen. The last three write a CollectionEntry and, for Watching and CaughtUp, real WatchProgress ticks; none of them stores a WatchStatus, which stays derived (ADR 0005). CaughtUp is one verdict but presents as two words: a film has a single element, so its button reads **Watched** — the WatchStatus its ticks derive — while a show reads **Caught up**. The distinction is wording only; the persisted verdict and the sync payload are identical.
 _Avoid_: watchlist (that is a CollectionEntry with NotStarted status), seen (that is an episode tick).
+
+### Co-watch
+
+**Companion**:
+Another person's Muviss account the user has linked with, in order to work out what to watch together. The only concept in the product that refers to anyone other than the user, and it goes no further than this: there is no way to find, follow or be seen by one.
+_Avoid_: friend, follower, contact (they imply a social graph this product does not have); partner.
+
+**Companion Link**:
+The mutual, consented relation between the user and one Companion. Either side ends it alone, and ending it stops anything further reaching them.
+_Avoid_: connection, pairing, share (a share is a thing handed over; this is a standing relation).
+
+**Watch Pool**:
+The MediaItems the user publishes to a Companion — what they are willing to watch with that person. The only thing that ever leaves the device for another person to see; watch history, ticks, ratings and notes never do.
+_Avoid_: watchlist (that is a CollectionEntry with NotStarted status, and only the default source of a Pool); shared list (nobody co-owns a Pool); profile.
+
+**Revisit Willingness**:
+The user's standing answer to whether they would watch an already-seen MediaItem again with someone. Intent the user authors and the app stores — unlike a Rewatch, which is derived from Plays and never stored.
+_Avoid_: rewatch flag (Rewatch is the derived record, not an intention); seen-again; replay.
+
+**Shortlist**:
+The ranked answer to what Companions could watch together, derived from their Watch Pools and never stored. A different question from WatchNext, which answers what one person is part-way through.
+_Avoid_: recommendation (nothing enters a Shortlist that a Companion did not already put in a Pool); shared list; queue.

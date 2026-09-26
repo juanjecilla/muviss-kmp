@@ -117,12 +117,16 @@ internal class RemoteApplier(private val database: MuvissDatabase) {
                 notificationsMuted = false,
                 rating = change.rating?.toLong(),
                 note = change.note,
+                revisitWillingness = change.revisitWillingness,
+                coWatchPinned = change.coWatchPinned,
             )
 
             remoteWins(local.updatedAtEpochMs, local.isDirty, change.updatedAtEpochMs) -> queries.applyRemoteUserFields(
                 favorite = change.favorite,
                 rating = change.rating?.toLong(),
                 note = change.note,
+                revisitWillingness = change.revisitWillingness,
+                coWatchPinned = change.coWatchPinned,
                 deleted = change.deleted,
                 addedAtEpochMs = change.addedAtEpochMs,
                 updatedAtEpochMs = change.updatedAtEpochMs,

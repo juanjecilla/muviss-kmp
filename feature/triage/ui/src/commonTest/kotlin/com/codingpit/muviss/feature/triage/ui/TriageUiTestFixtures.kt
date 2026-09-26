@@ -167,6 +167,10 @@ internal class FakeCollectionApi : CollectionApi {
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = Unit
     override suspend fun setRating(mediaId: MediaId, rating: Int?) = Unit
     override suspend fun setNote(mediaId: MediaId, note: String?) = Unit
+
+    override suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) = error("not used")
+
+    override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = error("not used")
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = emptyList()
 }
 

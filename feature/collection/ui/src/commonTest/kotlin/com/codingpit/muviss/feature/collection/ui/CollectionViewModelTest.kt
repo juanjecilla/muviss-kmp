@@ -68,6 +68,10 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("not used")
     override suspend fun setRating(mediaId: MediaId, rating: Int?) = error("not used")
     override suspend fun setNote(mediaId: MediaId, note: String?) = error("not used")
+
+    override suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) = error("not used")
+
+    override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = error("not used")
 }
 
 private class NoopSnapshotSource : MediaSnapshotSource {

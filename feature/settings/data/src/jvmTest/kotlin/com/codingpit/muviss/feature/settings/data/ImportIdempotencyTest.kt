@@ -68,6 +68,10 @@ private class RealCollectionApi(private val repository: CollectionRepository) : 
     override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = repository.setNotificationsMuted(mediaId, muted)
     override suspend fun setRating(mediaId: MediaId, rating: Int?) = repository.setRating(mediaId, rating)
     override suspend fun setNote(mediaId: MediaId, note: String?) = repository.setNote(mediaId, note)
+
+    override suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) = repository.setRevisitWillingness(mediaId, willing)
+
+    override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = repository.setCoWatchPinned(mediaId, pinned)
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 

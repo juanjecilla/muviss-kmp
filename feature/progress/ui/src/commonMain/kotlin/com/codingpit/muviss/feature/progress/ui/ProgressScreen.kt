@@ -30,6 +30,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -80,6 +81,7 @@ fun ProgressScreen(
     watchNextViewModel: ProgressViewModel,
     upcomingViewModel: UpcomingViewModel,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenCoWatch: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(ProgressTab.WATCH_NEXT) }
 
@@ -95,6 +97,14 @@ fun ProgressScreen(
             onSelect = { selectedTab = ProgressTab.entries[it] },
             modifier = Modifier.padding(horizontal = MuvissSpacing.l),
         )
+        // Co-watch (EPIC 41) is a link out, not a third tab. The two tabs above
+        // answer "how far am I", over titles already in progress; a Shortlist
+        // answers "what should two people start", over the titles WatchNext
+        // deliberately excludes. Making it a tab here would invite folding the
+        // two together, which ADR 0022 says not to do.
+        TextButton(onClick = onOpenCoWatch, modifier = Modifier.padding(horizontal = MuvissSpacing.l)) {
+            Text("Watch together with someone")
+        }
         when (selectedTab) {
             ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail)
             ProgressTab.UPCOMING -> UpcomingScreen(upcomingViewModel, onOpenDetail)

@@ -51,4 +51,9 @@ interface CollectionRepository {
 
     /** Sets or clears (via null) the personal free-text note (EPIC 15). */
     suspend fun setNote(mediaId: MediaId, note: String?)
+
+    /** EPIC 41 (ADR 0022). Null clears the answer back to "never asked". */
+    suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?)
+
+    suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean)
 }

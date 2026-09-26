@@ -5,12 +5,16 @@ package com.codingpit.muviss.feature.triage.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -55,7 +59,7 @@ class SwipeDeckStateTest {
      * follows it belong to the deck state.
      */
     @Composable
-    private fun Deck(harness: Harness, cardId: MediaId, animated: Boolean) {
+    private fun Deck(harness: Harness, cardId: MediaId, animated: Boolean, onTap: (MediaId) -> Unit = {}) {
         val deck = rememberSwipeDeckState(animated = animated)
         val scope = rememberCoroutineScope()
         harness.deck = deck
@@ -68,7 +72,10 @@ class SwipeDeckStateTest {
                 scheme = TriageControlScheme.FOUR_WAY,
                 available = TriageVerdict.entries.toList(),
                 onDecide = { verdict -> harness.commit(cardId, verdict) },
-                onTap = {},
+                // `cardId` is captured by value here, per Deck invocation —
+                // exactly like TriageScreen's real `onTap = { onOpenDetail(top.id) }`,
+                // where `top` is a fixed local, not a re-readable mutable state.
+                onTap = { onTap(cardId) },
                 modifier = Modifier.testTag(CARD_TAG),
             ) { _, _ -> }
         }
@@ -266,6 +273,41 @@ class SwipeDeckStateTest {
         mainClock.autoAdvance = true
         waitForIdle()
         assertEquals(Offset.Zero, harness.deck.offsetOf(cardB))
+    }
+
+    // --- tap must follow the card, not stick to whichever one composed first ---
+
+    /**
+     * Reproduces the real bug: [TriageScreen] renders the top card's
+     * `SwipeCard` in one unkeyed slot across every swipe (no `key(top.id)`
+     * around it, unlike the backing cards), so this drives the same slot
+     * through two different card ids without a `key()` wrapper either.
+     */
+    @Test
+    fun the_tap_detector_follows_the_card_when_it_changes() = runComposeUiTest {
+        val tapped = mutableListOf<MediaId>()
+        val harness = Harness()
+        var currentCard by mutableStateOf(cardA)
+        setContent { Deck(harness, currentCard, animated = true, onTap = { tapped += it }) }
+        waitForIdle()
+
+        // Engage the tap detector for cardA first — same as the real app,
+        // where the card sits on screen (and can be interacted with) well
+        // before it is ever swapped out.
+        onNodeWithTag(CARD_TAG).performClick()
+        waitForIdle()
+        assertEquals(listOf(cardA), tapped)
+
+        currentCard = cardB
+        waitForIdle()
+
+        onNodeWithTag(CARD_TAG).performClick()
+        waitForIdle()
+
+        // The tap detector must have restarted for the new card, not kept
+        // running the gesture coroutine (and its captured `onTap(cardId)`) it
+        // launched for cardA.
+        assertEquals(listOf(cardA, cardB), tapped)
     }
 
     private companion object {

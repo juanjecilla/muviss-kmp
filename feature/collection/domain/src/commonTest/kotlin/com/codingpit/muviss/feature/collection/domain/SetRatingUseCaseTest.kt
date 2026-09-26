@@ -25,6 +25,10 @@ private class RecordingCollectionRepository : CollectionRepository {
     }
 
     override suspend fun setNote(mediaId: MediaId, note: String?) = error("not used")
+
+    override suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) = error("not used")
+
+    override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = error("not used")
 }
 
 /**

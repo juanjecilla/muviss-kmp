@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.database
 
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -58,16 +59,18 @@ class SyncSchemaMigrationTest {
         parameters = 0,
     ).value
 
-    private suspend fun seedSyncedLibrary(database: MuvissDatabase) {
-        database.collectionEntryQueries.upsert(
-            mediaId = "tmdb:movie:603", mediaType = "movie", title = "The Matrix", posterUrl = null, releaseYear = 1999L,
+    private suspend fun seedSyncedLibrary(driver: SqlDriver, database: MuvissDatabase) {
+        // Raw SQL, not the generated queries: these databases are still at an
+        // older version. See `seedLegacyCollectionEntry`.
+        driver.seedLegacyCollectionEntry(
+            mediaId = "tmdb:movie:603", mediaType = "movie", title = "The Matrix", releaseYear = 1999L,
             productionStatus = "RELEASED", totalEpisodes = 1L, airedEpisodes = 1L, favorite = true, genres = "", runtimeMinutes = null,
-            addedAtEpochMs = 500L, updatedAtEpochMs = 2_000L, isDirty = false, deleted = false, notificationsMuted = false, rating = 9L, note = "keep",
+            addedAtEpochMs = 500L, updatedAtEpochMs = 2_000L, isDirty = false, rating = 9L, note = "keep",
         )
-        database.collectionEntryQueries.upsert(
-            mediaId = "tmdb:movie:604", mediaType = "movie", title = "Reloaded", posterUrl = null, releaseYear = 2003L,
+        driver.seedLegacyCollectionEntry(
+            mediaId = "tmdb:movie:604", mediaType = "movie", title = "Reloaded", releaseYear = 2003L,
             productionStatus = "RELEASED", totalEpisodes = 1L, airedEpisodes = 1L, favorite = false, genres = "", runtimeMinutes = null,
-            addedAtEpochMs = 600L, updatedAtEpochMs = 3_000L, isDirty = true, deleted = false, notificationsMuted = false, rating = null, note = null,
+            addedAtEpochMs = 600L, updatedAtEpochMs = 3_000L, isDirty = true, rating = null, note = null,
         )
         database.appSettingsQueries.ensureRow()
         database.appSettingsQueries.updateSyncCursor(7_000L)
@@ -85,7 +88,7 @@ class SyncSchemaMigrationTest {
     @Test
     fun `the sync tables exist, empty, after upgrading — nothing is backfilled`() {
         val (driver, database) = v9Driver()
-        runBlocking { seedSyncedLibrary(database) }
+        runBlocking { seedSyncedLibrary(driver, database) }
         migrate(driver)
 
         val after = MuvissDatabase(driver)
@@ -114,7 +117,7 @@ class SyncSchemaMigrationTest {
     @Test
     fun `the library and its dirty flags come through untouched`() {
         val (driver, database) = v9Driver()
-        runBlocking { seedSyncedLibrary(database) }
+        runBlocking { seedSyncedLibrary(driver, database) }
         migrate(driver)
 
         val after = MuvissDatabase(driver)
@@ -130,7 +133,7 @@ class SyncSchemaMigrationTest {
     @Test
     fun `the old clock-derived cursor is left where it was but is no longer read`() {
         val (driver, database) = v9Driver()
-        runBlocking { seedSyncedLibrary(database) }
+        runBlocking { seedSyncedLibrary(driver, database) }
         migrate(driver)
 
         val settings = MuvissDatabase(driver).appSettingsQueries.selectSettings().executeAsOne()
@@ -142,7 +145,7 @@ class SyncSchemaMigrationTest {
     @Test
     fun `syncAutomatically is the column 9_sqm appended and defaults to off for existing rows`() {
         val (driver, database) = v9Driver()
-        runBlocking { seedSyncedLibrary(database) }
+        runBlocking { seedSyncedLibrary(driver, database) }
         migrate(driver)
 
         // Not `.last()`: later migrations append their own columns after it (10.sqm's

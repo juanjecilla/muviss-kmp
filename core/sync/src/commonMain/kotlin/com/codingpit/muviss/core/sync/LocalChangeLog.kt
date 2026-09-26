@@ -156,6 +156,8 @@ internal fun CollectionEntryRow.toChange() = CollectionEntryChange(
     deleted = deleted,
     rating = rating?.toInt(),
     note = note,
+    revisitWillingness = revisitWillingness,
+    coWatchPinned = coWatchPinned,
 )
 
 internal fun EpisodeProgressRow.toChange() = EpisodeProgressChange(

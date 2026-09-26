@@ -38,6 +38,12 @@ data class DetailUiState(
     val rating: Int? = null,
     /** Personal free-text note, or null for none (EPIC 15); only meaningful while [saved] is true. */
     val note: String? = null,
+    /**
+     * Whether the user would watch this again with someone (EPIC 41, ADR 0022).
+     * Null means they have never answered, which is not the same as "no": an
+     * unanswered title follows the co-watch default, an answered one does not.
+     */
+    val revisitWillingness: Boolean? = null,
     /** Seen episode ids (movies use the single id from [EpisodeId.forMovie]) — drives checkmarks, season bars, and the movie toggle. */
     val seenEpisodes: Set<EpisodeId> = emptySet(),
     /** Null while loading; an empty [WatchProviders] once loaded means "hide the section" — no failure surfaced, it's a nice-to-have. */
@@ -119,6 +125,7 @@ class DetailViewModel(
                         notificationsMuted = membership?.notificationsMuted ?: false,
                         rating = membership?.rating,
                         note = membership?.note,
+                        revisitWillingness = membership?.revisitWillingness,
                     )
                 }
             }
@@ -205,6 +212,20 @@ class DetailViewModel(
     /** Persists the personal note (EPIC 15); collection's `:api` normalizes a blank note to null. */
     fun setNote(note: String) {
         viewModelScope.launchReporting { collectionApi.setNote(mediaId, note) }
+    }
+
+    /**
+     * Records whether this is one the user would watch again with someone
+     * (EPIC 41). Cycles yes → no → unanswered, because "never asked" is a real
+     * third state and losing it would silently answer for every other title.
+     */
+    fun cycleRevisitWillingness() {
+        val next = when (_state.value.revisitWillingness) {
+            null -> true
+            true -> false
+            false -> null
+        }
+        viewModelScope.launchReporting { collectionApi.setRevisitWillingness(mediaId, next) }
     }
 
     /** Ticks a single episode's checkmark. */

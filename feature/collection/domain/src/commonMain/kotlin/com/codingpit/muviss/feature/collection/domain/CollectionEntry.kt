@@ -49,6 +49,9 @@ data class CollectionEntry(
     val notificationsMuted: Boolean = false,
     val rating: Int? = null,
     val note: String? = null,
+    /** EPIC 41 (ADR 0022). Null is "never answered", not "no". */
+    val revisitWillingness: Boolean? = null,
+    val coWatchPinned: Boolean = false,
 ) {
     val mediaType: MediaType get() = mediaId.type
 

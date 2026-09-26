@@ -46,6 +46,17 @@ data class CollectionEntryExport(
     val favorite: Boolean,
     val addedAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    /**
+     * Revisit Willingness and the co-watch pin (EPIC 41, ADR 0022). User-authored,
+     * like [favorite], so a backup that dropped them would lose real answers —
+     * which is what #72 ("a backup you can restore") is about.
+     *
+     * Defaulted so an export produced before EPIC 41 still parses. Null on
+     * [revisitWillingness] is meaningful rather than missing: it is "never
+     * answered", which is also the right thing for an older export to restore as.
+     */
+    val revisitWillingness: Boolean? = null,
+    val coWatchPinned: Boolean = false,
 )
 
 @Serializable

@@ -19,6 +19,8 @@ import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncRunner
 import com.codingpit.muviss.core.sync.SyncSessionStore
+import com.codingpit.muviss.core.sync.companion.CompanionBackend
+import com.codingpit.muviss.core.sync.companion.NoOpCompanionBackend
 import com.codingpit.muviss.core.sync.supabase.SupabaseSyncBackend
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -60,6 +62,13 @@ val syncModule: Module = module {
         } else {
             NoOpSyncBackend()
         }
+    }
+    // Co-watch (EPIC 41). Derived from the bound SyncBackend rather than built
+    // beside it, so both share one PostgREST client, one HttpClient and one
+    // refresh path — GoTrue rotates the refresh token, so two racing refreshers
+    // would invalidate each other.
+    single<CompanionBackend> {
+        (get<SyncBackend>() as? SupabaseSyncBackend)?.companionBackend() ?: NoOpCompanionBackend()
     }
     single { AutomaticSyncSettings(get(), get<FeatureFlags>().syncAutomatically) }
     single {

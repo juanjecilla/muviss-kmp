@@ -1,6 +1,6 @@
 # Muviss — Epics
 
-Roadmap. v1 (**Android, Play Store, local-only**) is feature-complete: EPICs 0–8 ✅. v2 targets **all platforms** (iOS, Desktop, Web) plus the next feature tier. Each epic maps to one GitHub issue and is scoped so a single agent can implement it end-to-end. Benchmark: [TV Time](https://www.tvtime.com) feature set, minus social/community (Muviss is user-focused, no social — see `CLAUDE.md`).
+Roadmap. v1 (**Android, Play Store, local-only**) is feature-complete: EPICs 0–8 ✅. v2 targets **all platforms** (iOS, Desktop, Web) plus the next feature tier. Each epic maps to one GitHub issue and is scoped so a single agent can implement it end-to-end. Benchmark: [TV Time](https://www.tvtime.com) feature set, minus social/community (Muviss is user-focused, no social — see `CLAUDE.md`; EPIC 41 carves one narrow, deliberate exception and ADR 0022 states its limits).
 
 ## TV Time parity map
 
@@ -12,7 +12,7 @@ Roadmap. v1 (**Android, Play Store, local-only**) is feature-complete: EPICs 0�
 | New-episode notifications | Yes (local notifications, Android) | E5 |
 | Viewing stats (episodes, hours, genres) | Yes (computed locally) | E4 |
 | Where to watch (streaming availability) | Yes — TMDB watch/providers | E6 |
-| Community / social / comments | **No — excluded by product principle** | — |
+| Community / social / comments | **No — excluded by product principle**; the one exception is co-watch (pairwise, opt-in, no feeds or profiles — ADR 0022) | E41 |
 | Accounts + cloud sync | Post-v1 | E9 |
 
 ## Dependency graph
@@ -255,7 +255,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 
 **Decisions (2026-09-19).** All five targets ship (Play, App Store, signed DMG/MSI/DEB, web). The repo stays private until ready, then goes public as a release step. Sync ships as a **paid** feature sold through **RevenueCat**; that makes accounts real and drags in account deletion, Sign in with Apple, a privacy rewrite and a Supabase deploy pipeline (EPIC 32). Only a Play Console account exists today.
 
-**Schema numbers, as they actually landed** (`AGENTS.md`). The claims made here on 2026-09-19 were overtaken by the order things merged, so this records the outcome rather than the plan: **`9.sqm` (schema v10) is EPIC 39's** — it merged first (#95) and carries `syncCursor`, `syncState` and EPIC 40's `appSettings.syncAutomatically` switch column; `10.sqm` (schema v11) is EPIC 26's (#103); `11.sqm` (schema v12) is EPIC 28's. **EPIC 40 needs no migration of its own** — its column came with EPIC 39's. ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's.
+**Schema numbers, as they actually landed** (`AGENTS.md`). The claims made here on 2026-09-19 were overtaken by the order things merged, so this records the outcome rather than the plan: **`9.sqm` (schema v10) is EPIC 39's** — it merged first (#95) and carries `syncCursor`, `syncState` and EPIC 40's `appSettings.syncAutomatically` switch column; `10.sqm` (schema v11) is EPIC 26's (#103); `11.sqm` (schema v12) is EPIC 28's. **EPIC 40 needs no migration of its own** — its column came with EPIC 39's. ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's, **0022** is EPIC 41's. EPIC 41 takes **`11.sqm` (schema v12)** — one column on `collectionEntry` plus the co-watch tables. **It collides with EPIC 28 (#70), which claimed `11.sqm` first and has not merged**; the chain must stay contiguous, so whichever of the two merges second renumbers to `12.sqm` and regenerates its fixture. This is the collision the paragraph below describes, caught by rebasing rather than by a tool.
 
 `verifyMigrations` cannot see a collision between branches: each one is self-consistent and green on its own, and the clash only appears at merge. So the number a branch takes is whatever is free when it merges, not when it was written — check this line, not a plan, before adding a `.sqm`.
 
@@ -273,6 +273,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
 | 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
+| 11 | EPIC 41 Co-watch: a Shortlist of what two Companions can watch together (**blocked on EPIC 32**; needs ADR 0022, `11.sqm` — collides with EPIC 28, see the claims note) | #118 |
 | 12 | EPIC 33 Brand and store assets, hosted privacy policy | #76 |
 | 12 | EPIC 34 Android to Google Play | #77 |
 | 13 | EPIC 35 iOS to TestFlight and the App Store | #78 |
@@ -298,6 +299,24 @@ Filed as follow-ups rather than epics: desktop auto-update (#82, from EPIC 36) a
 - **EPIC 32 (#75).** Sync is built but unobtainable (every paywall is `HandRolledPaywall`). Turning it on needs account deletion, Sign in with Apple, a privacy rewrite, safe sign-out (the sync cursor is never reset) and a Supabase deploy pipeline.
 - **EPIC 33 (#76).** The Android launcher icon is the Android Studio template. No screenshots, feature graphic or fastlane. No hosted privacy-policy URL, which both stores require.
 - **EPIC 34 (#77).** `material3` alpha and `lifecycle` beta ship in production UI. No baseline profile. The release path has never run.
+
+## EPIC 41 — Co-watch (added 2026-09-21)
+
+**Blocked on EPIC 32 (#75).** Not a preference: until sync ships and someone can pay, there are no two entitled users to co-watch. EPIC 39's client and schema (#95) are a hard dependency and have landed — the design assumes the `server_seq` cursor, paged pull and `syncState.ownerAccountId`.
+
+Two accounts link by mutual consent and each publishes a **Watch Pool** — `NotStarted` entries by default, or a nominated `MediaList` — addressed to the other. Each device computes a **Shortlist** locally: a pure ranking function over data already in `collectionEntry` (both pinned → in both pools and neither started → in both pools → shorter runtime first). No scoring model; this app has no analytics to tune one, and adding them would itself reverse a stated principle (#29).
+
+The whole design falls out of four invariants, stated in **ADR 0022**: a Companion's data is **rendered, never applied** (nothing another user publishes writes your `WatchProgress`); **no co-owned state** (pins are per-person, so last-write-wins is never asked a question it cannot answer); **purpose-limited** (only the Pool crosses the wire, so unlinking means something); and **flat RLS policies only** (`auth.uid()` comparisons, no subquery, no `security definer` RPC — RLS is the only boundary and the anon key ships in the binary).
+
+Consequences worth knowing before touching it. Pool rows are **addressed** (`using (auth.uid() = user_id or auth.uid() = recipient_id) with check (auth.uid() = user_id)`) rather than shared, so N companions means N copies — chosen over a link-table subquery whose failure mode is a silent cross-user read. The invite code **carries the inviter's `user_id`** plus a nonce, because RLS cannot express "readable if you know the secret" without an RPC this project has never had. Companion data gets its own **`CompanionBackend`** seam beside `SyncBackend`; `SyncChangeSet` keeps meaning *the user's own change-log* and `SyncChangeSetShapeTest` should keep failing if anyone adds to it. A new `collectionEntry.revisitWillingness` column (**Revisit Willingness**, stored intent — deliberately not called a rewatch flag, since `Rewatch` is derived and never stored) is what makes already-seen titles reachable at all: a `WATCHED`/`FINISHED` title can never re-enter `WatchNextUseCase`, which filters `WATCHING`.
+
+**The Shortlist is not WatchNext.** `CLAUDE.md`'s "one implementation" rule still holds for *what do I watch next* — that question is about `WATCHING`. The Shortlist asks *what should two people start*, over `NOT_STARTED` and `WATCHED`, the two sets WatchNext excludes. Do not fold them together.
+
+Linking and unlinking live in Profile beside the sync row; the Shortlist is a section in Progress. No sixth bottom-bar tab, following Triage. Android, iOS and Desktop only — **web has no OAuth sign-in at all** (#46), an inherited gap rather than a new one. Both sides must be entitled; `EntitlementGate` inside `SyncEngine` stays the only check.
+
+Explicitly out of scope, each with an issue: web (#119, blocked on #46), group (N > 2) UI (#120), any push channel to freshen a Companion's Pool (#121 — only their device can publish, so staleness is labelled rather than solved), watch-provider signals in ranking (#122 — `WatchProviders` is fetched live and never persisted), and cross-ticking "we watched this together" (#123, excluded by the first invariant).
+
+**`docs/PRIVACY.md`, `docs/store/DATA_SAFETY.md` and `docs/store/LISTING.md` all become false** and are deliberately *not* amended yet — the feature does not exist, and amending them now would make them false in the other direction. They are amended in the same change that ships it, alongside the rewrite EPIC 32 already owes. The listing currently promises *"No social features — no feeds, no friends, no comments"* in words a store reviewer could quote back.
 
 ## Sequencing
 
@@ -339,6 +358,8 @@ runs standing in where they could. What that did and did not buy:
 work; this list is the map. Nothing should appear below without a number beside
 it — see `AGENTS.md` for why.
 
+- **Full-build traps found verifying EPIC 41** — **#131**: Kotlin 2.4's Wasm incremental compilation corrupts its own cache and fails an *arbitrary* module with `NoSuchElementException: Key ic#… is missing in the map`, naming a stdlib symbol — it moved through four untouched modules across five runs. `-Pkotlin.incremental.wasm=false -Pkotlin.incremental.js=false` makes the build pass first try, which is the evidence. It compounds #49: between them, the full-build check `AGENTS.md` asks for is unreliable. **#132**: `spotlessKotlin` fails with no violation text inside a parallel `build`, and passes standalone.
+- **Co-watch follow-ups** — raised by EPIC 41 (#118), all deliberately scoped out: **web** #119 (blocked on #46 — web has no OAuth sign-in, so no `auth.uid()` to publish a Watch Pool as); **groups larger than two** #120 (the domain models a set of participants, the UI ships pairwise; a 5-way intersection is usually empty and needs scoring rather than intersection); **a push channel** #121 (only a Companion's own device can publish their Pool — a structural ceiling, so staleness is labelled rather than solved; overlaps #86); **persisted watch providers** #122 (`WatchProviders` is fetched live and never stored, so "on a service you both have" needs a fan-out that does not exist); **cross-ticking** #123 (forbidden by ADR 0022's first invariant, and by RLS).
 - **Analytics + remote feature flags** — #29. `AnalyticsTracker` and `FeatureFlags` are seams in `:core:common` with no vendor behind them. Choosing one means a `wasm-js`-capable SDK, a consent flow, and a rewrite of `docs/PRIVACY.md`, which reverses a stated product principle — ADR-worthy on its own. Until then E19's two control schemes ship as a user preference and **cannot be compared empirically**.
 - **`:app:macrobenchmark` + baseline profile** — #30. Frame timing for the triage drag, deck cold start, commit latency. Blocked on an emulator in CI, which is why the perf tests we do have use deterministic operation-count budgets instead.
 - **Additional `MetadataProvider`s (TVmaze/Trakt)** — #31. Cross-source reconciliation via IMDb id. ADR 0001 and ADR 0006 built the seams; TMDB is still the only implementation, so neither has been exercised by a second source.

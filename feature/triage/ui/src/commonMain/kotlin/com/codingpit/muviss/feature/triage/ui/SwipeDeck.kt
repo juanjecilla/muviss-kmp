@@ -326,7 +326,11 @@ fun SwipeCard(
                     onDragCancel = { scope.launch { state.settle(cardId) } },
                 )
             }
-            .pointerInput(Unit) {
+            // Keyed the same as the drag detector above: unkeyed (`Unit`),
+            // this coroutine never restarted when the top card changed, so a
+            // tap kept calling the `onTap` captured for whichever card first
+            // composed here — the one just swiped away, not the new top card.
+            .pointerInput(scheme, available, cardId) {
                 detectTapGestures(onTap = { if (!state.busy) onTap() })
             }
             .fillMaxSize(),

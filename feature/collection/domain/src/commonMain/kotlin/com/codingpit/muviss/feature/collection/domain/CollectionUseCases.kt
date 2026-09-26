@@ -62,7 +62,7 @@ class SetNoteUseCase(private val repository: CollectionRepository) {
 
 /**
  * Groups the collection feature's per-show toggle/setter use cases
- * (favorite, mute, rating, note) so
+ * (favorite, mute, rating, note, and EPIC 41's two co-watch answers) so
  * [DefaultCollectionApi][com.codingpit.muviss.feature.collection.data.DefaultCollectionApi]'s
  * constructor doesn't grow one parameter per toggle — the same pattern
  * `feature/settings/domain`'s `SettingsActions` uses for that feature's
@@ -73,11 +73,21 @@ class CollectionToggles(
     private val toggleNotificationsMutedUseCase: ToggleNotificationsMutedUseCase,
     private val setRatingUseCase: SetRatingUseCase,
     private val setNoteUseCase: SetNoteUseCase,
+    private val repository: CollectionRepository,
 ) {
     suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = toggleFavoriteUseCase(mediaId, favorite)
     suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = toggleNotificationsMutedUseCase(mediaId, muted)
     suspend fun setRating(mediaId: MediaId, rating: Int?) = setRatingUseCase(mediaId, rating)
     suspend fun setNote(mediaId: MediaId, note: String?) = setNoteUseCase(mediaId, note)
+
+    /**
+     * EPIC 41 (ADR 0022). Straight through to the repository: unlike a rating
+     * there is nothing to validate, and unlike a note nothing to trim — the
+     * three states (yes / no / never asked) are the whole domain.
+     */
+    suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) = repository.setRevisitWillingness(mediaId, willing)
+
+    suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = repository.setCoWatchPinned(mediaId, pinned)
 }
 
 /**

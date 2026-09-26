@@ -55,23 +55,12 @@ class TriageDecisionMigrationTest {
         runBlocking {
             // Populate at v4, before triage's tables exist at all.
             val before = MuvissDatabase(driver)
-            before.collectionEntryQueries.upsert(
+            // Raw SQL, not the generated query: this database predates the
+            // current schema. See `seedLegacyCollectionEntry`.
+            driver.seedLegacyCollectionEntry(
                 mediaId = "tmdb:tv:1399",
-                mediaType = "tv",
-                title = "Game of Thrones",
-                posterUrl = null,
-                releaseYear = 2011,
-                productionStatus = "ENDED",
-                totalEpisodes = 73,
-                airedEpisodes = 73,
-                favorite = true,
-                genres = "Drama",
-                runtimeMinutes = 57,
                 addedAtEpochMs = 1_000,
                 updatedAtEpochMs = 1_000,
-                isDirty = false,
-                deleted = false,
-                notificationsMuted = false,
                 rating = 9,
                 note = "the early seasons",
             )

@@ -19,6 +19,8 @@ import com.codingpit.muviss.core.sync.SyncSessionExpiredException
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.SyncTable
 import com.codingpit.muviss.core.sync.TriageDecisionChange
+import com.codingpit.muviss.core.sync.companion.CompanionBackend
+import com.codingpit.muviss.core.sync.companion.SupabaseCompanionBackend
 import com.codingpit.muviss.core.sync.newPkcePair
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
@@ -48,12 +50,23 @@ internal class SupabaseSyncBackend(
     anonKey: String,
     private val sessionStore: SyncSessionStore,
     private val clock: AppClock,
-) : SyncBackend {
+) : SyncBackend,
+    SupabaseTokenSource {
 
     override val id: SyncBackendId = SyncBackendId.SUPABASE
 
     private val auth = SupabaseAuthClient(client, baseUrl, anonKey)
     private val postgrest = SupabasePostgrestClient(client, baseUrl, anonKey)
+
+    /**
+     * Co-watch's backend over this one's PostgREST client and tokens (EPIC 41).
+     *
+     * Built here rather than in the Koin module so both share a single
+     * [SupabasePostgrestClient] and therefore a single [HttpClient] and session:
+     * a second client would mean a second refresh path racing this one for the
+     * refresh token GoTrue rotates.
+     */
+    internal fun companionBackend(): CompanionBackend = SupabaseCompanionBackend(postgrest, this)
 
     private val sessionState = MutableStateFlow<SyncSession?>(null)
     private val restoreMutex = Mutex()
@@ -188,7 +201,7 @@ internal class SupabaseSyncBackend(
      * is safe because both callers are idempotent: PostgREST upserts
      * `merge-duplicates`, and a pull is a read.
      */
-    private suspend fun <T> withAccessToken(block: suspend (String) -> T): T {
+    override suspend fun <T> withAccessToken(block: suspend (String) -> T): T {
         val token = requireAccessToken()
         return try {
             block(token)

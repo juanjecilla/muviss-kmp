@@ -151,6 +151,8 @@ internal class TestDevice(
             notificationsMuted = false,
             rating = rating?.toLong(),
             note = note,
+            revisitWillingness = null,
+            coWatchPinned = false,
         )
     }
 

@@ -101,6 +101,10 @@ class SqlDelightCollectionRepository(
             notificationsMuted = existing?.notificationsMuted ?: false,
             rating = existing?.rating,
             note = existing?.note,
+            // Same category as rating/note: the user's own answers survive a
+            // title being removed and added back (EPIC 41, ADR 0022).
+            revisitWillingness = existing?.revisitWillingness,
+            coWatchPinned = existing?.coWatchPinned ?: false,
         )
         Unit
     }
@@ -154,6 +158,16 @@ class SqlDelightCollectionRepository(
         Unit
     }
 
+    override suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) = withContext(dispatchers.io) {
+        queries.setRevisitWillingness(willing = willing, now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
+    override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = withContext(dispatchers.io) {
+        queries.setCoWatchPinned(pinned = pinned, now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
     private fun toDomain(row: CollectionEntryRow, seenEpisodes: Int = 0): CollectionEntry = CollectionEntry(
         mediaId = MediaId.parse(row.mediaId),
         title = row.title,
@@ -170,6 +184,8 @@ class SqlDelightCollectionRepository(
         notificationsMuted = row.notificationsMuted,
         rating = row.rating?.toInt(),
         note = row.note,
+        revisitWillingness = row.revisitWillingness,
+        coWatchPinned = row.coWatchPinned,
     )
 }
 

@@ -42,7 +42,7 @@ val collectionDataModule: Module = module {
     factory { ToggleNotificationsMutedUseCase(get()) }
     factory { SetRatingUseCase(get()) }
     factory { SetNoteUseCase(get()) }
-    factory { CollectionToggles(get(), get(), get(), get()) }
+    factory { CollectionToggles(get(), get(), get(), get(), get()) }
     factory { RefreshCollectionSnapshotsUseCase(get(), get()) }
     // A `single`: the throttle is only useful if every Collection back-stack entry shares one.
     single { CollectionRefreshThrottle(get()) }
