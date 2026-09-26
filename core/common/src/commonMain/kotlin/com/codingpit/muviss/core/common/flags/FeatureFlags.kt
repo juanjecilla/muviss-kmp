@@ -26,6 +26,82 @@ enum class TriageControlScheme {
 }
 
 /**
+ * How long a Snooze waits before the deck raises the title again (EPIC 42,
+ * ADR 0023).
+ *
+ * [ASK_EACH_TIME] is not a duration. It means the app asks on every snooze
+ * instead of applying a stored one, and it is the only route to a freely
+ * chosen date — the presets exist so the common case costs one press.
+ */
+enum class SnoozePeriod {
+    ONE_WEEK,
+    ONE_MONTH,
+    THREE_MONTHS,
+    ASK_EACH_TIME,
+    ;
+
+    /**
+     * English copy, carried on the enum so the settings picker and the deck's
+     * own dialog cannot drift apart. Fixed text for the same reason
+     * `MetadataError.userMessage` is, and replaced wholesale by EPIC 31 (#74).
+     */
+    val label: String
+        get() = when (this) {
+            ONE_WEEK -> "1 week"
+            ONE_MONTH -> "1 month"
+            THREE_MONTHS -> "3 months"
+            ASK_EACH_TIME -> "Ask each time"
+        }
+
+    /** Days to add to today. Null for [ASK_EACH_TIME], which has no duration of its own. */
+    val days: Long?
+        get() = when (this) {
+            ONE_WEEK -> 7L
+            ONE_MONTH -> 30L
+            THREE_MONTHS -> 90L
+            ASK_EACH_TIME -> null
+        }
+
+    companion object {
+        val DEFAULT: SnoozePeriod = ONE_WEEK
+
+        /** Tolerates anything unrecognised in storage — a flag must never crash the app. */
+        fun fromStored(raw: String?): SnoozePeriod = entries.firstOrNull { it.name == raw } ?: DEFAULT
+    }
+}
+
+/**
+ * Where a Snooze that has come due re-enters the deck (EPIC 42, ADR 0023).
+ *
+ * [MIXED_IN] caps how many due titles any one batch may carry, so a long
+ * absence drains over several batches instead of burying discovery — the
+ * "tidied-up library resurfacing card by card" failure ADR 0010 exists to
+ * prevent. [FIRST] and [LAST] are for people who would rather clear them in
+ * one go, or never be interrupted by them.
+ */
+enum class SnoozePlacement {
+    MIXED_IN,
+    FIRST,
+    LAST,
+    ;
+
+    /** English copy; see [SnoozePeriod.label]. */
+    val label: String
+        get() = when (this) {
+            MIXED_IN -> "Mixed in"
+            FIRST -> "First"
+            LAST -> "Last"
+        }
+
+    companion object {
+        val DEFAULT: SnoozePlacement = MIXED_IN
+
+        /** Tolerates anything unrecognised in storage — a flag must never crash the app. */
+        fun fromStored(raw: String?): SnoozePlacement = entries.firstOrNull { it.name == raw } ?: DEFAULT
+    }
+}
+
+/**
  * Seam for runtime feature flags.
  *
  * The only implementation today reads the local `appSettings` row, so every
@@ -73,6 +149,16 @@ interface FeatureFlags {
      */
     val syncAutomatically: Flow<Boolean>
 
+    /**
+     * How long a Snooze waits before the deck raises the title again. A
+     * per-device preference and never synced: the Snoozes themselves are user
+     * data and cross devices, but how patient *this* device is does not.
+     */
+    val triageSnoozePeriod: Flow<SnoozePeriod>
+
+    /** Where a due Snooze re-enters the deck. Per device, like the period. */
+    val triageSnoozePlacement: Flow<SnoozePlacement>
+
     suspend fun setTriageControlScheme(scheme: TriageControlScheme)
 
     suspend fun setAnimationsEnabled(enabled: Boolean)
@@ -80,4 +166,8 @@ interface FeatureFlags {
     suspend fun setTriageDeckAnimations(enabled: Boolean)
 
     suspend fun setSyncAutomatically(enabled: Boolean)
+
+    suspend fun setTriageSnoozePeriod(period: SnoozePeriod)
+
+    suspend fun setTriageSnoozePlacement(placement: SnoozePlacement)
 }

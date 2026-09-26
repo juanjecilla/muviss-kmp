@@ -42,11 +42,13 @@ object ForYouSeeding {
      * [excludedIds] dropped.
      *
      * [excludedIds] is the library **plus** anything skipped during triage
-     * (ADR 0010): there is no point recommending what is already saved, and
-     * even less point suggesting something the user explicitly rejected.
-     * "For you" is the only discovery surface that filters on skips — search
-     * results and the popular carousels stay whole, because those have to
-     * return the catalogue, not a personalised view of it.
+     * (ADR 0010) **plus** anything snoozed (EPIC 42, ADR 0023): there is no
+     * point recommending what is already saved, even less point suggesting
+     * something the user explicitly rejected, and a title they have just asked
+     * to be reminded about later should not be pushed at them now.
+     * "For you" is the only discovery surface that filters any of these —
+     * search results and the popular carousels stay whole, because those have
+     * to return the catalogue, not a personalised view of it.
      */
     fun mergeAndExclude(recommendationsBySeed: List<List<MediaSummary>>, excludedIds: Set<MediaId>): List<MediaSummary> = recommendationsBySeed
         .flatten()

@@ -149,3 +149,30 @@ internal class FakeTriageDetailsSource(
             ?: Result.failure(IllegalStateException("no details for $mediaId"))
     }
 }
+
+/** An in-memory snooze log (EPIC 42, ADR 0023). */
+internal class FakeTriageSnoozeRepository : TriageSnoozeRepository {
+    val snoozes = MutableStateFlow<Map<MediaId, TriageSnooze>>(emptyMap())
+
+    /** Every id [unsnooze] was called for, so a test can prove a soft delete happened. */
+    val unsnoozed = mutableListOf<MediaId>()
+
+    override fun observeAll(): Flow<List<TriageSnooze>> = snoozes.map { all -> all.values.sortedBy { it.dueAtEpochDay } }
+
+    override fun observeSnoozedIds(): Flow<Set<MediaId>> = snoozes.map { it.keys }
+
+    override fun observeSnooze(mediaId: MediaId): Flow<TriageSnooze?> = snoozes.map { it[mediaId] }
+
+    override suspend fun snooze(snooze: TriageSnooze) {
+        snoozes.value = snoozes.value + (snooze.mediaId to snooze)
+    }
+
+    override suspend fun unsnooze(mediaId: MediaId) {
+        unsnoozed += mediaId
+        snoozes.value = snoozes.value - mediaId
+    }
+
+    override suspend fun due(today: Long): List<TriageSnooze> = snoozes.value.values
+        .filter { it.isDueBy(today) }
+        .sortedBy { it.dueAtEpochDay }
+}

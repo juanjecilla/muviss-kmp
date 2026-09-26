@@ -47,6 +47,9 @@ class SwipeDeckStateTest {
     private val cardB = movie("2").id
 
     private class Harness {
+        /** EPIC 42: long press snoozes; recorded so a slow drag start can be proved not to fire it. */
+        val longPressed = mutableListOf<MediaId>()
+
         lateinit var deck: SwipeDeckState
         lateinit var commit: (MediaId, TriageVerdict) -> Unit
         lateinit var enter: (MediaId, DragDirection) -> Unit
@@ -76,6 +79,7 @@ class SwipeDeckStateTest {
                 // exactly like TriageScreen's real `onTap = { onOpenDetail(top.id) }`,
                 // where `top` is a fixed local, not a re-readable mutable state.
                 onTap = { onTap(cardId) },
+                onLongPress = { harness.longPressed += cardId },
                 modifier = Modifier.testTag(CARD_TAG),
             ) { _, _ -> }
         }

@@ -8,15 +8,17 @@ import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckCursor
 import com.codingpit.muviss.feature.triage.domain.DeckFilter
 import com.codingpit.muviss.feature.triage.domain.LoadDeckGenresUseCase
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
-import com.codingpit.muviss.feature.triage.domain.ObserveTutorialSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageActions
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
+import com.codingpit.muviss.feature.triage.domain.TriageOnboarding
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -34,25 +36,37 @@ import kotlinx.coroutines.flow.update
 /** How many cards are drawn behind the top one. */
 const val BACKING_CARD_COUNT = 2
 
-/** A verdict the user can still take back, held only until the snackbar goes. */
-data class UndoableDecision(
-    val summary: MediaSummary,
-    val verdict: TriageVerdict,
-)
+/**
+ * Something the user can still take back, held only until the snackbar goes.
+ *
+ * Sealed rather than two fields on the state: only one snackbar exists, so
+ * only one thing can be undoable at a time, and a type that cannot represent
+ * "a decision and a snooze at once" is the cheapest way to keep that true.
+ */
+sealed interface UndoableAction {
+    val summary: MediaSummary
+
+    data class Decision(override val summary: MediaSummary, val verdict: TriageVerdict) : UndoableAction
+
+    /** A Snooze is not a verdict (ADR 0023), so it carries a due date instead of one. */
+    data class Snooze(override val summary: MediaSummary, val dueAtEpochDay: Long) : UndoableAction
+}
 
 /**
  * A card undo has just put back on top of the deck, so the screen can play its
  * exit animation backwards.
  *
  * [verdict] is what says *where* the card left from — the deck maps a verdict
- * to a direction and re-enters from there. [token] exists because neither the
- * id nor the verdict is enough to retrigger the effect: decide the same card
- * again and undo it again and both repeat, so a monotonic counter is what makes
- * the second undo a distinct event.
+ * to a direction and re-enters from there. It is **null for an undone Snooze**,
+ * which never flew anywhere: a Snooze is not a verdict and deliberately does
+ * not borrow the verdicts' motion, so the card simply reappears in place.
+ * [token] exists because neither the id nor the verdict is enough to retrigger
+ * the effect: decide the same card again and undo it again and both repeat, so
+ * a monotonic counter is what makes the second undo a distinct event.
  */
 data class RestoredCard(
     val id: MediaId,
-    val verdict: TriageVerdict,
+    val verdict: TriageVerdict?,
     val token: Long,
 )
 
@@ -74,11 +88,20 @@ data class TriageUiState(
     val tutorialVisible: Boolean = false,
     val exhausted: Boolean = false,
     val error: String? = null,
-    val undoable: UndoableDecision? = null,
+    val undoable: UndoableAction? = null,
     val failedCommit: FailedCommit? = null,
     val restored: RestoredCard? = null,
     /** The AND of the app-wide motion switch and triage's own — see [FeatureFlags]. */
     val deckAnimations: Boolean = true,
+    val snoozePeriod: SnoozePeriod = SnoozePeriod.DEFAULT,
+    val snoozePlacement: SnoozePlacement = SnoozePlacement.DEFAULT,
+    /**
+     * The card the "ask each time" sheet is open for, or null when it is shut.
+     * Only reachable under [SnoozePeriod.ASK_EACH_TIME].
+     */
+    val snoozeChoiceFor: MediaSummary? = null,
+    /** The one-time callout pointing at the snooze button. */
+    val snoozeHintVisible: Boolean = false,
 ) {
     val topCard: MediaSummary? get() = cards.firstOrNull()
 
@@ -117,7 +140,7 @@ class TriageViewModel(
     private val loadDeck: LoadDeckUseCase,
     private val loadGenres: LoadDeckGenresUseCase,
     private val actions: TriageActions,
-    observeTutorialSeen: ObserveTutorialSeenUseCase,
+    onboarding: TriageOnboarding,
     featureFlags: FeatureFlags,
     private val analytics: AnalyticsTracker,
 ) : ViewModel() {
@@ -146,11 +169,27 @@ class TriageViewModel(
             .onEach { enabled -> _state.update { it.copy(deckAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
+        featureFlags.triageSnoozePeriod
+            .onEach { period -> _state.update { it.copy(snoozePeriod = period) } }
+            .launchInReporting(viewModelScope)
+
+        featureFlags.triageSnoozePlacement
+            .onEach { placement -> _state.update { it.copy(snoozePlacement = placement) } }
+            .launchInReporting(viewModelScope)
+
         // Only the first emission matters: dismissing the tutorial must not
         // make it reappear, and re-opening it is an explicit user action.
-        observeTutorialSeen()
+        onboarding.tutorialSeen()
             .take(1)
             .onEach { seen -> _state.update { it.copy(tutorialVisible = !seen) } }
+            .launchInReporting(viewModelScope)
+
+        // Same first-emission rule, and a separate flag on purpose: every
+        // install that exists already has `triageTutorialSeen` true, so riding
+        // in that dialog would show this to nobody who has the app today.
+        onboarding.snoozeHintSeen()
+            .take(1)
+            .onEach { seen -> _state.update { it.copy(snoozeHintVisible = !seen) } }
             .launchInReporting(viewModelScope)
 
         analytics.track(TriageEvent.DeckOpened)
@@ -189,7 +228,7 @@ class TriageViewModel(
         _state.update {
             it.copy(
                 cards = it.cards.drop(1),
-                undoable = UndoableDecision(summary, verdict),
+                undoable = UndoableAction.Decision(summary, verdict),
                 failedCommit = null,
                 // Whatever undo last put back has now been decided again; a
                 // stale value here would re-enter the *next* card from the side
@@ -209,7 +248,7 @@ class TriageViewModel(
 
     fun onUndo() {
         val undoable = _state.value.undoable ?: return
-        analytics.track(TriageEvent.DecisionUndone(undoable.verdict))
+        if (undoable is UndoableAction.Decision) analytics.track(TriageEvent.DecisionUndone(undoable.verdict))
         _state.update {
             it.copy(
                 // Back to the front of the deck, exactly where it was.
@@ -217,11 +256,73 @@ class TriageViewModel(
                 undoable = null,
                 failedCommit = null,
                 exhausted = false,
-                restored = RestoredCard(undoable.summary.id, undoable.verdict, ++restoreToken),
+                restored = RestoredCard(
+                    id = undoable.summary.id,
+                    // Null for a Snooze: nothing flew out, so nothing flies back.
+                    verdict = (undoable as? UndoableAction.Decision)?.verdict,
+                    token = ++restoreToken,
+                ),
             )
         }
         shown -= undoable.summary.id
-        viewModelScope.launchReporting { actions.undo(undoable.summary.id, undoable.verdict) }
+        viewModelScope.launchReporting {
+            when (undoable) {
+                is UndoableAction.Decision -> actions.undo(undoable.summary.id, undoable.verdict)
+                is UndoableAction.Snooze -> actions.unsnooze(undoable.summary.id)
+            }
+        }
+    }
+
+    /**
+     * Postpones the top card.
+     *
+     * Under [SnoozePeriod.ASK_EACH_TIME] this opens the sheet instead of
+     * writing anything — the card stays put until a period is chosen, because
+     * a card that vanished before the user picked would leave them choosing a
+     * date for something they can no longer see.
+     */
+    fun onSnooze() {
+        val summary = _state.value.topCard ?: return
+        val due = actions.snooze.dueDateFor(_state.value.snoozePeriod)
+        if (due == null) {
+            _state.update { it.copy(snoozeChoiceFor = summary) }
+            return
+        }
+        commitSnooze(summary, due)
+    }
+
+    /**
+     * A period chosen in the sheet. Takes the period rather than a date so the
+     * clock stays out of the UI — the screen has no business knowing what day
+     * it is.
+     */
+    fun onSnoozePeriodChosen(period: SnoozePeriod) {
+        val summary = _state.value.snoozeChoiceFor ?: return
+        val due = actions.snooze.dueDateFor(period) ?: return
+        _state.update { it.copy(snoozeChoiceFor = null) }
+        commitSnooze(summary, due)
+    }
+
+    fun onSnoozeSheetDismissed() = _state.update { it.copy(snoozeChoiceFor = null) }
+
+    fun onSnoozeHintDismissed() {
+        _state.update { it.copy(snoozeHintVisible = false) }
+        viewModelScope.launchReporting { actions.setSnoozeHintSeen(true) }
+    }
+
+    private fun commitSnooze(summary: MediaSummary, dueAtEpochDay: Long) {
+        // The hint has served its purpose the moment the gesture is used once.
+        if (_state.value.snoozeHintVisible) onSnoozeHintDismissed()
+        _state.update {
+            it.copy(
+                cards = it.cards.filterNot { card -> card.id == summary.id },
+                undoable = UndoableAction.Snooze(summary, dueAtEpochDay),
+                failedCommit = null,
+                restored = null,
+            )
+        }
+        viewModelScope.launchReporting { actions.snooze(summary, dueAtEpochDay) }
+        refillIfRunningLow()
     }
 
     fun onUndoDismissed() = _state.update { it.copy(undoable = null) }
@@ -269,7 +370,7 @@ class TriageViewModel(
 
         loadJob = viewModelScope.launchReporting {
             val filter = _state.value.filter
-            loadDeck(filter, cursor, alreadyShown = shown).fold(
+            loadDeck(filter, cursor, alreadyShown = shown, placement = _state.value.snoozePlacement).fold(
                 onSuccess = { batch ->
                     cursor = batch.cursor
                     shown += batch.cards.map { it.id }

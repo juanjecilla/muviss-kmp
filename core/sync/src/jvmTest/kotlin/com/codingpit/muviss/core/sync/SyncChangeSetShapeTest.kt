@@ -30,7 +30,7 @@ class SyncChangeSetShapeTest {
     @Test
     fun `the change set covers exactly the user-owned tables`() {
         assertEquals(
-            listOf("collectionEntries", "episodeProgress", "mediaLists", "listEntries", "triageDecisions", "episodePlays"),
+            listOf("collectionEntries", "episodeProgress", "mediaLists", "listEntries", "triageDecisions", "triageSnoozes", "episodePlays"),
             SyncChangeSet.serializer().descriptor.elementNames.toList(),
             "adding a table to sync is a deliberate act — see ADR 0009's six touchpoints, and ADR 0015 for why the episode catalog is not one of them",
         )

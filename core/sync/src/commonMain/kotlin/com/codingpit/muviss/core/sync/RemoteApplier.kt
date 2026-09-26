@@ -48,6 +48,7 @@ internal class RemoteApplier(private val database: MuvissDatabase) {
         changes.mediaLists.forEach { applyMediaList(it) }
         changes.listEntries.forEach { applyListEntry(it) }
         changes.triageDecisions.forEach { applyTriageDecision(it) }
+        changes.triageSnoozes.forEach { applyTriageSnooze(it) }
         changes.episodePlays.forEach { applyEpisodePlay(it) }
 
         val touched = buildSet {
@@ -186,6 +187,24 @@ internal class RemoteApplier(private val database: MuvissDatabase) {
             posterUrl = change.posterUrl,
             decidedAtEpochMs = change.decidedAtEpochMs,
             resolved = change.resolved,
+            updatedAtEpochMs = change.updatedAtEpochMs,
+            isDirty = false,
+            deleted = change.deleted,
+        )
+    }
+
+    private suspend fun applyTriageSnooze(change: TriageSnoozeChange) {
+        val local = database.triageSnoozeQueries.selectById(change.mediaId).awaitAsOneOrNull()
+        if (local != null && !remoteWins(local.updatedAtEpochMs, local.isDirty, change.updatedAtEpochMs)) return
+        database.triageSnoozeQueries.upsert(
+            mediaId = change.mediaId,
+            mediaType = change.mediaType,
+            title = change.title,
+            year = change.year,
+            posterUrl = change.posterUrl,
+            overview = change.overview,
+            snoozedAtEpochMs = change.snoozedAtEpochMs,
+            dueAtEpochDay = change.dueAtEpochDay,
             updatedAtEpochMs = change.updatedAtEpochMs,
             isDirty = false,
             deleted = change.deleted,

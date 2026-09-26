@@ -4,6 +4,8 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.analytics.AnalyticsEvent
 import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
@@ -17,16 +19,24 @@ import com.codingpit.muviss.feature.triage.domain.DeckLoader
 import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckGenresUseCase
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
+import com.codingpit.muviss.feature.triage.domain.ObserveSnoozeHintSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.ObserveTutorialSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.RetryUnresolvedUseCase
+import com.codingpit.muviss.feature.triage.domain.SetSnoozeHintSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.SetTutorialSeenUseCase
+import com.codingpit.muviss.feature.triage.domain.SnoozeActions
+import com.codingpit.muviss.feature.triage.domain.SnoozeUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageActions
 import com.codingpit.muviss.feature.triage.domain.TriageDecision
 import com.codingpit.muviss.feature.triage.domain.TriageDecisionRepository
 import com.codingpit.muviss.feature.triage.domain.TriageDetailsSource
+import com.codingpit.muviss.feature.triage.domain.TriageOnboarding
 import com.codingpit.muviss.feature.triage.domain.TriagePreferences
+import com.codingpit.muviss.feature.triage.domain.TriageSnooze
+import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
 import com.codingpit.muviss.feature.triage.domain.UndoDecisionUseCase
+import com.codingpit.muviss.feature.triage.domain.UnsnoozeUseCase
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
@@ -82,6 +92,8 @@ internal class FakeFeatureFlags(
     scheme: TriageControlScheme = TriageControlScheme.FOUR_WAY,
     animations: Boolean = true,
     deckAnimations: Boolean = true,
+    snoozePeriodInitial: SnoozePeriod = SnoozePeriod.DEFAULT,
+    snoozePlacementInitial: SnoozePlacement = SnoozePlacement.DEFAULT,
 ) : FeatureFlags {
     private val state = MutableStateFlow(scheme)
 
@@ -94,6 +106,20 @@ internal class FakeFeatureFlags(
     override val triageDeckAnimations: Flow<Boolean> = deck
     private val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
+
+    /** Settable directly, like the motion flags, so a deck test can pick a period without suspending. */
+    val snoozePeriod = MutableStateFlow(snoozePeriodInitial)
+    val snoozePlacement = MutableStateFlow(snoozePlacementInitial)
+    override val triageSnoozePeriod: Flow<SnoozePeriod> = snoozePeriod
+    override val triageSnoozePlacement: Flow<SnoozePlacement> = snoozePlacement
+
+    override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) {
+        snoozePeriod.value = period
+    }
+
+    override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) {
+        snoozePlacement.value = placement
+    }
 
     override suspend fun setSyncAutomatically(enabled: Boolean) {
         autoSync.value = enabled
@@ -112,14 +138,44 @@ internal class FakeFeatureFlags(
     }
 }
 
-internal class FakeTriagePreferences(seen: Boolean = true) : TriagePreferences {
+internal class FakeTriagePreferences(seen: Boolean = true, snoozeHintSeen: Boolean = true) : TriagePreferences {
     val tutorialSeen = MutableStateFlow(seen)
+    val snoozeHint = MutableStateFlow(snoozeHintSeen)
 
     override fun observeTutorialSeen(): Flow<Boolean> = tutorialSeen
 
     override suspend fun setTutorialSeen(seen: Boolean) {
         tutorialSeen.value = seen
     }
+
+    override fun observeSnoozeHintSeen(): Flow<Boolean> = snoozeHint
+
+    override suspend fun setSnoozeHintSeen(seen: Boolean) {
+        snoozeHint.value = seen
+    }
+}
+
+/** An in-memory snooze log, mirroring [FakeTriageDecisionRepository]'s shape. */
+internal class FakeTriageSnoozeRepository : TriageSnoozeRepository {
+    val snoozes = MutableStateFlow<Map<MediaId, TriageSnooze>>(emptyMap())
+
+    override fun observeAll(): Flow<List<TriageSnooze>> = snoozes.map { all -> all.values.sortedBy { it.dueAtEpochDay } }
+
+    override fun observeSnoozedIds(): Flow<Set<MediaId>> = snoozes.map { it.keys }
+
+    override fun observeSnooze(mediaId: MediaId): Flow<TriageSnooze?> = snoozes.map { it[mediaId] }
+
+    override suspend fun snooze(snooze: TriageSnooze) {
+        snoozes.value = snoozes.value + (snooze.mediaId to snooze)
+    }
+
+    override suspend fun unsnooze(mediaId: MediaId) {
+        snoozes.value = snoozes.value - mediaId
+    }
+
+    override suspend fun due(today: Long): List<TriageSnooze> = snoozes.value.values
+        .filter { it.isDueBy(today) }
+        .sortedBy { it.dueAtEpochDay }
 }
 
 internal class FakeTriageDecisionRepository : TriageDecisionRepository {
@@ -270,19 +326,26 @@ internal class TriageHarness(
     val analytics = RecordingAnalytics()
     val preferences = FakeTriagePreferences(tutorialSeen)
     val flags = FakeFeatureFlags(scheme, deckAnimations = deckAnimations)
+    val snoozes = FakeTriageSnoozeRepository()
+    private val clock = FakeClock()
 
-    private val record = RecordDecisionUseCase(repository, collection, progress, details, FakeClock())
+    private val record = RecordDecisionUseCase(repository, collection, progress, details, clock)
 
     fun viewModel() = TriageViewModel(
-        LoadDeckUseCase(DeckLoader(source), repository, collection),
+        LoadDeckUseCase(DeckLoader(source), repository, snoozes, collection, clock),
         LoadDeckGenresUseCase(source),
         TriageActions(
             record = record,
             undo = UndoDecisionUseCase(repository, collection, progress),
             setTutorialSeen = SetTutorialSeenUseCase(preferences),
             retryUnresolved = RetryUnresolvedUseCase(repository, record),
+            snoozing = SnoozeActions(
+                snooze = SnoozeUseCase(snoozes, clock),
+                unsnooze = UnsnoozeUseCase(snoozes),
+                setSnoozeHintSeen = SetSnoozeHintSeenUseCase(preferences),
+            ),
         ),
-        ObserveTutorialSeenUseCase(preferences),
+        TriageOnboarding(ObserveTutorialSeenUseCase(preferences), ObserveSnoozeHintSeenUseCase(preferences)),
         flags,
         analytics,
     )

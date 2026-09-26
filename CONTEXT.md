@@ -70,7 +70,7 @@ Whether the user currently holds the paid feature. Distinct from whether the bui
 _Avoid_: subscription, purchase, licence (those are how an Entitlement is acquired, and vendors behind that seam); premium, pro (those name a tier this app does not have).
 
 **Triage**:
-Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on.
+Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on, plus Snoozed Titles that have come due.
 _Avoid_: swipe, deck, card (those are UI mechanics, not domain).
 
 **TriageDecision**:
@@ -79,7 +79,16 @@ _Avoid_: dismissal, rejection (Skip is reversible); triage state (a decision is 
 
 **TriageVerdict**:
 The four outcomes of triaging one MediaItem. Skip — not for me. Later — collected, not started. Watching — collected, started (TV only; a movie is never in progress). CaughtUp — collected, every aired episode seen. The last three write a CollectionEntry and, for Watching and CaughtUp, real WatchProgress ticks; none of them stores a WatchStatus, which stays derived (ADR 0005). CaughtUp is one verdict but presents as two words: a film has a single element, so its button reads **Watched** — the WatchStatus its ticks derive — while a show reads **Caught up**. The distinction is wording only; the persisted verdict and the sync payload are identical.
+A Snooze is not among them: it is the refusal to reach one.
 _Avoid_: watchlist (that is a CollectionEntry with NotStarted status), seen (that is an episode tick).
+
+**Snooze**:
+Postponing the decision on one MediaItem, with a date it should be raised again. The absence of a TriageVerdict rather than one of them: Triage's promise is never to ask twice about something already ruled on, and a Snooze is the user saying they have not ruled. Recording any verdict retires it, so a MediaItem never holds both.
+_Avoid_: skip (that is the "not for me" verdict), later (that is a CollectionEntry with NotStarted status), defer, dismiss (TriageDecision already reserves that word).
+
+**Snoozed Title**:
+A MediaItem with a Snooze not yet due. Carries the date it comes back and a snapshot of how it looked when snoozed, so it can be shown again without asking the provider. It becomes deck-eligible on its due date, and a Snooze is never the reason a MediaItem is kept out of the deck twice.
+_Avoid_: reminder (nothing notifies); queue (the deck is not a list the user owns); postponed item.
 
 ### Co-watch
 

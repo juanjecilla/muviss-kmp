@@ -19,6 +19,7 @@ import com.codingpit.muviss.core.sync.SyncSessionExpiredException
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.SyncTable
 import com.codingpit.muviss.core.sync.TriageDecisionChange
+import com.codingpit.muviss.core.sync.TriageSnoozeChange
 import com.codingpit.muviss.core.sync.companion.CompanionBackend
 import com.codingpit.muviss.core.sync.companion.SupabaseCompanionBackend
 import com.codingpit.muviss.core.sync.newPkcePair
@@ -125,6 +126,7 @@ internal class SupabaseSyncBackend(
         pushRows(TABLE_MEDIA_LIST, changes.mediaLists, MediaListChange.serializer())
         pushRows(TABLE_LIST_ENTRY, changes.listEntries, ListEntryChange.serializer())
         pushRows(TABLE_TRIAGE_DECISION, changes.triageDecisions, TriageDecisionChange.serializer())
+        pushRows(TABLE_TRIAGE_SNOOZE, changes.triageSnoozes, TriageSnoozeChange.serializer())
         pushRows(TABLE_EPISODE_PLAY, changes.episodePlays, EpisodePlayChange.serializer())
     }
 
@@ -143,6 +145,7 @@ internal class SupabaseSyncBackend(
                 SyncTable.MEDIA_LIST -> drain(RemoteTable(table, TABLE_MEDIA_LIST, MediaListChange.serializer()) { SyncChangeSet(mediaLists = it) }, start, onPage)
                 SyncTable.LIST_ENTRY -> drain(RemoteTable(table, TABLE_LIST_ENTRY, ListEntryChange.serializer()) { SyncChangeSet(listEntries = it) }, start, onPage)
                 SyncTable.TRIAGE_DECISION -> drain(RemoteTable(table, TABLE_TRIAGE_DECISION, TriageDecisionChange.serializer()) { SyncChangeSet(triageDecisions = it) }, start, onPage)
+                SyncTable.TRIAGE_SNOOZE -> drain(RemoteTable(table, TABLE_TRIAGE_SNOOZE, TriageSnoozeChange.serializer()) { SyncChangeSet(triageSnoozes = it) }, start, onPage)
                 SyncTable.EPISODE_PLAY -> drain(RemoteTable(table, TABLE_EPISODE_PLAY, EpisodePlayChange.serializer()) { SyncChangeSet(episodePlays = it) }, start, onPage)
             }
         }
@@ -286,6 +289,7 @@ internal class SupabaseSyncBackend(
         const val TABLE_MEDIA_LIST = "media_list"
         const val TABLE_LIST_ENTRY = "list_entry"
         const val TABLE_TRIAGE_DECISION = "triage_decision"
+        const val TABLE_TRIAGE_SNOOZE = "triage_snooze"
         const val TABLE_EPISODE_PLAY = "episode_play"
         const val MILLIS_PER_SECOND = 1000L
 

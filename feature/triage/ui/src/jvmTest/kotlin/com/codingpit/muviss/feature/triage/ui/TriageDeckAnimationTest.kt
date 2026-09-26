@@ -64,7 +64,7 @@ class TriageDeckAnimationTest {
 
     private fun ComposeUiTest.showDeck(harness: TriageHarness): TriageViewModel {
         val viewModel = harness.viewModel()
-        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = {}) } }
+        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {}) } }
         waitForIdle()
         return viewModel
     }

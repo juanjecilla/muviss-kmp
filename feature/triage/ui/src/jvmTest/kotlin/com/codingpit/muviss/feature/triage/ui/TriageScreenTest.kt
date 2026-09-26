@@ -63,7 +63,7 @@ class TriageScreenTest {
         val viewModel = harness.viewModel()
         setContent {
             MuvissTheme {
-                TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = { opened += it })
+                TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = { opened += it })
             }
         }
         waitForIdle()
@@ -116,7 +116,7 @@ class TriageScreenTest {
         val harness = TriageHarness(tv = listOf(show("1"), showA), scheme = TriageControlScheme.FOUR_WAY)
         val first = show("1")
         val viewModel = harness.viewModel()
-        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = { opened += it }) } }
+        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = { opened += it }) } }
         waitForIdle()
 
         onNodeWithTag(TRIAGE_CARD_TAG).performTouchInput {
@@ -134,7 +134,7 @@ class TriageScreenTest {
         val first = show("1")
         val harness = TriageHarness(tv = listOf(first, showA), scheme = TriageControlScheme.THREE_WAY)
         val viewModel = harness.viewModel()
-        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenDetail = { opened += it }) } }
+        setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = { opened += it }) } }
         waitForIdle()
 
         onNodeWithTag(TRIAGE_CARD_TAG).performTouchInput {

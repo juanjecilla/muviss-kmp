@@ -1,0 +1,116 @@
+-- One row per MediaItem the user has postponed during triage (EPIC 42,
+-- ADR 0023). A Snooze is the *absence* of a TriageVerdict, not one of them:
+-- `triageDecision` records what the user decided so the deck never asks
+-- twice, and this table records that they declined to decide and when they
+-- want to be asked again. The two never describe the same title at once.
+--
+-- Deliberately a separate table rather than a fifth `triageDecision.verdict`
+-- value. An unknown verdict makes `TriageVerdict.fromStored` return null, so
+-- `SqlDelightTriageDecisionRepository` drops the row from every read while
+-- `selectDecidedIds` still counts it — an older build or a peer device would
+-- exclude the title from its deck permanently with no screen able to show or
+-- undo it. A table an old build does not know about is simply not pulled.
+--
+-- Carries a snapshot of the card (`title`/`year`/`posterUrl`/`overview`)
+-- rather than re-fetching on the due date. `MetadataProvider` has no
+-- `summary(id)`; only `details(id)`, which for a show costs
+-- 1 + ceil(seasons / 20) requests and deliberately bypasses `HttpCache`, so
+-- rehydrating a due batch would be the most expensive read in the app. Same
+-- reasoning as `collectionEntry`'s snapshot. The cost is that `overview` is
+-- frozen in whatever TMDB language was active when the title was snoozed.
+--
+-- `dueAtEpochDay` is an epoch DAY, not a timestamp — it is compared against
+-- the same `today` that `markAllAiredSeen` already takes, so "comes back on
+-- the 3rd" means the whole of the 3rd in the device's own reckoning.
+--
+-- Sync columns (updatedAtEpochMs / isDirty / deleted) per ADR 0002; pushed
+-- and pulled like any other user-owned table (ADR 0009). Deletes are SOFT,
+-- like `episodePlay` (ADR 0013): last-write-wins cannot express a hard
+-- delete, so every read below filters `deleted = 0` and an unsnooze that was
+-- physically removed would just be pushed back by the other device.
+CREATE TABLE triageSnooze (
+    mediaId TEXT NOT NULL PRIMARY KEY,
+    mediaType TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    posterUrl TEXT,
+    overview TEXT,
+    snoozedAtEpochMs INTEGER NOT NULL,
+    dueAtEpochDay INTEGER NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+);
+
+-- Every deck refill asks "what is due today?", so the due date carries the
+-- read that runs most often.
+CREATE INDEX triageSnooze_due ON triageSnooze(dueAtEpochDay);
+
+-- The "Snoozed" screen: soonest to come back first, so the top of the list is
+-- what the user will see again next.
+selectAll:
+SELECT *
+FROM triageSnooze
+WHERE deleted = 0
+ORDER BY dueAtEpochDay ASC, snoozedAtEpochMs ASC;
+
+-- The deck's due source. Oldest-due first, so a title that has been waiting
+-- longest is the one that comes back first when the batch is capped.
+selectDue:
+SELECT *
+FROM triageSnooze
+WHERE deleted = 0 AND dueAtEpochDay <= :today
+ORDER BY dueAtEpochDay ASC, snoozedAtEpochMs ASC;
+
+-- Does not filter `deleted` — callers decide (mirrors triageDecision.selectById).
+selectById:
+SELECT *
+FROM triageSnooze
+WHERE mediaId = :mediaId;
+
+-- Hidden from Discover's "For you" while pending, and excluded from the deck
+-- until due. One query, no per-row work, whatever the size.
+selectSnoozedIds:
+SELECT mediaId
+FROM triageSnooze
+WHERE deleted = 0;
+
+-- Re-snoozing a title overwrites its due date in place, and clears any
+-- tombstone so an unsnoozed title can be snoozed again.
+upsert:
+INSERT OR REPLACE INTO triageSnooze(
+    mediaId, mediaType, title, year, posterUrl, overview,
+    snoozedAtEpochMs, dueAtEpochDay, updatedAtEpochMs, isDirty, deleted
+)
+VALUES (
+    :mediaId, :mediaType, :title, :year, :posterUrl, :overview,
+    :snoozedAtEpochMs, :dueAtEpochDay, :updatedAtEpochMs, :isDirty, :deleted
+);
+
+-- Unsnoozing (undo, the Snoozed screen, the Detail banner) and the deck
+-- dropping a due title that has since been decided or collected. Soft, so
+-- the tombstone propagates instead of the other device pushing the row back.
+softDelete:
+UPDATE triageSnooze
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId;
+
+selectDirty:
+SELECT *
+FROM triageSnooze
+WHERE isDirty = 1;
+
+-- Run by SyncEngine after a row has been successfully pushed. Conditional on
+-- the stamp the push carried, so an edit made mid-push stays dirty.
+clearDirty:
+UPDATE triageSnooze
+SET isDirty = 0
+WHERE mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
+
+-- First sync for an account, and "resync everything" (EPIC 39, ADR 0020).
+markAllDirty:
+UPDATE triageSnooze SET isDirty = 1;
+
+-- Account switch, "discard local data" (EPIC 39).
+deleteAll:
+DELETE FROM triageSnooze;

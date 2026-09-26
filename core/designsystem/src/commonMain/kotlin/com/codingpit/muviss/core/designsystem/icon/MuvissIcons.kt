@@ -75,6 +75,11 @@ object MuvissIcons {
     val CaughtUp: ImageVector get() = stroked("CaughtUp", "M3 13l4 4L15 7", "M13 15l2 2L21 7")
     val Undo: ImageVector get() = stroked("Undo", "M4 9h11a5 5 0 0 1 0 10h-6", "M4 9l4-4M4 9l4 4")
 
+    // Snooze (EPIC 42, ADR 0023) — a clock with its hands, deliberately NOT a
+    // verdict glyph: it sits on the card rather than in the verdict row, and
+    // the difference has to read at a glance. Matching Material's "schedule".
+    val Snooze: ImageVector get() = stroked("Snooze", "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18", "M12 7v5.5l3.5 2")
+
     // Data / sync
     val Sync: ImageVector get() = stroked("Sync", "M20 12a8 8 0 1 0 -3 6.2", "M20 12v-4M20 12h-4")
     val Import: ImageVector get() = stroked("Import", "M12 4v11M6 9.5l6 5.5 6-5.5", "M4 20h16")

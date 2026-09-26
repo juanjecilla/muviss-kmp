@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 
 /**
- * "Has the tutorial been shown here?" — a per-device fact, so it lives on the
+ * "Has the onboarding been shown here?" — a per-device fact, so it lives on the
  * singleton `appSettings` row alongside theme and locale, and is excluded from
  * sync for the same reason `notificationsMuted` is (ADR 0009).
  *
@@ -38,6 +38,21 @@ class AppSettingsTriagePreferences(
     override suspend fun setTutorialSeen(seen: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageTutorialSeen(seen)
+        Unit
+    }
+
+    override fun observeSnoozeHintSeen(): Flow<Boolean> = queries.selectSettings()
+        .asFlow()
+        .mapToOneOrNull(dispatchers.io)
+        .onStart { ensureRow() }
+        // False when the row is missing, so a read that loses a race with
+        // `ensureRow` shows the hint again rather than swallowing it — the
+        // failure that matters here is never showing it at all.
+        .map { row -> row?.triageSnoozeHintSeen ?: false }
+
+    override suspend fun setSnoozeHintSeen(seen: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateTriageSnoozeHintSeen(seen)
         Unit
     }
 

@@ -7,6 +7,8 @@ import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
@@ -30,6 +32,8 @@ data class SettingsUiState(
     val exportError: String? = null,
     /** Which drag scheme the triage deck uses (ADR 0010) — a per-device input preference, not a library setting. */
     val triageControlScheme: TriageControlScheme = TriageControlScheme.DEFAULT,
+    val snoozePeriod: SnoozePeriod = SnoozePeriod.DEFAULT,
+    val snoozePlacement: SnoozePlacement = SnoozePlacement.DEFAULT,
     /** The app-wide motion switch. While it is off every per-feature motion row below is inert. */
     val animationsEnabled: Boolean = true,
     val triageDeckAnimations: Boolean = true,
@@ -53,6 +57,14 @@ class SettingsViewModel(
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
 
     init {
+        featureFlags.triageSnoozePeriod
+            .onEach { period -> _state.update { it.copy(snoozePeriod = period) } }
+            .launchInReporting(viewModelScope)
+
+        featureFlags.triageSnoozePlacement
+            .onEach { placement -> _state.update { it.copy(snoozePlacement = placement) } }
+            .launchInReporting(viewModelScope)
+
         featureFlags.triageControlScheme
             .onEach { scheme -> _state.update { it.copy(triageControlScheme = scheme) } }
             .launchInReporting(viewModelScope)
@@ -73,6 +85,14 @@ class SettingsViewModel(
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
             .launchInReporting(viewModelScope)
+    }
+
+    fun onSnoozePeriodSelected(period: SnoozePeriod) {
+        viewModelScope.launchReporting { featureFlags.setTriageSnoozePeriod(period) }
+    }
+
+    fun onSnoozePlacementSelected(placement: SnoozePlacement) {
+        viewModelScope.launchReporting { featureFlags.setTriageSnoozePlacement(placement) }
     }
 
     fun onTriageControlSchemeSelected(scheme: TriageControlScheme) {

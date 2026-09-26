@@ -255,7 +255,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 
 **Decisions (2026-09-19).** All five targets ship (Play, App Store, signed DMG/MSI/DEB, web). The repo stays private until ready, then goes public as a release step. Sync ships as a **paid** feature sold through **RevenueCat**; that makes accounts real and drags in account deletion, Sign in with Apple, a privacy rewrite and a Supabase deploy pipeline (EPIC 32). Only a Play Console account exists today.
 
-**Schema numbers, as they actually landed** (`AGENTS.md`). The claims made here on 2026-09-19 were overtaken by the order things merged, so this records the outcome rather than the plan: **`9.sqm` (schema v10) is EPIC 39's** — it merged first (#95) and carries `syncCursor`, `syncState` and EPIC 40's `appSettings.syncAutomatically` switch column; `10.sqm` (schema v11) is EPIC 26's (#103); `11.sqm` (schema v12) is EPIC 28's. **EPIC 40 needs no migration of its own** — its column came with EPIC 39's. ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's, **0022** is EPIC 41's. EPIC 41 takes **`11.sqm` (schema v12)** — one column on `collectionEntry` plus the co-watch tables. **It collides with EPIC 28 (#70), which claimed `11.sqm` first and has not merged**; the chain must stay contiguous, so whichever of the two merges second renumbers to `12.sqm` and regenerates its fixture. This is the collision the paragraph below describes, caught by rebasing rather than by a tool.
+**Schema numbers, as they actually landed** (`AGENTS.md`). The claims made here on 2026-09-19 were overtaken by the order things merged, so this records the outcome rather than the plan: **`9.sqm` (schema v10) is EPIC 39's** — it merged first (#95) and carries `syncCursor`, `syncState` and EPIC 40's `appSettings.syncAutomatically` switch column; `10.sqm` (schema v11) is EPIC 26's (#103); `11.sqm` (schema v12) is EPIC 28's. **EPIC 40 needs no migration of its own** — its column came with EPIC 39's. ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's, **0022** is EPIC 41's. EPIC 41 takes **`11.sqm` (schema v12)** — one column on `collectionEntry` plus the co-watch tables. **It collides with EPIC 28 (#70), which claimed `11.sqm` first and has not merged**; the chain must stay contiguous, so whichever of the two merges second renumbers to `12.sqm` and regenerates its fixture. This is the collision the paragraph below describes, caught by rebasing rather than by a tool. **Outcome: EPIC 41 merged first (#134) and kept `11.sqm` (schema v12); EPIC 42 then took `12.sqm` (schema v13), so EPIC 28 must renumber to `13.sqm`.** ADR **0023** is EPIC 42's.
 
 `verifyMigrations` cannot see a collision between branches: each one is self-consistent and green on its own, and the clash only appears at merge. So the number a branch takes is whatever is free when it merges, not when it was written — check this line, not a plan, before adding a `.sqm`.
 
@@ -274,6 +274,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
 | 11 | EPIC 41 Co-watch: a Shortlist of what two Companions can watch together (**blocked on EPIC 32**; needs ADR 0022, `11.sqm` — collides with EPIC 28, see the claims note) | #118 |
+| 11 | EPIC 42 Snooze: postponing a triage decision (ADR 0023, `12.sqm`) | #135 |
 | 12 | EPIC 33 Brand and store assets, hosted privacy policy | #76 |
 | 12 | EPIC 34 Android to Google Play | #77 |
 | 13 | EPIC 35 iOS to TestFlight and the App Store | #78 |
@@ -317,6 +318,18 @@ Linking and unlinking live in Profile beside the sync row; the Shortlist is a se
 Explicitly out of scope, each with an issue: web (#119, blocked on #46), group (N > 2) UI (#120), any push channel to freshen a Companion's Pool (#121 — only their device can publish, so staleness is labelled rather than solved), watch-provider signals in ranking (#122 — `WatchProviders` is fetched live and never persisted), and cross-ticking "we watched this together" (#123, excluded by the first invariant).
 
 **`docs/PRIVACY.md`, `docs/store/DATA_SAFETY.md` and `docs/store/LISTING.md` all become false** and are deliberately *not* amended yet — the feature does not exist, and amending them now would make them false in the other direction. They are amended in the same change that ships it, alongside the rewrite EPIC 32 already owes. The listing currently promises *"No social features — no feeds, no friends, no comments"* in words a store reviewer could quote back.
+
+## EPIC 42 — Snooze: postponing a triage decision — wave 11 — issue #135
+
+**ADR 0023**; `12.sqm` (schema v13). Started as "give a film a fourth action, *don't decide now*" and became something else once `CONTEXT.md` was read: a `TriageDecision` is a log of what the user **decided**, and exists so triage never asks twice. Declining to decide is not a fifth verdict — it is the absence of one.
+
+So **Snooze** is its own concept: a `triageSnooze` table with a due date and a card snapshot, synced, soft-deleted. Reached from a button on the card (all six targets), with long press and `S` as accelerators. A settings PickerRow chooses how long it waits (1 week default / 1 month / 3 months / ask each time) and a second chooses where due titles re-enter the deck (mixed in by default, capped at two per batch — first or last on request). Undo, a "Snoozed" screen and a Detail banner are all there, because ADR 0010 already refused to leave that gap for skips.
+
+Making it a fifth `TriageVerdict` would have been actively dangerous, not merely untidy: `fromStored` returns null for an unknown verdict, so the row vanishes from every read while `selectDecidedIds` still counts it — an older build or peer device would exclude the title from its deck forever with nothing able to show or undo it. See ADR 0023.
+
+**Not done, deliberately**: a freely chosen date under "ask each time" (Material3's `DatePicker` is unverified on `js`/`wasmJs` and there is no `kotlinx-datetime`) — #137. Snoozes are absent from the data export — noted on EPIC 29 (#72). The deck header now carries three text actions and its title wraps on a phone — #138.
+
+**Not verified by any test**: the live Supabase `triage_snooze` table and its RLS (same gap as #88/#129), and the gesture on a real touch device — `runComposeUiTest` renders the desktop path.
 
 ## Sequencing
 

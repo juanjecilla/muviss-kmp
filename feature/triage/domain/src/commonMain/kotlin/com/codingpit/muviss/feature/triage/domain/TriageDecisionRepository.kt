@@ -25,9 +25,21 @@ interface TriageDecisionRepository {
     suspend fun unresolved(): List<TriageDecision>
 }
 
-/** Whether the triage tutorial has been shown on this device. Backed by `appSettings`. */
+/** One-shot onboarding state for the deck, per device. Backed by `appSettings`. */
 interface TriagePreferences {
     fun observeTutorialSeen(): Flow<Boolean>
 
     suspend fun setTutorialSeen(seen: Boolean)
+
+    /**
+     * Whether the snooze hint has been shown (EPIC 42).
+     *
+     * A second flag rather than a reuse of [observeTutorialSeen], because that
+     * one is already true on every install that exists — folding the snooze
+     * hint into the first-run dialog would show it to nobody who has the app
+     * today, which is precisely the audience that has never seen the gesture.
+     */
+    fun observeSnoozeHintSeen(): Flow<Boolean>
+
+    suspend fun setSnoozeHintSeen(seen: Boolean)
 }

@@ -1,0 +1,39 @@
+-- EPIC 42 (snooze, ADR 0023, #135). The filename is the version this migrates
+-- FROM, not to: 12.sqm takes a v12 database to v13. It follows EPIC 41's
+-- `11.sqm`, which took 11 when it merged.
+--
+-- NUMBERING: EPIC 28 (#70) also claimed `11.sqm` and has not merged. With
+-- EPIC 41 landed and this file taking 12, EPIC 28 renumbers to 13 and
+-- regenerates its fixture. `verifyMigrations` cannot see that collision —
+-- each branch is self-consistent and green alone, and the clash only appears
+-- at merge — so this note is the warning, per `docs/EPICS.md`.
+--
+-- Two halves, like `4.sqm`: the new table, then the preferences that steer it.
+--
+-- `triageSnooze` is a new table rather than a fifth `triageDecision.verdict`
+-- value, and ADR 0023 is about exactly that choice. Nothing is backfilled and
+-- nothing can be: before this migration the app had no way to postpone a
+-- decision, so there is nothing to carry forward and the table is correctly
+-- empty on every upgraded install.
+CREATE TABLE triageSnooze (
+    mediaId TEXT NOT NULL PRIMARY KEY,
+    mediaType TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    posterUrl TEXT,
+    overview TEXT,
+    snoozedAtEpochMs INTEGER NOT NULL,
+    dueAtEpochDay INTEGER NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX triageSnooze_due ON triageSnooze(dueAtEpochDay);
+
+-- Appended, so they are the last three columns, where `verifyMigrations`
+-- expects an `ALTER TABLE ADD COLUMN` to have put them. All three are
+-- per-device and not synced, like every preference already on this table.
+ALTER TABLE appSettings ADD COLUMN triageSnoozePeriod TEXT NOT NULL DEFAULT 'ONE_WEEK';
+ALTER TABLE appSettings ADD COLUMN triageSnoozePlacement TEXT NOT NULL DEFAULT 'MIXED_IN';
+ALTER TABLE appSettings ADD COLUMN triageSnoozeHintSeen INTEGER NOT NULL DEFAULT 0;

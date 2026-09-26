@@ -6,6 +6,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.search.domain.SearchRepository
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
+import com.codingpit.muviss.feature.triage.api.SnoozedTitle
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.feature.triage.api.TriageDecisionSummary
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
@@ -23,8 +24,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 
 /**
- * Stand-in for the triage feature. Search reads it for two things only:
- * excluding skipped titles from "For you", and the Detail screen's undo line.
+ * Stand-in for the triage feature. Search reads it for three things only:
+ * excluding skipped and snoozed titles from "For you", and the Detail
+ * screen's two undo lines.
  */
 internal class FakeTriageApi(initial: Map<MediaId, TriageVerdict> = emptyMap()) : TriageApi {
     val decisions = MutableStateFlow(initial)
@@ -43,6 +45,24 @@ internal class FakeTriageApi(initial: Map<MediaId, TriageVerdict> = emptyMap()) 
     override suspend fun restore(mediaId: MediaId) {
         restored += mediaId
         decisions.value = decisions.value - mediaId
+    }
+
+    val snoozes = MutableStateFlow<Map<MediaId, Long>>(emptyMap())
+    val unsnoozed = mutableListOf<MediaId>()
+
+    override fun observeSnoozedIds(): Flow<Set<MediaId>> = snoozes.map { it.keys }
+
+    override fun observeSnoozed(): Flow<List<SnoozedTitle>> = snoozes.map { all ->
+        all.map { (id, due) -> SnoozedTitle(id, id.external, null, snoozedAtEpochMs = 0L, dueAtEpochDay = due) }
+    }
+
+    override fun observeSnooze(mediaId: MediaId): Flow<SnoozedTitle?> = snoozes.map { all ->
+        all[mediaId]?.let { SnoozedTitle(mediaId, mediaId.external, null, snoozedAtEpochMs = 0L, dueAtEpochDay = it) }
+    }
+
+    override suspend fun unsnooze(mediaId: MediaId) {
+        unsnoozed += mediaId
+        snoozes.value = snoozes.value - mediaId
     }
 }
 

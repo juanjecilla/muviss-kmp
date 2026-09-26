@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.MediaType
@@ -35,7 +36,7 @@ fun TriageTutorial(scheme: TriageControlScheme, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
                 Text(
-                    text = "Swipe the card, tap a button, or use the arrow keys. Z undoes. Tap a card to see its details.",
+                    text = "Swipe the card, tap a button, or use the arrow keys. Z undoes, S snoozes. Tap a card to see its details.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TriageVerdict.entries.forEach { verdict ->
@@ -51,6 +52,22 @@ fun TriageTutorial(scheme: TriageControlScheme, onDismiss: () -> Unit) {
                             )
                             Text(explanationForTutorial(verdict), style = MaterialTheme.typography.bodySmall)
                         }
+                    }
+                }
+                // Hand-written rather than part of the loop above: a Snooze
+                // is not a TriageVerdict (ADR 0023), so it has no VerdictStyle
+                // and `TriageVerdict.entries` will never produce it.
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(MuvissIcons.Snooze, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.padding(start = MuvissSpacing.m)) {
+                        Text(
+                            text = "$SNOOZE_LABEL · Button on the card, long press, or S",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            text = "Not a decision at all — nothing is saved and we ask again later.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
                 Text(

@@ -98,9 +98,16 @@ class SearchViewModel(
         // any time (a favorite toggled, a new top-rated title added), so this
         // stays subscribed and re-derives "For you" reactively, same pattern
         // as progress:ui's UpcomingViewModel reacting to collectionApi.
-        // Skipped titles are excluded alongside saved ones — see
-        // ForYouSeeding.mergeAndExclude for why only this surface filters them.
-        combine(collectionApi.observeSummaries(), triageApi.observeDecidedIds(), ::Pair)
+        // Skipped titles are excluded alongside saved ones, and snoozed ones
+        // with them (EPIC 42): "ask me later" is about the title, not about the
+        // deck, so recommending it here an hour later contradicts what the user
+        // just said. See ForYouSeeding.mergeAndExclude for why only this
+        // surface filters any of them.
+        combine(
+            collectionApi.observeSummaries(),
+            triageApi.observeDecidedIds(),
+            triageApi.observeSnoozedIds(),
+        ) { library, decided, snoozed -> library to (decided + snoozed) }
             .flatMapLatest { (library, decided) -> forYouFlow(library, decided) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
             .launchInReporting(viewModelScope)

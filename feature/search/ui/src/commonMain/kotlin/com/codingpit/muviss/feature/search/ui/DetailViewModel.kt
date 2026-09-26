@@ -52,6 +52,8 @@ data class DetailUiState(
     val moreLikeThis: List<MediaSummary> = emptyList(),
     /** True when this title was skipped during triage (ADR 0010) — the only way back once the undo snackbar has gone. */
     val skipped: Boolean = false,
+    /** The day a pending Snooze brings this title back (EPIC 42), or null if it has none. */
+    val snoozedUntilEpochDay: Long? = null,
     /** How many times each episode has been watched (ADR 0011); absent means never. */
     val playCounts: Map<EpisodeId, Int> = emptyMap(),
     /** Set right after a bulk mark, so its snackbar can take back exactly those ticks. */
@@ -116,6 +118,11 @@ class DetailViewModel(
         triageApi.observeDecision(mediaId)
             .onEach { decision -> _state.update { it.copy(skipped = decision?.verdict == TriageVerdict.SKIP) } }
             .launchInReporting(viewModelScope)
+        // A Snooze and a decision are mutually exclusive by construction, so
+        // the two banners can never both show (ADR 0023).
+        triageApi.observeSnooze(mediaId)
+            .onEach { snooze -> _state.update { it.copy(snoozedUntilEpochDay = snooze?.dueAtEpochDay) } }
+            .launchInReporting(viewModelScope)
         collectionApi.observeMembership(mediaId)
             .onEach { membership ->
                 _state.update {
@@ -179,6 +186,11 @@ class DetailViewModel(
     /** Clears a SKIP so the title can come back around in the deck. */
     fun unskip() {
         viewModelScope.launchReporting { triageApi.restore(mediaId) }
+    }
+
+    /** Drops a pending Snooze so the title is deck-eligible again now (EPIC 42). */
+    fun unsnooze() {
+        viewModelScope.launchReporting { triageApi.unsnooze(mediaId) }
     }
 
     /** Adds the loaded title to the library, or removes it if already saved. */

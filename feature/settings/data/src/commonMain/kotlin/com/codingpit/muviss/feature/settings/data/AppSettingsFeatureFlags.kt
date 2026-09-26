@@ -4,6 +4,8 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import kotlinx.coroutines.flow.Flow
@@ -42,6 +44,15 @@ class AppSettingsFeatureFlags(
     // must not look like the person asked for background sync.
     override val syncAutomatically: Flow<Boolean> = settings().map { row -> row?.syncAutomatically ?: false }
 
+    // Both fall back to their own DEFAULT rather than a literal, so the
+    // documented default lives in one place and a value written by a newer
+    // build is tolerated rather than crashing.
+    override val triageSnoozePeriod: Flow<SnoozePeriod> = settings()
+        .map { row -> SnoozePeriod.fromStored(row?.triageSnoozePeriod) }
+
+    override val triageSnoozePlacement: Flow<SnoozePlacement> = settings()
+        .map { row -> SnoozePlacement.fromStored(row?.triageSnoozePlacement) }
+
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageControlScheme(scheme.name)
@@ -63,6 +74,18 @@ class AppSettingsFeatureFlags(
     override suspend fun setSyncAutomatically(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateSyncAutomatically(enabled)
+        Unit
+    }
+
+    override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateTriageSnoozePeriod(period.name)
+        Unit
+    }
+
+    override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateTriageSnoozePlacement(placement.name)
         Unit
     }
 

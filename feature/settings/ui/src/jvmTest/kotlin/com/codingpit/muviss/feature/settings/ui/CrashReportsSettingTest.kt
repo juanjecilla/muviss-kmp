@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.SnoozePeriod
+import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -72,10 +74,14 @@ class CrashReportsSettingTest {
         override val animationsEnabled = MutableStateFlow(true)
         override val triageDeckAnimations = MutableStateFlow(true)
         override val syncAutomatically = MutableStateFlow(false)
+        override val triageSnoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
+        override val triageSnoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
         override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
         override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
         override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit
         override suspend fun setSyncAutomatically(enabled: Boolean) = Unit
+        override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = Unit
+        override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
     }
 
     private fun viewModel(repository: FakeRepository) = SettingsViewModel(

@@ -73,6 +73,7 @@ internal class FakeSyncBackend(
     private val mediaLists = mutableMapOf<String, Stored<MediaListChange>>()
     private val listEntries = mutableMapOf<Pair<String, String>, Stored<ListEntryChange>>()
     private val triageDecisions = mutableMapOf<String, Stored<TriageDecisionChange>>()
+    private val triageSnoozes = mutableMapOf<String, Stored<TriageSnoozeChange>>()
     private val episodePlays = mutableMapOf<String, Stored<EpisodePlayChange>>()
 
     var pushFailure: Throwable? = null
@@ -119,6 +120,12 @@ internal class FakeSyncBackend(
 
     fun remoteTriageDecision(mediaId: String): TriageDecisionChange? = triageDecisions[mediaId]?.value
 
+    fun seedRemoteTriageSnooze(change: TriageSnoozeChange) {
+        triageSnoozes[change.mediaId] = Stored(change, nextSeq++)
+    }
+
+    fun remoteTriageSnooze(mediaId: String): TriageSnoozeChange? = triageSnoozes[mediaId]?.value
+
     fun seedRemoteEpisodePlay(change: EpisodePlayChange) {
         episodePlays[change.id] = Stored(change, nextSeq++)
     }
@@ -149,6 +156,7 @@ internal class FakeSyncBackend(
         changes.mediaLists.forEach { upsertIfNewer(mediaLists, it.id, it) { c -> c.updatedAtEpochMs } }
         changes.listEntries.forEach { upsertIfNewer(listEntries, it.listId to it.mediaId, it) { c -> c.updatedAtEpochMs } }
         changes.triageDecisions.forEach { upsertIfNewer(triageDecisions, it.mediaId, it) { c -> c.updatedAtEpochMs } }
+        changes.triageSnoozes.forEach { upsertIfNewer(triageSnoozes, it.mediaId, it) { c -> c.updatedAtEpochMs } }
         changes.episodePlays.forEach { upsertIfNewer(episodePlays, it.id, it) { c -> c.updatedAtEpochMs } }
         return Result.success(Unit)
     }
@@ -165,6 +173,7 @@ internal class FakeSyncBackend(
                 SyncTable.MEDIA_LIST -> pagesOf(mediaLists.values, start) { SyncChangeSet(mediaLists = it) }
                 SyncTable.LIST_ENTRY -> pagesOf(listEntries.values, start) { SyncChangeSet(listEntries = it) }
                 SyncTable.TRIAGE_DECISION -> pagesOf(triageDecisions.values, start) { SyncChangeSet(triageDecisions = it) }
+                SyncTable.TRIAGE_SNOOZE -> pagesOf(triageSnoozes.values, start) { SyncChangeSet(triageSnoozes = it) }
                 SyncTable.EPISODE_PLAY -> pagesOf(episodePlays.values, start) { SyncChangeSet(episodePlays = it) }
             }
             for ((changes, cursor) in pages) {
