@@ -87,4 +87,49 @@ class CrashReportingExceptionHandlerTest {
 
         assertTrue(thrown is CancellationException)
     }
+
+    @Test
+    fun an_unexpected_failure_is_reported() {
+        val reported = mutableListOf<Throwable>()
+        val bug = IllegalStateException("a bug")
+
+        val returned = Result.failure<Unit>(bug).reportUnexpectedFailure({ false }, { reported += it })
+
+        assertEquals(listOf<Throwable>(bug), reported)
+        assertTrue(returned.isFailure)
+    }
+
+    @Test
+    fun a_failure_the_call_site_names_as_expected_is_not_reported() {
+        val reported = mutableListOf<Throwable>()
+        val offline = IllegalStateException("offline")
+
+        val returned = Result.failure<Unit>(offline).reportUnexpectedFailure({ it === offline }, { reported += it })
+
+        assertTrue(reported.isEmpty())
+        assertTrue(returned.isFailure) // still handed back — the UI still shows something
+    }
+
+    @Test
+    fun a_success_reports_nothing() {
+        val reported = mutableListOf<Throwable>()
+
+        Result.success(Unit).reportUnexpectedFailure({ false }, { reported += it })
+
+        assertTrue(reported.isEmpty())
+    }
+
+    @Test
+    fun cancellation_is_rethrown_by_the_unexpected_variant_too_regardless_of_the_predicate() {
+        val cancelled = Result.failure<Unit>(CancellationException("navigated away"))
+
+        var thrown: Throwable? = null
+        try {
+            cancelled.reportUnexpectedFailure({ false }, { error("must not be called") })
+        } catch (e: CancellationException) {
+            thrown = e
+        }
+
+        assertTrue(thrown is CancellationException)
+    }
 }
