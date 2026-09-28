@@ -241,6 +241,22 @@ class SupabaseSyncBackendTest {
         assertNull(backend.session.first())
     }
 
+    // --- Anonymous sign-in (#98) ------------------------------------------
+
+    @Test
+    fun signing_in_anonymously_sends_its_empty_body_through_real_content_negotiation() = runTest {
+        // Pins down #98: EmptyBody was file-private, which the JVM's reflective
+        // access check for kotlinx.serialization's generated INSTANCE lookup
+        // rejected with IllegalAccessException — only visible once a real
+        // ContentNegotiation client (not a hand-built request) serializes it.
+        val (backend, requests) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+
+        val result = backend.signInAnonymously()
+
+        assertTrue(result.isSuccess, "expected success, got: ${result.exceptionOrNull()}")
+        assertEquals("/auth/v1/signup", requests.single().url.encodedPath)
+    }
+
     // --- OAuth (ADR 0014) ------------------------------------------------
 
     @Test

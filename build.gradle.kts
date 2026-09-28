@@ -42,8 +42,13 @@ allprojects {
 
     configure<SpotlessExtension> {
         kotlin {
-            target("src/**/*.kt")
-            targetExclude("**/build/**")
+            // A String target is an Ant-style pattern resolved by walking the
+            // whole projectDir (including build/) and filtering afterward —
+            // targetExclude filters the result, it doesn't stop the walk. That
+            // races a concurrent Wasm compile writing/deleting build/klib/cache
+            // mid-build (#128, #132). Rooting the fileTree at src/ keeps the
+            // walk out of build/ entirely.
+            target(fileTree("src") { include("**/*.kt") })
             ktlint(ktlintVersion).editorConfigOverride(ktlintOverrides)
         }
         kotlinGradle {
