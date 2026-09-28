@@ -351,11 +351,20 @@ private fun TriageHeader(
         Text(
             text = "Fill your library",
             style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
         )
         TextButton(onClick = onShowTutorial) { Text("How it works") }
-        TextButton(onClick = onOpenSnoozed) { Text("Snoozed") }
-        TextButton(onClick = onOpenSkipped) { Text("Skipped") }
+        // Icon buttons rather than a third and fourth TextButton (issue
+        // #138): three text actions plus the title wrapped "Fill your
+        // library" to two lines at 412dp. "How it works" stays a labelled
+        // button because it is one-time onboarding copy that would not read
+        // as anything from a glyph alone; Snoozed/Skipped are destinations a
+        // returning user recognises by icon, the same trade `SnoozeButton`
+        // already makes on the card itself.
+        IconButton(onClick = onOpenSnoozed) { Icon(MuvissIcons.Snooze, contentDescription = "Snoozed") }
+        IconButton(onClick = onOpenSkipped) { Icon(MuvissIcons.Skip, contentDescription = "Skipped") }
     }
 }
 
