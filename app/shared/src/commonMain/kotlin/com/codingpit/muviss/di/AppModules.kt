@@ -35,6 +35,10 @@ val appModules: List<Module> =
         searchDataModule,
         searchUiModule,
         collectionDataModule,
+        // After both syncModule and collectionDataModule: it overrides
+        // syncModule's permissive default TitleRefresher, and Koin's last
+        // binding wins (same reasoning as billingSyncBridgeModule above).
+        collectionSyncBridgeModule,
         collectionUiModule,
         progressDataModule,
         progressUiModule,

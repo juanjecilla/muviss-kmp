@@ -19,6 +19,7 @@ import com.codingpit.muviss.feature.collection.domain.ObserveCollectionEntryUseC
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshAndFindNewEpisodesUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshCollectionSnapshotsUseCase
+import com.codingpit.muviss.feature.collection.domain.RefreshTitlesUseCase
 import com.codingpit.muviss.feature.collection.domain.RemoveFromCollectionUseCase
 import com.codingpit.muviss.feature.collection.domain.SetNoteUseCase
 import com.codingpit.muviss.feature.collection.domain.SetRatingUseCase
@@ -32,7 +33,7 @@ val collectionDataModule: Module = module {
     single { get<MuvissDatabase>().collectionEntryQueries }
     single<CollectionRepository> { SqlDelightCollectionRepository(get(), get(), get(), get()) }
     single<MediaSnapshotSource> { RegistryMediaSnapshotSource(get(), get()) }
-    single<CollectionApi> { DefaultCollectionApi(get(), get(), get(), get(), get(), get()) }
+    single<CollectionApi> { DefaultCollectionApi(get(), get(), get(), get(), get(), get(), get()) }
 
     factory { ObserveCollectionUseCase(get()) }
     factory { ObserveCollectionEntryUseCase(get()) }
@@ -44,6 +45,7 @@ val collectionDataModule: Module = module {
     factory { SetNoteUseCase(get()) }
     factory { CollectionToggles(get(), get(), get(), get(), get()) }
     factory { RefreshCollectionSnapshotsUseCase(get(), get()) }
+    factory { RefreshTitlesUseCase(get(), get()) }
     // A `single`: the throttle is only useful if every Collection back-stack entry shares one.
     single { CollectionRefreshThrottle(get()) }
     factory { RefreshAndFindNewEpisodesUseCase(get(), get(), get()) }

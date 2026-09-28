@@ -136,4 +136,31 @@ class SyncMergeInvariantsTest {
 
         assertTrue(widgetRefreshes > 0, "a widget went on showing what it showed before the pull")
     }
+
+    // --- issue #101 -------------------------------------------------------
+
+    @Test
+    fun a_pull_that_applies_rows_refreshes_just_the_titles_it_touched() = runTest {
+        val server = FakeSupabaseServer()
+        server.signUp("alice")
+        server.seed("collection_entry", "alice", entryRow("tmdb:tv:1", aired = 1, total = 1, updatedAt = 1_000L))
+        var refreshed: Set<String>? = null
+        val device = TestDevice(server, titleRefresher = TitleRefresher { mediaIds -> refreshed = mediaIds })
+
+        device.sync()
+
+        assertEquals(setOf("tmdb:tv:1"), refreshed, "a pull that touched exactly one title must not ask to refresh the whole library")
+    }
+
+    @Test
+    fun a_pull_with_nothing_to_apply_never_calls_the_title_refresher() = runTest {
+        val server = FakeSupabaseServer()
+        server.signUp("alice")
+        var calls = 0
+        val device = TestDevice(server, titleRefresher = TitleRefresher { calls++ })
+
+        device.sync()
+
+        assertEquals(0, calls, "an empty pull touched no titles, so there is nothing to refresh")
+    }
 }

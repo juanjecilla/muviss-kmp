@@ -9,6 +9,7 @@ import com.codingpit.muviss.feature.collection.domain.CollectionToggles
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionEntryUseCase
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshAndFindNewEpisodesUseCase
+import com.codingpit.muviss.feature.collection.domain.RefreshTitlesUseCase
 import com.codingpit.muviss.feature.collection.domain.RemoveFromCollectionUseCase
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /** Bridges the collection feature's use cases to its public [CollectionApi]. */
+@Suppress("LongParameterList") // one use case per CollectionApi member; splitting this adapter would only move the count, not reduce it
 internal class DefaultCollectionApi(
     private val observeEntry: ObserveCollectionEntryUseCase,
     private val observeCollection: ObserveCollectionUseCase,
@@ -23,6 +25,7 @@ internal class DefaultCollectionApi(
     private val removeFromCollection: RemoveFromCollectionUseCase,
     private val toggles: CollectionToggles,
     private val refreshAndFindNewEpisodesUseCase: RefreshAndFindNewEpisodesUseCase,
+    private val refreshTitlesUseCase: RefreshTitlesUseCase,
 ) : CollectionApi {
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = observeEntry(mediaId)
@@ -67,4 +70,6 @@ internal class DefaultCollectionApi(
 
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = refreshAndFindNewEpisodesUseCase()
         .map { NewEpisodesResult(it.mediaId, it.title, it.newEpisodeCount, it.latestEpisodeLabel) }
+
+    override suspend fun refreshTitles(mediaIds: Set<MediaId>) = refreshTitlesUseCase(mediaIds)
 }
