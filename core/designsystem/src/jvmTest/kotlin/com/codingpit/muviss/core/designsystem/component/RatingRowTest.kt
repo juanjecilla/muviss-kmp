@@ -2,6 +2,10 @@
 
 package com.codingpit.muviss.core.designsystem.component
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
@@ -66,6 +70,43 @@ class RatingRowTest {
 
         assertTrue(cleared)
         assertNull(rated)
+    }
+
+    /**
+     * Regression for issue #133's audit: `RatingStar`'s tap detector is
+     * `pointerInput(Unit)`, so its coroutine launches once and never
+     * restarts for the life of the star (rightly — this slot isn't recycled
+     * across different items the way the triage card stack was, so keying it
+     * on `rating` would restart the detector mid-gesture for no reason). But
+     * without `rememberUpdatedState` around the tap handler, that one-shot
+     * coroutine stays bound to whichever `rating` was current the *first*
+     * time the star composed — so tapping the already-selected half again,
+     * with the row staying mounted the whole time (the real-world case: a
+     * detail screen's rating row, not a fresh composition per tap the way
+     * the other tests in this file construct it), silently re-applied the
+     * *original* rating forever instead of clearing it.
+     */
+    @Test
+    fun tapping_the_same_half_again_after_a_live_update_still_clears_it() = runComposeUiTest {
+        var current: Int? = null
+        setContent {
+            var rating by remember { mutableStateOf<Int?>(null) }
+            current = rating
+            MuvissTheme(darkTheme = true) {
+                RatingRow(rating = rating, onRate = { rating = it }, onClear = { rating = null })
+            }
+        }
+
+        // First tap: left half of the third star -> stores 5.
+        onNodeWithTag(starTag(2), useUnmergedTree = true).performTouchInput { click(Offset(width * 0.25f, height / 2f)) }
+        waitForIdle()
+        assertEquals(5, current)
+
+        // Second tap on the same half, row still mounted: must clear, not
+        // silently re-store 5 because the closure saw a stale `rating`.
+        onNodeWithTag(starTag(2), useUnmergedTree = true).performTouchInput { click(Offset(width * 0.25f, height / 2f)) }
+        waitForIdle()
+        assertNull(current)
     }
 
     @Test
