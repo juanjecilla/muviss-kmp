@@ -20,8 +20,10 @@ data class CrashReportingConfig(
 )
 
 /**
- * Seam for crash/error reporting (Sentry Kotlin Multiplatform SDK on
- * Android/iOS/JVM; a deliberate no-op on JS/Wasm, stated in `docs/PRIVACY.md`).
+ * Seam for crash/error reporting: the Sentry Kotlin Multiplatform SDK on
+ * Android/iOS/JVM ([SentryBackend]), and Sentry's browser SDK loaded from
+ * Sentry's CDN on JS/Wasm ([WebCrashBackend]) — that SDK publishes no-op web
+ * stubs, so the browser install is driven directly instead (#83).
  *
  * The three rules that make this safe to call from anywhere:
  *
@@ -50,8 +52,10 @@ object CrashReporter {
     fun setEnabled(enabled: Boolean) = core.setEnabled(enabled)
 
     /**
-     * Whether this platform has a real reporter. False on web, where the Settings
-     * toggle would change nothing, so the screen does not offer it.
+     * Whether this platform has a real reporter — true everywhere now (#83): a
+     * [CrashBackend] can still report `false` in principle (see
+     * [CrashBackend.isAvailable]'s default), which is what let the Settings
+     * screen hide the toggle before web had one.
      */
     val isAvailable: Boolean get() = core.isAvailable
 
@@ -101,7 +105,7 @@ internal class CrashReportGate {
 
 /** The platform's Sentry, behind the smallest surface [CrashReporterCore] needs. */
 internal interface CrashBackend {
-    /** False for the web no-op. */
+    /** Defaults true; no [CrashBackend] this repo ships overrides it false any more (#83). */
     val isAvailable: Boolean get() = true
 
     fun start(config: CrashReportingConfig, gate: CrashReportGate)

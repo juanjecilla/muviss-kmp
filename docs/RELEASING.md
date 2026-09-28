@@ -154,9 +154,12 @@ to `local.properties`. In CI: set the `SENTRY_DSN` repository secret (see
 invisible. `MuvissApp()` still calls `MuvissCrashReporting.ensureStarted()` as a
 guard; `CrashReporter.init` is idempotent, so it is a no-op wherever a host
 already started, and it starts with reporting *off* if it is ever the first
-caller (it cannot know the stored consent). Web has no reporter at all: its
-actuals are no-ops by design and `docs/PRIVACY.md` says so (browser reporting is
-issue #83).
+caller (it cannot know the stored consent). Web has a reporter too (#83): it
+loads Sentry's browser SDK from Sentry's CDN rather than
+`sentry-kotlin-multiplatform` (which publishes no-op web stubs), and since the
+web build has no pre-Koin startup hook to call `MuvissCrashReporting.start`
+from, `MuvissApp()`'s `followSettings()` call is the *only* place its consent
+is applied, not just a guard — see `docs/PRIVACY.md`.
 
 **Consent.** "Send crash reports" (Settings → Privacy, default on) lives in
 `appSettings.crashReportsEnabled` (`10.sqm`). Because reporting has to start
