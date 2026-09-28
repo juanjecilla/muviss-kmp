@@ -9,7 +9,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -98,12 +100,26 @@ private fun RatingStar(
             scale.animateTo(1f)
         }
     }
+    // `RatingRow` builds a fresh `onTapHalf` closure every recomposition,
+    // capturing whatever `rating` is current at that point — but
+    // `pointerInput(Unit)`'s coroutine only launches once (this star's slot
+    // is not recycled across items, unlike the triage card stack, so keying
+    // it on the current rating would restart mid-gesture for no reason). Left
+    // as a plain capture, the tap handler would stay bound to the `rating`
+    // that was current the first time this star composed — so tapping the
+    // already-selected half again (meant to clear it, see
+    // `tapping_the_half_already_selected_clears_the_rating` below) would
+    // silently re-apply the *original* rating instead, forever, after the
+    // very first change. `rememberUpdatedState` is the standard fix: it lets
+    // the long-lived coroutine keep running while always reading the latest
+    // `onTapHalf` on the next tap.
+    val currentOnTapHalf by rememberUpdatedState(onTapHalf)
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(STAR_TOUCH_TARGET)
             .pointerInput(Unit) {
-                detectTapGestures { offset -> onTapHalf(offset.x < size.width / 2f) }
+                detectTapGestures { offset -> currentOnTapHalf(offset.x < size.width / 2f) }
             }
             .clearAndSetSemantics { testTag = tag },
     ) {
