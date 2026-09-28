@@ -100,6 +100,19 @@ data class TriageUiState(
      * Only reachable under [SnoozePeriod.ASK_EACH_TIME].
      */
     val snoozeChoiceFor: MediaSummary? = null,
+    /**
+     * The card the free-form date picker is open for (issue #137's "Pick a
+     * date…"), or null when it is shut. Reached from [snoozeChoiceFor]'s sheet,
+     * never directly — it replaces that sheet rather than nesting under it.
+     */
+    val snoozeDatePickerFor: MediaSummary? = null,
+    /**
+     * The earliest day [snoozeDatePickerFor]'s picker allows choosing, read
+     * once from the clock when the picker opens — see
+     * [com.codingpit.muviss.feature.triage.domain.SnoozeUseCase.todayEpochDay].
+     * Meaningless while [snoozeDatePickerFor] is null.
+     */
+    val snoozeDatePickerMinEpochDay: Long = 0L,
     /** The one-time callout pointing at the snooze button. */
     val snoozeHintVisible: Boolean = false,
 ) {
@@ -304,6 +317,31 @@ class TriageViewModel(
     }
 
     fun onSnoozeSheetDismissed() = _state.update { it.copy(snoozeChoiceFor = null) }
+
+    /**
+     * "Pick a date…" inside the sheet: swaps it for the custom picker rather
+     * than opening on top of it, and reads the clock exactly once — the
+     * picker itself never does (issue #137).
+     */
+    fun onPickCustomSnoozeDate() {
+        val summary = _state.value.snoozeChoiceFor ?: return
+        _state.update {
+            it.copy(
+                snoozeChoiceFor = null,
+                snoozeDatePickerFor = summary,
+                snoozeDatePickerMinEpochDay = actions.snooze.todayEpochDay() + 1,
+            )
+        }
+    }
+
+    /** A day chosen in the custom picker. Takes the epoch day directly — there is no [SnoozePeriod] to convert it from. */
+    fun onSnoozeDateChosen(epochDay: Long) {
+        val summary = _state.value.snoozeDatePickerFor ?: return
+        _state.update { it.copy(snoozeDatePickerFor = null) }
+        commitSnooze(summary, epochDay)
+    }
+
+    fun onSnoozeDatePickerDismissed() = _state.update { it.copy(snoozeDatePickerFor = null) }
 
     fun onSnoozeHintDismissed() {
         _state.update { it.copy(snoozeHintVisible = false) }

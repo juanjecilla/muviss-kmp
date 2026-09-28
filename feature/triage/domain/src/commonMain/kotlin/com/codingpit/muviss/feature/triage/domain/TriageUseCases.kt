@@ -193,6 +193,14 @@ class SnoozeUseCase(
 
     /** The due date a stored [SnoozePeriod] implies. Null for ASK_EACH_TIME, which has no duration. */
     fun dueDateFor(period: SnoozePeriod): Long? = period.days?.let { clock.todayEpochDay() + it }
+
+    /**
+     * Today, as an epoch day — the one clock read the custom date picker needs
+     * to bound its earliest selectable day. [dueDateFor] keeps the *durations*
+     * out of the UI; this keeps "what day is it" out too, so the picker still
+     * never reads a clock of its own and cannot offer yesterday.
+     */
+    fun todayEpochDay(): Long = clock.todayEpochDay()
 }
 
 /** Takes a Snooze back — undo, the Snoozed screen, and the Detail banner all call this. */

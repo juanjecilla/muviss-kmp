@@ -47,6 +47,15 @@ class SnoozeUseCaseTest {
     }
 
     @Test
+    fun today_epoch_day_reads_straight_off_the_clock() {
+        val snooze = SnoozeUseCase(FakeTriageSnoozeRepository(), clock)
+
+        // The custom date picker's only clock read — everything else about it
+        // (which day is selected, which month is visible) stays in the screen.
+        assertEquals(today, snooze.todayEpochDay())
+    }
+
+    @Test
     fun a_snoozed_title_stays_out_of_the_deck_until_it_is_due() = runTest {
         val snoozes = FakeTriageSnoozeRepository()
         val card = movie("1")
