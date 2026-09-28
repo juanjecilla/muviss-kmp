@@ -331,9 +331,17 @@ Making it a fifth `TriageVerdict` would have been actively dangerous, not merely
 
 **Not verified by any test**: the live Supabase `triage_snooze` table and its RLS (same gap as #88/#129), and the gesture on a real touch device — `runComposeUiTest` renders the desktop path.
 
+## EPIC 43 — A Supabase dev/staging project, separate from production — wave 0 — issue #151
+
+There is exactly one linked Supabase project (`sodjedenvnvsuktbxevt`, "Muviss app"), and it is both production and the only place any live-project verification work can run: #88 (null-clearing, hosted `max_rows`), #100 (EPIC 39's server migration + pgTAP suite), #129 (co-watch RLS — including creating throwaway multi-account test data), and EPIC 42's own noted gap (`triage_snooze`'s RLS, same category). Every one of those either applies a real migration (`supabase db push`) or creates test rows against the project real users' data lives in.
+
+Stand up a second free-tier project dedicated to dev/verification; decide and document the dev/prod switching workflow for the CLI (hard to get backwards by construction, not just convention); point `scripts/sync/verify-*.sh` at it by default with an explicit opt-in flag required to target prod; define a promotion workflow (verify on dev, then a deliberate, separate step applies to prod); evaluate Supabase's paid database-branching feature as an alternative. Once CI's billing outage (#66) is resolved, wire CI to run migration/RLS checks against the dev project automatically.
+
+Top priority alongside #66 — every RLS/migration verification task in the backlog is unsafe to fully automate without this existing first. Done means a second project exists, is documented in `docs/SYNC.md` alongside the existing verification log, and at least one of #88/#100/#129 has been re-run against it end-to-end before anything is promoted to prod.
+
 ## Sequencing
 
-Wave 0 first (nothing else runs without CI). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
+Wave 0 first (nothing else runs without CI; EPIC 43 belongs here too — every live-project verification task depends on it existing before it can run safely). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
 
 Every epic's issue carries its own Testing section by layer and a platform-parity section (`muviss-test-and-platform-bar`): unit, migration, repository or integration, sync, UI (light and dark), performance by operation count, and an explicit note per target.
 
