@@ -525,15 +525,41 @@ Verified against the live project (`sodjedenvnvsuktbxevt`, eu-west-1) on
 
 Re-run any of these with `scripts/sync/` — see that directory's README.
 
-**Not yet verified for EPIC 39 (the server sequence and paged pull)** — the
-migration `20260920000000_sync_server_seq.sql`, its pgTAP tests in
-`supabase/tests/database/`, and the live scripts `verify-server-seq.sh`,
-`verify-null-clearing.sh` and `verify-pagination.sh` were written without Docker
-or a project and have not been run. `FakeSupabaseServer` (`:core:testing`) is a
-hand-written model of PostgREST and of those triggers, so the client tests are
-only as true as that model: `verify-null-clearing.sh` and
-`verify-pagination.sh` are what check the two assumptions the fix rests on
-(issue #88).
+Verified 2026-09-28, for EPIC 39's server-sequence work and EPIC 41's co-watch
+RLS (#100, #88, #129) — partly against the live project (read-only SQL,
+`supabase db query --linked`), partly against a local Docker stack running the
+linked project's migrations byte-identical and from scratch (`supabase start`
++ `supabase test db --local`), since the live project intentionally has no
+safe way to create throwaway test accounts (anonymous sign-in disabled, email
+signup domain-restricted) — see EPIC 43 (#151), filed to give this a proper
+home:
+
+- **Server-seq backfill invariants hold on the live project.** No table has a
+  null `server_seq`; `sync_change_seq`'s `last_value` is ≥ every table's max.
+- **The pgTAP suite passes**: `sync_server_seq.test.sql`, 22/22 assertions,
+  against migrations applied fresh from empty. This is also where
+  `FakeSupabaseServer`'s two load-bearing claims get an independent check
+  against the real triggers, not just the model: a discarded write is refused
+  *and* keeps its old `server_seq`, so it never appears in anyone's feed.
+- **Null clearing, both directions** (issue #88): a `merge-duplicates` upsert
+  that omits a key never clears the column; the same upsert with the key set
+  to `null` does. Confirms `SupabasePostgrestClient`'s `explicitNulls = true`
+  is load-bearing, not incidental.
+- **Co-watch RLS (#129), with three real accounts, not the fake.** An
+  unlinked third account sees `200 []` on `cowatch_pool_entry` while two
+  linked accounts see rows addressed to each other; a forged row (posting as
+  a third account with someone else's `user_id`) is refused `403`; an
+  unauthenticated `GET`/`POST` behave exactly as the six-table table above
+  already describes. This is the actual claim ADR 0022 makes, tested for the
+  first time.
+- **Hosted `max_rows`** (issue #88) — the configured value itself is
+  dashboard-only, not checkable via CLI/SQL; no table on the live project is
+  within reach of even the local default of 1000 rows today, so this isn't
+  currently biting anyone in practice.
+
+**Still not run**: the Android `9.sqm` upgrade and first-sync-after-upgrade
+reconcile against a real seeded device (#100 items 5-6) — needs a deliberate
+device pass, not attempted this round.
 
 ## Still open
 
