@@ -55,3 +55,8 @@ Compose:
     active: false
   ModifierNotUsedAtRoot:
     active: false
+
+# Our own ruleset (:detekt-rules) — see its build.gradle.kts.
+muviss:
+  ForbiddenViewModelScopeLaunch:
+    active: true

@@ -133,6 +133,9 @@ sentry-kotlinMultiplatform = { module = "io.sentry:sentry-kotlin-multiplatform",
 # Detekt plugins/rules (referenced by build-logic + detekt config)
 detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
 detekt-composeRules = { module = "io.nlopez.compose.rules:detekt", version.ref = "detektCompose" }
+# :detekt-rules — our own custom rule set (ForbiddenViewModelScopeLaunch, #107).
+detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
+detekt-test = { module = "io.gitlab.arturbosch.detekt:detekt-test", version.ref = "detekt" }
 
 # Gradle-plugin artifacts consumed by :build-logic convention plugins
 android-kmpLibrary-gradlePlugin = { module = "com.android.kotlin.multiplatform.library:com.android.kotlin.multiplatform.library.gradle.plugin", version.ref = "agp" }
