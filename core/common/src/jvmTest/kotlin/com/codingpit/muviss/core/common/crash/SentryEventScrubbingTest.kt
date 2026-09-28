@@ -9,11 +9,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 /**
- * The JVM actual's `beforeSend` mapping, against the real SDK types. The Android
- * and iOS actuals carry the same code over the same `io.sentry.kotlin.multiplatform`
- * types; they are compile-checked, and this is the only place it *runs* — a
- * shared source set for the three would need a hierarchy the default template
- * does not give us.
+ * [SentryBackend.scrubbed] against the real SDK types, run on `jvmTest` (Compose
+ * UI/Sentry native bits aside, that is where this repo's JVM-hosted tests run —
+ * see CLAUDE.md). Since #109 this is no longer "the JVM copy, compile-checked
+ * on the other two": `scrubbed()` lives once in `sentryMain`, compiled
+ * unchanged into the android and iOS targets too, so this test exercises the
+ * exact code those platforms ship, not a copy that could have drifted from it.
  */
 class SentryEventScrubbingTest {
 
@@ -28,6 +29,8 @@ class SentryEventScrubbingTest {
             breadcrumbs = mutableListOf(
                 Breadcrumb(message = "request $url").apply { setData("url", url) },
             )
+            tags = mutableMapOf("last_request" to url)
+            contexts = mutableMapOf("request_url" to url, "screen_density" to 3)
         }
 
         val scrubbed = event.scrubbed()
@@ -38,6 +41,10 @@ class SentryEventScrubbingTest {
         assertFalse(scrubbed.breadcrumbs.single().message!!.contains(key))
         assertFalse(scrubbed.breadcrumbs.single().getData()!!["url"].toString().contains(key))
         assertEquals("IOException", scrubbed.exceptions.single().type)
+        assertFalse(scrubbed.tags["last_request"]!!.contains(key))
+        assertFalse((scrubbed.contexts["request_url"] as String).contains(key))
+        // A non-String context value is left alone rather than stringified.
+        assertEquals(3, scrubbed.contexts["screen_density"])
     }
 
     @Test

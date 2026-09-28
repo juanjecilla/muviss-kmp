@@ -1,6 +1,6 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-09-20._
+_Last updated: 2026-09-28._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
@@ -42,8 +42,13 @@ never leaves the device even incidentally.
    query content, and no user identifier, IP address or cookies are attached.
    Before a report leaves the device, anything that looks like a credential
    (`api_key=…`, `token=…`, `Authorization: Bearer …`) is removed from its
-   messages. See [Sentry's privacy policy](https://sentry.io/privacy/) for how
-   they handle that data.
+   messages, tags and context, not just its text. Muviss also does not send
+   Sentry's separate "release health" session pings (a per-launch heartbeat
+   some apps use for a crash-free-session rate) — that switch is off
+   unconditionally, on or off, because nothing in the app reads that rate and
+   the opt-out above cannot silence it once started (it is not an event, and
+   `beforeSend` only ever sees events). See [Sentry's privacy
+   policy](https://sentry.io/privacy/) for how they handle that data.
 
    Per platform:
    - **Android, iOS, desktop** — reporting starts as the app starts, before
