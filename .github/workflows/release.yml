@@ -77,6 +77,19 @@ jobs:
           # docs describe library data leaving the device.
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # Sentry Gradle plugin (:app:androidApp/build.gradle.kts): uploads the
+          # R8 mapping only when all three of these are set, and does nothing —
+          # no upload, no network — otherwise (#110). SENTRY_ENVIRONMENT is
+          # pinned explicitly rather than left to app/shared/build.gradle.kts's
+          # task-name heuristic, which is a default, not a guarantee.
+          #
+          # These three secrets are not yet set on this repo (owner action,
+          # outside a PR's reach) — until they are, this step's behaviour is
+          # unchanged: no auth token means the plugin still no-ops.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_ENVIRONMENT: production
         run: ./gradlew :app:androidApp:bundleRelease --stacktrace
 
       - name: Upload AAB artifact
@@ -139,6 +152,15 @@ jobs:
           # Optional, same as the `release` job — both degrade gracefully.
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          # Pinned rather than left to the task-name heuristic in
+          # app/shared/build.gradle.kts (#110's fix, applied here too): none of
+          # packageDeb/packageDmg/packageMsi matches that heuristic's
+          # "release"/"bundle"/"...Distribution" patterns, so without this a
+          # desktop release build's crash reports would file under
+          # "development". No R8/mapping upload applies to desktop — that part
+          # of #110 is Android-only (the Sentry Gradle plugin is applied to
+          # :app:androidApp only).
+          SENTRY_ENVIRONMENT: production
         run: ./gradlew ${{ matrix.task }} --stacktrace
 
       - name: Upload installer artifact
