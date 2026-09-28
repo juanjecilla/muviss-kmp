@@ -1,15 +1,18 @@
 package com.codingpit.muviss
 
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.DefaultAppDispatchers
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.crash.CrashReportingConfig
 import com.codingpit.muviss.core.database.CrashReportsConsent
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.mp.KoinPlatformTools
 import kotlin.concurrent.Volatile
 
@@ -31,19 +34,47 @@ import kotlin.concurrent.Volatile
 object MuvissCrashReporting {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val ioDispatcher: CoroutineDispatcher = DefaultAppDispatchers().io
 
     /**
      * Starts reporting, honouring the stored "Send crash reports" choice.
      *
      * The choice lives in the database and the database is opened by the graph
      * that does not exist yet, so [CrashReportsConsent] reads it through a
-     * short-lived driver of its own. Anything that goes wrong there reads as
-     * *on*, the setting's default — see its KDoc for the trade.
+     * short-lived driver of its own — [CrashReportsConsent.read] itself is a
+     * blocking call ([DatabaseDriverFactory.create] creates or migrates the
+     * schema synchronously on Android/iOS/JVM), and this method is called as
+     * the first line of `MuvissApplication.onCreate`/desktop's `main`/
+     * `IosAppStartup.start`. Doing that read inline would put a rare-but-real
+     * `ALTER TABLE` (on an upgrade launch) — or, every other launch, just a
+     * second SQLite open ahead of the one the Koin graph makes shortly after —
+     * on the thread that's calling this, which on Android is the main thread
+     * with no ANR budget to spare (#124).
+     *
+     * So the SDK starts immediately, synchronously, with the same default
+     * [CrashReportsConsent] itself falls back to on any failure — on, per its
+     * own KDoc's trade — and the *real* stored choice is read off-thread and
+     * applied within milliseconds through [CrashReporter.setEnabled], the same
+     * live gate the Settings toggle uses. That reopens, for a few milliseconds on
+     * a fresh launch, the same "opted-out person whose crash is reported
+     * anyway" window [CrashReportsConsent] already accepts for an unreadable
+     * database — not a new class of trade, a slightly wider version of one
+     * already made. Sentry is still live *before* Koin either way, which was
+     * the point of moving [start] out of `MuvissApp()` in the first place.
      */
-    fun start(driverFactory: DatabaseDriverFactory) = start(driverFactory, CrashReporter::init)
+    fun start(driverFactory: DatabaseDriverFactory) = start(driverFactory, CrashReporter::init, CrashReporter::setEnabled)
 
-    internal fun start(driverFactory: DatabaseDriverFactory, init: (CrashReportingConfig, Boolean) -> Unit) {
-        init(config(), CrashReportsConsent.read(driverFactory))
+    internal fun start(
+        driverFactory: DatabaseDriverFactory,
+        init: (CrashReportingConfig, Boolean) -> Unit,
+        setEnabled: (Boolean) -> Unit,
+        readScope: CoroutineScope = scope,
+        readDispatcher: CoroutineDispatcher = ioDispatcher,
+    ) {
+        init(config(), CrashReportsConsent.DEFAULT)
+        readScope.launch {
+            setEnabled(withContext(readDispatcher) { CrashReportsConsent.read(driverFactory) })
+        }
     }
 
     /**
