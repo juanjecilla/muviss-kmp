@@ -58,6 +58,21 @@ interface CollectionApi {
      * notifications toggle itself before deciding whether to post anything.
      */
     suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult>
+
+    /**
+     * Re-fetches metadata for just [mediaIds] and refreshes each snapshot —
+     * the bounded counterpart to what pull-to-refresh does for the whole
+     * library. `:core:sync` calls this after a pull through its own seam
+     * (`TitleRefresher`), for exactly the titles that pull touched, so a
+     * title synced from another device is not stuck showing that device's
+     * snapshot until the Library is next opened (issue #101).
+     *
+     * Defaulted to a no-op rather than added as a plain abstract member: over
+     * a dozen fakes across other features implement [CollectionApi] for
+     * their own tests and have no reason to care about this one, sync-only
+     * corner of it.
+     */
+    suspend fun refreshTitles(mediaIds: Set<MediaId>) = Unit
 }
 
 /**

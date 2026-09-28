@@ -153,6 +153,10 @@ private fun AutoSyncOnForeground() {
  * correct state and the recovery — which was true and still useless: sign-in
  * shipped broken, and a failure that looks identical to "not attempted" hid it
  * through three rounds of diagnosis.
+ *
+ * On success this calls `syncEngine.syncNow()` — a `Manual` trigger — even
+ * with the automatic-sync switch off. That is a decision, not a gap: see ADR
+ * 0021, "Sign-in still syncs once, with the switch off" (issue #115).
  */
 @Composable
 private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
@@ -177,8 +181,11 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
                 .onSuccess { syncEngine.syncNow() }
                 // Reported rather than swallowed: this is the only place that
                 // knows why sign-in failed, and the profile screen is the only
-                // place that can say so.
-                .onFailure { feedback.report(it.message) }
+                // place that can say so. Fixed copy, not `it.message` — the
+                // exchange can fail with a Ktor/Supabase exception whose text
+                // embeds the request URL, same reason `TmdbProvider` never
+                // shows a raw exception either (see EPIC 27, CLAUDE.md).
+                .onFailure { feedback.report(null) }
         }
     }
 }

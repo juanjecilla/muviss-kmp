@@ -22,6 +22,8 @@ kotlin {
         jvmTest.dependencies {
             implementation(libs.sqldelight.sqliteDriver)
             implementation(libs.turbine)
+            // `CountingDriver` — the shared query-count budget driver (issue #102).
+            implementation(projects.core.testing)
         }
     }
 }

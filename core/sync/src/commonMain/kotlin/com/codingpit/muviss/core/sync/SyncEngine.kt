@@ -105,6 +105,7 @@ class SyncEngine(
     private val entitlementGate: EntitlementGate = EntitlementGate.AlwaysEntitled,
     private val widgetRefresher: WidgetRefresher = AppWidgets,
     private val automatic: AutomaticSyncSettings = AutomaticSyncSettings(),
+    private val titleRefresher: TitleRefresher = NoOpTitleRefresher,
 ) : SyncRunner {
     private val availability get() = automatic.availability
     private val syncAutomatically get() = automatic.switch
@@ -303,6 +304,7 @@ class SyncEngine(
             if (fullPull) changeLog.recordFullPull(now)
         }
         if (pulled > 0) refreshWidgets()
+        if (touched.isNotEmpty()) refreshTitles(touched)
 
         // "Last synced" answers "when did this device last complete a cycle",
         // and must advance even when the pull came back empty.
@@ -342,6 +344,16 @@ class SyncEngine(
     /** A stale widget is a stale row on a home screen; it must not turn a completed sync into a failed one. */
     private suspend fun refreshWidgets() {
         runCatching { widgetRefresher.refresh() }.onFailure { if (it is CancellationException) throw it }
+    }
+
+    /**
+     * Best-effort, bounded to the titles this pull actually touched (#101) —
+     * not the whole library, and not a reason to fail an otherwise-successful
+     * cycle: a TMDB hiccup here leaves the same staleness the Library screen's
+     * own next visit already fixes.
+     */
+    private suspend fun refreshTitles(mediaIds: Set<String>) {
+        runCatching { titleRefresher.refresh(mediaIds) }.onFailure { if (it is CancellationException) throw it }
     }
 }
 

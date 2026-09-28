@@ -78,6 +78,21 @@ that reads like a server fault. Copy comes from `SyncCopy` in
 `feature/profile/domain`, keyed by a mirror enum; it never reads `e.message`.
 This mirrors EPIC 27's `MetadataError` idea without depending on it.
 
+**`SyncFailureReason` and `MetadataError` stay two taxonomies, on purpose**
+(issue #116). `MetadataError` (`:models`) models a TMDB HTTP call and carries
+members sync has no use for (`RateLimited`, `NotFound` — TMDB's REST API and
+PostgREST's are not the same failure surface, and a 404 means something
+different on each). Folding `SyncFailureReason` into it would give `:core:sync`
+a `:models`-level dependency for a handful of shared names (offline,
+unauthorised, server, unknown) and force one enum to serve two backends that
+will keep changing independently — the TMDB side already grew `RateLimited`
+after this one shipped. A shared `NetworkFailure` core both map onto was
+considered and rejected for the same reason plus the churn of touching every
+call site of both: the actual overlap is four names and a `when` branch each,
+not a real duplication problem. `SyncCopy` and `MetadataError.toUserMessage`
+independently keeping to "never raw exception text" (CLAUDE.md's EPIC 27 rule)
+is what actually needs to stay true, and both do.
+
 The reason and the diagnostic are stored together in `syncState.lastError` as
 `REASON: text`. The epic owns no schema number, so there is no column for the
 reason; `fromStored` tolerates anything else (text written before this existed
@@ -91,6 +106,32 @@ says "Session expired, sign in again" instead of stopping silently.
 
 `AccountChanged` (EPIC 39) is surfaced clearly in the UI and nothing is offered
 to fix it: discarding or merging is EPIC 32's ADR 0019.
+
+## Sign-in still syncs once, with the switch off (issue #115)
+
+`MuvissApp`'s `CompleteOAuthOnRedirect` calls `syncEngine.syncNow()` — a
+`Manual` trigger — the moment an OAuth code exchange succeeds, regardless of
+`syncAutomatically`. This is a deliberate exception to "the switch off means
+nothing leaves the device by itself", decided rather than left as a leftover
+gap: completing sign-in is itself the explicit action, the same category as
+pressing "Sync now", not a background trigger acting on the person's behalf.
+It is also not optional in practice — the first cycle after a sign-in is what
+adopts the account (`syncState.ownerAccountId`) and uploads any pre-v7 plays,
+so without it a freshly signed-in device sits showing "Never synced" and
+Progress/Library keep showing only local data until someone finds the manual
+button.
+
+The alternative — `Foreground` instead of `Manual`, so the switch actually
+gates it — was considered and rejected for exactly that reason: it would make
+"sign in" and "see your library" two separate steps whenever the switch is
+off, which is worse UX for a case (opt-in sync) already only a few users
+reach at all. If this decision is ever revisited, change the trigger in
+`CompleteOAuthOnRedirect` and pin it with a test in
+`AutomaticSyncIntegrationTest` (or a `SyncFlowUiTest`-style Compose test, since
+`AutomaticSyncIntegrationTest`'s `SyncApp` harness does not drive the OAuth
+redirect composable itself) that signs in with the switch off and asserts on
+the server's request log, the same way every other gate in this ADR is
+verified.
 
 ## The weekly full reconcile
 

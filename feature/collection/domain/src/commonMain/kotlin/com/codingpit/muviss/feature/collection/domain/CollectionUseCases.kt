@@ -115,6 +115,27 @@ class RefreshCollectionSnapshotsUseCase(
 }
 
 /**
+ * The bounded counterpart to [RefreshCollectionSnapshotsUseCase]: refetches
+ * only the given [MediaId]s rather than the whole library. Built for
+ * `CollectionApi.refreshTitles`, which `:core:sync` calls (through its
+ * `TitleRefresher` seam) for exactly the titles a pull touched — issue #101.
+ * A title in [mediaIds] that is not currently saved is silently skipped,
+ * same as [RefreshCollectionSnapshotsUseCase] skips a fetch failure.
+ */
+class RefreshTitlesUseCase(
+    private val repository: CollectionRepository,
+    private val snapshotSource: MediaSnapshotSource,
+    private val concurrency: Int = REFRESH_CONCURRENCY,
+) {
+    suspend operator fun invoke(mediaIds: Set<MediaId>) {
+        if (mediaIds.isEmpty()) return
+        repository.observeAll().first().filter { it.mediaId in mediaIds }.mapBounded(concurrency) { entry ->
+            snapshotSource.fetch(entry.mediaId).onSuccess { details -> repository.refreshSnapshot(details) }
+        }
+    }
+}
+
+/**
  * The refresh path EPIC 5's Android background worker drives: re-fetches
  * every saved title exactly like [RefreshCollectionSnapshotsUseCase] (through
  * the same local-only [CollectionRepository.refreshSnapshot], so the Collection

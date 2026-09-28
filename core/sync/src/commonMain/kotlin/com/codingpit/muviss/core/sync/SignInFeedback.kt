@@ -20,10 +20,15 @@ import kotlinx.coroutines.flow.asStateFlow
  * not been tried: the user returns to the app, still signed out, with nothing
  * on screen. See ADR 0014.
  *
- * Deliberately a plain string rather than a typed error: the useful content is
- * GoTrue's own message ("code challenge does not match", "invalid grant"),
- * which is what tells a developer where to look, and modelling a closed set of
- * remote failures would only hide the ones not enumerated.
+ * A plain string rather than a typed error, so a caller with copy of its own
+ * (a timeout, an OAuth `error` query param GoTrue hands back) can pass it
+ * straight through. [message] must already be fixed, screen-safe copy —
+ * **never** an exception's own text: an OAuth code exchange can fail with a
+ * Ktor/Supabase exception whose message embeds the request URL, the same
+ * leak EPIC 27 swept out of every other view model (see CLAUDE.md,
+ * "Network errors are `MetadataError`, never exception text"; issue #90 was
+ * this constructor's own corner of it). Pass null for no copy of your own —
+ * [report] falls back to a fixed default.
  */
 class SignInFeedback {
     private val state = MutableStateFlow<String?>(null)

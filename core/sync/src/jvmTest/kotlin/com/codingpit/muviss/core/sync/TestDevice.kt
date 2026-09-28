@@ -78,6 +78,7 @@ internal class TestDevice(
     val userId: String = "alice",
     startMillis: Long = 1_000L,
     wrapDriver: (SqlDriver) -> SqlDriver = { it },
+    private val titleRefresher: TitleRefresher = NoOpTitleRefresher,
 ) {
     val clock = FakeClock(startMillis)
     var sessionStore = InMemorySessionStore(sessionFor(userId).also { server.signUp(userId) })
@@ -97,7 +98,7 @@ internal class TestDevice(
         clock = clock,
     )
 
-    private fun newEngine() = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+    private fun newEngine() = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, titleRefresher = titleRefresher)
 
     /**
      * Signs the person out and a different one in on this same installation:

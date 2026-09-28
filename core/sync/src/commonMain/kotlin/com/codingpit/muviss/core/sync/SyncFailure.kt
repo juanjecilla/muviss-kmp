@@ -4,7 +4,12 @@ import com.codingpit.muviss.core.sync.supabase.HTTP_FORBIDDEN
 import com.codingpit.muviss.core.sync.supabase.HTTP_UNAUTHORIZED
 import com.codingpit.muviss.core.sync.supabase.SupabaseHttpException
 
-/** Why a sync cycle failed, in terms a screen can phrase without reading an exception. */
+/**
+ * Why a sync cycle failed, in terms a screen can phrase without reading an
+ * exception. Deliberately a separate taxonomy from `:models`' `MetadataError`
+ * (EPIC 27's TMDB equivalent) rather than sharing one — see ADR 0021,
+ * "Failures are typed, not strings" (issue #116).
+ */
 enum class SyncFailureReason {
     /** The server could not be reached: no network, DNS, a timeout. Worth retrying, and nothing to do with the account. */
     Offline,
