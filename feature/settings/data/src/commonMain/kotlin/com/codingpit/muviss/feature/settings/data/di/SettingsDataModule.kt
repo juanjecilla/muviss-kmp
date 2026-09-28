@@ -67,7 +67,7 @@ val settingsDataModule: Module = module {
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
-    single { SettingsLocaleSync(get(), get(), get()) } withOptions { createdAtStart() }
+    single { SettingsLocaleSync(get(), get(), get(), get()) } withOptions { createdAtStart() }
 
     factory { ObserveSettingsUseCase(get()) }
     factory { SetThemeUseCase(get()) }

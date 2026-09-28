@@ -45,6 +45,9 @@ import com.codingpit.muviss.feature.settings.domain.TMDB_ATTRIBUTION_TEXT
 
 internal const val CRASH_REPORTS_LABEL = "Send crash reports"
 
+/** The TMDB-language picker's entry for `SupportedLocales.SYSTEM_DEFAULT_LANGUAGE` (issue #136). */
+internal const val SYSTEM_DEFAULT_LANGUAGE_LABEL = "System default"
+
 /**
  * Says what `docs/PRIVACY.md` says, in the words a person deciding this needs:
  * what is sent, and that the library is not part of it.
@@ -105,8 +108,10 @@ fun SettingsScreen(
         SectionOverline("Content", topPadding = true)
         PickerRow(
             label = "TMDB language",
-            value = SupportedLocales.languages.firstOrNull { it.code == state.settings.language }?.displayName ?: state.settings.language,
-            options = SupportedLocales.languages.map { it.code to it.displayName },
+            value = SupportedLocales.languages.firstOrNull { it.code == state.settings.language }?.displayName
+                ?: SYSTEM_DEFAULT_LANGUAGE_LABEL,
+            options = listOf(SupportedLocales.SYSTEM_DEFAULT_LANGUAGE to SYSTEM_DEFAULT_LANGUAGE_LABEL) +
+                SupportedLocales.languages.map { it.code to it.displayName },
             selectedCode = state.settings.language,
             onSelect = viewModel::onLanguageSelected,
         )

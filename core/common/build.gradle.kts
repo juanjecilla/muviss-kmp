@@ -83,5 +83,16 @@ kotlin {
         androidMain.dependencies { implementation(libs.sentry.kotlinMultiplatform) }
         iosMain.dependencies { implementation(libs.sentry.kotlinMultiplatform) }
         jvmMain.dependencies { implementation(libs.sentry.kotlinMultiplatform) }
+
+        // SystemLocale's web actual (`navigator.language`) lives in `webMain`,
+        // the shared js+wasmJs source set the default hierarchy template
+        // creates — see core/database/build.gradle.kts's matching block for
+        // why `matching { }` rather than `val webMain by getting` (the
+        // template creates `webMain` after this script runs).
+        matching { it.name == "webMain" }.configureEach {
+            dependencies {
+                implementation(libs.kotlinx.browser)
+            }
+        }
     }
 }

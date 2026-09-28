@@ -58,7 +58,10 @@ class SqlDelightSettingsRepositoryTest {
         repository.observeSettings().test {
             val settings = awaitItem()
             assertEquals(AppTheme.SYSTEM, settings.theme)
-            assertEquals("en-US", settings.language)
+            // A fresh row seeds language as the "System default" sentinel, not
+            // a hardcoded "en-US" (issue #136) — SupportedLocales.resolveLanguage
+            // is what turns this into a concrete TMDB language.
+            assertEquals("", settings.language)
             assertEquals("US", settings.region)
             assertTrue(settings.notificationsEnabled)
             cancelAndIgnoreRemainingEvents()
