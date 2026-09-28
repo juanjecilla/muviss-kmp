@@ -14,8 +14,11 @@ import io.ktor.http.contentType
 import io.ktor.http.encodeURLParameter
 import kotlinx.serialization.Serializable
 
+// kotlinx.serialization looks up EmptyBody's INSTANCE reflectively; a file-private
+// object compiles to a package-private class, which the JVM's access check then
+// rejects (IllegalAccessException, #98). internal is visible enough to fix it.
 @Serializable
-private object EmptyBody
+internal object EmptyBody
 
 /**
  * Thin wrapper over Supabase Auth (GoTrue)'s REST endpoints, exactly the
