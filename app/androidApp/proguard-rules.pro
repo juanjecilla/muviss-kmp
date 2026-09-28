@@ -107,3 +107,17 @@
 -keep class com.codingpit.muviss.sync.SyncWorker {
     <init>(android.content.Context, androidx.work.WorkerParameters);
 }
+
+# WorkManager's WorkManagerInitializer (an AndroidX Startup ContentProvider,
+# runs unconditionally before Application.onCreate) instantiates its
+# Room-generated WorkDatabase_Impl reflectively via a no-arg constructor.
+# R8 normally infers that reachability from Kotlin @Metadata, but the R8
+# bundled with AGP 9.0.1 cannot parse Kotlin 2.4's metadata format (a build-
+# time warning, "An error occurred when parsing kotlin metadata") and falls
+# back to static analysis, which sees the constructor as unused and strips
+# it — crashing every release install before any app code runs (#147).
+# The broader RoomDatabase rule covers any other AndroidX library that
+# generates a Room _Impl the same way under this R8/Kotlin combination, since
+# this app doesn't call Room directly and can't enumerate them by hand.
+-keep class androidx.work.impl.WorkDatabase_Impl { <init>(); }
+-keepclassmembers class * extends androidx.room.RoomDatabase { <init>(); }
