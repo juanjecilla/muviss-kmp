@@ -135,6 +135,31 @@ class ProfileViewModel(
             .launchInReporting(viewModelScope)
     }
 
+    /**
+     * Recomputes `lastSyncedLabel` against the current time (#117:
+     * `lastSyncedLabel` is otherwise only recomputed when the status stream
+     * emits, so "Synced just now" stays "just now" on a screen left open with
+     * nothing else happening — no new sync, no new failure).
+     *
+     * A plain function, not a `viewModelScope` coroutine, on purpose: the
+     * screen calls it from its own `LaunchedEffect`-driven timer
+     * (`ProfileScreen.kt`), tied to the composition's lifecycle rather than
+     * this ViewModel's. A `while (isActive) { delay(...) }` loop started
+     * unconditionally in `init` here looked equivalent but is not — this
+     * repo's ViewModel tests run on `Dispatchers.setMain(UnconfinedTestDispatcher())`,
+     * which shares `runTest`'s scheduler, so an infinite self-rescheduling
+     * coroutine on `viewModelScope` is an infinite coroutine `advanceUntilIdle()`
+     * can never drain: every test in this suite calls it and would hang
+     * forever (see CLAUDE.md's matching warning about `SyncCoordinator`'s
+     * debounce loop under `runTest`). Keeping the ticker in the UI layer,
+     * outside `viewModelScope`, is what the issue's own alternative already
+     * suggested, and it sidesteps the trap entirely rather than working
+     * around it.
+     */
+    fun refreshLastSyncedLabel() {
+        _state.update { it.copy(sync = it.sync.copy(lastSyncedLabel = lastSyncedLabel(it.sync.lastSyncedAtEpochMs, clock.nowEpochMs()))) }
+    }
+
     fun onEditNameRequested() {
         _state.update { it.copy(isEditingName = true) }
     }

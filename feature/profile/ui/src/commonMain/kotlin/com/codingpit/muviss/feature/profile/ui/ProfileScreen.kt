@@ -57,8 +57,14 @@ import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.RewatchEntry
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.round
+import kotlin.time.Duration.Companion.seconds
+
+/** How often the "Synced Xm ago" label re-renders while the screen is open — see the `LaunchedEffect(Unit)` below. */
+private val LAST_SYNCED_LABEL_TICK = 30.seconds
 
 @Composable
 fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpenCompanions: () -> Unit) {
@@ -84,6 +90,20 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
         val url = state.sync.pendingAuthUrl ?: return@LaunchedEffect
         uriHandler.openUri(url)
         viewModel.authUrlOpened()
+    }
+
+    // #117: the "Synced Xm ago" label is otherwise only recomputed when the
+    // status stream emits, so it goes stale on a screen left open with
+    // nothing else happening. Ticking from here — the composition's own
+    // effect, cancelled automatically when this screen leaves composition —
+    // rather than from a `viewModelScope` coroutine in `ProfileViewModel`:
+    // see `refreshLastSyncedLabel`'s KDoc for why a ViewModel-owned infinite
+    // loop is the wrong place for this.
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(LAST_SYNCED_LABEL_TICK)
+            viewModel.refreshLastSyncedLabel()
+        }
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
