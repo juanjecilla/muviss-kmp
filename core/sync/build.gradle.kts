@@ -78,7 +78,9 @@ kotlin {
                 api(projects.models)
                 api(projects.core.common)
                 api(projects.core.database)
-                implementation(projects.core.network)
+                // No :core:network dependency: SupabaseSyncBackend's HttpClient
+                // comes from Koin (the shared engine networkModule binds), not a
+                // client :core:sync builds itself — see SyncModule's `single<SyncBackend>` (#89).
                 implementation(libs.ktor.clientCore)
                 implementation(libs.ktor.clientContentNegotiation)
                 implementation(libs.ktor.serializationJson)
