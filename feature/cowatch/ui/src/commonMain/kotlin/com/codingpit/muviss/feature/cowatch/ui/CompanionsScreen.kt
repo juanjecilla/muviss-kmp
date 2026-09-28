@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.cowatch.api.CompanionState
@@ -77,7 +78,7 @@ fun CompanionsScreen(
                     onValueChange = { pasted = it },
                     label = { Text("Paste their code") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag(PASTE_CODE_FIELD_TAG),
                 )
                 TextButton(
                     enabled = pasted.isNotBlank(),
@@ -173,7 +174,7 @@ private fun CompanionCard(
                     onValueChange = { name = it },
                     label = { Text("Call them") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag(RENAME_FIELD_TAG),
                 )
                 TextButton(onClick = {
                     onRename(name.ifBlank { null })
@@ -208,3 +209,9 @@ private fun describe(state: CompanionState): String = when (state) {
 }
 
 private const val FRACTION_FOR_LABEL = 0.8f
+
+/** Identifies the paste-a-code field, for tests. */
+const val PASTE_CODE_FIELD_TAG = "companions-paste-code-field"
+
+/** Identifies a Companion's rename field, for tests. */
+const val RENAME_FIELD_TAG = "companions-rename-field"
