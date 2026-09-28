@@ -102,9 +102,16 @@ SELECT *
 FROM appSettings
 WHERE id = 0;
 
+-- `language` seeds as '' (feature/settings/domain's SupportedLocales.SYSTEM_DEFAULT_LANGUAGE),
+-- not 'en-US' (issue #136): a brand-new row has never had an explicit pick,
+-- so it resolves from the device locale (SupportedLocales.resolveLanguage)
+-- rather than being hardcoded to US English. This is a query-literal change,
+-- not a schema one — INSERT OR IGNORE means it only ever affects a row that
+-- does not exist yet, so no `.sqm` migration is needed and no existing
+-- install's saved language changes.
 ensureRow:
 INSERT OR IGNORE INTO appSettings(id, theme, language, region, notificationsEnabled)
-VALUES (0, 'SYSTEM', 'en-US', 'US', 1);
+VALUES (0, 'SYSTEM', '', 'US', 1);
 
 updateTheme:
 UPDATE appSettings SET theme = :theme WHERE id = 0;
