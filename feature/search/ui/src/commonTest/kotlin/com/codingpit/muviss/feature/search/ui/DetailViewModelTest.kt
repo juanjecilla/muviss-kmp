@@ -48,7 +48,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private class FakeDetailRepo(
+internal class FakeDetailRepo(
     private val details: MediaDetails,
     private val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
     private val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
@@ -67,7 +67,7 @@ private class FakeDetailRepo(
 }
 
 /** Bundles [FakeDetailRepo]'s independently-loaded-section fakes into one test-helper param, keeping [DetailViewModelTest.viewModel]'s parameter count under detekt's LongParameterList threshold. */
-private data class DetailRepoFakes(
+internal data class DetailRepoFakes(
     val triageApi: FakeTriageApi = FakeTriageApi(),
     val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
     val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
@@ -75,7 +75,7 @@ private data class DetailRepoFakes(
     val detailsFailure: Throwable? = null,
 )
 
-private class FakeCollectionApi : CollectionApi {
+internal class FakeCollectionApi : CollectionApi {
     private val membership = MutableStateFlow<CollectionMembership?>(null)
     val added = mutableListOf<MediaId>()
     val removed = mutableListOf<MediaId>()

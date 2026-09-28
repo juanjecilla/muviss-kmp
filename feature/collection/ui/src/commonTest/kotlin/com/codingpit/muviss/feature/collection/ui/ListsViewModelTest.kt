@@ -7,6 +7,7 @@ import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaList
 import com.codingpit.muviss.feature.collection.domain.MediaListItem
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MetadataError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,11 +24,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Test double for [ListsRepository]: [createList]/[renameList]/[deleteList] just record their calls and mutate [lists] so [observeLists] reflects them. */
-private class FakeListsRepository(initial: List<MediaList> = emptyList()) : ListsRepository {
+internal class FakeListsRepository(initial: List<MediaList> = emptyList(), private val failure: Throwable? = null) : ListsRepository {
     private val flow = MutableStateFlow(initial)
     val deleteCalls = mutableListOf<String>()
 
-    override fun observeLists(): Flow<List<MediaList>> = flow
+    override fun observeLists(): Flow<List<MediaList>> = failure?.let { kotlinx.coroutines.flow.flow { throw it } } ?: flow
     override fun observeListContents(listId: String): Flow<List<MediaListItem>> = error("not used")
     override fun observeListIdsContaining(mediaId: MediaId): Flow<Set<String>> = error("not used")
 
@@ -68,6 +69,23 @@ class ListsViewModelTest {
 
         assertEquals(listOf(marathon), vm.state.value.lists)
         assertTrue(!vm.state.value.loading)
+    }
+
+    @Test
+    fun a_metadata_error_shows_its_mapped_copy() = runTest {
+        val vm = viewModel(FakeListsRepository(failure = MetadataError.RateLimited(retryAfterSeconds = 12)))
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+    }
+
+    @Test
+    fun a_raw_exception_never_reaches_the_screen() = runTest {
+        val leaky = IllegalStateException("Unable to resolve host api.themoviedb.org?api_key=SECRET")
+        val vm = viewModel(FakeListsRepository(failure = leaky))
+        advanceUntilIdle()
+
+        assertEquals("Something went wrong", vm.state.value.error)
     }
 
     @Test

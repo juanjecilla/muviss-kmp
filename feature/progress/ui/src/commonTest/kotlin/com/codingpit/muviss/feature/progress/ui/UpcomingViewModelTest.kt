@@ -15,6 +15,7 @@ import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
@@ -33,10 +34,10 @@ import kotlin.test.assertTrue
 
 private fun summary(id: MediaId, title: String = id.toString(), status: WatchStatus = WatchStatus.NOT_STARTED) = CollectionSummary(id, title, posterUrl = null, status = status)
 
-private class FakeUpcomingCollectionApi(summaries: List<CollectionSummary>) : CollectionApi {
+internal class FakeUpcomingCollectionApi(summaries: List<CollectionSummary>, private val failure: Throwable? = null) : CollectionApi {
     val flow = MutableStateFlow(summaries)
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
-    override fun observeSummaries(): Flow<List<CollectionSummary>> = flow
+    override fun observeSummaries(): Flow<List<CollectionSummary>> = failure?.let { kotlinx.coroutines.flow.flow { throw it } } ?: flow
     override suspend fun add(details: MediaDetails) = error("not used")
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
@@ -50,11 +51,11 @@ private class FakeUpcomingCollectionApi(summaries: List<CollectionSummary>) : Co
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
-private class FakeUpcomingCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
+internal class FakeUpcomingCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = Result.success(bySeasons[mediaId].orEmpty())
 }
 
-private class FakeUpcomingClock(private val millis: Long) : AppClock {
+internal class FakeUpcomingClock(private val millis: Long) : AppClock {
     override fun nowEpochMs(): Long = millis
 }
 
@@ -88,6 +89,26 @@ class UpcomingViewModelTest {
         EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore()),
         FakeUpcomingClock(today),
     )
+
+    @Test
+    fun a_metadata_error_shows_its_mapped_copy() = runTest {
+        val vm = viewModel(
+            FakeUpcomingCollectionApi(emptyList(), failure = MetadataError.RateLimited(retryAfterSeconds = 12)),
+            FakeUpcomingCatalogSource(emptyMap()),
+        )
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+    }
+
+    @Test
+    fun a_raw_exception_never_reaches_the_screen() = runTest {
+        val leaky = IllegalStateException("Unable to resolve host api.themoviedb.org?api_key=SECRET")
+        val vm = viewModel(FakeUpcomingCollectionApi(emptyList(), failure = leaky), FakeUpcomingCatalogSource(emptyMap()))
+        advanceUntilIdle()
+
+        assertEquals("Something went wrong", vm.state.value.error)
+    }
 
     @Test
     fun lists_future_episodes_of_a_saved_tv_show() = runTest {

@@ -17,11 +17,13 @@ import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -36,9 +38,10 @@ import kotlin.test.assertTrue
 
 private class RewatchCollectionApi : CollectionApi {
     val summaries = MutableStateFlow<List<CollectionSummary>>(emptyList())
+    var failure: Throwable? = null
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
-    override fun observeSummaries(): Flow<List<CollectionSummary>> = summaries
+    override fun observeSummaries(): Flow<List<CollectionSummary>> = failure?.let { flow { throw it } } ?: summaries
     override suspend fun add(details: MediaDetails) = error("not used")
     override suspend fun remove(mediaId: MediaId) = error("not used")
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("not used")
@@ -196,5 +199,27 @@ class RewatchViewModelTest {
         assertTrue(viewModel.state.value.stats.ranking.isEmpty)
         assertEquals(null, viewModel.state.value.error)
         assertEquals(false, viewModel.state.value.loading)
+    }
+
+    @Test
+    fun a_metadata_error_shows_its_mapped_copy() = runTest {
+        collectionApi.failure = MetadataError.RateLimited(retryAfterSeconds = 12)
+        viewModel = RewatchViewModel(
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+        )
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.RateLimited().userMessage, viewModel.state.value.error)
+    }
+
+    @Test
+    fun a_raw_exception_never_reaches_the_screen() = runTest {
+        collectionApi.failure = IllegalStateException("Unable to resolve host api.themoviedb.org?api_key=SECRET")
+        viewModel = RewatchViewModel(
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+        )
+        advanceUntilIdle()
+
+        assertEquals("Could not load rewatches", viewModel.state.value.error)
     }
 }

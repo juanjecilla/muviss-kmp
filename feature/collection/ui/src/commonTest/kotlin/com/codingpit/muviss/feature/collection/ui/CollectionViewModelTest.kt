@@ -50,11 +50,11 @@ private fun entry(
     seenEpisodes = seenEpisodes,
 )
 
-private class FakeCollectionRepository(entries: List<CollectionEntry>) : CollectionRepository {
+internal class FakeCollectionRepository(entries: List<CollectionEntry>, private val failure: Throwable? = null) : CollectionRepository {
     private val flow = MutableStateFlow(entries)
     val setFavoriteCalls = mutableListOf<Pair<MediaId, Boolean>>()
 
-    override fun observeAll(): Flow<List<CollectionEntry>> = flow
+    override fun observeAll(): Flow<List<CollectionEntry>> = failure?.let { kotlinx.coroutines.flow.flow { throw it } } ?: flow
     override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = error("not used")
     override suspend fun upsertSnapshot(details: MediaDetails) = error("not used")
     override suspend fun refreshSnapshot(details: MediaDetails) {
@@ -74,7 +74,7 @@ private class FakeCollectionRepository(entries: List<CollectionEntry>) : Collect
     override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = error("not used")
 }
 
-private class NoopSnapshotSource : MediaSnapshotSource {
+internal class NoopSnapshotSource : MediaSnapshotSource {
     var fetches = 0
         private set
 

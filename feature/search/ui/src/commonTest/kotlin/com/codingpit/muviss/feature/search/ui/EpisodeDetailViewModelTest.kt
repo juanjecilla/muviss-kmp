@@ -27,7 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private class FakeEpisodeRepo(private val result: Result<EpisodeDetails>) : SearchRepository {
+internal class FakeEpisodeRepo(private val result: Result<EpisodeDetails>) : SearchRepository {
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), page, page))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = Result.success(MediaDetails(MediaSummary(id, "t")))
