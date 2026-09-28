@@ -36,3 +36,16 @@ That definition is what makes the ranking mean anything. Ranking by raw play cou
 - `ProgressApi` grew two reads (`observeRewatchCounts`, `observeRewatchTimestamps`) which report every title, library member or not. Filtering to the library is the caller's decision and the profile feature makes it, in Kotlin, over `CollectionSummary` — so the ranking is unit-testable with no database, and no query crosses a feature boundary.
 - Months are bucketed in Kotlin through `CivilDate` rather than by SQLite's date functions, which needed the documented inverse `epochDayOfCivil` in `:core:common`. One notion of "what day is it" for the whole app, shared with `WatchStreak`.
 - `EpisodePlayMigrationTest` now asserts that an upgraded library reports **no** rewatches at all. If a future migration ever backfilled more than one row per tick, a person's first sight of this feature would be a fabricated history.
+
+## Amendment (2026-09-28, issues #87/#97): a play is not automatically "earlier behind it"
+
+"A rewatch is a play that has an earlier play of the same element behind it,
+at any date ever" turned out to have a gap: two devices ticking the same
+episode within seconds of each other, unsynced, produced exactly that shape —
+one play with an earlier one "behind it" — despite being one viewing, not two.
+`RemoteApplier.mergeDuplicatePlays` now removes the near-simultaneous
+duplicate during post-pull reconciliation, before this file's queries ever
+see it, so the *definition* of a rewatch in this ADR is unchanged — the fix
+is that one of the two plays is not really there. See ADR 0013's 2026-09-28
+amendment for the merge rule itself and why it lives in `RemoteApplier` rather
+than in `rewatchCountsByMedia`.

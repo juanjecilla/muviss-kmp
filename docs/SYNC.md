@@ -387,9 +387,12 @@ this device's snapshot fields.
 
 **Reconcile.** After every table has drained, for the titles touched: an
 episode with `seen = 1` and no live play gets one at the tick's timestamp, and
-an episode with `seen = 0` has its plays tombstoned; `airedEpisodes` is raised
-to the number ticked. Only then do the six cursors move, in one transaction. A
-pull that fails anywhere moves none of them.
+an episode with `seen = 0` has its plays tombstoned; near-simultaneous
+duplicate plays of one episode from different devices (within 5 minutes) are
+merged down to the earliest, so a race between two unsynced ticks does not
+read as a rewatch (issues #87/#97, ADR 0013's 2026-09-28 amendment); and
+`airedEpisodes` is raised to the number ticked. Only then do the six cursors
+move, in one transaction. A pull that fails anywhere moves none of them.
 
 **Cursors** are `syncCursor(tableName, seq)`: one row per table, the last
 `server_seq` applied, opaque to the engine. An install with no rows does a full
@@ -409,9 +412,6 @@ other devices' real edits.
 
 ### Known limitations
 
-- **Two devices ticking the same episode** create two plays (different
-  timestamps, so different ids). That is indistinguishable from a legitimate
-  rewatch and is left alone. Tracked in a follow-up issue.
 - **Commit order of sequence values.** A row from a slow transaction can become
   visible behind a cursor that already passed its `server_seq`. Bounded by
   `resyncEverything()` and, once EPIC 40 lands, a weekly full reconcile.

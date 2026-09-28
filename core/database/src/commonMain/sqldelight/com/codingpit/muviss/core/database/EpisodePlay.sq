@@ -241,3 +241,32 @@ SET deleted = 1,
 WHERE deleted = 0
   AND mediaId IN :mediaIds
   AND EXISTS (SELECT 1 FROM episodeProgress p WHERE p.episodeId = episodePlay.episodeId AND p.seen = 0);
+
+-- Near-duplicate merge (#87/#97, ADR 0013's amendment): two devices that each
+-- tick the same episode while unsynced write two live plays a few
+-- milliseconds apart (the id is the derived `episodeId@watchedAtEpochMs`, so
+-- the millisecond difference is enough to keep both rows). `rewatchCountsByMedia`
+-- would otherwise count the second arrival as a rewatch.
+--
+-- Ordered rather than aggregated: `RemoteApplier.mergeDuplicatePlays` walks
+-- this per episode and decides, in Kotlin, which live plays fall inside 5
+-- minutes of the earliest one in their cluster and tombstones those — see its
+-- KDoc for why that step is not plain SQL (no window functions on Android's
+-- bundled SQLite, per ADR 0012's "No window functions" consequence).
+selectLiveForMediaIds:
+SELECT *
+FROM episodePlay
+WHERE mediaId IN :mediaIds AND deleted = 0
+ORDER BY episodeId, watchedAtEpochMs, id;
+
+-- One row's half of `RemoteApplier.mergeDuplicatePlays`: soft-deletes a play
+-- decided to be a near-duplicate of another, already-kept one. `updatedAtEpochMs`
+-- is the merge's own timestamp rather than a MAX(...) against anything else —
+-- two devices that each run this merge sort the same live rows the same way
+-- (ties broken by `id`) and so tombstone the same id independently, so which
+-- stamp wins last-write-wins does not matter: the surviving content
+-- (`deleted = 1`) is identical either way.
+tombstoneDuplicatePlay:
+UPDATE episodePlay
+SET deleted = 1, isDirty = 1, updatedAtEpochMs = :updatedAtEpochMs
+WHERE id = :id AND deleted = 0;

@@ -209,6 +209,73 @@ class SyncIntegrationTest {
         assertEquals(listOf(episode), a.progress.recordPlaysForUnseen(listOf(episode)), "and can be marked watched again, which a leftover play would have blocked")
     }
 
+    // --- duplicate plays (#87/#97) -----------------------------------------------
+
+    @Test
+    fun two_devices_ticking_the_same_episode_minutes_apart_merge_into_one_viewing() = runTest {
+        val (_, a, b) = newSetup()
+        val episode = episodeIds(1).single()
+        a.at(1_000)
+        a.collection.upsertSnapshot(showDetails(aired = 1))
+        assertTrue(a.sync() is SyncOutcome.Success)
+        b.sync()
+
+        // Neither device has synced since: this is the exact shape #87/#97
+        // describe, a first watch ticked on two phones before either goes
+        // back online, 90 seconds apart.
+        a.at(10_000)
+        a.progress.setSeen(episode, true)
+        b.at(10_000 + 90_000)
+        b.progress.setSeen(episode, true)
+
+        a.sync()
+        b.sync() // pulls A's play, merges locally: B's own duplicate loses to A's earlier one.
+        a.sync() // pulls B's (now-tombstoned-on-B-but-not-yet-pushed) play, merges the same way independently.
+
+        assertEquals(1, a.livePlayCount(SHOW), "the two near-simultaneous ticks merge into one viewing")
+        assertEquals(1, b.livePlayCount(SHOW))
+        a.progressApi.observeRewatchCounts(0).test {
+            assertEquals(emptyMap(), awaitItem(), "a merged duplicate must not be counted as a rewatch")
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        // One more round each way so both tombstones reach the server too —
+        // full convergence, not just each device's own local view.
+        b.sync()
+        a.sync()
+        assertEquals(a.snapshot(listOf(SHOW), listOf(episode.toString())), b.snapshot(listOf(SHOW), listOf(episode.toString())), "both devices and the server agree on exactly one surviving play")
+    }
+
+    @Test
+    fun two_devices_watching_the_same_episode_weeks_apart_both_count_as_real_viewings() = runTest {
+        val (_, a, b) = newSetup()
+        val episode = episodeIds(1).single()
+        a.at(1_000)
+        a.collection.upsertSnapshot(showDetails(aired = 1))
+        assertTrue(a.sync() is SyncOutcome.Success)
+        b.sync()
+
+        a.at(10_000)
+        a.progress.setSeen(episode, true)
+        a.sync()
+        b.sync()
+
+        // B watches the same episode again three weeks later — a genuine
+        // rewatch, not a duplicate, even though it is the same episode B
+        // just pulled as already seen.
+        b.at(10_000 + 21L * 24 * 60 * 60 * 1000)
+        b.progress.recordPlay(episode)
+        b.sync()
+        a.sync()
+
+        assertEquals(2, a.livePlayCount(SHOW), "outside the 5-minute window both viewings survive")
+        assertEquals(2, b.livePlayCount(SHOW))
+        a.progressApi.observeRewatchCounts(0).test {
+            assertEquals(mapOf(SHOW to 1), awaitItem(), "and the second one is a genuine rewatch")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
     // --- interruptions ----------------------------------------------------------
 
     @Test

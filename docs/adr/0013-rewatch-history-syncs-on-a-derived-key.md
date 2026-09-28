@@ -112,3 +112,99 @@ migration composes the same expression in raw SQL; the two must agree.
   plays the user had cleared. Filtering only the outer query would be just as
   wrong in the other direction — a deleted first viewing would still anchor
   `firstAt`, so the surviving later play would stop counting as a rewatch.
+
+## Amendment (2026-09-28, issues #87/#97): near-simultaneous duplicate plays merge on pull
+
+Filed twice — #87 and #97 both describe the same gap, left open on purpose
+when EPIC 39 wired up sync: two devices that each tick the same episode while
+unsynced derive two different ids, because the millisecond in
+`episodeId@watchedAtEpochMs` almost never matches between two independent
+taps. After sync the episode has two live plays, and `rewatchCountsByMedia`
+(ADR 0012) counts the second arrival as a rewatch it never was, inflating the
+profile's rewatch ranking and, through it, the watch streak.
+
+**The two issues themselves say why this cannot be solved on the write side.**
+A genuine rewatch of the same episode from a second device is byte-for-byte
+the same shape as this bug — same `episodeId`, a plausible `watchedAtEpochMs`
+— so nothing in the row itself says which case a given pair of plays is. The
+decision recorded here is a heuristic, not a derivation: **plays of the same
+episode from different devices land within 5 minutes of each other, or they
+did not.** Within the window, they are one viewing — keep the earliest,
+tombstone the rest. Outside it, both survive and a rewatch weeks or months
+later still counts as one.
+
+**Where it runs.** `RemoteApplier.mergeDuplicatePlays`, called from
+`reconcile` (EPIC 39, ADR 0020) right after `tombstonePlaysForUnseen` and
+before `insertMissingPlaysForSeen`, over the same `mediaIds` a pull touched.
+It has to sit in reconciliation and not in `applyEpisodePlay`: a single pulled
+page only ever proves one row against local state, and merging needs to
+compare live plays of one episode against *each other* — the same reason
+`seen`/play reconciliation cannot run per page either.
+
+**Anchored, not chained.** For each episode's live plays, sorted by
+`watchedAtEpochMs` (ties broken by `id`, `rewatchCountsByMedia`'s own
+tiebreak), a play starts a new anchor unless it falls within 5 minutes of the
+*current* anchor — never the previous play. A chained "within 5 minutes of
+its neighbour" rule would let a slow trickle of taps, each one just inside the
+window of the last, walk a single viewing arbitrarily far from where it
+started. Anchoring on the first play of each cluster keeps the window fixed
+to one real event.
+
+**Decided in Kotlin, not SQL.** The natural expression of "compare to the
+previous row in order" is a window function, and this table already ruled
+those out: ADR 0012's "No window functions" consequence records that
+`minSdk 24` ships SQLite 3.9 against a 3.25 requirement, on every driver this
+table's queries have to run identically on. `mergeDuplicatePlays` reads the
+candidates with a plain ordered `SELECT` (`selectLiveForMediaIds`) and walks
+them in Kotlin instead, the same trade CLAUDE.md already documents for
+`rewatchCountsByMedia`'s CTE.
+
+**Convergence is determinism, not a timestamp race.** Two devices reconciling
+the same episode's live plays sort them identically and so pick the same
+survivor independently — neither needs to see the other's decision first.
+`tombstoneDuplicatePlay` stamps the loser with the merging device's own
+`AppClock.nowEpochMs()`, not a `MAX(...)` against anything, because it does
+not need to win last-write-wins against a specific value: both devices
+converge on `deleted = 1` for that id regardless of whose stamp is larger, and
+`episodePlay`'s reads already filter `deleted = 0` (this table's oldest
+lesson, restated once more). This is unlike `tombstonePlaysForUnseen`, which
+does need its stamp to beat a specific surviving edit and uses `MAX(...)` for
+exactly that reason.
+
+**Considered and rejected:**
+
+- **A random tiebreak (lowest id wins, say) instead of earliest-timestamp.**
+  Simpler, and wrong: it would sometimes keep the *later* play as the
+  survivor, silently moving a viewing's recorded date forward by however long
+  the two devices' clocks disagree. Keeping the earliest is also what "one
+  viewing" means — the moment it was first watched.
+- **Deduplicating by `episodeId` alone**, dropping every play but the first
+  ever recorded. This is what #97 explicitly ruled out: it would erase every
+  real rewatch, not just near-simultaneous ones.
+- **A UI affordance ("merge these plays?") instead of a silent merge.** Two
+  plays 90 seconds apart are not a decision a person can usefully weigh in
+  on — by the time sync has run, neither device shows anything to react to,
+  and the alternative (surfacing every pull-time merge as a notification)
+  is a much larger feature for a case that should simply not have happened.
+- **A longer or shorter window than 5 minutes.** No data motivated a
+  different number; 5 minutes is generous enough to cover "two people picked
+  up their own phone to tick the episode they just finished together" while
+  being short enough that no plausible rewatch lands inside it by accident.
+  If it ever needs tuning, `MERGE_WINDOW_MS` is the one place.
+
+**Consequences.**
+
+- No schema change. `selectLiveForMediaIds` and `tombstoneDuplicatePlay`
+  (`EpisodePlay.sq`) read and write through the existing columns; the
+  existing `episodePlay_episodeId`/`episodePlay_mediaId` indexes serve both.
+- `RemoteApplier` now takes an `AppClock`, its first dependency beyond the
+  database. `SyncEngine` already held one for other purposes and passes it
+  straight through.
+- `SyncIntegrationTest` gained two two-device tests:
+  `two_devices_ticking_the_same_episode_minutes_apart_merge_into_one_viewing`
+  (the bug, fixed) and
+  `two_devices_watching_the_same_episode_weeks_apart_both_count_as_real_viewings`
+  (the window's edge, proving a real rewatch is not collateral damage).
+- The merge only ever runs over titles a pull actually touched, same as the
+  rest of `reconcile` — it costs nothing on a sync with no episode-play
+  changes.

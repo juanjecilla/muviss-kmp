@@ -1,6 +1,8 @@
 package com.codingpit.muviss.core.sync
 
+import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.database.MuvissDatabase
 
 /**
@@ -36,9 +38,11 @@ import com.codingpit.muviss.core.database.MuvissDatabase
  * Merging `episodeProgress` and `episodePlay` independently can leave them
  * disagreeing, and merging `collectionEntry` and `episodeProgress`
  * independently can leave more episodes seen than aired. [reconcile] puts
- * both back in step for the titles a pull touched.
+ * both back in step for the titles a pull touched, and also merges
+ * near-duplicate plays two devices produced by ticking the same episode
+ * while unsynced (#87/#97, ADR 0013's amendment) — see [mergeDuplicatePlays].
  */
-internal class RemoteApplier(private val database: MuvissDatabase) {
+internal class RemoteApplier(private val database: MuvissDatabase, private val clock: AppClock) {
 
     /** Applies [page] in one transaction and returns the ids of the titles it touched. */
     suspend fun applyPage(page: SyncPage): Set<String> = database.transactionWithResult {
@@ -78,12 +82,57 @@ internal class RemoteApplier(private val database: MuvissDatabase) {
         chunks.forEachIndexed { index, mediaIds ->
             database.transaction {
                 if (mediaIds.isNotEmpty()) {
-                    // An un-tick wins over a play that outlived it; then a tick with no play gets one.
+                    // An un-tick wins over a play that outlived it; then near-simultaneous
+                    // duplicates collapse; then a tick with no play gets one.
                     database.episodePlayQueries.tombstonePlaysForUnseen(mediaIds)
+                    mergeDuplicatePlays(mediaIds)
                     database.episodePlayQueries.insertMissingPlaysForSeen(mediaIds)
                     database.collectionEntryQueries.raiseAiredToSeen(mediaIds)
                 }
                 if (index == chunks.lastIndex) finish()
+            }
+        }
+    }
+
+    /**
+     * Merges near-simultaneous duplicate plays of the same episode from
+     * different devices (#87/#97): two devices that each tick an episode
+     * while unsynced write two live rows a few milliseconds apart — the id is
+     * the derived `episodeId@watchedAtEpochMs` (ADR 0013), so the millisecond
+     * difference is enough to keep both — and without this step
+     * `rewatchCountsByMedia` (ADR 0012) counts the second arrival as a
+     * rewatch and inflates the profile watch-streak.
+     *
+     * Not plain SQL: the clustering below needs a window function's "compare
+     * to the previous row" shape, and ADR 0012 already ruled those out for
+     * this table — `minSdk 24` ships SQLite 3.9, and window functions need
+     * 3.25. So it reads the candidates and decides in Kotlin instead.
+     *
+     * For each episode among [mediaIds]'s live plays, sorted by
+     * `watchedAtEpochMs` (ties broken by `id`, the same tiebreak
+     * `rewatchCountsByMedia` uses), a play starts a new anchor unless it
+     * lands within [MERGE_WINDOW_MS] of the *current* anchor — not the
+     * previous play — so the window does not chain past 5 minutes one
+     * duplicate at a time. A genuine rewatch minutes or days later starts its
+     * own anchor and is left alone; only the anchor of each cluster survives.
+     *
+     * Both devices sort the same live rows the same way, so they tombstone
+     * the same duplicates independently. Convergence comes from that
+     * determinism, not from a race over whose stamp is newer — see
+     * `tombstoneDuplicatePlay`'s KDoc in `EpisodePlay.sq`.
+     */
+    private suspend fun mergeDuplicatePlays(mediaIds: List<String>) {
+        val live = database.episodePlayQueries.selectLiveForMediaIds(mediaIds).awaitAsList()
+        val now = clock.nowEpochMs()
+        live.groupBy { it.episodeId }.values.forEach { plays ->
+            val sorted = plays.sortedWith(compareBy({ it.watchedAtEpochMs }, { it.id }))
+            var anchorTime = sorted.first().watchedAtEpochMs
+            sorted.drop(1).forEach { play ->
+                if (play.watchedAtEpochMs - anchorTime <= MERGE_WINDOW_MS) {
+                    database.episodePlayQueries.tombstoneDuplicatePlay(id = play.id, updatedAtEpochMs = now)
+                } else {
+                    anchorTime = play.watchedAtEpochMs
+                }
             }
         }
     }
@@ -223,5 +272,10 @@ internal class RemoteApplier(private val database: MuvissDatabase) {
             isDirty = false,
             deleted = change.deleted,
         )
+    }
+
+    private companion object {
+        /** How close two devices' plays of the same episode have to land to be treated as one viewing — see [mergeDuplicatePlays]. */
+        const val MERGE_WINDOW_MS = 5 * 60 * 1000L
     }
 }
