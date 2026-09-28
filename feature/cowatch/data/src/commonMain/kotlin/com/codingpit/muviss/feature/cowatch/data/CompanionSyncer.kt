@@ -86,6 +86,7 @@ internal class CompanionSyncer(
                     pinned = row.pinned,
                     updatedAtEpochMs = row.updatedAtEpochMs,
                     deleted = row.deleted,
+                    flatrateProviderIds = row.flatrateProviderIds,
                 )
             },
         )
@@ -168,6 +169,7 @@ internal class CompanionSyncer(
             seen = change.seen,
             pinned = change.pinned,
             publishedAtEpochMs = change.updatedAtEpochMs,
+            flatrateProviderIds = change.flatrateProviderIds,
         )
     }
 

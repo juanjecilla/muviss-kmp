@@ -1,0 +1,17 @@
+-- #122 (EPIC 41 follow-up): one column on the Watch Pool table so a title's
+-- flatrate provider ids travel to a Companion the same way `genres` already
+-- does, letting the Shortlist rank by "a service you both have".
+--
+-- Comma-joined text, not a Postgres array: every other denormalized field on
+-- this row (`genres`) is already stored this way, and the client's
+-- `explicitNulls = true` handling (ADR 0020) only has to reason about scalar
+-- columns as a result.
+--
+-- `not null default ''` mirrors `genres`: an old client that has never synced
+-- this column still upserts a valid row, and a client that has not yet
+-- cached any providers for a title simply publishes an empty string, not a
+-- null it would have to explicitly clear.
+--
+-- No RLS change: `cowatch_pool_entry`'s existing "author and addressee"
+-- policy already covers every column on the row.
+alter table public.cowatch_pool_entry add column if not exists flatrate_provider_ids text not null default '';

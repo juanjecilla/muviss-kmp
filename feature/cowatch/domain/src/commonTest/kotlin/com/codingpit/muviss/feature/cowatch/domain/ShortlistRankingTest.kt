@@ -18,6 +18,7 @@ class ShortlistRankingTest {
         started: Boolean = false,
         seen: Boolean = false,
         pinned: Boolean = false,
+        providerIds: Set<String> = emptySet(),
     ) = PoolItem(
         mediaId = MediaId.tmdbMovie(id),
         mediaType = MediaType.MOVIE,
@@ -28,6 +29,7 @@ class ShortlistRankingTest {
         started = started,
         seen = seen,
         pinned = pinned,
+        providerIds = providerIds,
     )
 
     @Test
@@ -114,6 +116,46 @@ class ShortlistRankingTest {
             theirs = listOf(item("a")),
         )
         assertTrue(ShortlistReason.REVISIT in result.single().reasons)
+    }
+
+    @Test
+    fun a_provider_id_in_common_is_explained_as_shared_availability() {
+        val result = ShortlistRanking.rank(
+            mine = listOf(item("a", providerIds = setOf("8", "337"))),
+            theirs = listOf(item("a", providerIds = setOf("337", "9"))),
+        )
+        assertTrue(ShortlistReason.SHARED_AVAILABILITY in result.single().reasons)
+    }
+
+    @Test
+    fun disjoint_provider_ids_are_not_shared_availability() {
+        // Two devices in different regions/services with genuinely nothing in
+        // common must not be read as agreeing on something.
+        val result = ShortlistRanking.rank(
+            mine = listOf(item("a", providerIds = setOf("8"))),
+            theirs = listOf(item("a", providerIds = setOf("9"))),
+        )
+        assertTrue(ShortlistReason.SHARED_AVAILABILITY !in result.single().reasons)
+    }
+
+    @Test
+    fun shared_availability_breaks_a_tie_within_a_tier_but_never_outranks_both_pinned() {
+        val result = ShortlistRanking.rank(
+            mine = listOf(
+                item("pinned", pinned = true),
+                item("available", providerIds = setOf("8")),
+                item("plain"),
+            ),
+            theirs = listOf(
+                item("pinned", pinned = true),
+                item("available", providerIds = setOf("8")),
+                item("plain"),
+            ),
+        )
+        assertEquals(
+            listOf(MediaId.tmdbMovie("pinned"), MediaId.tmdbMovie("available"), MediaId.tmdbMovie("plain")),
+            result.map { it.mediaId },
+        )
     }
 
     @Test

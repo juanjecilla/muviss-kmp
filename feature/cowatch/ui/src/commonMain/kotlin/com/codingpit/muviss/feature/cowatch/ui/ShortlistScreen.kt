@@ -132,6 +132,7 @@ private fun explain(item: ShortlistItem): String {
         if (ShortlistReason.BOTH_PINNED in item.reasons) add("you both picked it")
         if (ShortlistReason.NEITHER_STARTED in item.reasons) add("neither of you has started it")
         if (ShortlistReason.REVISIT in item.reasons) add("one of you has seen it and would again")
+        if (ShortlistReason.SHARED_AVAILABILITY in item.reasons) add("on a service you both have")
         item.runtimeMinutes?.let { add("$it min") }
     }
     return parts.joinToString(" · ")

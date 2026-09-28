@@ -1,0 +1,34 @@
+-- Where a title streams, cached locally (EPIC 41 follow-up, #122).
+--
+-- Cache, not user data, the same distinction ADR 0015 draws for `episode` and
+-- `companionPoolIn`: nobody here authored it, TMDB/JustWatch is the only
+-- source of truth, and a stale row is replaced wholesale rather than
+-- reconciled with anything local. It therefore has no `isDirty`/`deleted` and
+-- is absent from `SyncChangeSet` and the data export — see `ExportShapeTest`.
+--
+-- Only `flatrate` (subscription-included) providers are kept. "On a service
+-- you both have" is a subscription question; rent/buy is "could both pay for
+-- it", a much weaker signal the ranking function does not use (#122).
+--
+-- `region` is stored alongside the ids, not assumed: it is what lets a
+-- refresh notice a device's TMDB region changed (Settings, EPIC 8) and
+-- refetch immediately rather than serving another region's answer until the
+-- TTL happens to expire (see `WatchProviderRefresher`, `feature/cowatch/domain`).
+CREATE TABLE titleWatchProviders (
+    mediaId TEXT NOT NULL PRIMARY KEY,
+    region TEXT NOT NULL,
+    flatrateProviderIds TEXT NOT NULL DEFAULT '',
+    fetchedAtEpochMs INTEGER NOT NULL
+);
+
+selectByIds:
+SELECT *
+FROM titleWatchProviders
+WHERE mediaId IN :mediaIds;
+
+upsert:
+INSERT OR REPLACE INTO titleWatchProviders(mediaId, region, flatrateProviderIds, fetchedAtEpochMs)
+VALUES (?, ?, ?, ?);
+
+deleteAll:
+DELETE FROM titleWatchProviders;
