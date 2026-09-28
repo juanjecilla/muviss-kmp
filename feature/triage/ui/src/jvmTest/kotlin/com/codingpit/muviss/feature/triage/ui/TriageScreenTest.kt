@@ -437,6 +437,36 @@ class TriageScreenTest {
     }
 
     @Test
+    fun snoozed_and_skipped_are_reachable_as_icon_buttons_from_the_header() = runComposeUiTest {
+        // Issue #138: three text actions plus the title wrapped at 412dp, so
+        // Snoozed/Skipped became icon buttons — this is what proves they
+        // still reach their screens, by contentDescription rather than text.
+        val harness = TriageHarness(tv = listOf(showA))
+        var snoozedOpened = false
+        var skippedOpened = false
+        setContent {
+            MuvissTheme {
+                TriageScreen(
+                    viewModel = harness.viewModel(),
+                    onBack = {},
+                    onOpenSkipped = { skippedOpened = true },
+                    onOpenSnoozed = { snoozedOpened = true },
+                    onOpenDetail = {},
+                )
+            }
+        }
+        waitForIdle()
+
+        onNodeWithContentDescription("Snoozed").performClick()
+        waitForIdle()
+        onNodeWithContentDescription("Skipped").performClick()
+        waitForIdle()
+
+        assertTrue(snoozedOpened)
+        assertTrue(skippedOpened)
+    }
+
+    @Test
     fun an_empty_deck_offers_a_way_on_rather_than_a_blank_screen() = runComposeUiTest {
         showDeck(TriageHarness())
 
