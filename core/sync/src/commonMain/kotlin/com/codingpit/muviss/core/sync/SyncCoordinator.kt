@@ -21,7 +21,20 @@ import kotlin.time.Duration.Companion.seconds
 interface SyncRunner {
     suspend fun syncNow(trigger: SyncTrigger): SyncOutcome
 
-    /** When the last cycle that actually ran (whoever asked for it, success or failure) finished, or null if none has since the process started. */
+    /**
+     * When the last cycle that actually ran (whoever asked for it, success or
+     * failure) finished, or null if none has since the process started.
+     *
+     * Deliberately process memory, not `syncState.lastAttemptAtEpochMs` (the
+     * persisted value `observeStatus` reads for the Profile screen): a plain
+     * property has to answer synchronously from [SyncCoordinator.ranRecently],
+     * and a DB read here would need `suspend`, which the web driver forces
+     * (issue #117, item 2 — "the 60s foreground skip window is in memory").
+     * The cost is narrow: a cold start within the skip window syncs once more
+     * than strictly necessary, which is what the window exists to avoid, not
+     * a correctness problem — the run it allows through is still gated by
+     * everything else in [SyncEngine.syncNow].
+     */
     val lastFinishedAtEpochMs: Long?
 }
 
@@ -142,15 +155,17 @@ class SyncCoordinator(
         val rateLimited = startedAt + timing.minChangeInterval.inWholeMilliseconds
         return when {
             outcome is SyncOutcome.Success -> {
-                backoff.value = Backoff(consecutiveFailures = 0, nextChangeRunAtMs = rateLimited)
+                backoff.update { Backoff(consecutiveFailures = 0, nextChangeRunAtMs = rateLimited) }
                 false
             }
 
             // A dead session: no amount of waiting fixes it, and the next write
             // (or a sign-in) is the next reason to try.
             outcome is SyncOutcome.Failed && outcome.reason != SyncFailureReason.Unauthorised -> {
-                val failures = backoff.value.consecutiveFailures + 1
-                backoff.value = Backoff(failures, clock.nowEpochMs() + backoffFor(failures))
+                backoff.update {
+                    val failures = it.consecutiveFailures + 1
+                    Backoff(consecutiveFailures = failures, nextChangeRunAtMs = clock.nowEpochMs() + backoffFor(failures))
+                }
                 true
             }
 
