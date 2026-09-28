@@ -110,7 +110,7 @@ class SyncEngine(
     private val syncAutomatically get() = automatic.switch
 
     private val changeLog = LocalChangeLog(database)
-    private val applier = RemoteApplier(database)
+    private val applier = RemoteApplier(database, clock)
 
     /**
      * One cycle at a time. Two callers can otherwise overlap — `MuvissApp`'s
