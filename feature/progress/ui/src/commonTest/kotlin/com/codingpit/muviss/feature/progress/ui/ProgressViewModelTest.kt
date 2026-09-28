@@ -42,7 +42,7 @@ import kotlin.test.assertEquals
 
 private fun summary(id: MediaId, title: String = id.toString(), status: WatchStatus = WatchStatus.WATCHING) = CollectionSummary(id, title, posterUrl = null, status = status)
 
-private class FakeCollectionApi(summaries: List<CollectionSummary>, private val failure: Throwable? = null) : CollectionApi {
+internal class FakeCollectionApi(summaries: List<CollectionSummary>, private val failure: Throwable? = null) : CollectionApi {
     val flow = MutableStateFlow(summaries)
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
     override fun observeSummaries(): Flow<List<CollectionSummary>> = failure?.let { flow { throw it } } ?: flow
@@ -59,7 +59,7 @@ private class FakeCollectionApi(summaries: List<CollectionSummary>, private val 
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
-private class FakeProgressRepository : ProgressRepository {
+internal class FakeProgressRepository : ProgressRepository {
     private val seenByMedia = mutableMapOf<MediaId, MutableStateFlow<Set<EpisodeId>>>()
     val tickedEpisodes = mutableListOf<Pair<EpisodeId, Boolean>>()
 
@@ -113,7 +113,7 @@ private class FakeProgressRepository : ProgressRepository {
     override suspend fun clearPlays(episodeId: EpisodeId) = setSeen(episodeId, false)
 }
 
-private class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
+internal class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
     val refetched = mutableListOf<MediaId>()
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
         refetched += mediaId
@@ -121,7 +121,7 @@ private class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<
     }
 }
 
-private class FakeClock(private val millis: Long) : AppClock {
+internal class FakeClock(private val millis: Long) : AppClock {
     override fun nowEpochMs(): Long = millis
 }
 
