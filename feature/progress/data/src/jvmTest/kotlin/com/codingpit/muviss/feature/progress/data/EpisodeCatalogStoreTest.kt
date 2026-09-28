@@ -3,14 +3,11 @@
 package com.codingpit.muviss.feature.progress.data
 
 import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.db.QueryResult
-import app.cash.sqldelight.db.SqlCursor
-import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.CountingDriver
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
@@ -35,32 +32,6 @@ private class CatalogTestClock(private var millis: Long) : AppClock {
     override fun nowEpochMs(): Long = millis
     fun advanceTo(newMillis: Long) {
         millis = newMillis
-    }
-}
-
-/** Counts executed statements, so a query-count budget can be asserted without a wall clock. */
-private class CountingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
-    val executedSql = mutableListOf<String>()
-
-    override fun <R> executeQuery(
-        identifier: Int?,
-        sql: String,
-        mapper: (SqlCursor) -> QueryResult<R>,
-        parameters: Int,
-        binders: (SqlPreparedStatement.() -> Unit)?,
-    ): QueryResult<R> {
-        executedSql += sql
-        return delegate.executeQuery(identifier, sql, mapper, parameters, binders)
-    }
-
-    override fun execute(
-        identifier: Int?,
-        sql: String,
-        parameters: Int,
-        binders: (SqlPreparedStatement.() -> Unit)?,
-    ): QueryResult<Long> {
-        executedSql += sql
-        return delegate.execute(identifier, sql, parameters, binders)
     }
 }
 
@@ -194,7 +165,7 @@ class EpisodeCatalogStoreTest {
     fun `loading N titles costs N queries, not one per episode`() = runTest {
         val shows = (1..20).map { MediaId.tmdbTv(it.toString()) }
         shows.forEach { store.save(it, seasonsOf(it)) }
-        driver.executedSql.clear()
+        driver.reset()
 
         val loaded = store.load(shows)
 
