@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.settings.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.crash.reportUnexpectedFailure
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
 import com.codingpit.muviss.feature.settings.domain.ImportFileException
@@ -57,13 +58,19 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
                 actions.preview(content) { done, total ->
                     _state.update { it.copy(step = ImportStep.Resolving(fileName, done, total)) }
                 }
-            }.fold(
-                onSuccess = { preview ->
-                    lastPreview = preview
-                    _state.update { it.copy(step = ImportStep.Preview(fileName, preview), error = null) }
-                },
-                onFailure = { e -> _state.update { ImportUiState(error = e.importErrorMessage()) } },
-            )
+            }
+                // A malformed/unrecognized file the person picked is expected —
+                // PreviewImportUseCase already swallows a per-title resolve
+                // failure into "unresolved" rather than throwing, so anything
+                // else here (a parser bug, a mapping failure) is not (#108).
+                .reportUnexpectedFailure { it is ImportFileException }
+                .fold(
+                    onSuccess = { preview ->
+                        lastPreview = preview
+                        _state.update { it.copy(step = ImportStep.Preview(fileName, preview), error = null) }
+                    },
+                    onFailure = { e -> _state.update { ImportUiState(error = e.importErrorMessage()) } },
+                )
         }
     }
 

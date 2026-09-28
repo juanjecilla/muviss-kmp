@@ -50,6 +50,11 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
+// Detekt's own custom rule set (#107) — a plain Kotlin/JVM module, not a KMP
+// one: detekt itself only ever runs on the JVM, and a custom Rule is written
+// against detekt-api/Kotlin PSI types that have no multiplatform shape.
+include(":detekt-rules")
+
 // Shared domain + infra
 include(":models")
 include(":core:common")

@@ -25,14 +25,26 @@ class MuvissCrashReportingTest {
 
     private class Recorded {
         var config: CrashReportingConfig? = null
-        var enabled: Boolean? = null
-        var calls = 0
+        var initEnabled: Boolean? = null
+        var initCalls = 0
+        var setEnabledCalls = mutableListOf<Boolean>()
         val init: (CrashReportingConfig, Boolean) -> Unit = { c, e ->
             config = c
-            enabled = e
-            calls++
+            initEnabled = e
+            initCalls++
         }
+        val setEnabled: (Boolean) -> Unit = { setEnabledCalls += it }
     }
+
+    // Runs the async consent read synchronously on the calling thread instead
+    // of a real background dispatcher, so a test does not need to await it.
+    private fun Recorded.start(driverFactory: DatabaseDriverFactory) = MuvissCrashReporting.start(
+        driverFactory,
+        init,
+        setEnabled,
+        readScope = CoroutineScope(Dispatchers.Unconfined),
+        readDispatcher = Dispatchers.Unconfined,
+    )
 
     private fun seed(directory: java.io.File, enabled: Boolean) {
         val driver = DatabaseDriverFactory(directory).create()
@@ -45,24 +57,52 @@ class MuvissCrashReportingTest {
     }
 
     @Test
-    fun a_first_launch_starts_reporting_on() {
+    fun a_first_launch_starts_reporting_on_immediately_and_the_read_confirms_it() {
         val recorded = Recorded()
 
-        MuvissCrashReporting.start(DatabaseDriverFactory(createTempDirectory("muviss-crash-start").toFile()), recorded.init)
+        recorded.start(DatabaseDriverFactory(createTempDirectory("muviss-crash-start").toFile()))
 
-        assertEquals(true, recorded.enabled)
-        assertEquals(1, recorded.calls)
+        // init() runs synchronously, before the database is ever touched (#124),
+        // seeded with the same default CrashReportsConsent falls back to.
+        assertEquals(true, recorded.initEnabled)
+        assertEquals(1, recorded.initCalls)
+        assertEquals(listOf(true), recorded.setEnabledCalls)
     }
 
     @Test
-    fun a_stored_opt_out_starts_reporting_off_before_any_event_can_be_sent() {
+    fun a_stored_opt_out_starts_reporting_on_then_corrects_it_off_within_the_same_call() {
         val directory = createTempDirectory("muviss-crash-optout").toFile()
         seed(directory, enabled = false)
         val recorded = Recorded()
 
-        MuvissCrashReporting.start(DatabaseDriverFactory(directory), recorded.init)
+        recorded.start(DatabaseDriverFactory(directory))
 
-        assertEquals(false, recorded.enabled)
+        // init() never sees the real stored choice — only setEnabled() does,
+        // off-thread — which is the trade #124's KDoc documents.
+        assertEquals(true, recorded.initEnabled)
+        assertEquals(listOf(false), recorded.setEnabledCalls)
+    }
+
+    @Test
+    fun the_call_returns_before_the_real_background_read_finishes_and_the_gate_still_catches_up() {
+        val directory = createTempDirectory("muviss-crash-nonblocking").toFile()
+        seed(directory, enabled = false)
+        val recorded = Recorded()
+
+        // No readScope/readDispatcher override this time — the real ones
+        // MuvissCrashReporting uses, a background CoroutineScope on a real IO
+        // dispatcher. init() (and this call) must be able to return without
+        // waiting on it, which is the whole point of #124: the thread calling
+        // start() — the main thread on Android — is never the one opening or
+        // migrating the database.
+        MuvissCrashReporting.start(DatabaseDriverFactory(directory), recorded.init, recorded.setEnabled)
+
+        assertEquals(true, recorded.initEnabled) // returned already, seeded with the default
+        val deadline = System.currentTimeMillis() + 2_000
+        while (recorded.setEnabledCalls.isEmpty() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(5)
+        }
+        assertEquals(listOf(false), recorded.setEnabledCalls)
     }
 
     @Test

@@ -66,6 +66,11 @@ allprojects {
 
     dependencies {
         add("detektPlugins", detektComposeRules)
+        // :detekt-rules is our own custom rule set (ForbiddenViewModelScopeLaunch,
+        // #107) — every module gets it except itself, or it would depend on itself.
+        if (project.path != ":detekt-rules") {
+            add("detektPlugins", project(":detekt-rules"))
+        }
     }
 
     // Analyse all Kotlin sources (multiplatform-friendly) rather than the JVM-only default.
@@ -73,6 +78,13 @@ allprojects {
         setSource(files(projectDir.resolve("src")))
         include("**/*.kt")
         exclude("**/build/**")
+        // :detekt-rules doesn't carry itself as a detektPlugins dependency (see
+        // above), so the shared config's `muviss:` ruleset section is unknown
+        // to detekt when analysing this module's own sources, and detekt's own
+        // "misspelled/unknown config property" validation fails the build.
+        // Spotless still formats it; detekt's own compiler + its unit tests
+        // (ForbiddenViewModelScopeLaunchTest) are this module's real check.
+        enabled = project.path != ":detekt-rules"
     }
 
     // A failing test's *message* is what says why it failed — for a golden,

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
@@ -13,7 +14,6 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.WatchStatus
 import com.codingpit.muviss.models.toUserMessage
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -138,20 +138,25 @@ class CollectionViewModel(
     /**
      * Re-fetches every saved title's snapshot; also the pull-to-refresh
      * action, which is why the flag is cleared in a `finally` rather than
-     * after a `runCatching`: `runCatching` swallows `CancellationException`
-     * too, and any path that leaves `refreshing` true leaves the user staring
-     * at a spinner that never stops.
+     * after the `runCatching` below: [reportFailure] rethrows a
+     * `CancellationException` exactly like a bare `runCatching` would
+     * swallow it, and any path that leaves `refreshing` true leaves the user
+     * staring at a spinner that never stops.
+     *
+     * [RefreshCollectionSnapshotsUseCase] already swallows a per-title
+     * network failure into `Result` internally (so one dead title doesn't
+     * abort the refresh) — nothing routine reaches here. Whatever does is
+     * unexpected (a repository/DB failure, a bug), so it is always reported,
+     * not filtered like the import-preview policy (#108).
      */
     fun refresh(automatic: Boolean = false) {
         if (!automatic) refreshThrottle.recordRefresh()
         viewModelScope.launchReporting {
             _state.update { it.copy(refreshing = true) }
             try {
-                refreshSnapshots()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) }
+                runCatching { refreshSnapshots() }
+                    .reportFailure()
+                    .onFailure { e -> _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) } }
             } finally {
                 _state.update { it.copy(refreshing = false) }
             }
