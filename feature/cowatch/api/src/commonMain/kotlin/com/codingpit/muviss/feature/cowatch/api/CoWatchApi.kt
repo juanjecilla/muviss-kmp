@@ -159,4 +159,11 @@ enum class ShortlistReason {
 
     /** One of them has seen it and said they would watch it again. */
     REVISIT,
+
+    /**
+     * Both pools name a flatrate provider in common (#122, EPIC 41
+     * follow-up). A tie-break within a tier, not a tier of its own — see
+     * `ShortlistRanking`'s KDoc.
+     */
+    SHARED_AVAILABILITY,
 }

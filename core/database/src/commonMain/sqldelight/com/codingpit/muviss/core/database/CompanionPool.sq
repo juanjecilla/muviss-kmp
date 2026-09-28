@@ -19,6 +19,16 @@
 -- Both carry a denormalized snapshot rather than joining `collectionEntry`:
 -- an inbound row is usually a title this account has never saved, so there is
 -- nothing local to join to.
+--
+-- `flatrateProviderIds` (#122, EPIC 41 follow-up) is a comma-joined list of
+-- TMDB watch-provider ids, exactly like `genres`. A provider id is the same
+-- entity in every region (Netflix is always id 8; only *availability* in the
+-- flatrate list differs by region), so intersecting the two sides' id sets
+-- answers "a service you both have" without either side's region ever
+-- crossing the wire. It is sourced from `titleWatchProviders` (cache, see
+-- that file) rather than fetched inline, and a device that has never cached a
+-- title's providers simply publishes an empty list for it — never a stale
+-- guess.
 CREATE TABLE companionPoolOut (
     companionUserId TEXT NOT NULL,
     mediaId TEXT NOT NULL,
@@ -33,6 +43,7 @@ CREATE TABLE companionPoolOut (
     updatedAtEpochMs INTEGER NOT NULL,
     isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    flatrateProviderIds TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (companionUserId, mediaId)
 );
 
@@ -48,6 +59,7 @@ CREATE TABLE companionPoolIn (
     seen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     pinned INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     publishedAtEpochMs INTEGER NOT NULL,
+    flatrateProviderIds TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (companionUserId, mediaId)
 );
 
@@ -63,9 +75,10 @@ WHERE companionUserId = :companionUserId AND deleted = 0;
 upsertOut:
 INSERT OR REPLACE INTO companionPoolOut(
     companionUserId, mediaId, mediaType, title, posterUrl, genres,
-    runtimeMinutes, started, seen, pinned, updatedAtEpochMs, isDirty, deleted
+    runtimeMinutes, started, seen, pinned, updatedAtEpochMs, isDirty, deleted,
+    flatrateProviderIds
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- A title that left the pool. Soft, and dirty, so the tombstone is pushed.
 softDeleteOut:
@@ -110,9 +123,10 @@ FROM companionPoolIn;
 upsertIn:
 INSERT OR REPLACE INTO companionPoolIn(
     companionUserId, mediaId, mediaType, title, posterUrl, genres,
-    runtimeMinutes, started, seen, pinned, publishedAtEpochMs
+    runtimeMinutes, started, seen, pinned, publishedAtEpochMs,
+    flatrateProviderIds
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- A pulled tombstone. Cache has nothing to preserve, so the row simply goes.
 deleteIn:

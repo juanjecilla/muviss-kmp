@@ -6,6 +6,8 @@ import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
 import com.codingpit.muviss.feature.cowatch.data.CompanionSyncer
 import com.codingpit.muviss.feature.cowatch.data.DefaultCoWatchApi
 import com.codingpit.muviss.feature.cowatch.data.SqlDelightCoWatchRepository
+import com.codingpit.muviss.feature.cowatch.data.SqlDelightWatchProviderCache
+import com.codingpit.muviss.feature.cowatch.data.TmdbWatchProviderSource
 import com.codingpit.muviss.feature.cowatch.domain.AcceptInviteUseCase
 import com.codingpit.muviss.feature.cowatch.domain.CoWatchRepository
 import com.codingpit.muviss.feature.cowatch.domain.CreateInviteUseCase
@@ -13,6 +15,9 @@ import com.codingpit.muviss.feature.cowatch.domain.ObserveActiveCompanionsUseCas
 import com.codingpit.muviss.feature.cowatch.domain.ObserveCompanionsUseCase
 import com.codingpit.muviss.feature.cowatch.domain.ObserveShortlistUseCase
 import com.codingpit.muviss.feature.cowatch.domain.PublishWatchPoolUseCase
+import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
+import com.codingpit.muviss.feature.cowatch.domain.WatchProviderRefresher
+import com.codingpit.muviss.feature.cowatch.domain.WatchProviderSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 /**
@@ -28,8 +33,14 @@ import org.koin.dsl.module
 val coWatchDataModule: Module = module {
     single<CoWatchRepository> { SqlDelightCoWatchRepository(get(), get(), get(), get()) }
     single { CompanionSyncer(get(), get(), get(), get()) }
-    factory { PublishWatchPoolUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get()) }
-    factory { ObserveShortlistUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get()) }
+    // #122 (EPIC 41 follow-up): the local cache and the TMDB-backed source
+    // behind it, plus the bounded/TTL'd refresher that sits between them and
+    // the pool use cases below.
+    single<WatchProviderCache> { SqlDelightWatchProviderCache(get(), get(), get()) }
+    single<WatchProviderSource> { TmdbWatchProviderSource(get(), get(), get()) }
+    single { WatchProviderRefresher(get(), get(), get()) }
+    factory { PublishWatchPoolUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get(), get()) }
+    factory { ObserveShortlistUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get(), get()) }
     factory { ObserveCompanionsUseCase(get()) }
     factory { ObserveActiveCompanionsUseCase(get()) }
     factory { AcceptInviteUseCase(get()) }

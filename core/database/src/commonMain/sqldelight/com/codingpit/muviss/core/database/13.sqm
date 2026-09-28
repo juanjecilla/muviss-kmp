@@ -1,0 +1,25 @@
+-- EPIC 41 follow-up (#122, persisted watch providers for the co-watch
+-- Shortlist). The filename is the version this migrates FROM, not to: 13.sqm
+-- takes a v13 database to v14. It follows EPIC 42's `12.sqm`.
+--
+-- NUMBERING: per `docs/EPICS.md`, EPIC 28 (#70) was told to renumber its own
+-- pending migration to `13.sqm` once EPIC 41 and EPIC 42 landed ahead of it.
+-- That branch had not merged as of this change; if it lands first, this file
+-- renumbers to `14.sqm` on rebase, the same collision `verifyMigrations`
+-- cannot see for itself that the note on `12.sqm` already describes.
+--
+-- Two halves. First, a new cache table — see `TitleWatchProviders.sq` for why
+-- it carries no sync columns. Second, one column appended to each half of the
+-- Watch Pool (`CompanionPool.sq`) so a title's provider ids travel to a
+-- Companion the same way `genres` already does.
+CREATE TABLE titleWatchProviders (
+    mediaId TEXT NOT NULL PRIMARY KEY,
+    region TEXT NOT NULL,
+    flatrateProviderIds TEXT NOT NULL DEFAULT '',
+    fetchedAtEpochMs INTEGER NOT NULL
+);
+
+-- Appended, so `verifyMigrations` finds it last on both tables, matching how
+-- every other `ALTER TABLE ADD COLUMN` in this chain is ordered.
+ALTER TABLE companionPoolOut ADD COLUMN flatrateProviderIds TEXT NOT NULL DEFAULT '';
+ALTER TABLE companionPoolIn ADD COLUMN flatrateProviderIds TEXT NOT NULL DEFAULT '';

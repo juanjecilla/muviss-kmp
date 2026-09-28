@@ -160,6 +160,7 @@ internal class SqlDelightCoWatchRepository(
                         updatedAtEpochMs = now,
                         isDirty = true,
                         deleted = false,
+                        flatrateProviderIds = item.providerIds.joinToString(","),
                     )
                 }
             }
@@ -183,6 +184,7 @@ internal class SqlDelightCoWatchRepository(
         started = started,
         seen = seen,
         pinned = pinned,
+        providerIds = if (flatrateProviderIds.isBlank()) emptySet() else flatrateProviderIds.split(",").toSet(),
     )
 
     private fun com.codingpit.muviss.core.database.CompanionPoolOut.unchangedFrom(item: PoolItem) = title == item.title &&
@@ -191,6 +193,7 @@ internal class SqlDelightCoWatchRepository(
         seen == item.seen &&
         pinned == item.pinned &&
         runtimeMinutes?.toInt() == item.runtimeMinutes &&
+        (if (flatrateProviderIds.isBlank()) emptySet() else flatrateProviderIds.split(",").toSet()) == item.providerIds &&
         !deleted
 
     internal companion object {

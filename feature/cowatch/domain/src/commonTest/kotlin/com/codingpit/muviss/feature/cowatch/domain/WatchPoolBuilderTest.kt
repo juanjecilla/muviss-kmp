@@ -121,6 +121,27 @@ class WatchPoolBuilderTest {
     }
 
     @Test
+    fun provider_ids_come_from_the_map_not_the_summary() {
+        // #122: WatchPoolBuilder stays pure — provider ids are resolved
+        // elsewhere (WatchProviderCache) and handed in, never fetched here.
+        val pool = WatchPoolBuilder.build(
+            listOf(summary("a"), summary("b")),
+            settings(),
+            providerIdsByMediaId = mapOf(MediaId.tmdbMovie("a") to setOf("8", "9")),
+        )
+        assertEquals(setOf("8", "9"), pool.single { it.mediaId == MediaId.tmdbMovie("a") }.providerIds)
+    }
+
+    @Test
+    fun a_title_absent_from_the_provider_map_publishes_an_empty_set() {
+        // Never a stale guess: a device that has not cached a title's
+        // providers yet says nothing about them, rather than inventing an
+        // answer.
+        val pool = WatchPoolBuilder.build(listOf(summary("a")), settings())
+        assertTrue(pool.single().providerIds.isEmpty())
+    }
+
+    @Test
     fun a_published_item_says_whether_a_title_was_seen_but_never_how_far_or_when() {
         // The guard against this quietly growing. A pool row is a denormalized
         // snapshot, and the day it gains a tick count, a play, a date or a
@@ -129,9 +150,14 @@ class WatchPoolBuilderTest {
         //
         // Asserted by construction rather than by reflection: `kotlin.reflect`
         // is not available on Kotlin/Native, and this is `commonTest`.
+        // `providerIds` (#122) is explicitly included below rather than left to
+        // its default, for the same reason: it is a denormalized ranking
+        // signal exactly like `genres`, never how far/when/how often, and this
+        // guard should keep noticing if that ever stops being true.
         val item = WatchPoolBuilder.build(
             listOf(summary("a", WatchStatus.WATCHED, revisitWillingness = true)),
             settings(),
+            providerIdsByMediaId = mapOf(MediaId.tmdbMovie("a") to setOf("8")),
         ).single()
         assertEquals(
             PoolItem(
@@ -144,6 +170,7 @@ class WatchPoolBuilderTest {
                 started = true,
                 seen = true,
                 pinned = false,
+                providerIds = setOf("8"),
             ),
             item,
         )

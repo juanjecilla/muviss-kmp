@@ -25,8 +25,15 @@ import com.codingpit.muviss.feature.cowatch.api.ShortlistReason
  * 2. **Neither has started it.** The cleanest thing to begin together; starting
  *    a series one person is four seasons into is not co-watching.
  * 3. **Everything else in both pools.**
- * 4. Ties break on the shorter runtime, then on title, so the order is stable
- *    rather than dependent on whichever pool happened to arrive first.
+ * 4. Within a tier, a title on a service both sides' [PoolItem.providerIds]
+ *    agree on (#122) outranks one that is not, then ties break on the shorter
+ *    runtime, then on title — stable, and not dependent on whichever pool
+ *    happened to arrive first.
+ *
+ * Availability is a tie-break rather than its own top-level tier on purpose:
+ * "both pinned it" and "neither started it" are still two people's deliberate
+ * choices, and where to watch it is a smaller question than whether to watch
+ * it at all.
  */
 object ShortlistRanking {
 
@@ -56,6 +63,11 @@ object ShortlistRanking {
         // watch it again, or left it to the session default. Either way, saying
         // so is the honest explanation for why something already watched is here.
         if (ours.seen || yours.seen) add(ShortlistReason.REVISIT)
+        // Provider ids are the same entity in every region (#122), so a
+        // non-empty intersection means a real, shared flatrate option —
+        // never two different devices' unrelated regions coincidentally
+        // sharing an empty set.
+        if ((ours.providerIds intersect yours.providerIds).isNotEmpty()) add(ShortlistReason.SHARED_AVAILABILITY)
     }
 
     /**
@@ -70,6 +82,9 @@ object ShortlistRanking {
 
     private val ORDER = compareBy<ShortlistItem>(
         { tier(it) },
+        // Not "available first": a shared service breaks ties within a tier,
+        // it does not override two people's own choices (see the class KDoc).
+        { if (ShortlistReason.SHARED_AVAILABILITY in it.reasons) 0 else 1 },
         // Unknown runtime sorts last rather than first: "we have an hour" is a
         // real question, and a title that cannot answer it should not win on it.
         { it.runtimeMinutes ?: Int.MAX_VALUE },

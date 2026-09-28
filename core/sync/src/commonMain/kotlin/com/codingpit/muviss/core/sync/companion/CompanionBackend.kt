@@ -102,6 +102,11 @@ data class CompanionLinkChange(
  * the list is short on purpose (ADR 0022's third invariant). [started] and
  * [seen] are the two bits the ranking function needs; neither carries how far,
  * when, or how often, and no tick, play, rating or note is here at all.
+ *
+ * [flatrateProviderIds] (#122, EPIC 41 follow-up) is comma-joined like
+ * [genres], not a JSON array: PostgREST's `explicitNulls` handling (ADR 0020)
+ * only has to reason about scalar columns this way, matching every other
+ * denormalized field on this row.
  */
 @Serializable
 data class CompanionPoolEntryChange(
@@ -118,4 +123,5 @@ data class CompanionPoolEntryChange(
     val pinned: Boolean,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
     val deleted: Boolean,
+    @SerialName("flatrate_provider_ids") val flatrateProviderIds: String = "",
 )

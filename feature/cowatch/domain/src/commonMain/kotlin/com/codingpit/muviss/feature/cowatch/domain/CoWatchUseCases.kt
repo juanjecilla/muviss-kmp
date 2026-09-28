@@ -28,6 +28,7 @@ class PublishWatchPoolUseCase(
     private val collectionApi: () -> CollectionApi,
     private val listsApi: () -> ListsApi,
     private val repository: CoWatchRepository,
+    private val providerRefresher: WatchProviderRefresher,
 ) {
     suspend operator fun invoke() {
         val settings = repository.observePoolSettings().first()
@@ -36,7 +37,14 @@ class PublishWatchPoolUseCase(
             is PoolSource.NotStarted -> emptySet()
             is PoolSource.Named -> listsApi().observeListContents(source.listId).first().map { it.mediaId }.toSet()
         }
-        repository.publishPool(WatchPoolBuilder.build(summaries, settings, namedContents))
+        // Built once to know which titles are actually about to be published —
+        // the refresh below only touches those, not the whole library — and
+        // rebuilt with the (possibly just-refreshed) provider ids once known.
+        // `WatchPoolBuilder` stays pure throughout; this use case is the only
+        // place that talks to the cache (#122).
+        val candidates = WatchPoolBuilder.build(summaries, settings, namedContents)
+        val providerIds = providerRefresher.refresh(candidates.map { it.mediaId }.toSet())
+        repository.publishPool(WatchPoolBuilder.build(summaries, settings, namedContents, providerIds))
     }
 }
 
@@ -54,6 +62,7 @@ class ObserveShortlistUseCase(
     private val collectionApi: () -> CollectionApi,
     private val listsApi: () -> ListsApi,
     private val repository: CoWatchRepository,
+    private val providerCache: WatchProviderCache,
 ) {
     operator fun invoke(companionUserId: String): Flow<Shortlist> = combine(
         collectionApi().observeSummaries(),
@@ -62,7 +71,13 @@ class ObserveShortlistUseCase(
         repository.observeCompanions(),
     ) { summaries, settings, theirPool, companions ->
         val namedContents = namedListContents(settings)
-        val mine = WatchPoolBuilder.build(summaries, settings, namedContents)
+        // A local cache read only, never a fetch (#122): the Shortlist must
+        // stay something opening the screen never triggers a network call
+        // for. `PublishWatchPoolUseCase` (run once per open via
+        // `refreshPublishedPool`, TTL-gated) is what keeps this cache current.
+        val eligible = WatchPoolBuilder.build(summaries, settings, namedContents)
+        val providerIds = providerCache.get(eligible.map { it.mediaId }.toSet()).mapValues { it.value.flatrateProviderIds }
+        val mine = WatchPoolBuilder.build(summaries, settings, namedContents, providerIds)
         Shortlist(
             items = ShortlistRanking.rank(mine, theirPool),
             companionPoolPublishedAtEpochMs = companions.firstOrNull { it.userId == companionUserId }?.poolPublishedAtEpochMs,

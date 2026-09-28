@@ -39,7 +39,10 @@ object WatchPoolBuilder {
         summaries: List<CollectionSummary>,
         settings: PoolSettings,
         namedListContents: Set<MediaId> = emptySet(),
-    ): List<PoolItem> = summaries.filter { include(it, settings, namedListContents) }.map { it.toPoolItem() }
+        /** Sourced from `WatchProviderCache`/`WatchProviderRefresher` (#122). A title absent from this map publishes an empty provider set rather than blocking on a fetch. */
+        providerIdsByMediaId: Map<MediaId, Set<String>> = emptyMap(),
+    ): List<PoolItem> = summaries.filter { include(it, settings, namedListContents) }
+        .map { it.toPoolItem(providerIdsByMediaId[it.mediaId].orEmpty()) }
 
     private fun include(
         summary: CollectionSummary,
@@ -60,7 +63,7 @@ object WatchPoolBuilder {
     private val CollectionSummary.isSeen: Boolean
         get() = status == WatchStatus.WATCHED || status == WatchStatus.FINISHED
 
-    private fun CollectionSummary.toPoolItem() = PoolItem(
+    private fun CollectionSummary.toPoolItem(providerIds: Set<String>) = PoolItem(
         mediaId = mediaId,
         mediaType = mediaId.type,
         title = title,
@@ -70,5 +73,6 @@ object WatchPoolBuilder {
         started = status != WatchStatus.NOT_STARTED,
         seen = isSeen,
         pinned = coWatchPinned,
+        providerIds = providerIds,
     )
 }
