@@ -236,7 +236,17 @@ fun TriageScreen(
                 SnoozeChoiceDialog(
                     title = card.title,
                     onChoose = viewModel::onSnoozePeriodChosen,
+                    onPickDate = viewModel::onPickCustomSnoozeDate,
                     onDismiss = viewModel::onSnoozeSheetDismissed,
+                )
+            }
+
+            state.snoozeDatePickerFor?.let { card ->
+                SnoozeDatePickerDialog(
+                    title = card.title,
+                    minEpochDay = state.snoozeDatePickerMinEpochDay,
+                    onConfirm = viewModel::onSnoozeDateChosen,
+                    onDismiss = viewModel::onSnoozeDatePickerDismissed,
                 )
             }
         }
@@ -683,6 +693,7 @@ private fun SnoozeButton(
 private fun SnoozeChoiceDialog(
     title: String,
     onChoose: (SnoozePeriod) -> Unit,
+    onPickDate: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -693,12 +704,18 @@ private fun SnoozeChoiceDialog(
         text = {
             Column(modifier = Modifier.testTag(TRIAGE_SNOOZE_SHEET_TAG)) {
                 // Only the real durations: ASK_EACH_TIME is the mode that
-                // opened this dialog, not something it can offer. A free date
-                // picker is deliberately not here yet — see issue for the M3
-                // DatePicker's unverified six-target support.
+                // opened this dialog, not something it can offer.
                 SnoozePeriod.entries.filter { it.days != null }.forEach { period ->
                     TextButton(onClick = { onChoose(period) }) { Text(period.label) }
                 }
+                // The free date the three presets don't cover (issue #137).
+                // Not a fifth SnoozePeriod — it writes a due date straight
+                // through, bypassing dueDateFor entirely — and not Material3's
+                // DatePicker, which is unverified on js/wasmJs in this Compose
+                // version; SnoozeDatePickerDialog is a small hand-rolled
+                // calendar over Foundation composables instead, which is
+                // identical on all six targets by construction.
+                TextButton(onClick = onPickDate, modifier = Modifier.testTag(TRIAGE_SNOOZE_PICK_DATE_TAG)) { Text("Pick a date…") }
             }
         },
     )
@@ -744,6 +761,15 @@ const val TRIAGE_SNOOZE_TAG = "triage-snooze"
 
 /** Identifies the "ask each time" period dialog (EPIC 42). */
 const val TRIAGE_SNOOZE_SHEET_TAG = "triage-snooze-sheet"
+
+/** Identifies the "Pick a date…" button inside [TRIAGE_SNOOZE_SHEET_TAG] (issue #137). */
+const val TRIAGE_SNOOZE_PICK_DATE_TAG = "triage-snooze-pick-date"
+
+/** Identifies the free-form date picker dialog that "Pick a date…" opens (issue #137). */
+const val TRIAGE_DATE_PICKER_TAG = "triage-snooze-date-picker"
+
+/** Identifies a single day cell in [TRIAGE_DATE_PICKER_TAG]'s grid, suffixed with its epoch day. */
+const val TRIAGE_DATE_PICKER_DAY_TAG = "triage-snooze-date-picker-day"
 
 internal const val SNOOZE_LABEL = "Snooze"
 
