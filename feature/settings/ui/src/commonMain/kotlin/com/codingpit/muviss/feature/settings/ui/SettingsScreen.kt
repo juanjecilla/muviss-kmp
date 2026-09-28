@@ -186,7 +186,9 @@ fun SettingsScreen(
         )
         state.exportError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
-        // Web has no reporter (docs/PRIVACY.md), so a switch there would be a lie.
+        // Every platform has a reporter now (#83), so this always renders in
+        // practice — CrashReporter.isAvailable stays the gate on principle,
+        // in case a future CrashBackend legitimately has none.
         if (CrashReporter.isAvailable) {
             SectionOverline("Privacy", topPadding = true)
             SwitchRow(

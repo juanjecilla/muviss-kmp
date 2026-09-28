@@ -100,6 +100,16 @@ fun MuvissApp(
     remember { configureImageLoader() }
     val databaseDriverFactory = rememberDatabaseDriverFactory()
     KoinApplication(application = { modules(appModules + platformDatabaseModule(databaseDriverFactory)) }) {
+        // Idempotent (`following`), so on Android/iOS/desktop this is a harmless
+        // second call — their own startup (`MuvissApplication.onCreate`,
+        // `IosAppStartup.start`, desktop's `main`) already made the first one.
+        // Web has no such pre-Koin hook (`Main.kt` just composes `MuvissApp()`),
+        // so this is the *only* place it happens there, and it has to be here
+        // rather than next to `ensureStarted()` above: `followSettings()`
+        // resolves `SettingsApi` off the running Koin instance, which does not
+        // exist yet at that point in this function — only inside this content
+        // lambda, once `KoinApplication` above has started it.
+        remember { MuvissCrashReporting.followSettings() }
         val settingsApi = koinInject<SettingsApi>()
         val themeMode by settingsApi.observeThemeMode().collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
         val darkTheme = when (themeMode) {

@@ -1,6 +1,6 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-09-28._
+_Last updated: 2026-09-29._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
@@ -57,9 +57,24 @@ never leaves the device even incidentally.
      database cannot be read at all (it is corrupt, say), Muviss falls back to
      the default, **on**, for that launch — the one case where a crash could be
      reported despite an opt-out.
-   - **Web** — **no crash reporting at all.** The web build does not include the
-     Sentry SDK, so nothing is ever sent, and there is nothing to switch off.
-     Settings shows no toggle there.
+   - **Web** — same toggle, same scrubbing, but a different SDK and a
+     different starting point: the Kotlin Multiplatform SDK the other three
+     platforms use ships no real web implementation, so the web build loads
+     Sentry's own browser SDK directly from Sentry's CDN
+     (`browser.sentry-cdn.com`) instead. That script is fetched **only** on a
+     build that has a Sentry project configured — on a build without one
+     (every developer build, by default) nothing is fetched and nothing is
+     sent, the same as the other platforms. On a build that does have one,
+     loading that script is itself a request to a third party
+     (Sentry/Fastly), separate from crash reporting itself, exposing your IP
+     address to it the way any third-party script on a page would; turning
+     the Settings toggle off stops reports from being *sent*, not that one
+     script load. Reporting is not covered by an equivalent to the other
+     platforms' "starts before anything else" — the web app has no pre-launch
+     hook to start it from, so your choice is read moments after the app
+     starts rather than before, during which a crash could in principle be
+     sent regardless of an opt-out (the same brief window the other platforms
+     accept while their own stored choice is still being read).
 
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.
