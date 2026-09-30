@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
+  <defs>
+    <linearGradient id="amberGrad" gradientUnits="userSpaceOnUse" x1="70.90" y1="-35.32" x2="361.10" y2="467.32">
+      <stop offset="0%" stop-color="#FFCB6B"/>
+      <stop offset="70%" stop-color="#E0952B"/>
+      <stop offset="100%" stop-color="#C97A1C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="30%" cy="24%" r="45%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="432" height="432" fill="url(#amberGrad)"/>
+  <rect x="0" y="0" width="432" height="432" fill="url(#glow)"/>
+</svg>
