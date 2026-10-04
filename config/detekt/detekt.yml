@@ -60,3 +60,18 @@ Compose:
 muviss:
   ForbiddenViewModelScopeLaunch:
     active: true
+  # EPIC 31 (#74): UI copy lives in composeResources, not in literals. The
+  # excludes are the modules not migrated yet — a ratchet: each migration PR
+  # deletes its own line, and nothing is ever added back.
+  HardcodedUiCopy:
+    active: true
+    includes: ['**/commonMain/**']
+    excludes: [
+      '**/feature/collection/ui/**',
+      '**/feature/cowatch/ui/**',
+      '**/feature/profile/ui/**',
+      '**/feature/progress/ui/**',
+      '**/feature/search/ui/**',
+      '**/feature/settings/ui/**',
+      '**/feature/triage/ui/**',
+    ]

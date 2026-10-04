@@ -37,12 +37,12 @@ class MenuShortcutsTest {
 
     @Test
     fun `search is bound to the platform's primary modifier plus F`() {
-        assertEquals(expected(Key.F), viewShortcuts["Search"])
+        assertEquals(expected(Key.F), viewShortcuts["search"])
     }
 
     @Test
     fun `settings is bound to the platform's primary modifier plus comma`() {
-        assertEquals(expected(Key.Comma), viewShortcuts["Settings"])
+        assertEquals(expected(Key.Comma), viewShortcuts["settings"])
     }
 
     @Test
@@ -65,21 +65,21 @@ class MenuShortcutsTest {
     }
 
     /**
-     * The shortcuts are keyed by [MuvissDestination.label] so that reordering
+     * The shortcuts are keyed by [MuvissDestination.key] so that reordering
      * the navigation bar cannot silently move a shortcut onto a different
-     * screen. The cost of that choice is that *renaming* a label drops the
+     * screen. The cost of that choice is that *renaming* a key drops the
      * shortcut instead, equally silently — which is what this catches.
      */
     @Test
     fun `every shortcut names a destination that exists`() {
-        val labels = muvissDestinations.map { it.label }
+        val keys = muvissDestinations.map { it.key }
         viewShortcuts.keys.forEach { key ->
-            assertTrue(key in labels, "'$key' has a keyboard shortcut but is not a destination; labels are $labels")
+            assertTrue(key in keys, "'$key' has a keyboard shortcut but is not a destination; keys are $keys")
         }
     }
 
     @Test
     fun `the two destinations worth a chord still have one`() {
-        assertEquals(setOf("Search", "Settings"), viewShortcuts.keys)
+        assertEquals(setOf("search", "settings"), viewShortcuts.keys)
     }
 }
