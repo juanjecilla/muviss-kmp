@@ -1,0 +1,59 @@
+---
+import { getEntry, render } from "astro:content";
+import Base from "../layouts/Base.astro";
+
+// Rendered from docs/PRIVACY.md (see src/content.config.ts). This is the URL
+// the store listings give as the privacy policy — keep it stable.
+const entry = await getEntry("legal", "privacy");
+if (!entry) throw new Error("docs/PRIVACY.md was not loaded");
+const { Content } = await render(entry);
+---
+
+<Base
+  locale="en"
+  title="Privacy Policy — Muviss"
+  description="What Muviss stores, and exactly what leaves your device."
+>
+  <article class="wrap prose">
+    <Content />
+  </article>
+</Base>
+
+<style>
+  .prose {
+    max-width: 760px;
+    padding-block: clamp(40px, 7vw, 80px);
+  }
+  .prose :global(h1) {
+    font-size: clamp(2rem, 5vw, 3rem);
+    margin-bottom: 8px;
+  }
+  .prose :global(h2) {
+    font-size: 1.5rem;
+    margin-top: 2.5em;
+    margin-bottom: 0.5em;
+  }
+  .prose :global(h3) {
+    margin-top: 1.75em;
+  }
+  .prose :global(code) {
+    font-size: 0.875em;
+    background: var(--surface);
+    padding: 0.1em 0.4em;
+    border-radius: 6px;
+    overflow-wrap: anywhere;
+  }
+  .prose :global(li) {
+    margin-block: 0.4em;
+  }
+  .prose :global(table) {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+  .prose :global(th),
+  .prose :global(td) {
+    border: 1px solid var(--outline);
+    padding: 8px 12px;
+  }
+</style>

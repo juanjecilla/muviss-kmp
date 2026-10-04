@@ -1,0 +1,43 @@
+name: Website
+
+# Builds the landing (website/) on pull requests that touch it, so a PR finds
+# out it broke the site before merge rather than on deploy (deploy-pages.yml
+# only runs from main).
+#
+# Its own workflow rather than a lane in ci.yml on purpose: ci.yml lists
+# itself in its lane filter (a PR that edits CI must run the CI it edits), so
+# any landing PR that had to touch ci.yml would pay for every Gradle lane.
+# Here a native path filter means a website-only PR runs nothing else, and a
+# code-only PR never runs this.
+on:
+  pull_request:
+    paths:
+      - 'website/**'
+      # The landing renders docs/PRIVACY.md into /privacy/.
+      - 'docs/PRIVACY.md'
+      - '.github/workflows/website.yml'
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: website
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: website/.nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - run: npm run build

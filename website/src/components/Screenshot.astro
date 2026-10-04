@@ -1,0 +1,75 @@
+---
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+// A phone screenshot in light and dark, swapped by prefers-color-scheme.
+// Files live at public/screenshots/<name>-{light,dark}.png (1080x2400). Until
+// they are captured the frame renders a branded placeholder, so the site
+// builds and deploys without them — see website/README.md's shot list.
+interface Props {
+  name: string;
+  alt: string;
+  pending: string;
+}
+
+const { name, alt, pending } = Astro.props;
+const dir = join(process.cwd(), "public", "screenshots");
+const light = existsSync(join(dir, `${name}-light.png`)) ? `/screenshots/${name}-light.png` : null;
+const dark = existsSync(join(dir, `${name}-dark.png`)) ? `/screenshots/${name}-dark.png` : null;
+const src = light ?? dark;
+---
+
+<figure class="phone">
+  {
+    src ? (
+      <picture>
+        {dark && light && <source srcset={dark} media="(prefers-color-scheme: dark)" />}
+        <img src={src} alt={alt} width="1080" height="2400" loading="lazy" decoding="async" />
+      </picture>
+    ) : (
+      <div class="placeholder" role="img" aria-label={alt}>
+        <img src="/icon.svg" alt="" width="72" height="72" />
+        <span>{pending}</span>
+      </div>
+    )
+  }
+</figure>
+
+<style>
+  .phone {
+    margin: 0;
+    width: min(100%, 300px);
+    aspect-ratio: 1080 / 2400;
+    border-radius: 36px;
+    padding: 10px;
+    background: #0e0d0a;
+    box-shadow:
+      0 30px 60px -20px rgb(0 0 0 / 0.35),
+      0 0 0 1px color-mix(in srgb, var(--outline) 60%, transparent);
+  }
+  .phone img,
+  .placeholder {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 28px;
+    object-fit: cover;
+  }
+  .placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background:
+      radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--amber) 35%, transparent), transparent 60%),
+      var(--surface-high);
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .placeholder img {
+    width: 72px;
+    height: 72px;
+  }
+</style>

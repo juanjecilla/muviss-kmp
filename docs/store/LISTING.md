@@ -133,7 +133,7 @@ signing steps this listing gets attached to.
 | Description (max 4000 chars) | The "Full description" text above, verbatim (same 4000-char budget as Play). |
 | Keywords (max 100 chars, comma-separated, not shown to users) | `movie tracker,tv tracker,watchlist,episode tracker,watch progress,tv shows,movies` |
 | What's New (per version) | Written per release once there's a changelog to summarize; not produced yet (no tagged releases exist). |
-| Privacy Policy URL | Points at `docs/PRIVACY.md`'s published/hosted location (same document Play's Data Safety answers in `DATA_SAFETY.md` trace back to) — needs the doc hosted somewhere public before submission; it lives in-repo only today. |
+| Privacy Policy URL | `https://muvissapp.com/privacy/` — the landing renders it from `docs/PRIVACY.md` at build time (same document Play's Data Safety answers in `DATA_SAFETY.md` trace back to), so the two cannot drift. Live once #169 is done. |
 | App Store category | Entertainment (primary); no secondary category needed. |
 | Age rating | No objectionable content, no user-generated content, no gambling — the "4+" questionnaire path (no mature content declared). |
 

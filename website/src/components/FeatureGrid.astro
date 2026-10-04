@@ -1,0 +1,103 @@
+---
+import { t, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const dict = t(locale);
+
+// 24px stroke glyphs, drawn inline so the page makes no extra requests.
+const icons: Record<string, string> = {
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+  tv: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="m9 2 3 4 3-4"/>',
+  grid: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="9" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/><rect x="14" y="15" width="7" height="6" rx="1.5"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
+  star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/>',
+  widget: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/>',
+  import: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/>',
+  export: '<path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 21h16"/>',
+  moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+};
+---
+
+<section id="features" class="section features">
+  <div class="wrap">
+    <h2 class="section-title">{dict.features.title}</h2>
+    <p class="lede">{dict.features.lede}</p>
+    <ul class="grid">
+      {
+        dict.features.items.map((f) => (
+          <li class="card">
+            <svg
+              class="icon"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              set:html={icons[f.icon]}
+            />
+            <h3>{f.title}</h3>
+            <p>{f.body}</p>
+            {"platforms" in f && f.platforms && <span class="tag">{f.platforms}</span>}
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .features {
+    background: var(--surface-low);
+  }
+  .grid {
+    list-style: none;
+    padding: 0;
+    margin: 48px 0 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--bg);
+    border: 1px solid color-mix(in srgb, var(--outline) 60%, transparent);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+  .icon {
+    color: var(--primary);
+    margin-bottom: 14px;
+  }
+  h3 {
+    font-size: 1.0625rem;
+    font-weight: 600;
+  }
+  .card p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+  .tag {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--tertiary-container);
+    color: var(--on-tertiary-container);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+</style>

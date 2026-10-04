@@ -1,0 +1,72 @@
+---
+import { links } from "../config/links";
+import { homePath, t, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const dict = t(locale);
+const home = homePath(locale);
+---
+
+<header class="header">
+  <div class="wrap bar">
+    <a class="brand" href={home}>
+      <img src="/icon.svg" alt="" width="36" height="36" />
+      <span>Muviss</span>
+    </a>
+    <nav aria-label="Main">
+      <a href={`${home}#features`}>{dict.nav.features}</a>
+      <a href={`${home}#privacy`}>{dict.nav.privacy}</a>
+      <a href={`${home}#open-source`}>{dict.nav.openSource}</a>
+      <a class="gh" href={links.github}>{dict.nav.github}</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid color-mix(in srgb, var(--outline) 50%, transparent);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 64px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 1.25rem;
+    color: var(--fg);
+    text-decoration: none;
+  }
+  nav {
+    display: flex;
+    gap: clamp(12px, 3vw, 28px);
+    font-size: 0.9375rem;
+  }
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  nav a:hover {
+    color: var(--fg);
+  }
+  @media (max-width: 640px) {
+    nav a:not(.gh) {
+      display: none;
+    }
+  }
+</style>
