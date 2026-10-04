@@ -255,6 +255,8 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 
 **Decisions (2026-09-19).** All five targets ship (Play, App Store, signed DMG/MSI/DEB, web). The repo stays private until ready, then goes public as a release step. Sync ships as a **paid** feature sold through **RevenueCat**; that makes accounts real and drags in account deletion, Sign in with Apple, a privacy rewrite and a Supabase deploy pipeline (EPIC 32). Only a Play Console account exists today.
 
+**Web is deferred (2026-10-04).** The owner postponed the web launch, overriding the "all five targets ship" decision above for web only. EPIC 37 (#80) waits. What changes: CI's `web-tests` job is switched off (`if: false` in `.github/workflows/ci.yml`, definition kept) instead of running non-blocking and failing. It was never green: #172 (cowatch's JS test bundle cannot resolve `os`/`path`) and #49 (compiler OOM under parallel load), and it spent its full 30-minute timeout on PR #166. What does not change: `build` still compiles JS and Wasm (`compileKotlinJs compileKotlinWasmJs`), because that is what catches `commonMain` code a browser target cannot take (#10), and the web code stays in the repo and keeps building. GitHub Pages deploy was already manual-only. To resume: fix #172, restore the job's `if:`, then pick up #80.
+
 **Schema numbers, as they actually landed** (`AGENTS.md`). The claims made here on 2026-09-19 were overtaken by the order things merged, so this records the outcome rather than the plan: **`9.sqm` (schema v10) is EPIC 39's** — it merged first (#95) and carries `syncCursor`, `syncState` and EPIC 40's `appSettings.syncAutomatically` switch column; `10.sqm` (schema v11) is EPIC 26's (#103); `11.sqm` (schema v12) is EPIC 28's. **EPIC 40 needs no migration of its own** — its column came with EPIC 39's. ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's, **0022** is EPIC 41's. EPIC 41 takes **`11.sqm` (schema v12)** — one column on `collectionEntry` plus the co-watch tables. **It collides with EPIC 28 (#70), which claimed `11.sqm` first and has not merged**; the chain must stay contiguous, so whichever of the two merges second renumbers to `12.sqm` and regenerates its fixture. This is the collision the paragraph below describes, caught by rebasing rather than by a tool. **Outcome: EPIC 41 merged first (#134) and kept `11.sqm` (schema v12); EPIC 42 then took `12.sqm` (schema v13), so EPIC 28 must renumber to `13.sqm`.** ADR **0023** is EPIC 42's.
 
 `verifyMigrations` cannot see a collision between branches: each one is self-consistent and green on its own, and the clash only appears at merge. So the number a branch takes is whatever is free when it merges, not when it was written — check this line, not a plan, before adding a `.sqm`.
@@ -280,7 +282,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 12 | EPIC 34 Android to Google Play | #77 |
 | 13 | EPIC 35 iOS to TestFlight and the App Store | #78 |
 | 13 | EPIC 36 Desktop signed, notarised installers on a GitHub Release | #79 |
-| 13 | EPIC 37 Web to production | #80 |
+| 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.

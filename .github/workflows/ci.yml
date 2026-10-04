@@ -205,9 +205,17 @@ jobs:
   # goal and needs the flake above resolved first; do not flip it while a red
   # run here is expected, because a check nobody can act on is a check nobody
   # reads.
+  # DEFERRED (2026-10-04): the web app's launch is postponed, so this job is
+  # switched off rather than left to burn its 30-minute timeout on every PR.
+  # It was non-blocking already and never green: #172 (cowatch's JS test bundle
+  # cannot resolve `os`/`path`) and #49 (compiler OOM under parallel load).
+  # JS and Wasm still *compile* in `build` — that is what catches commonMain
+  # code a browser target cannot take (#10). To bring it back, restore
+  # `if: needs.changes.outputs.code == 'true'` and fix #172 first.
+  # See docs/EPICS.md, "Web is deferred".
   web-tests:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: false
     runs-on: ubuntu-latest
     continue-on-error: true
     # Non-blocking is not the same as non-hanging: `continue-on-error` keeps a
