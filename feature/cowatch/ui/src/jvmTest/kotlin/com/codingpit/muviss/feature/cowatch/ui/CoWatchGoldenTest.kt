@@ -47,13 +47,13 @@ class CoWatchGoldenTest {
     @Test
     fun companions_in_every_link_state_light() = runComposeUiTest {
         setContent { CompanionsUnderTest(darkTheme = false) }
-        assertMatchesGolden("companions-screen-links", tolerance = GOLDEN_TOLERANCE)
+        assertMatchesGolden("companions-screen-links", tolerance = COMPANIONS_TOLERANCE)
     }
 
     @Test
     fun companions_in_every_link_state_dark() = runComposeUiTest {
         setContent { CompanionsUnderTest(darkTheme = true) }
-        assertMatchesGolden("companions-screen-links-dark", tolerance = GOLDEN_TOLERANCE)
+        assertMatchesGolden("companions-screen-links-dark", tolerance = COMPANIONS_TOLERANCE)
     }
 
     @Test
@@ -138,3 +138,13 @@ private const val COMPANION_ID = "pal"
  * at 2.15%.
  */
 private const val GOLDEN_TOLERANCE = 0.015
+
+/**
+ * The Companions screen is denser still — four state sentences plus the
+ * consent paragraph, nearly every row text. With glyph hinting pinned
+ * (`GoldenSurface`, #171) it measures 2.31% (light) and 2.30% (dark) on
+ * `ubuntu-latest` against a macOS recording, every marked pixel a glyph edge;
+ * the remainder is CoreText vs FreeType drawing the same outline heavier, which
+ * no setting removes. Identical across runs, so the margin above it is small.
+ */
+private const val COMPANIONS_TOLERANCE = 0.025
