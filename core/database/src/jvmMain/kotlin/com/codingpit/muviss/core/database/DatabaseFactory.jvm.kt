@@ -41,7 +41,7 @@ actual class DatabaseDriverFactory(private val directory: File = appDataDirector
  * tests can point it at a throwaway directory instead of the real
  * [appDataDirectory].
  */
-internal fun createFileDriver(directory: File): SqlDriver {
+internal fun createFileDriver(directory: File): SqlDriver = synchronized(createLock) {
     val databaseFile = File(directory, DATABASE_FILE_NAME)
     databaseFile.parentFile?.mkdirs()
     val isNewDatabase = !databaseFile.exists()
@@ -63,8 +63,19 @@ internal fun createFileDriver(directory: File): SqlDriver {
             driver.setUserVersion(targetVersion)
         }
     }
-    return driver
+    driver
 }
+
+/**
+ * Serializes [createFileDriver]'s check-then-create. Desktop opens the
+ * database twice at startup on two threads — crash reporting's consent read
+ * on a background dispatcher (#124) and the Koin graph on `main` — and the
+ * file-exists check, `Schema.create` and the `user_version` stamp are three
+ * steps: two first opens both saw no file, both created, and the loser died
+ * with "table appSettings already exists". Process-wide, not per directory,
+ * because opens are two per launch and never contended otherwise.
+ */
+private val createLock = Any()
 
 // `Schema.create`/`Schema.migrate` only run the .sq/.sqm statements — unlike
 // AndroidSqliteDriver/NativeSqliteDriver, plain JdbcSqliteDriver does no

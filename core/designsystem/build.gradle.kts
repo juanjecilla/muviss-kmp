@@ -2,10 +2,6 @@ plugins {
     id("muviss.kmp.compose")
 }
 
-compose.resources {
-    packageOfResClass = "com.codingpit.muviss.core.designsystem.generated.resources"
-}
-
 kotlin {
     sourceSets {
         commonMain.dependencies {
@@ -14,6 +10,9 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(projects.core.testing)
+        }
+        jvmTest.dependencies {
+            implementation(libs.kotlinx.coroutinesTest)
         }
     }
 }

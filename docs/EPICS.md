@@ -269,7 +269,8 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 10 | EPIC 38 Repo hygiene and shared test infrastructure | #71 |
 | 11 | EPIC 29 A backup you can restore | #72 |
 | 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes | #73 |
-| 11 | EPIC 31 Localization and accessibility | #74 |
+| 11 | EPIC 31 Localization (Spanish + app-language selector) | #74 |
+| 11 | EPIC 31b Accessibility | #164 |
 | 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
 | 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
@@ -296,7 +297,8 @@ Filed as follow-ups rather than epics: desktop auto-update (#82, from EPIC 36) a
 - **EPIC 28 (#70).** The Library opens one Flow per entry and rebuilds all of them on any write: about 10,000 queries on a 100-title refresh. Missing indexes. Detail composes every episode eagerly.
 - **EPIC 29 (#72).** Export omits ratings, notes and every custom list, has no version, and cannot be imported (the detector sends it to the Trakt parser). No "delete all data". iOS import is a dead button.
 - **EPIC 30 (#73).** Six screens have no error retry. Refresh failures are silent. No offline detail. No onboarding. Notification permission asked cold. Light-only window theme flashes white in dark mode. `WidgetMidnightRefreshWorker` has no R8 keep rule, so the midnight refresh breaks in release builds.
-- **EPIC 31 (#74).** Zero localised strings (76 literals in commonMain UI) against a Spanish store listing. Accessibility: the genre donut announces nothing, colour-only state, 44dp targets.
+- **EPIC 31 (#74).** Zero localised strings (~112 `Text("` + 84 named-arg literals in commonMain UI, plus English copy in `MetadataError`, `SyncCopy`, widgets and notifications) against a Spanish store listing; no in-app UI-language selector.
+- **EPIC 31b (#164).** Accessibility, split from #74: the genre donut announces nothing, colour-only state, 44dp targets.
 - **EPIC 32 (#75).** Sync is built but unobtainable (every paywall is `HandRolledPaywall`). Turning it on needs account deletion, Sign in with Apple, a privacy rewrite, safe sign-out (the sync cursor is never reset) and a Supabase deploy pipeline.
 - **EPIC 33 (#76).** The Android launcher icon is the Android Studio template. No screenshots, feature graphic or fastlane. No hosted privacy-policy URL, which both stores require.
 - **EPIC 34 (#77).** `material3` alpha and `lifecycle` beta ship in production UI. No baseline profile. The release path has never run.

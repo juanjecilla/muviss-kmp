@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the default locale: every key lives here first. values-es mirrors it. -->
+<resources>
+    <string name="action_retry">Retry</string>
+    <string name="carousel_see_all">See all ›</string>
+</resources>

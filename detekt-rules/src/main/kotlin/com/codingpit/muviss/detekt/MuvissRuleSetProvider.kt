@@ -19,6 +19,7 @@ class MuvissRuleSetProvider : RuleSetProvider {
         ruleSetId,
         listOf(
             ForbiddenViewModelScopeLaunch(config),
+            HardcodedUiCopy(config),
         ),
     )
 }

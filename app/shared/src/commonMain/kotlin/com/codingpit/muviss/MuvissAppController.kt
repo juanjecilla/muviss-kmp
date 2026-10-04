@@ -9,18 +9,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.codingpit.muviss.app.shared.generated.resources.Res
+import com.codingpit.muviss.app.shared.generated.resources.nav_library
+import com.codingpit.muviss.app.shared.generated.resources.nav_profile
+import com.codingpit.muviss.app.shared.generated.resources.nav_progress
+import com.codingpit.muviss.app.shared.generated.resources.nav_search
+import com.codingpit.muviss.app.shared.generated.resources.nav_settings
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.feature.collection.ui.CollectionRoute
 import com.codingpit.muviss.feature.profile.ui.ProfileRoute
 import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * One of the five top-level destinations.
  *
  * Public so a platform host can build its own navigation affordance out of
- * them — desktop's menu bar is the first — but only [label] is public with it.
+ * them — desktop's menu bar is the first — but only [key] and [label] are
+ * public with it. [key] is a stable identifier that is never shown (desktop
+ * keys its keyboard shortcuts by it); [label] is the localized name, read from
+ * `:app:shared`'s string resources in the composition's locale.
  * The route object comes from a feature's `:ui` module and the icon is a
  * design-system `ImageVector`; both are `implementation` dependencies of
  * `:app:shared`, so exposing either would put them on every host's compile
@@ -28,10 +39,14 @@ import com.codingpit.muviss.feature.settings.ui.SettingsRoute
  */
 @Stable
 class MuvissDestination internal constructor(
-    val label: String,
+    val key: String,
+    internal val title: StringResource,
     internal val route: Any,
     internal val icon: ImageVector,
-)
+) {
+    val label: String
+        @Composable get() = stringResource(title)
+}
 
 /**
  * The app's navigation, hoisted far enough out of [MuvissApp] that a platform
@@ -105,15 +120,16 @@ fun rememberMuvissAppController(): MuvissAppController {
  * Top-level rather than only reachable through a [MuvissAppController]
  * instance, so a host can check its own navigation affordance against it
  * without building one — `app/desktopApp`'s menu keys its keyboard shortcuts
- * by [MuvissDestination.label], and a test there asserts those labels are
- * really in this list. A renamed label would otherwise drop a shortcut in
- * silence.
+ * by [MuvissDestination.key], and a test there asserts those keys are really
+ * in this list. A renamed key would otherwise drop a shortcut in silence.
+ * (Keyed by [MuvissDestination.key], not the label, since EPIC 31: the label
+ * is now whatever language the user reads.)
  */
 val muvissDestinations: List<MuvissDestination> =
     listOf(
-        MuvissDestination("Search", SearchRoute, MuvissIcons.Search),
-        MuvissDestination("Library", CollectionRoute, MuvissIcons.Library),
-        MuvissDestination("Progress", ProgressRoute, MuvissIcons.WatchNext),
-        MuvissDestination("Profile", ProfileRoute, MuvissIcons.Profile),
-        MuvissDestination("Settings", SettingsRoute, MuvissIcons.Settings),
+        MuvissDestination("search", Res.string.nav_search, SearchRoute, MuvissIcons.Search),
+        MuvissDestination("library", Res.string.nav_library, CollectionRoute, MuvissIcons.Library),
+        MuvissDestination("progress", Res.string.nav_progress, ProgressRoute, MuvissIcons.WatchNext),
+        MuvissDestination("profile", Res.string.nav_profile, ProfileRoute, MuvissIcons.Profile),
+        MuvissDestination("settings", Res.string.nav_settings, SettingsRoute, MuvissIcons.Settings),
     )

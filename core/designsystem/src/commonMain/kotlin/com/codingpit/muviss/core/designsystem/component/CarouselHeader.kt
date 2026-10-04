@@ -8,6 +8,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.codingpit.muviss.core.designsystem.generated.resources.Res
+import com.codingpit.muviss.core.designsystem.generated.resources.carousel_see_all
+import org.jetbrains.compose.resources.stringResource
 
 /** Carousel section header: titleMedium + optional amber "See all ›". */
 @Composable
@@ -27,7 +30,7 @@ fun CarouselHeader(
         )
         if (onSeeAll != null) {
             TextButton(onClick = onSeeAll) {
-                Text("See all ›", color = MaterialTheme.colorScheme.primary)
+                Text(stringResource(Res.string.carousel_see_all), color = MaterialTheme.colorScheme.primary)
             }
         }
     }

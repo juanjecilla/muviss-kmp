@@ -15,8 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.generated.resources.Res
+import com.codingpit.muviss.core.designsystem.generated.resources.action_retry
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import org.jetbrains.compose.resources.stringResource
 
 /** Centered error state with a retry button. */
 @Composable
@@ -43,6 +46,6 @@ fun ErrorState(
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(MuvissSpacing.l))
-        OutlinedButton(onClick = onRetry) { Text("Retry") }
+        OutlinedButton(onClick = onRetry) { Text(stringResource(Res.string.action_retry)) }
     }
 }

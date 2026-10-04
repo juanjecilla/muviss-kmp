@@ -240,7 +240,7 @@ private fun FrameWindowScope.MuvissMenuBar(
                 RadioButtonItem(
                     text = destination.label,
                     selected = controller.currentDestination === destination,
-                    shortcut = viewShortcuts[destination.label],
+                    shortcut = viewShortcuts[destination.key],
                     onClick = { controller.navigateTo(destination) },
                 )
             }
@@ -278,12 +278,13 @@ internal fun accelerator(key: Key): KeyShortcut = KeyShortcut(key, meta = isMacO
 internal val quitShortcut: KeyShortcut? = if (isMacOs) null else accelerator(Key.Q)
 
 /**
- * The two destinations worth a chord, keyed by label rather than by index so
- * reordering the bar cannot silently move a shortcut onto a different screen.
+ * The two destinations worth a chord, keyed by [MuvissDestination.key] rather
+ * than by index so reordering the bar cannot silently move a shortcut onto a
+ * different screen — and not by label, which is localized.
  */
 internal val viewShortcuts: Map<String, KeyShortcut> = mapOf(
-    "Search" to accelerator(Key.F),
-    "Settings" to accelerator(Key.Comma),
+    "search" to accelerator(Key.F),
+    "settings" to accelerator(Key.Comma),
 )
 
 /**
