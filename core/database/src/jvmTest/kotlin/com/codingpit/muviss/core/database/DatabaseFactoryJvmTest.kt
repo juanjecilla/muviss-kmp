@@ -1,6 +1,7 @@
 package com.codingpit.muviss.core.database
 
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
 import kotlin.io.path.createTempDirectory
@@ -50,6 +51,37 @@ class DatabaseFactoryJvmTest {
 
         assertEquals("DARK", reopened.theme)
         secondDriver.close()
+    }
+
+    /**
+     * Desktop opens the database twice at startup, on two threads: crash
+     * reporting reads its consent on a background dispatcher (#124) while
+     * `main` builds the Koin graph. Both used to see no file, both ran
+     * `Schema.create`, and the loser died with "table appSettings already
+     * exists" — CI's packaged-app smoke launch, every time, once the timing
+     * shifted (EPIC 31's PR). Repeated because one round can pass by luck.
+     */
+    @Test
+    fun `concurrent first opens of one directory both succeed`() {
+        repeat(20) {
+            val directory = createTempDirectory("muviss-db-race").toFile()
+            val start = java.util.concurrent.CountDownLatch(1)
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+            val opens = List(2) {
+                pool.submit<SqlDriver> {
+                    start.await()
+                    createFileDriver(directory)
+                }
+            }
+            start.countDown()
+            val drivers = opens.map { it.get() }
+            pool.shutdown()
+
+            drivers.forEach { driver ->
+                assertEquals(null, MuvissDatabase(driver).appSettingsQueries.selectSettings().executeAsOneOrNull())
+                driver.close()
+            }
+        }
     }
 
     @Test
