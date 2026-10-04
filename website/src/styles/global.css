@@ -1,0 +1,185 @@
+/* Tokens mirror MuvissPalette (core/designsystem/.../theme/Color.kt) —
+   "warm near-black + Marquee Amber". Keep the hexes in step with that file. */
+
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("/fonts/SchibstedGrotesk-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("/fonts/SchibstedGrotesk-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Schibsted Grotesk";
+  src: url("/fonts/SchibstedGrotesk-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --primary: #7c5800;
+  --on-primary: #ffffff;
+  --primary-container: #ffdda6;
+  --on-primary-container: #271900;
+  --tertiary: #386659;
+  --tertiary-container: #b8efdb;
+  --on-tertiary-container: #002018;
+  --bg: #fdf8ef;
+  --fg: #1d1b14;
+  --muted: #4c463a;
+  --surface-low: #f8f2e4;
+  --surface: #f2ecde;
+  --surface-high: #ece6d9;
+  --outline: #cfc6b4;
+  --amber: #ffcb6b;
+  --radius: 20px;
+  --max: 1120px;
+  --font: "Schibsted Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --primary: #ffcb6b;
+    --on-primary: #432c00;
+    --primary-container: #614000;
+    --on-primary-container: #ffdda6;
+    --tertiary: #9cd3c0;
+    --tertiary-container: #1f4d3e;
+    --on-tertiary-container: #b8efdb;
+    --bg: #14120e;
+    --fg: #e9e2d4;
+    --muted: #cfc6b4;
+    --surface-low: #1c1a15;
+    --surface: #211e18;
+    --surface-high: #2b2822;
+    --outline: #4c463a;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--primary);
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+[id] {
+  scroll-margin-top: 80px;
+}
+
+.wrap {
+  max-width: var(--max);
+  margin-inline: auto;
+  padding-inline: clamp(16px, 4vw, 32px);
+}
+
+.section {
+  padding-block: clamp(56px, 9vw, 112px);
+}
+
+.kicker {
+  display: inline-block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 700;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: clamp(1.0625rem, 1.6vw, 1.25rem);
+  max-width: 60ch;
+  margin: 16px 0 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.btn:hover {
+  transform: translateY(-1px);
+}
+.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.btn-ghost {
+  color: var(--fg);
+  border: 1px solid var(--outline);
+}
+.btn-ghost:hover {
+  background: var(--surface);
+}
+
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .btn {
+    transition: none;
+  }
+}

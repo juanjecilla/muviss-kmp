@@ -76,6 +76,7 @@ Triage (ADR 0010) obeys the same rule: a `CaughtUp` verdict does not write a sta
 ./gradlew :app:androidApp:assembleDebug        # Android (primary)
 ./gradlew :app:desktopApp:run                  # Desktop
 ./gradlew :app:webApp:wasmJsBrowserDevelopmentRun   # Web (Wasm)
+cd website && npm install && npm run dev            # landing (muvissapp.com, Astro)
 ./gradlew :app:shared:jvmTest                  # shared tests on JVM
 ./gradlew :feature:search:ui:jvmTest           # a module's tests
 ./gradlew spotlessApply                        # auto-format

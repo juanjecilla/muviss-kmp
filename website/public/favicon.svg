@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="amberGrad" gradientUnits="userSpaceOnUse" x1="168.06" y1="-83.72" x2="855.94" y2="1107.72">
+      <stop offset="0%" stop-color="#FFCB6B"/>
+      <stop offset="70%" stop-color="#E0952B"/>
+      <stop offset="100%" stop-color="#C97A1C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="30%" cy="24%" r="45%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="circleClip"><circle cx="512.0" cy="512.0" r="512.0"/></clipPath>
+  </defs>
+  <g clip-path="url(#circleClip)">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#amberGrad)"/>
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#glow)"/>
+  </g>
+  <path d="M 826.73,496.64 L 826.73,496.64 Q 853.33,512.00 826.73,527.36 L 367.94,792.24 Q 341.33,807.60 341.33,776.88 L 341.33,247.12 Q 341.33,216.40 367.94,231.76 Z" fill="#241A04"/>
+</svg>

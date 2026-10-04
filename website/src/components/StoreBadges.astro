@@ -1,0 +1,78 @@
+---
+import { links } from "../config/links";
+import { t, type Locale } from "../i18n";
+
+// Driven entirely by config/links.ts: a null URL is "Coming soon" and not a
+// link, so flipping a store live is a one-line change there.
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const dict = t(locale);
+const items = [
+  { key: "android", url: links.playStore },
+  { key: "ios", url: links.appStore },
+  { key: "desktop", url: links.desktop },
+  { key: "web", url: links.web },
+] as const;
+---
+
+<ul class="badges">
+  {
+    items.map(({ key, url }) => (
+      <li>
+        {url ? (
+          <a class="badge live" href={url}>
+            <span class="name">{dict.platforms.items[key]}</span>
+            <span class="state">{dict.platforms.get}</span>
+          </a>
+        ) : (
+          <span class="badge" aria-disabled="true">
+            <span class="name">{dict.platforms.items[key]}</span>
+            <span class="state">{dict.platforms.comingSoon}</span>
+          </span>
+        )}
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .badge {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--outline);
+    background: var(--surface-low);
+    color: var(--fg);
+    text-decoration: none;
+    line-height: 1.3;
+  }
+  .badge.live {
+    background: var(--fg);
+    color: var(--bg);
+    border-color: transparent;
+  }
+  .name {
+    font-weight: 600;
+    font-size: 0.9375rem;
+  }
+  .state {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .live .state {
+    color: inherit;
+    opacity: 0.75;
+  }
+</style>

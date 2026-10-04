@@ -1,0 +1,58 @@
+---
+import { t, type Locale } from "../i18n";
+import Screenshot from "./Screenshot.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const dict = t(locale);
+---
+
+<section class="spotlights">
+  <div class="wrap">
+    {
+      dict.spotlights.map((s, i) => (
+        <article id={s.id} class:list={["spot", { flip: i % 2 === 1 }]}>
+          <div class="copy">
+            <span class="kicker">{s.kicker}</span>
+            <h2 class="section-title">{s.title}</h2>
+            <p class="lede">{s.body}</p>
+          </div>
+          <div class="visual">
+            <Screenshot name={s.shot} alt={s.alt} pending={dict.shotPending} />
+          </div>
+        </article>
+      ))
+    }
+  </div>
+</section>
+
+<style>
+  .spot {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: clamp(32px, 6vw, 80px);
+    padding-block: clamp(48px, 7vw, 88px);
+  }
+  .spot + .spot {
+    border-top: 1px solid color-mix(in srgb, var(--outline) 50%, transparent);
+  }
+  .flip .copy {
+    order: 2;
+  }
+  .visual {
+    display: flex;
+    justify-content: center;
+  }
+  @media (max-width: 820px) {
+    .spot {
+      grid-template-columns: 1fr;
+    }
+    .flip .copy {
+      order: 0;
+    }
+  }
+</style>

@@ -748,40 +748,56 @@ by the time anyone read them again:
   build. The `MuvissWidget` target now *links* (it needed the same Sentry and
   sqlite3 settings), but nothing about the widget itself has been run.
 
-## 10. Web (GitHub Pages, PWA) — EPIC 13 / issue #16
+## 10. Web: the landing (muvissapp.com) and the Wasm app — EPIC 13 / issue #16
 
-### Deploy workflow
+### The landing owns GitHub Pages
 
-`.github/workflows/deploy-pages.yml` builds `:app:webApp:wasmJsBrowserDistribution`
-and deploys `app/webApp/build/dist/wasmJs/productionExecutable` to GitHub
-Pages via the standard `actions/configure-pages` → `actions/upload-pages-artifact`
-→ `actions/deploy-pages` trio, on every push to `main` (plus manual
-`workflow_dispatch`). Wasm was chosen over the `js` target as the deployed
-build — it's the one CLAUDE.md documents as primary (`wasmJsBrowserDevelopmentRun`
-is the documented dev command) and the one exercised end-to-end during this
-epic's verification (see the ADR 0008 amendment for the live-browser check).
+`.github/workflows/deploy-pages.yml` builds the Astro site in `website/` and
+deploys `website/dist` to this repo's GitHub Pages on every push to `main`
+that touches `website/**` or `docs/PRIVACY.md` (plus manual
+`workflow_dispatch`). `website/public/CNAME` claims `muvissapp.com`. The
+site's `/privacy/` page is rendered at build time from `docs/PRIVACY.md`,
+which is why that file triggers a deploy: it is the Privacy Policy URL the
+store listings give (`docs/store/LISTING.md`). PRs touching the site get a
+cheap `website.yml` check (one `npm run build`, no Gradle), path-filtered so
+it runs only for the site and a website-only PR runs no Gradle lane.
+
+```bash
+cd website && npm install && npm run dev   # local dev server
+cd website && npm run build                # → website/dist
+```
+
+What the landing lists is every **free** feature. Sync and co-watch are paid
+(they need an Entitlement, ADR 0018/0022) and are deliberately absent. Keep
+it that way when adding copy (`website/src/i18n/{en,es}.ts`). Store badges are
+driven by `website/src/config/links.ts`: `null` renders "Coming soon" (#170).
+Screenshots are captured by hand, shot list in `website/README.md` (#168).
+
+**The Wasm web app is not hosted anywhere right now.** It used to deploy
+from this same workflow to the Pages root. A Pages site carries one custom
+domain and the landing owns it, so the app moves to `app.muvissapp.com`
+(#167). The old steps are in this file's git history.
+
+### Going live (blocked on #81 / #66)
 
 **This repo is private, and GitHub Pages on a private repo needs a paid
-plan** — confirmed directly, not assumed:
+plan.** This was confirmed directly, not assumed:
 
 ```bash
 gh api -X POST repos/{owner}/{repo}/pages -f "build_type=workflow"
 # → 422 "Your current plan does not support GitHub Pages for this repository."
 ```
 
-The workflow is committed and ready to run the moment either of these
-happens (no code changes needed, just flip the switch):
+Once the repo is public (#81), the one-time setup is #169:
 
-1. **Make the repo public** (Settings → General → Danger Zone → Change
-   visibility), or
-2. **Upgrade to GitHub Pro/Team/Enterprise** (any paid plan enables Pages on
-   private repos).
-
-Then, one-time, either let the first push to `main` after that trigger the
-workflow (it self-configures Pages via `actions/configure-pages` — no
-separate manual "enable Pages" click needed once the plan/visibility allows
-it), or do it explicitly first: **Settings → Pages → Build and deployment
-→ Source → GitHub Actions**.
+1. DNS at the registrar:
+   - Apex `A` records to `185.199.108.153`, `185.199.109.153`, `185.199.110.153` and `185.199.111.153`.
+   - Apex `AAAA` records to `2606:50c0:8000::153` through `2606:50c0:8003::153`.
+   - `CNAME www → juanjecilla.github.io`.
+2. **Settings → Pages → Build and deployment → Source → GitHub Actions**,
+   then run the workflow.
+3. Set the custom domain to `muvissapp.com`, then **Enforce HTTPS** once the
+   certificate is issued.
 
 ### Build commands
 

@@ -1,20 +1,23 @@
-name: Deploy web (GitHub Pages)
+name: Deploy landing (GitHub Pages)
 
-# EPIC 13 (web productionization): builds the Wasm distribution and deploys
-# it to GitHub Pages. Requires Pages to be enabled on the repo first — see
-# docs/RELEASING.md's web section (GitHub Pages on a *private* repo needs a
-# paid plan; this repo is private and on the free plan as of this writing,
-# so enabling Pages 422s with "Your current plan does not support GitHub
-# Pages for this repository").
+# Builds the Astro landing in website/ and deploys it to GitHub Pages at
+# muvissapp.com (website/public/CNAME). See docs/RELEASING.md §10.
 #
-# Manual-only trigger until Pages can be enabled (plan upgrade or repo made
-# public) — a push trigger would fail on every commit to main. Once Pages is
-# enabled, restore:
-#   on:
-#     push:
-#       branches: [ main ]
-#     workflow_dispatch: { }
+# The Wasm web app used to deploy from here. It moves to app.muvissapp.com
+# instead — one repo's Pages site carries one custom domain, and the landing
+# owns this one — and is not hosted anywhere until that lands (#167).
+#
+# Pages cannot be enabled while the repo is private on the free plan (422
+# "Your current plan does not support GitHub Pages for this repository"), and
+# Actions are refused for billing (#66). Until the public flip (#81) this
+# workflow will fail; nothing else depends on it.
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'website/**'
+      - 'docs/PRIVACY.md'
+      - '.github/workflows/deploy-pages.yml'
   workflow_dispatch: { }
 
 concurrency:
@@ -29,24 +32,25 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          distribution: temurin
-          java-version: '17'
+          node-version-file: website/.nvmrc
+          cache: npm
+          cache-dependency-path: website/package-lock.json
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Install
+        run: npm ci
 
-      - name: Build Wasm distribution
-        env:
-          # Optional — same as the other workflows (ADR 0007 / docs/RELEASING.md):
-          # without it search returns errors at runtime but everything still builds.
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: ./gradlew :app:webApp:wasmJsBrowserDistribution --stacktrace
+      # Renders docs/PRIVACY.md into /privacy, so the checkout must include docs/.
+      - name: Build
+        run: npm run build
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -54,7 +58,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: app/webApp/build/dist/wasmJs/productionExecutable
+          path: website/dist
 
   deploy:
     needs: build

@@ -1,0 +1,25 @@
+---
+import Base from "../layouts/Base.astro";
+import type { Locale } from "../i18n";
+import Hero from "./Hero.astro";
+import Spotlights from "./Spotlights.astro";
+import FeatureGrid from "./FeatureGrid.astro";
+import PrivacyPromise from "./PrivacyPromise.astro";
+import Platforms from "./Platforms.astro";
+import OpenSource from "./OpenSource.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+---
+
+<Base locale={locale} alternates>
+  <Hero locale={locale} />
+  <Spotlights locale={locale} />
+  <FeatureGrid locale={locale} />
+  <PrivacyPromise locale={locale} />
+  <Platforms locale={locale} />
+  <OpenSource locale={locale} />
+</Base>

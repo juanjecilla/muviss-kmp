@@ -1,0 +1,51 @@
+---
+import { t, type Locale } from "../i18n";
+import StoreBadges from "./StoreBadges.astro";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const dict = t(locale);
+---
+
+<section id="download" class="section platforms">
+  <div class="wrap inner">
+    <img src="/icon.svg" alt="" width="96" height="96" loading="lazy" />
+    <h2 class="section-title">{dict.platforms.title}</h2>
+    <p class="lede">{dict.platforms.lede}</p>
+    <div class="badges"><StoreBadges locale={locale} /></div>
+  </div>
+</section>
+
+<style>
+  .platforms {
+    background: radial-gradient(
+        ellipse 70% 80% at 50% 0%,
+        color-mix(in srgb, var(--amber) 22%, transparent),
+        transparent 70%
+      ),
+      var(--surface-low);
+  }
+  .inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  img {
+    margin-bottom: 24px;
+  }
+  .lede {
+    margin-inline: auto;
+  }
+  .badges {
+    margin-top: 32px;
+    display: flex;
+    justify-content: center;
+  }
+  .badges :global(.badges) {
+    justify-content: center;
+  }
+</style>

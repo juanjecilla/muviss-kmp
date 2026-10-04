@@ -1,0 +1,69 @@
+---
+import { links, repoPath } from "../config/links";
+import { homePath, otherLocale, t, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const dict = t(locale);
+---
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="row">
+      <a class="brand" href={homePath(locale)}>
+        <img src="/icon.svg" alt="" width="28" height="28" />
+        Muviss
+      </a>
+      <nav aria-label="Footer">
+        <a href="/privacy/">{dict.footer.privacy}</a>
+        <a href={links.github}>GitHub</a>
+        <a href={repoPath("LICENSE")}>{dict.footer.license}</a>
+        <a href={homePath(otherLocale(locale))} hreflang={otherLocale(locale)} lang={otherLocale(locale)}>
+          {dict.footer.language}
+        </a>
+      </nav>
+    </div>
+    <p class="attribution" lang="en">{dict.footer.tmdb}</p>
+    <p class="attribution">{dict.footer.justwatch}</p>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--outline);
+    padding-block: 40px;
+    font-size: 0.9375rem;
+    color: var(--muted);
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: var(--fg);
+    text-decoration: none;
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  nav a {
+    color: var(--muted);
+  }
+  .attribution {
+    margin: 4px 0;
+    font-size: 0.8125rem;
+  }
+</style>

@@ -2,6 +2,8 @@
 
 A personal, offline-first tracker for **movies and TV shows**, built with Kotlin Multiplatform + Compose Multiplatform. Search titles, save them to your collection, and track episode/watch progress — on Android (primary), iOS, Desktop, and Web, from one codebase.
 
+Website: **[muvissapp.com](https://muvissapp.com)** (source in [`website/`](website/)).
+
 > User-focused, no social features. Data comes from [TMDB](https://www.themoviedb.org/) behind a pluggable source abstraction.
 
 ## Features (this pass)
