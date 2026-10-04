@@ -35,7 +35,7 @@ class PersistenceBannerGoldenTest {
             }
         }
 
-        assertMatchesGolden("persistence-banner-read-only-tab")
+        assertMatchesGolden("persistence-banner-read-only-tab", tolerance = BANNER_TOLERANCE)
     }
 
     /**
@@ -57,3 +57,12 @@ class PersistenceBannerGoldenTest {
         assertMatchesGolden("persistence-banner-absent")
     }
 }
+
+/**
+ * The frame is 412x72dp and one line of text fills most of it, so the glyph
+ * edges CoreText and FreeType draw differently are a large share of the image:
+ * 3.17% on `ubuntu-latest` against a macOS recording with hinting pinned
+ * (`GoldenSurface`, #171), every marked pixel a glyph edge. A colour change —
+ * what this golden exists to catch — moves the whole banner, far above this.
+ */
+private const val BANNER_TOLERANCE = 0.035
