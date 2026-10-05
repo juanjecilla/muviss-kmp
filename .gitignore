@@ -66,5 +66,7 @@ supabase/.branches/
 fastlane/report.xml
 fastlane/README.md
 fastlane/test_output/
+# Generated from fastlane/release-notes/<tag>/ by the Fastfile.
+fastlane/metadata/android/*/changelogs/
 vendor/bundle/
 .bundle/

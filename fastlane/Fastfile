@@ -27,14 +27,28 @@ platform :android do
     Dir.glob(File.join(ANDROID_METADATA, "*")).select { |d| File.directory?(d) }.map { |d| File.basename(d) }
   end
 
-  # Every listed locale needs release notes for this exact versionCode, or Play
-  # shows last release's notes (or none) against the new build. Fail before the
-  # upload rather than after.
-  def require_changelogs!(code)
-    missing = locales.reject { |l| File.exist?(File.join(ANDROID_METADATA, l, "changelogs", "#{code}.txt")) }
-    return if missing.empty?
-
-    UI.user_error!("Missing changelogs/#{code}.txt for: #{missing.join(', ')} (under #{ANDROID_METADATA_FOR_ACTIONS})")
+  # Release notes are written per *tag* (fastlane/release-notes/<tag>/<locale>.txt)
+  # because the versionCode Play keys them by is a commit count, which nobody
+  # can know before the release commit is merged. The lane copies them to
+  # supply's changelogs/<versionCode>.txt, a generated (gitignored) file.
+  # Every listed locale needs notes, or Play shows the previous release's
+  # notes against the new build; fail before the upload rather than after.
+  def stage_changelogs!(code)
+    tag = ENV["GITHUB_REF_NAME"] || sh("git", "describe", "--tags", "--exact-match", log: false).strip
+    problems = []
+    locales.each do |locale|
+      source = File.join("release-notes", tag, "#{locale}.txt")
+      unless File.exist?(source)
+        problems << "missing fastlane/#{source}"
+        next
+      end
+      notes = File.read(source).strip
+      problems << "fastlane/#{source} is #{notes.length} chars (Play allows 500)" if notes.length > 500
+      target = File.join(ANDROID_METADATA, locale, "changelogs", "#{code}.txt")
+      FileUtils.mkdir_p(File.dirname(target))
+      File.write(target, "#{notes}\n")
+    end
+    UI.user_error!("Release notes for #{tag}: #{problems.join('; ')}") unless problems.empty?
   end
 
   desc "Upload the release AAB, listing and screenshots to the internal track"
@@ -43,7 +57,7 @@ platform :android do
     UI.user_error!("No release AAB found; run :app:androidApp:bundleRelease first") unless aab && File.exist?(aab)
 
     has_metadata = !locales.empty?
-    require_changelogs!(version_code) if has_metadata
+    stage_changelogs!(version_code) if has_metadata
 
     upload_to_play_store(
       track: "internal",

@@ -214,10 +214,13 @@ Wired in `release.yml` (`fastlane android internal`) and
   where Play App Signing enrolment happens.
 - **No secret, no upload.** Without `PLAY_SERVICE_ACCOUNT_JSON` the step logs a
   notice and passes; dispatch runs never upload.
-- **Release notes are mandatory once listing metadata exists**: the lane fails
-  if any locale under `fastlane/metadata/android/` lacks
-  `changelogs/<versionCode>.txt`, where `versionCode` is
-  `git rev-list --count HEAD` at the tagged commit.
+- **Release notes are mandatory once listing metadata exists**, one file per
+  listing locale at `fastlane/release-notes/<tag>/<locale>.txt` (max 500
+  characters), merged before the tag is cut. They are keyed by tag, not by
+  versionCode, because the versionCode is a commit count nobody knows until the
+  release commit lands. The lane copies them to supply's
+  `changelogs/<versionCode>.txt` (generated, gitignored); `cut-release.sh`
+  refuses to tag without them.
 - **A release build refuses to guess its versionCode**: without git, or in a
   shallow clone, `:app:androidApp`'s release tasks fail at configuration
   instead of shipping `versionCode = 1`.
