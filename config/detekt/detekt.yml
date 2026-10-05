@@ -68,7 +68,6 @@ muviss:
     includes: ['**/commonMain/**']
     excludes: [
       '**/feature/collection/ui/**',
-      '**/feature/cowatch/ui/**',
       '**/feature/profile/ui/**',
       '**/feature/progress/ui/**',
       '**/feature/search/ui/**',

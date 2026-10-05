@@ -3,6 +3,8 @@
 package com.codingpit.muviss.feature.cowatch.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
@@ -54,6 +56,23 @@ class CoWatchGoldenTest {
     fun companions_in_every_link_state_dark() = runComposeUiTest {
         setContent { CompanionsUnderTest(darkTheme = true) }
         assertMatchesGolden("companions-screen-links-dark", tolerance = COMPANIONS_TOLERANCE)
+    }
+
+    /** The invite card with its actions, and the seen-switch row whose subtitle once ran under the switch. */
+    @Test
+    fun companions_with_an_invite_code_light() = runComposeUiTest {
+        setContent { InviteShownUnderTest(darkTheme = false) }
+        onNodeWithText("Create a code").performClick()
+        waitForIdle()
+        assertMatchesGolden("companions-screen-invite", tolerance = GOLDEN_TOLERANCE)
+    }
+
+    @Test
+    fun companions_with_an_invite_code_dark() = runComposeUiTest {
+        setContent { InviteShownUnderTest(darkTheme = true) }
+        onNodeWithText("Create a code").performClick()
+        waitForIdle()
+        assertMatchesGolden("companions-screen-invite-dark", tolerance = GOLDEN_TOLERANCE)
     }
 
     @Test
@@ -113,6 +132,18 @@ private fun CompanionsUnderTest(darkTheme: Boolean) {
     MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface {
             CompanionsScreen(CompanionsViewModel(api), onBack = {}, onOpenShortlist = {})
+        }
+    }
+}
+
+@Composable
+private fun InviteShownUnderTest(darkTheme: Boolean) {
+    val api = FakeCoWatchApi().apply {
+        createInviteResult = Result.success("fc0a7e68-c52f-470f-a607-3d74be52d9d8.b4a36c07dfa056b3")
+    }
+    MuvissTheme(darkTheme = darkTheme) {
+        GoldenSurface {
+            CompanionsScreen(CompanionsViewModel(api), onBack = {}, onOpenShortlist = {}, textSharer = FakeTextSharer())
         }
     }
 }

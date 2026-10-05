@@ -29,7 +29,21 @@ import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.cowatch.api.ShortlistItem
 import com.codingpit.muviss.feature.cowatch.api.ShortlistReason
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.Res
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.action_back
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.cowatch_title
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_as_of
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_details
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_empty_body
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_empty_title
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_pending
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_reason_both_pinned
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_reason_neither_started
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_reason_revisit
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_reason_shared_availability
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.shortlist_runtime
 import com.codingpit.muviss.models.MediaId
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * What two people could watch together.
@@ -52,8 +66,8 @@ fun ShortlistScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Watch together") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
+                title = { Text(stringResource(Res.string.cowatch_title)) },
+                navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(Res.string.action_back)) } },
             )
         },
     ) { padding ->
@@ -64,9 +78,8 @@ fun ShortlistScreen(
 
                 state.items.isEmpty() -> EmptyState(
                     icon = MuvissIcons.WatchNext,
-                    title = "Nothing in common yet",
-                    body = "A title shows up here when you have both saved it. " +
-                        "Add a few things you mean to watch, and ask them to do the same.",
+                    title = stringResource(Res.string.shortlist_empty_title),
+                    body = stringResource(Res.string.shortlist_empty_body),
                 )
 
                 else -> LazyColumn(Modifier.fillMaxSize()) {
@@ -89,9 +102,9 @@ fun ShortlistScreen(
 @Composable
 private fun StalenessNote(publishedAtEpochMs: Long?) {
     val text = if (publishedAtEpochMs == null) {
-        "Their list hasn't arrived yet — it reaches you once they open Muviss."
+        stringResource(Res.string.shortlist_pending)
     } else {
-        "Their list is as of the last time they opened Muviss."
+        stringResource(Res.string.shortlist_as_of)
     }
     Text(
         text = text,
@@ -116,7 +129,7 @@ private fun ShortlistRow(item: ShortlistItem, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onClick) { Text("Details") }
+            TextButton(onClick = onClick) { Text(stringResource(Res.string.shortlist_details)) }
         }
     }
 }
@@ -127,13 +140,16 @@ private fun ShortlistRow(item: ShortlistItem, onClick: () -> Unit) {
  * The ranking is explicit rules rather than a score precisely so this sentence
  * can exist: a position nobody can explain is one nobody trusts.
  */
+@Composable
 private fun explain(item: ShortlistItem): String {
     val parts = buildList {
-        if (ShortlistReason.BOTH_PINNED in item.reasons) add("you both picked it")
-        if (ShortlistReason.NEITHER_STARTED in item.reasons) add("neither of you has started it")
-        if (ShortlistReason.REVISIT in item.reasons) add("one of you has seen it and would again")
-        if (ShortlistReason.SHARED_AVAILABILITY in item.reasons) add("on a service you both have")
-        item.runtimeMinutes?.let { add("$it min") }
+        if (ShortlistReason.BOTH_PINNED in item.reasons) add(stringResource(Res.string.shortlist_reason_both_pinned))
+        if (ShortlistReason.NEITHER_STARTED in item.reasons) add(stringResource(Res.string.shortlist_reason_neither_started))
+        if (ShortlistReason.REVISIT in item.reasons) add(stringResource(Res.string.shortlist_reason_revisit))
+        if (ShortlistReason.SHARED_AVAILABILITY in item.reasons) {
+            add(stringResource(Res.string.shortlist_reason_shared_availability))
+        }
+        item.runtimeMinutes?.let { add(stringResource(Res.string.shortlist_runtime, it)) }
     }
     return parts.joinToString(" · ")
 }

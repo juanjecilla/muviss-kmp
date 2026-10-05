@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cowatch_title">Ver juntos</string>
+    <string name="action_back">Atrás</string>
+    <string name="action_dismiss">Descartar</string>
+    <string name="action_save">Guardar</string>
+
+    <string name="companions_intro">Vincúlate con alguien y Muviss buscará qué podéis ver juntos. Solo se comparten los títulos que verías con esa persona, nunca tu historial.</string>
+
+    <string name="invite_title">Invitar a alguien</string>
+    <string name="invite_explainer">Envíale un código. Lo pega aquí, ambos confirmáis y no se comparte nada hasta entonces.</string>
+    <string name="invite_create">Crear un código</string>
+    <string name="invite_copy">Copiar</string>
+    <string name="invite_share">Compartir</string>
+    <string name="invite_done">Hecho</string>
+    <string name="invite_copied">Código copiado</string>
+    <string name="invite_share_message">Vincúlate conmigo en Muviss para ver qué podemos ver juntos. En Perfil → Ver juntos, pega este código: %1$s</string>
+
+    <string name="redeem_title">¿Tienes un código?</string>
+    <string name="redeem_field">Pega su código</string>
+    <string name="redeem_action">Vincular</string>
+
+    <string name="include_seen_title">Incluir lo que ya has visto</string>
+    <string name="include_seen_body">Los títulos que ya has visto pueden sugerirse para volver a verlos, salvo que hayas dicho lo contrario en alguno.</string>
+
+    <string name="companion_default_name">Alguien</string>
+    <string name="companion_rename_field">Llámale</string>
+    <string name="companion_what_to_watch">Qué ver</string>
+    <string name="companion_confirm">Confirmar</string>
+    <string name="companion_rename">Renombrar</string>
+    <string name="companion_unlink">Desvincular</string>
+    <string name="companion_state_invited">Esperando a que acepte.</string>
+    <string name="companion_state_awaiting">Ya está listo: confirma para empezar a compartir.</string>
+    <string name="companion_state_active">Vinculado.</string>
+    <string name="companion_state_revoked">Desvinculado. Puede conservar una copia hasta que su app se sincronice.</string>
+
+    <string name="error_sign_in_to_invite">Inicia sesión antes de invitar a alguien.</string>
+    <string name="error_bad_code">Ese código no parece correcto.</string>
+
+    <string name="shortlist_empty_title">Aún nada en común</string>
+    <string name="shortlist_empty_body">Un título aparece aquí cuando los dos lo habéis guardado. Añade algunas cosas que quieras ver y pídele que haga lo mismo.</string>
+    <string name="shortlist_pending">Su lista aún no ha llegado: te llegará cuando abra Muviss.</string>
+    <string name="shortlist_as_of">Su lista es la de la última vez que abrió Muviss.</string>
+    <string name="shortlist_details">Detalles</string>
+    <string name="shortlist_reason_both_pinned">los dos lo habéis elegido</string>
+    <string name="shortlist_reason_neither_started">ninguno lo ha empezado</string>
+    <string name="shortlist_reason_revisit">uno lo ha visto y lo volvería a ver</string>
+    <string name="shortlist_reason_shared_availability">en un servicio que tenéis los dos</string>
+    <string name="shortlist_runtime">%1$d min</string>
+</resources>

@@ -100,6 +100,14 @@ _Avoid_: friend, follower, contact (they imply a social graph this product does 
 The mutual, consented relation between the user and one Companion. Either side ends it alone, and ending it stops anything further reaching them.
 _Avoid_: connection, pairing, share (a share is a thing handed over; this is a standing relation).
 
+**Invite Code**:
+What one person hands another to start a Companion Link. It names its sender, is good for one Companion, and redeeming it is only half of the consent — both sides still confirm.
+_Avoid_: pairing code, referral, friend code (the last two imply a social graph this product does not have).
+
+**Invite Link**:
+An Invite Code carried as a tappable address that opens the app at the point of redeeming it. Opening one never redeems it: the person still chooses to.
+_Avoid_: deep link (that is the mechanism, not the thing handed over).
+
 **Watch Pool**:
 The MediaItems the user publishes to a Companion — what they are willing to watch with that person. The only thing that ever leaves the device for another person to see; watch history, ticks, ratings and notes never do.
 _Avoid_: watchlist (that is a CollectionEntry with NotStarted status, and only the default source of a Pool); shared list (nobody co-owns a Pool); profile.
