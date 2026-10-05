@@ -17,16 +17,30 @@ import kotlinx.coroutines.withContext
  * an opinion about, and the feed degrades into a long tail rather than ending.
  * It also keeps working for the trickle phase, because popularity churns as
  * new titles release.
+ *
+ * `/discover` reports a `total_pages` in the thousands but refuses any page
+ * past [MAX_DISCOVER_PAGE] (HTTP 422), so the reported count is clamped here:
+ * the deck's cursor then reads the last servable page as the end of the
+ * catalogue and the deck says "caught up", where it would otherwise ask for
+ * page 501 and surface a load error.
  */
 class TmdbDeckSource(
     private val registry: MetadataProviderRegistry,
     private val dispatchers: AppDispatchers,
 ) : DeckSource {
     override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> = withContext(dispatchers.io) {
-        runCatching { registry.require(SourceId.TMDB).discover(type, page, genreId) }
+        runCatching {
+            val result = registry.require(SourceId.TMDB).discover(type, page, genreId)
+            result.copy(totalPages = minOf(result.totalPages, MAX_DISCOVER_PAGE))
+        }
     }
 
     override suspend fun genres(type: MediaType): Result<List<Genre>> = withContext(dispatchers.io) {
         runCatching { registry.require(SourceId.TMDB).genres(type) }
+    }
+
+    companion object {
+        /** TMDB's hard ceiling on `page` for `/discover`. */
+        const val MAX_DISCOVER_PAGE = 500
     }
 }

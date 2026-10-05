@@ -6,6 +6,7 @@ import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
 import kotlinx.coroutines.CompletableDeferred
@@ -249,7 +250,7 @@ class TriageViewModelTest {
 
     @Test
     fun `the control scheme flag reaches the state`() = runTest {
-        val harness = TriageHarness(movies = listOf(filmA), scheme = TriageControlScheme.THREE_WAY)
+        val harness = TriageHarness(movies = listOf(filmA), flagsConfig = FakeFlagsConfig(scheme = TriageControlScheme.THREE_WAY))
         val vm = harness.viewModel()
         advanceUntilIdle()
 
@@ -324,6 +325,24 @@ class TriageViewModelTest {
         assertNull(vm.state.value.topCard)
         assertTrue(vm.state.value.exhausted)
         assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun `a batch that comes back empty keeps searching rather than declaring the deck caught up`() = runTest {
+        // DeckLoader bounds a single load() call to a handful of catalogue
+        // pages (MAX_PAGES_PER_BATCH), so deep into a large library — where
+        // TMDB's popularity order front-loads exactly the titles a long-time
+        // user already has an opinion about — one batch can come back with
+        // zero *new* titles while the catalogue itself (ten pages here) is
+        // nowhere near exhausted. "All caught up" must mean the catalogue is
+        // genuinely spent, not just that one 5-page batch found nothing.
+        val freshTitle = movie("fresh-1")
+        val byNumber = (1..5).associateWith { emptyList<MediaSummary>() } + (6 to listOf(freshTitle))
+        val vm = TriageHarness(moviePages = FakeDeckPages(byNumber, totalPages = 10)).viewModel()
+        advanceUntilIdle()
+
+        assertEquals(freshTitle.id, vm.state.value.topCard?.id, "a single empty batch is not proof the catalogue ran out")
+        assertFalse(vm.state.value.exhausted)
     }
 
     @Test

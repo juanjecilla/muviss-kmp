@@ -293,15 +293,23 @@ internal class GatedDetailsSource(private val summaries: List<MediaSummary>) : T
     }
 }
 
+/** A multi-page movie catalogue for [FakeDeckSource], for a batch that must span more than one `load()` call. */
+internal data class FakeDeckPages(val byNumber: Map<Int, List<MediaSummary>>, val totalPages: Int)
+
 internal class FakeDeckSource(
     private val movies: List<MediaSummary> = emptyList(),
     private val tv: List<MediaSummary> = emptyList(),
     private val genres: List<Genre> = emptyList(),
+    /** Overrides [movies]/page-1-only paging with an explicit multi-page catalogue. */
+    private val moviePages: FakeDeckPages? = null,
 ) : DeckSource {
     var failure: Throwable? = null
 
     override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> {
         failure?.let { return Result.failure(it) }
+        if (type == MediaType.MOVIE && moviePages != null) {
+            return Result.success(PagedResult(moviePages.byNumber[page].orEmpty(), page = page, totalPages = moviePages.totalPages))
+        }
         val items = if (type == MediaType.MOVIE) movies else tv
         return Result.success(PagedResult(if (page == 1) items else emptyList(), page = page, totalPages = 1))
     }
@@ -309,23 +317,29 @@ internal class FakeDeckSource(
     override suspend fun genres(type: MediaType): Result<List<Genre>> = Result.success(genres)
 }
 
+/** What [FakeFeatureFlags] reports, bundled so [TriageHarness] doesn't grow a parameter per flag. */
+internal data class FakeFlagsConfig(
+    val scheme: TriageControlScheme = TriageControlScheme.FOUR_WAY,
+    val deckAnimations: Boolean = true,
+)
+
 /** Everything a [TriageViewModel] needs, wired from real domain types over the fakes above. */
 internal class TriageHarness(
     movies: List<MediaSummary> = emptyList(),
     tv: List<MediaSummary> = emptyList(),
     genres: List<Genre> = emptyList(),
-    scheme: TriageControlScheme = TriageControlScheme.FOUR_WAY,
     tutorialSeen: Boolean = true,
-    deckAnimations: Boolean = true,
+    flagsConfig: FakeFlagsConfig = FakeFlagsConfig(),
+    moviePages: FakeDeckPages? = null,
 ) {
-    val source = FakeDeckSource(movies, tv, genres)
+    val source = FakeDeckSource(movies, tv, genres, moviePages)
     val details = GatedDetailsSource(movies + tv)
     val repository = FakeTriageDecisionRepository()
     val collection = FakeCollectionApi()
     val progress = FakeProgressApi()
     val analytics = RecordingAnalytics()
     val preferences = FakeTriagePreferences(tutorialSeen)
-    val flags = FakeFeatureFlags(scheme, deckAnimations = deckAnimations)
+    val flags = FakeFeatureFlags(flagsConfig.scheme, deckAnimations = flagsConfig.deckAnimations)
     val snoozes = FakeTriageSnoozeRepository()
     private val clock = FakeClock()
 
