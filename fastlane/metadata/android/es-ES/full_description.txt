@@ -1,0 +1,33 @@
+Muviss es un gestor privado para seguir películas y series. Marca los episodios a medida que los ves y Muviss se ocupa del resto: qué tienes a medias, qué toca ahora y qué está por llegar.
+
+SIGUE LO QUE VES
+• Busca cualquier película o serie, con carátulas, sinopsis, guía completa de episodios y dónde verla.
+• Marca episodios uno a uno, o una temporada entera de episodios ya emitidos de golpe.
+• Estado automático: Sin empezar, Viéndose, Visto o Terminado, según lo que realmente has visto y si la serie sigue en emisión. Nunca tienes que marcarlo a mano.
+• ¿Vuelves a ver algo? Se guarda cada visionado, no solo el primero.
+• Puntúa títulos, apúntate una nota, marca favoritos y crea tus propias listas.
+
+SABE QUÉ VIENE AHORA
+• A continuación: todas las series que sigues, con su próximo episodio sin ver y un toque para marcarlo.
+• Próximos estrenos: las fechas de emisión de tus series, día a día.
+• Avisos de nuevos episodios cuando se emite algo que sigues.
+• Un widget en la pantalla de inicio para tener el siguiente episodio a un toque.
+
+LLENA TU BIBLIOTECA EN UN MOMENTO
+• Repasa títulos de uno en uno y decide con un toque — no es para mí, más tarde, viéndola o al día. ¿Aún no lo sabes? Pospónlo y volverá cuando tú digas.
+• Importa tu historial desde Trakt, TV Time o un archivo CSV.
+• Descubre por género, mira lo más popular y recibe sugerencias según lo que te gusta.
+
+CONOCE TUS HÁBITOS
+• Horas vistas, episodios vistos, géneros favoritos y rachas.
+• Las series y películas que más has vuelto a ver.
+
+PRIVADO POR DISEÑO
+• Sin cuentas. Sin registro, sin inicio de sesión, nada vinculado a tu identidad.
+• Sin funciones sociales: sin muro, sin amigos, sin comentarios.
+• Sin anuncios ni analítica. Solo informes de errores anónimos y opcionales, que puedes desactivar en Ajustes.
+• Tu biblioteca vive en tu dispositivo y funciona sin conexión. Expórtala cuando quieras.
+
+Tema claro y oscuro, en móviles y tabletas.
+
+Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.

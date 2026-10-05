@@ -1,0 +1,33 @@
+Muviss is a private tracker for movies and TV shows. Tick episodes as you watch them and Muviss works out the rest: what you're in the middle of, what's next, and what's coming.
+
+TRACK WHAT YOU WATCH
+• Search any movie or show, with posters, synopses, full episode guides and where to watch it.
+• Tick episodes one by one, or a whole season of aired episodes at once.
+• Automatic status: Not started, Watching, Watched or Finished, worked out from what you've actually seen and whether a show is still airing. You never set it by hand.
+• Rewatch something? Every viewing is kept, not just the first.
+• Rate titles, write yourself a note, mark favorites, and build your own lists.
+
+KNOW WHAT'S NEXT
+• Watch next: every show you're following, with its next unseen episode and a one-tap tick.
+• Upcoming: air dates for your shows, day by day.
+• New-episode notifications when something you follow airs.
+• A home-screen widget so the next episode is one tap away.
+
+FILL YOUR LIBRARY FAST
+• Go through titles one at a time and decide in a tap — not for me, later, watching, or caught up. Not sure yet? Snooze it and it comes back when you choose.
+• Import your history from Trakt, TV Time or a CSV file.
+• Discover by genre, see what's popular, and get suggestions based on what you love.
+
+SEE YOUR HABITS
+• Hours watched, episodes seen, favorite genres and watch streaks.
+• Your most rewatched shows and movies.
+
+PRIVATE BY DESIGN
+• No account. No sign-up, no login, nothing tied to your identity.
+• No social features — no feeds, no friends, no comments.
+• No ads and no analytics. Only optional, anonymous crash reports, which you can turn off in Settings.
+• Your library lives on your device and works offline. Export it whenever you like.
+
+Light and dark themes, on phones and tablets.
+
+This product uses the TMDB API but is not endorsed or certified by TMDB.

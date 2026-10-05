@@ -70,6 +70,7 @@ fi
 # one per listing locale (ADR 0024). The upload lane fails without them, but
 # only after a full signed build — catch it here instead.
 if [ -d fastlane/metadata/android ]; then
+  scripts/store/check-listing.sh >/dev/null || die "the Play listing is over a field limit (run scripts/store/check-listing.sh)"
   for dir in fastlane/metadata/android/*/; do
     locale="$(basename "$dir")"
     notes="fastlane/release-notes/$TAG/$locale.txt"
