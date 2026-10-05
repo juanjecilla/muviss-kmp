@@ -136,7 +136,29 @@ fun gitOutput(vararg args: String): String? = try {
     null // git not installed / not a git checkout (e.g. a source-only archive)
 }
 
-val gitVersionCode: Int = gitOutput("git", "rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
+// A release build without git would ship versionCode 1, which Play rejects as a
+// downgrade after the first upload (#77) — fail instead. Debug and test builds
+// keep the fallback so a source-only archive still compiles.
+val isReleaseInvocation =
+    gradle.startParameter.taskNames.any { name ->
+        name.contains("Release", ignoreCase = true) || name.substringAfterLast(':').startsWith("bundle")
+    }
+
+// A shallow clone counts only the commits it fetched (often 1), which is the
+// same downgrade with extra steps.
+val isShallowCheckout = gitOutput("git", "rev-parse", "--is-shallow-repository") == "true"
+
+if (isReleaseInvocation && isShallowCheckout) {
+    error("versionCode comes from `git rev-list --count HEAD`, which is wrong in a shallow clone. Use fetch-depth: 0.")
+}
+
+val gitVersionCode: Int =
+    gitOutput("git", "rev-list", "--count", "HEAD")?.toIntOrNull()
+        ?: if (isReleaseInvocation) {
+            error("versionCode comes from `git rev-list --count HEAD`, and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
+        } else {
+            1
+        }
 
 val gitVersionName: String = run {
     val describe = gitOutput("git", "describe", "--tags", "--always", "--dirty")

@@ -2,10 +2,10 @@ name: Release
 
 # Release build. Produces a signed AAB plus desktop installers (DMG/DEB/MSI —
 # see the `desktop-release` job), uploads them all as workflow artifacts, and —
-# when the run was triggered by a `vX.Y.Z` tag — attaches them to a GitHub
-# Release (the `github-release` job, issue #45). There is still no Play
-# publishing step; the AAB is uploaded to the Play Console by hand, see
-# docs/RELEASING.md.
+# when the run was triggered by a `vX.Y.Z` tag — uploads the AAB to Google
+# Play's *internal* track through fastlane (ADR 0024) and attaches everything
+# to a GitHub Release (the `github-release` job, issue #45). Production is never
+# reached from here: .github/workflows/play-promote.yml does that, by hand.
 #
 # Push a tag with `scripts/release/cut-release.sh X.Y.Z` to run the whole thing,
 # or dispatch it manually to exercise the build without creating a release.
@@ -98,6 +98,31 @@ jobs:
           name: muviss-release-${{ github.ref_name }}
           path: app/androidApp/build/outputs/bundle/release/*.aab
           if-no-files-found: error
+
+      # ADR 0024: a tag goes to the internal track, nowhere further. Skipped on
+      # dispatch runs (a branch build must not reach a store) and while the
+      # service-account secret is missing, so the job stays green before the
+      # owner has created it (#66).
+      - name: Set up Ruby
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Upload to Google Play (internal track)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # `draft` until the app's first production release exists; Play
+          # refuses any other status on a never-published app. Set the repo
+          # variable to `completed` (or delete it) after that.
+          PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; skipping the Play upload."
+            exit 0
+          fi
+          bundle exec fastlane android internal
 
   # EPIC 12 (issue #14): native desktop installers, one job per OS/format —
   # jpackage's backends only run on the OS they target (there's no
@@ -228,8 +253,8 @@ jobs:
             echo
             echo "### Downloads"
             echo
-            echo "- **Android** — \`.aab\`. Not installable directly; it is the"
-            echo "  Play Console upload format. No APK is published yet."
+            echo "- **Android** — on Google Play. The \`.aab\` here is the exact bundle"
+            echo "  uploaded to Play's internal track; it is not installable directly."
             echo "- **Desktop** — \`.dmg\` (macOS), \`.deb\` (Linux), \`.msi\` (Windows)."
             echo "  All three are **unsigned and un-notarized** (#39): macOS Gatekeeper"
             echo "  will refuse the DMG until it is opened via right-click > Open, and"

@@ -66,6 +66,19 @@ else
   note "no previous tag — this is the first release this repo has ever cut"
 fi
 
+# Play shows per-release notes from fastlane/release-notes/<tag>/<locale>.txt,
+# one per listing locale (ADR 0024). The upload lane fails without them, but
+# only after a full signed build — catch it here instead.
+if [ -d fastlane/metadata/android ]; then
+  for dir in fastlane/metadata/android/*/; do
+    locale="$(basename "$dir")"
+    notes="fastlane/release-notes/$TAG/$locale.txt"
+    [ -f "$notes" ] || die "missing $notes (Play release notes, max 500 chars); add it in a PR first"
+    [ "$(wc -m < "$notes")" -le 500 ] || die "$notes is over Play's 500-character limit"
+  done
+  ok "release notes present for every listing locale"
+fi
+
 note "branch:       $BRANCH @ $(git rev-parse --short HEAD)"
 note "tag:          $TAG"
 note "versionCode:  $(git rev-list --count HEAD)"
@@ -86,7 +99,8 @@ printf '\n  Watch it:   gh run watch\n  Release:    gh release view %s --web\n\n
 
 cat <<'REMAINING'
 Still manual after this (docs/RELEASING.md):
-  - upload the .aab to the Play Console
-  - the desktop installers are unsigned/un-notarized (#39)
-  - iOS/TestFlight is not built by CI at all
+  - the AAB lands on Play's internal track only; promote with the
+    "Play promote" workflow (gh workflow run play-promote.yml)
+  - the desktop installers are unsigned/un-notarized (#39, #179)
+  - iOS/TestFlight is not built by CI yet (#78)
 REMAINING
