@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
 import com.codingpit.muviss.feature.cowatch.api.LinkedCompanion
 import com.codingpit.muviss.feature.cowatch.api.PoolSettings
 import com.codingpit.muviss.feature.cowatch.api.PoolSource
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.Res
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.error_bad_code
+import com.codingpit.muviss.feature.cowatch.ui.generated.resources.error_sign_in_to_invite
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,7 +24,7 @@ data class CompanionsUiState(
     val settings: PoolSettings = PoolSettings(PoolSource.NotStarted, includeSeenByDefault = true),
     /** The code this account has minted for someone else to paste, if the user asked for one. */
     val myInviteCode: String? = null,
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 /**
@@ -50,7 +54,7 @@ class CompanionsViewModel(
     fun createInvite() = viewModelScope.launchReporting {
         coWatch.createInvite()
             .onSuccess { code -> _state.update { it.copy(myInviteCode = code, error = null) } }
-            .onFailure { _state.update { it.copy(error = "Sign in before inviting someone.") } }
+            .onFailure { _state.update { it.copy(error = UiText.Resource(Res.string.error_sign_in_to_invite)) } }
     }
 
     fun dismissInvite() = _state.update { it.copy(myInviteCode = null) }
@@ -58,7 +62,7 @@ class CompanionsViewModel(
     fun acceptInvite(raw: String) = viewModelScope.launchReporting {
         coWatch.acceptInvite(raw)
             .onSuccess { _state.update { it.copy(error = null) } }
-            .onFailure { _state.update { it.copy(error = "That code didn't look right.") } }
+            .onFailure { _state.update { it.copy(error = UiText.Resource(Res.string.error_bad_code)) } }
     }
 
     fun confirm(companionUserId: String) = viewModelScope.launchReporting {

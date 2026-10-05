@@ -3,6 +3,8 @@
 package com.codingpit.muviss.feature.cowatch.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
@@ -54,6 +56,23 @@ class CoWatchGoldenTest {
     fun companions_in_every_link_state_dark() = runComposeUiTest {
         setContent { CompanionsUnderTest(darkTheme = true) }
         assertMatchesGolden("companions-screen-links-dark", tolerance = COMPANIONS_TOLERANCE)
+    }
+
+    /** The invite card with its actions, and the seen-switch row whose subtitle once ran under the switch. */
+    @Test
+    fun companions_with_an_invite_code_light() = runComposeUiTest {
+        setContent { InviteShownUnderTest(darkTheme = false) }
+        onNodeWithText("Create a code").performClick()
+        waitForIdle()
+        assertMatchesGolden("companions-screen-invite", tolerance = COMPANIONS_TOLERANCE)
+    }
+
+    @Test
+    fun companions_with_an_invite_code_dark() = runComposeUiTest {
+        setContent { InviteShownUnderTest(darkTheme = true) }
+        onNodeWithText("Create a code").performClick()
+        waitForIdle()
+        assertMatchesGolden("companions-screen-invite-dark", tolerance = COMPANIONS_TOLERANCE)
     }
 
     @Test
@@ -118,6 +137,18 @@ private fun CompanionsUnderTest(darkTheme: Boolean) {
 }
 
 @Composable
+private fun InviteShownUnderTest(darkTheme: Boolean) {
+    val api = FakeCoWatchApi().apply {
+        createInviteResult = Result.success("fc0a7e68-c52f-470f-a607-3d74be52d9d8.b4a36c07dfa056b3")
+    }
+    MuvissTheme(darkTheme = darkTheme) {
+        GoldenSurface {
+            CompanionsScreen(CompanionsViewModel(api), onBack = {}, onOpenShortlist = {}, textSharer = FakeTextSharer())
+        }
+    }
+}
+
+@Composable
 private fun ShortlistUnderTest(darkTheme: Boolean, shortlist: Shortlist) {
     val api = FakeCoWatchApi().apply { shortlists.value = mapOf(COMPANION_ID to shortlist) }
     MuvissTheme(darkTheme = darkTheme) {
@@ -143,7 +174,8 @@ private const val GOLDEN_TOLERANCE = 0.015
  * The Companions screen is denser still — four state sentences plus the
  * consent paragraph, nearly every row text. With glyph hinting pinned
  * (`GoldenSurface`, #171) it measures 2.31% (light) and 2.30% (dark) on
- * `ubuntu-latest` against a macOS recording, every marked pixel a glyph edge;
+ * `ubuntu-latest` against a macOS recording (the invite-card state: 2.44% /
+ * 2.40%), every marked pixel a glyph edge;
  * the remainder is CoreText vs FreeType drawing the same outline heavier, which
  * no setting removes. Identical across runs, so the margin above it is small.
  */

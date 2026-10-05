@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.designsystem.share.TextSharer
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.cowatch.api.CompanionState
 import com.codingpit.muviss.feature.cowatch.api.PoolSettings
@@ -27,6 +28,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Drives the real [CompanionsScreen] over a fake [com.codingpit.muviss.feature.cowatch.api.CoWatchApi]:
@@ -66,6 +68,68 @@ class CompanionsScreenTest {
         waitForIdle()
         onNodeWithText("MUVISS-7742").assertDoesNotExist()
         onNodeWithText("Create a code").assertIsDisplayed()
+    }
+
+    @Test
+    fun copy_puts_the_bare_code_on_the_clipboard_and_says_so() = runComposeUiTest {
+        val api = FakeCoWatchApi().apply { createInviteResult = Result.success("MUVISS-7742") }
+        val sharer = FakeTextSharer()
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                CompanionsScreen(CompanionsViewModel(api), onBack = {}, onOpenShortlist = {}, textSharer = sharer)
+            }
+        }
+        waitForIdle()
+
+        onNodeWithText("Create a code").performClick()
+        waitForIdle()
+        onNodeWithText("Copy").performClick()
+        waitForIdle()
+
+        assertEquals(listOf("MUVISS-7742"), sharer.copied)
+        onNodeWithText("Code copied").assertIsDisplayed()
+    }
+
+    /**
+     * The recipient may not have the app yet, so a bare `uuid.nonce` would mean
+     * nothing to them: the shared text says where the code goes.
+     */
+    @Test
+    fun share_sends_the_code_with_where_to_paste_it() = runComposeUiTest {
+        val api = FakeCoWatchApi().apply { createInviteResult = Result.success("MUVISS-7742") }
+        val sharer = FakeTextSharer()
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                CompanionsScreen(CompanionsViewModel(api), onBack = {}, onOpenShortlist = {}, textSharer = sharer)
+            }
+        }
+        waitForIdle()
+
+        onNodeWithText("Create a code").performClick()
+        waitForIdle()
+        onNodeWithText("Share").performClick()
+
+        val message = sharer.shared.single()
+        assertTrue("MUVISS-7742" in message, message)
+        assertTrue("Watch together" in message, message)
+    }
+
+    @Test
+    fun where_the_platform_cannot_share_only_copy_is_offered() = runComposeUiTest {
+        val api = FakeCoWatchApi().apply { createInviteResult = Result.success("MUVISS-7742") }
+        val sharer = FakeTextSharer(canShare = false)
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                CompanionsScreen(CompanionsViewModel(api), onBack = {}, onOpenShortlist = {}, textSharer = sharer)
+            }
+        }
+        waitForIdle()
+
+        onNodeWithText("Create a code").performClick()
+        waitForIdle()
+
+        onNodeWithText("Copy").assertIsDisplayed()
+        onNodeWithText("Share").assertDoesNotExist()
     }
 
     @Test
@@ -233,5 +297,19 @@ class CompanionsScreenTest {
 
         assertEquals(listOf(false), api.includeSeenSet)
         onAllNodes(isToggleable()).onLast().assertIsOff()
+    }
+}
+
+/** Records what the screen hands the platform, instead of touching a real clipboard or share sheet. */
+internal class FakeTextSharer(override val canShare: Boolean = true) : TextSharer {
+    val copied = mutableListOf<String>()
+    val shared = mutableListOf<String>()
+
+    override fun copy(text: String) {
+        copied += text
+    }
+
+    override fun share(text: String) {
+        shared += text
     }
 }

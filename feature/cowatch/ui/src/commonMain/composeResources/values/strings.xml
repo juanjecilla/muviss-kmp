@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the default locale: every key lives here first. values-es mirrors it. -->
+<resources>
+    <string name="cowatch_title">Watch together</string>
+    <string name="action_back">Back</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_save">Save</string>
+
+    <string name="companions_intro">Link with someone and Muviss will work out what you could watch together. Only the titles you'd watch with them are shared — never your watch history.</string>
+
+    <string name="invite_title">Invite someone</string>
+    <string name="invite_explainer">Send them a code. They paste it here, you both confirm, and nothing is shared until you do.</string>
+    <string name="invite_create">Create a code</string>
+    <string name="invite_copy">Copy</string>
+    <string name="invite_share">Share</string>
+    <string name="invite_done">Done</string>
+    <string name="invite_copied">Code copied</string>
+    <!-- Sent to another person, in the sender's language. %1$s is the invite code. -->
+    <string name="invite_share_message">Link with me on Muviss so we can see what to watch together. In Profile → Watch together, paste this code: %1$s</string>
+
+    <string name="redeem_title">Have a code?</string>
+    <string name="redeem_field">Paste their code</string>
+    <string name="redeem_action">Link</string>
+
+    <string name="include_seen_title">Include things you've seen</string>
+    <string name="include_seen_body">Titles you've already watched can be suggested for a rewatch, unless you've said otherwise for one.</string>
+
+    <string name="companion_default_name">Someone</string>
+    <string name="companion_rename_field">Call them</string>
+    <string name="companion_what_to_watch">What to watch</string>
+    <string name="companion_confirm">Confirm</string>
+    <string name="companion_rename">Rename</string>
+    <string name="companion_unlink">Unlink</string>
+    <string name="companion_state_invited">Waiting for them to accept.</string>
+    <string name="companion_state_awaiting">They're ready — confirm to start sharing.</string>
+    <string name="companion_state_active">Linked.</string>
+    <string name="companion_state_revoked">Unlinked. They may keep a copy until their app next syncs.</string>
+
+    <string name="error_sign_in_to_invite">Sign in before inviting someone.</string>
+    <string name="error_bad_code">That code didn't look right.</string>
+
+    <string name="shortlist_empty_title">Nothing in common yet</string>
+    <string name="shortlist_empty_body">A title shows up here when you have both saved it. Add a few things you mean to watch, and ask them to do the same.</string>
+    <string name="shortlist_pending">Their list hasn't arrived yet — it reaches you once they open Muviss.</string>
+    <string name="shortlist_as_of">Their list is as of the last time they opened Muviss.</string>
+    <string name="shortlist_details">Details</string>
+    <string name="shortlist_reason_both_pinned">you both picked it</string>
+    <string name="shortlist_reason_neither_started">neither of you has started it</string>
+    <string name="shortlist_reason_revisit">one of you has seen it and would again</string>
+    <string name="shortlist_reason_shared_availability">on a service you both have</string>
+    <string name="shortlist_runtime">%1$d min</string>
+</resources>
