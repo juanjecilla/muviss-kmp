@@ -143,6 +143,14 @@ class CollectionViewModel(
      * swallow it, and any path that leaves `refreshing` true leaves the user
      * staring at a spinner that never stops.
      *
+     * [automatic] additionally gates [CollectionUiState.refreshing] itself:
+     * the automatic refresh walks the *whole* saved library over the network
+     * on every fresh backstack entry (throttled, but still), and that can run
+     * long. Showing the same spinner an explicit pull shows would leave it up
+     * for as long as that takes and lock out a manual pull-to-refresh for the
+     * whole time — the spinner is reserved for a refresh the user actually
+     * asked for.
+     *
      * [RefreshCollectionSnapshotsUseCase] already swallows a per-title
      * network failure into `Result` internally (so one dead title doesn't
      * abort the refresh) — nothing routine reaches here. Whatever does is
@@ -152,13 +160,13 @@ class CollectionViewModel(
     fun refresh(automatic: Boolean = false) {
         if (!automatic) refreshThrottle.recordRefresh()
         viewModelScope.launchReporting {
-            _state.update { it.copy(refreshing = true) }
+            if (!automatic) _state.update { it.copy(refreshing = true) }
             try {
                 runCatching { refreshSnapshots() }
                     .reportFailure()
                     .onFailure { e -> _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) } }
             } finally {
-                _state.update { it.copy(refreshing = false) }
+                if (!automatic) _state.update { it.copy(refreshing = false) }
             }
         }
     }

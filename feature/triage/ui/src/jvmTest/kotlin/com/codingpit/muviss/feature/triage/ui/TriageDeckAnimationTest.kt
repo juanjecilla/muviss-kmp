@@ -221,7 +221,7 @@ class TriageDeckAnimationTest {
 
     @Test
     fun with_the_deck_toggle_off_the_deck_advances_without_waiting() = runComposeUiTest {
-        val harness = TriageHarness(movies = listOf(filmA, filmB), deckAnimations = false)
+        val harness = TriageHarness(movies = listOf(filmA, filmB), flagsConfig = FakeFlagsConfig(deckAnimations = false))
         val viewModel = showDeck(harness)
 
         mainClock.autoAdvance = false
@@ -250,7 +250,7 @@ class TriageDeckAnimationTest {
 
     @Test
     fun with_animations_off_a_drag_still_decides_the_card_it_is_on() = runComposeUiTest {
-        val harness = TriageHarness(movies = listOf(filmA, filmB), deckAnimations = false)
+        val harness = TriageHarness(movies = listOf(filmA, filmB), flagsConfig = FakeFlagsConfig(deckAnimations = false))
         showDeck(harness)
 
         onNodeWithTag(TRIAGE_CARD_TAG).performTouchInput {

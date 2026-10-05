@@ -113,7 +113,7 @@ class TriageScreenTest {
 
     @Test
     fun dragging_down_marks_watching_under_the_four_way_scheme() = runComposeUiTest {
-        val harness = TriageHarness(tv = listOf(show("1"), showA), scheme = TriageControlScheme.FOUR_WAY)
+        val harness = TriageHarness(tv = listOf(show("1"), showA), flagsConfig = FakeFlagsConfig(scheme = TriageControlScheme.FOUR_WAY))
         val first = show("1")
         val viewModel = harness.viewModel()
         setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = { opened += it }) } }
@@ -132,7 +132,7 @@ class TriageScreenTest {
     @Test
     fun dragging_down_is_inert_under_the_three_way_scheme() = runComposeUiTest {
         val first = show("1")
-        val harness = TriageHarness(tv = listOf(first, showA), scheme = TriageControlScheme.THREE_WAY)
+        val harness = TriageHarness(tv = listOf(first, showA), flagsConfig = FakeFlagsConfig(scheme = TriageControlScheme.THREE_WAY))
         val viewModel = harness.viewModel()
         setContent { MuvissTheme { TriageScreen(viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = { opened += it }) } }
         waitForIdle()
@@ -193,7 +193,7 @@ class TriageScreenTest {
 
     @Test
     fun the_watching_button_commits_even_under_the_three_way_scheme() = runComposeUiTest {
-        val harness = TriageHarness(tv = listOf(showA, show("11")), scheme = TriageControlScheme.THREE_WAY)
+        val harness = TriageHarness(tv = listOf(showA, show("11")), flagsConfig = FakeFlagsConfig(scheme = TriageControlScheme.THREE_WAY))
         showDeck(harness)
 
         onNodeWithText("Watching").performClick()
@@ -309,7 +309,7 @@ class TriageScreenTest {
     @Test
     fun the_down_arrow_is_inert_under_the_three_way_scheme_too() = runComposeUiTest {
         val first = show("1")
-        val harness = TriageHarness(tv = listOf(first, showA), scheme = TriageControlScheme.THREE_WAY)
+        val harness = TriageHarness(tv = listOf(first, showA), flagsConfig = FakeFlagsConfig(scheme = TriageControlScheme.THREE_WAY))
         val viewModel = showDeck(harness)
 
         onRoot().performKeyInput { pressKey(Key.DirectionDown) }

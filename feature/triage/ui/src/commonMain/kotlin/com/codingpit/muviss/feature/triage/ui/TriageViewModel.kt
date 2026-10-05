@@ -408,28 +408,47 @@ class TriageViewModel(
 
         loadJob = viewModelScope.launchReporting {
             val filter = _state.value.filter
-            loadDeck(filter, cursor, alreadyShown = shown, placement = _state.value.snoozePlacement).fold(
-                onSuccess = { batch ->
-                    cursor = batch.cursor
-                    shown += batch.cards.map { it.id }
-                    _state.update { current ->
-                        val cards = current.cards + batch.cards
-                        current.copy(
-                            cards = cards,
-                            loading = false,
-                            refilling = false,
-                            error = null,
-                            exhausted = cards.isEmpty() && batch.exhausted,
-                        )
+            var batchCards: List<MediaSummary> = emptyList()
+            var trulyExhausted: Boolean
+
+            // DeckLoader bounds a single load() call to a handful of
+            // catalogue pages (MAX_PAGES_PER_BATCH), so deep into a large,
+            // heavily-triaged library one batch can come back with nothing
+            // new while the catalogue (cursor.exhaustedFor) is nowhere near
+            // spent — TMDB's popularity order front-loads exactly the titles
+            // a long-time user already has an opinion about. Keep asking for
+            // more pages until a batch actually has cards, or the catalogue
+            // itself runs out; an empty batch alone is never the answer.
+            //
+            // Terminates because every load() advances the cursor and the
+            // catalogue is finite: TmdbDeckSource clamps /discover to the 500
+            // pages TMDB will serve. Deliberately not capped lower — the
+            // screen renders any empty deck as "caught up" and retry() resets
+            // the cursor, so a cap would make every title past it unreachable.
+            while (true) {
+                val batch = loadDeck(filter, cursor, alreadyShown = shown, placement = _state.value.snoozePlacement)
+                    .getOrElse { error ->
+                        _state.update { it.copy(loading = false, refilling = false, error = error.toUserMessage(LOAD_FAILED)) }
+                        return@launchReporting
                     }
-                    if (batch.exhausted && _state.value.cards.isEmpty()) analytics.track(TriageEvent.DeckExhausted)
-                },
-                onFailure = { error ->
-                    _state.update {
-                        it.copy(loading = false, refilling = false, error = error.toUserMessage(LOAD_FAILED))
-                    }
-                },
-            )
+                cursor = batch.cursor
+                shown += batch.cards.map { it.id }
+                batchCards = batch.cards
+                trulyExhausted = cursor.exhaustedFor(filter)
+                if (batchCards.isNotEmpty() || trulyExhausted) break
+            }
+
+            _state.update { current ->
+                val cards = current.cards + batchCards
+                current.copy(
+                    cards = cards,
+                    loading = false,
+                    refilling = false,
+                    error = null,
+                    exhausted = cards.isEmpty() && trulyExhausted,
+                )
+            }
+            if (trulyExhausted && _state.value.cards.isEmpty()) analytics.track(TriageEvent.DeckExhausted)
         }
     }
 

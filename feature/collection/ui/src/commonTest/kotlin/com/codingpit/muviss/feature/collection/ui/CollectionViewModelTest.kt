@@ -15,6 +15,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.ProductionStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,6 +88,14 @@ internal class NoopSnapshotSource : MediaSnapshotSource {
 /** Fails the way a dead network does: by throwing out of the source, not by returning a failed Result. */
 private class ThrowingSnapshotSource : MediaSnapshotSource {
     override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = error("network down")
+}
+
+/** Suspends every fetch on [gate], so a test can inspect state while a refresh is still in flight. */
+private class GatedSnapshotSource(private val gate: CompletableDeferred<Unit>) : MediaSnapshotSource {
+    override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> {
+        gate.await()
+        return Result.success(MediaDetails(MediaSummary(mediaId, "x")))
+    }
 }
 
 private class FakeClock(var now: Long = 0L) : AppClock {
@@ -240,6 +249,40 @@ class CollectionViewModelTest {
         viewModel(FakeCollectionRepository(listOf(notStarted)), source, throttle)
         advanceUntilIdle()
         assertEquals(1, source.fetches, "re-entering the tab must not re-fetch the whole library")
+    }
+
+    @Test
+    fun the_automatic_refresh_never_shows_the_pull_to_refresh_spinner() = runTest {
+        // The automatic refresh fires from init on every fresh backstack entry
+        // (throttled to once per interval) and walks the whole saved library
+        // over the network. It must stay invisible: driving the same
+        // `refreshing` flag as an explicit pull both leaves the spinner
+        // spinning for as long as that takes and locks out a manual pull.
+        val gate = CompletableDeferred<Unit>()
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted)), source = GatedSnapshotSource(gate))
+
+        assertFalse(vm.state.value.refreshing, "an automatic background refresh must not lock the pull-to-refresh gesture")
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.refreshing)
+    }
+
+    @Test
+    fun an_explicit_refresh_still_shows_the_spinner_while_in_flight() = runTest {
+        val throttle = CollectionRefreshThrottle(FakeClock())
+        throttle.recordRefresh() // consumes the automatic claim, so only the explicit call below is under test
+        val gate = CompletableDeferred<Unit>()
+        val vm = viewModel(FakeCollectionRepository(listOf(notStarted)), source = GatedSnapshotSource(gate), throttle = throttle)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.refreshing)
+
+        vm.refresh()
+        assertTrue(vm.state.value.refreshing, "a user-initiated pull-to-refresh must still show the spinner")
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.refreshing)
     }
 
     @Test

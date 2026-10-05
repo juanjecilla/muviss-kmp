@@ -8,6 +8,7 @@ import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.ResponseException
 import io.ktor.client.plugins.cache.HttpCache
+import io.ktor.client.plugins.cache.InvalidCacheStateException
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -47,7 +48,9 @@ internal class TmdbRetryPolicy(
  * - [HttpRequestRetry] for 429 and 5xx and for transport failures.
  * - [HttpCache] when [cached], in memory and per client: it honours TMDB's own
  *   `Cache-Control`/`ETag`, dies with the process, and is a client-side plugin,
- *   so it behaves the same on OkHttp, Darwin and Js.
+ *   so it behaves the same on OkHttp, Darwin and Js. It can throw
+ *   `InvalidCacheStateException` on a 304 whose entry it cannot find; see
+ *   `TmdbProvider.request` for the uncached retry.
  *
  * The Supabase client is *not* derived through this, and must not be.
  */
@@ -95,8 +98,10 @@ internal fun HttpResponse.toMetadataErrorOrNull(): MetadataError? = when {
 }
 
 /**
- * Exception to error. Decode failures are [MetadataError.Unknown]; a
- * [ResponseException] falls back to its status; and everything else is a
+ * Exception to error. Decode failures and an [InvalidCacheStateException]
+ * (the server answered; `HttpCache` lost the entry it meant) are
+ * [MetadataError.Unknown]; a [ResponseException] falls back to its status;
+ * and everything else is a
  * transport failure (I/O, timeout, DNS, `fetch` rejecting, a Darwin `NSError`
  * wrapper) and therefore [MetadataError.Offline] — asking each platform's
  * engine which of its exception types mean "no connection" is a list that is
@@ -105,8 +110,14 @@ internal fun HttpResponse.toMetadataErrorOrNull(): MetadataError? = when {
  */
 internal fun Throwable.toMetadataError(): MetadataError = when (this) {
     is MetadataError -> this
+
     is ResponseException -> response.toMetadataErrorOrNull() ?: MetadataError.Unknown()
+
     is SerializationException, is ContentConvertException, is NoTransformationFoundException -> MetadataError.Unknown()
+
+    // A 304 arrived, so the connection is fine; the client's cache is what failed.
+    is InvalidCacheStateException -> MetadataError.Unknown()
+
     else -> MetadataError.Offline()
 }
 
@@ -135,9 +146,13 @@ private fun HttpResponse.isRetryable(policy: TmdbRetryPolicy): Boolean = when {
     else -> status.value in SERVER_ERROR_RANGE
 }
 
-/** Only failures that produced no response are worth repeating, and a whole-request timeout has already spent its budget. */
+/**
+ * Only failures that produced no response are worth repeating, and a whole-request timeout has already spent its budget.
+ * An [InvalidCacheStateException] did get a response (a 304) and would meet the same missing entry on every attempt;
+ * `TmdbProvider` recovers from it by asking again without the cache instead.
+ */
 private fun Throwable.isTransportFailure(): Boolean = when (this) {
-    is MetadataError, is HttpRequestTimeoutException -> false
+    is MetadataError, is HttpRequestTimeoutException, is InvalidCacheStateException -> false
     is CancellationException -> false
     is ResponseException, is SerializationException, is ContentConvertException -> false
     else -> true

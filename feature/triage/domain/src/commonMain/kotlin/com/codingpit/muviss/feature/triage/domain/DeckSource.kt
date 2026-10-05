@@ -67,8 +67,10 @@ interface DeckSource {
  *
  * The refill loop is bounded by [MAX_PAGES_PER_BATCH]. Without it, a user deep
  * into their backfill — where nearly every candidate on every page is already
- * decided — would silently walk the entire catalogue in one call. Returning a
- * short batch (or none) is the honest answer; the caller shows an empty deck.
+ * decided — would silently walk the entire catalogue in one call. A short
+ * batch (or none) is returned with the advanced cursor; an empty batch does
+ * not mean the catalogue is spent — [DeckCursor.exhaustedFor] does. The deck
+ * view model calls again until it has cards or the cursor is exhausted.
  *
  * Since EPIC 42 it also merges in Snoozes that have come due. They are a
  * second source, not a filter: the catalogue is TMDB `/discover` by

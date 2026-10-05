@@ -1,6 +1,10 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.models.MediaType
+import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,4 +61,51 @@ class TmdbCacheTest {
 
         assertEquals(2, fixture.requests.size)
     }
+
+    // Reproduces the Search screen's "You appear to be offline" on a phone that was
+    // online: Ktor's HttpCache revalidates a stale entry, the server answers 304,
+    // and when the 304's Vary does not match what was stored Ktor cannot find the
+    // entry and throws InvalidCacheStateException — every time, for the life of
+    // the process. The call must still succeed.
+    @Test
+    fun a_304_whose_cache_entry_cannot_be_found_is_fetched_again_without_the_cache() = runTest {
+        val fixture = ProviderFixture { request ->
+            if (request.headers[HttpHeaders.IfNoneMatch] != null) {
+                respond("", HttpStatusCode.NotModified, headersOf(HttpHeaders.Vary, "Accept-Language"))
+            } else {
+                respondJson(GENRES) {
+                    append(HttpHeaders.ETag, "\"v1\"")
+                    append(HttpHeaders.CacheControl, "public, max-age=0")
+                }
+            }
+        }
+
+        fixture.provider.genres(MediaType.MOVIE)
+        val genres = fixture.provider.genres(MediaType.MOVIE)
+
+        assertEquals(listOf("Action"), genres.map { it.name })
+    }
+
+    @Test
+    fun a_304_whose_cache_entry_cannot_be_found_is_not_retried_against_the_same_entry() = runTest {
+        val fixture = ProviderFixture { request ->
+            if (request.headers[HttpHeaders.IfNoneMatch] != null) {
+                respond("", HttpStatusCode.NotModified, headersOf(HttpHeaders.Vary, "Accept-Language"))
+            } else {
+                respondJson(GENRES) {
+                    append(HttpHeaders.ETag, "\"v1\"")
+                    append(HttpHeaders.CacheControl, "public, max-age=0")
+                }
+            }
+        }
+
+        fixture.provider.genres(MediaType.MOVIE)
+        fixture.provider.genres(MediaType.MOVIE)
+
+        // The first fetch, one revalidation that hits the missing entry, one uncached fetch.
+        assertEquals(3, fixture.requests.size)
+        assertEquals(emptyList(), fixture.delays)
+    }
 }
+
+private const val GENRES = """{"genres":[{"id":28,"name":"Action"}]}"""
