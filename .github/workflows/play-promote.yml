@@ -1,0 +1,48 @@
+name: Play promote
+
+# Moves a build that is already on Google Play's internal track to production,
+# or changes the production rollout fraction (ADR 0024). Always by hand: a tag
+# push never reaches production on its own — see release.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'promote = internal → production; rollout = change the production fraction'
+        type: choice
+        options: [promote, rollout]
+        default: promote
+      fraction:
+        description: 'Rollout fraction in (0, 1]; 1 completes the rollout'
+        type: string
+        default: '0.2'
+
+concurrency:
+  group: play-promote
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Run fastlane
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          ACTION: ${{ inputs.action }}
+          FRACTION: ${{ inputs.fraction }}
+        run: |
+          if [ "$ACTION" = promote ]; then
+            bundle exec fastlane android promote "rollout:$FRACTION"
+          else
+            bundle exec fastlane android rollout "fraction:$FRACTION"
+          fi

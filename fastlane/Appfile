@@ -1,0 +1,3 @@
+# Store identities (ADR 0024). Credentials never live here — CI passes them as
+# environment variables from repository secrets.
+package_name("com.codingpit.muviss")

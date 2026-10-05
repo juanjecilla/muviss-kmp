@@ -201,7 +201,28 @@ vars, and uploads the resulting `.aab` as a workflow artifact. The existing
 
 ### Publishing to Google Play (ADR 0024, EPIC 34 / #77)
 
-Planned, not wired yet — EPIC 34 lands it. The shape is decided:
+Wired in `release.yml` (`fastlane android internal`) and
+`play-promote.yml` (`fastlane android promote` / `rollout`). The Fastfile is
+`fastlane/Fastfile`; run any lane locally with `bundle exec fastlane <lane>`
+(Ruby 3.1+, `.ruby-version` pins 3.3 — macOS's system Ruby 2.6 is too old).
+
+- **First uploads are drafts.** Play refuses any release status but `draft`
+  until the app's first production release exists, so `release.yml` defaults
+  `PLAY_RELEASE_STATUS` to `draft`; set the repository variable to `completed`
+  once production is live. The very first AAB must be uploaded by hand in the
+  Console anyway, because the API cannot create the app — that upload is also
+  where Play App Signing enrolment happens.
+- **No secret, no upload.** Without `PLAY_SERVICE_ACCOUNT_JSON` the step logs a
+  notice and passes; dispatch runs never upload.
+- **Release notes are mandatory once listing metadata exists**: the lane fails
+  if any locale under `fastlane/metadata/android/` lacks
+  `changelogs/<versionCode>.txt`, where `versionCode` is
+  `git rev-list --count HEAD` at the tagged commit.
+- **A release build refuses to guess its versionCode**: without git, or in a
+  shallow clone, `:app:androidApp`'s release tasks fail at configuration
+  instead of shipping `versionCode = 1`.
+
+The decisions behind it:
 
 - **fastlane `supply`**, not gradle-play-publisher: it consumes the built `.aab`,
   so AGP/Gradle upgrades cannot break publishing. Ruby is pinned by a

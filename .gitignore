@@ -61,3 +61,10 @@ supabase/.branches/
 # not descend into an excluded directory and a bare `!.claude/settings.json`
 # under `.claude/` simply does not work.
 .claude/worktrees/
+
+# fastlane (ADR 0024)
+fastlane/report.xml
+fastlane/README.md
+fastlane/test_output/
+vendor/bundle/
+.bundle/

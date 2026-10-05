@@ -1,0 +1,103 @@
+# Store publishing (ADR 0024, EPIC 34 / #77).
+#
+# A `vX.Y.Z` tag runs `android internal` from .github/workflows/release.yml;
+# nothing reaches production until someone runs .github/workflows/play-promote.yml.
+#
+# Credentials: PLAY_SERVICE_ACCOUNT_JSON holds the service-account key *contents*
+# (not a path), so CI never writes it to disk.
+
+default_platform(:android)
+
+# Plain Ruby in a lane runs with fastlane/ as the working directory, while
+# action parameters resolve from the repo root — hence two spellings.
+ANDROID_METADATA = "metadata/android"
+ANDROID_METADATA_FOR_ACTIONS = "fastlane/metadata/android"
+
+platform :android do
+  # Must match app/androidApp/build.gradle.kts: versionCode = commit count on HEAD.
+  def version_code
+    Integer(sh("git", "rev-list", "--count", "HEAD", log: false).strip)
+  end
+
+  def json_key_data
+    ENV.fetch("PLAY_SERVICE_ACCOUNT_JSON") { UI.user_error!("PLAY_SERVICE_ACCOUNT_JSON is not set") }
+  end
+
+  def locales
+    Dir.glob(File.join(ANDROID_METADATA, "*")).select { |d| File.directory?(d) }.map { |d| File.basename(d) }
+  end
+
+  # Every listed locale needs release notes for this exact versionCode, or Play
+  # shows last release's notes (or none) against the new build. Fail before the
+  # upload rather than after.
+  def require_changelogs!(code)
+    missing = locales.reject { |l| File.exist?(File.join(ANDROID_METADATA, l, "changelogs", "#{code}.txt")) }
+    return if missing.empty?
+
+    UI.user_error!("Missing changelogs/#{code}.txt for: #{missing.join(', ')} (under #{ANDROID_METADATA_FOR_ACTIONS})")
+  end
+
+  desc "Upload the release AAB, listing and screenshots to the internal track"
+  lane :internal do |options|
+    aab = options[:aab] || Dir.glob("../app/androidApp/build/outputs/bundle/release/*.aab").first
+    UI.user_error!("No release AAB found; run :app:androidApp:bundleRelease first") unless aab && File.exist?(aab)
+
+    has_metadata = !locales.empty?
+    require_changelogs!(version_code) if has_metadata
+
+    upload_to_play_store(
+      track: "internal",
+      aab: File.expand_path(aab),
+      json_key_data: json_key_data,
+      metadata_path: ANDROID_METADATA_FOR_ACTIONS,
+      skip_upload_metadata: !has_metadata,
+      skip_upload_changelogs: !has_metadata,
+      skip_upload_images: !has_metadata,
+      skip_upload_screenshots: !has_metadata,
+      # Play only accepts `draft` releases until the app's first production
+      # release has gone out; set PLAY_RELEASE_STATUS=draft for that period.
+      release_status: ENV.fetch("PLAY_RELEASE_STATUS", "completed"),
+    )
+  end
+
+  desc "Promote the latest internal release to production at a staged rollout"
+  lane :promote do |options|
+    rollout = Float(options[:rollout] || "0.2")
+    UI.user_error!("rollout must be in (0, 1]") unless rollout > 0 && rollout <= 1
+
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "production",
+      rollout: rollout.to_s,
+      # On a promote, release_status describes the *source* release; the
+      # promoted one takes this option instead.
+      track_promote_release_status: rollout < 1 ? "inProgress" : "completed",
+      json_key_data: json_key_data,
+      skip_upload_aab: true,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Change the rollout fraction of the release already in production"
+  lane :rollout do |options|
+    rollout = Float(options[:fraction] || UI.user_error!("pass fraction:<0..1>"))
+    UI.user_error!("fraction must be in (0, 1]") unless rollout > 0 && rollout <= 1
+
+    upload_to_play_store(
+      track: "production",
+      rollout: rollout.to_s,
+      release_status: rollout < 1 ? "inProgress" : "completed",
+      json_key_data: json_key_data,
+      skip_upload_aab: true,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+end
