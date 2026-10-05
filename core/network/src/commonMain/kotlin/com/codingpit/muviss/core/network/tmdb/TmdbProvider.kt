@@ -19,9 +19,11 @@ import com.codingpit.muviss.models.SourceId
 import com.codingpit.muviss.models.WatchProviders
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.cache.InvalidCacheStateException
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.statement.HttpResponse
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.JsonElement
@@ -212,17 +214,33 @@ class TmdbProvider internal constructor(
     /**
      * The one place a TMDB request is made: takes a slot from [inFlight],
      * attaches the credential, and converts every failure to a [MetadataError].
+     *
+     * A cached request that fails with [InvalidCacheStateException] is made once
+     * more on [freshClient]. Ktor's `HttpCache` throws it when it revalidates a
+     * stale entry, the server answers 304, and the entry the 304 points at cannot
+     * be found (the 304's `Vary` differs from the stored response's). The entry
+     * stays in memory, so without this fallback the same call fails the same way
+     * until the process dies — which shipped as a Search screen that said
+     * "offline" on a phone that was online.
      */
     private suspend inline fun <reified T> get(
         path: String,
         fresh: Boolean = false,
         crossinline configure: HttpRequestBuilder.() -> Unit = {},
     ): T = inFlight.withPermit {
-        tmdbCall {
-            (if (fresh) freshClient else cachedClient).get("$BASE/$path") {
-                authorize(credentials)
-                configure()
-            }.body<T>()
+        tmdbCall { request(path, fresh) { configure() }.body<T>() }
+    }
+
+    private suspend fun request(path: String, fresh: Boolean, configure: HttpRequestBuilder.() -> Unit): HttpResponse {
+        suspend fun HttpClient.fetch() = get("$BASE/$path") {
+            authorize(credentials)
+            configure()
+        }
+        if (fresh) return freshClient.fetch()
+        return try {
+            cachedClient.fetch()
+        } catch (_: InvalidCacheStateException) {
+            freshClient.fetch()
         }
     }
 

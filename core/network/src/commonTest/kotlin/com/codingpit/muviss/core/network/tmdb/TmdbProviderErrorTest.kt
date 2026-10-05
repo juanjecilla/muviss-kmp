@@ -3,6 +3,7 @@ package com.codingpit.muviss.core.network.tmdb
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MetadataError
 import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.cache.InvalidCacheStateException
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.test.runTest
@@ -115,6 +116,14 @@ class TmdbProviderErrorTest {
         val fixture = ProviderFixture { respondJson("""{"status_message":"Internal error"}""", HttpStatusCode.InternalServerError) }
 
         assertIs<MetadataError>(fixture.searchFailure())
+    }
+
+    @Test
+    fun a_cache_that_cannot_find_its_entry_is_Unknown_not_Offline() = runTest {
+        // The request did reach TMDB; telling the user to check their connection was a lie.
+        val fixture = ProviderFixture { request -> throw InvalidCacheStateException(request.url) }
+
+        assertIs<MetadataError.Unknown>(fixture.searchFailure())
     }
 
     @Test

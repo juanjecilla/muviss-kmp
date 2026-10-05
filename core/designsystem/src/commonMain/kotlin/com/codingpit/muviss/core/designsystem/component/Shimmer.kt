@@ -16,12 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 
@@ -29,27 +27,40 @@ import androidx.compose.ui.unit.dp
  * Loading shimmer per the design doc: a slow gradient sweep over raised
  * surface tones. Apply to any placeholder shape, or use the ready-made
  * [PosterSkeleton]/[RowSkeleton]/[TextLineSkeleton].
+ *
+ * The band is horizontal and starts and ends each cycle fully off the shape
+ * (see [shimmerBandStart]), so the first frame of a cycle looks exactly like
+ * the last one and the restart is invisible. An earlier diagonal sweep left a
+ * corner half-lit at both ends and visibly jumped every cycle. Progress is
+ * read only in the draw phase: the animation redraws the shape every frame
+ * but never recomposes it.
  */
 fun Modifier.shimmer(): Modifier = composed {
     val base = MaterialTheme.colorScheme.surfaceContainerLow
     val highlight = MaterialTheme.colorScheme.surfaceContainerHigh
     val transition = rememberInfiniteTransition(label = "shimmer")
-    val progress by transition.animateFloat(
-        initialValue = -1f,
-        targetValue = 2f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
+    val progress = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(SWEEP_MILLIS, easing = LinearEasing), RepeatMode.Restart),
         label = "shimmerSweep",
     )
-    drawWithCache {
-        val width = size.width
-        val brush = Brush.linearGradient(
-            colors = listOf(base, highlight, base),
-            start = Offset(progress * width, 0f),
-            end = Offset((progress + 1f) * width, size.height),
-        )
-        onDrawBehind { drawRect(brush) }
+    drawBehind {
+        val band = size.width * BAND_FRACTION
+        val bandStart = shimmerBandStart(progress.value, size.width, band)
+        drawRect(Brush.horizontalGradient(listOf(base, highlight, base), startX = bandStart, endX = bandStart + band))
     }
 }
+
+/**
+ * Where the highlight band's left edge sits at [progress] (0..1) of a sweep
+ * across a shape [width] wide: from `-band`, wholly left of the shape, to
+ * [width], wholly right of it, at constant speed.
+ */
+internal fun shimmerBandStart(progress: Float, width: Float, band: Float): Float = -band + progress * (width + band)
+
+private const val SWEEP_MILLIS = 1400
+private const val BAND_FRACTION = 0.8f
 
 @Composable
 fun PosterSkeleton(modifier: Modifier = Modifier) {
