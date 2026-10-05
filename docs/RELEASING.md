@@ -196,9 +196,28 @@ last checked 2026-09-20: 0.27.0 is the latest KMP release and pins Cocoa 8.58.2.
 history (`fetch-depth: 0` — needed for accurate versionCode/versionName),
 decodes `KEYSTORE_BASE64` to a temp file, runs
 `:app:androidApp:bundleRelease` with the signing/DSN/TMDB secrets as env
-vars, and uploads the resulting `.aab` as a workflow artifact. There is no
-Play publishing step yet — the AAB is uploaded to the Play Console by hand.
-The existing `ci.yml` (push/PR to `main`) is untouched.
+vars, and uploads the resulting `.aab` as a workflow artifact. The existing
+`ci.yml` (push/PR to `main`) is untouched.
+
+### Publishing to Google Play (ADR 0024, EPIC 34 / #77)
+
+Planned, not wired yet — EPIC 34 lands it. The shape is decided:
+
+- **fastlane `supply`**, not gradle-play-publisher: it consumes the built `.aab`,
+  so AGP/Gradle upgrades cannot break publishing. Ruby is pinned by a
+  `Gemfile`/`Gemfile.lock` at the repo root.
+- **A tag uploads to the internal track only.** Production is a separate
+  `workflow_dispatch` workflow that promotes internal → production at a staged
+  rollout fraction. Nothing reaches the public from a tag push alone.
+- **Listing copy and screenshots live in `fastlane/metadata/android/<locale>/`**
+  and are the source of truth (`docs/store/LISTING.md` explains them). Each
+  release needs `changelogs/<versionCode>.txt` per locale.
+- Secret: `PLAY_SERVICE_ACCOUNT_JSON` (a Play Console service account with
+  release permission on `com.codingpit.muviss`).
+- The Play account is a personal one created before November 2023, so the
+  12-tester / 14-day closed-test requirement does not apply.
+- v1 is **local-only** (ADR 0024): sync stays compiled out, as the comment in
+  `release.yml` already insists.
 
 ### The GitHub Release (issue #45)
 
