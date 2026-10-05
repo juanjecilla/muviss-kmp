@@ -57,7 +57,10 @@ platform :android do
     UI.user_error!("No release AAB found; run :app:androidApp:bundleRelease first") unless aab && File.exist?(aab)
 
     has_metadata = !locales.empty?
-    stage_changelogs!(version_code) if has_metadata
+    if has_metadata
+      sh("../scripts/store/check-listing.sh")
+      stage_changelogs!(version_code)
+    end
 
     upload_to_play_store(
       track: "internal",
