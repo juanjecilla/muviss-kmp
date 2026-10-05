@@ -64,7 +64,7 @@ class CoWatchGoldenTest {
         setContent { InviteShownUnderTest(darkTheme = false) }
         onNodeWithText("Create a code").performClick()
         waitForIdle()
-        assertMatchesGolden("companions-screen-invite", tolerance = GOLDEN_TOLERANCE)
+        assertMatchesGolden("companions-screen-invite", tolerance = COMPANIONS_TOLERANCE)
     }
 
     @Test
@@ -72,7 +72,7 @@ class CoWatchGoldenTest {
         setContent { InviteShownUnderTest(darkTheme = true) }
         onNodeWithText("Create a code").performClick()
         waitForIdle()
-        assertMatchesGolden("companions-screen-invite-dark", tolerance = GOLDEN_TOLERANCE)
+        assertMatchesGolden("companions-screen-invite-dark", tolerance = COMPANIONS_TOLERANCE)
     }
 
     @Test
@@ -174,7 +174,8 @@ private const val GOLDEN_TOLERANCE = 0.015
  * The Companions screen is denser still — four state sentences plus the
  * consent paragraph, nearly every row text. With glyph hinting pinned
  * (`GoldenSurface`, #171) it measures 2.31% (light) and 2.30% (dark) on
- * `ubuntu-latest` against a macOS recording, every marked pixel a glyph edge;
+ * `ubuntu-latest` against a macOS recording (the invite-card state: 2.44% /
+ * 2.40%), every marked pixel a glyph edge;
  * the remainder is CoreText vs FreeType drawing the same outline heavier, which
  * no setting removes. Identical across runs, so the margin above it is small.
  */
