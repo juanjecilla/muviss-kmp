@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaListItem
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.toUserMessage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,8 +37,21 @@ class ListContentsViewModel(
     private val _state = MutableStateFlow(ListContentsUiState())
     val state: StateFlow<ListContentsUiState> = _state.asStateFlow()
 
+    private var observation: Job? = null
+
     init {
-        listsUseCases.observeContents(listId)
+        observe()
+    }
+
+    /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
+    fun retry() {
+        _state.update { it.copy(loading = true, error = null) }
+        observe()
+    }
+
+    private fun observe() {
+        observation?.cancel()
+        observation = listsUseCases.observeContents(listId)
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { items -> _state.update { it.copy(loading = false, items = items, error = null) } }
             .launchInReporting(viewModelScope)

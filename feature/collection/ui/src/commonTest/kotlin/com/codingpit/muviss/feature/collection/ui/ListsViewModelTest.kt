@@ -24,7 +24,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Test double for [ListsRepository]: [createList]/[renameList]/[deleteList] just record their calls and mutate [lists] so [observeLists] reflects them. */
-internal class FakeListsRepository(initial: List<MediaList> = emptyList(), private val failure: Throwable? = null) : ListsRepository {
+internal class FakeListsRepository(initial: List<MediaList> = emptyList(), var failure: Throwable? = null) : ListsRepository {
     private val flow = MutableStateFlow(initial)
     val deleteCalls = mutableListOf<String>()
 
@@ -158,5 +158,20 @@ class ListsViewModelTest {
 
         assertEquals(listOf("1"), repository.deleteCalls)
         assertTrue(vm.state.value.lists.isEmpty())
+    }
+
+    @Test
+    fun retry_after_a_failed_load_resubscribes_and_shows_the_lists() = runTest {
+        val repository = FakeListsRepository(listOf(MediaList("1", "Marathon 2026", 0L, 0L)), failure = MetadataError.Offline())
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+
+        repository.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.error)
+        assertEquals(listOf("Marathon 2026"), vm.state.value.lists.map { it.name })
     }
 }

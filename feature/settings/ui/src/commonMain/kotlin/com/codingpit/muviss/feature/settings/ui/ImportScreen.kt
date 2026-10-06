@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.StatTile
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
@@ -58,13 +59,18 @@ fun ImportScreen(viewModel: ImportViewModel, onDone: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         StepIndicator(state.step.ordinalStep())
 
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-
+        val error = state.error
         when (val step = state.step) {
-            is ImportStep.PickFile -> PickFileStep(onPickFile = ::pickFile)
+            // A failed read or parse lands back on PickFile; Retry opens the
+            // picker again, so the error and its way out are one control (#73).
+            is ImportStep.PickFile -> if (error != null) ErrorState(error, onRetry = ::pickFile) else PickFileStep(onPickFile = ::pickFile)
+
             is ImportStep.Resolving -> ResolvingStep(step)
+
             is ImportStep.Preview -> PreviewStep(step, onConfirm = viewModel::confirmApply, onCancel = viewModel::cancelPreview)
+
             is ImportStep.Applying -> ApplyingStep(step)
+
             is ImportStep.Summary -> SummaryStep(step.result, onImportAnother = viewModel::startOver, onDone = onDone)
         }
     }

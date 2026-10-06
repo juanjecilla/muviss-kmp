@@ -15,6 +15,7 @@ import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.models.toUserMessage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,7 +48,7 @@ data class SettingsUiState(
  * ([rememberDataExporter]).
  */
 class SettingsViewModel(
-    observeSettings: ObserveSettingsUseCase,
+    private val observeSettings: ObserveSettingsUseCase,
     private val actions: SettingsActions,
     appVersion: AppVersion,
     private val featureFlags: FeatureFlags,
@@ -81,7 +82,20 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(triageDeckAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
-        observeSettings()
+        observeAppSettings()
+    }
+
+    private var settingsObservation: Job? = null
+
+    /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
+    fun retry() {
+        _state.update { it.copy(loading = true, error = null) }
+        observeAppSettings()
+    }
+
+    private fun observeAppSettings() {
+        settingsObservation?.cancel()
+        settingsObservation = observeSettings()
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
             .launchInReporting(viewModelScope)

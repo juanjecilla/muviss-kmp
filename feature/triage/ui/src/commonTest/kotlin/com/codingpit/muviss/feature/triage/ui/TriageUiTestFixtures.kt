@@ -181,7 +181,11 @@ internal class FakeTriageSnoozeRepository : TriageSnoozeRepository {
 internal class FakeTriageDecisionRepository : TriageDecisionRepository {
     val decisions = MutableStateFlow<Map<MediaId, TriageDecision>>(emptyMap())
 
-    override fun observeByVerdict(verdict: TriageVerdict): Flow<List<TriageDecision>> = decisions.map { all -> all.values.filter { it.verdict == verdict } }
+    /** Makes [observeByVerdict] throw, for the screens that read through it (#73). */
+    var observeFailure: Throwable? = null
+
+    override fun observeByVerdict(verdict: TriageVerdict): Flow<List<TriageDecision>> = observeFailure?.let { failure -> kotlinx.coroutines.flow.flow { throw failure } }
+        ?: decisions.map { all -> all.values.filter { it.verdict == verdict } }
 
     override fun observeDecidedIds(): Flow<Set<MediaId>> = decisions.map { it.keys }
 

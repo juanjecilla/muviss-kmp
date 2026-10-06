@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.StatTile
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -114,6 +115,15 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
             return@Scaffold
         }
 
+        // A failed read leaves a default profile and zeroed stats in state;
+        // showing those would read as real numbers, so the error replaces them.
+        state.error?.let { message ->
+            Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
+                ErrorState(message, onRetry = viewModel::retry)
+            }
+            return@Scaffold
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -123,8 +133,6 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
                 .padding(bottom = MuvissSpacing.bottomContent),
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
         ) {
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-
             IdentitySection(
                 profile = state.profile,
                 onEditName = viewModel::onEditNameRequested,

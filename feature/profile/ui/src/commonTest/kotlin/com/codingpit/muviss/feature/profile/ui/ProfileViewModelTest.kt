@@ -31,6 +31,7 @@ import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
@@ -51,8 +52,9 @@ import kotlin.test.assertTrue
 
 private class FakeProfileRepository(initial: LocalProfile = LocalProfile.DEFAULT) : ProfileRepository {
     val flow = MutableStateFlow(initial)
+    var failure: Throwable? = null
 
-    override fun observeProfile(): Flow<LocalProfile> = flow
+    override fun observeProfile(): Flow<LocalProfile> = failure?.let { kotlinx.coroutines.flow.flow { throw it } } ?: flow
 
     override suspend fun setDisplayName(displayName: String) {
         flow.value = flow.value.copy(displayName = displayName)
@@ -565,5 +567,20 @@ class ProfileViewModelTest {
         assertEquals(false, vm.state.value.sync.confirmingResync)
         assertEquals(false, vm.state.value.sync.syncing)
         assertEquals("Everything resynced", vm.state.value.sync.message)
+    }
+
+    @Test
+    fun retry_after_a_failed_profile_load_resubscribes() = runTest {
+        val profiles = FakeProfileRepository().apply { failure = MetadataError.Offline() }
+        val vm = viewModel(profileRepository = profiles)
+        advanceUntilIdle()
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+
+        profiles.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.error)
+        assertEquals(false, vm.state.value.loading)
     }
 }
