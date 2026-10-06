@@ -37,21 +37,19 @@ jobs:
           # not the single commit a shallow checkout would give us.
           fetch-depth: 0
 
-      # gradle/gradle-daemon-jvm.properties pins the daemon to Corretto 21.
-      # Installed here so Gradle finds it (setup-java registers it in
-      # ~/.m2/toolchains.xml) instead of downloading it through foojay, whose
-      # package IDs are retired when Corretto updates and then return 400.
-      - name: Set up JDK 21 (Gradle daemon)
+      # Two JDKs from one step: 17 builds the app (listed last, so it is
+      # JAVA_HOME), and 21 is the Corretto that gradle/gradle-daemon-jvm.properties
+      # pins the Gradle daemon to. Installing it here means Gradle finds it in
+      # ~/.m2/toolchains.xml instead of downloading it through foojay, whose
+      # package IDs are retired when Corretto updates and then answer 400. One
+      # step, because a second setup-java overwrites the first's toolchains.xml.
+      - name: Set up JDK 17 + 21
         uses: actions/setup-java@v4
         with:
           distribution: corretto
-          java-version: '21'
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+          java-version: |
+            21
+            17
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
