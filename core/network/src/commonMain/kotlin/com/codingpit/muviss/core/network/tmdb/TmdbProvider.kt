@@ -60,17 +60,20 @@ class TmdbProvider internal constructor(
     private val locale: MetadataLocale,
     retryPolicy: TmdbRetryPolicy,
     maxConcurrentRequests: Int,
+    private val failureTrace: TmdbFailureTrace = TmdbFailureTrace.None,
 ) : MetadataProvider {
 
     constructor(
         client: HttpClient,
         locale: MetadataLocale = DefaultMetadataLocale(),
+        failureTrace: TmdbFailureTrace = TmdbFailureTrace.None,
     ) : this(
         client = client,
         credentials = TmdbCredentials(MuvissBuildConfig.TMDB_READ_TOKEN, MuvissBuildConfig.TMDB_API_KEY),
         locale = locale,
         retryPolicy = TmdbRetryPolicy(),
         maxConcurrentRequests = DEFAULT_MAX_CONCURRENT_REQUESTS,
+        failureTrace = failureTrace,
     )
 
     private val cachedClient: HttpClient = client.withTmdbPolicy(retryPolicy, cached = true)
@@ -228,7 +231,9 @@ class TmdbProvider internal constructor(
         fresh: Boolean = false,
         crossinline configure: HttpRequestBuilder.() -> Unit = {},
     ): T = inFlight.withPermit {
-        tmdbCall { request(path, fresh) { configure() }.body<T>() }
+        tmdbCall(onFailure = { failure, mapped -> failureTrace.record(tmdbFailureLine(path, failure, mapped)) }) {
+            request(path, fresh) { configure() }.body<T>()
+        }
     }
 
     private suspend fun request(path: String, fresh: Boolean, configure: HttpRequestBuilder.() -> Unit): HttpResponse {

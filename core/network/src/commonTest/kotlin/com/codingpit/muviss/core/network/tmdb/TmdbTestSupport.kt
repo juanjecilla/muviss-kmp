@@ -28,6 +28,7 @@ internal class ProviderFixture(
     private val recording = Mutex()
     val requests = mutableListOf<HttpRequestData>()
     val delays = mutableListOf<Long>()
+    val traces = mutableListOf<String>()
 
     val provider = TmdbProvider(
         client = HttpClient(
@@ -40,6 +41,7 @@ internal class ProviderFixture(
         locale = DefaultMetadataLocale(),
         retryPolicy = TmdbRetryPolicy(jitterMs = 0, delay = { delays += it }),
         maxConcurrentRequests = maxConcurrentRequests,
+        failureTrace = { traces += it },
     )
 
     val urls: List<String> get() = requests.map { it.url.toString() }

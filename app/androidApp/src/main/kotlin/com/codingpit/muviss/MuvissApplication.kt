@@ -1,8 +1,11 @@
 package com.codingpit.muviss
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
+import android.util.Log
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
+import com.codingpit.muviss.core.network.tmdb.TmdbFailureTrace
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.di.appModules
@@ -43,6 +46,8 @@ import org.koin.dsl.module
  * the Koin graph that already handed one to the progress repository —
  * `AppWidgets` resolves per call precisely so that ordering does not matter.
  */
+private const val TMDB_LOG_TAG = "MuvissTmdb"
+
 class MuvissApplication : Application() {
     override fun onCreate() {
         super.onCreate()
@@ -53,7 +58,18 @@ class MuvissApplication : Application() {
         MuvissCrashReporting.start(DatabaseDriverFactory(this))
         if (GlobalContext.getOrNull() == null) {
             startKoin {
-                modules(appModules + module { single { DatabaseDriverFactory(this@MuvissApplication) } })
+                modules(
+                    appModules +
+                        module {
+                            single { DatabaseDriverFactory(this@MuvissApplication) }
+                            // Debug builds only: the class-name chain of a swallowed
+                            // TMDB failure, in logcat (#177). Loaded after
+                            // networkModule's no-op, so this binding wins.
+                            if (isDebuggable()) {
+                                single<TmdbFailureTrace> { TmdbFailureTrace { line -> Log.d(TMDB_LOG_TAG, line) } }
+                            }
+                        },
+                )
             }
         }
         MuvissCrashReporting.followSettings()
@@ -62,6 +78,8 @@ class MuvissApplication : Application() {
         WidgetMidnightRefresh.schedule(this)
         startAutomaticSync()
     }
+
+    private fun isDebuggable(): Boolean = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

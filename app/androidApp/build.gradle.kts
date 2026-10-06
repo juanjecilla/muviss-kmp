@@ -57,6 +57,8 @@ dependencies {
     implementation(projects.core.database)
     // OAUTH_CODE_PARAM, shared with the manifest's auth-callback filter (ADR 0014).
     implementation(projects.core.sync)
+    // TmdbFailureTrace: the debug-only logcat trace of swallowed TMDB failures (#177).
+    implementation(projects.core.network)
     implementation(libs.koin.core)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.work.runtimeKtx)
