@@ -37,7 +37,7 @@ val gitVersionCode: Int = gitOutput("git", "rev-list", "--count", "HEAD")?.toInt
 
 val gitVersionName: String = run {
     val describe = gitOutput("git", "describe", "--tags", "--always", "--dirty")
-    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-\d+-g[0-9a-f]+)?(-dirty)?$""")
+    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-rc\d+)?(-\d+-g[0-9a-f]+)?(-dirty)?$""")
     val tagVersion = describe?.let { tagPattern.matchEntire(it)?.groupValues?.get(1) }
     when {
         tagVersion != null -> tagVersion

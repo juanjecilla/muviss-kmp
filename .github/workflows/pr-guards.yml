@@ -1,0 +1,90 @@
+name: PR guards
+
+# Cheap policy checks on pull requests (ADR 0025). Kept out of ci.yml because
+# they must re-run when a PR is retitled or relabelled, and ci.yml must not: a
+# label change would otherwise rebuild every target.
+#
+# Each job runs only for the base branch it guards; a skipped job counts as
+# passing for a ruleset's required checks.
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened, edited, labeled, unlabeled ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # `main` holds production versions only, so the one way in is a release or
+  # hotfix branch. A ruleset cannot say "PRs from these branches only", which is
+  # why this is a check rather than a setting.
+  main-source-guard:
+    name: PRs into main come from release/* or hotfix/*
+    if: github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the head branch
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            release/*|hotfix/*) echo "ok: $HEAD_REF" ;;
+            *)
+              echo "::error::main only accepts release/* and hotfix/* branches (got '$HEAD_REF'). Target develop instead — see docs/RELEASING.md."
+              exit 1 ;;
+          esac
+
+  # The release notes are written on the release branch, and the train seeds
+  # them with a draft marker. Merging into main promotes the RC to production
+  # with whatever notes it carries, so a draft must not get that far.
+  release-notes-guard:
+    name: Release notes are final
+    if: github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check fastlane/release-notes for this version
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: scripts/release/check-release-notes.sh "${HEAD_REF#*/}" --final
+
+  # Every free, user-visible feature reaches the landing (website/) in the PR
+  # that ships it. The landing deploys from `main` only, so muvissapp.com then
+  # goes live with exactly what a release ships. A `feat` PR that changes a
+  # feature module and not the site fails unless it carries the `no-landing`
+  # label — the explicit "invisible, paid, or not user-facing" answer.
+  landing-guard:
+    name: Features reach the landing
+    if: github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the PR touches website/ when it ships a feature
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/release/landing-guard.sh
+
+  # The release scripts and the rollout policy decide what reaches users, and
+  # nothing else exercises them until a real release runs. Seconds to run.
+  release-tooling:
+    name: Release tooling tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release scripts
+        run: scripts/release/test/release-scripts-test.sh
+      - name: Rollout ramp policy
+        run: ruby fastlane/test/play_rollout_test.rb

@@ -14,6 +14,11 @@ Node version is pinned in `.nvmrc`.
 
 ## Rules
 
+- **Every free, user-visible feature is here, added in the PR that ships it**
+  (`AGENTS.md`). The site deploys from `main` only, so copy merged on
+  `develop` goes live when its feature is released (ADR 0025). CI's
+  `landing-guard` fails a `feat` PR that changes the app but not `website/`,
+  unless it is labelled `no-landing`.
 - **Free features only.** Sync and co-watch are paid (they need an Entitlement:
   ADR 0018, ADR 0022) and never appear here. Say "paid", never "premium":
   `CONTEXT.md` lists "premium/pro" under _Avoid_, because the app has paid

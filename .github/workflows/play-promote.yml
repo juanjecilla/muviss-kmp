@@ -1,18 +1,23 @@
 name: Play promote
 
-# Moves a build that is already on Google Play's internal track to production,
-# or changes the production rollout fraction (ADR 0024). Always by hand: a tag
-# push never reaches production on its own — see release.yml.
+# The manual controls for Google Play production (ADR 0024, ADR 0025). Normally
+# nothing here is needed: merging a release branch into main promotes its RC
+# (release.yml) and play-rollout-ramp.yml raises the fraction daily.
+#
+#   promote  internal → production at a fraction (release.yml does this itself)
+#   rollout  set the production fraction by hand
+#   halt     stop a staged rollout; the daily ramp leaves it alone from then on
+#   resume   restart a halted rollout at the fraction it stopped at
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'promote = internal → production; rollout = change the production fraction'
+        description: 'promote = internal → production; rollout = set the fraction; halt / resume the staged rollout'
         type: choice
-        options: [promote, rollout]
+        options: [promote, rollout, halt, resume]
         default: promote
       fraction:
-        description: 'Rollout fraction in (0, 1]; 1 completes the rollout'
+        description: 'Rollout fraction in (0, 1]; 1 completes the rollout (ignored by halt/resume)'
         type: string
         default: '0.2'
 
@@ -38,11 +43,12 @@ jobs:
       - name: Run fastlane
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
           ACTION: ${{ inputs.action }}
           FRACTION: ${{ inputs.fraction }}
         run: |
-          if [ "$ACTION" = promote ]; then
-            bundle exec fastlane android promote "rollout:$FRACTION"
-          else
-            bundle exec fastlane android rollout "fraction:$FRACTION"
-          fi
+          case "$ACTION" in
+            promote) bundle exec fastlane android promote "rollout:$FRACTION" ;;
+            rollout) bundle exec fastlane android rollout "fraction:$FRACTION" ;;
+            halt|resume) bundle exec fastlane android "$ACTION" ;;
+          esac
