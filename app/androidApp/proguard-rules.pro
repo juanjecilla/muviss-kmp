@@ -129,3 +129,9 @@
 # this app doesn't call Room directly and can't enumerate them by hand.
 -keep class androidx.work.impl.WorkDatabase_Impl { <init>(); }
 -keepclassmembers class * extends androidx.room.RoomDatabase { <init>(); }
+
+# The Settings > About test crash (docs/RELEASING.md "Sentry test crash"). R8's
+# class merging folded it into androidx.datastore's protobuf
+# UninitializedMessageException — both are bare RuntimeExceptions — and Sentry
+# can only name the class that survived, so the issue was titled after protobuf.
+-keep class com.codingpit.muviss.feature.settings.ui.MuvissTestCrash
