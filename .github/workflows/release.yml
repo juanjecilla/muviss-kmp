@@ -157,11 +157,17 @@ jobs:
           ref: ${{ needs.tag.outputs.tag || github.ref }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
+      # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
+      # instead of downloading one through foojay, whose package IDs are retired
+      # when Corretto updates and then answer 400 (2026-10-06). The daemon was
+      # already this JDK — that download is where it came from — so builds,
+      # tests and the desktop runtime image are unchanged.
+      - name: Set up JDK 21 (Corretto)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '17'
+          distribution: corretto
+          java-version: '21'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
