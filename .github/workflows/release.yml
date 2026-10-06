@@ -157,6 +157,16 @@ jobs:
           ref: ${{ needs.tag.outputs.tag || github.ref }}
           fetch-depth: 0
 
+      # gradle/gradle-daemon-jvm.properties pins the daemon to Corretto 21.
+      # Installed here so Gradle finds it (setup-java registers it in
+      # ~/.m2/toolchains.xml) instead of downloading it through foojay, whose
+      # package IDs are retired when Corretto updates and then return 400.
+      - name: Set up JDK 21 (Gradle daemon)
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '21'
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
