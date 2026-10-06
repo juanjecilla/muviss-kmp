@@ -75,17 +75,24 @@ internal fun HttpClient.withTmdbPolicy(policy: TmdbRetryPolicy, cached: Boolean 
  * come out of it. This is the choke point that makes the "no exception text
  * reaches the UI" rule structural: whatever Ktor, kotlinx.serialization or the
  * platform throws, including messages that embed the request URL, is replaced
- * by a fixed-text error with no cause.
+ * by a fixed-text error with no cause. [onFailure] sees both sides of that
+ * swap so a debug build can record *which* failure it was (#177) — by class
+ * name only, see [TmdbFailureTrace].
  */
-@Suppress("TooGenericExceptionCaught") // Catching everything is the point: nothing but a MetadataError may escape.
-internal suspend inline fun <T> tmdbCall(block: () -> T): T = try {
+// Catching everything is the point: nothing but a MetadataError may escape, and
+// dropping the cause is the point too (its message can carry the URL and key).
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
+internal suspend inline fun <T> tmdbCall(onFailure: (failure: Throwable, mapped: MetadataError) -> Unit = { _, _ -> }, block: () -> T): T = try {
     block()
 } catch (error: MetadataError) {
+    onFailure(error, error)
     throw error
 } catch (cancelled: CancellationException) {
     throw cancelled
 } catch (failure: Throwable) {
-    throw failure.toMetadataError()
+    val mapped = failure.toMetadataError()
+    onFailure(failure, mapped)
+    throw mapped
 }
 
 /** Status to error: 429, 401 and 404 have their own cases, anything else non-2xx is [MetadataError.Unknown]. */
