@@ -171,8 +171,10 @@ jobs:
       - name: Verify SQLDelight migrations
         run: ./gradlew verifySqlDelightMigration --stacktrace
 
+      # The check reads the APK it just built: Compose Resources missing from
+      # the package pass every JVM test and only crash on a device (#165).
       - name: Assemble Android debug APK
-        run: ./gradlew :app:androidApp:assembleDebug --stacktrace
+        run: ./gradlew :app:androidApp:assembleDebug :app:androidApp:verifyDebugApkComposeResources --stacktrace
 
       - name: Compile web targets (JS + Wasm)
         run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
