@@ -77,6 +77,10 @@ internal fun SentryEvent.scrubbed(): SentryEvent {
     // mutable map to edit in place — reassign rather than mutate.
     tags = tags.mapValues { (_, value) -> CrashScrubber.scrub(value) }.toMutableMap()
     contexts = contexts.mapValues { (_, value) -> if (value is String) CrashScrubber.scrub(value) else value }.toMutableMap()
+    // `sendDefaultPii = false` is not enough for "no user identifier": the
+    // Android SDK still stamps a per-install `user.id`, and the first real
+    // event (2026-10-07) arrived with one. Drop the whole user.
+    user = null
     return this
 }
 

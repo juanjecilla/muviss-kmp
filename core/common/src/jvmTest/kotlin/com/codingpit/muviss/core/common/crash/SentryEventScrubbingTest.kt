@@ -4,9 +4,11 @@ import io.sentry.kotlin.multiplatform.SentryEvent
 import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import io.sentry.kotlin.multiplatform.protocol.Message
 import io.sentry.kotlin.multiplatform.protocol.SentryException
+import io.sentry.kotlin.multiplatform.protocol.User
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 /**
  * [SentryBackend.scrubbed] against the real SDK types, run on `jvmTest` (Compose
@@ -45,6 +47,13 @@ class SentryEventScrubbingTest {
         assertFalse((scrubbed.contexts["request_url"] as String).contains(key))
         // A non-String context value is left alone rather than stringified.
         assertEquals(3, scrubbed.contexts["screen_density"])
+    }
+
+    @Test
+    fun the_per_install_user_id_is_dropped() {
+        val event = SentryEvent().apply { user = User().apply { id = "4b0fe4eae24b4661a569527d3586e0f8" } }
+
+        assertNull(event.scrubbed().user)
     }
 
     @Test
