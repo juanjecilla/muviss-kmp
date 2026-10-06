@@ -81,7 +81,7 @@ fun ProgressScreen(
     watchNextViewModel: ProgressViewModel,
     upcomingViewModel: UpcomingViewModel,
     onOpenDetail: (MediaId) -> Unit,
-    onOpenCoWatch: () -> Unit,
+    onOpenCoWatch: (() -> Unit)?,
 ) {
     var selectedTab by remember { mutableStateOf(ProgressTab.WATCH_NEXT) }
 
@@ -102,8 +102,12 @@ fun ProgressScreen(
         // answers "what should two people start", over the titles WatchNext
         // deliberately excludes. Making it a tab here would invite folding the
         // two together, which ADR 0022 says not to do.
-        TextButton(onClick = onOpenCoWatch, modifier = Modifier.padding(horizontal = MuvissSpacing.l)) {
-            Text("Watch together with someone")
+        // Null when this build has no sync: co-watch is built on it, so a link
+        // to it would lead to a screen that can only say "sign in" (ADR 0018).
+        if (onOpenCoWatch != null) {
+            TextButton(onClick = onOpenCoWatch, modifier = Modifier.padding(horizontal = MuvissSpacing.l)) {
+                Text("Watch together with someone")
+            }
         }
         when (selectedTab) {
             ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail)

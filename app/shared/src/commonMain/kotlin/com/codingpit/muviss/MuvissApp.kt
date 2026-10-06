@@ -39,6 +39,7 @@ import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
+import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
@@ -209,6 +210,12 @@ private fun platformDatabaseModule(driverFactory: DatabaseDriverFactory): Module
     single { driverFactory }
 }
 
+/**
+ * The way into co-watch, or null when this build has no sync to build it on.
+ * Feature screens render their co-watch link only for a non-null callback.
+ */
+internal fun coWatchEntry(availability: SyncAvailability, open: () -> Unit): (() -> Unit)? = if (availability.isConfigured()) open else null
+
 @Composable
 private fun MuvissScaffold(
     controller: MuvissAppController,
@@ -218,6 +225,14 @@ private fun MuvissScaffold(
     val navController = controller.navController
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
+
+    // Co-watch is built on sync, so a build without sync (every release build
+    // today, ADR 0018) shows no way into it — the same rule that hides the
+    // profile's sync row. The routes stay registered; nothing links to them.
+    val syncAvailability = koinInject<SyncAvailability>()
+    val openCoWatch = remember(syncAvailability, navController) {
+        coWatchEntry(syncAvailability) { navController.navigate(CompanionsRoute) }
+    }
 
     // The one place that observes the back stack, so the one place that can
     // tell a platform host which destination is showing. Desktop's MenuBar is
@@ -318,9 +333,9 @@ private fun MuvissScaffold(
                     collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     progressSection(
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
-                        onOpenCoWatch = { navController.navigate(CompanionsRoute) },
+                        onOpenCoWatch = openCoWatch,
                     )
-                    profileSection(navController, onOpenCompanions = { navController.navigate(CompanionsRoute) })
+                    profileSection(navController, onOpenCompanions = openCoWatch)
                     settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
                     // Not a top-level destination — reached from Discover and Settings.
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })

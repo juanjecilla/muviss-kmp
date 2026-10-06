@@ -67,7 +67,7 @@ import kotlin.time.Duration.Companion.seconds
 private val LAST_SYNCED_LABEL_TICK = 30.seconds
 
 @Composable
-fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpenCompanions: () -> Unit) {
+fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpenCompanions: (() -> Unit)?) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -150,8 +150,11 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
             // priced with it: an account, an entitlement and a linked Companion
             // are the three things it needs, and two of them are explained here
             // already (EPIC 41, ADR 0022).
-            CompanionsRow(onOpenCompanions)
-            HorizontalDivider()
+            // Null when this build has no sync, like the sync row above.
+            if (onOpenCompanions != null) {
+                CompanionsRow(onOpenCompanions)
+                HorizontalDivider()
+            }
 
             if (state.stats.isEmpty) {
                 EmptyLibraryState()

@@ -6,7 +6,7 @@ import androidx.navigation.compose.composable
 import org.koin.compose.viewmodel.koinViewModel
 
 /** Registers this feature's destinations into the app NavGraphBuilder. */
-fun NavGraphBuilder.profileSection(navController: NavController, onOpenCompanions: () -> Unit) {
+fun NavGraphBuilder.profileSection(navController: NavController, onOpenCompanions: (() -> Unit)?) {
     composable<ProfileRoute> {
         val viewModel = koinViewModel<ProfileViewModel>()
         ProfileScreen(

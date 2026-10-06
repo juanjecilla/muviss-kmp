@@ -10,9 +10,10 @@ import org.koin.compose.viewmodel.koinViewModel
  * [onOpenDetail] lets the app shell route taps into search's detail screen
  * without progress depending on search directly (cross-feature deps go
  * through `:api` only, and detail navigation isn't part of progress's own
- * contract) — mirrors collection's `collectionSection`.
+ * contract) — mirrors collection's `collectionSection`. [onOpenCoWatch] is null
+ * when this build has no sync, and the co-watch link is then not shown.
  */
-fun NavGraphBuilder.progressSection(onOpenDetail: (MediaId) -> Unit, onOpenCoWatch: () -> Unit) {
+fun NavGraphBuilder.progressSection(onOpenDetail: (MediaId) -> Unit, onOpenCoWatch: (() -> Unit)?) {
     composable<ProgressRoute> {
         val watchNextViewModel = koinViewModel<ProgressViewModel>()
         val upcomingViewModel = koinViewModel<UpcomingViewModel>()
