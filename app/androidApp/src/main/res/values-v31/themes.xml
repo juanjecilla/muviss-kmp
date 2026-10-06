@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ always shows a system splash; without this it is drawn in
+         the platform's default colour rather than the app's, light or dark. -->
+    <style name="Theme.Muviss" parent="Base.Theme.Muviss">
+        <item name="android:windowSplashScreenBackground">@color/muviss_window_background</item>
+    </style>
+</resources>

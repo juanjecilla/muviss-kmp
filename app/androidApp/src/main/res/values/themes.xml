@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window theme, drawn before Compose's first frame (and as the
+         recents thumbnail). It used to be Theme.Material.Light everywhere, so
+         a dark-mode cold start flashed white (EPIC 30, #73). values-night
+         swaps the parent and the colour; Compose's MuvissTheme takes over from
+         the first frame. -->
+    <style name="Base.Theme.Muviss" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/muviss_window_background</item>
+    </style>
+
+    <style name="Theme.Muviss" parent="Base.Theme.Muviss" />
+</resources>
