@@ -490,4 +490,25 @@ class TriageScreenTest {
     private fun ComposeUiTest.onAllNodesWithTextCount(text: String): Int = onAllNodes(hasText(text)).fetchSemanticsNodes().size
 
     private fun ComposeUiTest.onAllNodesWithContentDescriptionCount(description: String): Int = onAllNodes(androidx.compose.ui.test.hasContentDescription(description)).fetchSemanticsNodes().size
+
+    @Test
+    fun a_refill_that_stops_on_empty_batches_offers_keep_looking_not_caught_up() = runComposeUiTest {
+        // #183: the catalogue goes on past what one refill reads, so the deck
+        // must not claim "All caught up"; "Keep looking" reads on from there.
+        val emptyPages = TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL * 5
+        val fresh = movie("far-back")
+        val byNumber = (1..emptyPages).associateWith { emptyList<com.codingpit.muviss.models.MediaSummary>() } + ((emptyPages + 1) to listOf(fresh))
+        val harness = TriageHarness(moviePages = FakeDeckPages(byNumber, totalPages = emptyPages + 5))
+
+        setContent { MuvissTheme { TriageScreen(harness.viewModel(), onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {}) } }
+        waitForIdle()
+
+        onNodeWithText(KEEP_LOOKING_LABEL).assertIsDisplayed()
+        onNodeWithText("All caught up").assertDoesNotExist()
+
+        onNodeWithText(KEEP_LOOKING_LABEL).performClick()
+        waitForIdle()
+
+        onNodeWithTag(TRIAGE_CARD_TAG).assertIsDisplayed()
+    }
 }

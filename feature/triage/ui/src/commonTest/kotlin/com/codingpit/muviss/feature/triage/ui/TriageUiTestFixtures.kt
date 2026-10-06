@@ -305,8 +305,12 @@ internal class FakeDeckSource(
 ) : DeckSource {
     var failure: Throwable? = null
 
+    /** Every movie page asked for, in order — how far a refill read (#183). */
+    val requestedPages = mutableListOf<Int>()
+
     override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> {
         failure?.let { return Result.failure(it) }
+        if (type == MediaType.MOVIE) requestedPages += page
         if (type == MediaType.MOVIE && moviePages != null) {
             return Result.success(PagedResult(moviePages.byNumber[page].orEmpty(), page = page, totalPages = moviePages.totalPages))
         }
