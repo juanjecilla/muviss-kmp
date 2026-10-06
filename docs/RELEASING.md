@@ -35,7 +35,8 @@ Then either:
 - **CI**: base64-encode the keystore and store it plus the three passwords
   as repository secrets (`KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`,
   `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`) — see
-  `.github/workflows/release.yml`.
+  `.github/workflows/android-release-build.yml`. `scripts/release/owner-setup.sh`
+  does this for you.
   ```bash
   base64 -i release.keystore.jks | pbcopy   # macOS; use -w0 on Linux
   ```
@@ -88,31 +89,15 @@ not a missing-class error.
   `0.1.0-dev.<count>+<short-sha>` (and `0.1.0-dev.<count>` if git itself
   isn't available, e.g. a source-only archive).
 
-To cut a release, tag it — nothing else to bump. Use the script rather than
-tagging by hand:
+Release candidates are tagged `vX.Y.Z-rcN` and carry the **final** versionName
+`X.Y.Z` — the pattern drops `-rcN` — because production promotes the RC binary
+itself (ADR 0025). Nothing is bumped by hand; how versions are chosen and tagged
+is §5.
 
-```bash
-scripts/release/cut-release.sh 1.0.0             # tags v1.0.0 and pushes it
-scripts/release/cut-release.sh 1.0.0 --dry-run   # run the checks, change nothing
-```
-
-Pushing the tag is the entire trigger; `.github/workflows/release.yml` does the
-rest. The script refuses to tag when any of these is true, because each one is a
-mistake that is invisible until after a signed build:
-
-| refusal | why it matters |
-|---|---|
-| not on `main` | tags code that was never reviewed on the release branch |
-| working tree dirty | a tag never includes uncommitted work, so the build differs from the desk |
-| local `main` != `origin/main` | tags a commit nobody else has, or misses one they do |
-| tag exists locally or on origin | pushing an existing tag silently does nothing |
-| version not newer than the last tag | the Play Console rejects it *after* the build, not before |
-
-Version ordering uses `sort -V`, so `1.9.0` → `1.10.0` is accepted; a string
-comparison would call that a downgrade.
-
-The tag is **annotated**, not lightweight, because `git describe` prefers
-annotated tags — and `git describe` is what becomes `versionName`.
+The tags are **annotated**, not lightweight, because `git describe` prefers
+annotated tags — and `git describe` is what becomes `versionName`. Version
+ordering everywhere uses `sort -V`, so `1.9.0` → `1.10.0` is an upgrade; a
+string comparison would call it a downgrade.
 
 Implementation note: the git commands run through Gradle's
 `providers.exec {}` (not raw `ProcessBuilder`) — this project runs with
@@ -144,7 +129,7 @@ default for every contributor and most CI runs) never touches Sentry.
 
 To enable it locally: add `SENTRY_DSN=https://<key>@o<org>.ingest.sentry.io/<project>`
 to `local.properties`. In CI: set the `SENTRY_DSN` repository secret (see
-`.github/workflows/release.yml`).
+`.github/workflows/android-release-build.yml`).
 
 **Where it starts (EPIC 26).** Every host starts reporting *first*, before Koin:
 `MuvissApplication.onCreate` (Android), `main()` in the desktop `Main.kt`, and
@@ -190,37 +175,131 @@ messages, exceptions and breadcrumbs in `beforeSend`/`beforeBreadcrumb`.
 **Version pairing.** `sentryKmp` and `sentryCocoa` move together (see the catalog);
 last checked 2026-09-20: 0.27.0 is the latest KMP release and pins Cocoa 8.58.2.
 
-## 5. CI release job
+## 5. Branches, the release train and CI (ADR 0025)
 
-`.github/workflows/release.yml` triggers on `v*` tags, checks out full git
-history (`fetch-depth: 0` — needed for accurate versionCode/versionName),
-decodes `KEYSTORE_BASE64` to a temp file, runs
-`:app:androidApp:bundleRelease` with the signing/DSN/TMDB secrets as env
-vars, and uploads the resulting `.aab` as a workflow artifact. The existing
-`ci.yml` (push/PR to `main`) is untouched.
+### The flow
+
+```
+feature/x ──squash──► develop ──(Monday night train, or start-release.sh)──► release/1.3.0
+                         ▲                                                       │ every push:
+                         │                                                       │  tag v1.3.0-rcN → signed AAB
+                         │                                                       │  → Play internal + GitHub pre-release
+                         │                                              PR, merge commit
+                         │                                                       ▼
+                         └──── back-merge PR (merge commit) ◄──────────────── main ── tag v1.3.0
+                                                                                  → promote rcN to production 20%
+                                                                                    (approve in the `production` environment)
+                                                                                  → ramp 50% day 2, 100% day 4
+                                                                                  → GitHub Release: rcN's AAB + DMG/DEB/MSI
+hotfix/1.3.1 is cut from main (start-release.sh 1.3.1 --hotfix) and goes the same way.
+```
+
+| workflow | trigger | does |
+|---|---|---|
+| `ci.yml` | PRs into `develop`/`main`; pushes to `develop`, `main`, `release/**`, `hotfix/**` | build, tests, desktop, iOS |
+| `pr-guards.yml` | PRs into `develop`/`main`, incl. retitle/relabel | `main-source-guard`, `release-notes-guard`, `landing-guard`, release tooling tests |
+| `release-train.yml` | nightly 23:00 UTC; acts on `RELEASE_TRAIN_DAY` (default `1`, Monday); dispatch | cut `release/<next>` if `develop` has new commits and no release is open |
+| `release-rc.yml` | push to `release/**`, `hotfix/**` | tag `vX.Y.Z-rcN`, build (`android-release-build.yml`), Play internal, pre-release |
+| `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, promote, desktop installers, GitHub Release, back-merge PR |
+| `play-rollout-ramp.yml` | daily 08:00 UTC; dispatch | raise the production fraction along the ramp |
+| `play-promote.yml` | dispatch | `promote`, `rollout`, `halt`, `resume` |
+
+### Cutting a release
+
+The train does it on Mondays. By hand (the first release, or an off-cycle one):
+
+```bash
+scripts/release/start-release.sh 1.0.0            # release/1.0.0 from origin/develop
+scripts/release/start-release.sh 1.0.1 --hotfix   # hotfix/1.0.1 from origin/main
+scripts/release/start-release.sh 1.0.0 --dry-run  # checks only
+scripts/release/next-version.sh                   # what the train would cut
+```
+
+It refuses when the tree is dirty, the branch or tag exists, the version is not
+newer than the last release, the Play listing is over a limit, or (releases
+only) another `release/*` branch is open. The branch starts with one commit:
+draft release notes for every listing locale, seeded from the `feat`/`fix`
+subjects since the last release, first line `DRAFT: …`.
+
+Then:
+
+1. Install the RC from Play's internal track and run §8.
+2. Fix anything on the release branch (PRs into `release/x.y.z`). Each push is a new RC.
+3. Rewrite the notes for users in every locale and delete the `DRAFT:` line —
+   `release-notes-guard` fails the PR into `main` until you do.
+4. Open the PR `release/x.y.z → main` and **merge with a merge commit**.
+5. Approve the `production` deployment in the run. The ramp takes it from there;
+   halt with `gh workflow run play-promote.yml -f action=halt`.
+6. Merge the back-merge PR into `develop` **with a merge commit** (it is labelled
+   `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch).
+
+Production always gets the newest `vX.Y.Z-rcN`. If the branch moved after its
+last RC, `release.yml` warns and still promotes the RC — push again to get a
+new candidate first. A release with no RC fails at the tag step.
+
+### Branch protection
+
+Rulesets (applied by `scripts/release/owner-setup.sh`), admins may bypass:
+
+- **main**: PR, 1 approval, merge commits only, checks `build`, `desktop`, `ios`,
+  `Release tooling tests`, `PRs into main come from release/* or hotfix/*`,
+  `Release notes are final`.
+- **develop**: PR, 1 approval, squash or merge, checks `build`, `desktop`, `ios`,
+  `Release tooling tests`, `Features reach the landing`.
+- **release-tags** (`refs/tags/v*`): only admins and the `muviss-release` App
+  create, move or delete them.
+
+The approval is **CodeRabbit**'s (`.coderabbit.yaml`, request-changes workflow):
+it approves once every comment it made is resolved. If it is unavailable, an
+admin merges with `gh pr merge --admin` and says so in the PR. Skipped jobs (for
+example `ios` on a docs-only PR) count as passing.
+
+### The release App
+
+`muviss-release` is a private GitHub App (secrets `RELEASE_APP_ID`,
+`RELEASE_APP_PRIVATE_KEY`; variable `RELEASE_APP_ID`). The train, the RC tags
+and the back-merge PR use its token because anything done with `GITHUB_TOKEN`
+starts no workflow: a train branch would never build an RC, and a back-merge
+PR would never get CI. Without the App, the RC and release jobs fall back to
+`GITHUB_TOKEN` (and the tag ruleset will refuse them), and the train fails.
+
+### Shared build
+
+`android-release-build.yml` (`workflow_call`) checks out full history
+(`fetch-depth: 0`, needed for versionCode/versionName), decodes
+`KEYSTORE_BASE64`, runs `:app:androidApp:bundleRelease` with the signing,
+TMDB and Sentry secrets, uploads the AAB as an artifact and, for RCs, runs
+`fastlane android internal`. `release.yml`'s dispatch path calls it without the
+upload to exercise the build.
 
 ### Publishing to Google Play (ADR 0024, EPIC 34 / #77)
 
-Wired in `release.yml` (`fastlane android internal`) and
-`play-promote.yml` (`fastlane android promote` / `rollout`). The Fastfile is
+Wired in `android-release-build.yml` (`fastlane android internal`, from
+`release-rc.yml`), `release.yml` (`android promote`), `play-rollout-ramp.yml`
+(`android ramp`) and `play-promote.yml` (`promote`, `rollout`, `halt`,
+`resume`). The ramp policy is `fastlane/play_rollout.rb`, tested by
+`fastlane/test/play_rollout_test.rb`. The Fastfile is
 `fastlane/Fastfile`; run any lane locally with `bundle exec fastlane <lane>`
 (Ruby 3.1+, `.ruby-version` pins 3.3 — macOS's system Ruby 2.6 is too old).
 
 - **First uploads are drafts.** Play refuses any release status but `draft`
-  until the app's first production release exists, so `release.yml` defaults
+  until the app's first production release exists, so the workflows default
   `PLAY_RELEASE_STATUS` to `draft`; set the repository variable to `completed`
   once production is live. The very first AAB must be uploaded by hand in the
   Console anyway, because the API cannot create the app — that upload is also
   where Play App Signing enrolment happens.
-- **No secret, no upload.** Without `PLAY_SERVICE_ACCOUNT_JSON` the step logs a
-  notice and passes; dispatch runs never upload.
+- **No secret, no upload.** Without `PLAY_SERVICE_ACCOUNT_JSON` every Play step
+  logs a notice and passes; dispatch runs never upload.
 - **Release notes are mandatory once listing metadata exists**, one file per
-  listing locale at `fastlane/release-notes/<tag>/<locale>.txt` (max 500
-  characters), merged before the tag is cut. They are keyed by tag, not by
-  versionCode, because the versionCode is a commit count nobody knows until the
-  release commit lands. The lane copies them to supply's
-  `changelogs/<versionCode>.txt` (generated, gitignored); `cut-release.sh`
-  refuses to tag without them.
+  listing locale at `fastlane/release-notes/vX.Y.Z/<locale>.txt` (max 500
+  characters), written on the release branch; every RC of that version uses
+  them. They are keyed by version, not by versionCode, because the versionCode
+  is a commit count nobody knows until the commit lands. The lane copies them
+  to supply's `changelogs/<versionCode>.txt` (generated, gitignored).
+- **The first production release is a draft too**: with
+  `PLAY_RELEASE_STATUS=draft`, `promote` creates a draft production release
+  with no fraction, which you send for review in the Console. After it is
+  approved, `gh variable set PLAY_RELEASE_STATUS --body completed`.
 - **A release build refuses to guess its versionCode**: without git, or in a
   shallow clone, `:app:androidApp`'s release tasks fail at configuration
   instead of shipping `versionCode = 1`.
@@ -230,46 +309,39 @@ The decisions behind it:
 - **fastlane `supply`**, not gradle-play-publisher: it consumes the built `.aab`,
   so AGP/Gradle upgrades cannot break publishing. Ruby is pinned by a
   `Gemfile`/`Gemfile.lock` at the repo root.
-- **A tag uploads to the internal track only.** Production is a separate
-  `workflow_dispatch` workflow that promotes internal → production at a staged
-  rollout fraction. Nothing reaches the public from a tag push alone.
+- **An RC uploads to the internal track only.** Production happens when the
+  release branch merges into `main`, behind the `production` environment's
+  approval, at 20% (ADR 0025).
 - **Listing copy and screenshots live in `fastlane/metadata/android/<locale>/`**
-  and are the source of truth (`docs/store/LISTING.md` explains them). Each
-  release needs `changelogs/<versionCode>.txt` per locale.
+  and are the source of truth (`docs/store/LISTING.md` explains them).
 - Secret: `PLAY_SERVICE_ACCOUNT_JSON` (a Play Console service account with
   release permission on `com.codingpit.muviss`).
 - The Play account is a personal one created before November 2023, so the
   12-tester / 14-day closed-test requirement does not apply.
 - v1 is **local-only** (ADR 0024): sync stays compiled out, as the comment in
-  `release.yml` already insists.
+  `android-release-build.yml` already insists.
 
 ### The GitHub Release (issue #45)
 
-A third job, `github-release`, `needs` both build jobs and attaches everything
-they produced — the AAB and all three desktop installers — to a real GitHub
-Release. Before this, artifacts existed only on the workflow run: findable only
-by opening Actions, expiring after 90 days, and invisible to anyone who just
-wanted to download the app.
+`release.yml`'s `github-release` job attaches the RC's own AAB (downloaded from
+its `vX.Y.Z-rcN` pre-release, never rebuilt) and all three desktop installers to
+a real GitHub Release for `vX.Y.Z`. RCs get pre-releases of their own from
+`release-rc.yml`, which also keeps each candidate's AAB past the 90-day
+workflow-artifact limit.
 
-Three things about it that are deliberate:
-
-- **Tag-only** (`if: startsWith(github.ref, 'refs/tags/v')`). A
-  `workflow_dispatch` run still builds and still uploads workflow artifacts, but
-  creates no Release — `github.ref_name` on a dispatch is a *branch* name, and a
-  Release called "main" is worse than none.
+- **Release-only.** A `workflow_dispatch` run builds the AAB and installers as
+  workflow artifacts and creates no tag and no Release.
 - **It uses `gh`**, not a third-party release action: it ships on the runner and
   adds no supply-chain trust to a repo that vets its own app dependencies
   against a licence allow-list.
 - **A failed installer leg blocks the Release.** `desktop-release` is
-  `fail-fast: false`, so a broken MSI still lets the DMG and DEB finish — but
-  `github-release` needs both jobs green, so the result is no Release rather
-  than a partial one. If that is ever wrong, the fix is `if: always()` plus an
-  explicit per-result check, not dropping the dependency.
+  `fail-fast: false`, so a broken MSI still lets the DMG and DEB finish, but
+  `github-release` needs every leg green, so the result is no Release rather
+  than a partial one.
 
-The generated notes say plainly that the desktop installers are unsigned (#39),
-that the MSI has never been installed by anyone (#44), that the `.aab` is not
-directly installable, and that sync is compiled out of release builds (ADR
-0018).
+The notes say plainly that the desktop installers are unsigned (#39, #179),
+that the `.aab` is not directly installable, and that sync is compiled out of
+release builds (ADR 0018).
 
 ## 6. OSS attribution / license report
 
@@ -488,21 +560,19 @@ config. WiX ships preinstalled on `windows-latest` per `actions/runner-images`.
 What CI still cannot say is whether the resulting `.msi` installs and launches —
 that needs a Windows machine, and is issue #44.
 
-The job triggers on a `v*` tag **or** `workflow_dispatch`. Dispatch was added
-because until EPIC 23 this job had never executed once: the repo has no tags, so
-every packaging path here was verified by reading it. `packageVersion` already
-falls back to `1.0.<commitCount>` when untagged, so a dispatch run exercises the
-same code a tagged one would.
+The job runs when a release branch merges into `main` (built from the new
+`vX.Y.Z` tag) **or** on `workflow_dispatch`. Dispatch exists because until
+EPIC 23 this job had never executed once, so every packaging path was verified
+by reading it. `packageVersion` falls back to `1.0.<commitCount>` when
+untagged, so a dispatch run exercises the same code a release does.
 
 Per-PR coverage is separate and lighter: `ci.yml` runs
 `packageDistributionForCurrentOS` on Ubuntu (so the DEB path and jlink run on
 every change), smoke-launches the packaged Linux binary under Xvfb, and runs
 `packageDmg` on the macOS runner the iOS job already pays for.
 
-Like the Android `release` job, there's no GitHub Release object created —
-installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`), same
-as the AAB. Attaching to an actual GitHub Release (e.g. via
-`softprops/action-gh-release`) is a natural follow-up once one exists.
+Installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`) and, on a
+release, are attached to the GitHub Release (see §5).
 
 ### Signing / notarization (manual follow-up, not attempted)
 

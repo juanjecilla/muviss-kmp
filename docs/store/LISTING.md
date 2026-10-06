@@ -2,12 +2,12 @@
 
 **The copy lives in `fastlane/metadata/android/<locale>/`** (`title.txt`,
 `short_description.txt`, `full_description.txt`) and is uploaded by fastlane
-on every tag (ADR 0024). This file explains it; it does not duplicate it, so
+with every release candidate (ADR 0024, ADR 0025). This file explains it; it does not duplicate it, so
 the two cannot drift. `scripts/store/check-listing.sh` enforces Play's limits
 (title 30, short 80, full 4000 characters) and runs before every upload and in
-`cut-release.sh`.
+`start-release.sh`.
 
-Release notes are per tag: `fastlane/release-notes/<tag>/<locale>.txt`, max
+Release notes are per version: `fastlane/release-notes/vX.Y.Z/<locale>.txt`, max
 500 characters, one per listing locale (see `docs/RELEASING.md` §5).
 
 ## What the copy may and may not claim

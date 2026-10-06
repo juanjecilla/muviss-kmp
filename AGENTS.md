@@ -67,6 +67,39 @@ Something you fixed in the same session does not need an issue. Write it in the
 commit message instead, with the reasoning — this repo's commit messages carry
 the "why", and reviewers read them.
 
+## Branches, PRs and merging (ADR 0025)
+
+- **Branch from `develop`, open the PR against `develop`.** Name it
+  `feat/…`, `fix/…`, `chore/…`, and title it as a conventional commit
+  (`feat(triage): …`) — the release train reads those titles' squash commits
+  to pick the next version (`feat` → minor, otherwise patch, `!` → major).
+- **`main` is not a target.** Only `release/*` and `hotfix/*` merge into it, by
+  merge commit. A fix for a release in flight is a PR into `release/x.y.z`.
+- **Merge when it is green and approved, not before.** Wait for every required
+  check (`gh pr checks --watch`), then for CodeRabbit's approval: resolve each
+  of its comments — fix it, or answer why not — and it approves. Squash-merge
+  into `develop`. If CodeRabbit is unavailable, `gh pr merge --squash --admin`
+  is the fallback, and the PR description says so. Never bypass a red check.
+- **One epic, one PR, in order.** The next one branches from the `develop` that
+  contains the last.
+
+## Every feature reaches the landing in the same PR
+
+muvissapp.com (`website/`) lists every free, user-visible feature, and it
+deploys from `main` — so copy merged on `develop` goes live exactly when its
+feature is released. When a PR adds or changes something a user can see:
+
+- update `website/src/i18n/en.ts` **and** `es.ts` (`es` is typed against `en`,
+  so a missing key is an editor error, but `npm run build` does not type-check);
+- update the Play listing in `fastlane/metadata/android/{en-US,es-ES}/full_description.txt`
+  if it changes what the app does (limits: `scripts/store/check-listing.sh`);
+- if the feature changed a screen in the shot list, regenerate the screenshots
+  (`website/README.md`).
+
+**Paid features never go on the landing** (sync, co-watch: `website/README.md`).
+A `feat` PR with nothing for the landing — paid, invisible, not user-facing —
+carries the `no-landing` label; CI's `landing-guard` fails it otherwise.
+
 ## Claim ADR and schema numbers when the branch opens, not when it merges
 
 Both of these are sequences that two parallel branches will silently pick the
@@ -89,6 +122,9 @@ is a file rename and a `git grep`, and it is far cheaper than two documents
 sharing an identity on `main`.
 
 ## Before you finish
+
+- The landing and the Play listing reflect the change, or the PR is labelled
+  `no-landing` (above).
 
 - `./gradlew spotlessCheck detekt` — what the pre-commit hook runs.
 - `./gradlew build allMetadataJar` — every target, not only Android. Android-first

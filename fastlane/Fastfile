@@ -1,10 +1,15 @@
-# Store publishing (ADR 0024, EPIC 34 / #77).
+# Store publishing (ADR 0024, EPIC 34 / #77; git flow and the train: ADR 0025).
 #
-# A `vX.Y.Z` tag runs `android internal` from .github/workflows/release.yml;
-# nothing reaches production until someone runs .github/workflows/play-promote.yml.
+#   push to release/* or hotfix/*  → release-rc.yml       → `android internal` (vX.Y.Z-rcN)
+#   that branch merged into main   → release.yml          → `android promote` (20%, behind
+#                                                            the `production` environment)
+#   daily                          → play-rollout-ramp.yml → `android ramp` (20 → 50 → 100%)
+#   by hand                        → play-promote.yml      → promote / rollout / halt / resume
 #
 # Credentials: PLAY_SERVICE_ACCOUNT_JSON holds the service-account key *contents*
 # (not a path), so CI never writes it to disk.
+
+require_relative "play_rollout"
 
 default_platform(:android)
 
@@ -27,14 +32,19 @@ platform :android do
     Dir.glob(File.join(ANDROID_METADATA, "*")).select { |d| File.directory?(d) }.map { |d| File.basename(d) }
   end
 
-  # Release notes are written per *tag* (fastlane/release-notes/<tag>/<locale>.txt)
+  # Release notes are written per *version* (fastlane/release-notes/vX.Y.Z/<locale>.txt)
   # because the versionCode Play keys them by is a commit count, which nobody
   # can know before the release commit is merged. The lane copies them to
   # supply's changelogs/<versionCode>.txt, a generated (gitignored) file.
   # Every listed locale needs notes, or Play shows the previous release's
   # notes against the new build; fail before the upload rather than after.
   def stage_changelogs!(code)
-    tag = ENV["GITHUB_REF_NAME"] || sh("git", "describe", "--tags", "--exact-match", log: false).strip
+    # RCs (vX.Y.Z-rcN) read the notes of the version they are a candidate for:
+    # the notes are written once per release branch, and production promotes
+    # the RC itself, notes included (ADR 0025). RELEASE_TAG comes from
+    # release-rc.yml, whose GITHUB_REF_NAME is the branch, not the tag.
+    rc_tag = ENV["RELEASE_TAG"] || sh("git", "describe", "--tags", "--exact-match", log: false).strip
+    tag = rc_tag.sub(/-rc\d+\z/, "")
     problems = []
     locales.each do |locale|
       source = File.join("release-notes", tag, "#{locale}.txt")
@@ -82,13 +92,30 @@ platform :android do
     rollout = Float(options[:rollout] || "0.2")
     UI.user_error!("rollout must be in (0, 1]") unless rollout > 0 && rollout <= 1
 
+    # release.yml passes the RC's versionCode: promoting "the latest internal
+    # release" must mean the candidate this merge approved, not whatever was
+    # uploaded last.
+    if options[:version_code]
+      expected = Integer(options[:version_code])
+      latest = google_play_track_version_codes(track: "internal", json_key_data: json_key_data).max
+      UI.user_error!("Internal track's latest is #{latest}, but the approved RC is #{expected}") unless latest == expected
+    end
+
+    # Until the app's first production release has been reviewed, Play only
+    # accepts drafts — and a draft takes no rollout fraction. The owner sends
+    # that first one for review in the Console (docs/RELEASING.md).
+    draft = ENV.fetch("PLAY_RELEASE_STATUS", "completed") == PlayRollout::DRAFT
     upload_to_play_store(
       track: "internal",
       track_promote_to: "production",
-      rollout: rollout.to_s,
+      rollout: draft ? nil : rollout.to_s,
       # On a promote, release_status describes the *source* release; the
       # promoted one takes this option instead.
-      track_promote_release_status: rollout < 1 ? "inProgress" : "completed",
+      track_promote_release_status: if draft
+                                      PlayRollout::DRAFT
+                                    else
+                                      (rollout < 1 ? PlayRollout::IN_PROGRESS : PlayRollout::COMPLETED)
+                                    end,
       json_key_data: json_key_data,
       skip_upload_aab: true,
       skip_upload_apk: true,
@@ -116,5 +143,64 @@ platform :android do
       skip_upload_images: true,
       skip_upload_screenshots: true,
     )
+  end
+
+  # fastlane's own `rollout` path only finds inProgress/draft releases, so it
+  # can halt but never resume. The three lanes below talk to the edits API
+  # directly: open an edit, change the one live production release, commit.
+  def edit_production_release
+    require "supply"
+    Supply.config = FastlaneCore::Configuration.create(
+      Supply::Options.available_options,
+      package_name: CredentialsManager::AppfileConfig.try_fetch_value(:package_name),
+      json_key_data: json_key_data,
+    )
+    client = Supply::Client.make_from_config
+    client.begin_edit(package_name: Supply.config[:package_name])
+    track = client.get_edit_track("production")
+    release = track&.releases&.find { |r| [PlayRollout::IN_PROGRESS, PlayRollout::HALTED].include?(r.status) }
+    if release && yield(release)
+      track.releases = [release]
+      client.update_track("production", track)
+      client.commit_current_edit!
+      UI.success("Production #{release.version_codes.join(',')} is now #{release.status} at #{release.user_fraction || 1.0}")
+    else
+      UI.message(release ? "Production #{release.version_codes.join(',')}: nothing to change (#{release.status} at #{release.user_fraction})" : "No staged production release; nothing to change")
+      client.abort_current_edit
+    end
+  end
+
+  def apply!(release, status, fraction)
+    release.status = status
+    release.user_fraction = status == PlayRollout::COMPLETED ? nil : fraction
+    true
+  end
+
+  desc "Raise the production rollout along the ramp, from the latest release tag's age"
+  lane :ramp do
+    tag = sh("git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1", log: false).strip
+    UI.user_error!("No release tag found") if tag.empty?
+    tagged_at = Integer(sh("git", "for-each-ref", "--format=%(creatordate:unix)", "refs/tags/#{tag}", log: false).strip)
+    age_days = (Time.now.to_i - tagged_at) / 86_400.0
+    UI.message("#{tag} is #{age_days.round(2)} days old")
+
+    edit_production_release do |release|
+      step = PlayRollout.next_step(status: release.status, fraction: release.user_fraction, age_days: age_days)
+      step && apply!(release, *step)
+    end
+  end
+
+  desc "Halt the staged production rollout (the ramp leaves halted releases alone)"
+  lane :halt do
+    edit_production_release do |release|
+      release.status == PlayRollout::IN_PROGRESS && apply!(release, PlayRollout::HALTED, release.user_fraction)
+    end
+  end
+
+  desc "Resume a halted production rollout at the fraction it was halted at"
+  lane :resume do
+    edit_production_release do |release|
+      release.status == PlayRollout::HALTED && apply!(release, PlayRollout::IN_PROGRESS, release.user_fraction)
+    end
   end
 end

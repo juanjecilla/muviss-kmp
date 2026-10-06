@@ -1,0 +1,40 @@
+# CodeRabbit (free for public repos) is the approving reviewer that develop's
+# and main's rulesets count (ADR 0025). With the request-changes workflow on, it
+# approves a PR once every comment it made is resolved — and only then.
+# Schema: https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: [ "develop", "main" ]
+  path_filters:
+    - "!**/src/jvmTest/resources/screenshots/**"
+    - "!**/*.png"
+    - "!**/*.db"
+    - "!**/Gemfile.lock"
+    - "!**/package-lock.json"
+    - "!kotlin-js-store/**"
+    - "!website/dist/**"
+  path_instructions:
+    - path: "**/*.kt"
+      instructions: >-
+        Read CLAUDE.md first: it lists the domain rules that bite (derived
+        WatchStatus, soft deletes needing `AND deleted = 0`, aired-only bulk
+        ticks, MetadataError never exposing e.message). Flag violations of those.
+    - path: "**/commonTest/**"
+      instructions: >-
+        Kotlin/Native rejects punctuation in backticked test names; commonTest
+        names must be underscore_case.
+    - path: "website/**"
+      instructions: >-
+        The landing lists free features only: sync and co-watch are paid and must
+        never appear. Copy lives in src/i18n/en.ts and es.ts and must stay in step.
+chat:
+  auto_reply: true

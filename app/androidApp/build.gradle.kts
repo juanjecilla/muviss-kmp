@@ -162,7 +162,9 @@ val gitVersionCode: Int =
 
 val gitVersionName: String = run {
     val describe = gitOutput("git", "describe", "--tags", "--always", "--dirty")
-    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-\d+-g[0-9a-f]+)?(-dirty)?$""")
+    // `-rcN` is dropped on purpose: production gets the RC binary itself
+    // (ADR 0025), so an RC has to carry the final versionName already.
+    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-rc\d+)?(-\d+-g[0-9a-f]+)?(-dirty)?$""")
     val tagVersion = describe?.let { tagPattern.matchEntire(it)?.groupValues?.get(1) }
     when {
         tagVersion != null -> tagVersion

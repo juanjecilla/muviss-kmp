@@ -1,0 +1,107 @@
+name: Release train
+
+# The weekly cut (ADR 0025). Once a week, at night, if develop has commits since
+# the last release, cut release/X.Y.Z from it — the version bumped from the
+# conventional commits (scripts/release/next-version.sh). Pushing the branch
+# starts release-rc.yml, so the candidate is on Play's internal track by morning.
+#
+# Skips, writing why to the run summary:
+#   - nothing new on develop since the last vX.Y.Z;
+#   - a release branch is still open (one release in flight at a time); that
+#     case also comments on a "Release train blocked" issue so it is seen.
+#
+# The cron fires every night; the job runs on the day in the repo variable
+# RELEASE_TRAIN_DAY (ISO weekday, 1 = Monday, the default), so the day can move
+# without editing this file. The hour is the cron's: 23:00 UTC. Dispatch runs
+# regardless of the day.
+on:
+  schedule:
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: release-train
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Is it train day?
+        id: day
+        env:
+          TRAIN_DAY: ${{ vars.RELEASE_TRAIN_DAY || '1' }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = schedule ] && [ "$(date -u +%u)" != "$TRAIN_DAY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # GITHUB_TOKEN cannot do this job: a branch it pushes starts no workflow,
+      # so release-rc.yml would never run.
+      - name: Mint a release App token
+        id: app
+        if: steps.day.outputs.run == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        if: steps.day.outputs.run == 'true'
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Commit as the release App
+        if: steps.day.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
+
+      - name: Cut the release branch
+        if: steps.day.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN="$(git ls-remote --heads origin 'release/*' | awk '{print $2}' | sed 's#refs/heads/##')"
+          if [ -n "$OPEN" ]; then
+            MSG="Release train $(date -u +%F): skipped — \`$OPEN\` is still open. Merge it into main (or delete it) and the next train will cut."
+            echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+            ISSUE="$(gh issue list --state open --search 'in:title "Release train blocked"' --json number --jq '.[0].number')"
+            if [ -n "$ISSUE" ]; then
+              gh issue comment "$ISSUE" --body "$MSG"
+            else
+              gh issue create --title "Release train blocked" --body "$MSG"
+            fi
+            exit 0
+          fi
+
+          set +e
+          VERSION="$(scripts/release/next-version.sh origin/develop)"
+          CODE=$?
+          set -e
+          if [ "$CODE" -eq 3 ]; then
+            echo "Release train $(date -u +%F): nothing new on develop since the last release." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          [ "$CODE" -eq 0 ] || exit "$CODE"
+
+          scripts/release/start-release.sh "$VERSION"
+          echo "Release train $(date -u +%F): cut \`release/$VERSION\`." >> "$GITHUB_STEP_SUMMARY"
+
+          # A blocked-train issue is resolved once a train runs again.
+          ISSUE="$(gh issue list --state open --search 'in:title "Release train blocked"' --json number --jq '.[0].number')"
+          [ -z "$ISSUE" ] || gh issue close "$ISSUE" --comment "Unblocked: cut release/$VERSION."

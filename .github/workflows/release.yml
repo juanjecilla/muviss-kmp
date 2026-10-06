@@ -1,147 +1,140 @@
 name: Release
 
-# Release build. Produces a signed AAB plus desktop installers (DMG/DEB/MSI —
-# see the `desktop-release` job), uploads them all as workflow artifacts, and —
-# when the run was triggered by a `vX.Y.Z` tag — uploads the AAB to Google
-# Play's *internal* track through fastlane (ADR 0024) and attaches everything
-# to a GitHub Release (the `github-release` job, issue #45). Production is never
-# reached from here: .github/workflows/play-promote.yml does that, by hand.
+# A release or hotfix branch merged into main is a release (ADR 0025):
 #
-# Push a tag with `scripts/release/cut-release.sh X.Y.Z` to run the whole thing,
-# or dispatch it manually to exercise the build without creating a release.
+#   tag            vX.Y.Z on the merge commit; delete the merged branch
+#   promote        the newest RC from Play internal → production at 20%,
+#                  behind the `production` environment (an owner approval);
+#                  play-rollout-ramp.yml takes it to 100% from there
+#   desktop        DMG / DEB / MSI built from the tag
+#   github-release the RC's own AAB (never rebuilt) + the desktop installers
+#   back-merge     a PR main → develop, so develop sees the tag and any fix
+#                  made on the release branch
+#
+# Dispatch it by hand to exercise the AAB and installer builds without
+# releasing anything: no tag, no upload, no Release.
 on:
-  push:
-    tags:
-      - 'v*'
-  # This repo has no tags, so until now every job below was unreachable —
-  # desktop-release in particular had never executed once, leaving the DMG,
-  # DEB and MSI paths verified only by reading them. Dispatch makes them
-  # runnable without committing to a version number: packageVersion already
-  # falls back to `1.0.<commitCount>` when untagged (see
-  # app/desktopApp/build.gradle.kts), so a dispatch run exercises the same
-  # code a tagged one would.
+  pull_request:
+    branches: [ main ]
+    types: [ closed ]
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-# Only `github-release` needs write, but the default token is read-only once any
-# permissions block exists, so the two build jobs are named explicitly as read.
 permissions:
   contents: read
 
 jobs:
-  release:
+  tag:
+    if: >-
+      github.event_name == 'pull_request' && github.event.pull_request.merged &&
+      (startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'hotfix/'))
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+      rc_tag: ${{ steps.tag.outputs.rc_tag }}
+      rc_version_code: ${{ steps.tag.outputs.rc_version_code }}
     steps:
+      - name: Check for the release App
+        id: has-app
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+        run: echo "ok=$([ -n "$APP_ID" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Mint a release App token
+        id: app
+        if: steps.has-app.outputs.ok == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
-          # Full history + tags: versionCode/versionName are derived from
-          # `git rev-list --count` / `git describe` (see
-          # app/androidApp/build.gradle.kts) and need real git metadata,
-          # not the single commit a shallow checkout would give us.
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
+          token: ${{ steps.app.outputs.token || github.token }}
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Decode release keystore
+      - name: Tag the release
+        id: tag
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          HEAD_REF: ${{ github.head_ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          KEYSTORE_PATH="$RUNNER_TEMP/release.keystore.jks"
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
-          echo "RELEASE_STORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          VERSION="${HEAD_REF#*/}"
+          TAG="v$VERSION"
+          RC_TAG="$(git tag -l "$TAG-rc*" | sort -V | tail -1)"
+          [ -n "$RC_TAG" ] || { echo "::error::no release candidate was ever built for $VERSION (no $TAG-rc* tag); nothing to promote"; exit 1; }
+          # The merge must ship what the candidate was: if the branch moved
+          # after its last RC, that newer code was never on a tester's phone.
+          [ "$(git rev-parse "$RC_TAG^{commit}")" = "$(git rev-parse "origin/$HEAD_REF" 2>/dev/null || git rev-parse "$MERGE_SHA^2")" ] \
+            || echo "::warning::$HEAD_REF moved after $RC_TAG; production gets $RC_TAG, not the branch head"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Muviss $VERSION" "$MERGE_SHA"
+          git push origin "$TAG"
+          # The train cuts nothing while a release branch exists.
+          git push origin --delete "$HEAD_REF" || echo "::notice::$HEAD_REF was already deleted"
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "rc_tag=$RC_TAG"
+            echo "rc_version_code=$(git rev-list --count "$RC_TAG")"
+          } >> "$GITHUB_OUTPUT"
+          echo "### Released \`$TAG\` (promoting \`$RC_TAG\`)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Build signed AAB
-        env:
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          # Optional: both features degrade gracefully to no-op when their
-          # secret isn't configured (see ADR 0007 / docs/RELEASING.md).
-          #
-          # SYNC_ENABLED, SYNC_ENTITLEMENT_OVERRIDE, SUPABASE_URL and
-          # SUPABASE_ANON_KEY are deliberately absent, and that absence IS the
-          # production gate (ADR 0018): without them `SyncAvailability` reports
-          # unconfigured, `NoOpSyncBackend` is bound, and the profile screen
-          # renders no sync row at all. Do not add them here until sync has
-          # been verified against a live project and the privacy/data-safety
-          # docs describe library data leaving the device.
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          # Sentry Gradle plugin (:app:androidApp/build.gradle.kts): uploads the
-          # R8 mapping only when all three of these are set, and does nothing —
-          # no upload, no network — otherwise (#110). SENTRY_ENVIRONMENT is
-          # pinned explicitly rather than left to app/shared/build.gradle.kts's
-          # task-name heuristic, which is a default, not a guarantee.
-          #
-          # These three secrets are not yet set on this repo (owner action,
-          # outside a PR's reach) — until they are, this step's behaviour is
-          # unchanged: no auth token means the plugin still no-ops.
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          SENTRY_ENVIRONMENT: production
-        run: ./gradlew :app:androidApp:bundleRelease --stacktrace
+  promote:
+    needs: tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Required reviewers on this environment are the last human gate before
+    # users get the build (scripts/release/owner-setup.sh configures them).
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Upload AAB artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: muviss-release-${{ github.ref_name }}
-          path: app/androidApp/build/outputs/bundle/release/*.aab
-          if-no-files-found: error
-
-      # ADR 0024: a tag goes to the internal track, nowhere further. Skipped on
-      # dispatch runs (a branch build must not reach a store) and while the
-      # service-account secret is missing, so the job stays green before the
-      # owner has created it (#66).
       - name: Set up Ruby
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
 
-      - name: Upload to Google Play (internal track)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Promote the RC to production (20%)
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          # `draft` until the app's first production release exists; Play
-          # refuses any other status on a never-published app. Set the repo
-          # variable to `completed` (or delete it) after that.
           PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          VERSION_CODE: ${{ needs.tag.outputs.rc_version_code }}
         run: |
           if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; skipping the Play upload."
+            echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; skipping the promotion."
             exit 0
           fi
-          bundle exec fastlane android internal
+          bundle exec fastlane android promote rollout:0.2 "version_code:$VERSION_CODE"
+
+  # On dispatch, build the AAB alone (no upload) so the release path can be
+  # exercised without a version.
+  android-dispatch:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/android-release-build.yml
+    with:
+      ref: ${{ github.ref }}
+      release_tag: dispatch-${{ github.run_number }}
+      upload_internal: false
+    secrets: inherit
 
   # EPIC 12 (issue #14): native desktop installers, one job per OS/format —
-  # jpackage's backends only run on the OS they target (there's no
-  # cross-compiling a macOS .app, a Debian .deb or a Windows .msi from
-  # anywhere else), which is why this is a matrix of jobs rather than one job
-  # running three tasks.
-  #
-  # Windows/MSI used to be left out on the grounds that nobody here could
-  # verify it locally before merging. EPIC 23 put it in: nobody can verify it
-  # locally either way, and running it in CI *is* the verification — WiX ships
-  # preinstalled on windows-latest per actions/runner-images. `fail-fast:
-  # false` means a broken MSI leg does not take the DMG and DEB down with it.
-  # What CI still cannot say is whether the resulting .msi installs and
-  # launches; that needs a Windows machine and is filed.
-  #
-  # Every installer is unsigned/unnotarized — see docs/RELEASING.md's desktop
-  # section. Like the `release` job above, there's no GitHub Release object to
-  # attach to yet, so installers land as workflow artifacts.
+  # jpackage's backends only run on the OS they target, which is why this is a
+  # matrix of jobs rather than one job running three tasks. `fail-fast: false`
+  # means a broken MSI leg does not take the DMG and DEB down with it. Every
+  # installer is unsigned/unnotarized (#39, #179).
   desktop-release:
+    needs: tag
+    if: always() && (needs.tag.result == 'success' || github.event_name == 'workflow_dispatch')
     strategy:
       fail-fast: false
       matrix:
@@ -156,11 +149,12 @@ jobs:
             task: :app:desktopApp:packageMsi
             artifactPath: app/desktopApp/build/compose/binaries/main/msi/*.msi
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
-          # Same reasoning as the `release` job: packageVersion is derived
-          # from git tags/commit count (see app/desktopApp/build.gradle.kts).
+          # packageVersion comes from the exact tag (app/desktopApp/build.gradle.kts).
+          ref: ${{ needs.tag.outputs.tag || github.ref }}
           fetch-depth: 0
 
       - name: Set up JDK 17
@@ -174,93 +168,73 @@ jobs:
 
       - name: Build desktop installer
         env:
-          # Optional, same as the `release` job — both degrade gracefully.
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           # Pinned rather than left to the task-name heuristic in
-          # app/shared/build.gradle.kts (#110's fix, applied here too): none of
-          # packageDeb/packageDmg/packageMsi matches that heuristic's
-          # "release"/"bundle"/"...Distribution" patterns, so without this a
-          # desktop release build's crash reports would file under
-          # "development". No R8/mapping upload applies to desktop — that part
-          # of #110 is Android-only (the Sentry Gradle plugin is applied to
-          # :app:androidApp only).
+          # app/shared/build.gradle.kts (#110): none of the package tasks match
+          # it, so a desktop release's crash reports would file under
+          # "development".
           SENTRY_ENVIRONMENT: production
         run: ./gradlew ${{ matrix.task }} --stacktrace
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: muviss-desktop-${{ matrix.os }}-${{ github.ref_name }}
+          name: muviss-desktop-${{ matrix.os }}-${{ needs.tag.outputs.tag || github.run_number }}
           path: ${{ matrix.artifactPath }}
           if-no-files-found: error
 
-  # Issue #45: until now every artifact above landed only as a *workflow*
-  # artifact — findable by opening the run, gone in 90 days, and invisible to
-  # anyone who just wants to download the app. This attaches them to a real
-  # GitHub Release instead.
-  #
-  # Tag-only. A `workflow_dispatch` run still builds and still uploads workflow
-  # artifacts, but must not invent a release: `github.ref_name` on a dispatch is
-  # a branch name, and a Release called "main" is worse than none.
-  #
-  # `needs` both build jobs, so a failed MSI leg (`fail-fast: false` above lets
-  # the others finish) stops the release rather than publishing a partial one.
-  # If that is ever the wrong call — a platform that simply cannot build should
-  # not block the other three — the fix is `if: always()` plus an explicit check
-  # of each result, not dropping the dependency.
+  # Issue #45: a real GitHub Release, not only workflow artifacts. `needs` the
+  # desktop jobs, so a failed leg stops the release rather than publishing a
+  # partial one. The AAB is the RC's own, from its pre-release (release-rc.yml).
   github-release:
-    needs: [release, desktop-release]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [tag, desktop-release]
+    if: needs.tag.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so the release notes can diff against the previous tag.
+          ref: ${{ needs.tag.outputs.tag }}
           fetch-depth: 0
 
-      # Every artifact from both jobs, each in its own directory. `merge-
-      # multiple` flattens them into one folder so the upload glob is simple —
-      # the names are already distinct (muviss-release-vX, muviss-desktop-<os>-vX).
-      - name: Download all artifacts
+      - name: Download the desktop installers
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: muviss-desktop-*
           merge-multiple: true
 
-      - name: List what will be attached
-        run: |
-          echo "Attaching:"
-          find artifacts -type f -printf '  %p (%s bytes)\n' | sort
+      - name: Download the RC's AAB
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC_TAG: ${{ needs.tag.outputs.rc_tag }}
+        run: gh release download "$RC_TAG" --pattern '*.aab' --dir artifacts
 
-      # `gh` rather than a third-party release action: it ships on the runner,
-      # needs no new supply-chain trust, and this repo already vets dependencies
-      # against a licence allow-list for the app itself.
-      #
-      # --generate-notes gives the commit list; the body above it says what a
-      # reader needs that the commits do not. --verify-tag refuses to invent a
-      # release for a tag that is not really there.
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.tag.outputs.tag }}
+          RC_TAG: ${{ needs.tag.outputs.rc_tag }}
+          VERSION: ${{ needs.tag.outputs.version }}
         run: |
-          PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          PREV="$(git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | grep -B1 -x "$TAG" | head -1)"
+          [ "$PREV" = "$TAG" ] && PREV=""
           {
             echo "Muviss ${TAG}."
             echo
+            if [ -f "fastlane/release-notes/$TAG/en-US.txt" ]; then cat "fastlane/release-notes/$TAG/en-US.txt"; echo; fi
             echo "### Downloads"
             echo
-            echo "- **Android** — on Google Play. The \`.aab\` here is the exact bundle"
-            echo "  uploaded to Play's internal track; it is not installable directly."
+            echo "- **Android** — on Google Play, rolling out in stages. The \`.aab\` here"
+            echo "  is $RC_TAG, the exact bundle promoted to production (not installable directly)."
             echo "- **Desktop** — \`.dmg\` (macOS), \`.deb\` (Linux), \`.msi\` (Windows)."
             echo "  All three are **unsigned and un-notarized** (#39): macOS Gatekeeper"
             echo "  will refuse the DMG until it is opened via right-click > Open, and"
-            echo "  Windows SmartScreen will warn. The MSI has never been installed by"
-            echo "  anyone (#44)."
-            echo "- No iOS build — TestFlight is a manual step, see docs/RELEASING.md."
+            echo "  Windows SmartScreen will warn (#179)."
+            echo "- No iOS build — TestFlight is not wired into CI yet (#78)."
             echo
             echo "### Not in this build"
             echo
@@ -272,9 +246,53 @@ jobs:
               echo "**Full changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
             fi
           } > notes.md
-          gh release create "${TAG}" \
-            --title "Muviss ${TAG}" \
-            --notes-file notes.md \
-            --generate-notes \
-            --verify-tag \
-            artifacts/*
+          gh release create "$TAG" --title "Muviss $TAG" --notes-file notes.md \
+            --verify-tag --latest artifacts/*
+
+  back-merge:
+    needs: tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # A PR opened with GITHUB_TOKEN would get no CI run, and so could never
+      # satisfy develop's required checks; the App's token does not have that
+      # problem. Without the App, the PR still opens and CI must be re-run by hand.
+      - name: Check for the release App
+        id: has-app
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+        run: echo "ok=$([ -n "$APP_ID" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Mint a release App token
+        id: app
+        if: steps.has-app.outputs.ok == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          token: ${{ steps.app.outputs.token || github.token }}
+
+      - name: Open the back-merge PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          BRANCH="back-merge/$TAG"
+          git push origin "HEAD:refs/heads/$BRANCH"
+          gh pr create --base develop --head "$BRANCH" \
+            --title "chore(release): back-merge $TAG into develop" \
+            --label no-landing \
+            --body "$(printf '%s\n\n%s\n\n%s' \
+              "Brings \`$TAG\` (and anything fixed on its release branch) back into \`develop\`, so the train measures the next release from this tag (ADR 0025)." \
+              "**Merge with a merge commit, not a squash** — a squash would copy the release's changes without the history, and the next release PR into main would conflict with itself." \
+              "If it conflicts, resolve it on \`$BRANCH\`.")" \
+            || gh pr create --base develop --head "$BRANCH" \
+              --title "chore(release): back-merge $TAG into develop" \
+              --body "Brings \`$TAG\` back into \`develop\` (ADR 0025). **Merge with a merge commit, not a squash.**"

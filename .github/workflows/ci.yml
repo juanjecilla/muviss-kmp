@@ -1,10 +1,13 @@
 name: CI
 
+# Git flow (ADR 0025): day-to-day PRs target `develop`; only `release/*` and
+# `hotfix/*` PRs target `main`. Pushes to the long-lived branches run too: they
+# are what every release is cut from.
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop, 'release/**', 'hotfix/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,9 +30,9 @@ jobs:
   # Plain git rather than a paths-filter action: the comparison is two lines,
   # and this keeps a third-party action off the critical path of every PR.
   #
-  # Pushes to `main` are never filtered. They are the last line of defence and
-  # they are rare — 4 of them against 14 PRs in the same window — so the saving
-  # would be noise and the risk would not be.
+  # Pushes are never filtered — to `main`, `develop` or a release branch. They
+  # are the last line of defence and far rarer than PR pushes (4 against 14 PRs
+  # in the window above), so the saving would be noise and the risk would not.
   changes:
     name: Which lanes need running
     runs-on: ubuntu-latest

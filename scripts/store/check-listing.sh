@@ -1,7 +1,7 @@
 #!/bin/bash
 # Checks the Play listing under fastlane/metadata/android/ against Play's field
 # limits, so an over-long description fails here rather than at upload time
-# after a full signed build. Used by cut-release.sh and the Fastfile.
+# after a full signed build. Used by start-release.sh and the Fastfile.
 set -euo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
