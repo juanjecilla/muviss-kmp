@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.common.crash.CrashReporter
@@ -200,7 +201,11 @@ fun SettingsScreen(
         }
 
         SectionOverline("About", topPadding = true)
-        AboutSection(appVersionName = state.appVersion.versionName, onOpenLicenses = onOpenLicenses)
+        AboutSection(
+            appVersionName = state.appVersion.versionName,
+            onOpenLicenses = onOpenLicenses,
+            onTestCrash = { throw MuvissTestCrash() },
+        )
     }
 }
 
@@ -366,10 +371,32 @@ private fun ActionRow(
     }
 }
 
+/**
+ * Tapping the version [TEST_CRASH_TAPS] times reveals [TEST_CRASH_LABEL], which
+ * hands control to [onTestCrash] — on the real screen an uncaught throw.
+ *
+ * It ships in release builds on purpose: verifying crash reporting means a crash
+ * from the exact artefact the store serves, because that is what proves the R8
+ * mapping uploaded with it matches (`docs/RELEASING.md`, "Sentry test crash").
+ * The crash takes the ordinary path, so the "Send crash reports" switch governs
+ * it like any other, which makes it the opt-out check too.
+ */
 @Composable
-private fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit) {
+internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, onTestCrash: () -> Unit) {
+    var versionTaps by remember { mutableStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-        Text("Muviss $appVersionName", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Muviss $appVersionName",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.testTag(VERSION_ROW_TAG).clickable { versionTaps++ },
+        )
+        if (versionTaps >= TEST_CRASH_TAPS) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onTestCrash).padding(vertical = MuvissSpacing.s),
+            ) {
+                Text(TEST_CRASH_LABEL, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
+            }
+        }
         Surface(
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -407,6 +434,16 @@ private val TriageControlScheme.displayName: String
         TriageControlScheme.FOUR_WAY -> "Four directions"
         TriageControlScheme.THREE_WAY -> "Three directions + button"
     }
+
+internal const val VERSION_ROW_TAG = "settings_version_row"
+
+internal const val TEST_CRASH_TAPS = 7
+
+/** Not localized: an operator's tool, reached only by the hidden gesture. */
+internal const val TEST_CRASH_LABEL = "Send test crash"
+
+/** What the hidden "Send test crash" action throws; the name is what to search for in Sentry. */
+internal class MuvissTestCrash : RuntimeException("MuvissTestCrash: triggered from Settings > About")
 
 internal const val SNOOZE_PERIOD_LABEL = "Ask me again after"
 

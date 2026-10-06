@@ -113,13 +113,23 @@ pinned in `gradle/libs.versions.toml` as `sentryKmp`) is wired behind a
 (`core/common/src/commonMain/.../crash/CrashReporter.kt`), following the
 same expect/actual convention already used there for `AppDispatchers`:
 
-- **android / iOS / jvm**: real actuals call `Sentry.init`/`captureException`.
-- **js / wasmJs**: no-op actuals. The Sentry KMP artifact does publish
-  (stubbed) `js`/`wasmJs` variants, but this project scopes the Gradle
-  dependency to `androidMain`/`iosMain`/`jvmMain` only (see
-  `core/common/build.gradle.kts`) so the web targets never resolve it at
-  all — one less unknown on an already-unsupported platform (`:core:database`
-  has no web driver either, see CLAUDE.md's setup gotchas).
+- **android / iOS / jvm**: `SentryBackend` (the shared `sentryMain` source
+  set) calls `Sentry.init`/`captureException` from `sentry-kotlin-multiplatform`.
+- **js / wasmJs**: `WebCrashBackend` drives Sentry's browser SDK, loaded from
+  Sentry's CDN only when a DSN is configured (#83). The KMP artifact's web
+  variants are no-op stubs. Web launch is deferred, and so are its source
+  maps (#161).
+
+**The Sentry project.** One org in Sentry's **EU region** (Frankfurt), chosen
+at org creation and not changeable afterwards, and **one** project, `muviss`,
+for every platform; filter by the SDK's `os`/`platform` tags. One project is
+what one baked-in `SENTRY_DSN` gives, and the cost is release health blended
+across platforms — which nothing reads, since session tracking is off (#125).
+Project settings that the privacy policy relies on: Data Scrubber and default
+scrubbers on, **Prevent Storing of IP Addresses on**, a per-key rate limit on
+the DSN. The upload credential is an **organization auth token**: it embeds
+the region URL, so neither the Gradle plugin nor `sentry-cli` needs
+`SENTRY_URL`.
 
 The DSN is baked in via a generated `MuvissBuildConfig` in `:app:shared`,
 the same mechanism ADR 0007 describes for the TMDB key: it reads
@@ -167,7 +177,7 @@ artefact was requested and `development` otherwise.
 mapping on release builds when **all three** of `SENTRY_AUTH_TOKEN`,
 `SENTRY_ORG` and `SENTRY_PROJECT` are present (env or `local.properties`);
 without them it does nothing, so a fresh clone still builds. Nothing here has
-been exercised against a real Sentry project — see "Sentry test crash" below.
+been exercised against a real Sentry project yet — see "Sentry test crash" below.
 
 **Scrubbing.** `CrashScrubber` removes `api_key=`, tokens and `Bearer …` from
 messages, exceptions and breadcrumbs in `beforeSend`/`beforeBreadcrumb`.
@@ -748,17 +758,36 @@ onto white/black, or re-export from the source design tool without
 alpha) — not attempted here since there's no real Muviss brand artwork to
 re-derive it from yet (same caveat item 7 gives the desktop icons).
 
-### Sentry test crash — manual, not attempted
+### Sentry test crash
 
-EPIC 26's full manual checklist (release install, deobfuscated trace, cold-start
-worker crash, opt-out, desktop packaged binary) is on issue #68. Needs a live
-`SENTRY_DSN` (see item 4) and a physical build; not exercised
-in this environment (no DSN configured, no Apple Developer account to
-sign a device build with). To verify once a DSN exists: force a crash
-(e.g. a debug-only button calling `fatalError()` or throwing an
-uncaught Kotlin exception across the `CrashReporter` seam) on a signed
-device/TestFlight build, and confirm it shows up in the Sentry project
-within a few minutes — same check item 8 describes for Android.
+The trigger ships in every build: **Settings → About, tap the version 7 times**
+and a "Send test crash" row appears, which throws an uncaught
+`MuvissTestCrash` (search Sentry for that name). It is in release builds on
+purpose — the point is a crash from the exact artefact the store serves,
+because only that proves the mapping uploaded with it matches.
+
+Run against the release artefacts, with the Sentry secrets set (section 4):
+
+1. **Android** (gates v1.0.0, #81): the `release.yml` log shows the R8 mapping
+   uploaded. Install from the Play internal track, trigger, relaunch (the SDK
+   sends a fatal crash on the next start). The event has
+   `environment=production`, release `com.codingpit.muviss@<versionName>+<versionCode>`,
+   and a **deobfuscated** Kotlin stack.
+2. **Opt-out**: Settings → Privacy → "Send crash reports" off, trigger again,
+   relaunch. No new event.
+3. **Desktop** (gates v1.0.0): install the packaged installer from the GitHub
+   release, trigger, confirm the event with the right release and environment.
+   No mapping applies — the desktop build is not obfuscated.
+4. **iOS**: rides EPIC 35's TestFlight check (#78), which also owns uploading
+   dSYMs for the app and `Shared.framework`; without them a `Shared` frame is
+   a raw address.
+
+**Not checked by hand: a crash in `NewEpisodesWorker` with the app not
+running** (#68 asked for it). What makes that case report is start order —
+`MuvissApplication.onCreate` calls `MuvissCrashReporting.start` before anything
+else, and a worker cold start runs `onCreate` too — which is the same code path
+the gesture exercises. Proving it for real would need a crash hook in the
+worker in release code; that was judged not worth it.
 
 ### Simulator run — verified 2026-09-02
 

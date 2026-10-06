@@ -30,7 +30,7 @@ Walking the Play Console's standard categories:
 | Contacts | No | No | — |
 | App activity (in-app search history, installed apps) | No* | No | Search queries are sent to TMDB to perform the search (see below) but are not logged, stored server-side, or associated with a user identifier by Muviss. |
 | Web browsing | No | No | — |
-| App info and performance (crash logs, diagnostics) | Yes, optionally | Yes, to Sentry | Only when a crash/error occurs in a release build with a Sentry DSN configured. Contains a stack trace + app version + device model/OS version. No collection/progress data, no TMDB query content. Users can opt out in Settings → Privacy → "Send crash reports" (default on), effective immediately. Not collected on web. |
+| App info and performance (crash logs, diagnostics) | Yes, optionally | Yes, to Sentry | Only when a crash/error occurs in a release build with a Sentry DSN configured. Contains a stack trace + app version + device model/OS version. No collection/progress data, no TMDB query content. Users can opt out in Settings → Privacy → "Send crash reports" (default on), effective immediately. Stored in Sentry's EU region. Web is not a launched platform (deferred). |
 | Device or other IDs | No | No | Muviss does not read `ANDROID_ID`, advertising ID, IMEI, etc. |
 | Location | No | No | — |
 

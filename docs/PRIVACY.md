@@ -47,7 +47,7 @@ never leaves the device even incidentally.
    some apps use for a crash-free-session rate) — that switch is off
    unconditionally, on or off, because nothing in the app reads that rate and
    the opt-out above cannot silence it once started (it is not an event, and
-   `beforeSend` only ever sees events). See [Sentry's privacy
+   `beforeSend` only ever sees events). Reports are stored in Sentry's **EU region** (Frankfurt, Germany), and the project is set not to store IP addresses. See [Sentry's privacy
    policy](https://sentry.io/privacy/) for how they handle that data.
 
    Per platform:
