@@ -23,7 +23,18 @@ data class ListsUiState(
     val creating: Boolean = false,
     /** The list currently being renamed, or null while no rename dialog is open. */
     val editing: MediaList? = null,
-)
+    /** Why the open create/rename dialog's last save failed; the dialog stays open until it works (#73). */
+    val dialogError: String? = null,
+    /**
+     * A list the user deleted that is still waiting out its Undo snackbar.
+     * It is hidden at once but only deleted when the snackbar goes without
+     * Undo (#73), so taking it back needs no restore path in the repository.
+     */
+    val pendingDelete: MediaList? = null,
+) {
+    /** [lists] minus the one waiting out its Undo. */
+    val visibleLists: List<MediaList> get() = lists.filterNot { it.id == pendingDelete?.id }
+}
 
 /**
  * Drives the Lists segment of the Collection screen (EPIC 17): observes
@@ -42,34 +53,58 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
             .launchInReporting(viewModelScope)
     }
 
-    fun startCreating() = _state.update { it.copy(creating = true) }
+    fun startCreating() = _state.update { it.copy(creating = true, dialogError = null) }
 
-    fun cancelCreating() = _state.update { it.copy(creating = false) }
+    fun cancelCreating() = _state.update { it.copy(creating = false, dialogError = null) }
 
+    /** Closes the dialog only once the list exists; a failure keeps it open and says why (#73). */
     fun createList(name: String) {
         viewModelScope.launchReporting {
             runCatching { listsUseCases.create(name) }.reportFailure()
-            _state.update { it.copy(creating = false) }
+                .onSuccess { _state.update { it.copy(creating = false, dialogError = null) } }
+                .onFailure { e -> _state.update { it.copy(dialogError = e.toUserMessage(CREATE_FAILED)) } }
         }
     }
 
-    fun startEditing(list: MediaList) = _state.update { it.copy(editing = list) }
+    fun startEditing(list: MediaList) = _state.update { it.copy(editing = list, dialogError = null) }
 
-    fun cancelEditing() = _state.update { it.copy(editing = null) }
+    fun cancelEditing() = _state.update { it.copy(editing = null, dialogError = null) }
 
     fun renameList(name: String) {
         val listId = _state.value.editing?.id ?: return
         viewModelScope.launchReporting {
             runCatching { listsUseCases.rename(listId, name) }.reportFailure()
-            _state.update { it.copy(editing = null) }
+                .onSuccess { _state.update { it.copy(editing = null, dialogError = null) } }
+                .onFailure { e -> _state.update { it.copy(dialogError = e.toUserMessage(RENAME_FAILED)) } }
         }
     }
 
+    /**
+     * Hides [list] behind an Undo snackbar. A second delete while one is
+     * pending commits the first: only one snackbar exists, so only one delete
+     * can be undoable at a time.
+     */
     fun deleteList(list: MediaList) {
+        _state.value.pendingDelete?.let(::commitDelete)
+        _state.update { it.copy(pendingDelete = list) }
+    }
+
+    fun undoDelete() = _state.update { it.copy(pendingDelete = null) }
+
+    /** The Undo snackbar went without Undo: the delete happens now. */
+    fun confirmDelete() {
+        val list = _state.value.pendingDelete ?: return
+        _state.update { it.copy(pendingDelete = null) }
+        commitDelete(list)
+    }
+
+    private fun commitDelete(list: MediaList) {
         viewModelScope.launchReporting { listsUseCases.delete(list.id) }
     }
 
     private companion object {
         const val DEFAULT_ERROR = "Something went wrong"
+        const val CREATE_FAILED = "Couldn't create the list."
+        const val RENAME_FAILED = "Couldn't rename the list."
     }
 }

@@ -53,10 +53,13 @@ class EpisodeCatalogCache(
      * the result back — the pull-to-refresh action, and what the background
      * refresh calls so a widget keeps naming the right episode after new ones
      * air.
+     *
+     * Returns the fetches that failed, empty when every title refreshed. A
+     * failure still never costs a stored catalog (see [fetchAndStore]); the
+     * list exists so a pull-to-refresh can say it did not work instead of
+     * stopping its spinner as if it had (EPIC 30, #73).
      */
-    suspend fun refresh(mediaIds: List<MediaId> = _catalogs.value.keys.toList()) {
-        fetchAndStore(mediaIds)
-    }
+    suspend fun refresh(mediaIds: List<MediaId> = _catalogs.value.keys.toList()): List<Throwable> = fetchAndStore(mediaIds)
 
     /**
      * Titles are fetched a few at a time (`REFRESH_CONCURRENCY`), as the library
@@ -67,12 +70,10 @@ class EpisodeCatalogCache(
      * losing what is stored because the network was unavailable is strictly
      * worse than keeping it.
      */
-    private suspend fun fetchAndStore(mediaIds: List<MediaId>) {
-        mediaIds.mapBounded { id ->
-            fetchEpisodeCatalog(id).onSuccess { seasons ->
-                store.save(id, seasons)
-                _catalogs.update { it + (id to seasons) }
-            }
-        }
-    }
+    private suspend fun fetchAndStore(mediaIds: List<MediaId>): List<Throwable> = mediaIds.mapBounded { id ->
+        fetchEpisodeCatalog(id).onSuccess { seasons ->
+            store.save(id, seasons)
+            _catalogs.update { it + (id to seasons) }
+        }.exceptionOrNull()
+    }.filterNotNull()
 }

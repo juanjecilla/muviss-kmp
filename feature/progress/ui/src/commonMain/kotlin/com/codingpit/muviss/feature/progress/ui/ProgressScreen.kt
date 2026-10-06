@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -140,6 +141,12 @@ private fun WatchNextScreen(
         }
     }
 
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.consumeMessage()
+    }
+
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         PullToRefreshBox(
             isRefreshing = state.refreshing,
@@ -150,7 +157,7 @@ private fun WatchNextScreen(
                 when {
                     state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
 
-                    state.error != null -> ErrorState(state.error!!, onRetry = viewModel::refresh)
+                    state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
 
                     state.items.isEmpty() -> EmptyState(
                         icon = MuvissIcons.WatchNext,
