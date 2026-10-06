@@ -55,6 +55,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -133,6 +134,11 @@ fun TriageScreen(
     // a Retry, and timing it out silently would take away the chance to act.
     LaunchedEffect(state.failedCommit) {
         val failed = state.failedCommit ?: return@LaunchedEffect
+        // The optimistic Undo snackbar for this same card is almost always
+        // still up, and SnackbarHostState queues: the failure used to wait out
+        // the Undo's whole timeout first (#159). The failure is the newer and
+        // more important fact, so it takes the slot.
+        snackbarHostState.currentSnackbarData?.dismiss()
         val result = snackbarHostState.showSnackbar(
             message = "${failed.summary.title}: ${failed.message}",
             actionLabel = "Retry",
@@ -188,9 +194,16 @@ fun TriageScreen(
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     when {
-                        state.loading -> CircularProgressIndicator()
+                        // A refill reading past an empty batch says so (#183);
+                        // and an empty deck mid-refill is still searching, not
+                        // "All caught up".
+                        state.searchingDeeper && state.topCard == null -> SearchingDeeper()
+
+                        state.loading || (state.refilling && state.topCard == null) -> CircularProgressIndicator()
 
                         state.error != null -> ErrorState(state.error.orEmpty(), viewModel::retry)
+
+                        state.topCard == null && state.keepLookingAvailable -> KeepLooking(viewModel::onKeepLooking)
 
                         state.topCard == null -> EmptyDeck(
                             filtered = state.filter != DeckFilter(),
@@ -729,6 +742,34 @@ private fun SnoozeChoiceDialog(
         },
     )
 }
+
+@Composable
+private fun SearchingDeeper() {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        CircularProgressIndicator()
+        Text(
+            text = "Looking further back for titles you haven't seen…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 16.dp, start = 32.dp, end = 32.dp),
+        )
+    }
+}
+
+/** The deck stopped reading without finding anything new, but the catalogue goes on (#183). */
+@Composable
+private fun KeepLooking(onKeepLooking: () -> Unit) {
+    EmptyState(
+        icon = MuvissIcons.CaughtUp,
+        title = "Nothing new near the top",
+        body = "You've already decided on the most popular titles we checked. There are more further back.",
+        actionLabel = KEEP_LOOKING_LABEL,
+        onAction = onKeepLooking,
+    )
+}
+
+internal const val KEEP_LOOKING_LABEL = "Keep looking"
 
 @Composable
 private fun EmptyDeck(filtered: Boolean, onClearFilters: () -> Unit, onOpenSkipped: () -> Unit) {

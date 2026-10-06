@@ -346,6 +346,52 @@ class TriageViewModelTest {
     }
 
     @Test
+    fun `a long run of empty batches stops and offers to keep looking instead of searching forever`() = runTest {
+        // #183: deep in a heavily-triaged catalogue, every batch can come back
+        // empty for dozens of pages. The refill stops after a bounded number of
+        // empty batches rather than holding a bare spinner for minutes.
+        val pagesPerBatch = 5
+        val emptyPages = TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL * pagesPerBatch * 2
+        val fresh = movie("far-back")
+        val byNumber = (1..emptyPages).associateWith { emptyList<MediaSummary>() } + ((emptyPages + 1) to listOf(fresh))
+        val harness = TriageHarness(moviePages = FakeDeckPages(byNumber, totalPages = emptyPages + 10))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.topCard)
+        assertTrue(vm.state.value.keepLookingAvailable, "the catalogue is not spent, so this is not caught up")
+        assertFalse(vm.state.value.exhausted)
+        assertFalse(vm.state.value.searchingDeeper)
+        val requestsBeforeStopping = harness.source.requestedPages.size
+        val bound = TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL * pagesPerBatch
+        assertTrue(requestsBeforeStopping in 1..bound, "one refill reads at most $bound pages, read $requestsBeforeStopping")
+        val furthest = harness.source.requestedPages.max()
+
+        // Keep looking reads on from the cursor; it never starts over at page 1.
+        vm.onKeepLooking()
+        advanceUntilIdle()
+        val second = harness.source.requestedPages.drop(requestsBeforeStopping)
+        assertTrue(second.size in 1..bound, "the next refill is bounded too, read ${second.size}")
+        assertTrue(second.all { it > furthest }, "keep looking continues past page $furthest, read $second")
+        assertTrue(vm.state.value.keepLookingAvailable)
+
+        vm.onKeepLooking()
+        advanceUntilIdle()
+        assertEquals(fresh.id, vm.state.value.topCard?.id)
+        assertFalse(vm.state.value.keepLookingAvailable)
+    }
+
+    @Test
+    fun `a catalogue that genuinely runs out is caught up and offers nothing more`() = runTest {
+        val byNumber = (1..3).associateWith { emptyList<MediaSummary>() }
+        val vm = TriageHarness(moviePages = FakeDeckPages(byNumber, totalPages = 3)).viewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.exhausted)
+        assertFalse(vm.state.value.keepLookingAvailable)
+    }
+
+    @Test
     fun `a load failure surfaces as a retryable error`() = runTest {
         val harness = TriageHarness(movies = listOf(filmA))
         harness.source.failure = IllegalStateException("Unable to resolve host api.themoviedb.org?api_key=SECRET")
