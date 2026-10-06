@@ -222,4 +222,20 @@ class RewatchViewModelTest {
 
         assertEquals("Could not load rewatches", viewModel.state.value.error)
     }
+
+    @Test
+    fun retry_after_a_failed_load_resubscribes() = runTest {
+        collectionApi.failure = MetadataError.Offline()
+        viewModel = RewatchViewModel(
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+        )
+        advanceUntilIdle()
+        assertEquals(MetadataError.Offline().userMessage, viewModel.state.value.error)
+
+        collectionApi.failure = null
+        viewModel.retry()
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.state.value.error)
+    }
 }

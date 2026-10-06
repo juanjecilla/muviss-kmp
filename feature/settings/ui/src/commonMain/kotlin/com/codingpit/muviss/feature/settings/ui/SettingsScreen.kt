@@ -37,6 +37,7 @@ import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.settings.domain.AppTheme
@@ -77,6 +78,16 @@ fun SettingsScreen(
         return
     }
 
+    // Settings that failed to load are defaults, not the user's choices; a
+    // switch drawn from them would lie, and flipping it would overwrite the
+    // real value. So the error replaces the screen (#73).
+    state.error?.let { message ->
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            ErrorState(message, onRetry = viewModel::retry)
+        }
+        return
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -86,8 +97,6 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = MuvissSpacing.s))
-
-        state.error?.let { ErrorBanner(it) }
 
         SectionOverline("Appearance")
         ThemeRow(state.settings.theme, viewModel::onThemeSelected)
@@ -202,11 +211,6 @@ fun SettingsScreen(
         SectionOverline("About", topPadding = true)
         AboutSection(appVersionName = state.appVersion.versionName, onOpenLicenses = onOpenLicenses)
     }
-}
-
-@Composable
-private fun ErrorBanner(message: String) {
-    Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
 }
 
 /** Uppercase overline section header, per the design doc's grouped settings list. */

@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
@@ -58,7 +59,7 @@ const val REWATCH_EMPTY_TAG = "rewatch_empty"
 @Composable
 fun RewatchScreen(viewModel: RewatchViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    RewatchScreenContent(state, onWindowSelected = viewModel::onWindowSelected, onBack = onBack)
+    RewatchScreenContent(state, onWindowSelected = viewModel::onWindowSelected, onBack = onBack, onRetry = viewModel::retry)
 }
 
 /** The screen as a function of its state — what the UI and golden tests render. */
@@ -68,6 +69,7 @@ internal fun RewatchScreenContent(
     state: RewatchUiState,
     onWindowSelected: (RewatchWindow) -> Unit,
     onBack: () -> Unit,
+    onRetry: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -90,11 +92,11 @@ internal fun RewatchScreenContent(
                 .padding(bottom = MuvissSpacing.bottomContent),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-
             WindowSelector(selected = state.window, onSelected = onWindowSelected)
 
-            if (state.stats.ranking.isEmpty) {
+            if (state.error != null) {
+                ErrorState(state.error, onRetry = onRetry)
+            } else if (state.stats.ranking.isEmpty) {
                 NothingRewatchedState(state.window, Modifier.testTag(REWATCH_EMPTY_TAG))
             } else {
                 RankingLists(state.stats.ranking)

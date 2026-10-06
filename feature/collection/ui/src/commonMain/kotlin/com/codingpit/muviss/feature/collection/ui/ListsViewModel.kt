@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaList
 import com.codingpit.muviss.models.toUserMessage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,8 +36,21 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
     private val _state = MutableStateFlow(ListsUiState())
     val state: StateFlow<ListsUiState> = _state.asStateFlow()
 
+    private var observation: Job? = null
+
     init {
-        listsUseCases.observeLists()
+        observe()
+    }
+
+    /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
+    fun retry() {
+        _state.update { it.copy(loading = true, error = null) }
+        observe()
+    }
+
+    private fun observe() {
+        observation?.cancel()
+        observation = listsUseCases.observeLists()
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { lists -> _state.update { it.copy(loading = false, lists = lists, error = null) } }
             .launchInReporting(viewModelScope)

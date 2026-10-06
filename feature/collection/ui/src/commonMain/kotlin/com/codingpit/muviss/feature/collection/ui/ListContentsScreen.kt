@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -62,7 +63,7 @@ fun ListContentsScreen(
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
             when {
                 state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = MuvissSpacing.xxl), style = MaterialTheme.typography.bodyMedium)
+                state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
                 state.items.isEmpty() -> EmptyListContentsState()
                 else -> ListContentsGrid(state.items, onOpenDetail, onRemove = viewModel::removeEntry)
             }

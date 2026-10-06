@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.profile.domain.RewatchStats
 import com.codingpit.muviss.feature.profile.domain.RewatchWindow
 import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,8 +40,21 @@ class RewatchViewModel(
     private val _state = MutableStateFlow(RewatchUiState())
     val state: StateFlow<RewatchUiState> = _state.asStateFlow()
 
+    private var observation: Job? = null
+
     init {
-        window
+        observe()
+    }
+
+    /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
+    fun retry() {
+        _state.update { it.copy(loading = true, error = null) }
+        observe()
+    }
+
+    private fun observe() {
+        observation?.cancel()
+        observation = window
             .flatMapLatest { observeRewatchStats(it) }
             .onEach { stats -> _state.update { it.copy(loading = false, stats = stats, error = null) } }
             .catch { error -> _state.update { it.copy(loading = false, error = error.toUserMessage("Could not load rewatches")) } }

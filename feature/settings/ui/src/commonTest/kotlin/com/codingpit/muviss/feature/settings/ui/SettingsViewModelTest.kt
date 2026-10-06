@@ -36,7 +36,9 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
     val flow = MutableStateFlow(initial)
     var exportResult: Result<String> = Result.success("""{"collection":[],"progress":[]}""")
 
-    override fun observeSettings(): Flow<AppSettings> = flow
+    var failure: Throwable? = null
+
+    override fun observeSettings(): Flow<AppSettings> = failure?.let { kotlinx.coroutines.flow.flow { throw it } } ?: flow
     override suspend fun setTheme(theme: AppTheme) {
         flow.value = flow.value.copy(theme = theme)
     }
@@ -197,6 +199,21 @@ class SettingsViewModelTest {
 
         assertNull(vm.state.value.exportJson)
         assertEquals("Something went wrong", vm.state.value.exportError)
+    }
+
+    @Test
+    fun retry_after_a_failed_settings_load_resubscribes() = runTest {
+        val repository = FakeSettingsRepository().apply { failure = IllegalStateException("db locked") }
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        kotlin.test.assertNotNull(vm.state.value.error)
+
+        repository.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        kotlin.test.assertNull(vm.state.value.error)
+        kotlin.test.assertFalse(vm.state.value.loading)
     }
 }
 

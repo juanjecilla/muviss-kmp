@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.MediaList
@@ -50,7 +51,7 @@ fun ListsScreen(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             when {
                 state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = MuvissSpacing.xxl), style = MaterialTheme.typography.bodyMedium)
+                state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
                 state.lists.isEmpty() -> EmptyListsState()
                 else -> ListsColumn(state.lists, onOpenList, onEdit = viewModel::startEditing, onDelete = viewModel::deleteList)
             }
