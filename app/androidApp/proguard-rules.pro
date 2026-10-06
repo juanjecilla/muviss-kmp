@@ -108,6 +108,14 @@
     <init>(android.content.Context, androidx.work.WorkerParameters);
 }
 
+# The midnight widget refresh (EPIC 22) is the worker EPIC 30's audit found
+# without this rule: armed every night, ClassNotFoundException every night,
+# release builds only — so the "aired by today" boundary never moved on the
+# widget. Every CoroutineWorker in this module needs a line here.
+-keep class com.codingpit.muviss.widget.WidgetMidnightRefreshWorker {
+    <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+
 # WorkManager's WorkManagerInitializer (an AndroidX Startup ContentProvider,
 # runs unconditionally before Application.onCreate) instantiates its
 # Room-generated WorkDatabase_Impl reflectively via a no-arg constructor.

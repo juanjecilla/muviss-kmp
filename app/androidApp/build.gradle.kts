@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.licensee)
     alias(libs.plugins.sentry)
+    alias(libs.plugins.baselineprofile)
 }
 
 kotlin {
@@ -64,6 +65,10 @@ dependencies {
     implementation(libs.androidx.glance.material3)
 
     implementation(libs.androidx.activity.compose)
+    // Installs the committed baseline profile on devices without Play's cloud
+    // profiles (sideloads, first days after release). EPIC 34 / #77.
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(projects.app.baselineprofile)
 
     // Glance builds its ColorProviders from the app's own M3 schemes
     // (see widget/MuvissWidget.kt), so androidApp needs material3 directly.

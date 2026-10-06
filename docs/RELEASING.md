@@ -76,6 +76,28 @@ this toolchain (R8 lags the newest Kotlin metadata version) and is
 harmless — it's a warning about *reading* metadata for reflection helpers,
 not a missing-class error.
 
+### Baseline profile (EPIC 34 / #77)
+
+`app/androidApp/src/release/generated/baselineProfiles/` holds the committed
+baseline and startup profiles, packaged into release builds as
+`assets/dexopt/baseline.prof` and installed by `profileinstaller` where Play's
+cloud profiles have not reached yet. `:app:baselineprofile` generates them by
+walking cold start and every bottom-bar tab (`BaselineProfileGenerator`).
+
+It needs a device and is not in CI. Regenerate when startup or the main screens
+change materially, on an emulator **of its own** — generation reinstalls and
+recompiles the app, so never point it at a device whose Muviss data you care
+about:
+
+```bash
+avdmanager create avd -n Muviss_Baseline -k "system-images;android-36;google_apis_playstore;arm64-v8a"
+emulator -avd Muviss_Baseline -port 5556 -no-window &
+ANDROID_SERIAL=emulator-5556 ./gradlew :app:androidApp:generateReleaseBaselineProfile
+```
+
+`ANDROID_SERIAL` matters: `useConnectedDevices` runs on every attached device
+otherwise.
+
 ## 3. Versioning
 
 `versionCode`/`versionName` are derived from git in

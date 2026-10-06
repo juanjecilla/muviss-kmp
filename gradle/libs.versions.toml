@@ -8,8 +8,13 @@ androidx-appcompat = "1.7.1"
 androidx-core = "1.19.0"
 androidx-espresso = "3.7.0"
 androidx-glance = "1.1.1"
-androidx-lifecycle = "2.11.0-beta01"
+androidx-lifecycle = "2.10.0"
 androidx-testExt = "1.3.0"
+# Baseline profile (EPIC 34 / #77): generated locally, committed, shipped via profileinstaller.
+androidx-baselineprofile = "1.5.0"
+androidx-benchmark = "1.5.0"
+androidx-profileinstaller = "1.4.1"
+androidx-uiautomator = "2.4.0"
 composeMultiplatform = "1.11.1"
 junit = "4.13.2"
 kotlin = "2.4.0"
@@ -18,7 +23,7 @@ kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.9.0"
 ktor = "3.5.0"
 logback = "1.5.34"
-material3 = "1.11.0-alpha07"
+material3 = "1.9.0"
 material3Adaptive = "1.2.0"
 
 # Added for Muviss
@@ -55,6 +60,9 @@ junit = { module = "junit:junit", version.ref = "junit" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
 androidx-testExt-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-testExt" }
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "androidx-espresso" }
+androidx-benchmark-macroJunit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "androidx-benchmark" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "androidx-profileinstaller" }
+androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "androidx-uiautomator" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-work-runtimeKtx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidxWork" }
@@ -146,6 +154,8 @@ compose-gradlePlugin = { module = "org.jetbrains.compose:compose-gradle-plugin",
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+androidTest = { id = "com.android.test", version.ref = "agp" }
+baselineprofile = { id = "androidx.baselineprofile", version.ref = "androidx-baselineprofile" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

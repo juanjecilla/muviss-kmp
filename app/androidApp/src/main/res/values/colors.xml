@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MuvissPalette.Light.background (:core:designsystem Color.kt). The window
+         draws this before Compose's first frame, so it must match the theme. -->
+    <color name="muviss_window_background">#FFFDF8EF</color>
+</resources>
