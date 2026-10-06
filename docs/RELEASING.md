@@ -126,8 +126,9 @@ for every platform; filter by the SDK's `os`/`platform` tags. One project is
 what one baked-in `SENTRY_DSN` gives, and the cost is release health blended
 across platforms — which nothing reads, since session tracking is off (#125).
 Project settings that the privacy policy relies on: Data Scrubber and default
-scrubbers on, **Prevent Storing of IP Addresses on**, a per-key rate limit on
-the DSN. The upload credential is an **organization auth token**: it embeds
+scrubbers on, **Prevent Storing of IP Addresses on**. Rate limits on individual
+DSN keys need a Business plan, so on the free plan Spike Protection is the only
+guard against a crash loop eating the quota. The upload credential is an **organization auth token**: it embeds
 the region URL, so neither the Gradle plugin nor `sentry-cli` needs
 `SENTRY_URL`.
 
