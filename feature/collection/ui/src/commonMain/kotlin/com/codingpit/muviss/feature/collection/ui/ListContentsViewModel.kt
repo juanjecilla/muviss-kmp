@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaListItem
+import com.codingpit.muviss.feature.collection.ui.generated.resources.Res
+import com.codingpit.muviss.feature.collection.ui.generated.resources.error_generic
 import com.codingpit.muviss.models.MediaId
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +22,7 @@ import kotlinx.coroutines.flow.update
 data class ListContentsUiState(
     val loading: Boolean = true,
     val items: List<MediaListItem> = emptyList(),
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 /**
@@ -52,16 +55,12 @@ class ListContentsViewModel(
     private fun observe() {
         observation?.cancel()
         observation = listsUseCases.observeContents(listId)
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { items -> _state.update { it.copy(loading = false, items = items, error = null) } }
             .launchInReporting(viewModelScope)
     }
 
     fun removeEntry(mediaId: MediaId) {
         viewModelScope.launchReporting { listsUseCases.removeEntry(listId, mediaId) }
-    }
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
     }
 }

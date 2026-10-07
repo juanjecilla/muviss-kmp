@@ -28,9 +28,17 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.MediaListItem
+import com.codingpit.muviss.feature.collection.ui.generated.resources.Res
+import com.codingpit.muviss.feature.collection.ui.generated.resources.action_back
+import com.codingpit.muviss.feature.collection.ui.generated.resources.action_remove
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_contents_empty_body
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_contents_empty_title
 import com.codingpit.muviss.models.MediaId
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * One list's contents (EPIC 17): a poster grid, mirroring the Library
@@ -54,7 +62,7 @@ fun ListContentsScreen(
                 title = { Text(name) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(MuvissIcons.Back, contentDescription = "Back")
+                        Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
             )
@@ -63,7 +71,7 @@ fun ListContentsScreen(
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
             when {
                 state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
+                state.error != null -> ErrorState(state.error?.resolve().orEmpty(), onRetry = viewModel::retry)
                 state.items.isEmpty() -> EmptyListContentsState()
                 else -> ListContentsGrid(state.items, onOpenDetail, onRemove = viewModel::removeEntry)
             }
@@ -75,8 +83,8 @@ fun ListContentsScreen(
 private fun EmptyListContentsState() {
     EmptyState(
         icon = MuvissIcons.AddToList,
-        title = "Nothing in this list yet",
-        body = "Add a title from its detail screen.",
+        title = stringResource(Res.string.list_contents_empty_title),
+        body = stringResource(Res.string.list_contents_empty_body),
     )
 }
 
@@ -106,7 +114,7 @@ private fun ListContentsGrid(
                     onClick = { onOpenDetail(item.mediaId) },
                 )
                 TextButton(onClick = { onRemove(item.mediaId) }, contentPadding = PaddingValues(0.dp)) {
-                    Text("Remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(Res.string.action_remove), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

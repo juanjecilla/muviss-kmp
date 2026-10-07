@@ -41,11 +41,40 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.MediaList
+import com.codingpit.muviss.feature.collection.ui.generated.resources.Res
+import com.codingpit.muviss.feature.collection.ui.generated.resources.empty_favorites_body
+import com.codingpit.muviss.feature.collection.ui.generated.resources.empty_favorites_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.empty_library_body
+import com.codingpit.muviss.feature.collection.ui.generated.resources.empty_library_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.empty_movies_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.empty_tv_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.empty_type_body
+import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_by_type
+import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_favorites
+import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_finished
+import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_not_started
+import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_watched
+import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_watching
+import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_with_count
+import com.codingpit.muviss.feature.collection.ui.generated.resources.find_something
+import com.codingpit.muviss.feature.collection.ui.generated.resources.library_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.segment_library
+import com.codingpit.muviss.feature.collection.ui.generated.resources.segment_lists
+import com.codingpit.muviss.feature.collection.ui.generated.resources.sort_by
+import com.codingpit.muviss.feature.collection.ui.generated.resources.sort_rating
+import com.codingpit.muviss.feature.collection.ui.generated.resources.sort_recently_added
+import com.codingpit.muviss.feature.collection.ui.generated.resources.sort_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.type_all
+import com.codingpit.muviss.feature.collection.ui.generated.resources.type_movies
+import com.codingpit.muviss.feature.collection.ui.generated.resources.type_tv
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.WatchStatus
+import org.jetbrains.compose.resources.stringResource
 
 /** The two segments the Collection tab switches between (EPIC 17 adds [LISTS] alongside the original library view) — mirrors Progress's Watch Next/Upcoming switch. */
 private enum class CollectionSegment {
@@ -53,9 +82,10 @@ private enum class CollectionSegment {
     LISTS,
 }
 
+@Composable
 private fun CollectionSegment.label(): String = when (this) {
-    CollectionSegment.LIBRARY -> "Library"
-    CollectionSegment.LISTS -> "Lists"
+    CollectionSegment.LIBRARY -> stringResource(Res.string.segment_library)
+    CollectionSegment.LISTS -> stringResource(Res.string.segment_lists)
 }
 
 /**
@@ -81,7 +111,7 @@ fun CollectionScreen(
             Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Library", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(Res.string.library_title), style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.weight(1f))
             if (segment == CollectionSegment.LIBRARY) {
                 TypeFilterMenuButton(state.typeFilter, onSelect = viewModel::selectTypeFilter)
@@ -116,7 +146,7 @@ private fun TypeFilterMenuButton(selected: CollectionTypeFilter, onSelect: (Coll
         IconButton(onClick = { open = true }) {
             Icon(
                 MuvissIcons.Filter,
-                contentDescription = "Filter by type (${selected.label()})",
+                contentDescription = stringResource(Res.string.filter_by_type, selected.label()),
                 tint = if (selected == CollectionTypeFilter.ALL) {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 } else {
@@ -149,7 +179,7 @@ private fun SortMenuButton(selected: CollectionSort, onSelect: (CollectionSort) 
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) {
-            Icon(MuvissIcons.Sort, contentDescription = "Sort (${selected.label()})", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(MuvissIcons.Sort, contentDescription = stringResource(Res.string.sort_by, selected.label()), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             CollectionSort.entries.forEach { sort ->
@@ -184,7 +214,7 @@ private fun LibraryScreen(
     // no explanation; the ViewModel now parks a one-shot message here.
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
+        snackbarHostState.showSnackbar(message.resolveAsync())
         viewModel.consumeMessage()
     }
 
@@ -200,7 +230,7 @@ private fun LibraryScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     when {
                         state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                        state.error != null -> ErrorState(state.error!!, onRetry = { viewModel.refresh() })
+                        state.error != null -> ErrorState(state.error!!.resolve(), onRetry = { viewModel.refresh() })
                         state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter, state.typeFilter, onOpenSearch)
                         else -> CollectionGrid(state.visibleEntries, onOpenDetail)
                     }
@@ -219,29 +249,27 @@ private fun EmptyLibraryState(filter: CollectionFilter, typeFilter: CollectionTy
         // itself is bare.
         typeFilter != CollectionTypeFilter.ALL -> EmptyState(
             icon = MuvissIcons.Filter,
-            title = "No ${typeFilter.label().lowercase()} here",
-            body = "Nothing in this tab matches the type filter.",
+            title = stringResource(if (typeFilter == CollectionTypeFilter.MOVIES) Res.string.empty_movies_title else Res.string.empty_tv_title),
+            body = stringResource(Res.string.empty_type_body),
         )
 
         filter == CollectionFilter.FAVORITES -> EmptyState(
             icon = MuvissIcons.FavoriteOutline,
-            title = "No favorites yet",
-            body = "Tap the heart on a saved title to add one.",
+            title = stringResource(Res.string.empty_favorites_title),
+            body = stringResource(Res.string.empty_favorites_body),
         )
 
         // The first screen a new user is likely to open. Say what to do and
         // give them the way there (EPIC 30, #73).
         else -> EmptyState(
             icon = MuvissIcons.Library,
-            title = "Nothing here yet",
-            body = "Search for a movie or show and add it to your library.",
-            actionLabel = FIND_SOMETHING_LABEL,
+            title = stringResource(Res.string.empty_library_title),
+            body = stringResource(Res.string.empty_library_body),
+            actionLabel = stringResource(Res.string.find_something),
             onAction = onOpenSearch,
         )
     }
 }
-
-internal const val FIND_SOMETHING_LABEL = "Find something to watch"
 
 /** Status filter chips with count suffixes ("Watching 12"); Favorites keeps its star. */
 @Composable
@@ -261,7 +289,7 @@ private fun CollectionFilterChips(
             FilterChip(
                 selected = filter == state.filter,
                 onClick = { onSelect(filter) },
-                label = { Text(if (count > 0) "${filter.label()} $count" else filter.label()) },
+                label = { Text(if (count > 0) stringResource(Res.string.filter_with_count, filter.label(), count) else filter.label()) },
             )
         }
     }
@@ -299,22 +327,31 @@ private fun CollectionGrid(
 /** Sage progress strip only while actively watching — watched/finished posters stay clean. */
 private fun CollectionEntry.watchingProgress(): Float? = if (status == WatchStatus.WATCHING && airedEpisodes > 0) seenEpisodes / airedEpisodes.toFloat() else null
 
-private fun CollectionFilter.label(): String = when (this) {
-    CollectionFilter.NOT_STARTED -> "Not started"
-    CollectionFilter.WATCHING -> "Watching"
-    CollectionFilter.WATCHED -> "Watched"
-    CollectionFilter.FINISHED -> "Finished"
-    CollectionFilter.FAVORITES -> "★ Favorites"
-}
+@Composable
+private fun CollectionFilter.label(): String = stringResource(
+    when (this) {
+        CollectionFilter.NOT_STARTED -> Res.string.filter_not_started
+        CollectionFilter.WATCHING -> Res.string.filter_watching
+        CollectionFilter.WATCHED -> Res.string.filter_watched
+        CollectionFilter.FINISHED -> Res.string.filter_finished
+        CollectionFilter.FAVORITES -> Res.string.filter_favorites
+    },
+)
 
-private fun CollectionTypeFilter.label(): String = when (this) {
-    CollectionTypeFilter.ALL -> "All"
-    CollectionTypeFilter.MOVIES -> "Movies"
-    CollectionTypeFilter.TV -> "TV shows"
-}
+@Composable
+private fun CollectionTypeFilter.label(): String = stringResource(
+    when (this) {
+        CollectionTypeFilter.ALL -> Res.string.type_all
+        CollectionTypeFilter.MOVIES -> Res.string.type_movies
+        CollectionTypeFilter.TV -> Res.string.type_tv
+    },
+)
 
-private fun CollectionSort.label(): String = when (this) {
-    CollectionSort.RECENTLY_ADDED -> "Recently added"
-    CollectionSort.RATING -> "Rating"
-    CollectionSort.TITLE -> "Title"
-}
+@Composable
+private fun CollectionSort.label(): String = stringResource(
+    when (this) {
+        CollectionSort.RECENTLY_ADDED -> Res.string.sort_recently_added
+        CollectionSort.RATING -> Res.string.sort_rating
+        CollectionSort.TITLE -> Res.string.sort_title
+    },
+)

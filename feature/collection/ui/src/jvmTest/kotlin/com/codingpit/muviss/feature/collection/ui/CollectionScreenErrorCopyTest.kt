@@ -82,7 +82,7 @@ class CollectionScreenErrorCopyTest {
         }
         waitForIdle()
 
-        onNodeWithText(FIND_SOMETHING_LABEL).performClick()
+        onNodeWithText("Find something to watch").performClick()
         kotlin.test.assertEquals(1, opened)
     }
 }

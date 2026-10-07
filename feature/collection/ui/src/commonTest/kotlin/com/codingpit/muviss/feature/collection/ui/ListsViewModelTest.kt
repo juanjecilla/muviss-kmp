@@ -2,6 +2,8 @@
 
 package com.codingpit.muviss.feature.collection.ui
 
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.collection.domain.ListsRepository
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaList
@@ -100,7 +102,7 @@ class ListsViewModelTest {
         val vm = viewModel(FakeListsRepository(failure = MetadataError.RateLimited(retryAfterSeconds = 12)))
         advanceUntilIdle()
 
-        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error.text())
     }
 
     @Test
@@ -109,7 +111,7 @@ class ListsViewModelTest {
         val vm = viewModel(FakeListsRepository(failure = leaky))
         advanceUntilIdle()
 
-        assertEquals("Something went wrong", vm.state.value.error)
+        assertEquals("Something went wrong", vm.state.value.error.text())
     }
 
     @Test
@@ -181,7 +183,7 @@ class ListsViewModelTest {
         advanceUntilIdle()
 
         assertTrue(vm.state.value.creating, "the dialog must not close as if it worked")
-        assertEquals("Couldn't create the list.", vm.state.value.dialogError)
+        assertEquals("Couldn't create the list.", vm.state.value.dialogError.text())
     }
 
     @Test
@@ -196,7 +198,7 @@ class ListsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(marathon, vm.state.value.editing)
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.dialogError)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.dialogError.text())
     }
 
     @Test
@@ -243,7 +245,7 @@ class ListsViewModelTest {
         vm.deleteList(marathon)
         advanceUntilIdle()
 
-        assertEquals("Couldn't delete the list.", vm.state.value.message)
+        assertEquals("Couldn't delete the list.", vm.state.value.message.text())
         assertNull(vm.state.value.lastDeleted)
         assertEquals(listOf(marathon), vm.state.value.lists)
     }
@@ -270,7 +272,7 @@ class ListsViewModelTest {
         val repository = FakeListsRepository(listOf(MediaList("1", "Marathon 2026", 0L, 0L)), failure = MetadataError.Offline())
         val vm = viewModel(repository)
         advanceUntilIdle()
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error.text())
 
         repository.failure = null
         vm.retry()
@@ -280,3 +282,6 @@ class ListsViewModelTest {
         assertEquals(listOf("Marathon 2026"), vm.state.value.lists.map { it.name })
     }
 }
+
+/** What the user would read, in the test JVM's pinned en-US. */
+private suspend fun UiText?.text(): String? = this?.resolveAsync()

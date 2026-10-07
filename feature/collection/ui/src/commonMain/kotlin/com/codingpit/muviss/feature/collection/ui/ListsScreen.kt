@@ -37,8 +37,27 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.MediaList
+import com.codingpit.muviss.feature.collection.ui.generated.resources.Res
+import com.codingpit.muviss.feature.collection.ui.generated.resources.action_cancel
+import com.codingpit.muviss.feature.collection.ui.generated.resources.action_create
+import com.codingpit.muviss.feature.collection.ui.generated.resources.action_rename
+import com.codingpit.muviss.feature.collection.ui.generated.resources.action_save
+import com.codingpit.muviss.feature.collection.ui.generated.resources.action_undo
+import com.codingpit.muviss.feature.collection.ui.generated.resources.delete_list
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_deleted
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_name_placeholder
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_titles
+import com.codingpit.muviss.feature.collection.ui.generated.resources.lists_empty_body
+import com.codingpit.muviss.feature.collection.ui.generated.resources.lists_empty_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.new_list
+import com.codingpit.muviss.feature.collection.ui.generated.resources.rename_list
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The Lists segment of the Collection screen (EPIC 17): every user-defined
@@ -61,8 +80,8 @@ fun ListsScreen(
     LaunchedEffect(state.lastDeleted) {
         val deleted = state.lastDeleted ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
-            message = "Deleted \u201C${deleted.list.name}\u201D",
-            actionLabel = "Undo",
+            message = getString(Res.string.list_deleted, deleted.list.name),
+            actionLabel = getString(Res.string.action_undo),
             duration = SnackbarDuration.Long,
         )
         if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(deleted) else viewModel.deleteUndoDismissed(deleted)
@@ -70,7 +89,7 @@ fun ListsScreen(
 
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
+        snackbarHostState.showSnackbar(message.resolveAsync())
         viewModel.consumeMessage()
     }
 
@@ -78,7 +97,7 @@ fun ListsScreen(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             when {
                 state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
+                state.error != null -> ErrorState(state.error?.resolve().orEmpty(), onRetry = viewModel::retry)
                 state.lists.isEmpty() -> EmptyListsState()
                 else -> ListsColumn(state.lists, onOpenList, onEdit = viewModel::startEditing, onDelete = viewModel::deleteList)
             }
@@ -86,7 +105,7 @@ fun ListsScreen(
         ExtendedFloatingActionButton(
             onClick = viewModel::startCreating,
             icon = { Icon(MuvissIcons.Add, contentDescription = null) },
-            text = { Text("New list") },
+            text = { Text(stringResource(Res.string.new_list)) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(MuvissSpacing.l),
         )
         SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
@@ -94,10 +113,10 @@ fun ListsScreen(
 
     if (state.creating) {
         ListNameDialog(
-            title = "New list",
+            title = stringResource(Res.string.new_list),
             initialName = "",
-            confirmLabel = "Create",
-            error = state.dialogError,
+            confirmLabel = stringResource(Res.string.action_create),
+            error = state.dialogError?.resolve(),
             onConfirm = viewModel::createList,
             onDismiss = viewModel::cancelCreating,
         )
@@ -105,10 +124,10 @@ fun ListsScreen(
 
     state.editing?.let { editing ->
         ListNameDialog(
-            title = "Rename list",
+            title = stringResource(Res.string.rename_list),
             initialName = editing.name,
-            confirmLabel = "Save",
-            error = state.dialogError,
+            confirmLabel = stringResource(Res.string.action_save),
+            error = state.dialogError?.resolve(),
             onConfirm = viewModel::renameList,
             onDismiss = viewModel::cancelEditing,
         )
@@ -119,8 +138,8 @@ fun ListsScreen(
 private fun EmptyListsState() {
     EmptyState(
         icon = MuvissIcons.AddToList,
-        title = "No lists yet",
-        body = "Tap \"New list\" to start one, like \"Marathon 2026\".",
+        title = stringResource(Res.string.lists_empty_title),
+        body = stringResource(Res.string.lists_empty_body),
     )
 }
 
@@ -167,14 +186,14 @@ private fun ListRow(
             Column(Modifier.weight(1f)) {
                 Text(list.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (list.entryCount == 1) "1 title" else "${list.entryCount} titles",
+                    pluralStringResource(Res.plurals.list_titles, list.entryCount, list.entryCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = onEdit) { Text("Rename") }
+            TextButton(onClick = onEdit) { Text(stringResource(Res.string.action_rename)) }
             IconButton(onClick = onDelete) {
-                Icon(MuvissIcons.Close, contentDescription = "Delete ${list.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(MuvissIcons.Close, contentDescription = stringResource(Res.string.delete_list, list.name), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -198,7 +217,7 @@ private fun ListNameDialog(
                 value = name,
                 onValueChange = { name = it },
                 singleLine = true,
-                placeholder = { Text("List name") },
+                placeholder = { Text(stringResource(Res.string.list_name_placeholder)) },
                 isError = error != null,
                 supportingText = error?.let { message -> { Text(message) } },
             )
@@ -207,7 +226,7 @@ private fun ListNameDialog(
             TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text(confirmLabel) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
         },
     )
 }
