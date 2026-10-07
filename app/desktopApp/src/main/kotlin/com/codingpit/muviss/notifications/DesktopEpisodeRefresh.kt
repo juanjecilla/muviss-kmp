@@ -1,5 +1,7 @@
 package com.codingpit.muviss.notifications
 
+import com.codingpit.muviss.NotificationText
+import com.codingpit.muviss.ResourceNotificationText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -72,7 +74,7 @@ data class EpisodeNotification(val title: String, val message: String)
  * Returns null when there is nothing to say, so the caller has no branch of
  * its own to get wrong.
  */
-fun newEpisodesNotification(results: List<NewEpisodesResult>): EpisodeNotification? = when {
+suspend fun newEpisodesNotification(results: List<NewEpisodesResult>, text: NotificationText = ResourceNotificationText): EpisodeNotification? = when {
     results.isEmpty() -> null
 
     results.size == 1 -> {
@@ -81,12 +83,12 @@ fun newEpisodesNotification(results: List<NewEpisodesResult>): EpisodeNotificati
             title = only.title,
             // Same wording as the Android notifier's contentText(), whose title
             // likewise already carries the show's name.
-            message = only.latestEpisodeLabel?.let { "$it is out" } ?: "Now available",
+            message = only.latestEpisodeLabel?.let { text.episodeOut(it) } ?: text.nowAvailable(),
         )
     }
 
     else -> EpisodeNotification(
-        title = "${results.size} shows have new episodes",
+        title = text.showsWithNewEpisodes(results.size),
         message = results.joinToString(", ") { it.title },
     )
 }

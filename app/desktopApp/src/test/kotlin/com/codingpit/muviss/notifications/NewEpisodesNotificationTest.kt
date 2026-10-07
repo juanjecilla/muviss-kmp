@@ -1,7 +1,9 @@
 package com.codingpit.muviss.notifications
 
+import com.codingpit.muviss.NotificationText
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -19,16 +21,25 @@ class NewEpisodesNotificationTest {
         latestEpisodeLabel = label,
     )
 
+    /** The production copy follows the host's locale; these pin English so the wording itself is under test. */
+    private object English : NotificationText {
+        override suspend fun episodeOut(episodeLabel: String) = "$episodeLabel is out"
+        override suspend fun nowAvailable() = "Now available"
+        override suspend fun showsWithNewEpisodes(count: Int) = "$count shows have new episodes"
+    }
+
+    private fun english(results: List<NewEpisodesResult>) = runBlocking { newEpisodesNotification(results, English) }
+
     @Test
     fun `nothing new is nothing to say`() {
         // Null rather than an empty notification, so the caller has no branch
         // of its own to get wrong.
-        assertNull(newEpisodesNotification(emptyList()))
+        assertNull(english(emptyList()))
     }
 
     @Test
     fun `one show puts its name in the title and the episode in the body`() {
-        val notification = newEpisodesNotification(listOf(result("Severance", "S02E05")))
+        val notification = english(listOf(result("Severance", "S02E05")))
 
         assertEquals("Severance", notification?.title)
         // Same wording as the Android notifier's contentText(), whose title
@@ -38,14 +49,14 @@ class NewEpisodesNotificationTest {
 
     @Test
     fun `a movie has no episode label to name`() {
-        val notification = newEpisodesNotification(listOf(result("Dune", null)))
+        val notification = english(listOf(result("Dune", null)))
 
         assertEquals("Now available", notification?.message)
     }
 
     @Test
     fun `several shows collapse into one balloon that names them`() {
-        val notification = newEpisodesNotification(
+        val notification = english(
             listOf(result("Severance", "S02E05"), result("Andor", "S02E01"), result("Dune", null)),
         )
 
