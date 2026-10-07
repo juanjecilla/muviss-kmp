@@ -38,6 +38,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
@@ -57,6 +58,8 @@ fun SearchScreen(
     viewModel: SearchViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenTriage: () -> Unit,
+    introVisible: Boolean = false,
+    onIntroDismissed: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -75,7 +78,7 @@ fun SearchScreen(
             }
 
             else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage)
+                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage, intro = DiscoverIntro(introVisible, onIntroDismissed))
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -168,6 +171,7 @@ private fun DiscoverBrowse(
     onSelectGenre: (Genre, MediaType) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
     onOpenTriage: () -> Unit,
+    intro: DiscoverIntro = DiscoverIntro(),
 ) {
     Column(
         Modifier
@@ -176,6 +180,8 @@ private fun DiscoverBrowse(
             .padding(bottom = MuvissSpacing.bottomContent),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
     ) {
+        // First run only (EPIC 30, #73): what the app is for, before anything else.
+        if (intro.visible) DiscoverIntroCard(onDismiss = intro.onDismiss)
         // Triage's main entry point (ADR 0010). It leads the browse because
         // an empty or thin library is exactly the state it exists to fix.
         TriageEntryCard(onOpenTriage)
@@ -189,6 +195,44 @@ private fun DiscoverBrowse(
         MediaCarousel("Popular TV", state.popularTv, onOpenDetail)
     }
 }
+
+/** Whether the first-run intro shows, and what dismissing it does. Bundled so DiscoverBrowse stays under detekt's parameter budget. */
+private class DiscoverIntro(val visible: Boolean = false, val onDismiss: () -> Unit = {})
+
+/**
+ * The one-time Discover intro (EPIC 30, #73): the app's three moves, once, on
+ * a fresh install. Three lines rather than a pager — the tabs are right
+ * there, and a carousel is one more thing to swipe past.
+ */
+@Composable
+private fun DiscoverIntroCard(onDismiss: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth().testTag(DISCOVER_INTRO_TAG),
+    ) {
+        Column(Modifier.padding(MuvissSpacing.l), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+            Text("Welcome to Muviss", style = MaterialTheme.typography.titleMedium)
+            IntroLine(MuvissIcons.Search, "Find a movie or show and add it to your library.")
+            IntroLine(MuvissIcons.WatchNext, "Tick episodes as you watch — Muviss works out what's next.")
+            IntroLine(MuvissIcons.CaughtUp, "Got a backlog? Fill your library one card at a time.")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text(INTRO_DISMISS_LABEL) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntroLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = MuvissSpacing.m))
+    }
+}
+
+internal const val DISCOVER_INTRO_TAG = "discover-intro"
+internal const val INTRO_DISMISS_LABEL = "Got it"
 
 /** The way into the triage deck. Not a bottom-bar tab — five is the ceiling. */
 @Composable

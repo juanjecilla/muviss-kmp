@@ -3,7 +3,9 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
@@ -60,11 +62,23 @@ class SearchScreenErrorCopyTest {
         onNodeWithText("SECRET", substring = true).assertDoesNotExist()
         onNodeWithText("themoviedb", substring = true).assertDoesNotExist()
     }
+
+    @Test
+    fun the_first_run_intro_shows_and_dismisses() = runComposeUiTest {
+        // EPIC 30 (#73): the one-time Discover intro.
+        var dismissed = 0
+        setContent { SearchWithFailure(failure = null, introVisible = true, onIntroDismissed = { dismissed++ }) }
+        waitForIdle()
+
+        onNodeWithTag(DISCOVER_INTRO_TAG).assertExists()
+        onNodeWithText(INTRO_DISMISS_LABEL).performClick()
+        kotlin.test.assertEquals(1, dismissed)
+    }
 }
 
 @Composable
-private fun SearchWithFailure(failure: Throwable) {
-    val repo = FakeRepo(movieGenresResult = Result.failure(failure))
+private fun SearchWithFailure(failure: Throwable?, introVisible: Boolean = false, onIntroDismissed: () -> Unit = {}) {
+    val repo = if (failure != null) FakeRepo(movieGenresResult = Result.failure(failure)) else FakeRepo()
     val viewModel = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
@@ -74,6 +88,6 @@ private fun SearchWithFailure(failure: Throwable) {
         FakeTriageApi(),
     )
     MuvissTheme(darkTheme = false) {
-        SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {})
+        SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {}, introVisible = introVisible, onIntroDismissed = onIntroDismissed)
     }
 }
