@@ -6,18 +6,22 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.test.swipe
@@ -172,6 +176,11 @@ class StoreShotTest {
             // A dialog or popup is a second root: onRoot() would throw, and a
             // shot taken around one would be the wrong store image (#231).
             settle { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
+            // The test pointer stays where it last touched, and whatever is
+            // under it draws a hover layer: a store image showed a nav tab
+            // and an episode row lit up that nobody was pointing at.
+            onRoot().performMouseInput { moveTo(androidx.compose.ui.geometry.Offset(-10f, -10f)) }
+            settle { true }
             shots += name to onRoot().captureToImage().toAwtImage()
         }
 
@@ -235,25 +244,28 @@ class StoreShotTest {
         write(shots, locale, dark)
     }
 
+    // Through the click action, not a touch: a touched tab kept its pressed
+    // layer in Skiko, and the triage shot showed Profile lit up under a
+    // screen that no tab owns. A device shows none (checked on an emulator).
     private fun SkikoComposeUiTest.tab(label: String) {
         onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().firstOrNull()
-            ?.let { onAllNodes(hasText(label) and hasClickAction())[0].performClick() }
-            ?: onAllNodes(hasClickAction() and hasAnyDescendantText(label))[0].performClick()
+            ?.let { onAllNodes(hasText(label) and hasClickAction())[0].performSemanticsAction(SemanticsActions.OnClick) }
+            ?: onAllNodes(hasClickAction() and hasAnyDescendantText(label))[0].performSemanticsAction(SemanticsActions.OnClick)
     }
 
     /**
      * Scrolls until the node with [text] sits [marginPx] below the top edge.
-     * The drag is slow so it stops where it is released instead of flinging.
+     * Through the scroll action of the tallest scrollable, not a drag: a drag
+     * that starts on a row leaves that row's pressed layer in the shot.
      */
     private fun SkikoComposeUiTest.bringToTop(text: String, marginPx: Float) {
         waitForIdle()
         val topPx = onAllNodes(hasText(text))[0].getUnclippedBoundsInRoot().top.value * DENSITY
         val distance = topPx - marginPx
         if (kotlin.math.abs(distance) < 4f) return
-        onRoot().performTouchInput {
-            val startY = if (distance > 0) bottom * 0.85f else bottom * 0.15f
-            swipe(start = androidx.compose.ui.geometry.Offset(centerX, startY), end = androidx.compose.ui.geometry.Offset(centerX, startY - distance), durationMillis = 2_000)
-        }
+        val scrollables = onAllNodes(hasScrollAction())
+        val tallest = scrollables.fetchSemanticsNodes().withIndex().maxBy { it.value.size.height }.index
+        scrollables[tallest].performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, distance) }
         waitForIdle()
     }
 
