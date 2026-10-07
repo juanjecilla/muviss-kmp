@@ -53,12 +53,8 @@ val settingsDataModule: Module = module {
     single<SettingsRepository> {
         SqlDelightSettingsRepository(
             get(),
-            ExportQueries(
-                collection = get<MuvissDatabase>().collectionEntryQueries,
-                progress = get<MuvissDatabase>().episodeProgressQueries,
-                plays = get<MuvissDatabase>().episodePlayQueries,
-                triage = get<MuvissDatabase>().triageDecisionQueries,
-            ),
+            ExportQueries(get<MuvissDatabase>()),
+            get(),
             get(),
             get(),
         )
