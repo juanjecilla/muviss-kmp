@@ -39,17 +39,34 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.common.epochDayOf
-import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.dateText
+import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_cancel
+import com.codingpit.muviss.feature.search.ui.generated.resources.clear
+import com.codingpit.muviss.feature.search.ui.generated.resources.clear_history
+import com.codingpit.muviss.feature.search.ui.generated.resources.clear_history_body
+import com.codingpit.muviss.feature.search.ui.generated.resources.clear_history_question
+import com.codingpit.muviss.feature.search.ui.generated.resources.crew
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_code
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_mark_watched
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_not_watched
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_watched_again
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_watched_many
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_watched_once
+import com.codingpit.muviss.feature.search.ui.generated.resources.guest_stars
+import com.codingpit.muviss.feature.search.ui.generated.resources.runtime_minutes
+import com.codingpit.muviss.feature.search.ui.generated.resources.tmdb_score
+import com.codingpit.muviss.feature.search.ui.generated.resources.undo_last
 import com.codingpit.muviss.models.EpisodeCredit
 import com.codingpit.muviss.models.EpisodeDetails
-
-internal const val EPISODE_CLEAR_HISTORY_LABEL = "Clear watch history"
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * One episode, in full: the source's still, overview, guest cast and crew,
@@ -73,7 +90,7 @@ fun EpisodeDetailScreen(
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(MuvissSpacing.xl))
 
             state.error != null -> ErrorState(
-                message = state.error!!,
+                message = state.error!!.resolve(),
                 onRetry = viewModel::load,
                 modifier = Modifier.align(Alignment.Center),
             )
@@ -93,15 +110,15 @@ fun EpisodeDetailScreen(
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text("Clear watch history?") },
-            text = { Text("Every recorded viewing of this episode is forgotten, and it goes back to unwatched. This can't be undone.") },
+            title = { Text(stringResource(Res.string.clear_history_question)) },
+            text = { Text(stringResource(Res.string.clear_history_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.clearHistory()
                     confirmClear = false
-                }) { Text("Clear") }
+                }) { Text(stringResource(Res.string.clear)) }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(CANCEL_NOTE_LABEL) } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
 }
@@ -123,7 +140,7 @@ private fun EpisodeBody(
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         ) {
             Text(
-                "S${details.seasonNumber} · E${details.episodeNumber}",
+                stringResource(Res.string.episode_code, details.seasonNumber, details.episodeNumber),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -136,8 +153,8 @@ private fun EpisodeBody(
 
             WatchHistorySection(state, onWatchedAgain, onUndoLatest, onClearHistory)
 
-            CreditRow("Guest stars", details.guestStars) { it.character }
-            CreditRow("Crew", details.crew) { it.job }
+            CreditRow(stringResource(Res.string.guest_stars), details.guestStars) { it.character }
+            CreditRow(stringResource(Res.string.crew), details.crew) { it.job }
         }
     }
 }
@@ -152,11 +169,11 @@ private fun EpisodeStill(details: EpisodeDetails) {
 @Composable
 private fun EpisodeMetadataLine(details: EpisodeDetails) {
     val parts = buildList {
-        details.runtimeMinutes?.let { add("$it min") }
-        details.airDateEpochDay?.let { add(formatEpochDay(it)) }
+        details.runtimeMinutes?.let { add(stringResource(Res.string.runtime_minutes, it)) }
+        details.airDateEpochDay?.let { add(dateText(it)) }
         // Labelled "TMDB" for the same reason the title screen's is: the stars
         // elsewhere in the app are the user's own rating, out of five.
-        details.voteAverage?.let { add("TMDB ${it.toString().take(3)}") }
+        details.voteAverage?.let { add(stringResource(Res.string.tmdb_score, it.toString().take(3))) }
     }
     if (parts.isEmpty()) return
     Text(
@@ -182,30 +199,30 @@ private fun WatchHistorySection(
         Column(Modifier.padding(MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
             Text(
                 when (state.playCount) {
-                    0 -> "You haven't watched this"
-                    1 -> "You watched this once"
-                    else -> "You watched this ${state.playCount}×"
+                    0 -> stringResource(Res.string.episode_not_watched)
+                    1 -> stringResource(Res.string.episode_watched_once)
+                    else -> stringResource(Res.string.episode_watched_many, state.playCount)
                 },
                 style = MaterialTheme.typography.titleSmall,
             )
             if (state.plays.isNotEmpty()) {
                 Text(
-                    state.plays.joinToString(" · ") { formatEpochDay(epochDayOf(it.watchedAtEpochMs)) },
+                    state.plays.map { dateText(epochDayOf(it.watchedAtEpochMs)) }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
                 Button(onClick = onWatchedAgain, shape = CircleShape) {
-                    Text(if (state.seen) "Watched again" else "Mark watched")
+                    Text(stringResource(if (state.seen) Res.string.episode_watched_again else Res.string.episode_mark_watched))
                 }
                 if (state.seen) {
-                    OutlinedButton(onClick = onUndoLatest, shape = CircleShape) { Text("Undo last") }
+                    OutlinedButton(onClick = onUndoLatest, shape = CircleShape) { Text(stringResource(Res.string.undo_last)) }
                 }
             }
             if (state.seen) {
                 TextButton(onClick = onClearHistory, modifier = Modifier.align(Alignment.End)) {
-                    Text(EPISODE_CLEAR_HISTORY_LABEL, color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(Res.string.clear_history), color = MaterialTheme.colorScheme.error)
                 }
             }
         }

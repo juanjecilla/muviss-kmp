@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
@@ -13,12 +15,13 @@ import com.codingpit.muviss.feature.search.domain.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.error_generic
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -48,7 +51,7 @@ data class SearchUiState(
     val mode: SearchMode = SearchMode.DISCOVER,
     val loading: Boolean = false,
     val loadingMore: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     // SEARCH_RESULTS
     val results: List<MediaSummary> = emptyList(),
     val resultsPage: Int = 1,
@@ -145,7 +148,7 @@ class SearchViewModel(
                         it.copy(loading = false, genreResults = page.items, genrePage = page.page, genreTotalPages = page.totalPages)
                     }
                 },
-                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )
         }
     }
@@ -227,7 +230,7 @@ class SearchViewModel(
                         )
                     }
                 },
-                onFailure = { e -> _state.update { it.copy(loadingMore = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
+                onFailure = { e -> _state.update { it.copy(loadingMore = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )
         }
     }
@@ -252,12 +255,12 @@ class SearchViewModel(
                     )
                 }
             },
-            onFailure = { e -> _state.update { it.copy(loading = false, loadingMore = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
+            onFailure = { e -> _state.update { it.copy(loading = false, loadingMore = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
         )
     }
 
     private fun fail(e: Throwable) {
-        _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) }
+        _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) }
     }
 
     /**
@@ -281,6 +284,5 @@ class SearchViewModel(
 
     private companion object {
         const val DEBOUNCE_MS = 300L
-        const val DEFAULT_ERROR = "Something went wrong"
     }
 }

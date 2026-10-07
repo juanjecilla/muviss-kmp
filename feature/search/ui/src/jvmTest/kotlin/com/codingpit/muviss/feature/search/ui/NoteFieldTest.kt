@@ -29,7 +29,7 @@ class NoteFieldTest {
             }
         }
 
-        onNodeWithText(ADD_NOTE_LABEL).assertIsDisplayed()
+        onNodeWithText("Add a private note").assertIsDisplayed()
     }
 
     @Test
@@ -41,7 +41,7 @@ class NoteFieldTest {
         }
 
         onNodeWithText("the finale earns it").assertIsDisplayed()
-        onNodeWithText(ADD_NOTE_LABEL).assertDoesNotExist()
+        onNodeWithText("Add a private note").assertDoesNotExist()
     }
 
     @Test
@@ -68,7 +68,7 @@ class NoteFieldTest {
         }
 
         onNodeWithTag(NOTE_EDITOR_TAG).performTextInput("worth a rewatch")
-        onNodeWithText(SAVE_NOTE_LABEL).performClick()
+        onNodeWithText("Save").performClick()
 
         assertEquals("worth a rewatch", saved)
     }
@@ -83,7 +83,7 @@ class NoteFieldTest {
         }
 
         onNodeWithTag(NOTE_EDITOR_TAG).performTextClearance()
-        onNodeWithText(SAVE_NOTE_LABEL).performClick()
+        onNodeWithText("Save").performClick()
 
         assertEquals("", saved, "clearing the field is how a note is deleted; collection's api normalizes blank to null")
     }
@@ -99,7 +99,7 @@ class NoteFieldTest {
         }
 
         onNodeWithTag(NOTE_EDITOR_TAG).performTextInput("scratch that")
-        onNodeWithText(CANCEL_NOTE_LABEL).performClick()
+        onNodeWithText("Cancel").performClick()
 
         assertTrue(cancelled)
         assertEquals(null, saved)

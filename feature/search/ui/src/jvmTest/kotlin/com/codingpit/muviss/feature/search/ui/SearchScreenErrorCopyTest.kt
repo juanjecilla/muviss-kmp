@@ -71,7 +71,7 @@ class SearchScreenErrorCopyTest {
         waitForIdle()
 
         onNodeWithTag(DISCOVER_INTRO_TAG).assertExists()
-        onNodeWithText(INTRO_DISMISS_LABEL).performClick()
+        onNodeWithText("Got it").performClick()
         kotlin.test.assertEquals(1, dismissed)
     }
 }
