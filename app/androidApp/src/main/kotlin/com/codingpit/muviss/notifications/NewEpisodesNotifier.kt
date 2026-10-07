@@ -14,6 +14,7 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.codingpit.muviss.MainActivity
+import com.codingpit.muviss.R
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 
 /**
@@ -40,19 +41,19 @@ class NewEpisodesNotifier(private val context: Context) {
     fun notify(results: List<NewEpisodesResult>) {
         if (results.isEmpty() || !canPostNotifications()) return
 
-        ensureChannel()
+        ensureChannel(context)
         val manager = NotificationManagerCompat.from(context)
 
         results.forEach { result ->
             manager.notify(result.notificationId(), buildShowNotification(result))
         }
         if (results.size > SUMMARY_THRESHOLD) {
-            manager.notify(SUMMARY_NOTIFICATION_ID, buildSummaryNotification(results))
+            manager.notify(NotificationIds.SUMMARY, buildSummaryNotification(results))
         }
     }
 
     private fun buildShowNotification(result: NewEpisodesResult): Notification = NotificationCompat.Builder(context, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_popup_reminder)
+        .setSmallIcon(R.drawable.ic_stat_muviss)
         .setContentTitle(result.title)
         .setContentText(result.contentText())
         .setAutoCancel(true)
@@ -64,7 +65,7 @@ class NewEpisodesNotifier(private val context: Context) {
         val style = NotificationCompat.InboxStyle()
         results.forEach { style.addLine(it.summaryLine()) }
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(R.drawable.ic_stat_muviss)
             .setContentTitle("${results.size} shows have new episodes")
             .setContentText("Tap to open Muviss")
             .setStyle(style)
@@ -95,24 +96,10 @@ class NewEpisodesNotifier(private val context: Context) {
         }
         return PendingIntent.getActivity(
             context,
-            SUMMARY_NOTIFICATION_ID,
+            NotificationIds.SUMMARY,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-    }
-
-    /**
-     * Via `NotificationChannelCompat`, not the platform `NotificationChannel`:
-     * channels are API 26 and `minSdk` is 24, so the platform constructor is a
-     * `NewApi` error here. The compat builder is a no-op on 24/25, where a
-     * channel is neither needed nor meaningful.
-     */
-    private fun ensureChannel() {
-        val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManager.IMPORTANCE_DEFAULT)
-            .setName("New episodes")
-            .setDescription("Alerts when a saved show has a new episode out")
-            .build()
-        NotificationManagerCompat.from(context).createNotificationChannel(channel)
     }
 
     private fun canPostNotifications(): Boolean {
@@ -124,7 +111,7 @@ class NewEpisodesNotifier(private val context: Context) {
         return true
     }
 
-    private fun NewEpisodesResult.notificationId(): Int = mediaId.toString().hashCode()
+    private fun NewEpisodesResult.notificationId(): Int = NotificationIds.forTitle(mediaId)
 
     /** Content text for the per-show notification; its title already carries the show's name. */
     private fun NewEpisodesResult.contentText(): String = latestEpisodeLabel?.let { "$it is out" } ?: "Now available"
@@ -132,10 +119,27 @@ class NewEpisodesNotifier(private val context: Context) {
     /** One line of the summary notification's inbox style, which has no per-show title to lean on. */
     private fun NewEpisodesResult.summaryLine(): String = latestEpisodeLabel?.let { "$it of $title is out" } ?: "$title is out"
 
-    private companion object {
-        const val CHANNEL_ID = "new_episodes"
-        const val GROUP_KEY = "com.codingpit.muviss.NEW_EPISODES"
-        const val SUMMARY_NOTIFICATION_ID = 0
-        const val SUMMARY_THRESHOLD = 3
+    companion object {
+        private const val CHANNEL_ID = "new_episodes"
+        private const val GROUP_KEY = "com.codingpit.muviss.NEW_EPISODES"
+        private const val SUMMARY_THRESHOLD = 3
+
+        /**
+         * Creates the channel. Called from `Application.onCreate` (EPIC 30,
+         * #73) so it exists, named and toggleable in system settings, before
+         * the first notification rather than only after it; kept here as well
+         * because creating an existing channel is a no-op.
+         *
+         * Via `NotificationChannelCompat`, not the platform `NotificationChannel`:
+         * channels are API 26 and `minSdk` is 24, so the platform constructor is a
+         * `NewApi` error here. The compat builder is a no-op on 24/25.
+         */
+        fun ensureChannel(context: Context) {
+            val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManager.IMPORTANCE_DEFAULT)
+                .setName("New episodes")
+                .setDescription("Alerts when a saved show has a new episode out")
+                .build()
+            NotificationManagerCompat.from(context).createNotificationChannel(channel)
+        }
     }
 }

@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.network.tmdb.TmdbFailureTrace
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.di.appModules
+import com.codingpit.muviss.notifications.NewEpisodesNotifier
 import com.codingpit.muviss.notifications.NewEpisodesScheduler
 import com.codingpit.muviss.sync.SyncScheduleController
 import com.codingpit.muviss.sync.WorkManagerSyncScheduler
@@ -74,6 +75,7 @@ class MuvissApplication : Application() {
         }
         MuvissCrashReporting.followSettings()
         AppWidgets.install(GlanceWidgetRefresher(this))
+        NewEpisodesNotifier.ensureChannel(this)
         NewEpisodesScheduler.schedule(this)
         WidgetMidnightRefresh.schedule(this)
         startAutomaticSync()
