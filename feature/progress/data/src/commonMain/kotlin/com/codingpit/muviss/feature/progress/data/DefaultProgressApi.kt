@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.progress.data
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
+import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.domain.ObservePlayCountsUseCase
 import com.codingpit.muviss.feature.progress.domain.ObservePlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveRewatchCountsUseCase
@@ -18,6 +19,7 @@ import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.Flow
 
 /** Bridges the progress feature's use cases to its public [ProgressApi]. */
+@Suppress("LongParameterList") // one collaborator per ProgressApi concern; same reasoning as DefaultCollectionApi
 internal class DefaultProgressApi(
     private val observeSeenEpisodes: ObserveSeenEpisodesUseCase,
     private val mutations: ProgressMutations,
@@ -25,7 +27,10 @@ internal class DefaultProgressApi(
     private val playObservers: ProgressPlayObservers,
     private val watchNext: WatchNextUseCase,
     private val refreshWatchNextCatalogs: RefreshWatchNextCatalogsUseCase,
+    private val catalogStore: EpisodeCatalogStore,
 ) : ProgressApi {
+
+    override suspend fun storedSeasons(mediaId: MediaId): List<Season>? = catalogStore.load(listOf(mediaId))[mediaId]
 
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = observeSeenEpisodes.invoke(mediaId)
 

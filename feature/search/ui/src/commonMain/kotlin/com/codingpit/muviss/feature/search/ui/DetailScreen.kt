@@ -280,6 +280,10 @@ private fun DetailBody(
     onOpenEpisode: (EpisodeId) -> Unit,
     onTapSeenEpisode: (EpisodeId) -> Unit,
 ) {
+    // Offline-first (EPIC 30, #73): the saved copy is showing because the
+    // refresh failed. Say so, and offer the refresh again.
+    state.staleNotice?.let { notice -> StaleBanner(notice, onRetry = viewModel::load) }
+
     // A skipped title (ADR 0010) leaves nothing in the library, so this line
     // is the only way back to it once the deck's undo snackbar has gone.
     if (state.skipped) SkippedBanner(onUndo = viewModel::unskip)
@@ -906,6 +910,32 @@ private fun SnoozedBanner(dueAtEpochDay: Long, onUndo: () -> Unit) {
         }
     }
 }
+
+@Composable
+private fun StaleBanner(notice: String, onRetry: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth().testTag(DETAIL_STALE_BANNER_TAG),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = MuvissSpacing.m, vertical = MuvissSpacing.xs),
+        ) {
+            Icon(MuvissIcons.Error, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "$notice Showing what's saved on this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f).padding(start = MuvissSpacing.s),
+            )
+            TextButton(onClick = onRetry) { Text("Retry") }
+        }
+    }
+}
+
+/** The "showing what's saved" banner on an offline Detail (EPIC 30, #73). */
+internal const val DETAIL_STALE_BANNER_TAG = "detail-stale-banner"
 
 @Composable
 private fun SkippedBanner(onUndo: () -> Unit) {

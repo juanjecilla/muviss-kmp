@@ -48,7 +48,7 @@ val progressDataModule: Module = module {
     single<ProgressRepository> { SqlDelightProgressRepository(get(), get(), get(), get(), get()) }
     single<EpisodeCatalogSource> { RegistryEpisodeCatalogSource(get(), get()) }
     single<EpisodeCatalogStore> { SqlDelightEpisodeCatalogStore(get(), get(), get()) }
-    single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get(), get(), get()) }
+    single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get(), get(), get(), get()) }
 
     factory { ObserveEpisodeProgressUseCase(get()) }
     factory { ObserveSeenEpisodesUseCase(get()) }

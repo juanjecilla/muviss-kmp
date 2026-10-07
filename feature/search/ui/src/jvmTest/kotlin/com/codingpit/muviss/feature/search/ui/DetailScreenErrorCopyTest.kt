@@ -3,6 +3,9 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.common.AppClock
@@ -48,6 +51,19 @@ class DetailScreenErrorCopyTest {
     }
 
     @Test
+    fun a_saved_title_offline_shows_the_saved_copy_with_a_banner_and_retry() = runComposeUiTest {
+        // EPIC 30 (#73): offline-first Detail.
+        setContent { DetailWithFailure(MetadataError.Offline(), saved = true) }
+        waitForIdle()
+
+        // The title and the poster's no-artwork fallback both read "The Matrix".
+        onAllNodesWithText("The Matrix").onFirst().assertExists()
+        onNodeWithTag(DETAIL_STALE_BANNER_TAG).assertExists()
+        onNodeWithText("Showing what's saved", substring = true).assertExists()
+        onNodeWithText("Retry").assertExists()
+    }
+
+    @Test
     fun an_offline_failure_shows_the_offline_copy() = runComposeUiTest {
         setContent { DetailWithFailure(MetadataError.Offline()) }
         waitForIdle()
@@ -72,13 +88,14 @@ private class NoopClock : AppClock {
 }
 
 @Composable
-private fun DetailWithFailure(failure: Throwable) {
+private fun DetailWithFailure(failure: Throwable, saved: Boolean = false) {
     val mediaId = MediaId.tmdbMovie("603")
     val repo = FakeDetailRepo(details = MediaDetails(MediaSummary(mediaId, "The Matrix")), detailsFailure = failure)
+    val collection = FakeCollectionApi().apply { if (saved) this.saved = MediaDetails(MediaSummary(mediaId, "The Matrix", year = 1999)) }
     val viewModel = DetailViewModel(
         mediaId,
         MediaDetailUseCase(repo),
-        DetailPeers(FakeCollectionApi(), FakeProgressApi(), FakeTriageApi()),
+        DetailPeers(collection, FakeProgressApi(), FakeTriageApi()),
         WatchProvidersUseCase(repo),
         MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
         NoopClock(),
