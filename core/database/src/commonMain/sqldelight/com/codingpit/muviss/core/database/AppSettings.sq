@@ -94,7 +94,8 @@ CREATE TABLE appSettings (
     coWatchIncludeSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     triageSnoozePeriod TEXT NOT NULL DEFAULT 'ONE_WEEK',
     triageSnoozePlacement TEXT NOT NULL DEFAULT 'MIXED_IN',
-    triageSnoozeHintSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    triageSnoozeHintSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    discoverIntroSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -163,3 +164,8 @@ UPDATE appSettings SET triageSnoozePlacement = :triageSnoozePlacement WHERE id =
 
 updateTriageSnoozeHintSeen:
 UPDATE appSettings SET triageSnoozeHintSeen = :triageSnoozeHintSeen WHERE id = 0;
+
+-- The one-time Discover intro (EPIC 30, #73), added in `14.sqm`. A per-device
+-- onboarding fact like `triageTutorialSeen`, so it is not synced.
+updateDiscoverIntroSeen:
+UPDATE appSettings SET discoverIntroSeen = :discoverIntroSeen WHERE id = 0;
