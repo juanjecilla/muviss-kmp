@@ -39,7 +39,7 @@ never leaves the device even incidentally.
    containing: a stack trace, the app version and build, the environment
    (`production` or `development`), and basic device info (OS version, device
    model). It does **not** include your collection, watch progress, or any TMDB
-   query content, and no user identifier, IP address or cookies are attached.
+   query content, and no user identifier or cookies are attached.
    Before a report leaves the device, anything that looks like a credential
    (`api_key=…`, `token=…`, `Authorization: Bearer …`) is removed from its
    messages, tags and context, not just its text. Muviss also does not send
@@ -47,8 +47,15 @@ never leaves the device even incidentally.
    some apps use for a crash-free-session rate) — that switch is off
    unconditionally, on or off, because nothing in the app reads that rate and
    the opt-out above cannot silence it once started (it is not an event, and
-   `beforeSend` only ever sees events). Reports are stored in Sentry's **EU region** (Frankfurt, Germany), and the project is set not to store IP addresses. See [Sentry's privacy
-   policy](https://sentry.io/privacy/) for how they handle that data.
+   `beforeSend` only ever sees events). Reports are stored in Sentry's **EU region** (Frankfurt, Germany), and the project is set not to store IP addresses.
+
+   One thing Sentry adds on its side: when a report arrives, Sentry looks up
+   an **approximate location** (country, region and city) from the network
+   connection it came over, and keeps that with the report. The IP address
+   itself is discarded and not stored. Muviss uses the location only to tell
+   whether a crash is regional; turning crash reports off stops it with
+   everything else. See [Sentry's privacy policy](https://sentry.io/privacy/)
+   for how they handle that data.
 
    Per platform:
    - **Android, iOS, desktop** — reporting starts as the app starts, before
