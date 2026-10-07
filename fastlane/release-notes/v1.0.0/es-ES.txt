@@ -1,0 +1,5 @@
+DRAFT: rewrite for users in es-ES (max 500 chars) and delete this line before release/1.0.0 merges into main.
+- failed refreshes and list edits say so; list delete gets Undo (EPIC 30, #73) (#203)
+- error states with Retry on the seven screens that had none (EPIC 30, #73) (#202)
+- bound a refill past empty batches, and let a failed save preempt Undo (#183, #159) (#201)
+- hidden test crash for verifying Sentry in release builds; drop the per-install user id (#189)
