@@ -386,4 +386,25 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
+    // Android Lint (EPIC 31b #164, EPIC 25 #67). Runs over the app and every
+    // module it depends on. Accessibility findings are errors and never go
+    // into the baseline; lint-baseline.xml holds only what existed when lint
+    // was switched on, so anything new fails the build.
+    lint {
+        checkDependencies = true
+        abortOnError = true
+        warningsAsErrors = false
+        baseline = file("lint-baseline.xml")
+        error +=
+            setOf(
+                "ClickableViewAccessibility",
+                "ContentDescription",
+                "GetContentDescriptionOverride",
+                "KeyboardInaccessibleWidget",
+                "LabelFor",
+            )
+        htmlReport = true
+        sarifReport = true
+    }
 }

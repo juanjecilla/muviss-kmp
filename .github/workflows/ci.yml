@@ -176,6 +176,20 @@ jobs:
       - name: Assemble Android debug APK
         run: ./gradlew :app:androidApp:assembleDebug :app:androidApp:verifyDebugApkComposeResources --stacktrace
 
+      # Lint covers the app and, through checkDependencies, every KMP module
+      # (they apply com.android.lint). Accessibility issues are errors; the
+      # baseline holds only what predates lint being switched on (#164).
+      - name: Android Lint
+        run: ./gradlew :app:androidApp:lintDebug --stacktrace
+
+      - name: Upload the lint report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          if-no-files-found: ignore
+          path: app/androidApp/build/reports/lint-results-debug.*
+
       - name: Compile web targets (JS + Wasm)
         run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
 

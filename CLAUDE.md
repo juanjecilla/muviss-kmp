@@ -94,6 +94,7 @@ cd website && npm install && npm run dev            # landing (muvissapp.com, As
 ./gradlew :feature:search:ui:jvmTest           # a module's tests
 ./gradlew spotlessApply                        # auto-format
 ./gradlew spotlessCheck detekt                 # what the pre-commit hook runs
+./gradlew :app:androidApp:lintDebug            # Android Lint, app + every KMP module; a11y = error
 scripts/release/start-release.sh 1.0.0         # cut release/1.0.0 from develop (the Monday train does this)
 scripts/release/owner-setup.sh                 # owner-only setup: App, rulesets, keystore, Play
 scripts/release/test/release-scripts-test.sh   # release tooling tests

@@ -25,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -480,7 +481,7 @@ private fun ActionRow(
  */
 @Composable
 internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, onTestCrash: () -> Unit) {
-    var versionTaps by remember { mutableStateOf(0) }
+    var versionTaps by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         Text(
             stringResource(Res.string.app_version, appVersionName),

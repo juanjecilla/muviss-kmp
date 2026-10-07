@@ -22,6 +22,7 @@
     <string name="permission_not_now">Ahora no</string>
     <plurals name="notification_summary_title">
         <item quantity="one">%1$d serie tiene episodios nuevos</item>
+        <item quantity="many">%1$d series tienen episodios nuevos</item>
         <item quantity="other">%1$d series tienen episodios nuevos</item>
     </plurals>
 </resources>
