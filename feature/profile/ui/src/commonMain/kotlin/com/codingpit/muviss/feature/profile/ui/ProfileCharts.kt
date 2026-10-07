@@ -485,10 +485,10 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
     val maxCount = months.maxOf { it.rewatches }.coerceAtLeast(1)
     val monthInitials = stringResource(Res.string.month_initials).split(',')
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         Row(
             Modifier.fillMaxWidth().height(TREND_HEIGHT).testTag(REWATCH_TREND_TAG),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
             verticalAlignment = Alignment.Bottom,
         ) {
             months.forEach { month ->
@@ -508,7 +508,7 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
             months.forEach { month ->
                 Text(
                     text = monthInitials[month.month - 1],

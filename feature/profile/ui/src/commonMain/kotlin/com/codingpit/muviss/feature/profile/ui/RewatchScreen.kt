@@ -106,9 +106,9 @@ internal fun RewatchScreenContent(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(MuvissSpacing.l)
                 .padding(bottom = MuvissSpacing.bottomContent),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
         ) {
             WindowSelector(selected = state.window, onSelected = onWindowSelected)
 
@@ -123,7 +123,7 @@ internal fun RewatchScreenContent(
             // Its own heading because its window is not the one above: a
             // rolling year is always full and comparable, where "this year"
             // renders a stub every January (ADR 0012).
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
                 Text(stringResource(Res.string.rewatch_trend), style = MaterialTheme.typography.labelLarge)
                 RewatchTrendChart(state.stats.monthly, Modifier.fillMaxWidth())
             }
@@ -150,7 +150,7 @@ private fun WindowSelector(selected: RewatchWindow, onSelected: (RewatchWindow) 
 
 @Composable
 private fun RankingLists(ranking: RewatchRanking) {
-    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl)) {
         if (ranking.shows.isNotEmpty()) RankingList(stringResource(Res.string.ranking_shows), ranking.shows)
         if (ranking.movies.isNotEmpty()) RankingList(stringResource(Res.string.ranking_movies), ranking.movies)
     }
@@ -158,7 +158,7 @@ private fun RankingLists(ranking: RewatchRanking) {
 
 @Composable
 private fun RankingList(heading: String, entries: List<RewatchEntry>) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
         Text(heading, style = MaterialTheme.typography.labelLarge)
         entries.forEachIndexed { index, entry -> RewatchRow(position = index + 1, entry = entry) }
     }
@@ -173,7 +173,7 @@ private fun RewatchRow(position: Int, entry: RewatchEntry, modifier: Modifier = 
             .fillMaxWidth()
             .testTag(REWATCH_ROW_TAG)
             .semantics { contentDescription = description },
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
