@@ -4,6 +4,8 @@ package com.codingpit.muviss.feature.collection.ui
 
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
@@ -231,10 +233,10 @@ class CollectionViewModelTest {
         advanceUntilIdle()
 
         assertNotNull(vm.state.value.message, "a silent failure leaves the user with a stale library and no explanation")
-        assertEquals("Couldn't refresh your library", vm.state.value.message, "the thrown text (\"network down\") is never shown")
+        assertEquals("Couldn't refresh your library", vm.state.value.message.text(), "the thrown text (\"network down\") is never shown")
 
         vm.consumeMessage()
-        assertEquals(null, vm.state.value.message)
+        assertEquals(null, vm.state.value.message.text())
     }
 
     @Test
@@ -354,3 +356,6 @@ class CollectionViewModelTest {
         assertEquals(listOf(watching), vm.state.value.visibleEntries)
     }
 }
+
+/** What the user would read, in the test JVM's pinned en-US. */
+private suspend fun UiText?.text(): String? = this?.resolveAsync()

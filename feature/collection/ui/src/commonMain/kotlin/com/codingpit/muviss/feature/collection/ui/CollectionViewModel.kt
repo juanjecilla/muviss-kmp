@@ -5,15 +5,19 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportFailure
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
 import com.codingpit.muviss.feature.collection.domain.RefreshCollectionSnapshotsUseCase
 import com.codingpit.muviss.feature.collection.domain.ToggleFavoriteUseCase
+import com.codingpit.muviss.feature.collection.ui.generated.resources.Res
+import com.codingpit.muviss.feature.collection.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.collection.ui.generated.resources.refresh_failed
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.WatchStatus
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,9 +59,9 @@ data class CollectionUiState(
     val filter: CollectionFilter = CollectionFilter.NOT_STARTED,
     val typeFilter: CollectionTypeFilter = CollectionTypeFilter.ALL,
     val sort: CollectionSort = CollectionSort.RECENTLY_ADDED,
-    val error: String? = null,
+    val error: UiText? = null,
     /** One-shot snackbar text — currently only "the refresh failed". Cleared by [CollectionViewModel.consumeMessage]. */
-    val message: String? = null,
+    val message: UiText? = null,
 ) {
     /** [entries] narrowed to the selected media type, sliced by the selected tab, then ordered by [sort]. Status always comes from [CollectionEntry.status] — never a stored column. */
     val visibleEntries: List<CollectionEntry>
@@ -112,7 +116,7 @@ class CollectionViewModel(
 
     init {
         observeCollection()
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { entries -> _state.update { it.copy(loading = false, entries = entries, error = null) } }
             .launchInReporting(viewModelScope)
         // Automatic, so it defers to the throttle; an explicit pull does not.
@@ -164,7 +168,7 @@ class CollectionViewModel(
             try {
                 runCatching { refreshSnapshots() }
                     .reportFailure()
-                    .onFailure { e -> _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) } }
+                    .onFailure { e -> _state.update { it.copy(message = e.toUiText(UiText.Resource(Res.string.refresh_failed))) } }
             } finally {
                 if (!automatic) _state.update { it.copy(refreshing = false) }
             }
@@ -174,10 +178,5 @@ class CollectionViewModel(
     /** Acknowledges [CollectionUiState.message] once its snackbar has been shown. */
     fun consumeMessage() {
         _state.update { it.copy(message = null) }
-    }
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
-        const val REFRESH_FAILED = "Couldn't refresh your library"
     }
 }
