@@ -28,8 +28,16 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
+import com.codingpit.muviss.feature.triage.ui.generated.resources.action_back
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_skipped
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_skipped_body
+import com.codingpit.muviss.feature.triage.ui.generated.resources.restore
+import com.codingpit.muviss.feature.triage.ui.generated.resources.skipped
 import com.codingpit.muviss.models.MediaId
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun SkippedScreen(
@@ -42,19 +50,19 @@ fun SkippedScreen(
 
     Column(modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(MuvissSpacing.s)) {
-            IconButton(onClick = onBack) { Icon(MuvissIcons.Back, contentDescription = "Back") }
-            Text("Skipped", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = MuvissSpacing.xs))
+            IconButton(onClick = onBack) { Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back)) }
+            Text(stringResource(Res.string.skipped), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = MuvissSpacing.xs))
         }
 
         when {
             state.loading -> CircularProgressIndicator(Modifier.padding(MuvissSpacing.xl))
 
-            state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
+            state.error != null -> ErrorState(state.error?.resolve().orEmpty(), onRetry = viewModel::retry)
 
             state.titles.isEmpty() -> EmptyState(
                 icon = MuvissIcons.Skip,
-                title = "Nothing skipped",
-                body = "Titles you skip during triage show up here, in case you change your mind.",
+                title = stringResource(Res.string.nothing_skipped),
+                body = stringResource(Res.string.nothing_skipped_body),
             )
 
             else -> LazyColumn {
@@ -81,7 +89,7 @@ fun SkippedScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f).padding(horizontal = MuvissSpacing.m),
                         )
-                        TextButton(onClick = { viewModel.onRestore(skipped.mediaId) }) { Text("Restore") }
+                        TextButton(onClick = { viewModel.onRestore(skipped.mediaId) }) { Text(stringResource(Res.string.restore)) }
                     }
                 }
             }

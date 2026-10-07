@@ -63,20 +63,58 @@ import androidx.compose.ui.window.Popup
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
-import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.label
+import com.codingpit.muviss.core.designsystem.text.resolve
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckFilter
+import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
+import com.codingpit.muviss.feature.triage.ui.generated.resources.action_back
+import com.codingpit.muviss.feature.triage.ui.generated.resources.action_cancel
+import com.codingpit.muviss.feature.triage.ui.generated.resources.action_retry
+import com.codingpit.muviss.feature.triage.ui.generated.resources.action_undo
+import com.codingpit.muviss.feature.triage.ui.generated.resources.all_caught_up_body
+import com.codingpit.muviss.feature.triage.ui.generated.resources.all_caught_up_title
+import com.codingpit.muviss.feature.triage.ui.generated.resources.ask_again_about
+import com.codingpit.muviss.feature.triage.ui.generated.resources.clear_filters
+import com.codingpit.muviss.feature.triage.ui.generated.resources.commit_failed_snackbar
+import com.codingpit.muviss.feature.triage.ui.generated.resources.fill_library
+import com.codingpit.muviss.feature.triage.ui.generated.resources.filter_all
+import com.codingpit.muviss.feature.triage.ui.generated.resources.filter_movies
+import com.codingpit.muviss.feature.triage.ui.generated.resources.filter_tv
+import com.codingpit.muviss.feature.triage.ui.generated.resources.got_it
+import com.codingpit.muviss.feature.triage.ui.generated.resources.how_it_works
+import com.codingpit.muviss.feature.triage.ui.generated.resources.keep_looking
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_left_body
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_left_title
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_new_body
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_new_title
+import com.codingpit.muviss.feature.triage.ui.generated.resources.pick_date
+import com.codingpit.muviss.feature.triage.ui.generated.resources.release_to
+import com.codingpit.muviss.feature.triage.ui.generated.resources.review_skipped
+import com.codingpit.muviss.feature.triage.ui.generated.resources.searching_deeper
+import com.codingpit.muviss.feature.triage.ui.generated.resources.skipped
+import com.codingpit.muviss.feature.triage.ui.generated.resources.snooze
+import com.codingpit.muviss.feature.triage.ui.generated.resources.snooze_hint
+import com.codingpit.muviss.feature.triage.ui.generated.resources.snoozed
+import com.codingpit.muviss.feature.triage.ui.generated.resources.snoozed_until
+import com.codingpit.muviss.feature.triage.ui.generated.resources.type_movie
+import com.codingpit.muviss.feature.triage.ui.generated.resources.type_tv
+import com.codingpit.muviss.feature.triage.ui.generated.resources.undo_snackbar
+import com.codingpit.muviss.feature.triage.ui.generated.resources.verdict_description
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The triage deck.
@@ -141,8 +179,8 @@ fun TriageScreen(
         // more important fact, so it takes the slot.
         snackbarHostState.currentSnackbarData?.dismiss()
         val result = snackbarHostState.showSnackbar(
-            message = "${failed.summary.title}: ${failed.message}",
-            actionLabel = "Retry",
+            message = getString(Res.string.commit_failed_snackbar, failed.summary.title, failed.message.resolveAsync()),
+            actionLabel = getString(Res.string.action_retry),
         )
         if (result == SnackbarResult.ActionPerformed) viewModel.onRetryFailedCommit() else viewModel.onFailedCommitDismissed()
     }
@@ -202,7 +240,7 @@ fun TriageScreen(
 
                         state.loading || (state.refilling && state.topCard == null) -> CircularProgressIndicator()
 
-                        state.error != null -> ErrorState(state.error.orEmpty(), viewModel::retry)
+                        state.error != null -> ErrorState(state.error?.resolve().orEmpty(), viewModel::retry)
 
                         state.topCard == null && state.keepLookingAvailable -> KeepLooking(viewModel::onKeepLooking)
 
@@ -281,13 +319,13 @@ private fun UndoSnackbarEffect(
     val label = when (undoable) {
         null -> null
         is UndoableAction.Decision -> styleFor(undoable.verdict, undoable.summary.type, fourWay = true).label
-        is UndoableAction.Snooze -> "Snoozed until ${formatEpochDay(undoable.dueAtEpochDay)}"
+        is UndoableAction.Snooze -> stringResource(Res.string.snoozed_until, dateText(undoable.dueAtEpochDay))
     }
     LaunchedEffect(undoable) {
         if (undoable == null) return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
-            message = "$label · ${undoable.summary.title}",
-            actionLabel = "Undo",
+            message = getString(Res.string.undo_snackbar, label.orEmpty(), undoable.summary.title),
+            actionLabel = getString(Res.string.action_undo),
             // Material3 defaults to Indefinite whenever an action label is
             // given. Long rather than Short because undo is the only safety
             // net for a decision that already committed optimistically.
@@ -361,15 +399,15 @@ private fun TriageHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.s, vertical = MuvissSpacing.xs),
     ) {
-        IconButton(onClick = onBack) { Icon(MuvissIcons.Back, contentDescription = "Back") }
+        IconButton(onClick = onBack) { Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back)) }
         Text(
-            text = "Fill your library",
+            text = stringResource(Res.string.fill_library),
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
         )
-        TextButton(onClick = onShowTutorial) { Text("How it works") }
+        TextButton(onClick = onShowTutorial) { Text(stringResource(Res.string.how_it_works)) }
         // Icon buttons rather than a third and fourth TextButton (issue
         // #138): three text actions plus the title wrapped "Fill your
         // library" to two lines at 412dp. "How it works" stays a labelled
@@ -377,8 +415,8 @@ private fun TriageHeader(
         // as anything from a glyph alone; Snoozed/Skipped are destinations a
         // returning user recognises by icon, the same trade `SnoozeButton`
         // already makes on the card itself.
-        IconButton(onClick = onOpenSnoozed) { Icon(MuvissIcons.Snooze, contentDescription = "Snoozed") }
-        IconButton(onClick = onOpenSkipped) { Icon(MuvissIcons.Skip, contentDescription = "Skipped") }
+        IconButton(onClick = onOpenSnoozed) { Icon(MuvissIcons.Snooze, contentDescription = stringResource(Res.string.snoozed)) }
+        IconButton(onClick = onOpenSkipped) { Icon(MuvissIcons.Skip, contentDescription = stringResource(Res.string.skipped)) }
     }
 }
 
@@ -395,9 +433,9 @@ private fun DeckFilterBar(
             horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
             modifier = Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.l),
         ) {
-            FilterChip(selected = selectedType == null, onClick = { onTypeChange(null) }, label = { Text("All") })
-            FilterChip(selected = selectedType == MediaType.MOVIE, onClick = { onTypeChange(MediaType.MOVIE) }, label = { Text("Movies") })
-            FilterChip(selected = selectedType == MediaType.TV, onClick = { onTypeChange(MediaType.TV) }, label = { Text("TV") })
+            FilterChip(selected = selectedType == null, onClick = { onTypeChange(null) }, label = { Text(stringResource(Res.string.filter_all)) })
+            FilterChip(selected = selectedType == MediaType.MOVIE, onClick = { onTypeChange(MediaType.MOVIE) }, label = { Text(stringResource(Res.string.filter_movies)) })
+            FilterChip(selected = selectedType == MediaType.TV, onClick = { onTypeChange(MediaType.TV) }, label = { Text(stringResource(Res.string.filter_tv)) })
         }
         // Genre ids differ between the movie and TV catalogues, so chips only
         // appear once one of the two is picked.
@@ -556,7 +594,7 @@ private fun TriageCardSurface(summary: MediaSummary, modifier: Modifier = Modifi
                 Text(summary.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
                     text = listOfNotNull(
-                        if (summary.type == MediaType.MOVIE) "Movie" else "TV",
+                        stringResource(if (summary.type == MediaType.MOVIE) Res.string.type_movie else Res.string.type_tv),
                         summary.year?.toString(),
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.labelMedium,
@@ -584,12 +622,13 @@ private fun TriageCardSurface(summary: MediaSummary, modifier: Modifier = Modifi
 @Composable
 private fun DragHint(verdict: TriageVerdict, mediaType: MediaType, progress: Float, fourWay: Boolean) {
     val style = styleFor(verdict, mediaType, fourWay)
+    val releaseTo = stringResource(Res.string.release_to, style.label)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxSize()
             .background(style.color.copy(alpha = HINT_MAX_ALPHA * progress))
-            .semantics { contentDescription = "Release to ${style.label}" },
+            .semantics { contentDescription = releaseTo },
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(style.icon, contentDescription = null, tint = style.color)
@@ -620,6 +659,7 @@ private fun VerdictButtonRow(
     ) {
         verdicts.forEach { verdict ->
             val style = styleFor(verdict, mediaType, fourWay)
+            val description = stringResource(Res.string.verdict_description, style.label, stringResource(explanationFor(verdict, mediaType)))
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
@@ -629,7 +669,7 @@ private fun VerdictButtonRow(
                     .clickable { onDecide(verdict) }
                     .padding(vertical = MuvissSpacing.s)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = "${style.label}. ${explanationFor(verdict, mediaType)}"
+                        contentDescription = description
                     },
             ) {
                 Icon(style.icon, contentDescription = null, tint = style.color)
@@ -669,7 +709,7 @@ private fun SnoozeButton(
             // a swipe instead.
             modifier = Modifier.size(SNOOZE_BUTTON_SIZE).testTag(TRIAGE_SNOOZE_TAG),
         ) {
-            Icon(MuvissIcons.Snooze, contentDescription = SNOOZE_LABEL)
+            Icon(MuvissIcons.Snooze, contentDescription = stringResource(Res.string.snooze))
         }
 
         if (hintVisible) {
@@ -692,12 +732,12 @@ private fun SnoozeButton(
                         modifier = Modifier.padding(horizontal = MuvissSpacing.m, vertical = MuvissSpacing.s),
                     ) {
                         Text(
-                            text = SNOOZE_HINT,
+                            text = stringResource(Res.string.snooze_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.inverseOnSurface,
                             modifier = Modifier.widthIn(max = SNOOZE_HINT_MAX_WIDTH),
                         )
-                        TextButton(onClick = onHintDismissed) { Text("Got it") }
+                        TextButton(onClick = onHintDismissed) { Text(stringResource(Res.string.got_it)) }
                     }
                 }
             }
@@ -722,8 +762,8 @@ private fun SnoozeChoiceDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Ask again about $title") },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) } },
+        title = { Text(stringResource(Res.string.ask_again_about, title)) },
         text = {
             Column(modifier = Modifier.testTag(TRIAGE_SNOOZE_SHEET_TAG)) {
                 // Only the real durations: ASK_EACH_TIME is the mode that
@@ -738,7 +778,7 @@ private fun SnoozeChoiceDialog(
                 // version; SnoozeDatePickerDialog is a small hand-rolled
                 // calendar over Foundation composables instead, which is
                 // identical on all six targets by construction.
-                TextButton(onClick = onPickDate, modifier = Modifier.testTag(TRIAGE_SNOOZE_PICK_DATE_TAG)) { Text("Pick a date…") }
+                TextButton(onClick = onPickDate, modifier = Modifier.testTag(TRIAGE_SNOOZE_PICK_DATE_TAG)) { Text(stringResource(Res.string.pick_date)) }
             }
         },
     )
@@ -749,7 +789,7 @@ private fun SearchingDeeper() {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator()
         Text(
-            text = "Looking further back for titles you haven't seen…",
+            text = stringResource(Res.string.searching_deeper),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -763,31 +803,29 @@ private fun SearchingDeeper() {
 private fun KeepLooking(onKeepLooking: () -> Unit) {
     EmptyState(
         icon = MuvissIcons.CaughtUp,
-        title = "Nothing new near the top",
-        body = "You've already decided on the most popular titles we checked. There are more further back.",
-        actionLabel = KEEP_LOOKING_LABEL,
+        title = stringResource(Res.string.nothing_new_title),
+        body = stringResource(Res.string.nothing_new_body),
+        actionLabel = stringResource(Res.string.keep_looking),
         onAction = onKeepLooking,
     )
 }
-
-internal const val KEEP_LOOKING_LABEL = "Keep looking"
 
 @Composable
 private fun EmptyDeck(filtered: Boolean, onClearFilters: () -> Unit, onOpenSkipped: () -> Unit) {
     if (filtered) {
         EmptyState(
             icon = MuvissIcons.Filter,
-            title = "Nothing left here",
-            body = "You've been through everything matching this filter.",
-            actionLabel = "Clear filters",
+            title = stringResource(Res.string.nothing_left_title),
+            body = stringResource(Res.string.nothing_left_body),
+            actionLabel = stringResource(Res.string.clear_filters),
             onAction = onClearFilters,
         )
     } else {
         EmptyState(
             icon = MuvissIcons.CaughtUp,
-            title = "All caught up",
-            body = "You've triaged everything we can find right now. New titles will show up as they get popular.",
-            actionLabel = "Review skipped",
+            title = stringResource(Res.string.all_caught_up_title),
+            body = stringResource(Res.string.all_caught_up_body),
+            actionLabel = stringResource(Res.string.review_skipped),
             onAction = onOpenSkipped,
         )
     }
@@ -821,10 +859,6 @@ const val TRIAGE_DATE_PICKER_TAG = "triage-snooze-date-picker"
 
 /** Identifies a single day cell in [TRIAGE_DATE_PICKER_TAG]'s grid, suffixed with its epoch day. */
 const val TRIAGE_DATE_PICKER_DAY_TAG = "triage-snooze-date-picker-day"
-
-internal const val SNOOZE_LABEL = "Snooze"
-
-internal const val SNOOZE_HINT = "Not sure? Snooze it and we'll ask again later."
 
 /** Android's minimum touch target; M3's icon button default is 40dp. */
 private val SNOOZE_BUTTON_SIZE = 48.dp

@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.triage.ui
 
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.triage.domain.ObserveSkippedUseCase
 import com.codingpit.muviss.feature.triage.domain.RestoreDecisionUseCase
 import com.codingpit.muviss.models.MetadataError
@@ -35,7 +36,7 @@ class SkippedViewModelTest {
         val vm = viewModel(repository)
         advanceUntilIdle()
 
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error?.resolveAsync())
     }
 
     @Test
@@ -44,7 +45,7 @@ class SkippedViewModelTest {
         val vm = viewModel(repository)
         advanceUntilIdle()
 
-        assertEquals("Couldn't load skipped titles.", vm.state.value.error)
+        assertEquals("Couldn't load skipped titles.", vm.state.value.error?.resolveAsync())
     }
 
     @Test

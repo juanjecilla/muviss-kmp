@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spanish (Spain). Mirrors values/strings.xml key for key. -->
+<resources>
+    <string name="action_back">Atrás</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_retry">Reintentar</string>
+    <string name="action_undo">Deshacer</string>
+    <string name="got_it">Entendido</string>
+    <string name="error_load_more">No se pudieron cargar más títulos.</string>
+    <string name="error_commit">No se pudo guardar.</string>
+    <string name="error_load_skipped">No se pudieron cargar los títulos descartados.</string>
+    <!-- %1$s title, %2$s why it failed. -->
+    <string name="commit_failed_snackbar">%1$s: %2$s</string>
+    <!-- %1$s what was done (a verdict, or snoozed_until), %2$s the title. -->
+    <string name="undo_snackbar">%1$s · %2$s</string>
+    <!-- %1$s is a date. -->
+    <string name="snoozed_until">Pospuesta hasta el %1$s</string>
+    <string name="comes_back">Vuelve el %1$s</string>
+    <string name="fill_library">Llena tu biblioteca</string>
+    <string name="how_it_works">Cómo funciona</string>
+    <string name="snoozed">Pospuestas</string>
+    <string name="skipped">Descartadas</string>
+    <string name="filter_all">Todo</string>
+    <string name="filter_movies">Películas</string>
+    <string name="filter_tv">Series</string>
+    <string name="type_movie">Película</string>
+    <string name="type_tv">Serie</string>
+    <!-- %1$s is a verdict label, e.g. Skip. -->
+    <string name="release_to">Suelta para %1$s</string>
+    <!-- %1$s verdict label, %2$s what it does. -->
+    <string name="verdict_description">%1$s. %2$s</string>
+    <string name="verdict_skip">Descartar</string>
+    <string name="verdict_later">Más tarde</string>
+    <string name="verdict_watching">Viendo</string>
+    <string name="verdict_watched">Vista</string>
+    <string name="verdict_caught_up">Al día</string>
+    <string name="verdict_caught_up_or_watched">Al día / Vista</string>
+    <string name="hint_left">Desliza a la izquierda</string>
+    <string name="hint_right">Desliza a la derecha</string>
+    <string name="hint_down">Desliza hacia abajo</string>
+    <string name="hint_button">Usa el botón</string>
+    <string name="hint_up">Desliza hacia arriba</string>
+    <string name="explain_skip">No es para ti. No se guarda nada y no volverá a salir.</string>
+    <string name="explain_later">Guardada en tu biblioteca, sin empezar.</string>
+    <string name="explain_watching">Guardada y marcada como empezada, así que aparece en Progreso.</string>
+    <string name="explain_watched">Guardada y marcada como vista.</string>
+    <string name="explain_caught_up">Guardada con todos los episodios emitidos marcados.</string>
+    <string name="explain_caught_up_tutorial">Guardada con todos los episodios emitidos marcados, o, si es una película, marcada como vista.</string>
+    <string name="tutorial_title">Cómo funciona el triaje</string>
+    <string name="tutorial_intro">Desliza la tarjeta, toca un botón o usa las flechas del teclado. Z deshace, S pospone. Toca una tarjeta para ver sus detalles.</string>
+    <!-- %1$s and %2$s are a label and how to reach it. -->
+    <string name="tutorial_line">%1$s · %2$s</string>
+    <string name="tutorial_snooze_how">Botón en la tarjeta, pulsación larga o S</string>
+    <string name="tutorial_snooze_body">No es una decisión: no se guarda nada y te volvemos a preguntar más adelante.</string>
+    <string name="tutorial_watching_tv">«Viendo» solo vale para series: una película nunca se queda a medias.</string>
+    <string name="snooze">Posponer</string>
+    <string name="snooze_hint">¿No lo tienes claro? Pospónla y te volvemos a preguntar más adelante.</string>
+    <!-- %1$s is the title. -->
+    <string name="ask_again_about">Volver a preguntar por %1$s</string>
+    <string name="pick_date">Elegir una fecha…</string>
+    <string name="pick_date_for">Elige una fecha para %1$s</string>
+    <string name="previous_month">Mes anterior</string>
+    <string name="next_month">Mes siguiente</string>
+    <!-- Full month names, comma-separated, January first. -->
+    <string name="month_names">enero,febrero,marzo,abril,mayo,junio,julio,agosto,septiembre,octubre,noviembre,diciembre</string>
+    <!-- Weekday initials, comma-separated, Sunday first (the grid starts on Sunday). -->
+    <string name="weekday_initials">D,L,M,X,J,V,S</string>
+    <!-- %1$s month name, %2$d year. -->
+    <string name="month_year">%1$s de %2$d</string>
+    <string name="searching_deeper">Buscando más atrás títulos que no hayas visto…</string>
+    <string name="nothing_new_title">Nada nuevo entre los primeros</string>
+    <string name="nothing_new_body">Ya has decidido sobre los títulos más populares que hemos revisado. Hay más si seguimos buscando.</string>
+    <string name="keep_looking">Seguir buscando</string>
+    <string name="nothing_left_title">No queda nada aquí</string>
+    <string name="nothing_left_body">Ya has visto todo lo que coincide con este filtro.</string>
+    <string name="clear_filters">Quitar filtros</string>
+    <string name="all_caught_up_title">Todo al día</string>
+    <string name="all_caught_up_body">Has clasificado todo lo que podemos encontrar ahora. Irán apareciendo títulos nuevos a medida que se hagan populares.</string>
+    <string name="review_skipped">Revisar descartadas</string>
+    <string name="nothing_skipped">Nada descartado</string>
+    <string name="nothing_skipped_body">Los títulos que descartes en el triaje aparecen aquí, por si cambias de opinión.</string>
+    <string name="restore">Recuperar</string>
+    <string name="nothing_snoozed">Nada pospuesto</string>
+    <string name="nothing_snoozed_body">Los títulos que pospongas en el triaje esperan aquí hasta el día en que vuelven.</string>
+    <string name="unsnooze">Dejar de posponer</string>
+</resources>

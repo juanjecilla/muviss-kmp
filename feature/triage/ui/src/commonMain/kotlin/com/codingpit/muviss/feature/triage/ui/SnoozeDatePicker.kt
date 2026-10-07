@@ -32,6 +32,16 @@ import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.core.common.epochDayOfCivil
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
+import com.codingpit.muviss.feature.triage.ui.generated.resources.action_cancel
+import com.codingpit.muviss.feature.triage.ui.generated.resources.month_names
+import com.codingpit.muviss.feature.triage.ui.generated.resources.month_year
+import com.codingpit.muviss.feature.triage.ui.generated.resources.next_month
+import com.codingpit.muviss.feature.triage.ui.generated.resources.pick_date_for
+import com.codingpit.muviss.feature.triage.ui.generated.resources.previous_month
+import com.codingpit.muviss.feature.triage.ui.generated.resources.snooze
+import com.codingpit.muviss.feature.triage.ui.generated.resources.weekday_initials
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * A free-form date, for anyone the three [com.codingpit.muviss.core.common.flags.SnoozePeriod]
@@ -64,17 +74,19 @@ internal fun SnoozeDatePickerDialog(
 
     // The earliest month the grid may show — navigating further back would
     // only ever reveal cells before minEpochDay, all of them disabled.
+    val monthNames = stringResource(Res.string.month_names).split(',')
+    val weekdayInitials = stringResource(Res.string.weekday_initials).split(',')
     val canGoBack = visibleYear > minDate.year || (visibleYear == minDate.year && visibleMonth > minDate.month)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = { selectedEpochDay?.let(onConfirm) }, enabled = selectedEpochDay != null) {
-                Text("Snooze")
+                Text(stringResource(Res.string.snooze))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Pick a date for $title") },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) } },
+        title = { Text(stringResource(Res.string.pick_date_for, title)) },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
@@ -95,9 +107,9 @@ internal fun SnoozeDatePickerDialog(
                                 visibleMonth -= 1
                             }
                         },
-                    ) { Icon(MuvissIcons.Back, contentDescription = "Previous month") }
+                    ) { Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.previous_month)) }
                     Text(
-                        text = "${MONTH_LABELS[visibleMonth - 1]} $visibleYear",
+                        text = stringResource(Res.string.month_year, monthNames[visibleMonth - 1], visibleYear),
                         style = MaterialTheme.typography.titleSmall,
                     )
                     IconButton(
@@ -109,11 +121,11 @@ internal fun SnoozeDatePickerDialog(
                                 visibleMonth += 1
                             }
                         },
-                    ) { Icon(MuvissIcons.ChevronRight, contentDescription = "Next month") }
+                    ) { Icon(MuvissIcons.ChevronRight, contentDescription = stringResource(Res.string.next_month)) }
                 }
 
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    WEEKDAY_LABELS.forEach { label ->
+                    weekdayInitials.forEach { label ->
                         Text(
                             text = label,
                             style = MaterialTheme.typography.labelSmall,
@@ -220,9 +232,3 @@ private const val DAYS_PER_WEEK = 7
 private const val WEEKDAY_OFFSET_FOR_EPOCH_ZERO = 4L
 private const val DAY_CELL_FRACTION = 0.8f
 private const val DISABLED_DAY_ALPHA = 0.38f
-
-private val MONTH_LABELS = listOf(
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-)
-private val WEEKDAY_LABELS = listOf("S", "M", "T", "W", "T", "F", "S")
