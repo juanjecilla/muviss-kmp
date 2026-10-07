@@ -44,9 +44,9 @@ collects, stores, or shares for its own purposes.
 
 ## Does your app provide a way for users to request data deletion?
 
-There is no account and no server-side data to delete. Locally, uninstalling
-the app removes the on-device database entirely. This is stated in
-`docs/PRIVACY.md`.
+There is no account and no server-side data to delete. Locally, Settings →
+Data → Delete all data removes everything the app keeps, and so does
+uninstalling. This is stated in `docs/PRIVACY.md`.
 
 ## Third parties data is shared with
 
