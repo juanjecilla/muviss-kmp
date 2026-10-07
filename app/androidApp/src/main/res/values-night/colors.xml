@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MuvissPalette.Dark.background. -->
+    <color name="muviss_window_background">#FF14120E</color>
+</resources>

@@ -2,11 +2,8 @@
 
 package com.codingpit.muviss.feature.triage.ui
 
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.models.MetadataError
@@ -76,13 +73,11 @@ class TriageScreenErrorCopyTest {
         // what fails.
         onNodeWithText("Later").performClick()
         waitForIdle()
-        // The optimistic Undo snackbar claims the shared SnackbarHostState
-        // first; dismiss it so the failed-commit snackbar (queued behind it)
-        // gets its turn.
-        onNode(hasDismissAction()).performSemanticsAction(SemanticsActions.Dismiss)
-        waitForIdle()
 
+        // #159: the failure replaces the optimistic Undo snackbar at once,
+        // rather than queueing behind its timeout.
         onNodeWithText(MetadataError.Offline().userMessage, substring = true).assertExists()
+        onNodeWithText("Undo").assertDoesNotExist()
     }
 
     @Test
@@ -95,14 +90,9 @@ class TriageScreenErrorCopyTest {
 
         onNodeWithText("Later").performClick()
         waitForIdle()
-        onNode(hasDismissAction()).performSemanticsAction(SemanticsActions.Dismiss)
-        waitForIdle()
 
         onNodeWithText("Couldn't save that one.", substring = true).assertExists()
         onNodeWithText("SECRET", substring = true).assertDoesNotExist()
         onNodeWithText("themoviedb", substring = true).assertDoesNotExist()
     }
 }
-
-/** Matches the snackbar container, so its optimistic Undo can be dismissed to let a queued snackbar take its place. */
-private fun hasDismissAction(): SemanticsMatcher = SemanticsMatcher("has a Dismiss action") { it.config.contains(SemanticsActions.Dismiss) }

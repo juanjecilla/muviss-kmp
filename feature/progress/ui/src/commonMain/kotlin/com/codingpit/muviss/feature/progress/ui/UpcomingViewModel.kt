@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -21,6 +22,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +51,8 @@ data class UpcomingUiGroup(
 data class UpcomingUiState(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
+    /** One-shot snackbar text, e.g. a refresh that failed; cleared by `consumeMessage()`. */
+    val message: String? = null,
     val groups: List<UpcomingUiGroup> = emptyList(),
     val error: String? = null,
     /** Whether the library has *any* saved title — distinguishes the "empty library" empty state from "nothing upcoming". */
@@ -72,8 +76,15 @@ class UpcomingViewModel(
     private val _state = MutableStateFlow(UpcomingUiState())
     val state: StateFlow<UpcomingUiState> = _state.asStateFlow()
 
+    private var observation: Job? = null
+
     init {
-        collectionApi.observeSummaries()
+        observe()
+    }
+
+    private fun observe() {
+        observation?.cancel()
+        observation = collectionApi.observeSummaries()
             .onEach { all -> _state.update { it.copy(hasLibraryEntries = all.isNotEmpty()) } }
             .map { all -> all.filter { it.mediaId.type == MediaType.TV } }
             .onEach { shows -> loadMissingCatalogs(shows.map { it.mediaId }) }
@@ -83,13 +94,36 @@ class UpcomingViewModel(
             .launchInReporting(viewModelScope)
     }
 
-    /** Re-fetches every cached show's episode catalog (picks up newly scheduled episodes); the pull-to-refresh action. */
+    /**
+     * Re-fetches every cached show's episode catalog; the pull-to-refresh
+     * action. The flag clears in a `finally` (a path that leaves it true is a
+     * spinner that never stops), and a refresh that could not fetch says so
+     * through [UpcomingUiState.message] instead of finishing silently (#73).
+     */
     fun refresh() {
         viewModelScope.launchReporting {
             _state.update { it.copy(refreshing = true) }
-            catalogCache.refresh()
-            _state.update { it.copy(refreshing = false) }
+            try {
+                val failures = runCatching { catalogCache.refresh() }.reportFailure().getOrElse { listOf(it) }
+                failures.firstOrNull()?.let { e -> _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) } }
+            } finally {
+                _state.update { it.copy(refreshing = false) }
+            }
         }
+    }
+
+    /** Acknowledges [UpcomingUiState.message] once its snackbar has been shown. */
+    fun consumeMessage() = _state.update { it.copy(message = null) }
+
+    /**
+     * The error state's Retry: subscribes again, then refreshes. Refreshing
+     * alone (what Retry used to call) never restarted a pipeline that had
+     * already failed, so Retry did nothing.
+     */
+    fun retry() {
+        _state.update { it.copy(loading = true, error = null) }
+        observe()
+        refresh()
     }
 
     private fun upcomingGroups(shows: List<CollectionSummary>): Flow<List<UpcomingUiGroup>> = catalogCache.catalogs.map { catalogMap ->
@@ -111,5 +145,6 @@ class UpcomingViewModel(
 
     private companion object {
         const val DEFAULT_ERROR = "Something went wrong"
+        const val REFRESH_FAILED = "Couldn't refresh. Showing what's saved."
     }
 }

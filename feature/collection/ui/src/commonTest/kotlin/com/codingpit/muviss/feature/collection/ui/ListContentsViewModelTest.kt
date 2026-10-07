@@ -24,7 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** Test double for [ListsRepository]: [removeEntry] mutates [contentsByList] so [observeListContents] reflects it. */
-private class FakeContentsRepository(initialContents: List<MediaListItem>, private val failure: Throwable? = null) : ListsRepository {
+private class FakeContentsRepository(initialContents: List<MediaListItem>, var failure: Throwable? = null) : ListsRepository {
     private val contents = MutableStateFlow(initialContents)
     val removeCalls = mutableListOf<Pair<String, MediaId>>()
 
@@ -34,6 +34,7 @@ private class FakeContentsRepository(initialContents: List<MediaListItem>, priva
     override suspend fun createList(name: String) = error("not used")
     override suspend fun renameList(listId: String, name: String) = error("not used")
     override suspend fun deleteList(listId: String) = error("not used")
+    override suspend fun restoreList(listId: String, deletedAtEpochMs: Long) = error("not used")
     override suspend fun addEntry(listId: String, mediaId: MediaId) = error("not used")
 
     override suspend fun removeEntry(listId: String, mediaId: MediaId) {
@@ -92,5 +93,20 @@ class ListContentsViewModelTest {
 
         assertEquals(listOf("list-1" to matrix.mediaId), repository.removeCalls)
         assertTrue(vm.state.value.items.isEmpty())
+    }
+
+    @Test
+    fun retry_after_a_failed_load_resubscribes() = runTest {
+        val repository = FakeContentsRepository(emptyList(), failure = MetadataError.Offline())
+        val vm = ListContentsViewModel("list", ListsUseCases(repository))
+        advanceUntilIdle()
+        kotlin.test.assertNotNull(vm.state.value.error)
+
+        repository.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        kotlin.test.assertNull(vm.state.value.error)
+        kotlin.test.assertFalse(vm.state.value.loading)
     }
 }

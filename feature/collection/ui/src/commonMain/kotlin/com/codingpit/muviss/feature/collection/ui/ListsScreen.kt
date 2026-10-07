@@ -18,10 +18,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.MediaList
@@ -45,12 +51,34 @@ fun ListsScreen(
     onOpenList: (MediaList) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Same shape as Progress's tick: the change shows at once and the
+    // snackbar's Undo takes it back (#73).
+    // The delete is already saved; nothing is lost if this effect is cancelled
+    // with the screen. The captured `deleted` is what Undo restores, so a
+    // second delete can never make this snackbar restore the wrong list.
+    LaunchedEffect(state.lastDeleted) {
+        val deleted = state.lastDeleted ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = "Deleted \u201C${deleted.list.name}\u201D",
+            actionLabel = "Undo",
+            duration = SnackbarDuration.Long,
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(deleted) else viewModel.deleteUndoDismissed(deleted)
+    }
+
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.consumeMessage()
+    }
 
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             when {
                 state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = MuvissSpacing.xxl), style = MaterialTheme.typography.bodyMedium)
+                state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
                 state.lists.isEmpty() -> EmptyListsState()
                 else -> ListsColumn(state.lists, onOpenList, onEdit = viewModel::startEditing, onDelete = viewModel::deleteList)
             }
@@ -61,6 +89,7 @@ fun ListsScreen(
             text = { Text("New list") },
             modifier = Modifier.align(Alignment.BottomEnd).padding(MuvissSpacing.l),
         )
+        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
 
     if (state.creating) {
@@ -68,6 +97,7 @@ fun ListsScreen(
             title = "New list",
             initialName = "",
             confirmLabel = "Create",
+            error = state.dialogError,
             onConfirm = viewModel::createList,
             onDismiss = viewModel::cancelCreating,
         )
@@ -78,6 +108,7 @@ fun ListsScreen(
             title = "Rename list",
             initialName = editing.name,
             confirmLabel = "Save",
+            error = state.dialogError,
             onConfirm = viewModel::renameList,
             onDismiss = viewModel::cancelEditing,
         )
@@ -154,6 +185,7 @@ private fun ListNameDialog(
     title: String,
     initialName: String,
     confirmLabel: String,
+    error: String?,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -162,7 +194,14 @@ private fun ListNameDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, placeholder = { Text("List name") })
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                placeholder = { Text("List name") },
+                isError = error != null,
+                supportingText = error?.let { message -> { Text(message) } },
+            )
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text(confirmLabel) }

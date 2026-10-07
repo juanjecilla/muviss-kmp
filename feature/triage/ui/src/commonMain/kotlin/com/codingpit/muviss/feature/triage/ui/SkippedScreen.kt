@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
+import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
@@ -47,6 +48,8 @@ fun SkippedScreen(
 
         when {
             state.loading -> CircularProgressIndicator(Modifier.padding(MuvissSpacing.xl))
+
+            state.error != null -> ErrorState(state.error.orEmpty(), onRetry = viewModel::retry)
 
             state.titles.isEmpty() -> EmptyState(
                 icon = MuvissIcons.Skip,

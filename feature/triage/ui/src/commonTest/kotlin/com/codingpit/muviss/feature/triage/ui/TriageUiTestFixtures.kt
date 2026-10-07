@@ -181,7 +181,11 @@ internal class FakeTriageSnoozeRepository : TriageSnoozeRepository {
 internal class FakeTriageDecisionRepository : TriageDecisionRepository {
     val decisions = MutableStateFlow<Map<MediaId, TriageDecision>>(emptyMap())
 
-    override fun observeByVerdict(verdict: TriageVerdict): Flow<List<TriageDecision>> = decisions.map { all -> all.values.filter { it.verdict == verdict } }
+    /** Makes [observeByVerdict] throw, for the screens that read through it (#73). */
+    var observeFailure: Throwable? = null
+
+    override fun observeByVerdict(verdict: TriageVerdict): Flow<List<TriageDecision>> = observeFailure?.let { failure -> kotlinx.coroutines.flow.flow { throw failure } }
+        ?: decisions.map { all -> all.values.filter { it.verdict == verdict } }
 
     override fun observeDecidedIds(): Flow<Set<MediaId>> = decisions.map { it.keys }
 
@@ -305,8 +309,12 @@ internal class FakeDeckSource(
 ) : DeckSource {
     var failure: Throwable? = null
 
+    /** Every movie page asked for, in order — how far a refill read (#183). */
+    val requestedPages = mutableListOf<Int>()
+
     override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> {
         failure?.let { return Result.failure(it) }
+        if (type == MediaType.MOVIE) requestedPages += page
         if (type == MediaType.MOVIE && moviePages != null) {
             return Result.success(PagedResult(moviePages.byNumber[page].orEmpty(), page = page, totalPages = moviePages.totalPages))
         }

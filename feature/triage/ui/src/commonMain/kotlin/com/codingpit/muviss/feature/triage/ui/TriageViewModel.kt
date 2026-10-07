@@ -87,6 +87,18 @@ data class TriageUiState(
     val controlScheme: TriageControlScheme = TriageControlScheme.DEFAULT,
     val tutorialVisible: Boolean = false,
     val exhausted: Boolean = false,
+    /**
+     * A refill has come back empty at least once and is reading further into
+     * the catalogue (#183). The screen says so instead of a bare spinner.
+     */
+    val searchingDeeper: Boolean = false,
+    /**
+     * The last refill read [TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL]
+     * batches without a single new title and stopped, though the catalogue is
+     * not spent. Offered as "Keep looking", which continues from the cursor —
+     * never as "All caught up", which would be false (#183).
+     */
+    val keepLookingAvailable: Boolean = false,
     val error: String? = null,
     val undoable: UndoableAction? = null,
     val failedCommit: FailedCommit? = null,
@@ -386,6 +398,9 @@ class TriageViewModel(
 
     fun retry() = refill(reset = true)
 
+    /** Reads on from where the last refill stopped (#183); unlike [retry], it never goes back to page 1. */
+    fun onKeepLooking() = refill(reset = false)
+
     private suspend fun loadGenreChips() {
         val movies = loadGenres(MediaType.MOVIE)
         val tv = loadGenres(MediaType.TV)
@@ -401,9 +416,11 @@ class TriageViewModel(
         if (reset) {
             cursor = DeckCursor()
             shown.clear()
-            _state.update { it.copy(cards = emptyList(), loading = true, error = null, exhausted = false) }
+            _state.update {
+                it.copy(cards = emptyList(), loading = true, error = null, exhausted = false, keepLookingAvailable = false)
+            }
         } else {
-            _state.update { it.copy(refilling = true) }
+            _state.update { it.copy(refilling = true, keepLookingAvailable = false) }
         }
 
         loadJob = viewModelScope.launchReporting {
@@ -416,27 +433,30 @@ class TriageViewModel(
             // heavily-triaged library one batch can come back with nothing
             // new while the catalogue (cursor.exhaustedFor) is nowhere near
             // spent — TMDB's popularity order front-loads exactly the titles
-            // a long-time user already has an opinion about. Keep asking for
-            // more pages until a batch actually has cards, or the catalogue
-            // itself runs out; an empty batch alone is never the answer.
-            //
-            // Terminates because every load() advances the cursor and the
-            // catalogue is finite: TmdbDeckSource clamps /discover to the 500
-            // pages TMDB will serve. Deliberately not capped lower — the
-            // screen renders any empty deck as "caught up" and retry() resets
-            // the cursor, so a cap would make every title past it unreachable.
-            while (true) {
+            // a long-time user already has an opinion about. An empty batch
+            // alone is never the answer, so keep reading — but only for
+            // MAX_EMPTY_BATCHES_PER_REFILL batches (#183). Unbounded, the
+            // worst case was ~1000 sequential requests behind a bare spinner.
+            // Stopping is safe because the cursor survives: "Keep looking"
+            // (onKeepLooking) and the next refillIfRunningLow both continue
+            // from it, whereas only retry() and a filter change reset it.
+            var emptyBatches = 0
+            do {
+                if (emptyBatches > 0) _state.update { it.copy(searchingDeeper = true) }
                 val batch = loadDeck(filter, cursor, alreadyShown = shown, placement = _state.value.snoozePlacement)
                     .getOrElse { error ->
-                        _state.update { it.copy(loading = false, refilling = false, error = error.toUserMessage(LOAD_FAILED)) }
+                        _state.update {
+                            it.copy(loading = false, refilling = false, searchingDeeper = false, error = error.toUserMessage(LOAD_FAILED))
+                        }
                         return@launchReporting
                     }
                 cursor = batch.cursor
                 shown += batch.cards.map { it.id }
                 batchCards = batch.cards
                 trulyExhausted = cursor.exhaustedFor(filter)
-                if (batchCards.isNotEmpty() || trulyExhausted) break
-            }
+                val nothingNew = batchCards.isEmpty() && !trulyExhausted
+                if (nothingNew) emptyBatches++
+            } while (nothingNew && emptyBatches < MAX_EMPTY_BATCHES_PER_REFILL)
 
             _state.update { current ->
                 val cards = current.cards + batchCards
@@ -444,15 +464,25 @@ class TriageViewModel(
                     cards = cards,
                     loading = false,
                     refilling = false,
+                    searchingDeeper = false,
                     error = null,
                     exhausted = cards.isEmpty() && trulyExhausted,
+                    keepLookingAvailable = cards.isEmpty() && !trulyExhausted,
                 )
             }
             if (trulyExhausted && _state.value.cards.isEmpty()) analytics.track(TriageEvent.DeckExhausted)
         }
     }
 
-    private companion object {
+    internal companion object {
+        /**
+         * How many batches in a row may come back with nothing new before a
+         * refill stops and offers "Keep looking" (#183). Each batch is up to
+         * `MAX_PAGES_PER_BATCH` catalogue pages, so this bounds one refill to
+         * a few dozen requests instead of the whole 500-page catalogue.
+         */
+        const val MAX_EMPTY_BATCHES_PER_REFILL = 4
+
         /** Refill while there are still cards left to swipe, so the deck never visibly stalls. */
         const val REFILL_THRESHOLD = 3
         const val LOAD_FAILED = "Couldn't load more titles."

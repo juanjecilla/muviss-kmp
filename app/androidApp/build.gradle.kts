@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
+import java.util.zip.ZipFile
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -7,6 +8,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.licensee)
     alias(libs.plugins.sentry)
+    alias(libs.plugins.baselineprofile)
 }
 
 kotlin {
@@ -57,6 +59,8 @@ dependencies {
     implementation(projects.core.database)
     // OAUTH_CODE_PARAM, shared with the manifest's auth-callback filter (ADR 0014).
     implementation(projects.core.sync)
+    // TmdbFailureTrace: the debug-only logcat trace of swallowed TMDB failures (#177).
+    implementation(projects.core.network)
     implementation(libs.koin.core)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.work.runtimeKtx)
@@ -64,6 +68,10 @@ dependencies {
     implementation(libs.androidx.glance.material3)
 
     implementation(libs.androidx.activity.compose)
+    // Installs the committed baseline profile on devices without Play's cloud
+    // profiles (sideloads, first days after release). EPIC 34 / #77.
+    implementation(libs.androidx.profileinstaller)
+    baselineProfile(projects.app.baselineprofile)
 
     // Glance builds its ColorProviders from the app's own M3 schemes
     // (see widget/MuvissWidget.kt), so androidApp needs material3 directly.
@@ -176,6 +184,74 @@ val gitVersionName: String = run {
         else -> "0.1.0-dev.$gitVersionCode"
     }
 }
+
+// -----------------------------------------------------------------------
+// Compose Resources must reach the package (#165). They ride on Android
+// resources, which `com.android.kotlin.multiplatform.library` skips unless
+// `muviss.kmp.compose` enables them — and when it did not, every string and
+// the bundled font were silently left out: JVM tests and goldens read them off
+// the classpath, both assemble tasks succeed, and the app threw
+// `MissingResourceException` on launch. So read the built archive instead and
+// fail unless every module that owns `composeResources` is in it. CI runs the
+// APK check after `assembleDebug`; the release workflow runs the bundle check
+// after `bundleRelease`.
+// -----------------------------------------------------------------------
+val composeResourcePackages: List<String> =
+    rootProject.subprojects
+        .filter { it.file("src/commonMain/composeResources").isDirectory }
+        // Same derivation as `packageOfResClass` in muviss.kmp.compose.
+        .map { "com.codingpit.muviss." + it.path.removePrefix(":").replace(":", ".").replace("-", "") + ".generated.resources" }
+        .sorted()
+
+fun registerComposeResourcesCheck(
+    name: String,
+    archiveTask: String,
+    archiveDir: String,
+    extension: String,
+    entryPrefix: String,
+) = tasks.register(name) {
+    group = "verification"
+    description = "Fails if the $extension built by $archiveTask is missing any module's Compose Resources (#165)."
+    dependsOn(archiveTask)
+    val dir = layout.buildDirectory.dir(archiveDir)
+    val expected = composeResourcePackages
+    inputs.dir(dir)
+    inputs.property("expected", expected)
+    doLast {
+        val archive =
+            dir.get().asFile.listFiles { f -> f.extension == extension }?.singleOrNull()
+                ?: error("Expected exactly one .$extension in ${dir.get().asFile}")
+        val present =
+            ZipFile(archive).use { zip ->
+                zip.entries().asSequence()
+                    .map { it.name }
+                    .filter { it.startsWith(entryPrefix) }
+                    .map { it.removePrefix(entryPrefix).substringBefore('/') }
+                    .toSet()
+            }
+        val missing = expected - present
+        check(missing.isEmpty()) {
+            "${archive.name} has no Compose Resources for: ${missing.joinToString()}. " +
+                "Is `androidResources.enable = true` still set in muviss.kmp.compose?"
+        }
+        logger.lifecycle("${archive.name}: Compose Resources present for ${expected.size} modules")
+    }
+}
+
+registerComposeResourcesCheck(
+    name = "verifyDebugApkComposeResources",
+    archiveTask = "assembleDebug",
+    archiveDir = "outputs/apk/debug",
+    extension = "apk",
+    entryPrefix = "assets/composeResources/",
+)
+registerComposeResourcesCheck(
+    name = "verifyReleaseBundleComposeResources",
+    archiveTask = "bundleRelease",
+    archiveDir = "outputs/bundle/release",
+    extension = "aab",
+    entryPrefix = "base/assets/composeResources/",
+)
 
 // -----------------------------------------------------------------------
 // Sentry Gradle plugin (EPIC 26). Release builds are minified, so without the R8

@@ -108,6 +108,14 @@
     <init>(android.content.Context, androidx.work.WorkerParameters);
 }
 
+# The midnight widget refresh (EPIC 22) is the worker EPIC 30's audit found
+# without this rule: armed every night, ClassNotFoundException every night,
+# release builds only — so the "aired by today" boundary never moved on the
+# widget. Every CoroutineWorker in this module needs a line here.
+-keep class com.codingpit.muviss.widget.WidgetMidnightRefreshWorker {
+    <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+
 # WorkManager's WorkManagerInitializer (an AndroidX Startup ContentProvider,
 # runs unconditionally before Application.onCreate) instantiates its
 # Room-generated WorkDatabase_Impl reflectively via a no-arg constructor.
@@ -121,3 +129,9 @@
 # this app doesn't call Room directly and can't enumerate them by hand.
 -keep class androidx.work.impl.WorkDatabase_Impl { <init>(); }
 -keepclassmembers class * extends androidx.room.RoomDatabase { <init>(); }
+
+# The Settings > About test crash (docs/RELEASING.md "Sentry test crash"). R8's
+# class merging folded it into androidx.datastore's protobuf
+# UninitializedMessageException — both are bare RuntimeExceptions — and Sentry
+# can only name the class that survived, so the issue was titled after protobuf.
+-keep class com.codingpit.muviss.feature.settings.ui.MuvissTestCrash

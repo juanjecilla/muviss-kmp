@@ -21,6 +21,7 @@ import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
 import com.codingpit.muviss.feature.profile.domain.syncStatusDetail
 import com.codingpit.muviss.models.toUserMessage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,8 +92,8 @@ data class ProfileUiState(
  * `LifecycleEventEffect`, which calls `SyncEngine.syncNow()` directly.
  */
 class ProfileViewModel(
-    observeProfile: ObserveProfileUseCase,
-    observeProfileStats: ObserveProfileStatsUseCase,
+    private val observeProfile: ObserveProfileUseCase,
+    private val observeProfileStats: ObserveProfileStatsUseCase,
     private val actions: ProfileActions,
     private val syncActions: SyncActions,
     private val clock: AppClock,
@@ -101,11 +102,24 @@ class ProfileViewModel(
     private val _state = MutableStateFlow(ProfileUiState())
     val state: StateFlow<ProfileUiState> = _state.asStateFlow()
 
-    init {
-        combine(observeProfile(), observeProfileStats()) { profile, stats -> profile to stats }
+    private var profileObservation: Job? = null
+
+    /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
+    fun retry() {
+        _state.update { it.copy(loading = true, error = null) }
+        observeProfileAndStats()
+    }
+
+    private fun observeProfileAndStats() {
+        profileObservation?.cancel()
+        profileObservation = combine(observeProfile(), observeProfileStats()) { profile, stats -> profile to stats }
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
             .onEach { (profile, stats) -> _state.update { it.copy(loading = false, profile = profile, stats = stats, error = null) } }
             .launchInReporting(viewModelScope)
+    }
+
+    init {
+        observeProfileAndStats()
 
         combine(syncActions.observeAccount(), syncActions.observeSyncStatus(), syncActions.observeAutomaticSync()) { account, status, automatic ->
             Triple(account, status, automatic)

@@ -1,0 +1,9 @@
+Te damos la bienvenida a Muviss 1.0, un registro privado de series y películas.
+
+• Marca episodios y Muviss sabe qué estás viendo, qué toca ahora y qué viene.
+• Llena tu biblioteca rápido: decide título a título o pospón los que dudes.
+• Siguiente episodio, estrenos, avisos de capítulos nuevos y un widget.
+• Estadísticas, historial de revisionados, notas, valoraciones y listas.
+• Importa desde Trakt, TV Time o CSV.
+
+Sin cuentas, sin anuncios, sin redes. Todo se queda en tu dispositivo.
