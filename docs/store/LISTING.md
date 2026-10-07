@@ -105,4 +105,4 @@ screenshots — only the eventual public App Store listing does).
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-en.svg -o fastlane/metadata/android/en-US/images/featureGraphic.png
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-es.svg -o fastlane/metadata/android/es-ES/images/featureGraphic.png
   ```
-- `phoneScreenshots/` — not yet: the StoreShot mode of the golden harness generates them (EPIC 33, #76). Play needs at least two before the first production release.
+- `phoneScreenshots/` — six 1080×1920 shots from StoreShot (`./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot`): the real app over an invented catalogue with generated posters, so no third-party artwork appears. en-US only until EPIC 31 (#74) translates the feature screens; Play shows them for es-ES too.
