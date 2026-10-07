@@ -5,12 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportFailure
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
+import com.codingpit.muviss.feature.progress.ui.generated.resources.Res
+import com.codingpit.muviss.feature.progress.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.progress.ui.generated.resources.refresh_failed
 import com.codingpit.muviss.models.EpisodeId
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,9 +27,9 @@ data class ProgressUiState(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     /** One-shot snackbar text, e.g. a refresh that failed; cleared by `consumeMessage()`. */
-    val message: String? = null,
+    val message: UiText? = null,
     val items: List<WatchNextItem> = emptyList(),
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 /**
@@ -56,7 +60,7 @@ class ProgressViewModel(
     private fun observe() {
         observation?.cancel()
         observation = watchNext()
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { items -> _state.update { it.copy(loading = false, items = items, error = null) } }
             .launchInReporting(viewModelScope)
     }
@@ -83,7 +87,7 @@ class ProgressViewModel(
             _state.update { it.copy(refreshing = true) }
             try {
                 val failures = runCatching { catalogCache.refresh() }.reportFailure().getOrElse { listOf(it) }
-                failures.firstOrNull()?.let { e -> _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) } }
+                failures.firstOrNull()?.let { e -> _state.update { it.copy(message = e.toUiText(UiText.Resource(Res.string.refresh_failed))) } }
             } finally {
                 _state.update { it.copy(refreshing = false) }
             }
@@ -102,10 +106,5 @@ class ProgressViewModel(
         _state.update { it.copy(loading = true, error = null) }
         observe()
         refresh()
-    }
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
-        const val REFRESH_FAILED = "Couldn't refresh. Showing what's saved."
     }
 }

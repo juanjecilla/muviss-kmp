@@ -9,18 +9,23 @@ import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportFailure
 import com.codingpit.muviss.core.common.todayEpochDay
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.UpcomingBucket
+import com.codingpit.muviss.feature.progress.domain.UpcomingDate
 import com.codingpit.muviss.feature.progress.domain.UpcomingEpisodesCalculator
 import com.codingpit.muviss.feature.progress.domain.UpcomingGroup
 import com.codingpit.muviss.feature.progress.domain.UpcomingShow
-import com.codingpit.muviss.feature.progress.domain.upcomingDateLabel
+import com.codingpit.muviss.feature.progress.domain.upcomingDate
+import com.codingpit.muviss.feature.progress.ui.generated.resources.Res
+import com.codingpit.muviss.feature.progress.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.progress.ui.generated.resources.refresh_failed
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -33,13 +38,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
-/** One Upcoming agenda row: a future episode plus the display label ("Today", "Tomorrow", a weekday, or a date). */
+/** One Upcoming agenda row: a future episode plus when it airs, which the screen words in the user's language. */
 data class UpcomingRow(
     val mediaId: MediaId,
     val title: String,
     val posterUrl: String?,
     val episode: Episode,
-    val dateLabel: String,
+    val date: UpcomingDate,
 )
 
 /** One agenda section, e.g. "Today", already sorted rows. */
@@ -52,9 +57,9 @@ data class UpcomingUiState(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     /** One-shot snackbar text, e.g. a refresh that failed; cleared by `consumeMessage()`. */
-    val message: String? = null,
+    val message: UiText? = null,
     val groups: List<UpcomingUiGroup> = emptyList(),
-    val error: String? = null,
+    val error: UiText? = null,
     /** Whether the library has *any* saved title — distinguishes the "empty library" empty state from "nothing upcoming". */
     val hasLibraryEntries: Boolean = false,
 )
@@ -89,7 +94,7 @@ class UpcomingViewModel(
             .map { all -> all.filter { it.mediaId.type == MediaType.TV } }
             .onEach { shows -> loadMissingCatalogs(shows.map { it.mediaId }) }
             .flatMapLatest { shows -> upcomingGroups(shows) }
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { groups -> _state.update { it.copy(loading = false, groups = groups, error = null) } }
             .launchInReporting(viewModelScope)
     }
@@ -105,7 +110,7 @@ class UpcomingViewModel(
             _state.update { it.copy(refreshing = true) }
             try {
                 val failures = runCatching { catalogCache.refresh() }.reportFailure().getOrElse { listOf(it) }
-                failures.firstOrNull()?.let { e -> _state.update { it.copy(message = e.toUserMessage(REFRESH_FAILED)) } }
+                failures.firstOrNull()?.let { e -> _state.update { it.copy(message = e.toUiText(UiText.Resource(Res.string.refresh_failed))) } }
             } finally {
                 _state.update { it.copy(refreshing = false) }
             }
@@ -135,16 +140,11 @@ class UpcomingViewModel(
     private fun UpcomingGroup.toUiGroup(todayEpochDay: Long) = UpcomingUiGroup(
         bucket = bucket,
         rows = episodes.map { ep ->
-            UpcomingRow(ep.mediaId, ep.title, ep.posterUrl, ep.episode, upcomingDateLabel(ep.airDateEpochDay, todayEpochDay))
+            UpcomingRow(ep.mediaId, ep.title, ep.posterUrl, ep.episode, upcomingDate(ep.airDateEpochDay, todayEpochDay))
         },
     )
 
     private fun loadMissingCatalogs(mediaIds: List<MediaId>) {
         viewModelScope.launchReporting { catalogCache.loadMissing(mediaIds) }
-    }
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
-        const val REFRESH_FAILED = "Couldn't refresh. Showing what's saved."
     }
 }
