@@ -28,6 +28,13 @@ reviews:
         Read CLAUDE.md first: it lists the domain rules that bite (derived
         WatchStatus, soft deletes needing `AND deleted = 0`, aired-only bulk
         ticks, MetadataError never exposing e.message). Flag violations of those.
+    - path: "feature/**/ui/**"
+      instructions: >-
+        UI copy is moving to composeResources module by module (EPIC 31, #74).
+        A module listed under HardcodedUiCopy's `excludes` in
+        config/detekt/detekt.yml has not been migrated yet, and literal copy
+        there is the current rule, not a defect — do not ask to localize it.
+        Once a module is off that list, literals in its commonMain are a defect.
     - path: "**/commonTest/**"
       instructions: >-
         Kotlin/Native rejects punctuation in backticked test names; commonTest

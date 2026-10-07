@@ -76,10 +76,16 @@ the "why", and reviewers read them.
 - **`main` is not a target.** Only `release/*` and `hotfix/*` merge into it, by
   merge commit. A fix for a release in flight is a PR into `release/x.y.z`.
 - **Merge when it is green and approved, not before.** Wait for every required
-  check (`gh pr checks --watch`), then for CodeRabbit's approval: resolve each
-  of its comments — fix it, or answer why not — and it approves. Squash-merge
-  into `develop`. If CodeRabbit is unavailable, `gh pr merge --squash --admin`
-  is the fallback, and the PR description says so. Never bypass a red check.
+  check (`gh pr checks --watch`), then for CodeRabbit's approval:
+  1. Read each of its comments and either fix it or reply on the thread with
+     why not (`gh api -X POST repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies -f body=...`).
+  2. Push the fixes, then comment `@coderabbitai review` if it has not re-reviewed.
+  3. Comment `@coderabbitai resolve`: it resolves its threads and, with the
+     request-changes workflow on, turns its review into an approval.
+  Then squash-merge into `develop` (`gh pr merge --squash`). A PR opened before
+  CodeRabbit was installed needs a manual `@coderabbitai review` first. If
+  CodeRabbit is unavailable, `gh pr merge --squash --admin` is the fallback
+  and the PR says so. Never bypass a red check.
 - **One epic, one PR, in order.** The next one branches from the `develop` that
   contains the last.
 
