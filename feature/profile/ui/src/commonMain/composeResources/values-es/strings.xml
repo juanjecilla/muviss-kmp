@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spanish (Spain). Mirrors values/strings.xml key for key. -->
+<resources>
+    <string name="action_back">Atrás</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_retry">Reintentar</string>
+    <string name="action_close">Cerrar</string>
+    <string name="error_generic">Algo ha ido mal</string>
+    <string name="error_rewatches">No se pudieron cargar los revisionados</string>
+    <string name="edit_name">Editar nombre</string>
+    <string name="avatar">Avatar</string>
+    <string name="your_name">Tu nombre</string>
+    <string name="no_stats_title">Aún no hay estadísticas</string>
+    <string name="no_stats_body">Guarda títulos en tu biblioteca y marca episodios para ver tus estadísticas aquí.</string>
+    <string name="stats">Estadísticas</string>
+    <string name="stat_movies_watched">películas vistas</string>
+    <string name="stat_episodes_seen">episodios vistos</string>
+    <string name="stat_hours_watched">horas vistas</string>
+    <!-- %1$s is hours with one decimal. -->
+    <string name="hours_short">%1$s h</string>
+    <!-- %1$d days. -->
+    <string name="days_short">%1$d d</string>
+    <!-- %1$d is the longest streak in days. -->
+    <string name="stat_streak">racha (mejor %1$d d)</string>
+    <string name="by_status">Por estado</string>
+    <string name="by_genre">Por género</string>
+    <string name="status_not_started">Sin empezar</string>
+    <string name="status_watching">Viendo</string>
+    <string name="status_watched">Vista</string>
+    <string name="status_finished">Terminada</string>
+    <string name="genre_other">Otros</string>
+    <string name="genre_tags">etiquetas de género</string>
+    <!-- One letter per month, comma-separated, January first. -->
+    <string name="month_initials">E,F,M,A,M,J,J,A,S,O,N,D</string>
+    <string name="most_rewatched">Lo más revisto</string>
+    <string name="see_all">Ver todo</string>
+    <!-- %1$s is rewatch_how_to. -->
+    <string name="nothing_rewatched_card">Aún no has vuelto a ver nada. %1$s</string>
+    <!-- Names the gesture, because nothing else in the app does: every install upgraded with zero rewatches (ADR 0011). -->
+    <string name="rewatch_how_to">Toca un episodio que ya hayas visto y elige «Visto otra vez».</string>
+    <string name="nothing_rewatched_year">Nada revisto este año</string>
+    <string name="nothing_rewatched">Aún no has vuelto a ver nada</string>
+    <string name="rewatch_trend">Revisionados · últimos 12 meses</string>
+    <string name="ranking_shows">Series</string>
+    <string name="ranking_movies">Películas</string>
+    <string name="window_all_time">Siempre</string>
+    <string name="window_this_year">Este año</string>
+    <!-- %1$d position, %2$s title, %3$s the rewatch count. -->
+    <string name="rewatch_row_description">%1$d. %2$s, %3$s</string>
+    <string name="watch_together">Ver juntos</string>
+    <string name="watch_together_body">Vincúlate con alguien y mirad qué podéis ver juntos.</string>
+    <string name="sync_title">Sincroniza entre dispositivos</string>
+    <string name="sync_pitch">Ten tu biblioteca, tu progreso y tu historial de revisionados en todos tus dispositivos.</string>
+    <string name="paywall_body">Tu biblioteca, tu progreso y tu historial de revisionados, al día en cada dispositivo donde inicies sesión.</string>
+    <string name="paywall_unavailable">Las compras aún no están disponibles en esta versión.</string>
+    <string name="sync_unlock">Desbloquear sincronización</string>
+    <string name="sign_out">Cerrar sesión</string>
+    <string name="account">Cuenta</string>
+    <string name="sync_local_only">Por ahora todo se queda en este dispositivo.</string>
+    <!-- %1$s is the provider, e.g. GitHub. -->
+    <string name="sign_in_with">Iniciar sesión con %1$s</string>
+    <string name="signed_in">Sesión iniciada</string>
+    <string name="syncing">Sincronizando…</string>
+    <string name="sync_now">Sincronizar ahora</string>
+    <string name="sync_automatically">Sincronizar automáticamente</string>
+    <string name="state_on">Activado</string>
+    <string name="state_off">Desactivado</string>
+    <string name="resync_everything">Volver a sincronizar todo</string>
+    <string name="resync_question">¿Volver a sincronizar todo?</string>
+    <string name="resync_body">Se enviará toda tu biblioteca a tu cuenta de nuevo y se descargará todo lo que contiene. Puede tardar un rato y consumir datos. No se borra nada.</string>
+    <string name="resync">Sincronizar</string>
+    <string name="sync_not_configured">La sincronización no está configurada en esta versión</string>
+    <string name="sign_in_failed">No se pudo iniciar sesión</string>
+    <string name="resynced">Todo sincronizado de nuevo</string>
+    <string name="synced">Sincronizado</string>
+    <string name="sync_paid">La sincronización es una función de pago</string>
+    <!-- %1$s is why it failed. -->
+    <string name="sync_failed">Error de sincronización: %1$s</string>
+    <string name="sync_account_changed">La biblioteca de este dispositivo pertenece a otra cuenta, así que no se ha sincronizado nada.</string>
+    <plurals name="rewatches_episodes">
+        <item quantity="one">%1$d episodio revisto</item>
+        <item quantity="other">%1$d episodios revistos</item>
+    </plurals>
+    <plurals name="rewatches">
+        <item quantity="one">revista %1$d vez</item>
+        <item quantity="other">revista %1$d veces</item>
+    </plurals>
+</resources>

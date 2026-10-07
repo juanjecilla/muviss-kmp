@@ -289,7 +289,7 @@ class ProfileViewModelTest {
 
         assertNull(vm.state.value.sync.pendingAuthUrl)
         assertNull(repository.requestedProvider, "an unavailable build must not reach the backend at all")
-        assertEquals("Sync isn't set up for this build", vm.state.value.sync.message)
+        assertEquals("Sync isn't set up for this build", vm.state.value.sync.message.text())
     }
 
     @Test
@@ -316,7 +316,7 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         assertNull(vm.state.value.sync.pendingAuthUrl)
-        assertEquals("Couldn't start sign-in", vm.state.value.sync.message)
+        assertEquals("Couldn't start sign-in", vm.state.value.sync.message.text())
     }
 
     @Test
@@ -347,7 +347,7 @@ class ProfileViewModelTest {
         repository.signInFailure.value = "code challenge does not match"
         advanceUntilIdle()
 
-        assertEquals("code challenge does not match", vm.state.value.sync.message)
+        assertEquals("code challenge does not match", vm.state.value.sync.message.text())
     }
 
     @Test
@@ -379,7 +379,7 @@ class ProfileViewModelTest {
         vm.onSyncNowClicked()
         advanceUntilIdle()
 
-        assertEquals("Synced", vm.state.value.sync.message)
+        assertEquals("Synced", vm.state.value.sync.message.text())
         assertEquals(false, vm.state.value.sync.syncing)
     }
 
@@ -514,7 +514,7 @@ class ProfileViewModelTest {
         vm.onSyncNowClicked()
         advanceUntilIdle()
 
-        assertEquals("Sync failed: the sync service had a problem, try again later", vm.state.value.sync.message)
+        assertEquals("Sync failed: the sync service had a problem, try again later", vm.state.value.sync.message.text())
     }
 
     @Test
@@ -526,7 +526,7 @@ class ProfileViewModelTest {
         vm.onSyncNowClicked()
         advanceUntilIdle()
 
-        assertEquals("This device's library belongs to a different account, so nothing was synced.", vm.state.value.sync.message)
+        assertEquals("This device's library belongs to a different account, so nothing was synced.", vm.state.value.sync.message.text())
     }
 
     @Test
@@ -566,7 +566,7 @@ class ProfileViewModelTest {
         assertEquals(1, repository.resyncCalls)
         assertEquals(false, vm.state.value.sync.confirmingResync)
         assertEquals(false, vm.state.value.sync.syncing)
-        assertEquals("Everything resynced", vm.state.value.sync.message)
+        assertEquals("Everything resynced", vm.state.value.sync.message.text())
     }
 
     @Test
@@ -574,7 +574,7 @@ class ProfileViewModelTest {
         val profiles = FakeProfileRepository().apply { failure = MetadataError.Offline() }
         val vm = viewModel(profileRepository = profiles)
         advanceUntilIdle()
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error.text())
 
         profiles.failure = null
         vm.retry()

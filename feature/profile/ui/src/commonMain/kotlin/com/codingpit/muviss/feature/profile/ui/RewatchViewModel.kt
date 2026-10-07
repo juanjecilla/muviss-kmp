@@ -3,10 +3,13 @@ package com.codingpit.muviss.feature.profile.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.profile.domain.ObserveRewatchStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.RewatchStats
 import com.codingpit.muviss.feature.profile.domain.RewatchWindow
-import com.codingpit.muviss.models.toUserMessage
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.error_rewatches
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +23,7 @@ import kotlinx.coroutines.flow.update
 data class RewatchUiState(
     val loading: Boolean = true,
     val stats: RewatchStats = RewatchStats(),
-    val error: String? = null,
+    val error: UiText? = null,
 ) {
     val window: RewatchWindow get() = stats.window
 }
@@ -57,7 +60,7 @@ class RewatchViewModel(
         observation = window
             .flatMapLatest { observeRewatchStats(it) }
             .onEach { stats -> _state.update { it.copy(loading = false, stats = stats, error = null) } }
-            .catch { error -> _state.update { it.copy(loading = false, error = error.toUserMessage("Could not load rewatches")) } }
+            .catch { error -> _state.update { it.copy(loading = false, error = error.toUiText(UiText.Resource(Res.string.error_rewatches))) } }
             .launchInReporting(viewModelScope)
     }
 

@@ -209,7 +209,7 @@ class RewatchViewModelTest {
         )
         advanceUntilIdle()
 
-        assertEquals(MetadataError.RateLimited().userMessage, viewModel.state.value.error)
+        assertEquals(MetadataError.RateLimited().userMessage, viewModel.state.value.error.text())
     }
 
     @Test
@@ -220,7 +220,7 @@ class RewatchViewModelTest {
         )
         advanceUntilIdle()
 
-        assertEquals("Could not load rewatches", viewModel.state.value.error)
+        assertEquals("Could not load rewatches", viewModel.state.value.error.text())
     }
 
     @Test
@@ -230,7 +230,7 @@ class RewatchViewModelTest {
             ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
         )
         advanceUntilIdle()
-        assertEquals(MetadataError.Offline().userMessage, viewModel.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, viewModel.state.value.error.text())
 
         collectionApi.failure = null
         viewModel.retry()

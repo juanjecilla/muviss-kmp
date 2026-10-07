@@ -50,6 +50,8 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.StatTile
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.AvatarPreset
 import com.codingpit.muviss.feature.profile.domain.AvatarPresets
@@ -58,9 +60,33 @@ import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.RewatchEntry
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.action_cancel
+import com.codingpit.muviss.feature.profile.ui.generated.resources.action_save
+import com.codingpit.muviss.feature.profile.ui.generated.resources.avatar
+import com.codingpit.muviss.feature.profile.ui.generated.resources.by_genre
+import com.codingpit.muviss.feature.profile.ui.generated.resources.by_status
+import com.codingpit.muviss.feature.profile.ui.generated.resources.days_short
+import com.codingpit.muviss.feature.profile.ui.generated.resources.edit_name
+import com.codingpit.muviss.feature.profile.ui.generated.resources.hours_short
+import com.codingpit.muviss.feature.profile.ui.generated.resources.most_rewatched
+import com.codingpit.muviss.feature.profile.ui.generated.resources.no_stats_body
+import com.codingpit.muviss.feature.profile.ui.generated.resources.no_stats_title
+import com.codingpit.muviss.feature.profile.ui.generated.resources.nothing_rewatched_card
+import com.codingpit.muviss.feature.profile.ui.generated.resources.rewatch_how_to
+import com.codingpit.muviss.feature.profile.ui.generated.resources.see_all
+import com.codingpit.muviss.feature.profile.ui.generated.resources.stat_episodes_seen
+import com.codingpit.muviss.feature.profile.ui.generated.resources.stat_hours_watched
+import com.codingpit.muviss.feature.profile.ui.generated.resources.stat_movies_watched
+import com.codingpit.muviss.feature.profile.ui.generated.resources.stat_streak
+import com.codingpit.muviss.feature.profile.ui.generated.resources.stats
+import com.codingpit.muviss.feature.profile.ui.generated.resources.watch_together
+import com.codingpit.muviss.feature.profile.ui.generated.resources.watch_together_body
+import com.codingpit.muviss.feature.profile.ui.generated.resources.your_name
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.round
 import kotlin.time.Duration.Companion.seconds
 
@@ -79,7 +105,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
 
     LaunchedEffect(state.sync.message) {
         val message = state.sync.message ?: return@LaunchedEffect
-        coroutineScope.launch { snackbarHostState.showSnackbar(message) }
+        coroutineScope.launch { snackbarHostState.showSnackbar(message.resolveAsync()) }
         viewModel.syncMessageShown()
     }
 
@@ -119,7 +145,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
         // showing those would read as real numbers, so the error replaces them.
         state.error?.let { message ->
             Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
-                ErrorState(message, onRetry = viewModel::retry)
+                ErrorState(message.resolve(), onRetry = viewModel::retry)
             }
             return@Scaffold
         }
@@ -195,11 +221,11 @@ private fun IdentitySection(
             Column {
                 Text(profile.displayName, style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = onEditName, contentPadding = PaddingValues(0.dp)) {
-                    Text("Edit name")
+                    Text(stringResource(Res.string.edit_name))
                 }
             }
         }
-        Text("Avatar", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.avatar), style = MaterialTheme.typography.titleSmall)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(AvatarPresets.all, key = { it.id }) { preset ->
                 AvatarBadge(
@@ -242,15 +268,15 @@ private fun EditNameDialog(
     var name by remember(currentName) { mutableStateOf(currentName) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Your name") },
+        title = { Text(stringResource(Res.string.your_name)) },
         text = {
             OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true)
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text("Save") }
+            TextButton(onClick = { onConfirm(name) }, enabled = name.isNotBlank()) { Text(stringResource(Res.string.action_save)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
         },
     )
 }
@@ -259,8 +285,8 @@ private fun EditNameDialog(
 private fun EmptyLibraryState() {
     EmptyState(
         icon = MuvissIcons.Profile,
-        title = "No stats yet",
-        body = "Save titles to your library and tick episodes to see your stats here.",
+        title = stringResource(Res.string.no_stats_title),
+        body = stringResource(Res.string.no_stats_body),
     )
 }
 
@@ -283,25 +309,25 @@ internal fun StatsSection(
     wide: Boolean = rememberWideChartLayout(),
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l)) {
-        Text("Stats", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.stats), style = MaterialTheme.typography.titleSmall)
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-            StatTile(stats.moviesWatched.toString(), "movies watched", Modifier.weight(1f))
-            StatTile(stats.episodesSeen.toString(), "episodes seen", Modifier.weight(1f))
+            StatTile(stats.moviesWatched.toString(), stringResource(Res.string.stat_movies_watched), Modifier.weight(1f))
+            StatTile(stats.episodesSeen.toString(), stringResource(Res.string.stat_episodes_seen), Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-            StatTile(formatHours(stats.estimatedHoursWatched), "hours watched", Modifier.weight(1f))
-            StatTile("${stats.streak.currentDays}d", "streak (best ${stats.streak.longestDays}d)", Modifier.weight(1f))
+            StatTile(stringResource(Res.string.hours_short, formatHours(stats.estimatedHoursWatched)), stringResource(Res.string.stat_hours_watched), Modifier.weight(1f))
+            StatTile(stringResource(Res.string.days_short, stats.streak.currentDays), stringResource(Res.string.stat_streak, stats.streak.longestDays), Modifier.weight(1f))
         }
 
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-            Text("By status", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(Res.string.by_status), style = MaterialTheme.typography.labelLarge)
             StatusBarChart(stats.statusBreakdown, Modifier.fillMaxWidth())
         }
 
         if (stats.genreBreakdown.isNotEmpty()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-                Text("By genre", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(Res.string.by_genre), style = MaterialTheme.typography.labelLarge)
                 GenreDonutChart(foldGenresIntoOther(stats.genreBreakdown), wide = wide)
             }
         }
@@ -333,10 +359,10 @@ internal fun MostRewatchedCard(entries: List<RewatchEntry>, onOpenRewatch: () ->
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Most rewatched", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(Res.string.most_rewatched), style = MaterialTheme.typography.labelLarge)
             if (entries.isNotEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("See all", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(Res.string.see_all), style = MaterialTheme.typography.labelMedium)
                     Icon(MuvissIcons.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
             }
@@ -344,7 +370,7 @@ internal fun MostRewatchedCard(entries: List<RewatchEntry>, onOpenRewatch: () ->
 
         if (entries.isEmpty()) {
             Text(
-                "Nothing rewatched yet. $REWATCH_HOW_TO",
+                stringResource(Res.string.nothing_rewatched_card, stringResource(Res.string.rewatch_how_to)),
                 modifier = Modifier.testTag(MOST_REWATCHED_EMPTY_TAG),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -375,7 +401,7 @@ private const val ONE_DECIMAL = 10.0
 
 private fun formatHours(hours: Double): String {
     val roundedToOneDecimal = round(hours * ONE_DECIMAL) / ONE_DECIMAL
-    return "${roundedToOneDecimal}h"
+    return roundedToOneDecimal.toString()
 }
 
 /** Entry point to managing Companions (EPIC 41). */
@@ -388,9 +414,9 @@ private fun CompanionsRow(onOpenCompanions: () -> Unit) {
             .padding(MuvissSpacing.l),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
     ) {
-        Text("Watch together", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(Res.string.watch_together), style = MaterialTheme.typography.titleMedium)
         Text(
-            "Link with someone and see what you could watch together.",
+            stringResource(Res.string.watch_together_body),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

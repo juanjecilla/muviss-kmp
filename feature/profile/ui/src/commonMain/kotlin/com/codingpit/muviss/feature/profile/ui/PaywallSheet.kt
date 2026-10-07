@@ -8,6 +8,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.action_close
+import com.codingpit.muviss.feature.profile.ui.generated.resources.paywall_body
+import com.codingpit.muviss.feature.profile.ui.generated.resources.paywall_unavailable
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_title
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Shows the "unlock sync" purchase flow.
@@ -47,21 +53,21 @@ class HandRolledPaywall : PaywallPresenter {
         if (!visible) return
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Sync across devices") },
+            title = { Text(stringResource(Res.string.sync_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Your library, watch progress and rewatch history, kept in step on every device you sign in on.",
+                        stringResource(Res.string.paywall_body),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
-                        "Purchases aren't available in this build yet.",
+                        stringResource(Res.string.paywall_unavailable),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+            confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_close)) } },
         )
     }
 }
