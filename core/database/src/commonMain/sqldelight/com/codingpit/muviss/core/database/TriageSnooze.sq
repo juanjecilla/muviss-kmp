@@ -42,6 +42,9 @@ CREATE TABLE triageSnooze (
     deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX triageSnooze_dirty ON triageSnooze(isDirty) WHERE isDirty = 1;
+
 -- Every deck refill asks "what is due today?", so the due date carries the
 -- read that runs most often.
 CREATE INDEX triageSnooze_due ON triageSnooze(dueAtEpochDay);

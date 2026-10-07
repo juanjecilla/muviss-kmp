@@ -60,6 +60,9 @@ CREATE TABLE collectionEntry (
     coWatchPinned INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX collectionEntry_dirty ON collectionEntry(isDirty) WHERE isDirty = 1;
+
 selectAll:
 SELECT *
 FROM collectionEntry
