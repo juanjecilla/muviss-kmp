@@ -13,6 +13,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -168,7 +169,9 @@ class StoreShotTest {
         val nav = NAV.getValue(locale.substringBefore('-'))
         val shots = mutableListOf<Pair<String, java.awt.image.BufferedImage>>()
         fun capture(name: String) {
-            waitForIdle()
+            // A dialog or popup is a second root: onRoot() would throw, and a
+            // shot taken around one would be the wrong store image (#231).
+            settle { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
             shots += name to onRoot().captureToImage().toAwtImage()
         }
 
@@ -216,9 +219,16 @@ class StoreShotTest {
         settle { onAllNodes(hasText("Fill your library")).fetchSemanticsNodes().isNotEmpty() }
         onAllNodes(hasText("Fill your library"))[0].performClick()
         onAllNodes(hasText("Got it")).fetchSemanticsNodes().firstOrNull()?.let { onAllNodes(hasText("Got it"))[0].performClick() }
+        // The Discover intro, the triage tutorial and the snooze hint each
+        // say "Got it", and they can arrive one after another: dismiss until
+        // none is left, not just until the card is there (#231).
+        // The last match is the topmost root: a dialog over the hint takes
+        // the click, the hint under it would not.
         settle {
-            onAllNodes(hasText("Got it")).fetchSemanticsNodes().firstOrNull()?.let { onAllNodes(hasText("Got it"))[0].performClick() }
-            onAllNodes(hasTestTag("triage-card")).fetchSemanticsNodes().isNotEmpty()
+            val gotIt = onAllNodes(hasText("Got it"))
+            gotIt.fetchSemanticsNodes().size.takeIf { it > 0 }?.let { gotIt[it - 1].performClick() }
+            onAllNodes(hasTestTag("triage-card")).fetchSemanticsNodes().isNotEmpty() &&
+                onAllNodes(hasText("Got it")).fetchSemanticsNodes().isEmpty()
         }
         capture("triage")
 
@@ -253,7 +263,8 @@ class StoreShotTest {
         } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
             // What the screen showed instead, to diagnose a step that never settled.
             val debug = File(System.getProperty("java.io.tmpdir"), "muviss-storeshot-timeout.png")
-            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", debug)
+            // With a popup up there is more than one root; the first is the app.
+            ImageIO.write(onAllNodes(isRoot())[0].captureToImage().toAwtImage(), "png", debug)
             throw AssertionError("StoreShot step did not settle; screen saved to $debug", timeout)
         }
         // Let images and the last recomposition land before capturing.
