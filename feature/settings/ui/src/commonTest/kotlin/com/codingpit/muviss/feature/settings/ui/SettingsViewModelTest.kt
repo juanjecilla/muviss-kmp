@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
@@ -198,7 +199,7 @@ class SettingsViewModelTest {
         advanceUntilIdle()
 
         assertNull(vm.state.value.exportJson)
-        assertEquals("Something went wrong", vm.state.value.exportError)
+        assertEquals("Something went wrong", vm.state.value.exportError?.resolveAsync())
     }
 
     @Test

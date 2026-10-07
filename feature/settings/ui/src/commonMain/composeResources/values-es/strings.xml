@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spanish (Spain). Mirrors values/strings.xml key for key. -->
+<resources>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_done">Hecho</string>
+    <string name="action_close">Cerrar</string>
+    <string name="error_generic">Algo ha ido mal</string>
+    <string name="error_import">Algo ha ido mal al leer ese archivo</string>
+    <string name="settings_title">Ajustes</string>
+    <string name="section_appearance">Apariencia</string>
+    <string name="section_content">Contenido</string>
+    <string name="section_triage">Triaje</string>
+    <string name="section_data">Datos</string>
+    <string name="section_privacy">Privacidad</string>
+    <string name="section_about">Acerca de</string>
+    <string name="theme">Tema</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Oscuro</string>
+    <string name="theme_system">Sistema</string>
+    <string name="notifications">Notificaciones</string>
+    <string name="notifications_note">Avisos de episodios nuevos</string>
+    <string name="notifications_note_desktop">Avisos de episodios nuevos, mientras Muviss esté abierta</string>
+    <string name="notifications_note_web">Avisos de episodios nuevos (no disponible en el navegador)</string>
+    <string name="notifications_blocked">Las notificaciones de Muviss están desactivadas en los ajustes del dispositivo, así que no llegará ninguna.</string>
+    <string name="open_settings">Abrir ajustes</string>
+    <string name="animations">Animaciones</string>
+    <string name="animations_body">Movimiento y transiciones en toda la app</string>
+    <string name="tmdb_language">Idioma de TMDB</string>
+    <string name="system_default">Predeterminado del sistema</string>
+    <string name="provider_region">Región de plataformas</string>
+    <string name="fill_library">Llena tu biblioteca</string>
+    <string name="fill_library_value">Ordena títulos rápido</string>
+    <string name="swipe_controls">Controles de deslizamiento</string>
+    <string name="scheme_four_way">Cuatro direcciones</string>
+    <string name="scheme_three_way">Tres direcciones + botón</string>
+    <string name="snooze_period">Volver a preguntar tras</string>
+    <string name="snooze_placement">Los títulos pospuestos vuelven</string>
+    <string name="swipe_animations">Animaciones al deslizar</string>
+    <string name="swipe_animations_body">Las tarjetas salen volando al decidir, y deshacer las trae de vuelta</string>
+    <string name="import">Importar</string>
+    <string name="export">Exportar</string>
+    <string name="crash_reports">Enviar informes de errores</string>
+    <!-- Says what docs/PRIVACY.md says: what is sent, and that the library is not part of it. -->
+    <string name="crash_reports_body">Anónimos. Solo se envían cuando algo falla, y nunca incluyen tu biblioteca ni tu historial</string>
+    <!-- %1$s is the version name. -->
+    <string name="app_version">Muviss %1$s</string>
+    <string name="tmdb_attribution">Este producto usa la API de TMDB, pero TMDB no lo respalda ni lo certifica.</string>
+    <string name="licenses">Licencias de código abierto</string>
+    <string name="import_title">Importa desde otra app</string>
+    <string name="import_body">Admite una exportación de Trakt (JSON), una exportación de datos de TV Time (CSV) o el propio formato CSV de Muviss. Más detalles en docs/IMPORT.md.</string>
+    <string name="choose_file">Elegir archivo</string>
+    <!-- %1$s is the file name. -->
+    <string name="reading_file">Leyendo %1$s…</string>
+    <string name="matching_titles">Buscando títulos</string>
+    <string name="importing">Importando…</string>
+    <string name="saving_titles">Guardando títulos</string>
+    <!-- %1$s step label, %2$d done, %3$d total. -->
+    <string name="progress_of">%1$s: %2$d de %3$d</string>
+    <string name="preview_file">Vista previa: %1$s</string>
+    <string name="format_trakt">Formato detectado: exportación de Trakt</string>
+    <string name="format_tv_time">Formato detectado: exportación de TV Time</string>
+    <string name="format_csv">Formato detectado: CSV genérico</string>
+    <string name="unresolved_titles">Títulos sin encontrar</string>
+    <string name="titles_found">títulos encontrados</string>
+    <string name="episodes_to_mark">episodios por marcar</string>
+    <string name="unmatched">sin coincidencia</string>
+    <string name="import_complete">Importación completada</string>
+    <string name="import_another">Importar otro archivo</string>
+    <plurals name="rows_skipped">
+        <item quantity="one">No se pudo leer %1$d fila del archivo y se ha omitido.</item>
+        <item quantity="other">No se pudieron leer %1$d filas del archivo y se han omitido.</item>
+    </plurals>
+    <plurals name="import_titles_action">
+        <item quantity="one">Importar %1$d título</item>
+        <item quantity="other">Importar %1$d títulos</item>
+    </plurals>
+    <plurals name="titles_imported">
+        <item quantity="one">%1$d título importado</item>
+        <item quantity="other">%1$d títulos importados</item>
+    </plurals>
+    <plurals name="items_marked_watched">
+        <item quantity="one">%1$d episodio o película marcado como visto</item>
+        <item quantity="other">%1$d episodios o películas marcados como vistos</item>
+    </plurals>
+    <plurals name="titles_unresolved">
+        <item quantity="one">%1$d título sin encontrar</item>
+        <item quantity="other">%1$d títulos sin encontrar</item>
+    </plurals>
+    <plurals name="titles_failed">
+        <item quantity="one">%1$d título no se pudo importar</item>
+        <item quantity="other">%1$d títulos no se pudieron importar</item>
+    </plurals>
+</resources>

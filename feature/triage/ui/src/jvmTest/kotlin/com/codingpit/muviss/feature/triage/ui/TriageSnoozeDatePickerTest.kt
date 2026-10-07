@@ -66,7 +66,7 @@ class TriageSnoozeDatePickerTest {
         onNodeWithTag(TRIAGE_DATE_PICKER_TAG).assertIsDisplayed()
         // The presets are gone, not stacked underneath — Cancel here must not
         // fall back to the sheet it replaced.
-        assertEquals(0, onAllNodesWithTextCount(SnoozePeriod.ONE_WEEK.label))
+        assertEquals(0, onAllNodesWithTextCount("1 week"))
     }
 
     @Test

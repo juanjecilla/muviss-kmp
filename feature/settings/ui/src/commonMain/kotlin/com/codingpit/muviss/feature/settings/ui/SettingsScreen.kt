@@ -43,21 +43,50 @@ import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.label
+import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SupportedLocales
-import com.codingpit.muviss.feature.settings.domain.TMDB_ATTRIBUTION_TEXT
-
-internal const val CRASH_REPORTS_LABEL = "Send crash reports"
-
-/** The TMDB-language picker's entry for `SupportedLocales.SYSTEM_DEFAULT_LANGUAGE` (issue #136). */
-internal const val SYSTEM_DEFAULT_LANGUAGE_LABEL = "System default"
-
-/**
- * Says what `docs/PRIVACY.md` says, in the words a person deciding this needs:
- * what is sent, and that the library is not part of it.
- */
-internal const val CRASH_REPORTS_DESCRIPTION = "Anonymous. Sent only when something breaks, and never includes your library or watch history"
+import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
+import com.codingpit.muviss.feature.settings.ui.generated.resources.action_close
+import com.codingpit.muviss.feature.settings.ui.generated.resources.animations
+import com.codingpit.muviss.feature.settings.ui.generated.resources.animations_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.app_version
+import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports
+import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.export
+import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
+import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
+import com.codingpit.muviss.feature.settings.ui.generated.resources.import
+import com.codingpit.muviss.feature.settings.ui.generated.resources.licenses
+import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications
+import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications_blocked
+import com.codingpit.muviss.feature.settings.ui.generated.resources.open_settings
+import com.codingpit.muviss.feature.settings.ui.generated.resources.provider_region
+import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_four_way
+import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_three_way
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_about
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_appearance
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_content
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_data
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_privacy
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_triage
+import com.codingpit.muviss.feature.settings.ui.generated.resources.settings_title
+import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_period
+import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_placement
+import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animations
+import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animations_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_controls
+import com.codingpit.muviss.feature.settings.ui.generated.resources.system_default
+import com.codingpit.muviss.feature.settings.ui.generated.resources.theme
+import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_dark
+import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_light
+import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_system
+import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_attribution
+import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_language
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun SettingsScreen(
@@ -68,6 +97,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
+    val systemDefault = stringResource(Res.string.system_default)
 
     LaunchedEffect(state.exportJson) {
         val json = state.exportJson ?: return@LaunchedEffect
@@ -87,7 +117,7 @@ fun SettingsScreen(
     // real value. So the error replaces the screen (#73).
     state.error?.let { message ->
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-            ErrorState(message, onRetry = viewModel::retry)
+            ErrorState(message.resolve(), onRetry = viewModel::retry)
         }
         return
     }
@@ -100,56 +130,56 @@ fun SettingsScreen(
             .padding(bottom = MuvissSpacing.bottomContent),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = MuvissSpacing.s))
+        Text(stringResource(Res.string.settings_title), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = MuvissSpacing.s))
 
-        SectionOverline("Appearance")
+        SectionOverline(stringResource(Res.string.section_appearance))
         ThemeRow(state.settings.theme, viewModel::onThemeSelected)
         SwitchRow(
-            label = "Notifications",
-            description = notificationsSupportNote,
+            label = stringResource(Res.string.notifications),
+            description = stringResource(notificationsSupportNote),
             checked = state.settings.notificationsEnabled,
             onToggle = viewModel::onNotificationsToggled,
         )
         NotificationsBlockedNote(state.settings.notificationsEnabled)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         SwitchRow(
-            label = "Animations",
-            description = "Motion and transitions across the app",
+            label = stringResource(Res.string.animations),
+            description = stringResource(Res.string.animations_body),
             checked = state.animationsEnabled,
             onToggle = viewModel::onAnimationsToggled,
         )
 
-        SectionOverline("Content", topPadding = true)
+        SectionOverline(stringResource(Res.string.section_content), topPadding = true)
         PickerRow(
-            label = "TMDB language",
+            label = stringResource(Res.string.tmdb_language),
             value = SupportedLocales.languages.firstOrNull { it.code == state.settings.language }?.displayName
-                ?: SYSTEM_DEFAULT_LANGUAGE_LABEL,
-            options = listOf(SupportedLocales.SYSTEM_DEFAULT_LANGUAGE to SYSTEM_DEFAULT_LANGUAGE_LABEL) +
+                ?: systemDefault,
+            options = listOf(SupportedLocales.SYSTEM_DEFAULT_LANGUAGE to systemDefault) +
                 SupportedLocales.languages.map { it.code to it.displayName },
             selectedCode = state.settings.language,
             onSelect = viewModel::onLanguageSelected,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         PickerRow(
-            label = "Watch-provider region",
+            label = stringResource(Res.string.provider_region),
             value = SupportedLocales.regions.firstOrNull { it.code == state.settings.region }?.displayName ?: state.settings.region,
             options = SupportedLocales.regions.map { it.code to it.displayName },
             selectedCode = state.settings.region,
             onSelect = viewModel::onRegionSelected,
         )
 
-        SectionOverline("Triage", topPadding = true)
+        SectionOverline(stringResource(Res.string.section_triage), topPadding = true)
         ActionRow(
             icon = MuvissIcons.CaughtUp,
-            label = "Fill your library",
-            value = "Sort titles quickly",
+            label = stringResource(Res.string.fill_library),
+            value = stringResource(Res.string.fill_library_value),
             onClick = onOpenTriage,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         PickerRow(
-            label = "Swipe controls",
-            value = state.triageControlScheme.displayName,
-            options = TriageControlScheme.entries.map { it.name to it.displayName },
+            label = stringResource(Res.string.swipe_controls),
+            value = state.triageControlScheme.displayName(),
+            options = TriageControlScheme.entries.map { it.name to it.displayName() },
             selectedCode = state.triageControlScheme.name,
             onSelect = { name -> viewModel.onTriageControlSchemeSelected(TriageControlScheme.fromStored(name)) },
         )
@@ -158,24 +188,24 @@ fun SettingsScreen(
         // on the card, so there is nothing to hide. What a person actually
         // wants to change is how long it waits and where it comes back.
         PickerRow(
-            label = SNOOZE_PERIOD_LABEL,
-            value = state.snoozePeriod.label,
-            options = SnoozePeriod.entries.map { it.name to it.label },
+            label = stringResource(Res.string.snooze_period),
+            value = state.snoozePeriod.label(),
+            options = SnoozePeriod.entries.map { it.name to it.label() },
             selectedCode = state.snoozePeriod.name,
             onSelect = { name -> viewModel.onSnoozePeriodSelected(SnoozePeriod.fromStored(name)) },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         PickerRow(
-            label = SNOOZE_PLACEMENT_LABEL,
-            value = state.snoozePlacement.label,
-            options = SnoozePlacement.entries.map { it.name to it.label },
+            label = stringResource(Res.string.snooze_placement),
+            value = state.snoozePlacement.label(),
+            options = SnoozePlacement.entries.map { it.name to it.label() },
             selectedCode = state.snoozePlacement.name,
             onSelect = { name -> viewModel.onSnoozePlacementSelected(SnoozePlacement.fromStored(name)) },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         SwitchRow(
-            label = "Swipe animations",
-            description = "Cards fly out when decided, and undo brings them back",
+            label = stringResource(Res.string.swipe_animations),
+            description = stringResource(Res.string.swipe_animations_body),
             checked = state.triageDeckAnimations,
             // Greyed rather than hidden while the master switch is off: the
             // stored position stays visible, so turning motion back on returns
@@ -184,36 +214,36 @@ fun SettingsScreen(
             onToggle = viewModel::onTriageDeckAnimationsToggled,
         )
 
-        SectionOverline("Data", topPadding = true)
+        SectionOverline(stringResource(Res.string.section_data), topPadding = true)
         ActionRow(
             icon = MuvissIcons.Import,
-            label = "Import",
+            label = stringResource(Res.string.import),
             value = "Trakt · TV Time · CSV",
             onClick = onOpenImport,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         ActionRow(
             icon = MuvissIcons.Export,
-            label = "Export",
+            label = stringResource(Res.string.export),
             value = "JSON",
             onClick = viewModel::exportData,
         )
-        state.exportError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        state.exportError?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
         // Every platform has a reporter now (#83), so this always renders in
         // practice — CrashReporter.isAvailable stays the gate on principle,
         // in case a future CrashBackend legitimately has none.
         if (CrashReporter.isAvailable) {
-            SectionOverline("Privacy", topPadding = true)
+            SectionOverline(stringResource(Res.string.section_privacy), topPadding = true)
             SwitchRow(
-                label = CRASH_REPORTS_LABEL,
-                description = CRASH_REPORTS_DESCRIPTION,
+                label = stringResource(Res.string.crash_reports),
+                description = stringResource(Res.string.crash_reports_body),
                 checked = state.settings.crashReportsEnabled,
                 onToggle = viewModel::onCrashReportsToggled,
             )
         }
 
-        SectionOverline("About", topPadding = true)
+        SectionOverline(stringResource(Res.string.section_about), topPadding = true)
         AboutSection(
             appVersionName = state.appVersion.versionName,
             onOpenLicenses = onOpenLicenses,
@@ -240,23 +270,23 @@ private fun ThemeRow(selected: AppTheme, onSelect: (AppTheme) -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Theme", style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(Res.string.theme), style = MaterialTheme.typography.bodyLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
             AppTheme.entries.forEach { theme ->
                 FilterChip(
                     selected = theme == selected,
                     onClick = { onSelect(theme) },
-                    label = { Text(theme.label()) },
+                    label = { Text(stringResource(theme.label())) },
                 )
             }
         }
     }
 }
 
-private fun AppTheme.label(): String = when (this) {
-    AppTheme.LIGHT -> "Light"
-    AppTheme.DARK -> "Dark"
-    AppTheme.SYSTEM -> "System"
+private fun AppTheme.label(): StringResource = when (this) {
+    AppTheme.LIGHT -> Res.string.theme_light
+    AppTheme.DARK -> Res.string.theme_dark
+    AppTheme.SYSTEM -> Res.string.theme_system
 }
 
 /**
@@ -279,12 +309,12 @@ private fun NotificationsBlockedNote(enabledInApp: Boolean) {
         modifier = Modifier.fillMaxWidth().testTag(NOTIFICATIONS_BLOCKED_TAG),
     ) {
         Text(
-            "Notifications are turned off for Muviss in your device settings, so none will arrive.",
+            stringResource(Res.string.notifications_blocked),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = system::open) { Text("Open settings") }
+        TextButton(onClick = system::open) { Text(stringResource(Res.string.open_settings)) }
     }
 }
 
@@ -382,7 +412,7 @@ private fun PickerRow(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { open = false }) { Text("Close") }
+                TextButton(onClick = { open = false }) { Text(stringResource(Res.string.action_close)) }
             },
         )
     }
@@ -428,7 +458,7 @@ internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, on
     var versionTaps by remember { mutableStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         Text(
-            "Muviss $appVersionName",
+            stringResource(Res.string.app_version, appVersionName),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.testTag(VERSION_ROW_TAG).clickable { versionTaps++ },
         )
@@ -445,7 +475,7 @@ internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, on
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                TMDB_ATTRIBUTION_TEXT,
+                stringResource(Res.string.tmdb_attribution),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(MuvissSpacing.m),
@@ -456,7 +486,7 @@ internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, on
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Open source licenses", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(Res.string.licenses), style = MaterialTheme.typography.bodyLarge)
             Icon(
                 MuvissIcons.ChevronRight,
                 contentDescription = null,
@@ -471,11 +501,13 @@ internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, on
  * Both schemes keep left/right/up on the three high-frequency verdicts; they
  * differ only in whether a downward drag commits Watching or is inert.
  */
-private val TriageControlScheme.displayName: String
-    get() = when (this) {
-        TriageControlScheme.FOUR_WAY -> "Four directions"
-        TriageControlScheme.THREE_WAY -> "Three directions + button"
-    }
+@Composable
+private fun TriageControlScheme.displayName(): String = stringResource(
+    when (this) {
+        TriageControlScheme.FOUR_WAY -> Res.string.scheme_four_way
+        TriageControlScheme.THREE_WAY -> Res.string.scheme_three_way
+    },
+)
 
 internal const val VERSION_ROW_TAG = "settings_version_row"
 
@@ -486,10 +518,6 @@ internal const val TEST_CRASH_LABEL = "Send test crash"
 
 /** What the hidden "Send test crash" action throws; the name is what to search for in Sentry. */
 internal class MuvissTestCrash : RuntimeException("MuvissTestCrash: triggered from Settings > About")
-
-internal const val SNOOZE_PERIOD_LABEL = "Ask me again after"
-
-internal const val SNOOZE_PLACEMENT_LABEL = "Snoozed titles come back"
 
 /** Material3's own disabled-content opacity, which `Switch` applies to itself. */
 private const val DISABLED_ALPHA = 0.38f

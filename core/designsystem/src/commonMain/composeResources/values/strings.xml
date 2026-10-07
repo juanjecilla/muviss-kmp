@@ -25,4 +25,13 @@
     <string name="date_month_11">Nov</string>
     <string name="date_month_12">Dec</string>
     <string name="date_day_month_year">%1$d %2$s %3$d</string>
+
+    <!-- Snooze settings (SnoozeText.kt), shared by Settings and the triage deck. -->
+    <string name="snooze_period_one_week">1 week</string>
+    <string name="snooze_period_one_month">1 month</string>
+    <string name="snooze_period_three_months">3 months</string>
+    <string name="snooze_period_ask">Ask each time</string>
+    <string name="snooze_placement_mixed_in">Mixed in</string>
+    <string name="snooze_placement_first">First</string>
+    <string name="snooze_placement_last">Last</string>
 </resources>

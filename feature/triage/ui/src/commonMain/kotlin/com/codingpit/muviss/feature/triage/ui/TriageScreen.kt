@@ -68,6 +68,7 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.label
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckFilter
@@ -728,7 +729,7 @@ private fun SnoozeChoiceDialog(
                 // Only the real durations: ASK_EACH_TIME is the mode that
                 // opened this dialog, not something it can offer.
                 SnoozePeriod.entries.filter { it.days != null }.forEach { period ->
-                    TextButton(onClick = { onChoose(period) }) { Text(period.label) }
+                    TextButton(onClick = { onChoose(period) }) { Text(period.label()) }
                 }
                 // The free date the three presets don't cover (issue #137).
                 // Not a fifth SnoozePeriod — it writes a due date straight

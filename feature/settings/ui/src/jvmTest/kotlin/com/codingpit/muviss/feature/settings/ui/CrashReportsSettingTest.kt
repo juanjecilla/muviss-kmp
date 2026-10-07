@@ -30,13 +30,17 @@ import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
 import com.codingpit.muviss.feature.settings.domain.SetThemeUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
+import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
+import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports_body
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.jetbrains.compose.resources.getString
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -109,7 +113,7 @@ class CrashReportsSettingTest {
         }
         waitForIdle()
 
-        onNodeWithText(CRASH_REPORTS_LABEL).performScrollTo().assertExists()
+        onNodeWithText("Send crash reports").performScrollTo().assertExists()
         // Exactly one switch sits on the Privacy row: it is the last toggleable node.
         onAllNodes(isToggleable()).onLast().assertIsOn()
         assertTrue(repository.settings.value.crashReportsEnabled)
@@ -123,7 +127,7 @@ class CrashReportsSettingTest {
         }
         waitForIdle()
 
-        onNodeWithText(CRASH_REPORTS_LABEL).performScrollTo()
+        onNodeWithText("Send crash reports").performScrollTo()
         onAllNodes(isToggleable()).onLast().performClick()
         waitForIdle()
 
@@ -139,14 +143,15 @@ class CrashReportsSettingTest {
         }
         waitForIdle()
 
-        onNodeWithText(CRASH_REPORTS_LABEL).performScrollTo()
+        onNodeWithText("Send crash reports").performScrollTo()
         onAllNodes(isToggleable()).onLast().assertIsOff()
     }
 
     @Test
-    fun the_description_says_what_is_and_is_not_sent() {
-        assertTrue("never includes your library" in CRASH_REPORTS_DESCRIPTION)
-        assertTrue("Anonymous" in CRASH_REPORTS_DESCRIPTION)
+    fun the_description_says_what_is_and_is_not_sent() = runTest {
+        val description = getString(Res.string.crash_reports_body)
+        assertTrue("never includes your library" in description)
+        assertTrue("Anonymous" in description)
     }
 
     private class FakeSystemNotifications(var blocked: Boolean) : SystemNotificationSettings {

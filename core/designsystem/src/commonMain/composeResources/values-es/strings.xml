@@ -23,4 +23,13 @@
     <string name="date_month_11">nov</string>
     <string name="date_month_12">dic</string>
     <string name="date_day_month_year">%1$d %2$s %3$d</string>
+
+    <!-- Snooze settings (SnoozeText.kt), shared by Settings and the triage deck. -->
+    <string name="snooze_period_one_week">1 semana</string>
+    <string name="snooze_period_one_month">1 mes</string>
+    <string name="snooze_period_three_months">3 meses</string>
+    <string name="snooze_period_ask">Preguntar cada vez</string>
+    <string name="snooze_placement_mixed_in">Intercaladas</string>
+    <string name="snooze_placement_first">Al principio</string>
+    <string name="snooze_placement_last">Al final</string>
 </resources>

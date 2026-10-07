@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.settings.ui
 
+import org.jetbrains.compose.resources.StringResource
+
 /**
  * What the Settings notifications row can honestly promise on this platform.
  *
@@ -13,4 +15,4 @@ package com.codingpit.muviss.feature.settings.ui
  * with the app shut; desktop can only check while a window is open; the web
  * build has no notifier at all.
  */
-expect val notificationsSupportNote: String
+expect val notificationsSupportNote: StringResource

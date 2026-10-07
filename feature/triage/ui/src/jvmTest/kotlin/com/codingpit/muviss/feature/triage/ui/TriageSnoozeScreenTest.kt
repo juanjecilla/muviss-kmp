@@ -176,7 +176,7 @@ class TriageSnoozeScreenTest {
         assertEquals(filmA.id, viewModel.state.value.topCard?.id)
         assertTrue(harness.snoozes.snoozes.value.isEmpty())
 
-        onNodeWithText(SnoozePeriod.THREE_MONTHS.label).performClick()
+        onNodeWithText("3 months").performClick()
         waitForIdle()
 
         assertEquals(FakeClock().todayEpochDay() + 90, harness.snoozes.snoozes.value.getValue(filmA.id).dueAtEpochDay)
