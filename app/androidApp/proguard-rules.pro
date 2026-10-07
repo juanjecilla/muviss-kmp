@@ -135,3 +135,12 @@
 # UninitializedMessageException — both are bare RuntimeExceptions — and Sentry
 # can only name the class that survived, so the issue was titled after protobuf.
 -keep class com.codingpit.muviss.feature.settings.ui.MuvissTestCrash
+
+# Every app-defined exception keeps its own class (#199). R8 merges classes
+# with no members of their own into one another, and a merged exception
+# reaches Sentry under the surviving class's name and groups with it: the test
+# crash above once filed itself as protobuf's UninitializedMessageException,
+# and two of the app's own failure types could collapse into one issue. Keeping
+# them blocks the merge; allowobfuscation still renames them (the uploaded
+# mapping restores the name) and allowshrinking still drops the unused ones.
+-keep,allowobfuscation,allowshrinking class com.codingpit.muviss.** extends java.lang.Throwable
