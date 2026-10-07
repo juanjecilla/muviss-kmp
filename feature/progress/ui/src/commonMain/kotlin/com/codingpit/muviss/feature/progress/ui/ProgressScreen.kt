@@ -288,8 +288,9 @@ private fun TickButton(onTick: () -> Unit, label: String) {
             }
             onTick()
         },
+        // 48dp: Android's minimum touch target (EPIC 31b, #164).
         modifier = Modifier
-            .size(44.dp)
+            .size(48.dp)
             .graphicsLayer {
                 scaleX = scale.value
                 scaleY = scale.value

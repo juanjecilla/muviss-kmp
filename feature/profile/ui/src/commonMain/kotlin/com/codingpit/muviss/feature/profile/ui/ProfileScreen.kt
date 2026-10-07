@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -225,13 +227,13 @@ private fun IdentitySection(
                 }
             }
         }
-        Text(stringResource(Res.string.avatar), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.avatar), style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
         LazyRow(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             items(AvatarPresets.all, key = { it.id }) { preset ->
                 AvatarBadge(
                     preset = preset,
                     displayName = profile.displayName,
-                    size = 44.dp,
+                    size = 48.dp,
                     selected = preset.id == profile.avatarId,
                     onClick = { onAvatarSelected(preset.id) },
                 )
@@ -309,7 +311,7 @@ internal fun StatsSection(
     wide: Boolean = rememberWideChartLayout(),
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l)) {
-        Text(stringResource(Res.string.stats), style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.stats), style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             StatTile(stats.moviesWatched.toString(), stringResource(Res.string.stat_movies_watched), Modifier.weight(1f))
@@ -321,13 +323,13 @@ internal fun StatsSection(
         }
 
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-            Text(stringResource(Res.string.by_status), style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(Res.string.by_status), style = MaterialTheme.typography.labelLarge, modifier = Modifier.semantics { heading() })
             StatusBarChart(stats.statusBreakdown, Modifier.fillMaxWidth())
         }
 
         if (stats.genreBreakdown.isNotEmpty()) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-                Text(stringResource(Res.string.by_genre), style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(Res.string.by_genre), style = MaterialTheme.typography.labelLarge, modifier = Modifier.semantics { heading() })
                 GenreDonutChart(foldGenresIntoOther(stats.genreBreakdown), wide = wide)
             }
         }
@@ -359,7 +361,7 @@ internal fun MostRewatchedCard(entries: List<RewatchEntry>, onOpenRewatch: () ->
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(stringResource(Res.string.most_rewatched), style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(Res.string.most_rewatched), style = MaterialTheme.typography.labelLarge, modifier = Modifier.semantics { heading() })
             if (entries.isNotEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(Res.string.see_all), style = MaterialTheme.typography.labelMedium)
@@ -414,7 +416,7 @@ private fun CompanionsRow(onOpenCompanions: () -> Unit) {
             .padding(MuvissSpacing.l),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
     ) {
-        Text(stringResource(Res.string.watch_together), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(Res.string.watch_together), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         Text(
             stringResource(Res.string.watch_together_body),
             style = MaterialTheme.typography.bodySmall,

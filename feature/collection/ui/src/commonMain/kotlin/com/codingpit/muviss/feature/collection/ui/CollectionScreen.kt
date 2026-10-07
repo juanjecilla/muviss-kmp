@@ -34,6 +34,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
@@ -167,6 +169,8 @@ private fun TypeFilterMenuButton(selected: CollectionTypeFilter, onSelect: (Coll
                         onSelect(typeFilter)
                         open = false
                     },
+                    // The check mark is drawn, not said; this says it (EPIC 31b, #164).
+                    modifier = Modifier.semantics { this.selected = typeFilter == selected },
                 )
             }
         }
@@ -194,6 +198,7 @@ private fun SortMenuButton(selected: CollectionSort, onSelect: (CollectionSort) 
                         onSelect(sort)
                         open = false
                     },
+                    modifier = Modifier.semantics { this.selected = sort == selected },
                 )
             }
         }

@@ -86,4 +86,6 @@
         <item quantity="one">revista %1$d vez</item>
         <item quantity="other">revista %1$d veces</item>
     </plurals>
+    <!-- Screen-reader summary of the genre donut; %1$s lists "Drama 40%, Comedy 20%" (EPIC 31b, #164). -->
+    <string name="a11y_genre_summary">Géneros: %1$s</string>
 </resources>

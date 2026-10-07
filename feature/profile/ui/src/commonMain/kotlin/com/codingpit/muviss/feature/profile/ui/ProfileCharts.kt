@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +55,7 @@ import com.codingpit.muviss.feature.profile.domain.GenreCount
 import com.codingpit.muviss.feature.profile.domain.MonthlyRewatches
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
 import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.a11y_genre_summary
 import com.codingpit.muviss.feature.profile.ui.generated.resources.genre_other
 import com.codingpit.muviss.feature.profile.ui.generated.resources.genre_tags
 import com.codingpit.muviss.feature.profile.ui.generated.resources.month_initials
@@ -329,6 +331,10 @@ private fun GenreDonut(
     growth: Float,
     total: Int,
 ) {
+    // What the ring shows, said in one line (EPIC 31b, #164). The legend rows
+    // stay the selectable nodes; this is the overview a sighted user gets at a glance.
+    val parts = genres.map { "${it.displayName()} ${sharePercentLabel(it.count, total)}" }
+    val summary = stringResource(Res.string.a11y_genre_summary, parts.joinToString(", "))
     Box(Modifier.size(DONUT_SIZE), contentAlignment = Alignment.Center) {
         Canvas(
             Modifier
@@ -343,9 +349,10 @@ private fun GenreDonut(
                         onSelect(if (hit != null && hit != selectedIndex) hit else null)
                     }
                 }
-                // The ring itself is decorative to a screen reader; the legend
-                // rows below carry the real, selectable semantics.
-                .clearAndSetSemantics { testTag = GENRE_DONUT_TAG },
+                .clearAndSetSemantics {
+                    testTag = GENRE_DONUT_TAG
+                    contentDescription = summary
+                },
         ) {
             val base = size.minDimension * DONUT_STROKE_FRACTION
             val maxStroke = base + SELECTED_STROKE_BONUS.toPx()

@@ -8,6 +8,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import com.codingpit.muviss.core.designsystem.generated.resources.Res
 import com.codingpit.muviss.core.designsystem.generated.resources.carousel_see_all
 import org.jetbrains.compose.resources.stringResource
@@ -26,7 +28,7 @@ fun CarouselHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).semantics { heading() },
         )
         if (onSeeAll != null) {
             TextButton(onClick = onSeeAll) {
