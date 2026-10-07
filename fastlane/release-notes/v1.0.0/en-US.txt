@@ -1,5 +1,9 @@
-DRAFT: rewrite for users in en-US (max 500 chars) and delete this line before release/1.0.0 merges into main.
-- failed refreshes and list edits say so; list delete gets Undo (EPIC 30, #73) (#203)
-- error states with Retry on the seven screens that had none (EPIC 30, #73) (#202)
-- bound a refill past empty batches, and let a failed save preempt Undo (#183, #159) (#201)
-- hidden test crash for verifying Sentry in release builds; drop the per-install user id (#189)
+Welcome to Muviss 1.0 — a private tracker for movies and TV shows.
+
+• Tick episodes and Muviss works out what you're watching, what's next and what's coming.
+• Fill your library fast: decide one title at a time, or snooze it for later.
+• Watch next, upcoming episodes, new-episode alerts and a home-screen widget.
+• Stats, rewatch history, ratings, notes and your own lists.
+• Import from Trakt, TV Time or CSV.
+
+No account, no ads, no social. Everything stays on your device.

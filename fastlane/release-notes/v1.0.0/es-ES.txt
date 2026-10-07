@@ -1,5 +1,9 @@
-DRAFT: rewrite for users in es-ES (max 500 chars) and delete this line before release/1.0.0 merges into main.
-- failed refreshes and list edits say so; list delete gets Undo (EPIC 30, #73) (#203)
-- error states with Retry on the seven screens that had none (EPIC 30, #73) (#202)
-- bound a refill past empty batches, and let a failed save preempt Undo (#183, #159) (#201)
-- hidden test crash for verifying Sentry in release builds; drop the per-install user id (#189)
+Te damos la bienvenida a Muviss 1.0, un registro privado de series y películas.
+
+• Marca episodios y Muviss sabe qué estás viendo, qué toca ahora y qué viene.
+• Llena tu biblioteca rápido: decide título a título o pospón los que dudes.
+• Siguiente episodio, estrenos, avisos de capítulos nuevos y un widget.
+• Estadísticas, historial de revisionados, notas, valoraciones y listas.
+• Importa desde Trakt, TV Time o CSV.
+
+Sin cuentas, sin anuncios, sin redes. Todo se queda en tu dispositivo.
