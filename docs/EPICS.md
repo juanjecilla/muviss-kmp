@@ -273,12 +273,12 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 10 | EPIC 25 CI that gates again | #67 |
 | 10 | EPIC 26 Crash reporting that reports | #68 |
 | 10 | EPIC 27 Network hardening — **merged 2026-09-20** (#96); follow-ups #89-#94 | #69 |
-| 10 | EPIC 28 Data-layer performance | #70 |
+| 10 | EPIC 28 Data-layer performance — **merged 2026-10-07** (#228 one-query Library, #229 indexes `15.sqm`, #232 lazy Detail) | #70 |
 | 10 | EPIC 38 Repo hygiene and shared test infrastructure | #71 |
-| 11 | EPIC 29 A backup you can restore | #72 |
-| 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes | #73 |
-| 11 | EPIC 31 Localization (Spanish + app-language selector) | #74 |
-| 11 | EPIC 31b Accessibility | #164 |
+| 11 | EPIC 29 A backup you can restore — **merged 2026-10-07** (#224, #225, #226, #227, #230); iOS device check #240 | #72 |
+| 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes — **merged 2026-10-07** (#202, #203, #208, #209, #212, #213) | #73 |
+| 11 | EPIC 31 Localization (Spanish + app-language selector) — **merged 2026-10-07** (#214-#223, #239); follow-ups #217, #219, #222 | #74 |
+| 11 | EPIC 31b Accessibility — in progress (#233, #238); Lint-as-errors waits on EPIC 25 | #164 |
 | 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
 | 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
