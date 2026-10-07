@@ -124,4 +124,12 @@
         <item quantity="one">%1$d conservado: este dispositivo tiene una versión más reciente</item>
         <item quantity="other">%1$d conservados: este dispositivo tiene una versión más reciente</item>
     </plurals>
+    <!-- Por qué una importación no pudo usar un título o un archivo (#219). -->
+    <string name="unresolved_no_external_id">El archivo no trae id de IMDb ni de TMDB</string>
+    <string name="unresolved_unknown_media_type">El archivo no dice si es una película o una serie</string>
+    <string name="unresolved_no_match">No está en TMDB</string>
+    <string name="import_file_unrecognized">Muviss no puede importar este formato: no es JSON ni un CSV compatible</string>
+    <string name="import_file_no_importer">Muviss aún no puede importar este tipo de archivo</string>
+    <string name="import_file_unreadable_backup">Parece una copia de seguridad de Muviss, pero no se ha podido leer</string>
+    <string name="import_file_newer_backup">Esta copia la hizo una versión más reciente de Muviss. Actualiza la app para restaurarla</string>
 </resources>

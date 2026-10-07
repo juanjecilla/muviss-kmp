@@ -5,7 +5,7 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
-import com.codingpit.muviss.models.toUserMessage
+import com.codingpit.muviss.models.MetadataError
 import kotlinx.coroutines.flow.first
 
 /** `(done, total)` progress callback shape shared by [PreviewImportUseCase] and [ApplyImportUseCase] — both loop over one row/title per network call. */
@@ -15,10 +15,25 @@ private val NO_PROGRESS: ImportProgressListener = { _, _ -> }
 
 /**
  * The picked file cannot be imported, for a reason worth telling the person.
- * [message] is written as user-facing copy (unlike an arbitrary exception's,
- * which the settings screens never show), so the view model may display it.
+ * [kind] says which; the UI words it in the user's language (#219). [message]
+ * is for logs only and never shown.
  */
-class ImportFileException(message: String) : Exception(message)
+class ImportFileException(val kind: ImportFileError) : Exception("Import file rejected: $kind")
+
+/** Why a picked file cannot be imported at all. */
+enum class ImportFileError {
+    /** Not JSON, and its header matches no supported CSV format. */
+    Unrecognized,
+
+    /** The format was detected, but no parser is installed for it. */
+    NoImporter,
+
+    /** It looks like a Muviss backup, but does not decode as one. */
+    UnreadableBackup,
+
+    /** A Muviss backup in a format newer than this build understands. */
+    NewerBackupVersion,
+}
 
 /**
  * Parses a picked file (auto-detecting its [ImportSource]) and resolves every
@@ -33,9 +48,9 @@ class PreviewImportUseCase(
 ) {
     suspend operator fun invoke(content: String, onProgress: ImportProgressListener = NO_PROGRESS): ImportPreview {
         val source = ImportFormatDetector.detect(content)
-            ?: throw ImportFileException("Unrecognized import file — not JSON, and its header doesn't match a supported CSV format")
+            ?: throw ImportFileException(ImportFileError.Unrecognized)
         val parser = parsers.firstOrNull { it.source == source }
-            ?: throw ImportFileException("No importer is available for $source files")
+            ?: throw ImportFileException(ImportFileError.NoImporter)
         val payload = parser.parse(content)
 
         val resolved = mutableListOf<ResolvedImportTitle>()
@@ -53,10 +68,10 @@ class PreviewImportUseCase(
         return ImportPreview(payload.source, resolved, unresolved, payload.skippedRowCount)
     }
 
-    private fun unresolvedReason(title: ImportedTitle): String = when {
-        title.externalRef.isEmpty -> "No IMDb/TMDB id in the source file"
-        title.type == null -> "Unknown media type"
-        else -> "No match on TMDB"
+    private fun unresolvedReason(title: ImportedTitle): UnresolvedReason = when {
+        title.externalRef.isEmpty -> UnresolvedReason.NoExternalId
+        title.type == null -> UnresolvedReason.UnknownMediaType
+        else -> UnresolvedReason.NoMatch
     }
 }
 
@@ -96,7 +111,7 @@ class ApplyImportUseCase(
                     tickCount += applyProgress(resolved, details)
                     applyRating(resolved)
                 },
-                onFailure = { e -> failed += FailedImportTitle(resolved, e.toUserMessage("Unknown error")) },
+                onFailure = { e -> failed += FailedImportTitle(resolved, e as? MetadataError ?: MetadataError.Unknown()) },
             )
             onProgress(index + 1, preview.resolved.size)
         }

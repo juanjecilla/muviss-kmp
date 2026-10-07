@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
@@ -20,6 +21,8 @@ import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
 import com.codingpit.muviss.feature.settings.domain.RestoreResult
+import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
+import com.codingpit.muviss.feature.settings.ui.generated.resources.import_file_unrecognized
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -154,8 +157,9 @@ class ImportViewModelTest {
         advanceUntilIdle()
 
         assertIs<ImportStep.PickFile>(vm.state.value.step)
-        // Domain-authored copy for a file problem is the one exception message a screen may show.
-        assertTrue(vm.state.value.error?.resolveAsync().orEmpty().startsWith("Unrecognized import file"))
+        // The domain says which problem; the screen words it in the user's language (#219).
+        assertEquals(UiText.Resource(Res.string.import_file_unrecognized), vm.state.value.error)
+        assertTrue(vm.state.value.error?.resolveAsync().orEmpty().startsWith("This file isn't a format"))
     }
 
     @Test

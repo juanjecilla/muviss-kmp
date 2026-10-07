@@ -218,10 +218,10 @@ private fun SummaryCounts(titleCount: Int, episodeCount: Int, unresolvedCount: I
 @Composable
 private fun UnresolvedList(unresolved: List<UnresolvedImportTitle>, modifier: Modifier = Modifier) {
     LazyColumn(modifier) {
-        items(unresolved, key = { it.title.displayTitle + it.reason }) { entry ->
+        items(unresolved, key = { it.title.displayTitle + it.reason.name }) { entry ->
             Column(Modifier.padding(vertical = 4.dp)) {
                 Text(entry.title.displayTitle, style = MaterialTheme.typography.bodyMedium)
-                Text(entry.reason, style = MaterialTheme.typography.labelSmall)
+                Text(entry.reason.toUiText().resolve(), style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -249,7 +249,7 @@ private fun SummaryStep(result: ImportApplyResult, onImportAnother: () -> Unit, 
                 items(result.failed, key = { it.title.mediaId.toString() }) { failure ->
                     Column(Modifier.padding(vertical = 4.dp)) {
                         Text(failure.title.title.displayTitle, style = MaterialTheme.typography.bodyMedium)
-                        Text(failure.reason, style = MaterialTheme.typography.labelSmall)
+                        Text(failure.reasonText().resolve(), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }

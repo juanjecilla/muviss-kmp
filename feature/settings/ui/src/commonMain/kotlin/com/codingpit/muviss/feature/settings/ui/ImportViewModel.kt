@@ -147,9 +147,5 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
         _state.update { ImportUiState() }
     }
 
-    // An ImportFileException's message is the parser's own explanation, still English (#219).
-    private fun Throwable.importErrorMessage(): UiText {
-        val fallback = UiText.Resource(Res.string.error_import)
-        return if (this is ImportFileException) message?.let(UiText::Raw) ?: fallback else toUiText(fallback)
-    }
+    private fun Throwable.importErrorMessage(): UiText = if (this is ImportFileException) kind.toUiText() else toUiText(UiText.Resource(Res.string.error_import))
 }

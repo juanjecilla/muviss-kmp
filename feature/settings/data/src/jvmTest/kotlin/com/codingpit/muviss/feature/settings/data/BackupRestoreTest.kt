@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.feature.settings.domain.ImportFileError
 import com.codingpit.muviss.feature.settings.domain.ImportFileException
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -132,12 +133,14 @@ class BackupRestoreTest {
     fun `a backup from a newer version is refused, not half-read`() = runTest {
         val future = """{"formatVersion": 99, "exportedAtEpochMs": 1, "collection": [], "progress": []}"""
 
-        assertFailsWith<ImportFileException> { restorer(newDatabase()).restore(future) }
+        val e = assertFailsWith<ImportFileException> { restorer(newDatabase()).restore(future) }
+        assertEquals(ImportFileError.NewerBackupVersion, e.kind)
     }
 
     @Test
     fun `a malformed backup is reported, not thrown raw`() = runTest {
-        assertFailsWith<ImportFileException> { restorer(newDatabase()).restore("""{"exportedAtEpochMs": "yesterday"}""") }
+        val e = assertFailsWith<ImportFileException> { restorer(newDatabase()).restore("""{"exportedAtEpochMs": "yesterday"}""") }
+        assertEquals(ImportFileError.UnreadableBackup, e.kind)
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.settings.domain.BackupRestorer
 import com.codingpit.muviss.feature.settings.domain.BackupSummary
+import com.codingpit.muviss.feature.settings.domain.ImportFileError
 import com.codingpit.muviss.feature.settings.domain.ImportFileException
 import com.codingpit.muviss.feature.settings.domain.RestoreResult
 import kotlinx.coroutines.withContext
@@ -85,10 +86,10 @@ class SqlDelightBackupRestorer(
             null
         }
         return when {
-            backup == null -> throw ImportFileException("This file looks like a Muviss backup, but it could not be read.")
+            backup == null -> throw ImportFileException(ImportFileError.UnreadableBackup)
 
             backup.formatVersion > MuvissDataExport.CURRENT_FORMAT_VERSION ->
-                throw ImportFileException("This backup was made by a newer version of Muviss. Update the app to restore it.")
+                throw ImportFileException(ImportFileError.NewerBackupVersion)
 
             else -> backup
         }
