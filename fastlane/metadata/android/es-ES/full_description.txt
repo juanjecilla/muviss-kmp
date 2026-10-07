@@ -26,7 +26,7 @@ PRIVADO POR DISEÑO
 • Sin cuentas. Sin registro, sin inicio de sesión, nada vinculado a tu identidad.
 • Sin funciones sociales: sin muro, sin amigos, sin comentarios.
 • Sin anuncios ni analítica. Solo informes de errores anónimos y opcionales, que puedes desactivar en Ajustes.
-• Tu biblioteca vive en tu dispositivo y funciona sin conexión. Expórtala cuando quieras.
+• Tu biblioteca vive en tu dispositivo y funciona sin conexión. Haz una copia en un archivo y restáurala en cualquier dispositivo.
 
 En español e inglés, con tema claro y oscuro, en móviles y tabletas.
 

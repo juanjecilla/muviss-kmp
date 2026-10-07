@@ -47,7 +47,7 @@
     <string name="tmdb_attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
     <string name="licenses">Open source licenses</string>
     <string name="import_title">Import from another tracker</string>
-    <string name="import_body">Supports a Trakt export (JSON), a TV Time data export (CSV), or Muviss's own CSV format. See docs/IMPORT.md for details.</string>
+    <string name="import_body">Supports a Trakt export (JSON), a TV Time data export (CSV), Muviss's own CSV format, or a Muviss backup to restore.</string>
     <string name="choose_file">Choose file</string>
     <!-- %1$s is the file name. -->
     <string name="reading_file">Reading %1$s…</string>
@@ -89,5 +89,39 @@
     <plurals name="titles_failed">
         <item quantity="one">%1$d title failed to import</item>
         <item quantity="other">%1$d titles failed to import</item>
+    </plurals>
+
+    <!-- Backups and Delete all data (EPIC 29, #72). -->
+    <!-- %1$s is the date the backup was made. -->
+    <string name="backup_from">Muviss backup from %1$s</string>
+    <string name="backup_explainer">Restoring brings back what this backup holds. Anything you've changed on this device since it was made is kept.</string>
+    <string name="restore_action">Restore</string>
+    <string name="restoring">Restoring…</string>
+    <string name="restore_complete">Backup restored</string>
+    <string name="delete_all">Delete all data</string>
+    <string name="delete_all_value">Start over on this device</string>
+    <string name="delete_all_question">Delete everything?</string>
+    <string name="delete_all_body">Your library, watch history, lists, triage decisions, profile and settings are deleted from this device. This can't be undone, so export a backup first if you might want them back.</string>
+    <string name="delete_all_confirm">Delete everything</string>
+    <string name="delete_all_done">Everything was deleted from this device.</string>
+    <plurals name="backup_titles">
+        <item quantity="one">%1$d title</item>
+        <item quantity="other">%1$d titles</item>
+    </plurals>
+    <plurals name="backup_episodes">
+        <item quantity="one">%1$d episode watched</item>
+        <item quantity="other">%1$d episodes watched</item>
+    </plurals>
+    <plurals name="backup_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="restored_rows">
+        <item quantity="one">%1$d item restored</item>
+        <item quantity="other">%1$d items restored</item>
+    </plurals>
+    <plurals name="kept_rows">
+        <item quantity="one">%1$d kept: this device has a newer version</item>
+        <item quantity="other">%1$d kept: this device has a newer version</item>
     </plurals>
 </resources>

@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
@@ -14,6 +15,7 @@ import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
@@ -33,7 +35,13 @@ data class SettingsUiState(
     val appVersion: AppVersion = AppVersion(versionName = "", versionCode = 0),
     /** One-shot: non-null while an export is ready for the platform sharer to hand off; cleared by [SettingsViewModel.exportHandled]. */
     val exportJson: String? = null,
+    /** The name the export is offered under, dated so successive backups do not overwrite each other (EPIC 29, #72). */
+    val exportFileName: String = "",
     val exportError: UiText? = null,
+    /** The Delete all data confirmation is open. One tap opens it; only its own button deletes. */
+    val confirmingDeleteAll: Boolean = false,
+    /** Everything was just deleted on this screen; it says so under the row until the screen goes. */
+    val deletedAll: Boolean = false,
     /** Which drag scheme the triage deck uses (ADR 0010) — a per-device input preference, not a library setting. */
     val triageControlScheme: TriageControlScheme = TriageControlScheme.DEFAULT,
     val snoozePeriod: SnoozePeriod = SnoozePeriod.DEFAULT,
@@ -55,6 +63,8 @@ class SettingsViewModel(
     private val actions: SettingsActions,
     appVersion: AppVersion,
     private val featureFlags: FeatureFlags,
+    private val deleteAllData: DeleteAllDataUseCase,
+    private val clock: AppClock,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState(appVersion = appVersion))
@@ -147,7 +157,9 @@ class SettingsViewModel(
     fun exportData() {
         viewModelScope.launchReporting {
             runCatching { actions.exportData() }.reportFailure().fold(
-                onSuccess = { json -> _state.update { it.copy(exportJson = json, exportError = null) } },
+                onSuccess = { json ->
+                    _state.update { it.copy(exportJson = json, exportFileName = backupFileName(clock.nowEpochMs()), exportError = null) }
+                },
                 onFailure = { e -> _state.update { it.copy(exportError = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )
         }
@@ -156,5 +168,22 @@ class SettingsViewModel(
     /** Called once the platform sharer has consumed [SettingsUiState.exportJson], to clear the one-shot value. */
     fun exportHandled() {
         _state.update { it.copy(exportJson = null) }
+    }
+
+    fun onDeleteAllRequested() {
+        _state.update { it.copy(confirmingDeleteAll = true) }
+    }
+
+    fun onDeleteAllDismissed() {
+        _state.update { it.copy(confirmingDeleteAll = false) }
+    }
+
+    /** The confirmation's own button. Every screen observes its tables, so the app empties itself as this commits. */
+    fun onDeleteAllConfirmed() {
+        _state.update { it.copy(confirmingDeleteAll = false) }
+        viewModelScope.launchReporting {
+            deleteAllData()
+            _state.update { it.copy(deletedAll = true) }
+        }
     }
 }

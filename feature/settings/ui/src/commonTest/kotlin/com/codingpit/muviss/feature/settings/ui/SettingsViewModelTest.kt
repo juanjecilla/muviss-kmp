@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
@@ -10,7 +11,9 @@ import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
+import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
@@ -32,6 +35,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : SettingsRepository {
     val flow = MutableStateFlow(initial)
@@ -63,7 +67,23 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
     override suspend fun exportData(): String = exportResult.getOrThrow()
 }
 
+private object FixedClock : AppClock {
+    // 2026-10-07T12:00:00Z
+    override fun nowEpochMs(): Long = 1_791_374_400_000L
+}
+
+private class FakeEraser : LocalDataEraser {
+    var calls = 0
+        private set
+
+    override suspend fun deleteAllData() {
+        calls++
+    }
+}
+
 class SettingsViewModelTest {
+
+    private val eraser = FakeEraser()
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -83,6 +103,8 @@ class SettingsViewModelTest {
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),
         FakeFeatureFlags(),
+        DeleteAllDataUseCase(eraser),
+        FixedClock,
     )
 
     @Test
@@ -215,6 +237,44 @@ class SettingsViewModelTest {
 
         kotlin.test.assertNull(vm.state.value.error)
         kotlin.test.assertFalse(vm.state.value.loading)
+    }
+
+    @Test
+    fun the_export_is_offered_under_a_dated_name() = runTest {
+        val vm = viewModel(FakeSettingsRepository())
+        advanceUntilIdle()
+
+        vm.exportData()
+        advanceUntilIdle()
+
+        assertEquals("muviss-backup-2026-10-07.json", vm.state.value.exportFileName)
+    }
+
+    @Test
+    fun deleting_everything_takes_the_confirmation_not_just_the_row() = runTest {
+        val vm = viewModel(FakeSettingsRepository())
+        advanceUntilIdle()
+
+        vm.onDeleteAllRequested()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.confirmingDeleteAll)
+        assertEquals(0, eraser.calls, "opening the confirmation must not delete anything")
+
+        vm.onDeleteAllConfirmed()
+        advanceUntilIdle()
+        assertEquals(1, eraser.calls)
+        assertTrue(vm.state.value.deletedAll)
+    }
+
+    @Test
+    fun dismissing_the_confirmation_deletes_nothing() = runTest {
+        val vm = viewModel(FakeSettingsRepository())
+        vm.onDeleteAllRequested()
+        vm.onDeleteAllDismissed()
+        advanceUntilIdle()
+
+        assertEquals(0, eraser.calls)
+        assertEquals(false, vm.state.value.confirmingDeleteAll)
     }
 }
 

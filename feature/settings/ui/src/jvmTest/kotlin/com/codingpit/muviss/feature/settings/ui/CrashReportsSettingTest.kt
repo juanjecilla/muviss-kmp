@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
@@ -21,7 +22,9 @@ import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
+import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
@@ -91,6 +94,8 @@ class CrashReportsSettingTest {
         override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
     }
 
+    private var erased = 0
+
     private fun viewModel(repository: FakeRepository) = SettingsViewModel(
         ObserveSettingsUseCase(repository),
         SettingsActions(
@@ -103,7 +108,34 @@ class CrashReportsSettingTest {
         ),
         AppVersion(versionName = "1.0.0", versionCode = 1),
         NoFlags,
+        DeleteAllDataUseCase(object : LocalDataEraser {
+            override suspend fun deleteAllData() {
+                erased++
+            }
+        }),
+        object : AppClock {
+            override fun nowEpochMs(): Long = 0L
+        },
     )
+
+    /** EPIC 29 (#72): Delete all data is two steps, and the first one cannot delete anything. */
+    @Test
+    fun one_tap_on_delete_all_only_asks() = runComposeUiTest {
+        setContent {
+            MuvissTheme(darkTheme = false) { SettingsScreen(viewModel(FakeRepository()), {}, {}, {}) }
+        }
+        waitForIdle()
+
+        onNodeWithTag(DELETE_ALL_ROW_TAG).performScrollTo().performClick()
+        waitForIdle()
+        onNodeWithTag(DELETE_ALL_DIALOG_TAG).assertExists()
+        assertEquals(0, erased)
+
+        onNodeWithTag(DELETE_ALL_CONFIRM_TAG).performClick()
+        waitForIdle()
+        assertEquals(1, erased)
+        onNodeWithTag(DELETE_ALL_DIALOG_TAG).assertDoesNotExist()
+    }
 
     @Test
     fun the_row_is_there_and_starts_on() = runComposeUiTest {

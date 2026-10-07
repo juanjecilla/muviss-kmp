@@ -11,12 +11,15 @@ import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.settings.domain.ApplyImportUseCase
+import com.codingpit.muviss.feature.settings.domain.BackupRestorer
+import com.codingpit.muviss.feature.settings.domain.BackupSummary
 import com.codingpit.muviss.feature.settings.domain.ExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.ExternalTitleRef
 import com.codingpit.muviss.feature.settings.domain.GenericCsvImportParser
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
+import com.codingpit.muviss.feature.settings.domain.RestoreResult
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -94,7 +97,21 @@ private class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = Unit
 }
 
+private class FakeRestorer : BackupRestorer {
+    var restored: String? = null
+        private set
+
+    override suspend fun summarize(content: String) = BackupSummary(formatVersion = 2, exportedAtEpochMs = 0L, titleCount = 3, episodeCount = 10, listCount = 1)
+
+    override suspend fun restore(content: String): RestoreResult {
+        restored = content
+        return RestoreResult(restored = 14, kept = 0)
+    }
+}
+
 class ImportViewModelTest {
+
+    private val restorer = FakeRestorer()
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -106,6 +123,7 @@ class ImportViewModelTest {
         val actions = ImportActions(
             PreviewImportUseCase(listOf(GenericCsvImportParser()), FakeResolver()),
             ApplyImportUseCase(FakeDetailsSource(), FakeCollectionApi(), FakeProgressApi()),
+            restorer,
         )
         return ImportViewModel(actions)
     }
@@ -180,5 +198,25 @@ class ImportViewModelTest {
         vm.startOver()
 
         assertIs<ImportStep.PickFile>(vm.state.value.step)
+    }
+
+    @Test
+    fun a_muviss_backup_is_previewed_for_restore_not_parsed_as_trakt() = runTest {
+        val vm = viewModel()
+        val backup = """{"formatVersion":2,"exportedAtEpochMs":0,"collection":[],"progress":[]}"""
+
+        vm.onFilePicked("muviss-backup-2026-10-07.json", backup)
+        advanceUntilIdle()
+
+        val step = vm.state.value.step
+        assertTrue(step is ImportStep.BackupPreview, "was $step")
+        assertEquals(3, step.summary.titleCount)
+        assertEquals(null, restorer.restored, "nothing is written before the person confirms")
+
+        vm.confirmRestore()
+        advanceUntilIdle()
+
+        assertEquals(backup, restorer.restored)
+        assertEquals(ImportStep.Restored(RestoreResult(restored = 14, kept = 0)), vm.state.value.step)
     }
 }

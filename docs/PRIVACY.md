@@ -88,8 +88,11 @@ telemetry, no third-party trackers.
 
 ## Data you can delete
 
-Uninstalling the app deletes the local database and everything in it — there
+**Settings → Data → Delete all data** deletes everything Muviss keeps on the
+device — your library, watch history, lists, triage decisions, profile and
+settings — without uninstalling. Uninstalling does the same. Either way there
 is nothing left on any server, because nothing you enter is ever sent to one.
+Settings → Data → Export saves a copy first if you might want it back.
 
 ## Contact
 
