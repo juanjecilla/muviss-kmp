@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -366,8 +367,13 @@ private fun SwitchRow(
     enabled: Boolean = true,
 ) {
     val contentAlpha = if (enabled) 1f else DISABLED_ALPHA
+    // The whole row is the switch: a bare Switch next to its label was
+    // announced as "On, switch" with no name (EPIC 31b, #164).
     Row(
-        Modifier.fillMaxWidth().padding(vertical = MuvissSpacing.xs),
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onToggle)
+            .padding(vertical = MuvissSpacing.xs),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -383,7 +389,7 @@ private fun SwitchRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
             )
         }
-        Switch(checked = checked, onCheckedChange = onToggle, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 
