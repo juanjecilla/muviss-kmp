@@ -89,7 +89,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_ENVIRONMENT: production
-        run: ./gradlew :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources --stacktrace
+        run: ./gradlew :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4

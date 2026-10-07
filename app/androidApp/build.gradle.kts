@@ -253,6 +253,41 @@ registerComposeResourcesCheck(
     entryPrefix = "base/assets/composeResources/",
 )
 
+// R8 must not merge the app's exceptions into other classes (#199): a merged
+// exception reaches Sentry under the survivor's name. proguard-rules.pro keeps
+// every `com.codingpit.muviss.**` Throwable; this canary reads the mapping and
+// fails if any of a known set no longer has a class of its own. The list is
+// the exceptions every Android build ships, not all of them.
+// -----------------------------------------------------------------------
+val exceptionCanaries = listOf(
+    "com.codingpit.muviss.models.MetadataError\$NotFound",
+    "com.codingpit.muviss.models.MetadataError\$Offline",
+    "com.codingpit.muviss.models.MetadataError\$RateLimited",
+    "com.codingpit.muviss.models.MetadataError\$Unauthorized",
+    "com.codingpit.muviss.models.MetadataError\$Unknown",
+    "com.codingpit.muviss.feature.settings.domain.ImportFileException",
+    "com.codingpit.muviss.feature.settings.ui.MuvissTestCrash",
+)
+
+tasks.register("verifyReleaseExceptionClasses") {
+    group = "verification"
+    description = "Fails if R8 merged one of the app's exceptions into another class (#199)."
+    dependsOn("minifyReleaseWithR8")
+    val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
+    // A local copy: the action must not capture the build script (configuration cache).
+    val canaries = exceptionCanaries
+    inputs.file(mapping)
+    inputs.property("canaries", canaries)
+    doLast {
+        val classes = mapping.get().asFile.useLines { lines ->
+            lines.filter { !it.startsWith(" ") && it.contains(" -> ") }.map { it.substringBefore(" -> ") }.toSet()
+        }
+        val merged = canaries.filterNot { it in classes }
+        check(merged.isEmpty()) { "R8 merged these exceptions away; Sentry would name them after another class: ${merged.joinToString()}" }
+        logger.lifecycle("R8 kept all ${canaries.size} exception canaries as classes of their own")
+    }
+}
+
 // -----------------------------------------------------------------------
 // Sentry Gradle plugin (EPIC 26). Release builds are minified, so without the R8
 // mapping every production stack trace is obfuscated. The plugin uploads it and
