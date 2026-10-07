@@ -1,5 +1,7 @@
 package com.codingpit.muviss.ios
 
+import com.codingpit.muviss.NotificationText
+import com.codingpit.muviss.ResourceNotificationText
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import platform.Foundation.setValue
 import platform.UserNotifications.UNAuthorizationOptionAlert
@@ -55,7 +57,7 @@ object IosNotificationCenter {
      * Center itself, so no separate hand-built summary notification is
      * needed the way Android's `InboxStyle` summary is.
      */
-    fun postNewEpisodeNotifications(results: List<NewEpisodesResult>) {
+    suspend fun postNewEpisodeNotifications(results: List<NewEpisodesResult>, text: NotificationText = ResourceNotificationText) {
         val center = UNUserNotificationCenter.currentNotificationCenter()
         results.forEach { result ->
             // UNMutableNotificationContent's writable properties are declared
@@ -66,7 +68,7 @@ object IosNotificationCenter {
             // instead of direct property assignment here.
             val content = UNMutableNotificationContent().apply {
                 setValue(result.title, forKey = "title")
-                setValue(result.contentText(), forKey = "body")
+                setValue(result.latestEpisodeLabel?.let { text.episodeOut(it) } ?: text.nowAvailable(), forKey = "body")
                 setValue(GROUP_KEY, forKey = "threadIdentifier")
                 setValue(mapOf(DEEP_LINK_KEY to result.mediaId.toString()), forKey = "userInfo")
             }
@@ -78,9 +80,6 @@ object IosNotificationCenter {
             center.addNotificationRequest(request) { /* best-effort, mirrors NewEpisodesNotifier's graceful no-op on failure */ }
         }
     }
-
-    /** Content text for the notification; its title already carries the show's name (same split as Android's `NewEpisodesNotifier`). */
-    private fun NewEpisodesResult.contentText(): String = latestEpisodeLabel?.let { "$it is out" } ?: "Now available"
 
     private val delegate =
         object : NSObject(), UNUserNotificationCenterDelegateProtocol {

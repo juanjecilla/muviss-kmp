@@ -7,4 +7,15 @@
     <string name="nav_settings">Ajustes</string>
     <string name="persistence_read_only_tab">Muviss está abierta en otra pestaña. Los cambios que hagas aquí no se guardarán.</string>
     <string name="persistence_not_persisted">Este navegador no puede guardar tu biblioteca. Los cambios se perderán al cerrar esta pestaña.</string>
+    <!-- New-episode notifications on desktop and iOS (NotificationText.kt); Android's live in res/. -->
+    <string name="notification_episode_out">Ya está disponible %1$s</string>
+    <string name="notification_now_available">Ya disponible</string>
+    <plurals name="notification_shows_with_new_episodes">
+        <item quantity="one">%1$d serie tiene episodios nuevos</item>
+        <item quantity="other">%1$d series tienen episodios nuevos</item>
+    </plurals>
+    <!-- Desktop menu bar (HostText.kt). -->
+    <string name="menu_file">Archivo</string>
+    <string name="menu_view">Ver</string>
+    <string name="menu_quit">Salir de Muviss</string>
 </resources>

@@ -9,4 +9,15 @@
     <!-- Web only: why changes in this tab may not survive. -->
     <string name="persistence_read_only_tab">Muviss is open in another tab. Changes here won't be saved.</string>
     <string name="persistence_not_persisted">This browser can't save your library. Changes will be lost when you close this tab.</string>
+    <!-- New-episode notifications on desktop and iOS (NotificationText.kt); Android's live in res/. -->
+    <string name="notification_episode_out">%1$s is out</string>
+    <string name="notification_now_available">Now available</string>
+    <plurals name="notification_shows_with_new_episodes">
+        <item quantity="one">%1$d show has new episodes</item>
+        <item quantity="other">%1$d shows have new episodes</item>
+    </plurals>
+    <!-- Desktop menu bar (HostText.kt). -->
+    <string name="menu_file">File</string>
+    <string name="menu_view">View</string>
+    <string name="menu_quit">Quit Muviss</string>
 </resources>
