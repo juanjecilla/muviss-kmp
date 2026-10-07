@@ -32,7 +32,7 @@ Walking the Play Console's standard categories:
 | Web browsing | No | No | — |
 | App info and performance (crash logs, diagnostics) | Yes, optionally | Yes, to Sentry | Only when a crash/error occurs in a release build with a Sentry DSN configured. Contains a stack trace + app version + device model/OS version. No collection/progress data, no TMDB query content. Users can opt out in Settings → Privacy → "Send crash reports" (default on), effective immediately. Stored in Sentry's EU region. Web is not a launched platform (deferred). |
 | Device or other IDs | No | No | Muviss does not read `ANDROID_ID`, advertising ID, IMEI, etc. |
-| Location | No | No | — |
+| Location (approximate) | Yes, optionally | Yes, to Sentry | Not read by the app. Sentry derives country/region/city from the connection a crash report arrives over and stores it with the report; the IP itself is not stored. Crash diagnostics only; same opt-out as crash reports. Precise location: No. |
 
 \* TMDB search/detail requests necessarily include the query text or a TMDB
 media ID as part of the API call — that is TMDB's traffic, not data Muviss
