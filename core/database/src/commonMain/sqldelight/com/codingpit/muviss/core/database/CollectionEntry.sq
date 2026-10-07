@@ -71,6 +71,30 @@ SELECT *
 FROM collectionEntry
 WHERE mediaId = :mediaId;
 
+-- The Library's read (EPIC 28, #70): every live entry with its seen-episode
+-- count in one query. It replaced one progress Flow per entry, which re-ran
+-- all N queries on every tick and rebuilt all N subscriptions on every
+-- snapshot refresh. The count is joined in, never stored: status is derived
+-- from it by WatchStatusCalculator (ADR 0005).
+selectAllWithSeen:
+SELECT c.*, COALESCE(p.seenCount, 0) AS seenCount
+FROM collectionEntry c
+LEFT JOIN (
+    SELECT mediaId, COUNT(*) AS seenCount
+    FROM episodeProgress
+    WHERE seen = 1
+    GROUP BY mediaId
+) p ON p.mediaId = c.mediaId
+WHERE c.deleted = 0
+ORDER BY c.addedAtEpochMs DESC;
+
+-- One entry and its seen count, for the detail screen's membership. Deleted
+-- rows are returned (the caller hides them) so the shape matches selectById.
+selectByIdWithSeen:
+SELECT c.*, (SELECT COUNT(*) FROM episodeProgress p WHERE p.mediaId = c.mediaId AND p.seen = 1) AS seenCount
+FROM collectionEntry c
+WHERE c.mediaId = :mediaId;
+
 upsert:
 INSERT OR REPLACE INTO collectionEntry(
     mediaId, mediaType, title, posterUrl, releaseYear, productionStatus,

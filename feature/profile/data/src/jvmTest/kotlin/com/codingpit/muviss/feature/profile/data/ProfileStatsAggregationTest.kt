@@ -173,7 +173,7 @@ class ProfileStatsAggregationTest {
         val progressRepository: ProgressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApiForStats(progressRepository)
         val collectionRepository: CollectionRepository =
-            SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi)
+            SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock)
         collectionApi = RealCollectionApiForStats(collectionRepository)
         useCase = ObserveProfileStatsUseCase(collectionApi, progressApi, clock)
     }

@@ -157,7 +157,7 @@ class ImportIdempotencyTest {
 
         val progressRepository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApi(progressRepository)
-        collectionRepository = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, clock, progressApi)
+        collectionRepository = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, clock)
         collectionApi = RealCollectionApi(collectionRepository)
 
         val detailsSource = FixedDetailsSource(mapOf(movieId to movieDetails, showId to showDetails))

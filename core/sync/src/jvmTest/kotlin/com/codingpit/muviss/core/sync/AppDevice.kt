@@ -38,7 +38,7 @@ internal class AppDevice(server: FakeSupabaseServer, userId: String = "alice") {
     private val dispatchers = ImmediateDispatchers(UnconfinedTestDispatcher())
     val progress = SqlDelightProgressRepository(device.database.episodeProgressQueries, device.database.episodePlayQueries, dispatchers, device.clock, NoOpWidgetRefresher)
     val progressApi: ProgressApi = SeenOnlyProgressApi(progress)
-    val collection = SqlDelightCollectionRepository(device.database.collectionEntryQueries, dispatchers, device.clock, progressApi)
+    val collection = SqlDelightCollectionRepository(device.database.collectionEntryQueries, dispatchers, device.clock)
 
     /** Advances this device's clock, and so the stamp on whatever it writes next. */
     fun at(millisAfterStart: Long) = device.clock.advanceTo(TODAY_EPOCH_DAY * MILLIS_PER_DAY + millisAfterStart)
