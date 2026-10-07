@@ -64,8 +64,10 @@ data class CollectionUiState(
     val message: UiText? = null,
 ) {
     /** [entries] narrowed to the selected media type, sliced by the selected tab, then ordered by [sort]. Status always comes from [CollectionEntry.status] — never a stored column. */
-    val visibleEntries: List<CollectionEntry>
-        get() = ofSelectedType.filter { it.matches(filter) }.sortedFor(sort)
+    // Lazy, not a getter (EPIC 28, #70): the screen reads it several times per
+    // frame, and each read used to filter and sort the whole library again.
+    // A state is immutable, so computing it once per state is exact.
+    val visibleEntries: List<CollectionEntry> by lazy { ofSelectedType.filter { it.matches(filter) }.sortedFor(sort) }
 
     /**
      * Chip count suffix ("Watching 12") for any filter, selected or not —
@@ -74,8 +76,7 @@ data class CollectionUiState(
      */
     fun count(filter: CollectionFilter): Int = ofSelectedType.count { it.matches(filter) }
 
-    private val ofSelectedType: List<CollectionEntry>
-        get() = entries.filter { it.matches(typeFilter) }
+    private val ofSelectedType: List<CollectionEntry> by lazy { entries.filter { it.matches(typeFilter) } }
 }
 
 private fun CollectionEntry.matches(typeFilter: CollectionTypeFilter): Boolean = when (typeFilter) {

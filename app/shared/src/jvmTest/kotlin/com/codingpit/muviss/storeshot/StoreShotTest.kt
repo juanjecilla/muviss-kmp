@@ -16,6 +16,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.test.swipe
@@ -183,15 +184,20 @@ class StoreShotTest {
         // The card merges its poster and title into one clickable node.
         val lighthouse = catalog.lighthouse.summary.title
         onAllNodes(hasClickAction() and (hasContentDescription(lighthouse) or hasText(lighthouse) or hasAnyDescendantDescribed(lighthouse)))[0].performClick()
-        settle { onAllNodes(hasText("Season 2")).fetchSemanticsNodes().isNotEmpty() }
-        // Detail opens the season the user is in the middle of; expand only if it did not.
-        val nextEpisode = catalog.details(catalog.lighthouse.id).seasons[1].episodes[5].name
-        if (onAllNodes(hasText(nextEpisode, substring = true)).fetchSemanticsNodes().isEmpty()) {
-            onAllNodes(hasTestTag("seasonHeader2"))[0].performScrollTo().performClick()
+        settle { onAllNodes(hasTestTag("detailList")).fetchSemanticsNodes().isNotEmpty() }
+        // Detail is a lazy list (EPIC 28): rows off screen are not composed, so
+        // it is scrolled by item key rather than to a node. Detail opens the
+        // season the user is in the middle of; expand only if it did not.
+        val detailList = onAllNodes(hasTestTag("detailList"))[0]
+        detailList.performScrollToKey("season-2")
+        waitForIdle()
+        if (onAllNodes(hasTestTag("seasonEpisodes2")).fetchSemanticsNodes().isEmpty()) {
+            onAllNodes(hasTestTag("seasonHeader2"))[0].performClick()
         }
-        settle { onAllNodes(hasText(nextEpisode, substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        onAllNodes(hasText(nextEpisode, substring = true))[0].performScrollTo()
+        settle { onAllNodes(hasTestTag("seasonEpisodes2")).fetchSemanticsNodes().isNotEmpty() }
         // "Seasons (2)" just under the floating back button, ticks below it.
+        detailList.performScrollToKey("seasonsHeader")
+        waitForIdle()
         bringToTop("Seasons (2)", marginPx = 150f)
         capture("detail-seasons")
 

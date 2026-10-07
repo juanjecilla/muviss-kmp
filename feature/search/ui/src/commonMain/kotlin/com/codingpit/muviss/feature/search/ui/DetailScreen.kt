@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -46,8 +48,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -179,26 +183,17 @@ fun DetailScreen(
             )
 
             state.details != null -> BoxWithConstraints {
+                val callbacks = DetailCallbacks(
+                    onOpenDetail = onOpenDetail,
+                    onAddToList = { showAddToList = true },
+                    onEditNote = { editingNote = true },
+                    onOpenEpisode = onOpenEpisode,
+                    onTapSeenEpisode = { tickedEpisode = it },
+                )
                 if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(
-                        state,
-                        viewModel,
-                        onOpenDetail,
-                        onAddToList = { showAddToList = true },
-                        onEditNote = { editingNote = true },
-                        onOpenEpisode = onOpenEpisode,
-                        onTapSeenEpisode = { tickedEpisode = it },
-                    )
+                    DetailExpanded(state, viewModel, callbacks)
                 } else {
-                    DetailCompact(
-                        state,
-                        viewModel,
-                        onOpenDetail,
-                        onAddToList = { showAddToList = true },
-                        onEditNote = { editingNote = true },
-                        onOpenEpisode = onOpenEpisode,
-                        onTapSeenEpisode = { tickedEpisode = it },
-                    )
+                    DetailCompact(state, viewModel, callbacks)
                 }
             }
         }
@@ -257,131 +252,163 @@ internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
-/** Compact (phone): backdrop hero with the poster overlapping into content. */
+/** The callbacks the screen's body raises, bundled so the two layouts share one shape. */
+private class DetailCallbacks(
+    val onOpenDetail: (MediaId) -> Unit,
+    val onAddToList: () -> Unit,
+    val onEditNote: () -> Unit,
+    val onOpenEpisode: (EpisodeId) -> Unit,
+    val onTapSeenEpisode: (EpisodeId) -> Unit,
+)
+
+/**
+ * Compact (phone): backdrop hero with the poster overlapping into content.
+ *
+ * A `LazyColumn`, not a scrolling `Column` (EPIC 28, #70): a long show's
+ * expanded seasons used to compose every episode row up front. Each section,
+ * season header and episode is its own item, keyed and typed, so only what is
+ * on screen is composed.
+ */
 @Composable
-private fun DetailCompact(
-    state: DetailUiState,
-    viewModel: DetailViewModel,
-    onOpenDetail: (MediaId) -> Unit,
-    onAddToList: () -> Unit,
-    onEditNote: () -> Unit,
-    onOpenEpisode: (EpisodeId) -> Unit,
-    onTapSeenEpisode: (EpisodeId) -> Unit,
-) {
+private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks) {
     val details = state.details!!
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        DetailHero(details)
-        Column(
-            Modifier.padding(horizontal = MuvissSpacing.l).padding(top = MuvissSpacing.m, bottom = MuvissSpacing.xl),
-            verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
-        ) {
-            ActionRow(state, viewModel, onAddToList)
-            DetailBody(state, viewModel, details, onOpenDetail, onEditNote, onOpenEpisode, onTapSeenEpisode)
+    val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
+    val inset = Modifier.padding(horizontal = MuvissSpacing.l)
+    LazyColumn(Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG)) {
+        item(key = "hero", contentType = "hero") { DetailHero(details) }
+        item(key = "actions", contentType = "actions") {
+            Box(inset.padding(top = MuvissSpacing.m)) { ActionRow(state, viewModel, callbacks.onAddToList) }
         }
+        detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
+        item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
     }
+    SeasonsDialogs(seasons, viewModel)
 }
 
 /** Expanded (≥840dp): poster + actions pinned left, content right. */
 @Composable
-private fun DetailExpanded(
-    state: DetailUiState,
-    viewModel: DetailViewModel,
-    onOpenDetail: (MediaId) -> Unit,
-    onAddToList: () -> Unit,
-    onEditNote: () -> Unit,
-    onOpenEpisode: (EpisodeId) -> Unit,
-    onTapSeenEpisode: (EpisodeId) -> Unit,
-) {
+private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks) {
     val details = state.details!!
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        DetailBackdrop(details, height = 200.dp)
-        Row(
-            Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
-            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
-        ) {
-            Column(Modifier.width(150.dp), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-                Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
-                    PosterImage(
-                        url = details.summary.posterUrl,
-                        title = details.summary.title,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
-                    )
+    val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
+    // The body lines up with the title column beside the poster, as it did
+    // when it sat inside that column.
+    val bodyColumn = Modifier
+        .padding(start = MuvissSpacing.xxl + POSTER_COLUMN_WIDTH + MuvissSpacing.xl, end = MuvissSpacing.xxl)
+        .widthIn(max = 640.dp)
+    LazyColumn(Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG)) {
+        item(key = "hero", contentType = "hero") {
+            Column {
+                DetailBackdrop(details, height = 200.dp)
+                Row(
+                    Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
+                    horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
+                ) {
+                    Column(Modifier.width(POSTER_COLUMN_WIDTH), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
+                        Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
+                            PosterImage(
+                                url = details.summary.posterUrl,
+                                title = details.summary.title,
+                                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
+                            )
+                        }
+                        ActionRow(state, viewModel, callbacks.onAddToList, stacked = true)
+                    }
+                    Column(
+                        Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
+                        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+                    ) {
+                        Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
+                        MetadataLine(details)
+                    }
                 }
-                ActionRow(state, viewModel, onAddToList, stacked = true)
-            }
-            Column(
-                Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
-                verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
-            ) {
-                Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
-                MetadataLine(details)
-                DetailBody(state, viewModel, details, onOpenDetail, onEditNote, onOpenEpisode, onTapSeenEpisode)
             }
         }
+        detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), bodyColumn)
+        item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
     }
+    SeasonsDialogs(seasons, viewModel)
 }
 
-/** Everything below the hero/actions, shared by both layouts. */
-@Composable
-private fun DetailBody(
-    state: DetailUiState,
-    viewModel: DetailViewModel,
-    details: MediaDetails,
-    onOpenDetail: (MediaId) -> Unit,
-    onEditNote: () -> Unit,
-    onOpenEpisode: (EpisodeId) -> Unit,
-    onTapSeenEpisode: (EpisodeId) -> Unit,
-) {
+private val POSTER_COLUMN_WIDTH = 150.dp
+
+internal const val DETAIL_LIST_TAG = "detailList"
+
+/** What the list items read: one bundle, so the item builders keep short signatures. */
+private class DetailListContext(
+    val state: DetailUiState,
+    val viewModel: DetailViewModel,
+    val details: MediaDetails,
+    val seasons: SeasonsController,
+    val callbacks: DetailCallbacks,
+)
+
+/** Everything below the hero/actions, shared by both layouts, as list items laid out with [inset]. */
+private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier) {
+    val state = context.state
+    val viewModel = context.viewModel
+    val details = context.details
+    val callbacks = context.callbacks
+    val section = inset.padding(top = MuvissSpacing.m)
+
     // Offline-first (EPIC 30, #73): the saved copy is showing because the
     // refresh failed. Say so, and offer the refresh again.
-    state.staleNotice?.let { notice -> StaleBanner(notice, onRetry = viewModel::load) }
+    state.staleNotice?.let { notice ->
+        item(key = "stale", contentType = "banner") { Box(section) { StaleBanner(notice, onRetry = viewModel::load) } }
+    }
 
     // A skipped title (ADR 0010) leaves nothing in the library, so this line
     // is the only way back to it once the deck's undo snackbar has gone.
-    if (state.skipped) SkippedBanner(onUndo = viewModel::unskip)
+    if (state.skipped) {
+        item(key = "skipped", contentType = "banner") { Box(section) { SkippedBanner(onUndo = viewModel::unskip) } }
+    }
 
     // Likewise for a postponed title (EPIC 42): a Snooze leaves nothing in the
     // library either, and it is the date rather than the fact that the user
     // cannot otherwise find out from here.
-    state.snoozedUntilEpochDay?.let { due -> SnoozedBanner(dueAtEpochDay = due, onUndo = viewModel::unsnooze) }
+    state.snoozedUntilEpochDay?.let { due ->
+        item(key = "snoozed", contentType = "banner") { Box(section) { SnoozedBanner(dueAtEpochDay = due, onUndo = viewModel::unsnooze) } }
+    }
 
     // Rating + note (EPIC 15) only make sense once the title is saved —
     // consistent with the mute button, the other membership-gated affordance.
     if (state.saved) {
-        Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
-            Text(stringResource(Res.string.your_rating), style = MaterialTheme.typography.titleSmall)
-            RatingRow(state.rating, onRate = viewModel::setRating, onClear = viewModel::clearRating)
+        item(key = "rating", contentType = "rating") {
+            Column(section, verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
+                Text(stringResource(Res.string.your_rating), style = MaterialTheme.typography.titleSmall)
+                RatingRow(state.rating, onRate = viewModel::setRating, onClear = viewModel::clearRating)
+            }
         }
-        NoteField(state.note, onEdit = onEditNote)
+        item(key = "note", contentType = "note") { Box(section) { NoteField(state.note, onEdit = callbacks.onEditNote) } }
     }
 
     details.summary.overview?.let {
-        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        item(key = "overview", contentType = "overview") {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = section)
+        }
     }
 
     when (details.type) {
-        MediaType.MOVIE -> MovieWatchedToggle(
-            watched = state.movieWatched,
-            playCount = state.moviePlayCount,
-            onToggle = {
-                val id = EpisodeId.forMovie(details.id)
-                if (state.movieWatched) onTapSeenEpisode(id) else viewModel.toggleMovieWatched()
-            },
-        )
+        MediaType.MOVIE -> item(key = "movieWatched", contentType = "movieWatched") {
+            Box(section) {
+                MovieWatchedToggle(
+                    watched = state.movieWatched,
+                    playCount = state.moviePlayCount,
+                    onToggle = {
+                        val id = EpisodeId.forMovie(details.id)
+                        if (state.movieWatched) callbacks.onTapSeenEpisode(id) else viewModel.toggleMovieWatched()
+                    },
+                )
+            }
+        }
 
-        MediaType.TV -> SeasonsList(
-            details = details,
-            state = state,
-            viewModel = viewModel,
-            todayEpochDay = viewModel.todayEpochDay,
-            onOpenEpisode = onOpenEpisode,
-            onTapSeenEpisode = onTapSeenEpisode,
-        )
+        MediaType.TV -> seasonItems(context, inset)
     }
 
-    state.watchProviders?.let { providers -> WhereToWatchSection(providers) }
+    state.watchProviders?.let { providers ->
+        item(key = "providers", contentType = "providers") { Box(section) { WhereToWatchSection(providers) } }
+    }
 
-    MoreLikeThisSection(state.moreLikeThis, onOpenDetail)
+    item(key = "moreLikeThis", contentType = "moreLikeThis") { Box(section) { MoreLikeThisSection(state.moreLikeThis, callbacks.onOpenDetail) } }
 }
 
 /** 16:9 backdrop with a gradient into the background color. */
@@ -689,17 +716,37 @@ private fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () ->
     }
 }
 
-@Composable
-private fun SeasonsList(
-    details: MediaDetails,
-    state: DetailUiState,
-    viewModel: DetailViewModel,
-    todayEpochDay: Long,
-    onOpenEpisode: (EpisodeId) -> Unit,
-    onTapSeenEpisode: (EpisodeId) -> Unit,
-) {
-    var confirmMarkShow by rememberSaveable { mutableStateOf(false) }
+/**
+ * The seasons' UI state, created once per screen and read by the list items.
+ *
+ * [summaries] is the per-season aired/seen pass, computed once per change to
+ * the seasons, the ticks or the day, not once per item recomposition (EPIC 28).
+ */
+@Stable
+internal class SeasonsController(
+    val expanded: MutableState<Set<Int>>,
+    val confirmMarkShow: MutableState<Boolean>,
+    val summaries: Map<Int, SeasonSummary>,
+)
 
+/** What a season's header says, from one pass over its episodes. */
+@Immutable
+internal data class SeasonSummary(val aired: Int, val seenAired: Int, val nextUpId: EpisodeId?) {
+    val allAiredSeen: Boolean get() = aired > 0 && seenAired == aired
+}
+
+internal fun summarizeSeason(season: Season, state: DetailUiState, todayEpochDay: Long): SeasonSummary {
+    val aired = season.episodes.filter { it.hasAiredBy(todayEpochDay) }
+    return SeasonSummary(
+        aired = aired.size,
+        seenAired = aired.count { state.isSeen(it.id) },
+        nextUpId = aired.firstOrNull { !state.isSeen(it.id) }?.id,
+    )
+}
+
+@Composable
+private fun rememberSeasonsController(details: MediaDetails, state: DetailUiState, todayEpochDay: Long): SeasonsController {
+    val confirmMarkShow = rememberSaveable { mutableStateOf(false) }
     // Seeded once from where the user left off, then owned by the user: a
     // reseed on every progress change would slam a season shut mid-tick.
     val expanded = rememberSaveable(details.id.toString(), saver = expandedSeasonsSaver) {
@@ -709,19 +756,33 @@ private fun SeasonsList(
                 .orEmpty(),
         )
     }
+    val summaries = remember(details.seasons, state.seenEpisodes, todayEpochDay) {
+        details.seasons.associate { it.number to summarizeSeason(it, state, todayEpochDay) }
+    }
+    return remember(expanded, confirmMarkShow, summaries) { SeasonsController(expanded, confirmMarkShow, summaries) }
+}
 
-    SeasonsHeader(details.seasons.size)
-    MarkShowSeenButton(onClick = { confirmMarkShow = true })
-
+private fun LazyListScope.seasonItems(context: DetailListContext, inset: Modifier) {
+    val details = context.details
+    val state = context.state
+    val viewModel = context.viewModel
+    val seasons = context.seasons
+    val callbacks = context.callbacks
+    item(key = "seasonsHeader", contentType = "seasonsHeader") {
+        Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
+            SeasonsHeader(details.seasons.size)
+            MarkShowSeenButton(onClick = { seasons.confirmMarkShow.value = true })
+        }
+    }
     details.seasons.forEachIndexed { index, season ->
-        SeasonSection(
+        val expanded = seasons.expanded
+        seasonSection(
             season = season,
+            summary = seasons.summaries[season.number] ?: summarizeSeason(season, state, viewModel.todayEpochDay),
             state = state,
-            todayEpochDay = todayEpochDay,
+            todayEpochDay = viewModel.todayEpochDay,
             expanded = season.number in expanded.value,
-            onExpandedChange = { open ->
-                expanded.value = if (open) expanded.value + season.number else expanded.value - season.number
-            },
+            onExpandedChange = { open -> expanded.value = if (open) expanded.value + season.number else expanded.value - season.number },
             actions = SeasonActions(
                 onMarkSeasonSeen = {
                     viewModel.markSeasonSeen(season)
@@ -733,21 +794,26 @@ private fun SeasonsList(
                 },
                 onUnmarkSeason = { viewModel.unmarkSeason(season) },
                 onTapEpisode = { episodeId ->
-                    if (state.isSeen(episodeId)) onTapSeenEpisode(episodeId) else viewModel.toggleEpisodeSeen(episodeId)
+                    if (state.isSeen(episodeId)) callbacks.onTapSeenEpisode(episodeId) else viewModel.toggleEpisodeSeen(episodeId)
                 },
                 onCatchUp = viewModel::markPreviousSeen,
-                onOpenEpisode = onOpenEpisode,
+                onOpenEpisode = callbacks.onOpenEpisode,
             ),
+            inset = inset,
         )
     }
+}
 
-    if (confirmMarkShow) {
+/** The show-wide confirmation lives outside the list, so it survives the header scrolling away. */
+@Composable
+private fun SeasonsDialogs(seasons: SeasonsController, viewModel: DetailViewModel) {
+    if (seasons.confirmMarkShow.value) {
         MarkShowSeenDialog(
             onConfirm = {
                 viewModel.markShowSeen()
-                confirmMarkShow = false
+                seasons.confirmMarkShow.value = false
             },
-            onDismiss = { confirmMarkShow = false },
+            onDismiss = { seasons.confirmMarkShow.value = false },
         )
     }
 }
@@ -821,21 +887,52 @@ internal const val SEASON_EPISODES_TAG_PREFIX = "seasonEpisodes"
  * aired" is a truthful "caught up" for a season still airing, where "12 / 22"
  * would read as unfinished forever.
  */
-@Composable
-internal fun SeasonSection(
+@Suppress("LongParameterList") // the season, what to show of it, and its callbacks; tests drive it without a ViewModel
+internal fun LazyListScope.seasonSection(
     season: Season,
+    summary: SeasonSummary,
     state: DetailUiState,
     todayEpochDay: Long,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     actions: SeasonActions,
+    inset: Modifier = Modifier,
 ) {
-    val aired = season.episodes.filter { it.hasAiredBy(todayEpochDay) }
-    val seenAired = aired.count { state.isSeen(it.id) }
-    val allAiredSeen = aired.isNotEmpty() && seenAired == aired.size
-    val nextUpId = aired.firstOrNull { !state.isSeen(it.id) }?.id
+    item(key = "season-${season.number}", contentType = "seasonHeader") {
+        // The gaps the seasons had as blocks of a Column: a section's own
+        // vertical padding either side of the list's spacing between sections.
+        SeasonHeader(
+            season,
+            summary,
+            expanded,
+            onExpandedChange,
+            actions,
+            inset.padding(top = MuvissSpacing.m + SEASON_PADDING, bottom = if (expanded) 0.dp else SEASON_PADDING),
+        )
+    }
+    if (expanded) {
+        val last = season.episodes.lastOrNull()?.id
+        items(season.episodes, key = { it.id.toString() }, contentType = { "episode" }) { episode ->
+            val bottom = if (episode.id == last) SEASON_PADDING else 0.dp
+            Box(inset.padding(top = MuvissSpacing.xs, bottom = bottom).testTag("$SEASON_EPISODES_TAG_PREFIX${season.number}")) {
+                SeasonEpisodeRow(episode, state, todayEpochDay, summary.nextUpId, actions)
+            }
+        }
+    }
+}
 
-    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
+private val SEASON_PADDING = 6.dp
+
+@Composable
+private fun SeasonHeader(
+    season: Season,
+    summary: SeasonSummary,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    actions: SeasonActions,
+    modifier: Modifier,
+) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -859,35 +956,25 @@ internal fun SeasonSection(
                 modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
             )
             Text(
-                stringResource(Res.string.season_aired_progress, seenAired, aired.size),
+                stringResource(Res.string.season_aired_progress, summary.seenAired, summary.aired),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.tertiary,
             )
             // A season with nothing aired has nothing to mark, so the toggle
             // would be a control that silently does nothing.
             Checkbox(
-                checked = allAiredSeen,
-                enabled = aired.isNotEmpty(),
+                checked = summary.allAiredSeen,
+                enabled = summary.aired > 0,
                 onCheckedChange = { checked -> if (checked) actions.onMarkSeasonSeen() else actions.onUnmarkSeason() },
                 modifier = Modifier.testTag("$SEASON_TOGGLE_TAG_PREFIX${season.number}"),
             )
         }
         LinearProgressIndicator(
-            progress = { if (aired.isEmpty()) 0f else seenAired / aired.size.toFloat() },
+            progress = { if (summary.aired == 0) 0f else summary.seenAired / summary.aired.toFloat() },
             color = MaterialTheme.colorScheme.tertiary,
             trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
         )
-        AnimatedVisibility(visible = expanded) {
-            Column(
-                Modifier.testTag("$SEASON_EPISODES_TAG_PREFIX${season.number}"),
-                verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
-            ) {
-                season.episodes.forEach { episode ->
-                    SeasonEpisodeRow(episode, state, todayEpochDay, nextUpId, actions)
-                }
-            }
-        }
     }
 }
 
