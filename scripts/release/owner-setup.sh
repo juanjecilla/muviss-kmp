@@ -171,9 +171,21 @@ do_keystore() {
   fi
   [ -f "$ks" ] || { say "no such file: $ks"; return 1; }
   local alias sp kp
-  read -r -p "    Key alias [upload]: " alias; alias="${alias:-upload}"
   read -r -s -p "    Keystore password: " sp; echo
-  read -r -s -p "    Key password (empty = same): " kp; echo; kp="${kp:-$sp}"
+  # Read the alias out of the file instead of asking: a typed alias that does
+  # not match fails only at signReleaseBundle, minutes into a CI build.
+  alias="$(keytool -list -keystore "$ks" -storepass "$sp" 2>/dev/null | awk -F, '/PrivateKeyEntry/ {print $1; exit}')"
+  [ -n "$alias" ] || { say "could not open $ks with that password, or it holds no private key"; return 1; }
+  say "key alias in $ks: $alias"
+  # keytool writes PKCS12, where the key password is the store password; a
+  # separate prompt only invites a mismatch ("Given final block not properly
+  # padded" at signing). Ask only for a JKS file, and verify it here.
+  kp="$sp"
+  if ! keytool -exportcert -keystore "$ks" -storepass "$sp" -alias "$alias" -keypass "$kp" >/dev/null 2>&1; then
+    read -r -s -p "    Key password (differs from the store's): " kp; echo
+    keytool -exportcert -keystore "$ks" -storepass "$sp" -alias "$alias" -keypass "$kp" >/dev/null 2>&1 \
+      || { say "that key password does not open '$alias'"; return 1; }
+  fi
   base64 <"$ks" | tr -d '\n' | gh secret set KEYSTORE_BASE64 --repo "$REPO"
   gh secret set RELEASE_STORE_PASSWORD --repo "$REPO" --body "$sp"
   gh secret set RELEASE_KEY_ALIAS --repo "$REPO" --body "$alias"
