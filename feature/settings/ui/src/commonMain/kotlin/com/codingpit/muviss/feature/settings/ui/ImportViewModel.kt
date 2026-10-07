@@ -4,11 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportUnexpectedFailure
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
 import com.codingpit.muviss.feature.settings.domain.ImportFileException
 import com.codingpit.muviss.feature.settings.domain.ImportPreview
-import com.codingpit.muviss.models.toUserMessage
+import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
+import com.codingpit.muviss.feature.settings.ui.generated.resources.error_import
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +28,7 @@ sealed interface ImportStep {
 
 data class ImportUiState(
     val step: ImportStep = ImportStep.PickFile,
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 /**
@@ -98,9 +101,9 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
         _state.update { ImportUiState() }
     }
 
-    private fun Throwable.importErrorMessage(): String = if (this is ImportFileException) message ?: DEFAULT_ERROR else toUserMessage(DEFAULT_ERROR)
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong reading that file"
+    // An ImportFileException's message is the parser's own explanation, still English (#219).
+    private fun Throwable.importErrorMessage(): UiText {
+        val fallback = UiText.Resource(Res.string.error_import)
+        return if (this is ImportFileException) message?.let(UiText::Raw) ?: fallback else toUiText(fallback)
     }
 }

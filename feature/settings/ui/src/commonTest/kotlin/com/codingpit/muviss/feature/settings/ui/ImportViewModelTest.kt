@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -136,7 +137,7 @@ class ImportViewModelTest {
 
         assertIs<ImportStep.PickFile>(vm.state.value.step)
         // Domain-authored copy for a file problem is the one exception message a screen may show.
-        assertTrue(vm.state.value.error.orEmpty().startsWith("Unrecognized import file"))
+        assertTrue(vm.state.value.error?.resolveAsync().orEmpty().startsWith("Unrecognized import file"))
     }
 
     @Test

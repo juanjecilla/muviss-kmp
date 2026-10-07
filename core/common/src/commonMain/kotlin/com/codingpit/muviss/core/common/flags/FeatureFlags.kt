@@ -40,19 +40,6 @@ enum class SnoozePeriod {
     ASK_EACH_TIME,
     ;
 
-    /**
-     * English copy, carried on the enum so the settings picker and the deck's
-     * own dialog cannot drift apart. Fixed text for the same reason
-     * `MetadataError.userMessage` is, and replaced wholesale by EPIC 31 (#74).
-     */
-    val label: String
-        get() = when (this) {
-            ONE_WEEK -> "1 week"
-            ONE_MONTH -> "1 month"
-            THREE_MONTHS -> "3 months"
-            ASK_EACH_TIME -> "Ask each time"
-        }
-
     /** Days to add to today. Null for [ASK_EACH_TIME], which has no duration of its own. */
     val days: Long?
         get() = when (this) {
@@ -84,14 +71,6 @@ enum class SnoozePlacement {
     FIRST,
     LAST,
     ;
-
-    /** English copy; see [SnoozePeriod.label]. */
-    val label: String
-        get() = when (this) {
-            MIXED_IN -> "Mixed in"
-            FIRST -> "First"
-            LAST -> "Last"
-        }
 
     companion object {
         val DEFAULT: SnoozePlacement = MIXED_IN
