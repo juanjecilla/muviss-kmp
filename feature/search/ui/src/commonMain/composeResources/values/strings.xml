@@ -107,4 +107,7 @@
     <string name="episode_watched_again">Watched again</string>
     <string name="episode_mark_watched">Mark watched</string>
     <string name="undo_last">Undo last</string>
+    <!-- Screen-reader state of a season header (EPIC 31b, #164). -->
+    <string name="a11y_expanded">Expanded</string>
+    <string name="a11y_collapsed">Collapsed</string>
 </resources>
