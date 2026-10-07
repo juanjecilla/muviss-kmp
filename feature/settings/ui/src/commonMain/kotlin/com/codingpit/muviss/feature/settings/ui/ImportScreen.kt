@@ -103,6 +103,12 @@ fun ImportScreen(viewModel: ImportViewModel, onDone: () -> Unit) {
             is ImportStep.Applying -> ApplyingStep(step)
 
             is ImportStep.Summary -> SummaryStep(step.result, onImportAnother = viewModel::startOver, onDone = onDone)
+
+            is ImportStep.BackupPreview -> BackupPreviewStep(step, onConfirm = viewModel::confirmRestore, onCancel = viewModel::cancelPreview)
+
+            ImportStep.Restoring -> RestoringStep()
+
+            is ImportStep.Restored -> RestoredStep(step.result, onImportAnother = viewModel::startOver, onDone = onDone)
         }
     }
 }
@@ -112,9 +118,9 @@ private const val IMPORT_STEP_COUNT = 4
 /** Which of the 4 user-visible steps (pick → preview → import → done) a state-machine step belongs to. */
 private fun ImportStep.ordinalStep(): Int = when (this) {
     is ImportStep.PickFile -> 0
-    is ImportStep.Resolving, is ImportStep.Preview -> 1
-    is ImportStep.Applying -> 2
-    is ImportStep.Summary -> 3
+    is ImportStep.Resolving, is ImportStep.Preview, is ImportStep.BackupPreview -> 1
+    is ImportStep.Applying, ImportStep.Restoring -> 2
+    is ImportStep.Summary, is ImportStep.Restored -> 3
 }
 
 /** Four segments; amber up to and including the current step. */

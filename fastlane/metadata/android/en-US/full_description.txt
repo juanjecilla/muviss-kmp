@@ -26,7 +26,7 @@ PRIVATE BY DESIGN
 • No account. No sign-up, no login, nothing tied to your identity.
 • No social features — no feeds, no friends, no comments.
 • No ads and no analytics. Only optional, anonymous crash reports, which you can turn off in Settings.
-• Your library lives on your device and works offline. Export it whenever you like.
+• Your library lives on your device and works offline. Back it up to a file and restore it on any device.
 
 In English and Spanish, with light and dark themes, on phones and tablets.
 

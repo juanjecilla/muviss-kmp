@@ -6,10 +6,12 @@ import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportUnexpectedFailure
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
+import com.codingpit.muviss.feature.settings.domain.BackupSummary
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
 import com.codingpit.muviss.feature.settings.domain.ImportFileException
 import com.codingpit.muviss.feature.settings.domain.ImportPreview
+import com.codingpit.muviss.feature.settings.domain.RestoreResult
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
 import com.codingpit.muviss.feature.settings.ui.generated.resources.error_import
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +26,11 @@ sealed interface ImportStep {
     data class Preview(val fileName: String, val preview: ImportPreview) : ImportStep
     data class Applying(val done: Int, val total: Int) : ImportStep
     data class Summary(val result: ImportApplyResult) : ImportStep
+
+    /** A Muviss backup was picked (EPIC 29, #72): what it holds, before restoring it. */
+    data class BackupPreview(val fileName: String, val summary: BackupSummary) : ImportStep
+    data object Restoring : ImportStep
+    data class Restored(val result: RestoreResult) : ImportStep
 }
 
 data class ImportUiState(
@@ -53,8 +60,13 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
     val state: StateFlow<ImportUiState> = _state.asStateFlow()
 
     private var lastPreview: ImportPreview? = null
+    private var pendingBackup: String? = null
 
     fun onFilePicked(fileName: String, content: String) {
+        if (actions.isBackup(content)) {
+            onBackupPicked(fileName, content)
+            return
+        }
         _state.update { ImportUiState(step = ImportStep.Resolving(fileName, 0, 0)) }
         viewModelScope.launchReporting {
             runCatching {
@@ -89,15 +101,49 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
         }
     }
 
+    private fun onBackupPicked(fileName: String, content: String) {
+        _state.update { ImportUiState(step = ImportStep.Resolving(fileName, 0, 0)) }
+        viewModelScope.launchReporting {
+            runCatching { actions.summarizeBackup(content) }
+                .reportUnexpectedFailure { it is ImportFileException }
+                .fold(
+                    onSuccess = { summary ->
+                        pendingBackup = content
+                        _state.update { it.copy(step = ImportStep.BackupPreview(fileName, summary), error = null) }
+                    },
+                    onFailure = { e -> _state.update { ImportUiState(error = e.importErrorMessage()) } },
+                )
+        }
+    }
+
+    /** Restores the previewed backup. Rows the device has newer copies of are kept (see `BackupRestorer`). */
+    fun confirmRestore() {
+        val content = pendingBackup ?: return
+        _state.update { it.copy(step = ImportStep.Restoring) }
+        viewModelScope.launchReporting {
+            runCatching { actions.restoreBackup(content) }
+                .reportUnexpectedFailure { it is ImportFileException }
+                .fold(
+                    onSuccess = { result ->
+                        pendingBackup = null
+                        _state.update { it.copy(step = ImportStep.Restored(result), error = null) }
+                    },
+                    onFailure = { e -> _state.update { ImportUiState(error = e.importErrorMessage()) } },
+                )
+        }
+    }
+
     /** Discards the current preview and returns to the file-pick step, e.g. the user backs out before confirming. */
     fun cancelPreview() {
         lastPreview = null
+        pendingBackup = null
         _state.update { ImportUiState() }
     }
 
     /** From the summary step, starts a fresh import. */
     fun startOver() {
         lastPreview = null
+        pendingBackup = null
         _state.update { ImportUiState() }
     }
 

@@ -47,7 +47,7 @@
     <string name="tmdb_attribution">Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</string>
     <string name="licenses">Licencias de código abierto</string>
     <string name="import_title">Importa desde otra app</string>
-    <string name="import_body">Admite una exportación de Trakt (JSON), una exportación de datos de TV Time (CSV) o el propio formato CSV de Muviss. Más detalles en docs/IMPORT.md.</string>
+    <string name="import_body">Admite una exportación de Trakt (JSON), una exportación de datos de TV Time (CSV), el propio formato CSV de Muviss o una copia de seguridad de Muviss para restaurarla.</string>
     <string name="choose_file">Elegir archivo</string>
     <!-- %1$s is the file name. -->
     <string name="reading_file">Leyendo %1$s…</string>
@@ -89,5 +89,39 @@
     <plurals name="titles_failed">
         <item quantity="one">%1$d título no se pudo importar</item>
         <item quantity="other">%1$d títulos no se pudieron importar</item>
+    </plurals>
+
+    <!-- Backups and Delete all data (EPIC 29, #72). -->
+    <!-- %1$s is the date the backup was made. -->
+    <string name="backup_from">Copia de seguridad de Muviss del %1$s</string>
+    <string name="backup_explainer">Al restaurar recuperas lo que contiene esta copia. Lo que hayas cambiado en este dispositivo desde que se hizo se conserva.</string>
+    <string name="restore_action">Restaurar</string>
+    <string name="restoring">Restaurando…</string>
+    <string name="restore_complete">Copia restaurada</string>
+    <string name="delete_all">Borrar todos los datos</string>
+    <string name="delete_all_value">Empezar de cero en este dispositivo</string>
+    <string name="delete_all_question">¿Borrar todo?</string>
+    <string name="delete_all_body">Tu biblioteca, historial, listas, decisiones de triaje, perfil y ajustes se borran de este dispositivo. No se puede deshacer, así que exporta antes una copia si quizá los quieras recuperar.</string>
+    <string name="delete_all_confirm">Borrar todo</string>
+    <string name="delete_all_done">Se ha borrado todo de este dispositivo.</string>
+    <plurals name="backup_titles">
+        <item quantity="one">%1$d título</item>
+        <item quantity="other">%1$d títulos</item>
+    </plurals>
+    <plurals name="backup_episodes">
+        <item quantity="one">%1$d episodio visto</item>
+        <item quantity="other">%1$d episodios vistos</item>
+    </plurals>
+    <plurals name="backup_lists">
+        <item quantity="one">%1$d lista</item>
+        <item quantity="other">%1$d listas</item>
+    </plurals>
+    <plurals name="restored_rows">
+        <item quantity="one">%1$d elemento restaurado</item>
+        <item quantity="other">%1$d elementos restaurados</item>
+    </plurals>
+    <plurals name="kept_rows">
+        <item quantity="one">%1$d conservado: este dispositivo tiene una versión más reciente</item>
+        <item quantity="other">%1$d conservados: este dispositivo tiene una versión más reciente</item>
     </plurals>
 </resources>

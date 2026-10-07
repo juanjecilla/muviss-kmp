@@ -64,7 +64,7 @@ export const es: Dictionary = {
       { icon: "bell", title: "Avisos de nuevos episodios", body: "Te avisa cuando sale un episodio nuevo de una serie que sigues.", platforms: "Android · iOS" },
       { icon: "widget", title: "Widgets", body: "Tu siguiente episodio en la pantalla de inicio, con marcar y deshacer.", platforms: "Android · iOS" },
       { icon: "import", title: "Importa", body: "Trae tu historial desde Trakt, TV Time o un archivo CSV." },
-      { icon: "export", title: "Exporta", body: "Tus datos son tuyos: expórtalo todo a un archivo JSON cuando quieras." },
+      { icon: "export", title: "Copia y restaura", body: "Tus datos son tuyos: haz una copia en un archivo, restáurala en cualquier dispositivo o bórralo todo." },
       { icon: "moon", title: "Claro y oscuro", body: "Sigue al sistema o elige el tema tú." },
       { icon: "globe", title: "En español e inglés", body: "La app habla tu idioma, español o inglés. Títulos, sinopsis y disponibilidad siguen el idioma y el país que elijas." },
     ],

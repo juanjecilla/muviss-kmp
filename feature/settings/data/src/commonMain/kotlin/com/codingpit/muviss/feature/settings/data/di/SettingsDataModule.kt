@@ -87,5 +87,5 @@ val settingsDataModule: Module = module {
     factory { listOf<ImportParser>(TraktImportParser(), TvTimeImportParser(), GenericCsvImportParser()) }
     factory { PreviewImportUseCase(get(), get()) }
     factory { ApplyImportUseCase(get(), get(), get()) }
-    factory { ImportActions(get(), get()) }
+    factory { ImportActions(get(), get(), get()) }
 }

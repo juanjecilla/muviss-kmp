@@ -130,6 +130,20 @@ The Bear,tv,tt14452776,,,,1,2
 - A row missing `title` or `type`, or with an unrecognized `type`, is
   skipped and counted.
 
+### Muviss backup (JSON)
+
+The file Settings > Export writes (`muviss-backup-YYYY-MM-DD.json`) is a
+backup, not an import format: it is **restored**, not parsed and resolved
+(EPIC 29, #72). `ImportFormatDetector.isMuvissBackup` recognises it by
+`exportedAtEpochMs`, which every version carries and no Trakt export does.
+`formatVersion` 2 added everything v1 dropped (ratings, notes, lists,
+snoozes, profile); a v1 file has no version and restores as 1.
+
+Restoring needs no network: every row merges by `updatedAtEpochMs`, last
+write wins, so anything changed on the device since the backup was made is
+kept, and restoring the same file twice changes nothing. A backup from a
+newer app version is refused. See `SqlDelightBackupRestorer`.
+
 ## Id mapping
 
 A row's IMDb/TMDB id becomes a real `MediaId` (`tmdb:movie:603`,

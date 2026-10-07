@@ -129,11 +129,21 @@ class ApplyImportUseCase(
     }
 }
 
-/** Groups [PreviewImportUseCase]/[ApplyImportUseCase] so `ImportViewModel`'s constructor takes one parameter instead of two — the pattern `SettingsActions`/`CollectionToggles` already follow. */
+/**
+ * Groups [PreviewImportUseCase]/[ApplyImportUseCase] and the [BackupRestorer] so
+ * `ImportViewModel`'s constructor takes one parameter — the pattern
+ * `SettingsActions`/`CollectionToggles` already follow. A Muviss backup takes
+ * the restore path instead of preview/apply (EPIC 29, #72).
+ */
 class ImportActions(
     private val previewImportUseCase: PreviewImportUseCase,
     private val applyImportUseCase: ApplyImportUseCase,
+    private val restorer: BackupRestorer,
 ) {
+    fun isBackup(content: String): Boolean = ImportFormatDetector.isMuvissBackup(content)
+    suspend fun summarizeBackup(content: String): BackupSummary = restorer.summarize(content)
+    suspend fun restoreBackup(content: String): RestoreResult = restorer.restore(content)
+
     suspend fun preview(content: String, onProgress: ImportProgressListener = NO_PROGRESS): ImportPreview = previewImportUseCase(content, onProgress)
     suspend fun apply(preview: ImportPreview, onProgress: ImportProgressListener = NO_PROGRESS): ImportApplyResult = applyImportUseCase(preview, onProgress)
 }

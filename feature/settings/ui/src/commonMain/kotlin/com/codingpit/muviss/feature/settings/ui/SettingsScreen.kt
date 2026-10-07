@@ -49,12 +49,19 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SupportedLocales
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
+import com.codingpit.muviss.feature.settings.ui.generated.resources.action_cancel
 import com.codingpit.muviss.feature.settings.ui.generated.resources.action_close
 import com.codingpit.muviss.feature.settings.ui.generated.resources.animations
 import com.codingpit.muviss.feature.settings.ui.generated.resources.animations_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.app_version
 import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports
 import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all
+import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_confirm
+import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_done
+import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_question
+import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_value
 import com.codingpit.muviss.feature.settings.ui.generated.resources.export
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
@@ -101,7 +108,7 @@ fun SettingsScreen(
 
     LaunchedEffect(state.exportJson) {
         val json = state.exportJson ?: return@LaunchedEffect
-        exporter.export(json, "muviss-export.json")
+        exporter.export(json, state.exportFileName)
         viewModel.exportHandled()
     }
 
@@ -229,6 +236,20 @@ fun SettingsScreen(
             onClick = viewModel::exportData,
         )
         state.exportError?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        ActionRow(
+            icon = MuvissIcons.Close,
+            label = stringResource(Res.string.delete_all),
+            value = stringResource(Res.string.delete_all_value),
+            onClick = viewModel::onDeleteAllRequested,
+            modifier = Modifier.testTag(DELETE_ALL_ROW_TAG),
+        )
+        if (state.deletedAll) {
+            Text(stringResource(Res.string.delete_all_done), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (state.confirmingDeleteAll) {
+            DeleteAllDialog(onConfirm = viewModel::onDeleteAllConfirmed, onDismiss = viewModel::onDeleteAllDismissed)
+        }
 
         // Every platform has a reporter now (#83), so this always renders in
         // practice — CrashReporter.isAvailable stays the gate on principle,
@@ -425,9 +446,10 @@ private fun ActionRow(
     label: String,
     value: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = MuvissSpacing.m),
+        modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = MuvissSpacing.m),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -521,3 +543,28 @@ internal class MuvissTestCrash : RuntimeException("MuvissTestCrash: triggered fr
 
 /** Material3's own disabled-content opacity, which `Switch` applies to itself. */
 private const val DISABLED_ALPHA = 0.38f
+
+/**
+ * The second of the two steps Delete all data takes (EPIC 29, #72): the row
+ * only opens this, and only its own button deletes. Says what goes and that
+ * it cannot come back, and points at the export, which is the way back.
+ */
+@Composable
+private fun DeleteAllDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag(DELETE_ALL_DIALOG_TAG),
+        title = { Text(stringResource(Res.string.delete_all_question)) },
+        text = { Text(stringResource(Res.string.delete_all_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag(DELETE_ALL_CONFIRM_TAG)) {
+                Text(stringResource(Res.string.delete_all_confirm), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) } },
+    )
+}
+
+internal const val DELETE_ALL_ROW_TAG = "settings-delete-all"
+internal const val DELETE_ALL_DIALOG_TAG = "settings-delete-all-dialog"
+internal const val DELETE_ALL_CONFIRM_TAG = "settings-delete-all-confirm"
