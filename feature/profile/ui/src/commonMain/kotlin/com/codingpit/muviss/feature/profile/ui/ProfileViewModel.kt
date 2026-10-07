@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
@@ -20,7 +22,15 @@ import com.codingpit.muviss.feature.profile.domain.SyncStatus
 import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
 import com.codingpit.muviss.feature.profile.domain.syncStatusDetail
-import com.codingpit.muviss.models.toUserMessage
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.profile.ui.generated.resources.resynced
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sign_in_failed
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_account_changed
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_failed
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_not_configured
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_paid
+import com.codingpit.muviss.feature.profile.ui.generated.resources.synced
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,7 +66,7 @@ data class SyncUiState(
     /** The "Resync everything" confirmation dialog is open. */
     val confirmingResync: Boolean = false,
     /** One-shot: a message to surface in a snackbar (sent-code confirmation, sign-in success, sync outcome, or an error). Cleared by [ProfileViewModel.syncMessageShown]. */
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 /**
@@ -73,7 +83,7 @@ data class ProfileUiState(
     val loading: Boolean = true,
     val profile: LocalProfile = LocalProfile.DEFAULT,
     val stats: ProfileStats = ProfileStats(),
-    val error: String? = null,
+    val error: UiText? = null,
     val isEditingName: Boolean = false,
     val sync: SyncUiState = SyncUiState(),
 )
@@ -113,7 +123,7 @@ class ProfileViewModel(
     private fun observeProfileAndStats() {
         profileObservation?.cancel()
         profileObservation = combine(observeProfile(), observeProfileStats()) { profile, stats -> profile to stats }
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { (profile, stats) -> _state.update { it.copy(loading = false, profile = profile, stats = stats, error = null) } }
             .launchInReporting(viewModelScope)
     }
@@ -145,7 +155,7 @@ class ProfileViewModel(
         // redeemed at app scope (ADR 0014) — so the reason arrives here as a
         // stream rather than as a call's return value.
         syncActions.observeSignInFailure()
-            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = failure)) } }
+            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = UiText.Raw(failure))) } }
             .launchInReporting(viewModelScope)
     }
 
@@ -207,7 +217,7 @@ class ProfileViewModel(
      */
     fun onSignInClicked(provider: SyncProvider) {
         if (!syncActions.isAvailable) {
-            _state.update { it.copy(sync = it.sync.copy(message = "Sync isn't set up for this build")) }
+            _state.update { it.copy(sync = it.sync.copy(message = UiText.Resource(Res.string.sync_not_configured))) }
             return
         }
         viewModelScope.launchReporting {
@@ -218,7 +228,7 @@ class ProfileViewModel(
                     sync = it.sync.copy(
                         syncing = false,
                         pendingAuthUrl = result.getOrNull(),
-                        message = result.exceptionOrNull()?.let { e -> e.toUserMessage("Couldn't start sign-in") },
+                        message = result.exceptionOrNull()?.let { e -> e.toUiText(UiText.Resource(Res.string.sign_in_failed)) },
                     ),
                 )
             }
@@ -255,7 +265,7 @@ class ProfileViewModel(
     fun onResyncEverythingConfirmed() {
         _state.update { it.copy(sync = it.sync.copy(confirmingResync = false, syncing = true)) }
         viewModelScope.launchReporting {
-            val message = messageFor(syncActions.resyncEverything(), success = "Everything resynced")
+            val message = messageFor(syncActions.resyncEverything(), success = UiText.Resource(Res.string.resynced))
             _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
         }
     }
@@ -269,26 +279,23 @@ class ProfileViewModel(
 
     private suspend fun runSyncNow() {
         _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
-        val message = messageFor(syncActions.syncNow(), success = "Synced")
+        val message = messageFor(syncActions.syncNow(), success = UiText.Resource(Res.string.synced))
         _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
     }
 
-    private fun messageFor(outcome: SyncOutcomeSummary, success: String): String? = when (outcome) {
+    private fun messageFor(outcome: SyncOutcomeSummary, success: UiText): UiText? = when (outcome) {
         SyncOutcomeSummary.Unavailable, SyncOutcomeSummary.NotSignedIn -> null
 
         // Worth a message, unlike the two above: those states have no
         // visible sync button to have been pressed, whereas an entitlement
         // can lapse while the screen is open and leave a stale one there.
-        SyncOutcomeSummary.NotEntitled -> "Sync is a paid feature"
+        SyncOutcomeSummary.NotEntitled -> UiText.Resource(Res.string.sync_paid)
 
         is SyncOutcomeSummary.Success -> success
 
-        is SyncOutcomeSummary.Failed -> "Sync failed: ${SyncCopy.failure(outcome.kind)}"
+        // SyncCopy is still English (#217): sync copy moves out of :domain with the sync launch.
+        is SyncOutcomeSummary.Failed -> UiText.Resource(Res.string.sync_failed, UiText.Raw(SyncCopy.failure(outcome.kind)))
 
-        SyncOutcomeSummary.AccountChanged -> "This device's library belongs to a different account, so nothing was synced."
-    }
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
+        SyncOutcomeSummary.AccountChanged -> UiText.Resource(Res.string.sync_account_changed)
     }
 }

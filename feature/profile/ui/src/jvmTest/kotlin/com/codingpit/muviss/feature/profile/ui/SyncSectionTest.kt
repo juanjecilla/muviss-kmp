@@ -147,7 +147,7 @@ class SyncSectionTest {
         waitForIdle()
 
         onNodeWithTag(SYNC_AUTOMATIC_SWITCH_TAG).assertIsEnabled()
-        onNodeWithTag(SYNC_AUTOMATIC_SWITCH_TAG).assert(hasContentDescription(AUTOMATIC_SYNC_LABEL))
+        onNodeWithTag(SYNC_AUTOMATIC_SWITCH_TAG).assert(hasContentDescription("Sync automatically"))
         assertEquals("Off", onNodeWithTag(SYNC_AUTOMATIC_SWITCH_TAG).stateDescription())
     }
 

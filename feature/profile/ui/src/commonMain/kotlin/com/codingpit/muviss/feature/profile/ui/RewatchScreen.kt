@@ -37,11 +37,29 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.RewatchEntry
 import com.codingpit.muviss.feature.profile.domain.RewatchRanking
 import com.codingpit.muviss.feature.profile.domain.RewatchWindow
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.action_back
+import com.codingpit.muviss.feature.profile.ui.generated.resources.most_rewatched
+import com.codingpit.muviss.feature.profile.ui.generated.resources.nothing_rewatched
+import com.codingpit.muviss.feature.profile.ui.generated.resources.nothing_rewatched_year
+import com.codingpit.muviss.feature.profile.ui.generated.resources.ranking_movies
+import com.codingpit.muviss.feature.profile.ui.generated.resources.ranking_shows
+import com.codingpit.muviss.feature.profile.ui.generated.resources.rewatch_how_to
+import com.codingpit.muviss.feature.profile.ui.generated.resources.rewatch_row_description
+import com.codingpit.muviss.feature.profile.ui.generated.resources.rewatch_trend
+import com.codingpit.muviss.feature.profile.ui.generated.resources.rewatches
+import com.codingpit.muviss.feature.profile.ui.generated.resources.rewatches_episodes
+import com.codingpit.muviss.feature.profile.ui.generated.resources.window_all_time
+import com.codingpit.muviss.feature.profile.ui.generated.resources.window_this_year
 import com.codingpit.muviss.models.MediaType
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 
 const val REWATCH_WINDOW_TAG = "rewatch_window"
 const val REWATCH_ROW_TAG = "rewatch_row"
@@ -74,10 +92,10 @@ internal fun RewatchScreenContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Most rewatched") },
+                title = { Text(stringResource(Res.string.most_rewatched)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(MuvissIcons.Back, contentDescription = "Back")
+                        Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
             )
@@ -95,7 +113,7 @@ internal fun RewatchScreenContent(
             WindowSelector(selected = state.window, onSelected = onWindowSelected)
 
             if (state.error != null) {
-                ErrorState(state.error, onRetry = onRetry)
+                ErrorState(state.error.resolve(), onRetry = onRetry)
             } else if (state.stats.ranking.isEmpty) {
                 NothingRewatchedState(state.window, Modifier.testTag(REWATCH_EMPTY_TAG))
             } else {
@@ -106,7 +124,7 @@ internal fun RewatchScreenContent(
             // rolling year is always full and comparable, where "this year"
             // renders a stub every January (ADR 0012).
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Rewatches · last 12 months", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(Res.string.rewatch_trend), style = MaterialTheme.typography.labelLarge)
                 RewatchTrendChart(state.stats.monthly, Modifier.fillMaxWidth())
             }
         }
@@ -124,7 +142,7 @@ private fun WindowSelector(selected: RewatchWindow, onSelected: (RewatchWindow) 
                 onClick = { onSelected(window) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
             ) {
-                Text(window.label)
+                Text(stringResource(window.label))
             }
         }
     }
@@ -133,8 +151,8 @@ private fun WindowSelector(selected: RewatchWindow, onSelected: (RewatchWindow) 
 @Composable
 private fun RankingLists(ranking: RewatchRanking) {
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        if (ranking.shows.isNotEmpty()) RankingList("Shows", ranking.shows)
-        if (ranking.movies.isNotEmpty()) RankingList("Movies", ranking.movies)
+        if (ranking.shows.isNotEmpty()) RankingList(stringResource(Res.string.ranking_shows), ranking.shows)
+        if (ranking.movies.isNotEmpty()) RankingList(stringResource(Res.string.ranking_movies), ranking.movies)
     }
 }
 
@@ -148,11 +166,13 @@ private fun RankingList(heading: String, entries: List<RewatchEntry>) {
 
 @Composable
 private fun RewatchRow(position: Int, entry: RewatchEntry, modifier: Modifier = Modifier) {
+    val label = entry.rewatchLabel()
+    val description = stringResource(Res.string.rewatch_row_description, position, entry.title, label)
     Row(
         modifier
             .fillMaxWidth()
             .testTag(REWATCH_ROW_TAG)
-            .semantics { contentDescription = "$position. ${entry.title}, ${entry.rewatchLabel()}" },
+            .semantics { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -170,7 +190,7 @@ private fun RewatchRow(position: Int, entry: RewatchEntry, modifier: Modifier = 
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(entry.title, style = MaterialTheme.typography.bodyMedium)
             Text(
-                entry.rewatchLabel(),
+                label,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -183,27 +203,17 @@ private fun NothingRewatchedState(window: RewatchWindow, modifier: Modifier = Mo
     EmptyState(
         modifier = modifier,
         icon = MuvissIcons.WatchNext,
-        title = if (window == RewatchWindow.THIS_YEAR) "Nothing rewatched this year" else "Nothing rewatched yet",
-        body = REWATCH_HOW_TO,
+        title = stringResource(if (window == RewatchWindow.THIS_YEAR) Res.string.nothing_rewatched_year else Res.string.nothing_rewatched),
+        body = stringResource(Res.string.rewatch_how_to),
     )
 }
 
-/**
- * Names the gesture, because nothing else in the app does. "Watched again"
- * shipped with the rewatch history itself (ADR 0011) and every existing
- * install upgrades with zero rewatches — its backfill gave each already-seen
- * episode exactly one viewing — so this empty state is day one for everyone.
- */
-internal const val REWATCH_HOW_TO = "Tap an episode you've already seen and choose \"Watched again\"."
-
 /** "41 episode rewatches" for a show, "5 rewatches" for a film — the unit is never left implicit (ADR 0012). */
-internal fun RewatchEntry.rewatchLabel(): String {
-    val noun = if (rewatches == 1) "rewatch" else "rewatches"
-    return if (mediaType == MediaType.TV) "$rewatches episode $noun" else "$rewatches $noun"
-}
+@Composable
+internal fun RewatchEntry.rewatchLabel(): String = pluralStringResource(if (mediaType == MediaType.TV) Res.plurals.rewatches_episodes else Res.plurals.rewatches, rewatches, rewatches)
 
-internal val RewatchWindow.label: String
+internal val RewatchWindow.label: StringResource
     get() = when (this) {
-        RewatchWindow.ALL_TIME -> "All time"
-        RewatchWindow.THIS_YEAR -> "This year"
+        RewatchWindow.ALL_TIME -> Res.string.window_all_time
+        RewatchWindow.THIS_YEAR -> Res.string.window_this_year
     }

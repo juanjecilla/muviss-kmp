@@ -120,7 +120,7 @@ class RewatchScreenTest {
 
         onNodeWithTag(REWATCH_EMPTY_TAG).assertIsDisplayed()
         onNodeWithText("Nothing rewatched yet").assertIsDisplayed()
-        onNodeWithText(REWATCH_HOW_TO).assertIsDisplayed()
+        onNodeWithText("Tap an episode you've already seen and choose “Watched again”.").assertIsDisplayed()
     }
 
     @Test

@@ -52,6 +52,15 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.GenreCount
 import com.codingpit.muviss.feature.profile.domain.MonthlyRewatches
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.genre_other
+import com.codingpit.muviss.feature.profile.ui.generated.resources.genre_tags
+import com.codingpit.muviss.feature.profile.ui.generated.resources.month_initials
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_finished
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_not_started
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_watched
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_watching
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -99,10 +108,10 @@ fun StatusBarChart(breakdown: StatusBreakdown, modifier: Modifier = Modifier) {
     val palette = MuvissChartPalette.categorical()
     val growth by rememberChartGrowth()
     val entries = listOf(
-        "Not started" to breakdown.notStarted,
-        "Watching" to breakdown.watching,
-        "Watched" to breakdown.watched,
-        "Finished" to breakdown.finished,
+        stringResource(Res.string.status_not_started) to breakdown.notStarted,
+        stringResource(Res.string.status_watching) to breakdown.watching,
+        stringResource(Res.string.status_watched) to breakdown.watched,
+        stringResource(Res.string.status_finished) to breakdown.finished,
     )
     val maxCount = entries.maxOf { it.second }.coerceAtLeast(1)
 
@@ -138,7 +147,7 @@ fun foldGenresIntoOther(genres: List<GenreCount>, maxSlots: Int = MAX_GENRE_SLOT
     if (genres.size <= maxSlots) return genres
     val kept = genres.take(maxSlots - 1)
     val otherCount = genres.drop(maxSlots - 1).sumOf { it.count }
-    return kept + GenreCount(genre = "Other", count = otherCount)
+    return kept + GenreCount(genre = OTHER_GENRE, count = otherCount)
 }
 
 // ---------------------------------------------------------------------------
@@ -373,14 +382,14 @@ private fun DonutCenterLabel(selected: GenreCount?, total: Int) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = selected?.genre ?: total.toString(),
+            text = selected?.displayName() ?: total.toString(),
             style = if (selected == null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelLarge,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = selected?.let { "${it.count} · ${sharePercentLabel(it.count, total)}" } ?: "genre tags",
+            text = selected?.let { "${it.count} · ${sharePercentLabel(it.count, total)}" } ?: stringResource(Res.string.genre_tags),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -447,7 +456,7 @@ private fun GenreLegendRow(
     ) {
         Box(Modifier.size(LEGEND_SWATCH).background(color, CircleShape))
         Text(
-            "${genre.genre} (${genre.count})",
+            "${genre.displayName()} (${genre.count})",
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -455,7 +464,7 @@ private fun GenreLegendRow(
     }
 }
 
-private fun GenreCount.colorFor(index: Int, palette: List<Color>): Color = if (genre == "Other") OtherGenreColor else palette[index % palette.size]
+private fun GenreCount.colorFor(index: Int, palette: List<Color>): Color = if (genre == OTHER_GENRE) OtherGenreColor else palette[index % palette.size]
 
 const val REWATCH_TREND_TAG = "rewatch_trend"
 
@@ -474,6 +483,7 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
     val barColor = MuvissChartPalette.categorical().first()
     val growth by rememberChartGrowth()
     val maxCount = months.maxOf { it.rewatches }.coerceAtLeast(1)
+    val monthInitials = stringResource(Res.string.month_initials).split(',')
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
@@ -501,7 +511,7 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             months.forEach { month ->
                 Text(
-                    text = MONTH_INITIALS[month.month - 1],
+                    text = monthInitials[month.month - 1],
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -514,4 +524,10 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
 }
 
 private val TREND_HEIGHT = 96.dp
-private val MONTH_INITIALS = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")
+
+/** The sentinel [foldGenresIntoOther] names its bucket with; rendered through [displayName], never shown as is. */
+const val OTHER_GENRE = "Other"
+
+/** A genre as the user reads it: TMDB names pass through, the folded bucket is translated. */
+@Composable
+private fun GenreCount.displayName(): String = if (genre == OTHER_GENRE) stringResource(Res.string.genre_other) else genre

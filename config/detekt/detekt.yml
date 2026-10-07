@@ -67,7 +67,6 @@ muviss:
     active: true
     includes: ['**/commonMain/**']
     excludes: [
-      '**/feature/profile/ui/**',
       '**/feature/settings/ui/**',
       '**/feature/triage/ui/**',
     ]
