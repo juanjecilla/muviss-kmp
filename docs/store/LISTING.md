@@ -90,3 +90,19 @@ Play's internal testing track) **will refuse to submit for review** without
 at least the required iPhone set, so this blocks the App Store submission
 step specifically (TestFlight internal testing does not require
 screenshots — only the eventual public App Store listing does).
+
+## Listing images
+
+`fastlane/metadata/android/<locale>/images/` is uploaded by `fastlane android internal` with every RC, like the copy:
+
+- `icon.png` — 512×512, a copy of `docs/design/play-store-icon-512.png`.
+- `featureGraphic.png` — 1024×500, rendered from `docs/store/feature-graphic-{en,es}.svg` with the app's bundled Schibsted Grotesk. To regenerate, point fontconfig at that font directory rather than installing it:
+
+  ```bash
+  cat > /tmp/fonts.conf <<CONF
+  <?xml version="1.0"?><fontconfig><dir>$PWD/core/designsystem/src/commonMain/composeResources/font</dir><dir>/System/Library/Fonts</dir></fontconfig>
+  CONF
+  FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-en.svg -o fastlane/metadata/android/en-US/images/featureGraphic.png
+  FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-es.svg -o fastlane/metadata/android/es-ES/images/featureGraphic.png
+  ```
+- `phoneScreenshots/` — not yet: the StoreShot mode of the golden harness generates them (EPIC 33, #76). Play needs at least two before the first production release.
