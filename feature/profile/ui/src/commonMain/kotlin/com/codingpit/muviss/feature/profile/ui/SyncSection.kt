@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncCopy
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
@@ -108,8 +109,8 @@ internal fun SyncSection(sync: SyncUiState, actions: SyncSectionActions, modifie
         modifier = modifier.fillMaxWidth().testTag(SYNC_SECTION_TAG),
     ) {
         Row(
-            Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.padding(MuvissSpacing.l),
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
             verticalAlignment = Alignment.Top,
         ) {
             Icon(
@@ -118,7 +119,7 @@ internal fun SyncSection(sync: SyncUiState, actions: SyncSectionActions, modifie
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(28.dp),
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
                 AccountContent(sync, account, actions)
                 if (sync.automaticSyncAvailable) AutomaticSyncRow(sync, actions)
                 if (account is SyncAccountState.SignedIn) ResyncRow(sync, actions)
@@ -137,7 +138,7 @@ private fun AccountContent(sync: SyncUiState, account: SyncAccountState, actions
         is SyncAccountState.Locked -> {
             Text(stringResource(Res.string.sync_title), style = MaterialTheme.typography.titleSmall)
             Hint(stringResource(Res.string.sync_pitch))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = actions.onUnlockClicked, modifier = Modifier.testTag(SYNC_UNLOCK_TAG)) { Text(stringResource(Res.string.sync_unlock)) }
                 // A lapsed subscriber is still signed in; without this
                 // the paywall would be the only thing they can reach.
@@ -173,7 +174,7 @@ private fun SignedOutContent(sync: SyncUiState, actions: SyncSectionActions, exp
     // One button per provider rather than a picker: there are
     // two at most, and a picker would add a step to the one
     // action on this row.
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         sync.providers.forEach { provider ->
             OutlinedButton(
                 onClick = { actions.onSignInClicked(provider) },
@@ -191,7 +192,7 @@ private fun SignedInContent(sync: SyncUiState, account: SyncAccountState.SignedI
     Text(account.email ?: stringResource(Res.string.signed_in), style = MaterialTheme.typography.titleSmall)
     Hint(sync.lastSyncedLabel, Modifier.testTag(SYNC_LAST_SYNCED_TAG))
     sync.statusDetail?.let { StatusDetail(it, onRetry = actions.onSyncNowClicked, retryEnabled = !sync.syncing) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(onClick = actions.onSyncNowClicked, enabled = !sync.syncing, modifier = Modifier.testTag(SYNC_NOW_TAG)) {
             Icon(MuvissIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
             Text(" " + stringResource(if (sync.syncing) Res.string.syncing else Res.string.sync_now))
@@ -203,7 +204,7 @@ private fun SignedInContent(sync: SyncUiState, account: SyncAccountState.SignedI
 @Composable
 private fun StatusDetail(detail: SyncStatusDetail, onRetry: () -> Unit, retryEnabled: Boolean) {
     val failed = detail is SyncStatusDetail.Failed
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
         Text(
             SyncCopy.detail(detail),
             style = MaterialTheme.typography.bodySmall,
@@ -231,7 +232,7 @@ private fun AutomaticSyncRow(sync: SyncUiState, actions: SyncSectionActions) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp)
+            .padding(top = MuvissSpacing.s)
             .testTag(SYNC_AUTOMATIC_SWITCH_TAG)
             .toggleable(
                 value = sync.automaticSync,
@@ -243,7 +244,7 @@ private fun AutomaticSyncRow(sync: SyncUiState, actions: SyncSectionActions) {
                 contentDescription = label
                 stateDescription = if (sync.automaticSync) on else off
             },
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -294,6 +295,6 @@ private fun Hint(text: String, modifier: Modifier = Modifier) {
         text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(bottom = 4.dp),
+        modifier = modifier.padding(bottom = MuvissSpacing.xs),
     )
 }

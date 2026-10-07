@@ -215,8 +215,8 @@ private fun IdentitySection(
     onEditName: () -> Unit,
     onAvatarSelected: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.l)) {
             AvatarBadge(profile.avatar, profile.displayName, size = 64.dp)
             Column {
                 Text(profile.displayName, style = MaterialTheme.typography.titleLarge)
@@ -226,7 +226,7 @@ private fun IdentitySection(
             }
         }
         Text(stringResource(Res.string.avatar), style = MaterialTheme.typography.titleSmall)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             items(AvatarPresets.all, key = { it.id }) { preset ->
                 AvatarBadge(
                     preset = preset,
