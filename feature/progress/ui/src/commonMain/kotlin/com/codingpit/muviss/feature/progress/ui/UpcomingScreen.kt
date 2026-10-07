@@ -147,7 +147,7 @@ private fun UpcomingList(
         ),
     ) {
         groups.forEach { group ->
-            item(key = "header-${group.bucket}") {
+            item(key = "header-${group.bucket}", contentType = "header") {
                 Text(
                     group.bucket.label().uppercase(),
                     style = MaterialTheme.typography.labelMedium,
@@ -155,7 +155,7 @@ private fun UpcomingList(
                     modifier = Modifier.padding(top = MuvissSpacing.s, bottom = MuvissSpacing.xs),
                 )
             }
-            items(group.rows, key = { it.episode.id.toString() }) { row ->
+            items(group.rows, key = { it.episode.id.toString() }, contentType = { "episode" }) { row ->
                 UpcomingRow(row, onClick = { onOpenDetail(row.mediaId) })
             }
         }
