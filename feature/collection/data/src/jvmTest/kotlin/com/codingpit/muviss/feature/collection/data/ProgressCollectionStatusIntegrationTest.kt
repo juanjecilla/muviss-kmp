@@ -136,7 +136,7 @@ class ProgressCollectionStatusIntegrationTest {
         clock.advanceToEpochDay(150) // "today" — episodes A, B, C have aired; D hasn't yet.
         val progressRepository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealSeenEpisodesProgressApi(progressRepository)
-        collectionRepository = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, clock, progressApi)
+        collectionRepository = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, clock)
     }
 
     @Test

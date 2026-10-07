@@ -45,7 +45,7 @@ class SnapshotRefreshSyncSafetyTest {
         val database = MuvissDatabase(driver)
         queries = database.collectionEntryQueries
         clock = FakeClock(10_000L)
-        repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, FakeProgressApi())
+        repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
     }
 
     private val matrix = MediaId.tmdbMovie("603")

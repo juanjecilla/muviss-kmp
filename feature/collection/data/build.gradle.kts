@@ -7,7 +7,6 @@ kotlin {
         commonMain.dependencies {
             api(projects.feature.collection.api)
             implementation(projects.feature.collection.domain)
-            implementation(projects.feature.progress.api)
             implementation(projects.core.common)
             implementation(projects.core.database)
             implementation(projects.core.network)
@@ -28,6 +27,8 @@ kotlin {
             // only ever depends on `:feature:progress:api` (see commonMain above).
             implementation(projects.feature.progress.domain)
             implementation(projects.feature.progress.data)
+            // `CountingDriver` — the Library's query budget (EPIC 28, #70).
+            implementation(projects.core.testing)
         }
     }
 }

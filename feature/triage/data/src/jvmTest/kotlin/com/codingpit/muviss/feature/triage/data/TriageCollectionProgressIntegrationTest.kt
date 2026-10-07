@@ -72,7 +72,7 @@ class TriageCollectionProgressIntegrationTest {
         val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApi(progressRepository)
         collectionApi = RealCollectionApi(
-            SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock, progressApi),
+            SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, clock),
         )
         triageRepository = SqlDelightTriageDecisionRepository(database.triageDecisionQueries, dispatchers, clock)
         snoozeRepository = SqlDelightTriageSnoozeRepository(database.triageSnoozeQueries, dispatchers, clock)

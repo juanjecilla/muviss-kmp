@@ -30,60 +30,21 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Test double for [ProgressApi]: seen-episode sets are controlled per media id via [setSeen]. */
-internal class FakeProgressApi : ProgressApi {
-    private val seenByMedia = mutableMapOf<MediaId, MutableStateFlow<Set<EpisodeId>>>()
-
-    private fun flowFor(mediaId: MediaId) = seenByMedia.getOrPut(mediaId) { MutableStateFlow(emptySet()) }
-
-    fun setSeen(mediaId: MediaId, seen: Set<EpisodeId>) {
-        flowFor(mediaId).value = seen
-    }
-
-    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = flowFor(mediaId)
-
-    // Watch-next (EPIC 22) — this fake's subject never asks for it.
-    override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
-    override suspend fun refreshWatchNextCatalogs() = Unit
-
-    override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = error("not used")
-    override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) = error("not used")
-    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
-    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowOf(emptyList())
-
-    override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
-    override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
-    override suspend fun recordPlay(episodeId: EpisodeId) = error("not used")
-    override suspend fun removeLatestPlay(episodeId: EpisodeId) = error("not used")
-    override suspend fun clearPlays(episodeId: EpisodeId) = error("not used")
-    override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = error("not used")
-    override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = error("not used")
-    override suspend fun unmarkSeason(season: Season) = error("not used")
-    override suspend fun unmarkShow(seasons: List<Season>) = error("not used")
-    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = error("not used")
-    override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("not used")
-
-    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = error("not used")
-
-    override suspend fun clearProgress(mediaId: MediaId) = error("not used")
-    override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = error("not used")
-}
-
 class SqlDelightCollectionRepositoryTest {
 
     private lateinit var queries: CollectionEntryQueries
     private lateinit var clock: FakeClock
-    private lateinit var progressApi: FakeProgressApi
+    private lateinit var database: MuvissDatabase
     private lateinit var repository: SqlDelightCollectionRepository
 
     @BeforeTest
     fun setUp() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         MuvissDatabase.Schema.synchronous().create(driver)
-        queries = MuvissDatabase(driver).collectionEntryQueries
+        database = MuvissDatabase(driver)
+        queries = database.collectionEntryQueries
         clock = FakeClock(1_000L)
-        progressApi = FakeProgressApi()
-        repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, progressApi)
+        repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
     }
 
     private fun details(
@@ -371,7 +332,7 @@ class SqlDelightCollectionRepositoryTest {
             assertEquals(0, notStarted.seenEpisodes)
             assertEquals(WatchStatus.NOT_STARTED, notStarted.status)
 
-            progressApi.setSeen(id, setOf(EpisodeId.forMovie(id)))
+            tick(EpisodeId.forMovie(id))
             val watched = awaitItem()!!
             assertEquals(1, watched.seenEpisodes)
             assertEquals(WatchStatus.WATCHED, watched.status)
@@ -391,9 +352,22 @@ class SqlDelightCollectionRepositoryTest {
             .test {
                 assertEquals(mapOf(show to 0, movie to 0), awaitItem())
 
-                progressApi.setSeen(movie, setOf(EpisodeId.forMovie(movie)))
+                tick(EpisodeId.forMovie(movie))
                 assertEquals(mapOf(show to 0, movie to 1), awaitItem())
                 cancelAndIgnoreRemainingEvents()
             }
+    }
+
+    /** A tick as the progress feature stores it; the repository reads the count straight off this table. */
+    private suspend fun tick(episodeId: EpisodeId) {
+        database.episodeProgressQueries.upsert(
+            episodeId.toString(),
+            episodeId.show.toString(),
+            episodeId.seasonNumber.toLong(),
+            episodeId.episodeNumber.toLong(),
+            true,
+            clock.nowEpochMs(),
+            true,
+        )
     }
 }
