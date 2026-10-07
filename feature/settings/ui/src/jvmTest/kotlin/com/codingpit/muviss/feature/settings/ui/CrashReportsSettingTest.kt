@@ -2,10 +2,12 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -15,6 +17,7 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
@@ -144,5 +147,42 @@ class CrashReportsSettingTest {
     fun the_description_says_what_is_and_is_not_sent() {
         assertTrue("never includes your library" in CRASH_REPORTS_DESCRIPTION)
         assertTrue("Anonymous" in CRASH_REPORTS_DESCRIPTION)
+    }
+
+    private class FakeSystemNotifications(var blocked: Boolean) : SystemNotificationSettings {
+        var opened = 0
+        override fun blocked(): Boolean = blocked
+        override fun open() {
+            opened++
+        }
+    }
+
+    @Test
+    fun a_blocked_notification_switch_says_so_and_opens_system_settings() = runComposeUiTest {
+        // EPIC 30 (#73): on Android 13+ a denial is sticky, and the switch alone
+        // would store a preference that does nothing.
+        val system = FakeSystemNotifications(blocked = true)
+        setContent {
+            CompositionLocalProvider(LocalSystemNotificationSettings provides system) {
+                MuvissTheme(darkTheme = false) { SettingsScreen(viewModel(FakeRepository()), {}, {}, {}) }
+            }
+        }
+        waitForIdle()
+
+        onNodeWithTag(NOTIFICATIONS_BLOCKED_TAG).assertExists()
+        onNodeWithText("Open settings").performClick()
+        assertEquals(1, system.opened)
+    }
+
+    @Test
+    fun an_allowed_notification_switch_shows_no_warning() = runComposeUiTest {
+        setContent {
+            CompositionLocalProvider(LocalSystemNotificationSettings provides FakeSystemNotifications(blocked = false)) {
+                MuvissTheme(darkTheme = false) { SettingsScreen(viewModel(FakeRepository()), {}, {}, {}) }
+            }
+        }
+        waitForIdle()
+
+        onNodeWithTag(NOTIFICATIONS_BLOCKED_TAG).assertDoesNotExist()
     }
 }

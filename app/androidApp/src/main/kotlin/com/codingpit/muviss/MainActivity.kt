@@ -1,6 +1,7 @@
 package com.codingpit.muviss
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -15,16 +16,28 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.codingpit.muviss.core.sync.OAUTH_CODE_PARAM
+import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.notifications.NotificationPermission
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import org.koin.core.context.GlobalContext
 
 /**
  * Thin Android host. Two EPIC 5 (new-episode notifications) concerns live
  * here rather than in shared `commonMain` code, because both are
  * Android-specific platform APIs with no KMP seam elsewhere in the app yet:
  *
- * - The `POST_NOTIFICATIONS` runtime permission (API 33+), requested once on
- *   first app open — the simplest single decision point that covers every
- *   user, rather than tying it to a specific Settings action.
+ * - The `POST_NOTIFICATIONS` runtime permission (API 33+), asked for once the
+ *   library holds a TV show — the first moment a new-episode alert means
+ *   anything — after a one-line rationale (EPIC 30, #73). It used to fire on
+ *   the very first launch, before the user had a reason to accept, and a
+ *   denial on 13+ is sticky.
  * - Reading the notification tap's deep-link extra (`EXTRA_DEEP_LINK_MEDIA_ID`,
  *   set by `notifications.NewEpisodesNotifier`) and forwarding it into
  *   `MuvissApp()`, which navigates to that show's `DetailRoute` once
@@ -46,7 +59,7 @@ class MainActivity : ComponentActivity() {
 
         deepLinkMediaId = intent.deepLinkMediaIdExtra()
         oauthCode = intent.oauthCode()
-        requestNotificationPermissionIfNeeded()
+        askForNotificationsOnceAShowIsSaved()
 
         setContent {
             MuvissApp(
@@ -65,11 +78,29 @@ class MainActivity : ComponentActivity() {
         oauthCode = intent.oauthCode()
     }
 
-    private fun requestNotificationPermissionIfNeeded() {
+    /**
+     * Waits for the first saved TV show, then explains and asks — once. The
+     * "asked" mark is a per-device UI fact, so it lives in plain preferences
+     * rather than the synced database.
+     */
+    private fun askForNotificationsOnceAShowIsSaved() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_ASKED, false) || NotificationPermission.granted(this)) return
+        val collection = GlobalContext.get().get<CollectionApi>()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                collection.observeSummaries().first { all -> all.any { it.mediaId.type == MediaType.TV } }
+                if (prefs.getBoolean(KEY_ASKED, false) || NotificationPermission.granted(this@MainActivity)) return@repeatOnLifecycle
+                prefs.edit { putBoolean(KEY_ASKED, true) }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Know when new episodes are out?")
+                    .setMessage("Muviss can tell you when a show you follow has a new episode. Nothing else, and you can change it in Settings.")
+                    .setPositiveButton("Allow") { _, _ -> requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                    .setNegativeButton("Not now", null)
+                    .show()
+            }
+        }
     }
 
     private fun Intent.deepLinkMediaIdExtra(): String? = getStringExtra(EXTRA_DEEP_LINK_MEDIA_ID)
@@ -93,6 +124,9 @@ class MainActivity : ComponentActivity() {
         // an Android Uri exposes them.
         private const val OAUTH_SCHEME = "muviss"
         private const val OAUTH_HOST = "auth-callback"
+
+        private const val PREFS = "muviss_host"
+        private const val KEY_ASKED = "notification_permission_asked"
     }
 }
 

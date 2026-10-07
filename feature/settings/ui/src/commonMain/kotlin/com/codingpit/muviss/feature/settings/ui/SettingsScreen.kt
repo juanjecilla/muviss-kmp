@@ -28,16 +28,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -107,6 +110,7 @@ fun SettingsScreen(
             checked = state.settings.notificationsEnabled,
             onToggle = viewModel::onNotificationsToggled,
         )
+        NotificationsBlockedNote(state.settings.notificationsEnabled)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         SwitchRow(
             label = "Animations",
@@ -254,6 +258,40 @@ private fun AppTheme.label(): String = when (this) {
     AppTheme.DARK -> "Dark"
     AppTheme.SYSTEM -> "System"
 }
+
+/**
+ * Notifications that the OS will not show (EPIC 30, #73). On Android 13+ a
+ * denied permission is sticky, so the switch above would store a preference
+ * that does nothing; this says so and opens the one place it can be fixed.
+ * Re-checked on resume, because that is how the user comes back from there.
+ */
+@Composable
+private fun NotificationsBlockedNote(enabledInApp: Boolean) {
+    val system = LocalSystemNotificationSettings.current
+    var blocked by remember { mutableStateOf(system.blocked()) }
+    LifecycleResumeEffect(system) {
+        blocked = system.blocked()
+        onPauseOrDispose { }
+    }
+    if (!enabledInApp || !blocked) return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().testTag(NOTIFICATIONS_BLOCKED_TAG),
+    ) {
+        Text(
+            "Notifications are turned off for Muviss in your device settings, so none will arrive.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = system::open) { Text("Open settings") }
+    }
+}
+
+/** The platform's notification state; Android provides a real one from `MuvissApp` (EPIC 30, #73). */
+val LocalSystemNotificationSettings = staticCompositionLocalOf<SystemNotificationSettings> { SystemNotificationSettings.None }
+
+internal const val NOTIFICATIONS_BLOCKED_TAG = "settings-notifications-blocked"
 
 /**
  * "Label / description — switch" row.

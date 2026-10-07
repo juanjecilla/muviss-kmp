@@ -17,7 +17,7 @@ import org.koin.core.parameter.parametersOf
  * internal push (into a list's contents, EPIC 17), the same way
  * search:ui's `searchSection` drives its own `DetailRoute` pushes.
  */
-fun NavGraphBuilder.collectionSection(navController: NavController, onOpenDetail: (MediaId) -> Unit) {
+fun NavGraphBuilder.collectionSection(navController: NavController, onOpenDetail: (MediaId) -> Unit, onOpenSearch: () -> Unit = {}) {
     composable<CollectionRoute> {
         val viewModel = koinViewModel<CollectionViewModel>()
         val listsViewModel = koinViewModel<ListsViewModel>()
@@ -26,6 +26,7 @@ fun NavGraphBuilder.collectionSection(navController: NavController, onOpenDetail
             listsViewModel,
             onOpenDetail = onOpenDetail,
             onOpenList = { list -> navController.navigate(ListContentsRoute(list.id, list.name)) },
+            onOpenSearch = onOpenSearch,
         )
     }
     composable<ListContentsRoute> { entry ->
