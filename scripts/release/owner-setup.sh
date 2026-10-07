@@ -171,9 +171,29 @@ do_keystore() {
   fi
   [ -f "$ks" ] || { say "no such file: $ks"; return 1; }
   local alias sp kp
-  read -r -p "    Key alias [upload]: " alias; alias="${alias:-upload}"
   read -r -s -p "    Keystore password: " sp; echo
-  read -r -s -p "    Key password (empty = same): " kp; echo; kp="${kp:-$sp}"
+  # Passwords go to keytool through the environment (`-storepass:env`), never
+  # as arguments, which any process on the machine can read from `ps`.
+  export MUVISS_KS_PASS="$sp"
+  # Read the alias out of the file instead of asking: a typed alias that does
+  # not match fails only at signReleaseBundle, minutes into a CI build.
+  alias="$(keytool -list -keystore "$ks" -storepass:env MUVISS_KS_PASS 2>/dev/null | awk -F, '/PrivateKeyEntry/ {print $1; exit}')"
+  [ -n "$alias" ] || { unset MUVISS_KS_PASS; say "could not open $ks with that password, or it holds no private key"; return 1; }
+  say "key alias in $ks: $alias"
+  # keytool writes PKCS12, where the key password is the store password; a
+  # separate prompt only invites a mismatch ("Given final block not properly
+  # padded" at signing). Ask only when the store password does not open the
+  # key. `-certreq` is the check because it needs the private key itself.
+  key_opens() {
+    MUVISS_KEY_PASS="$1" keytool -certreq -keystore "$ks" -storepass:env MUVISS_KS_PASS \
+      -alias "$alias" -keypass:env MUVISS_KEY_PASS >/dev/null 2>&1
+  }
+  kp="$sp"
+  if ! key_opens "$kp"; then
+    read -r -s -p "    Key password (differs from the store's): " kp; echo
+    key_opens "$kp" || { unset MUVISS_KS_PASS; say "that key password does not open '$alias'"; return 1; }
+  fi
+  unset MUVISS_KS_PASS
   base64 <"$ks" | tr -d '\n' | gh secret set KEYSTORE_BASE64 --repo "$REPO"
   gh secret set RELEASE_STORE_PASSWORD --repo "$REPO" --body "$sp"
   gh secret set RELEASE_KEY_ALIAS --repo "$REPO" --body "$alias"
