@@ -1,33 +1,42 @@
 package com.codingpit.muviss.feature.progress.domain
 
 /**
- * Human label for an episode's air date relative to [todayEpochDay]: "Today",
- * "Tomorrow", a weekday name within the current rolling week, or a "Mon D"
- * style date beyond that. No date library is used — common code must run on
- * every target (see `core/network`'s `TmdbMapper.airDateToEpochDay` KDoc) —
- * so this is plain epoch-day arithmetic: [weekdayName] mirrors 1970-01-01
- * being a Thursday, and [civilDateFrom] is the inverse of the forward
- * days-from-civil algorithm `TmdbMapper` already uses to produce
- * `airDateEpochDay` in the first place (Howard Hinnant's `civil_from_days`).
+ * When an episode airs, relative to today, in the shape the Upcoming agenda
+ * labels it: "Today", "Tomorrow", a weekday name within the current rolling
+ * week, or a month-and-day beyond that.
+ *
+ * Structured rather than a string since EPIC 31 (#74): the words are the
+ * UI's, in the user's language, and the domain only decides which of the four
+ * applies. [Weekday.index] is 0 = Sunday … 6 = Saturday; [Date.month] is 1-12.
  */
-fun upcomingDateLabel(airDateEpochDay: Long, todayEpochDay: Long): String {
-    val daysFromToday = airDateEpochDay - todayEpochDay
-    return when (daysFromToday) {
-        0L -> "Today"
-        1L -> "Tomorrow"
-        in 2L..6L -> weekdayName(airDateEpochDay)
-        else -> civilDateFrom(airDateEpochDay).let { (_, month, day) -> "${MONTH_NAMES[month - 1]} $day" }
-    }
+sealed interface UpcomingDate {
+    data object Today : UpcomingDate
+
+    data object Tomorrow : UpcomingDate
+
+    data class Weekday(val index: Int) : UpcomingDate
+
+    data class Date(val month: Int, val day: Int) : UpcomingDate
 }
 
-private val WEEKDAY_NAMES = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
-private val MONTH_NAMES = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+/**
+ * Classifies [airDateEpochDay] against [todayEpochDay]. No date library is
+ * used — common code must run on every target (see `core/network`'s
+ * `TmdbMapper.airDateToEpochDay` KDoc) — so this is plain epoch-day
+ * arithmetic: [weekdayIndex] mirrors 1970-01-01 being a Thursday, and
+ * [civilDateFrom] is the inverse of the forward days-from-civil algorithm
+ * `TmdbMapper` already uses to produce `airDateEpochDay` in the first place
+ * (Howard Hinnant's `civil_from_days`).
+ */
+fun upcomingDate(airDateEpochDay: Long, todayEpochDay: Long): UpcomingDate = when (airDateEpochDay - todayEpochDay) {
+    0L -> UpcomingDate.Today
+    1L -> UpcomingDate.Tomorrow
+    in 2L..6L -> UpcomingDate.Weekday(weekdayIndex(airDateEpochDay))
+    else -> civilDateFrom(airDateEpochDay).let { (_, month, day) -> UpcomingDate.Date(month, day) }
+}
 
 /** 1970-01-01 (epoch day 0) was a Thursday (index 4), hence the `+ 4` offset. */
-private fun weekdayName(epochDay: Long): String {
-    val index = floorMod(epochDay + 4, 7L).toInt()
-    return WEEKDAY_NAMES[index]
-}
+private fun weekdayIndex(epochDay: Long): Int = floorMod(epochDay + 4, 7L).toInt()
 
 private fun floorMod(value: Long, modulus: Long): Long = ((value % modulus) + modulus) % modulus
 

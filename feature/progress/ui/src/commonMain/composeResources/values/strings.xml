@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the default locale: every key lives here first. values-es mirrors it. -->
+<resources>
+    <string name="progress_title">Progress</string>
+    <string name="tab_watch_next">Watch Next</string>
+    <string name="tab_upcoming">Upcoming</string>
+    <string name="cowatch_entry">Watch together with someone</string>
+    <string name="action_undo">Undo</string>
+
+    <!-- %1$d season number, %2$d episode number. -->
+    <string name="tick_snackbar">Marked S%1$dE%2$d seen</string>
+    <string name="watch_next_empty_title">Nothing to watch next</string>
+    <string name="watch_next_empty_body">Add a show to your Library and start watching to see it here.</string>
+    <!-- %1$d season, %2$d episode, %3$s episode name. -->
+    <string name="watch_next_episode">S%1$d E%2$d · %3$s</string>
+    <string name="watch_next_caught_up">Caught up — waiting on new episodes</string>
+    <!-- Screen-reader label for the tick button. %1$s is the episode, e.g. "S1E2". -->
+    <string name="mark_watched_description">Mark %1$s watched</string>
+
+    <string name="error_generic">Something went wrong</string>
+    <string name="refresh_failed">Couldn't refresh. Showing what's saved.</string>
+
+    <string name="upcoming_none_title">Nothing upcoming</string>
+    <string name="upcoming_none_body">Every saved show is either finished or has no scheduled episodes yet.</string>
+    <string name="upcoming_empty_title">Nothing here yet</string>
+    <string name="upcoming_empty_body">Save a show to your Library to see its upcoming episodes.</string>
+    <!-- %1$d season, %2$d episode, %3$s episode name. -->
+    <string name="upcoming_episode">S%1$dE%2$d · %3$s</string>
+    <string name="bucket_today">Today</string>
+    <string name="bucket_this_week">This week</string>
+    <string name="bucket_later">Later</string>
+
+    <string name="date_today">Today</string>
+    <string name="date_tomorrow">Tomorrow</string>
+    <string name="weekday_0">Sunday</string>
+    <string name="weekday_1">Monday</string>
+    <string name="weekday_2">Tuesday</string>
+    <string name="weekday_3">Wednesday</string>
+    <string name="weekday_4">Thursday</string>
+    <string name="weekday_5">Friday</string>
+    <string name="weekday_6">Saturday</string>
+    <string name="month_1">Jan</string>
+    <string name="month_2">Feb</string>
+    <string name="month_3">Mar</string>
+    <string name="month_4">Apr</string>
+    <string name="month_5">May</string>
+    <string name="month_6">Jun</string>
+    <string name="month_7">Jul</string>
+    <string name="month_8">Aug</string>
+    <string name="month_9">Sep</string>
+    <string name="month_10">Oct</string>
+    <string name="month_11">Nov</string>
+    <string name="month_12">Dec</string>
+    <!-- %1$s short month name, %2$d day of month. Spanish puts the day first. -->
+    <string name="date_month_day">%1$s %2$d</string>
+    <!-- What the tick marks, inside mark_watched_description. %1$s is the show title. -->
+    <string name="next_episode_of">%1$s next episode</string>
+</resources>

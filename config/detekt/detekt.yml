@@ -69,7 +69,6 @@ muviss:
     excludes: [
       '**/feature/collection/ui/**',
       '**/feature/profile/ui/**',
-      '**/feature/progress/ui/**',
       '**/feature/search/ui/**',
       '**/feature/settings/ui/**',
       '**/feature/triage/ui/**',

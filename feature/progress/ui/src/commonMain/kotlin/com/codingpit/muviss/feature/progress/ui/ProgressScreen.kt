@@ -56,10 +56,27 @@ import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
+import com.codingpit.muviss.feature.progress.ui.generated.resources.Res
+import com.codingpit.muviss.feature.progress.ui.generated.resources.action_undo
+import com.codingpit.muviss.feature.progress.ui.generated.resources.cowatch_entry
+import com.codingpit.muviss.feature.progress.ui.generated.resources.mark_watched_description
+import com.codingpit.muviss.feature.progress.ui.generated.resources.next_episode_of
+import com.codingpit.muviss.feature.progress.ui.generated.resources.progress_title
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_upcoming
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_watch_next
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_snackbar
+import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_caught_up
+import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_empty_body
+import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_empty_title
+import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_episode
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /** The two segments the Progress tab switches between (EPIC 14 adds [UPCOMING] alongside the original watch-next view). */
 private enum class ProgressTab {
@@ -67,9 +84,10 @@ private enum class ProgressTab {
     UPCOMING,
 }
 
+@Composable
 private fun ProgressTab.label(): String = when (this) {
-    ProgressTab.WATCH_NEXT -> "Watch Next"
-    ProgressTab.UPCOMING -> "Upcoming"
+    ProgressTab.WATCH_NEXT -> stringResource(Res.string.tab_watch_next)
+    ProgressTab.UPCOMING -> stringResource(Res.string.tab_upcoming)
 }
 
 /**
@@ -88,7 +106,7 @@ fun ProgressScreen(
 
     Column(Modifier.fillMaxSize()) {
         Text(
-            "Progress",
+            stringResource(Res.string.progress_title),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s),
         )
@@ -107,7 +125,7 @@ fun ProgressScreen(
         // to it would lead to a screen that can only say "sign in" (ADR 0018).
         if (onOpenCoWatch != null) {
             TextButton(onClick = onOpenCoWatch, modifier = Modifier.padding(horizontal = MuvissSpacing.l)) {
-                Text("Watch together with someone")
+                Text(stringResource(Res.string.cowatch_entry))
             }
         }
         when (selectedTab) {
@@ -134,8 +152,8 @@ private fun WatchNextScreen(
         viewModel.tickNext(item)
         scope.launch {
             val result = snackbarHostState.showSnackbar(
-                message = "Marked S${episode.seasonNumber}E${episode.episodeNumber} seen",
-                actionLabel = "Undo",
+                message = getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber),
+                actionLabel = getString(Res.string.action_undo),
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
         }
@@ -143,7 +161,7 @@ private fun WatchNextScreen(
 
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
+        snackbarHostState.showSnackbar(message.resolveAsync())
         viewModel.consumeMessage()
     }
 
@@ -157,12 +175,12 @@ private fun WatchNextScreen(
                 when {
                     state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
 
-                    state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
+                    state.error != null -> ErrorState(state.error!!.resolve(), onRetry = viewModel::retry)
 
                     state.items.isEmpty() -> EmptyState(
                         icon = MuvissIcons.WatchNext,
-                        title = "Nothing to watch next",
-                        body = "Add a show to your Library and start watching to see it here.",
+                        title = stringResource(Res.string.watch_next_empty_title),
+                        body = stringResource(Res.string.watch_next_empty_body),
                     )
 
                     else -> WatchNextList(state.items, onTick = onTick, onOpenDetail = onOpenDetail)
@@ -221,9 +239,9 @@ private fun WatchNextRow(
                 val episode = item.nextEpisode
                 Text(
                     text = if (episode != null) {
-                        "S${episode.seasonNumber} E${episode.episodeNumber} · ${episode.name}"
+                        stringResource(Res.string.watch_next_episode, episode.seasonNumber, episode.episodeNumber, episode.name)
                     } else {
-                        "Caught up — waiting on new episodes"
+                        stringResource(Res.string.watch_next_caught_up)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -241,7 +259,7 @@ private fun WatchNextRow(
                 }
             }
             if (item.nextEpisode != null) {
-                TickButton(onTick, label = "${item.title} next episode")
+                TickButton(onTick, label = stringResource(Res.string.next_episode_of, item.title))
             }
         }
     }
@@ -251,6 +269,7 @@ private fun WatchNextRow(
 @Composable
 private fun TickButton(onTick: () -> Unit, label: String) {
     val haptics = LocalHapticFeedback.current
+    val description = stringResource(Res.string.mark_watched_description, label)
     val scope = rememberCoroutineScope()
     val scale = remember { Animatable(1f) }
     IconButton(
@@ -277,7 +296,7 @@ private fun TickButton(onTick: () -> Unit, label: String) {
             }
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)
-            .semantics { contentDescription = "Mark $label watched" },
+            .semantics { contentDescription = description },
     ) {
         Icon(
             MuvissIcons.Check,
