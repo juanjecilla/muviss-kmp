@@ -69,7 +69,7 @@ export const en = {
       { icon: "import", title: "Import", body: "Bring your history from Trakt, TV Time or a CSV file." },
       { icon: "export", title: "Export", body: "Your data is yours: export everything to a JSON file at any time." },
       { icon: "moon", title: "Light & dark", body: "Follows your system, or pick a theme yourself." },
-      { icon: "globe", title: "Your language & region", body: "Titles, synopses and availability in the language and country you choose." },
+      { icon: "globe", title: "English & Spanish", body: "The app speaks your language, English or Spanish. Titles, synopses and availability follow the language and country you choose." },
     ],
   },
   privacy: {

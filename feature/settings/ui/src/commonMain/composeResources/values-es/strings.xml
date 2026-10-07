@@ -44,7 +44,7 @@
     <string name="crash_reports_body">Anónimos. Solo se envían cuando algo falla, y nunca incluyen tu biblioteca ni tu historial</string>
     <!-- %1$s is the version name. -->
     <string name="app_version">Muviss %1$s</string>
-    <string name="tmdb_attribution">Este producto usa la API de TMDB, pero TMDB no lo respalda ni lo certifica.</string>
+    <string name="tmdb_attribution">Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</string>
     <string name="licenses">Licencias de código abierto</string>
     <string name="import_title">Importa desde otra app</string>
     <string name="import_body">Admite una exportación de Trakt (JSON), una exportación de datos de TV Time (CSV) o el propio formato CSV de Muviss. Más detalles en docs/IMPORT.md.</string>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the default locale: every key lives here first. values-es mirrors it. -->
+<resources>
+    <string name="action_back">Back</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_undo">Undo</string>
+    <string name="got_it">Got it</string>
+    <string name="error_load_more">Couldn't load more titles.</string>
+    <string name="error_commit">Couldn't save that one.</string>
+    <string name="error_load_skipped">Couldn't load skipped titles.</string>
+    <!-- %1$s title, %2$s why it failed. -->
+    <string name="commit_failed_snackbar">%1$s: %2$s</string>
+    <!-- %1$s what was done (a verdict, or snoozed_until), %2$s the title. -->
+    <string name="undo_snackbar">%1$s · %2$s</string>
+    <!-- %1$s is a date. -->
+    <string name="snoozed_until">Snoozed until %1$s</string>
+    <string name="comes_back">Comes back %1$s</string>
+    <string name="fill_library">Fill your library</string>
+    <string name="how_it_works">How it works</string>
+    <string name="snoozed">Snoozed</string>
+    <string name="skipped">Skipped</string>
+    <string name="filter_all">All</string>
+    <string name="filter_movies">Movies</string>
+    <string name="filter_tv">TV</string>
+    <string name="type_movie">Movie</string>
+    <string name="type_tv">TV</string>
+    <!-- %1$s is a verdict label, e.g. Skip. -->
+    <string name="release_to">Release to %1$s</string>
+    <!-- %1$s verdict label, %2$s what it does. -->
+    <string name="verdict_description">%1$s. %2$s</string>
+    <string name="verdict_skip">Skip</string>
+    <string name="verdict_later">Later</string>
+    <string name="verdict_watching">Watching</string>
+    <string name="verdict_watched">Watched</string>
+    <string name="verdict_caught_up">Caught up</string>
+    <string name="verdict_caught_up_or_watched">Caught up / Watched</string>
+    <string name="hint_left">Swipe left</string>
+    <string name="hint_right">Swipe right</string>
+    <string name="hint_down">Swipe down</string>
+    <string name="hint_button">Use the button</string>
+    <string name="hint_up">Swipe up</string>
+    <string name="explain_skip">Not for you. Nothing is saved, and it won't come up again.</string>
+    <string name="explain_later">Saved to your library, not started.</string>
+    <string name="explain_watching">Saved and marked as started, so it shows up in Progress.</string>
+    <string name="explain_watched">Saved and marked as watched.</string>
+    <string name="explain_caught_up">Saved with every aired episode ticked.</string>
+    <string name="explain_caught_up_tutorial">Saved with every aired episode ticked — or, for a film, marked watched.</string>
+    <string name="tutorial_title">How triage works</string>
+    <string name="tutorial_intro">Swipe the card, tap a button, or use the arrow keys. Z undoes, S snoozes. Tap a card to see its details.</string>
+    <!-- %1$s and %2$s are a label and how to reach it. -->
+    <string name="tutorial_line">%1$s · %2$s</string>
+    <string name="tutorial_snooze_how">Button on the card, long press, or S</string>
+    <string name="tutorial_snooze_body">Not a decision at all — nothing is saved and we ask again later.</string>
+    <string name="tutorial_watching_tv">Watching only applies to TV — a film is never partway through.</string>
+    <string name="snooze">Snooze</string>
+    <string name="snooze_hint">Not sure? Snooze it and we'll ask again later.</string>
+    <!-- %1$s is the title. -->
+    <string name="ask_again_about">Ask again about %1$s</string>
+    <string name="pick_date">Pick a date…</string>
+    <string name="pick_date_for">Pick a date for %1$s</string>
+    <string name="previous_month">Previous month</string>
+    <string name="next_month">Next month</string>
+    <!-- Full month names, comma-separated, January first. -->
+    <string name="month_names">January,February,March,April,May,June,July,August,September,October,November,December</string>
+    <!-- Weekday initials, comma-separated, Sunday first (the grid starts on Sunday). -->
+    <string name="weekday_initials">S,M,T,W,T,F,S</string>
+    <!-- %1$s month name, %2$d year. -->
+    <string name="month_year">%1$s %2$d</string>
+    <string name="searching_deeper">Looking further back for titles you haven't seen…</string>
+    <string name="nothing_new_title">Nothing new near the top</string>
+    <string name="nothing_new_body">You've already decided on the most popular titles we checked. There are more further back.</string>
+    <string name="keep_looking">Keep looking</string>
+    <string name="nothing_left_title">Nothing left here</string>
+    <string name="nothing_left_body">You've been through everything matching this filter.</string>
+    <string name="clear_filters">Clear filters</string>
+    <string name="all_caught_up_title">All caught up</string>
+    <string name="all_caught_up_body">You've triaged everything we can find right now. New titles will show up as they get popular.</string>
+    <string name="review_skipped">Review skipped</string>
+    <string name="nothing_skipped">Nothing skipped</string>
+    <string name="nothing_skipped_body">Titles you skip during triage show up here, in case you change your mind.</string>
+    <string name="restore">Restore</string>
+    <string name="nothing_snoozed">Nothing snoozed</string>
+    <string name="nothing_snoozed_body">Titles you postpone during triage wait here until the day they come back.</string>
+    <string name="unsnooze">Unsnooze</string>
+</resources>

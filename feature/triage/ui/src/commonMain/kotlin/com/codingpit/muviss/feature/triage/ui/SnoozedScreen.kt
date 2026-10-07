@@ -24,13 +24,21 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
+import com.codingpit.muviss.feature.triage.ui.generated.resources.action_back
+import com.codingpit.muviss.feature.triage.ui.generated.resources.comes_back
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_snoozed
+import com.codingpit.muviss.feature.triage.ui.generated.resources.nothing_snoozed_body
+import com.codingpit.muviss.feature.triage.ui.generated.resources.snoozed
+import com.codingpit.muviss.feature.triage.ui.generated.resources.unsnooze
 import com.codingpit.muviss.models.MediaId
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Postponed titles, soonest to come back first — deliberately the opposite
@@ -48,8 +56,8 @@ fun SnoozedScreen(
 
     Column(modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(MuvissSpacing.s)) {
-            IconButton(onClick = onBack) { Icon(MuvissIcons.Back, contentDescription = "Back") }
-            Text("Snoozed", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = MuvissSpacing.xs))
+            IconButton(onClick = onBack) { Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back)) }
+            Text(stringResource(Res.string.snoozed), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = MuvissSpacing.xs))
         }
 
         when {
@@ -57,8 +65,8 @@ fun SnoozedScreen(
 
             state.titles.isEmpty() -> EmptyState(
                 icon = MuvissIcons.Snooze,
-                title = "Nothing snoozed",
-                body = "Titles you postpone during triage wait here until the day they come back.",
+                title = stringResource(Res.string.nothing_snoozed),
+                body = stringResource(Res.string.nothing_snoozed_body),
             )
 
             else -> LazyColumn(Modifier.testTag(SNOOZED_LIST_TAG)) {
@@ -86,12 +94,12 @@ fun SnoozedScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = "Comes back ${formatEpochDay(snoozed.dueAtEpochDay)}",
+                                text = stringResource(Res.string.comes_back, dateText(snoozed.dueAtEpochDay)),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        TextButton(onClick = { viewModel.onUnsnooze(snoozed.mediaId) }) { Text("Unsnooze") }
+                        TextButton(onClick = { viewModel.onUnsnooze(snoozed.mediaId) }) { Text(stringResource(Res.string.unsnooze)) }
                     }
                 }
             }

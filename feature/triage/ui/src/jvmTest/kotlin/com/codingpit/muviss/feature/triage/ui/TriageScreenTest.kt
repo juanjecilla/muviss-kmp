@@ -23,9 +23,11 @@ import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import org.jetbrains.compose.resources.getString
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -287,7 +289,7 @@ class TriageScreenTest {
                 TriageVerdict.WATCHING -> "Watching"
                 TriageVerdict.CAUGHT_UP -> "Caught up"
             }
-            onNodeWithContentDescription("$label. ${explanationFor(verdict, MediaType.TV)}").assertIsDisplayed()
+            onNodeWithContentDescription("$label. ${runBlocking { getString(explanationFor(verdict, MediaType.TV)) }}").assertIsDisplayed()
         }
     }
 
@@ -416,7 +418,7 @@ class TriageScreenTest {
         showDeck(harness)
 
         onNodeWithText("How triage works").assertIsDisplayed()
-        onNodeWithText(explanationForTutorial(TriageVerdict.CAUGHT_UP)).assertIsDisplayed()
+        onNodeWithText(runBlocking { getString(explanationForTutorial(TriageVerdict.CAUGHT_UP)) }).assertIsDisplayed()
 
         onNodeWithText("Got it").performClick()
         waitForIdle()
@@ -503,10 +505,10 @@ class TriageScreenTest {
         setContent { MuvissTheme { TriageScreen(harness.viewModel(), onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {}) } }
         waitForIdle()
 
-        onNodeWithText(KEEP_LOOKING_LABEL).assertIsDisplayed()
+        onNodeWithText("Keep looking").assertIsDisplayed()
         onNodeWithText("All caught up").assertDoesNotExist()
 
-        onNodeWithText(KEEP_LOOKING_LABEL).performClick()
+        onNodeWithText("Keep looking").performClick()
         waitForIdle()
 
         onNodeWithTag(TRIAGE_CARD_TAG).assertIsDisplayed()

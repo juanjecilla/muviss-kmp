@@ -187,7 +187,7 @@ class TriageSnoozeScreenTest {
         val harness = TriageHarness(movies = listOf(filmA, filmB))
         showDeck(harness, hintSeen = false)
 
-        onNodeWithText(SNOOZE_HINT).assertIsDisplayed()
+        onNodeWithText("Not sure? Snooze it and we'll ask again later.").assertIsDisplayed()
 
         onNodeWithTag(TRIAGE_SNOOZE_TAG).performClick()
         waitForIdle()

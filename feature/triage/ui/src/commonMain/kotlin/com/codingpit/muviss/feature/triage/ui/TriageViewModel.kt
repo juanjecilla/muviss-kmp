@@ -11,6 +11,8 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckCursor
 import com.codingpit.muviss.feature.triage.domain.DeckFilter
@@ -19,11 +21,13 @@ import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageActions
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.feature.triage.domain.TriageOnboarding
+import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
+import com.codingpit.muviss.feature.triage.ui.generated.resources.error_commit
+import com.codingpit.muviss.feature.triage.ui.generated.resources.error_load_more
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,7 +78,7 @@ data class RestoredCard(
 data class FailedCommit(
     val summary: MediaSummary,
     val verdict: TriageVerdict,
-    val message: String,
+    val message: UiText,
 )
 
 data class TriageUiState(
@@ -99,7 +103,7 @@ data class TriageUiState(
      * never as "All caught up", which would be false (#183).
      */
     val keepLookingAvailable: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val undoable: UndoableAction? = null,
     val failedCommit: FailedCommit? = null,
     val restored: RestoredCard? = null,
@@ -264,7 +268,7 @@ class TriageViewModel(
         viewModelScope.launchReporting {
             actions.record(summary, verdict).onFailure { error ->
                 _state.update { current ->
-                    current.copy(failedCommit = FailedCommit(summary, verdict, error.toUserMessage(COMMIT_FAILED)))
+                    current.copy(failedCommit = FailedCommit(summary, verdict, error.toUiText(UiText.Resource(Res.string.error_commit))))
                 }
             }
         }
@@ -382,7 +386,7 @@ class TriageViewModel(
         _state.update { it.copy(failedCommit = null) }
         viewModelScope.launchReporting {
             actions.record(failed.summary, failed.verdict).onFailure { error ->
-                _state.update { it.copy(failedCommit = failed.copy(message = error.toUserMessage(COMMIT_FAILED))) }
+                _state.update { it.copy(failedCommit = failed.copy(message = error.toUiText(UiText.Resource(Res.string.error_commit)))) }
             }
         }
     }
@@ -446,7 +450,7 @@ class TriageViewModel(
                 val batch = loadDeck(filter, cursor, alreadyShown = shown, placement = _state.value.snoozePlacement)
                     .getOrElse { error ->
                         _state.update {
-                            it.copy(loading = false, refilling = false, searchingDeeper = false, error = error.toUserMessage(LOAD_FAILED))
+                            it.copy(loading = false, refilling = false, searchingDeeper = false, error = error.toUiText(UiText.Resource(Res.string.error_load_more)))
                         }
                         return@launchReporting
                     }
@@ -485,7 +489,5 @@ class TriageViewModel(
 
         /** Refill while there are still cards left to swipe, so the deck never visibly stalls. */
         const val REFILL_THRESHOLD = 3
-        const val LOAD_FAILED = "Couldn't load more titles."
-        const val COMMIT_FAILED = "Couldn't save that one."
     }
 }

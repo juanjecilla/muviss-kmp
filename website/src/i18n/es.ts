@@ -66,7 +66,7 @@ export const es: Dictionary = {
       { icon: "import", title: "Importa", body: "Trae tu historial desde Trakt, TV Time o un archivo CSV." },
       { icon: "export", title: "Exporta", body: "Tus datos son tuyos: expórtalo todo a un archivo JSON cuando quieras." },
       { icon: "moon", title: "Claro y oscuro", body: "Sigue al sistema o elige el tema tú." },
-      { icon: "globe", title: "Tu idioma y país", body: "Títulos, sinopsis y disponibilidad en el idioma y país que elijas." },
+      { icon: "globe", title: "En español e inglés", body: "La app habla tu idioma, español o inglés. Títulos, sinopsis y disponibilidad siguen el idioma y el país que elijas." },
     ],
   },
   privacy: {

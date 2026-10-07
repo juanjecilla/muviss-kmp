@@ -28,6 +28,6 @@ PRIVADO POR DISEÑO
 • Sin anuncios ni analítica. Solo informes de errores anónimos y opcionales, que puedes desactivar en Ajustes.
 • Tu biblioteca vive en tu dispositivo y funciona sin conexión. Expórtala cuando quieras.
 
-Tema claro y oscuro, en móviles y tabletas.
+En español e inglés, con tema claro y oscuro, en móviles y tabletas.
 
 Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.
