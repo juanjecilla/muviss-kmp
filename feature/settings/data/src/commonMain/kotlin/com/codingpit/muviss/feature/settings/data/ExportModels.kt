@@ -101,6 +101,8 @@ data class EpisodePlayExport(
     val episodeId: String,
     val mediaId: String,
     val watchedAtEpochMs: Long,
+    /** v2; a v1 play restores with its [watchedAtEpochMs], which is what its stamp was when it was written. */
+    val updatedAtEpochMs: Long? = null,
 )
 
 @Serializable
@@ -147,4 +149,6 @@ data class TriageDecisionExport(
     val posterUrl: String?,
     val decidedAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    /** v2; whether a CaughtUp's ticks were written (ADR 0010). A v1 decision restores as resolved. */
+    val resolved: Boolean = true,
 )

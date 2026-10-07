@@ -152,6 +152,7 @@ class SqlDelightSettingsRepository(
         posterUrl = posterUrl,
         decidedAtEpochMs = decidedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
+        resolved = resolved,
     )
 
     private fun EpisodeProgressRow.toExport(): EpisodeProgressExport = EpisodeProgressExport(
@@ -167,6 +168,7 @@ class SqlDelightSettingsRepository(
         episodeId = episodeId,
         mediaId = mediaId,
         watchedAtEpochMs = watchedAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
     )
 
     private fun TriageSnoozeRow.toExport(): TriageSnoozeExport = TriageSnoozeExport(
