@@ -75,6 +75,9 @@ jobs:
           # renders no sync row at all. Do not add them here until sync has
           # been verified against a live project and the privacy/data-safety
           # docs describe library data leaving the device.
+          # The v4 read token keeps the credential out of request URLs and wins
+          # when set; the v3 key is the fallback (CLAUDE.md, #91, #197).
+          TMDB_READ_TOKEN: ${{ secrets.TMDB_READ_TOKEN }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           # Sentry Gradle plugin (:app:androidApp/build.gradle.kts): uploads the
