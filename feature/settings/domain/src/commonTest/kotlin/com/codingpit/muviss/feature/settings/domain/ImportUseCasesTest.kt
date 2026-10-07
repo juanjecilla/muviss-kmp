@@ -154,6 +154,18 @@ class PreviewImportUseCaseTest {
     }
 
     @Test
+    fun a_lookup_that_fails_is_not_reported_as_no_match() = runTest {
+        val csv = "title,type,imdb_id\nSome Film,movie,tt0000002\n"
+        val offline = object : ExternalIdResolver {
+            override suspend fun resolve(ref: ExternalTitleRef, type: MediaType?): MediaId? = throw MetadataError.Offline()
+        }
+
+        val preview = useCase(offline).invoke(csv)
+
+        assertEquals(UnresolvedReason.LookupFailed, preview.unresolved.single().reason)
+    }
+
+    @Test
     fun counts_reflect_titles_and_episodes_across_both_buckets() = runTest {
         val csv = "title,type,tmdb_id,season,episode\n" +
             "Show,tv,1399,1,1\n" +

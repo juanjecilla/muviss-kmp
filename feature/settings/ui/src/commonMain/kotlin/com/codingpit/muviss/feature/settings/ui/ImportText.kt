@@ -11,6 +11,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.import_file_
 import com.codingpit.muviss.feature.settings.ui.generated.resources.import_file_no_importer
 import com.codingpit.muviss.feature.settings.ui.generated.resources.import_file_unreadable_backup
 import com.codingpit.muviss.feature.settings.ui.generated.resources.import_file_unrecognized
+import com.codingpit.muviss.feature.settings.ui.generated.resources.unresolved_lookup_failed
 import com.codingpit.muviss.feature.settings.ui.generated.resources.unresolved_no_external_id
 import com.codingpit.muviss.feature.settings.ui.generated.resources.unresolved_no_match
 import com.codingpit.muviss.feature.settings.ui.generated.resources.unresolved_unknown_media_type
@@ -22,6 +23,7 @@ internal fun UnresolvedReason.toUiText(): UiText = UiText.Resource(
         UnresolvedReason.NoExternalId -> Res.string.unresolved_no_external_id
         UnresolvedReason.UnknownMediaType -> Res.string.unresolved_unknown_media_type
         UnresolvedReason.NoMatch -> Res.string.unresolved_no_match
+        UnresolvedReason.LookupFailed -> Res.string.unresolved_lookup_failed
     },
 )
 

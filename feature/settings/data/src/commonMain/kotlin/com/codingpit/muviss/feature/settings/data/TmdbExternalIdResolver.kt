@@ -6,6 +6,7 @@ import com.codingpit.muviss.feature.settings.domain.ExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.ExternalTitleRef
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.SourceId
 import kotlinx.coroutines.withContext
 
@@ -16,7 +17,10 @@ import kotlinx.coroutines.withContext
  * [type] just picks the movie/tv suffix — while an IMDb id goes through
  * [com.codingpit.muviss.core.network.MetadataProvider.findByExternalId].
  * A [ref] with neither, or a TMDB id with no [type] to disambiguate the
- * movie/tv suffix, is unresolvable and returns null.
+ * movie/tv suffix, is unresolvable and returns null; so is an IMDb id TMDB
+ * answers [MetadataError.NotFound] for. Any other lookup failure (offline,
+ * rate limited) is thrown, so the import can say the lookup failed rather
+ * than that TMDB has no such title (#219).
  */
 class TmdbExternalIdResolver(
     private val registry: MetadataProviderRegistry,
@@ -33,6 +37,10 @@ class TmdbExternalIdResolver(
         }
         val imdbId = ref.imdbId ?: return@withContext null
         val provider = runCatching { registry.require(SourceId.TMDB) }.getOrNull() ?: return@withContext null
-        runCatching { provider.findByExternalId(imdbId, type) }.getOrNull()?.id
+        try {
+            provider.findByExternalId(imdbId, type)?.id
+        } catch (@Suppress("SwallowedException") e: MetadataError.NotFound) {
+            null
+        }
     }
 }

@@ -127,6 +127,7 @@
     <!-- Why an import could not use a title or a file (#219). -->
     <string name="unresolved_no_external_id">No IMDb or TMDB id in the file</string>
     <string name="unresolved_unknown_media_type">The file doesn't say if it's a movie or a show</string>
+    <string name="unresolved_lookup_failed">Couldn't reach TMDB to look this one up</string>
     <string name="unresolved_no_match">Not found on TMDB</string>
     <string name="import_file_unrecognized">This file isn't a format Muviss can import: not JSON, and not a supported CSV</string>
     <string name="import_file_no_importer">Muviss can't import this kind of file yet</string>

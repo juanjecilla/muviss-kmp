@@ -4,8 +4,10 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /** `(done, total)` progress callback shape shared by [PreviewImportUseCase] and [ApplyImportUseCase] — both loop over one row/title per network call. */
@@ -56,16 +58,26 @@ class PreviewImportUseCase(
         val resolved = mutableListOf<ResolvedImportTitle>()
         val unresolved = mutableListOf<UnresolvedImportTitle>()
         payload.titles.forEachIndexed { index, title ->
-            val mediaId = runCatching { resolver.resolve(title.externalRef, title.type) }.getOrNull()
-            if (mediaId != null) {
-                resolved += ResolvedImportTitle(title, mediaId)
-            } else {
-                unresolved += UnresolvedImportTitle(title, unresolvedReason(title))
+            val lookup = lookUp(title)
+            val mediaId = lookup.getOrNull()
+            when {
+                mediaId != null -> resolved += ResolvedImportTitle(title, mediaId)
+                lookup.isFailure -> unresolved += UnresolvedImportTitle(title, UnresolvedReason.LookupFailed)
+                else -> unresolved += UnresolvedImportTitle(title, unresolvedReason(title))
             }
             onProgress(index + 1, payload.titles.size)
         }
 
         return ImportPreview(payload.source, resolved, unresolved, payload.skippedRowCount)
+    }
+
+    /** Like `runCatching`, but a cancelled import stays cancelled. */
+    private suspend fun lookUp(title: ImportedTitle): Result<MediaId?> = try {
+        Result.success(resolver.resolve(title.externalRef, title.type))
+    } catch (e: CancellationException) {
+        throw e
+    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+        Result.failure(e)
     }
 
     private fun unresolvedReason(title: ImportedTitle): UnresolvedReason = when {

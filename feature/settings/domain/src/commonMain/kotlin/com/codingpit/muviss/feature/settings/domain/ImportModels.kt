@@ -88,8 +88,11 @@ enum class UnresolvedReason {
     /** The source did not say whether the title is a movie or a show. */
     UnknownMediaType,
 
-    /** The ids were there, but TMDB has nothing for them (or the lookup failed). */
+    /** The ids were there, but TMDB has nothing for them. */
     NoMatch,
+
+    /** The lookup itself failed (offline, rate limited): TMDB never answered. */
+    LookupFailed,
 }
 
 /**
