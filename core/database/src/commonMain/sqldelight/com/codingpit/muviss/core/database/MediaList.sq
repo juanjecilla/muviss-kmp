@@ -119,6 +119,20 @@ UPDATE listEntry
 SET deleted = 0, updatedAtEpochMs = :now, isDirty = 1
 WHERE listId = :listId AND deleted = 1 AND updatedAtEpochMs = :deletedAt;
 
+-- Every live list and membership, unjoined — the data export (EPIC 29, #72).
+-- Not selectAllLists, whose entryCount join and filter are display rules.
+selectAllListsForExport:
+SELECT *
+FROM mediaList
+WHERE deleted = 0
+ORDER BY createdAtEpochMs ASC;
+
+selectAllEntriesForExport:
+SELECT *
+FROM listEntry
+WHERE deleted = 0
+ORDER BY listId, addedAtEpochMs ASC;
+
 selectDirtyLists:
 SELECT * FROM mediaList WHERE isDirty = 1;
 

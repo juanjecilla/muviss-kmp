@@ -3,14 +3,21 @@ package com.codingpit.muviss.feature.settings.data
 import kotlinx.serialization.Serializable
 
 /**
- * Wire shape of the data-export JSON: a straight, denormalized dump of the
- * `collectionEntry` + `episodeProgress` + `episodePlay` + `triageDecision`
- * tables (see `SqlDelightSettingsRepository.exportData`).
- * Import is explicitly out of scope for EPIC 8 — these types only need to
- * serialize, not round-trip.
+ * Wire shape of the data-export JSON: a straight, denormalized dump of every
+ * table that holds the user's own data (see `SqlDelightSettingsRepository.exportData`).
+ *
+ * Version 2 (EPIC 29, #72) is the first shape meant to be *restored*, not
+ * just read: v1 dropped ratings, notes, genres, runtimes, muted notifications,
+ * every custom list, snoozes and the profile. Every field added since v1 is
+ * defaulted, so a v1 file (which has no [formatVersion] at all, and so reads
+ * as 1) still parses into this same class.
  */
 @Serializable
 data class MuvissDataExport(
+    /** 1 for files written before EPIC 29, which carried no version; [CURRENT_FORMAT_VERSION] since. */
+    val formatVersion: Int = 1,
+    /** The app that wrote it, e.g. `1.1.0`; null in v1 files. Diagnostic only — import keys on [formatVersion]. */
+    val appVersion: String? = null,
     val exportedAtEpochMs: Long,
     val collection: List<CollectionEntryExport>,
     val progress: List<EpisodeProgressExport>,
@@ -31,7 +38,19 @@ data class MuvissDataExport(
      * reinstall.
      */
     val plays: List<EpisodePlayExport> = emptyList(),
-)
+    /** Snoozed triage cards (ADR 0023). v2. */
+    val snoozes: List<TriageSnoozeExport> = emptyList(),
+    /** Custom lists (EPIC 17). v2. */
+    val lists: List<MediaListExport> = emptyList(),
+    /** Membership of [lists]; a title can be listed without being in the library. v2. */
+    val listEntries: List<ListEntryExport> = emptyList(),
+    /** Display name and avatar. Null in v1 files, and restored only when present. v2. */
+    val profile: ProfileExport? = null,
+) {
+    companion object {
+        const val CURRENT_FORMAT_VERSION: Int = 2
+    }
+}
 
 @Serializable
 data class CollectionEntryExport(
@@ -57,6 +76,14 @@ data class CollectionEntryExport(
      */
     val revisitWillingness: Boolean? = null,
     val coWatchPinned: Boolean = false,
+    // v2 (EPIC 29, #72): user-authored or user-visible columns v1 dropped.
+    // Defaulted to the column defaults, which is what a v1 file restores as.
+    /** Comma-separated, as stored. */
+    val genres: String = "",
+    val runtimeMinutes: Int? = null,
+    val notificationsMuted: Boolean = false,
+    val rating: Int? = null,
+    val note: String? = null,
 )
 
 @Serializable
@@ -74,6 +101,41 @@ data class EpisodePlayExport(
     val episodeId: String,
     val mediaId: String,
     val watchedAtEpochMs: Long,
+)
+
+@Serializable
+data class TriageSnoozeExport(
+    val mediaId: String,
+    val mediaType: String,
+    val title: String,
+    val year: Int?,
+    val posterUrl: String?,
+    val overview: String?,
+    val snoozedAtEpochMs: Long,
+    val dueAtEpochDay: Long,
+    val updatedAtEpochMs: Long,
+)
+
+@Serializable
+data class MediaListExport(
+    val id: String,
+    val name: String,
+    val createdAtEpochMs: Long,
+    val updatedAtEpochMs: Long,
+)
+
+@Serializable
+data class ListEntryExport(
+    val listId: String,
+    val mediaId: String,
+    val addedAtEpochMs: Long,
+    val updatedAtEpochMs: Long,
+)
+
+@Serializable
+data class ProfileExport(
+    val displayName: String,
+    val avatarId: String,
 )
 
 @Serializable

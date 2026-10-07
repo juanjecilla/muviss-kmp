@@ -1,15 +1,21 @@
 package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
+import com.codingpit.muviss.core.database.MediaListQueries
+import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.database.ProfileQueries
 import com.codingpit.muviss.core.database.TriageDecisionQueries
+import com.codingpit.muviss.core.database.TriageSnoozeQueries
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
@@ -22,7 +28,11 @@ import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
 import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
+import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
+import com.codingpit.muviss.core.database.MediaList as MediaListRow
+import com.codingpit.muviss.core.database.Profile as ProfileRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
+import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
 
 /**
  * SQLDelight-backed [SettingsRepository] over `AppSettings.sq`. The table is
@@ -45,6 +55,7 @@ class SqlDelightSettingsRepository(
     private val exportQueries: ExportQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
+    private val appVersion: AppVersion,
 ) : SettingsRepository {
 
     private val json = Json { prettyPrint = true }
@@ -87,11 +98,17 @@ class SqlDelightSettingsRepository(
 
     override suspend fun exportData(): String = withContext(dispatchers.io) {
         val export = MuvissDataExport(
+            formatVersion = MuvissDataExport.CURRENT_FORMAT_VERSION,
+            appVersion = appVersion.versionName,
             exportedAtEpochMs = clock.nowEpochMs(),
             collection = exportQueries.collection.selectAll().awaitAsList().map { it.toExport() },
             progress = exportQueries.progress.selectAll().awaitAsList().map { it.toExport() },
             triage = exportQueries.triage.selectAll().awaitAsList().map { it.toExport() },
             plays = exportQueries.plays.selectAll().awaitAsList().map { it.toExport() },
+            snoozes = exportQueries.snoozes.selectAll().awaitAsList().map { it.toExport() },
+            lists = exportQueries.lists.selectAllListsForExport().awaitAsList().map { it.toExport() },
+            listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
+            profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
         )
         json.encodeToString(export)
     }
@@ -120,6 +137,11 @@ class SqlDelightSettingsRepository(
         updatedAtEpochMs = updatedAtEpochMs,
         revisitWillingness = revisitWillingness,
         coWatchPinned = coWatchPinned,
+        genres = genres,
+        runtimeMinutes = runtimeMinutes?.toInt(),
+        notificationsMuted = notificationsMuted,
+        rating = rating?.toInt(),
+        note = note,
     )
 
     private fun TriageDecisionRow.toExport(): TriageDecisionExport = TriageDecisionExport(
@@ -146,16 +168,47 @@ class SqlDelightSettingsRepository(
         mediaId = mediaId,
         watchedAtEpochMs = watchedAtEpochMs,
     )
+
+    private fun TriageSnoozeRow.toExport(): TriageSnoozeExport = TriageSnoozeExport(
+        mediaId = mediaId,
+        mediaType = mediaType,
+        title = title,
+        year = year?.toInt(),
+        posterUrl = posterUrl,
+        overview = overview,
+        snoozedAtEpochMs = snoozedAtEpochMs,
+        dueAtEpochDay = dueAtEpochDay,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun MediaListRow.toExport(): MediaListExport = MediaListExport(
+        id = id,
+        name = name,
+        createdAtEpochMs = createdAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun ListEntryRow.toExport(): ListEntryExport = ListEntryExport(
+        listId = listId,
+        mediaId = mediaId,
+        addedAtEpochMs = addedAtEpochMs,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun ProfileRow.toExport(): ProfileExport = ProfileExport(displayName = displayName, avatarId = avatarId)
 }
 
 /**
- * The four tables [SqlDelightSettingsRepository.exportData] dumps, bundled so
- * its constructor stays inside detekt's `LongParameterList` budget — the same
- * trick `ProgressMutations` and `CollectionToggles` use.
+ * The tables [SqlDelightSettingsRepository.exportData] dumps, read off one
+ * [MuvissDatabase] so the repository's constructor stays inside detekt's
+ * `LongParameterList` budget however many tables the export grows to.
  */
-class ExportQueries(
-    val collection: CollectionEntryQueries,
-    val progress: EpisodeProgressQueries,
-    val plays: EpisodePlayQueries,
-    val triage: TriageDecisionQueries,
-)
+class ExportQueries(database: MuvissDatabase) {
+    val collection: CollectionEntryQueries = database.collectionEntryQueries
+    val progress: EpisodeProgressQueries = database.episodeProgressQueries
+    val plays: EpisodePlayQueries = database.episodePlayQueries
+    val triage: TriageDecisionQueries = database.triageDecisionQueries
+    val snoozes: TriageSnoozeQueries = database.triageSnoozeQueries
+    val lists: MediaListQueries = database.mediaListQueries
+    val profile: ProfileQueries = database.profileQueries
+}

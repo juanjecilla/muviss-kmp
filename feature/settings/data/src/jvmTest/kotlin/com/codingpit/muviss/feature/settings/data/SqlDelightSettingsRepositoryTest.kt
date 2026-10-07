@@ -7,6 +7,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import kotlinx.coroutines.CoroutineDispatcher
@@ -42,14 +43,10 @@ class SqlDelightSettingsRepositoryTest {
         database = MuvissDatabase(driver)
         repository = SqlDelightSettingsRepository(
             database.appSettingsQueries,
-            ExportQueries(
-                collection = database.collectionEntryQueries,
-                progress = database.episodeProgressQueries,
-                plays = database.episodePlayQueries,
-                triage = database.triageDecisionQueries,
-            ),
+            ExportQueries(database),
             ImmediateDispatchers(UnconfinedTestDispatcher()),
             FakeClock(1_000L),
+            AppVersion("1.2.3", 42L),
         )
     }
 
@@ -222,5 +219,77 @@ class SqlDelightSettingsRepositoryTest {
         // leaving plays out would silently drop that on reinstall (ADR 0011).
         assertTrue(json.contains("\"plays\""))
         assertTrue(json.contains("\"watchedAtEpochMs\": 2000"))
+    }
+
+    @Test
+    fun `a v2 export is versioned and carries what v1 dropped`() = runTest {
+        database.collectionEntryQueries.upsert(
+            mediaId = "tmdb:tv:1399",
+            mediaType = "TV",
+            title = "Game of Thrones",
+            posterUrl = null,
+            releaseYear = 2011L,
+            productionStatus = "ENDED",
+            totalEpisodes = 73L,
+            airedEpisodes = 73L,
+            favorite = false,
+            genres = "Drama,Fantasy",
+            runtimeMinutes = 60L,
+            addedAtEpochMs = 1_000L,
+            updatedAtEpochMs = 1_000L,
+            isDirty = false,
+            deleted = false,
+            notificationsMuted = true,
+            rating = 8L,
+            note = "Skip season 8",
+            revisitWillingness = null,
+            coWatchPinned = false,
+        )
+        database.mediaListQueries.upsertList(id = "list-1", name = "Rainy day", createdAtEpochMs = 1_000L, updatedAtEpochMs = 1_000L, isDirty = false, deleted = false)
+        database.mediaListQueries.upsertEntry(listId = "list-1", mediaId = "tmdb:tv:1399", addedAtEpochMs = 1_500L, isDirty = false, deleted = false, updatedAtEpochMs = 1_500L)
+        database.mediaListQueries.upsertList(id = "list-gone", name = "Deleted", createdAtEpochMs = 1_000L, updatedAtEpochMs = 1_000L, isDirty = false, deleted = true)
+        database.triageSnoozeQueries.upsert(
+            mediaId = "tmdb:movie:1",
+            mediaType = "MOVIE",
+            title = "Later Maybe",
+            year = 2020L,
+            posterUrl = null,
+            overview = null,
+            snoozedAtEpochMs = 1_000L,
+            dueAtEpochDay = 20_100L,
+            updatedAtEpochMs = 1_000L,
+            isDirty = false,
+            deleted = false,
+        )
+        database.profileQueries.ensureRow()
+        database.profileQueries.updateDisplayName("Juanje")
+
+        val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
+
+        assertEquals(MuvissDataExport.CURRENT_FORMAT_VERSION, export.formatVersion)
+        assertEquals("1.2.3", export.appVersion)
+        val entry = export.collection.single()
+        assertEquals(8, entry.rating)
+        assertEquals("Skip season 8", entry.note)
+        assertEquals("Drama,Fantasy", entry.genres)
+        assertEquals(60, entry.runtimeMinutes)
+        assertTrue(entry.notificationsMuted)
+        assertEquals(listOf("Rainy day"), export.lists.map { it.name })
+        assertEquals(listOf("list-1" to "tmdb:tv:1399"), export.listEntries.map { it.listId to it.mediaId })
+        assertEquals(listOf(20_100L), export.snoozes.map { it.dueAtEpochDay })
+        assertEquals("Juanje", export.profile?.displayName)
+    }
+
+    @Test
+    fun `a v1 export with no version still parses, as version 1`() {
+        val v1 = """{"exportedAtEpochMs":1,"collection":[{"mediaId":"tmdb:movie:603","mediaType":"MOVIE","title":"The Matrix",""" +
+            """"posterUrl":null,"releaseYear":1999,"productionStatus":"RELEASED","totalEpisodes":1,"airedEpisodes":1,""" +
+            """"favorite":true,"addedAtEpochMs":1,"updatedAtEpochMs":1}],"progress":[]}"""
+
+        val export = Json.decodeFromString<MuvissDataExport>(v1)
+
+        assertEquals(1, export.formatVersion)
+        assertEquals(null, export.collection.single().rating)
+        assertTrue(export.lists.isEmpty())
     }
 }
