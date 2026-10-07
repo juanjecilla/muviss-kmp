@@ -90,4 +90,7 @@
     <string name="episode_watched_again">Visto otra vez</string>
     <string name="episode_mark_watched">Marcar como visto</string>
     <string name="undo_last">Deshacer el último</string>
+    <!-- Screen-reader state of a season header (EPIC 31b, #164). -->
+    <string name="a11y_expanded">Desplegada</string>
+    <string name="a11y_collapsed">Plegada</string>
 </resources>

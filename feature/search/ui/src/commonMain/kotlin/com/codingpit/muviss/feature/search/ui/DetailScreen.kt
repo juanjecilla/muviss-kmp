@@ -66,6 +66,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,6 +90,8 @@ import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.a11y_collapsed
+import com.codingpit.muviss.feature.search.ui.generated.resources.a11y_expanded
 import com.codingpit.muviss.feature.search.ui.generated.resources.action_back
 import com.codingpit.muviss.feature.search.ui.generated.resources.action_cancel
 import com.codingpit.muviss.feature.search.ui.generated.resources.action_retry
@@ -870,7 +876,7 @@ internal fun SeasonsHeader(seasonCount: Int) {
     Text(
         stringResource(Res.string.seasons_header, seasonCount),
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(top = MuvissSpacing.s),
+        modifier = Modifier.padding(top = MuvissSpacing.s).semantics { heading() },
     )
 }
 
@@ -932,12 +938,15 @@ private fun SeasonHeader(
     actions: SeasonActions,
     modifier: Modifier,
 ) {
+    val expandedState = stringResource(if (expanded) Res.string.a11y_expanded else Res.string.a11y_collapsed)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.small)
-                .clickable { onExpandedChange(!expanded) }
+                // A button that opens and closes, and says which it is now (EPIC 31b, #164).
+                .clickable(role = Role.Button) { onExpandedChange(!expanded) }
+                .semantics { stateDescription = expandedState }
                 .testTag("$SEASON_HEADER_TAG_PREFIX${season.number}")
                 .padding(vertical = MuvissSpacing.xs),
             verticalAlignment = Alignment.CenterVertically,
