@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -163,6 +164,15 @@ fun genreLegendTag(genre: String): String = "genre_legend_$genre"
 private val DONUT_SIZE = 160.dp
 
 /**
+ * The wide layout's legend stops growing here (#64). Its two columns used to
+ * share whatever the row had left, so on a tablet each row, and a selected
+ * row's highlight, stretched ~500dp past a label like "Comedy (7)". Two
+ * ~200dp columns hold the longest genre names; the rows keep their height,
+ * which is what makes a thin slice selectable at all.
+ */
+private val WIDE_LEGEND_MAX_WIDTH = 420.dp
+
+/**
  * Ring thickness as a fraction of the donut's width. Thinner than the 0.24
  * this chart used at 96dp: at 160dp the old fraction left a 71dp hole, and
  * the center label has to live in there.
@@ -299,7 +309,7 @@ fun GenreDonutChart(
     if (wide) {
         Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl)) {
             GenreDonut(genres, sweeps, selectedIndex, onSelect, palette, growth, total)
-            GenreLegend(genres, selectedIndex, onSelect, palette, Modifier.weight(1f))
+            GenreLegend(genres, selectedIndex, onSelect, palette, Modifier.weight(1f, fill = false).widthIn(max = WIDE_LEGEND_MAX_WIDTH))
         }
     } else {
         Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l), horizontalAlignment = Alignment.CenterHorizontally) {
