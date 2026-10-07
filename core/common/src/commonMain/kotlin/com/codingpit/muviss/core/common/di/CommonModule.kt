@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
 import com.codingpit.muviss.core.common.analytics.NoOpAnalyticsTracker
 import com.codingpit.muviss.core.common.locale.DefaultSystemLocale
 import com.codingpit.muviss.core.common.locale.SystemLocale
+import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import org.koin.core.module.Module
@@ -16,6 +17,8 @@ import org.koin.dsl.module
 
 /** Shared, cross-cutting bindings used by every feature. */
 val commonModule: Module = module {
+    // Android overrides this from MuvissApplication (EPIC 30, #73).
+    single<SystemNotificationSettings> { SystemNotificationSettings.None }
     single<AppDispatchers> { DefaultAppDispatchers() }
     single<AppClock> { SystemClock() }
     single { AppVersion.current }

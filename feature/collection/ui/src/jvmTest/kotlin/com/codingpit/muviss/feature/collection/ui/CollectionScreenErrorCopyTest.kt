@@ -4,6 +4,7 @@ package com.codingpit.muviss.feature.collection.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
@@ -60,6 +61,29 @@ class CollectionScreenErrorCopyTest {
         onNodeWithText("Something went wrong").assertExists()
         onNodeWithText("SECRET", substring = true).assertDoesNotExist()
         onNodeWithText("themoviedb", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun an_empty_library_offers_a_way_to_search() = runComposeUiTest {
+        // EPIC 30 (#73): the first screen a new user opens used to say "search
+        // for a title" with nothing to tap.
+        var opened = 0
+        val repository = FakeCollectionRepository(emptyList())
+        val viewModel = CollectionViewModel(
+            ObserveCollectionUseCase(repository),
+            ToggleFavoriteUseCase(repository),
+            RefreshCollectionSnapshotsUseCase(repository, NoopSnapshotSource()),
+            CollectionRefreshThrottle(NoopClock()).apply { recordRefresh() },
+        )
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                CollectionScreen(viewModel, ListsViewModel(ListsUseCases(FakeListsRepository())), onOpenDetail = {}, onOpenList = {}, onOpenSearch = { opened++ })
+            }
+        }
+        waitForIdle()
+
+        onNodeWithText(FIND_SOMETHING_LABEL).performClick()
+        kotlin.test.assertEquals(1, opened)
     }
 }
 

@@ -102,14 +102,7 @@ class NewEpisodesNotifier(private val context: Context) {
         )
     }
 
-    private fun canPostNotifications(): Boolean {
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            return ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-                PackageManager.PERMISSION_GRANTED
-        }
-        return true
-    }
+    private fun canPostNotifications(): Boolean = NotificationPermission.granted(context)
 
     private fun NewEpisodesResult.notificationId(): Int = NotificationIds.forTitle(mediaId)
 

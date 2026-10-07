@@ -71,6 +71,7 @@ fun CollectionScreen(
     listsViewModel: ListsViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenList: (MediaList) -> Unit,
+    onOpenSearch: () -> Unit = {},
 ) {
     var segment by remember { mutableStateOf(CollectionSegment.LIBRARY) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -94,7 +95,7 @@ fun CollectionScreen(
             modifier = Modifier.padding(horizontal = MuvissSpacing.l),
         )
         when (segment) {
-            CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail)
+            CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail, onOpenSearch)
             CollectionSegment.LISTS -> ListsScreen(listsViewModel, onOpenList)
         }
     }
@@ -174,6 +175,7 @@ private fun SortMenuButton(selected: CollectionSort, onSelect: (CollectionSort) 
 private fun LibraryScreen(
     viewModel: CollectionViewModel,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenSearch: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -199,7 +201,7 @@ private fun LibraryScreen(
                     when {
                         state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
                         state.error != null -> ErrorState(state.error!!, onRetry = { viewModel.refresh() })
-                        state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter, state.typeFilter)
+                        state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter, state.typeFilter, onOpenSearch)
                         else -> CollectionGrid(state.visibleEntries, onOpenDetail)
                     }
                 }
@@ -210,7 +212,7 @@ private fun LibraryScreen(
 }
 
 @Composable
-private fun EmptyLibraryState(filter: CollectionFilter, typeFilter: CollectionTypeFilter) {
+private fun EmptyLibraryState(filter: CollectionFilter, typeFilter: CollectionTypeFilter, onOpenSearch: () -> Unit) {
     when {
         // An active type filter is the likelier reason the grid is empty, and
         // it lives behind a menu — so say so rather than implying the library
@@ -227,13 +229,19 @@ private fun EmptyLibraryState(filter: CollectionFilter, typeFilter: CollectionTy
             body = "Tap the heart on a saved title to add one.",
         )
 
+        // The first screen a new user is likely to open. Say what to do and
+        // give them the way there (EPIC 30, #73).
         else -> EmptyState(
             icon = MuvissIcons.Library,
             title = "Nothing here yet",
             body = "Search for a movie or show and add it to your library.",
+            actionLabel = FIND_SOMETHING_LABEL,
+            onAction = onOpenSearch,
         )
     }
 }
+
+internal const val FIND_SOMETHING_LABEL = "Find something to watch"
 
 /** Status filter chips with count suffixes ("Watching 12"); Favorites keeps its star. */
 @Composable

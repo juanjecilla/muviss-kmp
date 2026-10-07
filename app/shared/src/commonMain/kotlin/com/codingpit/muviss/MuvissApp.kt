@@ -17,6 +17,7 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaul
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.SingletonImageLoader
+import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
 import com.codingpit.muviss.core.database.PersistenceStatus
@@ -55,6 +57,7 @@ import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
+import com.codingpit.muviss.feature.settings.ui.LocalSystemNotificationSettings
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
@@ -121,7 +124,9 @@ fun MuvissApp(
         AutoSyncOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
-            MuvissScaffold(controller, deepLinkMediaId, onDeepLinkConsumed)
+            CompositionLocalProvider(LocalSystemNotificationSettings provides koinInject<SystemNotificationSettings>()) {
+                MuvissScaffold(controller, deepLinkMediaId, onDeepLinkConsumed)
+            }
         }
     }
 }
@@ -330,7 +335,11 @@ private fun MuvissScaffold(
                     },
                 ) {
                     searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
-                    collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    collectionSection(
+                        navController,
+                        onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
+                        onOpenSearch = { controller.destinations.firstOrNull { it.key == "search" }?.let(controller::navigateTo) },
+                    )
                     progressSection(
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenCoWatch = openCoWatch,
