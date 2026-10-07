@@ -10,9 +10,11 @@ import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
 import com.codingpit.muviss.feature.settings.data.ExportQueries
 import com.codingpit.muviss.feature.settings.data.RegistryImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
+import com.codingpit.muviss.feature.settings.data.SqlDelightBackupRestorer
 import com.codingpit.muviss.feature.settings.data.SqlDelightSettingsRepository
 import com.codingpit.muviss.feature.settings.data.TmdbExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.ApplyImportUseCase
+import com.codingpit.muviss.feature.settings.domain.BackupRestorer
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.GenericCsvImportParser
@@ -60,6 +62,7 @@ val settingsDataModule: Module = module {
         )
     }
     single<SettingsApi> { DefaultSettingsApi(get()) }
+    single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class

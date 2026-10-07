@@ -1,0 +1,66 @@
+{
+    "exportedAtEpochMs": 1759000000000,
+    "collection": [
+        {
+            "mediaId": "tmdb:tv:1399",
+            "mediaType": "TV",
+            "title": "Game of Thrones",
+            "posterUrl": null,
+            "releaseYear": 2011,
+            "productionStatus": "ENDED",
+            "totalEpisodes": 2,
+            "airedEpisodes": 2,
+            "favorite": true,
+            "addedAtEpochMs": 1758000000000,
+            "updatedAtEpochMs": 1758000000000,
+            "revisitWillingness": null,
+            "coWatchPinned": false
+        },
+        {
+            "mediaId": "tmdb:movie:603",
+            "mediaType": "MOVIE",
+            "title": "The Matrix",
+            "posterUrl": null,
+            "releaseYear": 1999,
+            "productionStatus": "RELEASED",
+            "totalEpisodes": 1,
+            "airedEpisodes": 1,
+            "favorite": false,
+            "addedAtEpochMs": 1758000000000,
+            "updatedAtEpochMs": 1758000000000
+        }
+    ],
+    "progress": [
+        {
+            "episodeId": "tmdb:tv:1399/1/1",
+            "mediaId": "tmdb:tv:1399",
+            "seasonNumber": 1,
+            "episodeNumber": 1,
+            "seen": true,
+            "updatedAtEpochMs": 1758100000000
+        },
+        {
+            "episodeId": "tmdb:tv:1399/1/2",
+            "mediaId": "tmdb:tv:1399",
+            "seasonNumber": 1,
+            "episodeNumber": 2,
+            "seen": true,
+            "updatedAtEpochMs": 1758200000000
+        }
+    ],
+    "triage": [
+        {
+            "mediaId": "tmdb:movie:550",
+            "mediaType": "MOVIE",
+            "verdict": "SKIP",
+            "title": "Fight Club",
+            "posterUrl": null,
+            "decidedAtEpochMs": 1758300000000,
+            "updatedAtEpochMs": 1758300000000
+        }
+    ],
+    "plays": [
+        { "episodeId": "tmdb:tv:1399/1/1", "mediaId": "tmdb:tv:1399", "watchedAtEpochMs": 1758100000000 },
+        { "episodeId": "tmdb:tv:1399/1/2", "mediaId": "tmdb:tv:1399", "watchedAtEpochMs": 1758200000000 }
+    ]
+}
