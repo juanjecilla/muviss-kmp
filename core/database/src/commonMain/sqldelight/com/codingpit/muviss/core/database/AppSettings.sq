@@ -169,3 +169,7 @@ UPDATE appSettings SET triageSnoozeHintSeen = :triageSnoozeHintSeen WHERE id = 0
 -- onboarding fact like `triageTutorialSeen`, so it is not synced.
 updateDiscoverIntroSeen:
 UPDATE appSettings SET discoverIntroSeen = :discoverIntroSeen WHERE id = 0;
+
+-- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
+deleteRow:
+DELETE FROM appSettings;

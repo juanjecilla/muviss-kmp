@@ -70,3 +70,8 @@ SELECT
     (SELECT COUNT(*) FROM listEntry WHERE isDirty = 1) +
     (SELECT COUNT(*) FROM triageDecision WHERE isDirty = 1) +
     (SELECT COUNT(*) FROM episodePlay WHERE isDirty = 1);
+
+-- Settings > Delete all data (EPIC 29, #72): forgets whose library this was, so
+-- a later sign-in is a first sync again.
+deleteRow:
+DELETE FROM syncState;

@@ -11,16 +11,19 @@ import com.codingpit.muviss.feature.settings.data.ExportQueries
 import com.codingpit.muviss.feature.settings.data.RegistryImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
 import com.codingpit.muviss.feature.settings.data.SqlDelightBackupRestorer
+import com.codingpit.muviss.feature.settings.data.SqlDelightLocalDataEraser
 import com.codingpit.muviss.feature.settings.data.SqlDelightSettingsRepository
 import com.codingpit.muviss.feature.settings.data.TmdbExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.ApplyImportUseCase
 import com.codingpit.muviss.feature.settings.domain.BackupRestorer
+import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.GenericCsvImportParser
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.domain.ImportParser
+import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
@@ -63,6 +66,8 @@ val settingsDataModule: Module = module {
     }
     single<SettingsApi> { DefaultSettingsApi(get()) }
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
+    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get()) }
+    factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
