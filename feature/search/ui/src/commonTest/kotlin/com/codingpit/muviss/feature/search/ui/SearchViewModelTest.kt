@@ -92,7 +92,7 @@ class SearchViewModelTest {
         vm.state.test {
             var current = awaitItem()
             while (current.error == null) current = awaitItem()
-            assertEquals(MetadataError.Offline().userMessage, current.error)
+            assertEquals(MetadataError.Offline().userMessage, current.error.text())
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -104,7 +104,7 @@ class SearchViewModelTest {
         vm.state.test {
             var current = awaitItem()
             while (current.error == null) current = awaitItem()
-            assertEquals("Something went wrong", current.error)
+            assertEquals("Something went wrong", current.error.text())
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -117,7 +117,7 @@ class SearchViewModelTest {
         vm.onQueryChange("matrix")
         advanceUntilIdle()
 
-        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error.text())
     }
 
     @Test

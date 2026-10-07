@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the default locale: every key lives here first. values-es mirrors it. -->
+<resources>
+    <string name="action_back">Back</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_create">Create</string>
+    <string name="action_done">Done</string>
+    <string name="error_generic">Something went wrong</string>
+
+    <!-- Search / Discover -->
+    <string name="search_placeholder">Search movies &amp; TV</string>
+    <string name="search_clear">Clear search</string>
+    <string name="carousel_for_you">For you</string>
+    <string name="genres_movies">Movie genres</string>
+    <string name="genres_tv">TV genres</string>
+    <string name="carousel_popular_movies">Popular movies</string>
+    <string name="carousel_popular_tv">Popular TV</string>
+    <string name="intro_title">Welcome to Muviss</string>
+    <string name="intro_find">Find a movie or show and add it to your library.</string>
+    <string name="intro_tick">Tick episodes as you watch — Muviss works out what's next.</string>
+    <string name="intro_triage">Got a backlog? Fill your library one card at a time.</string>
+    <string name="intro_dismiss">Got it</string>
+    <string name="triage_entry_title">Fill your library</string>
+    <string name="triage_entry_body">Sort through titles one at a time — skip, save for later, or mark yourself caught up.</string>
+    <string name="back_to_discover">Back to discover</string>
+    <string name="genre_empty_title">No titles found</string>
+    <string name="genre_empty_body">Try another genre.</string>
+    <string name="search_empty_title">No results</string>
+    <string name="search_empty_body">Check the spelling or try a different title.</string>
+
+    <!-- Detail -->
+    <string name="your_rating">Your rating</string>
+    <string name="type_tv">TV</string>
+    <string name="type_movie">Movie</string>
+    <!-- %1$s is TMDB's average score, e.g. "8.1". -->
+    <string name="tmdb_score">TMDB %1$s</string>
+    <string name="in_library">In Library ✓</string>
+    <string name="add_to_library">Add to Library</string>
+    <string name="favorite_remove">Remove from favorites</string>
+    <string name="favorite_add">Add to favorites</string>
+    <string name="notifications_unmute">Unmute new-episode notifications</string>
+    <string name="notifications_mute">Mute new-episode notifications</string>
+    <string name="add_to_list">Add to list</string>
+    <string name="more_like_this">More like this</string>
+    <string name="where_to_watch">Where to watch</string>
+    <string name="providers_stream">Stream</string>
+    <string name="providers_rent">Rent</string>
+    <string name="providers_buy">Buy</string>
+    <string name="note_add">Add a private note</string>
+    <string name="note_title">Your note</string>
+    <string name="note_placeholder">Private to you — nobody else sees this.</string>
+    <string name="movie_mark_watched">Mark as watched</string>
+    <!-- %1$d is how many times the movie has been watched (more than one). -->
+    <string name="movie_watched_times">Watched · %1$d×</string>
+    <string name="movie_watched">Watched</string>
+    <string name="mark_show_seen">Mark whole show as seen</string>
+    <string name="mark_show_seen_question">Mark whole show as seen?</string>
+    <string name="mark_show_seen_body">Every episode that has aired will be marked watched. Episodes that haven't aired yet are left alone.</string>
+    <string name="mark_seen">Mark seen</string>
+    <!-- %1$d is the number of seasons. -->
+    <string name="seasons_header">Seasons (%1$d)</string>
+    <!-- %1$d episodes seen of %2$d aired. -->
+    <string name="season_aired_progress">%1$d / %2$d aired</string>
+    <!-- %1$d season, %2$d episode. -->
+    <string name="episode_code">S%1$d · E%2$d</string>
+    <!-- Appended to the episode code. %1$d viewings. -->
+    <string name="episode_watched_times"> · watched %1$d×</string>
+    <string name="episode_not_aired"> · not aired yet</string>
+    <string name="catch_up">Catch up</string>
+    <!-- %1$s is a date. -->
+    <string name="snoozed_until">Snoozed until %1$s</string>
+    <string name="unsnooze">Unsnooze</string>
+    <!-- %1$s is why the refresh failed, e.g. the offline message. -->
+    <string name="stale_notice">%1$s Showing what's saved on this device.</string>
+    <string name="refresh_failed">Couldn't refresh this title.</string>
+    <string name="skipped_banner">You skipped this during triage</string>
+    <string name="watched_again">I watched it again</string>
+    <string name="tick_mistake">I ticked it by mistake</string>
+    <string name="already_watched_title">You've already watched this</string>
+    <!-- %1$d is how many times it has been watched. -->
+    <string name="already_watched_times">Watched %1$d× so far. Did you watch it again, or was the last tick a mistake?</string>
+    <string name="already_watched_once">Did you watch it again, or was that tick a mistake?</string>
+    <!-- %1$s is the season's name. -->
+    <string name="undo_season_seen">%1$s marked seen</string>
+    <string name="undo_show_seen">Marked every aired episode seen</string>
+
+    <!-- Add to list -->
+    <string name="new_list_name">New list name</string>
+    <!-- %1$s list name, %2$d titles in it. -->
+    <string name="list_with_count">%1$s (%2$d)</string>
+
+    <!-- Episode detail -->
+    <string name="clear_history">Clear watch history</string>
+    <string name="clear_history_question">Clear watch history?</string>
+    <string name="clear_history_body">Every recorded viewing of this episode is forgotten, and it goes back to unwatched. This can't be undone.</string>
+    <string name="clear">Clear</string>
+    <string name="guest_stars">Guest stars</string>
+    <string name="crew">Crew</string>
+    <!-- %1$d minutes. -->
+    <string name="runtime_minutes">%1$d min</string>
+    <string name="episode_not_watched">You haven't watched this</string>
+    <string name="episode_watched_once">You watched this once</string>
+    <string name="episode_watched_many">You watched this %1$d×</string>
+    <string name="episode_watched_again">Watched again</string>
+    <string name="episode_mark_watched">Mark watched</string>
+    <string name="undo_last">Undo last</string>
+</resources>

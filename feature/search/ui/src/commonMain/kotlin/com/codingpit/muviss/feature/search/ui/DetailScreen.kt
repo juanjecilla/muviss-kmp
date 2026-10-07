@@ -67,7 +67,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
 import com.codingpit.muviss.core.designsystem.component.EpisodeRow
 import com.codingpit.muviss.core.designsystem.component.ErrorState
@@ -76,8 +75,59 @@ import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.RatingRow
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.dateText
+import com.codingpit.muviss.core.designsystem.text.resolve
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_back
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_cancel
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_retry
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_save
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_undo
+import com.codingpit.muviss.feature.search.ui.generated.resources.add_to_library
+import com.codingpit.muviss.feature.search.ui.generated.resources.add_to_list
+import com.codingpit.muviss.feature.search.ui.generated.resources.already_watched_once
+import com.codingpit.muviss.feature.search.ui.generated.resources.already_watched_times
+import com.codingpit.muviss.feature.search.ui.generated.resources.already_watched_title
+import com.codingpit.muviss.feature.search.ui.generated.resources.catch_up
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_code
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_not_aired
+import com.codingpit.muviss.feature.search.ui.generated.resources.episode_watched_times
+import com.codingpit.muviss.feature.search.ui.generated.resources.favorite_add
+import com.codingpit.muviss.feature.search.ui.generated.resources.favorite_remove
+import com.codingpit.muviss.feature.search.ui.generated.resources.in_library
+import com.codingpit.muviss.feature.search.ui.generated.resources.mark_seen
+import com.codingpit.muviss.feature.search.ui.generated.resources.mark_show_seen
+import com.codingpit.muviss.feature.search.ui.generated.resources.mark_show_seen_body
+import com.codingpit.muviss.feature.search.ui.generated.resources.mark_show_seen_question
+import com.codingpit.muviss.feature.search.ui.generated.resources.more_like_this
+import com.codingpit.muviss.feature.search.ui.generated.resources.movie_mark_watched
+import com.codingpit.muviss.feature.search.ui.generated.resources.movie_watched
+import com.codingpit.muviss.feature.search.ui.generated.resources.movie_watched_times
+import com.codingpit.muviss.feature.search.ui.generated.resources.note_add
+import com.codingpit.muviss.feature.search.ui.generated.resources.note_placeholder
+import com.codingpit.muviss.feature.search.ui.generated.resources.note_title
+import com.codingpit.muviss.feature.search.ui.generated.resources.notifications_mute
+import com.codingpit.muviss.feature.search.ui.generated.resources.notifications_unmute
+import com.codingpit.muviss.feature.search.ui.generated.resources.providers_buy
+import com.codingpit.muviss.feature.search.ui.generated.resources.providers_rent
+import com.codingpit.muviss.feature.search.ui.generated.resources.providers_stream
+import com.codingpit.muviss.feature.search.ui.generated.resources.season_aired_progress
+import com.codingpit.muviss.feature.search.ui.generated.resources.seasons_header
+import com.codingpit.muviss.feature.search.ui.generated.resources.skipped_banner
+import com.codingpit.muviss.feature.search.ui.generated.resources.snoozed_until
+import com.codingpit.muviss.feature.search.ui.generated.resources.stale_notice
+import com.codingpit.muviss.feature.search.ui.generated.resources.tick_mistake
+import com.codingpit.muviss.feature.search.ui.generated.resources.tmdb_score
+import com.codingpit.muviss.feature.search.ui.generated.resources.type_movie
+import com.codingpit.muviss.feature.search.ui.generated.resources.type_tv
+import com.codingpit.muviss.feature.search.ui.generated.resources.unsnooze
+import com.codingpit.muviss.feature.search.ui.generated.resources.watched_again
+import com.codingpit.muviss.feature.search.ui.generated.resources.where_to_watch
+import com.codingpit.muviss.feature.search.ui.generated.resources.your_rating
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -87,6 +137,8 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -110,7 +162,7 @@ fun DetailScreen(
     // clears it once acted on, so it can't reappear on the next recomposition.
     LaunchedEffect(state.pendingUndo) {
         val undo = state.pendingUndo ?: return@LaunchedEffect
-        val result = snackbarHostState.showSnackbar(undo.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+        val result = snackbarHostState.showSnackbar(undo.message.resolveAsync(), actionLabel = getString(Res.string.action_undo), duration = SnackbarDuration.Short)
         if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark() else viewModel.dismissUndo()
     }
 
@@ -121,7 +173,7 @@ fun DetailScreen(
             )
 
             state.error != null -> ErrorState(
-                message = state.error!!,
+                message = state.error!!.resolve(),
                 onRetry = viewModel::load,
                 modifier = Modifier.align(Alignment.Center),
             )
@@ -200,7 +252,7 @@ internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
         modifier = modifier.size(36.dp),
     ) {
         IconButton(onClick = onBack) {
-            Icon(MuvissIcons.Back, contentDescription = "Back", tint = Color.White)
+            Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
         }
     }
 }
@@ -297,7 +349,7 @@ private fun DetailBody(
     // consistent with the mute button, the other membership-gated affordance.
     if (state.saved) {
         Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
-            Text("Your rating", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(Res.string.your_rating), style = MaterialTheme.typography.titleSmall)
             RatingRow(state.rating, onRate = viewModel::setRating, onClear = viewModel::clearRating)
         }
         NoteField(state.note, onEdit = onEditNote)
@@ -390,12 +442,12 @@ private fun DetailHero(details: MediaDetails) {
 private fun MetadataLine(details: MediaDetails) {
     val parts = buildList {
         details.summary.year?.let { add(it.toString()) }
-        add(if (details.type == MediaType.TV) "TV" else "Movie")
+        add(stringResource(if (details.type == MediaType.TV) Res.string.type_tv else Res.string.type_movie))
         if (details.genres.isNotEmpty()) add(details.genres.take(2).joinToString(", "))
         // Labelled, because the poster badge and the star row on this same
         // screen show the *user's* rating out of five — this one is TMDB's
         // public average out of ten.
-        details.summary.rating?.let { add("TMDB ${it.toString().take(3)}") }
+        details.summary.rating?.let { add(stringResource(Res.string.tmdb_score, it.toString().take(3))) }
     }
     Text(
         parts.joinToString(" · "),
@@ -423,7 +475,7 @@ private fun ActionRow(
             colors = ButtonDefaults.buttonColors(),
             modifier = if (stacked) Modifier.fillMaxWidth() else Modifier,
         ) {
-            Text(if (state.saved) "In Library ✓" else "Add to Library")
+            Text(stringResource(if (state.saved) Res.string.in_library else Res.string.add_to_library))
         }
     }
     val icons: @Composable () -> Unit = {
@@ -431,7 +483,7 @@ private fun ActionRow(
             OutlinedIconButton(onClick = viewModel::toggleFavorite) {
                 Icon(
                     if (state.favorite) MuvissIcons.Favorite else MuvissIcons.FavoriteOutline,
-                    contentDescription = if (state.favorite) "Remove from favorites" else "Add to favorites",
+                    contentDescription = stringResource(if (state.favorite) Res.string.favorite_remove else Res.string.favorite_add),
                     tint = if (state.favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -440,7 +492,7 @@ private fun ActionRow(
                 OutlinedIconButton(onClick = viewModel::toggleNotificationsMuted) {
                     Icon(
                         if (state.notificationsMuted) MuvissIcons.BellOff else MuvissIcons.Bell,
-                        contentDescription = if (state.notificationsMuted) "Unmute new-episode notifications" else "Mute new-episode notifications",
+                        contentDescription = stringResource(if (state.notificationsMuted) Res.string.notifications_unmute else Res.string.notifications_mute),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -449,7 +501,7 @@ private fun ActionRow(
             OutlinedIconButton(onClick = onAddToList) {
                 Icon(
                     MuvissIcons.AddToList,
-                    contentDescription = "Add to list",
+                    contentDescription = stringResource(Res.string.add_to_list),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -476,7 +528,7 @@ private fun ActionRow(
 private fun MoreLikeThisSection(items: List<MediaSummary>, onOpenDetail: (MediaId) -> Unit) {
     if (items.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-        CarouselHeader("More like this", modifier = Modifier.padding(top = MuvissSpacing.s))
+        CarouselHeader(stringResource(Res.string.more_like_this), modifier = Modifier.padding(top = MuvissSpacing.s))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             items(items, key = { it.id.toString() }) { item ->
                 PosterCard(
@@ -495,10 +547,10 @@ private fun MoreLikeThisSection(items: List<MediaSummary>, onOpenDetail: (MediaI
 private fun WhereToWatchSection(providers: WatchProviders) {
     if (providers.isEmpty) return
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-        Text("Where to watch", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = MuvissSpacing.s))
-        ProviderRow("Stream", providers.flatrate)
-        ProviderRow("Rent", providers.rent)
-        ProviderRow("Buy", providers.buy)
+        Text(stringResource(Res.string.where_to_watch), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = MuvissSpacing.s))
+        ProviderRow(stringResource(Res.string.providers_stream), providers.flatrate)
+        ProviderRow(stringResource(Res.string.providers_rent), providers.rent)
+        ProviderRow(stringResource(Res.string.providers_buy), providers.buy)
         // TMDB's terms require this attribution wherever JustWatch-sourced
         // provider data renders — do not remove without checking ADR 0001.
         Text(
@@ -540,9 +592,6 @@ private fun ProviderLogo(provider: WatchProvider) {
 
 internal const val NOTE_FIELD_TAG = "detailNoteField"
 internal const val NOTE_EDITOR_TAG = "detailNoteEditor"
-internal const val ADD_NOTE_LABEL = "Add a private note"
-internal const val SAVE_NOTE_LABEL = "Save"
-internal const val CANCEL_NOTE_LABEL = "Cancel"
 
 /**
  * The personal note (EPIC 15) as one quiet line rather than an always-open
@@ -573,7 +622,7 @@ internal fun NoteField(note: String?, onEdit: () -> Unit) {
             modifier = Modifier.size(18.dp),
         )
         Text(
-            text = note ?: ADD_NOTE_LABEL,
+            text = note ?: stringResource(Res.string.note_add),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
@@ -608,19 +657,19 @@ internal fun NoteEditorContent(initial: String, onSave: (String) -> Unit, onCanc
         Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.l).padding(bottom = MuvissSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
     ) {
-        Text("Your note", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(Res.string.note_title), style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = draft,
             onValueChange = { draft = it },
-            placeholder = { Text("Private to you — nobody else sees this.") },
+            placeholder = { Text(stringResource(Res.string.note_placeholder)) },
             shape = MaterialTheme.shapes.small,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth().testTag(NOTE_EDITOR_TAG),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onCancel) { Text(CANCEL_NOTE_LABEL) }
-            Button(onClick = { onSave(draft) }) { Text(SAVE_NOTE_LABEL) }
+            TextButton(onClick = onCancel) { Text(stringResource(Res.string.action_cancel)) }
+            Button(onClick = { onSave(draft) }) { Text(stringResource(Res.string.action_save)) }
         }
     }
 }
@@ -631,9 +680,9 @@ private fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () ->
         Checkbox(checked = watched, onCheckedChange = { onToggle() })
         Text(
             when {
-                !watched -> "Mark as watched"
-                playCount > 1 -> "Watched · $playCount×"
-                else -> "Watched"
+                !watched -> stringResource(Res.string.movie_mark_watched)
+                playCount > 1 -> stringResource(Res.string.movie_watched_times, playCount)
+                else -> stringResource(Res.string.movie_watched)
             },
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -718,13 +767,11 @@ internal class SeasonActions(
     val onOpenEpisode: (EpisodeId) -> Unit,
 )
 
-internal const val MARK_SHOW_SEEN_LABEL = "Mark whole show as seen"
-
 @Composable
 private fun MarkShowSeenButton(onClick: () -> Unit) {
     TextButton(onClick = onClick, modifier = Modifier.testTag(MARK_SHOW_TAG)) {
         Icon(MuvissIcons.CaughtUp, contentDescription = null, modifier = Modifier.size(18.dp))
-        Text(MARK_SHOW_SEEN_LABEL, modifier = Modifier.padding(start = MuvissSpacing.s))
+        Text(stringResource(Res.string.mark_show_seen), modifier = Modifier.padding(start = MuvissSpacing.s))
     }
 }
 
@@ -739,10 +786,10 @@ internal const val MARK_SHOW_TAG = "detailMarkShowSeen"
 private fun MarkShowSeenDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Mark whole show as seen?") },
-        text = { Text("Every episode that has aired will be marked watched. Episodes that haven't aired yet are left alone.") },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Mark seen") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(CANCEL_NOTE_LABEL) } },
+        title = { Text(stringResource(Res.string.mark_show_seen_question)) },
+        text = { Text(stringResource(Res.string.mark_show_seen_body)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(Res.string.mark_seen)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) } },
     )
 }
 
@@ -755,7 +802,7 @@ private fun MarkShowSeenDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 @Composable
 internal fun SeasonsHeader(seasonCount: Int) {
     Text(
-        "Seasons ($seasonCount)",
+        stringResource(Res.string.seasons_header, seasonCount),
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.padding(top = MuvissSpacing.s),
     )
@@ -812,7 +859,7 @@ internal fun SeasonSection(
                 modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
             )
             Text(
-                "$seenAired / ${aired.size} aired",
+                stringResource(Res.string.season_aired_progress, seenAired, aired.size),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.tertiary,
             )
@@ -855,11 +902,10 @@ private fun SeasonEpisodeRow(
     val isSeen = state.isSeen(episode.id)
     val hasAired = episode.hasAiredBy(todayEpochDay)
     val playCount = state.playCountOf(episode.id)
-    val subtitle = buildString {
-        append("S${episode.seasonNumber} · E${episode.episodeNumber}")
-        if (playCount > 1) append(" · watched $playCount×")
-        if (!hasAired) append(" · not aired yet")
-    }
+    val code = stringResource(Res.string.episode_code, episode.seasonNumber, episode.episodeNumber)
+    val watchedTimes = if (playCount > 1) stringResource(Res.string.episode_watched_times, playCount) else ""
+    val notAired = if (!hasAired) stringResource(Res.string.episode_not_aired) else ""
+    val subtitle = code + watchedTimes + notAired
     // Catch-up only makes sense for something already out, and only ahead of
     // where you are.
     val offerCatchUp = hasAired && !isSeen && episode.id != nextUpId
@@ -873,7 +919,7 @@ private fun SeasonEpisodeRow(
         stillUrl = episode.stillUrl,
         nextUp = episode.id == nextUpId,
         onClick = { actions.onOpenEpisode(episode.id) },
-        secondaryActionLabel = if (offerCatchUp) "Catch up" else null,
+        secondaryActionLabel = if (offerCatchUp) stringResource(Res.string.catch_up) else null,
         onSecondaryAction = if (offerCatchUp) {
             { actions.onCatchUp(episode.id) }
         } else {
@@ -901,18 +947,18 @@ private fun SnoozedBanner(dueAtEpochDay: Long, onUndo: () -> Unit) {
         ) {
             Icon(MuvissIcons.Snooze, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                "Snoozed until ${formatEpochDay(dueAtEpochDay)}",
+                stringResource(Res.string.snoozed_until, dateText(dueAtEpochDay)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f).padding(start = MuvissSpacing.s),
             )
-            TextButton(onClick = onUndo) { Text("Unsnooze") }
+            TextButton(onClick = onUndo) { Text(stringResource(Res.string.unsnooze)) }
         }
     }
 }
 
 @Composable
-private fun StaleBanner(notice: String, onRetry: () -> Unit) {
+private fun StaleBanner(notice: UiText, onRetry: () -> Unit) {
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -924,12 +970,12 @@ private fun StaleBanner(notice: String, onRetry: () -> Unit) {
         ) {
             Icon(MuvissIcons.Error, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                "$notice Showing what's saved on this device.",
+                stringResource(Res.string.stale_notice, notice.resolve()),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f).padding(start = MuvissSpacing.s),
             )
-            TextButton(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onRetry) { Text(stringResource(Res.string.action_retry)) }
         }
     }
 }
@@ -950,18 +996,15 @@ private fun SkippedBanner(onUndo: () -> Unit) {
         ) {
             Icon(MuvissIcons.Skip, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                "You skipped this during triage",
+                stringResource(Res.string.skipped_banner),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f).padding(start = MuvissSpacing.s),
             )
-            TextButton(onClick = onUndo) { Text("Undo") }
+            TextButton(onClick = onUndo) { Text(stringResource(Res.string.action_undo)) }
         }
     }
 }
-
-internal const val WATCHED_AGAIN_LABEL = "I watched it again"
-internal const val TICK_MISTAKE_LABEL = "I ticked it by mistake"
 
 /**
  * What tapping an already-ticked episode means. It used to mean "un-tick",
@@ -981,17 +1024,17 @@ private fun WatchedAgainDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("You've already watched this") },
+        title = { Text(stringResource(Res.string.already_watched_title)) },
         text = {
             Text(
                 if (playCount > 1) {
-                    "Watched $playCount× so far. Did you watch it again, or was the last tick a mistake?"
+                    stringResource(Res.string.already_watched_times, playCount)
                 } else {
-                    "Did you watch it again, or was that tick a mistake?"
+                    stringResource(Res.string.already_watched_once)
                 },
             )
         },
-        confirmButton = { TextButton(onClick = onWatchedAgain) { Text(WATCHED_AGAIN_LABEL) } },
-        dismissButton = { TextButton(onClick = onMistake) { Text(TICK_MISTAKE_LABEL) } },
+        confirmButton = { TextButton(onClick = onWatchedAgain) { Text(stringResource(Res.string.watched_again)) } },
+        dismissButton = { TextButton(onClick = onMistake) { Text(stringResource(Res.string.tick_mistake)) } },
     )
 }

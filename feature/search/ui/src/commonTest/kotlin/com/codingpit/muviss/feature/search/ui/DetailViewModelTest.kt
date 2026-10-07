@@ -290,7 +290,7 @@ class DetailViewModelTest {
         val state = vm.state.value
         assertEquals("Game of Thrones", state.details?.summary?.title)
         assertEquals(tvDetails.seasons, state.details?.seasons)
-        assertEquals(MetadataError.Offline().userMessage, state.staleNotice)
+        assertEquals(MetadataError.Offline().userMessage, state.staleNotice.text())
         assertNull(state.error)
         assertFalse(state.loading)
     }
@@ -310,7 +310,7 @@ class DetailViewModelTest {
         val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = MetadataError.Offline()))
         advanceUntilIdle()
 
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error.text())
         assertNull(vm.state.value.details)
     }
 
@@ -319,7 +319,7 @@ class DetailViewModelTest {
         val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = MetadataError.RateLimited(retryAfterSeconds = 12)))
         advanceUntilIdle()
 
-        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error.text())
     }
 
     @Test
@@ -328,7 +328,7 @@ class DetailViewModelTest {
         val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = leaky))
         advanceUntilIdle()
 
-        assertEquals("Something went wrong", vm.state.value.error)
+        assertEquals("Something went wrong", vm.state.value.error.text())
     }
 
     @Test
@@ -535,7 +535,7 @@ class DetailViewModelTest {
         assertNotNull(undo)
         assertEquals(listOf(episode2.id), undo.episodeIds, "episode1 was already seen, so the undo must not touch it")
         // Names the season, rather than showing a raw template to the user.
-        assertEquals("${season.name} marked seen", undo.message)
+        assertEquals("${season.name} marked seen", undo.message.text())
 
         vm.undoBulkMark()
         advanceUntilIdle()
