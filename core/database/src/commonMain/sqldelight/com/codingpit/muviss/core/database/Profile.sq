@@ -24,3 +24,7 @@ UPDATE profile SET displayName = :displayName WHERE id = 0;
 
 updateAvatar:
 UPDATE profile SET avatarId = :avatarId WHERE id = 0;
+
+-- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
+deleteRow:
+DELETE FROM profile;
