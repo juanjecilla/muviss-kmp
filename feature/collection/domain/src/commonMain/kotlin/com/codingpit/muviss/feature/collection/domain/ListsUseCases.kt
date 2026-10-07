@@ -33,7 +33,9 @@ class ListsUseCases(private val repository: ListsRepository) {
 
     suspend fun rename(listId: String, name: String) = repository.renameList(listId, name.requireNonBlank())
 
-    suspend fun delete(listId: String) = repository.deleteList(listId)
+    suspend fun delete(listId: String): Long = repository.deleteList(listId)
+
+    suspend fun restore(listId: String, deletedAtEpochMs: Long) = repository.restoreList(listId, deletedAtEpochMs)
 
     suspend fun addEntry(listId: String, mediaId: MediaId) = repository.addEntry(listId, mediaId)
 

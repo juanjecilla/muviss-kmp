@@ -47,9 +47,28 @@ internal class FakeListsRepository(initial: List<MediaList> = emptyList(), priva
         flow.value = flow.value.map { if (it.id == listId) it.copy(name = name) else it }
     }
 
-    override suspend fun deleteList(listId: String) {
+    val restoreCalls = mutableListOf<Pair<String, Long>>()
+    private val deleted = mutableMapOf<String, MediaList>()
+
+    /** Makes [deleteList] and [restoreList] throw (#73). */
+    var deleteFailure: Throwable? = null
+
+    override suspend fun deleteList(listId: String): Long {
+        deleteFailure?.let { throw it }
         deleteCalls += listId
+        flow.value.firstOrNull { it.id == listId }?.let { deleted[listId] = it }
         flow.value = flow.value.filterNot { it.id == listId }
+        return DELETED_AT
+    }
+
+    override suspend fun restoreList(listId: String, deletedAtEpochMs: Long) {
+        deleteFailure?.let { throw it }
+        restoreCalls += listId to deletedAtEpochMs
+        deleted.remove(listId)?.let { flow.value = flow.value + it }
+    }
+
+    companion object {
+        const val DELETED_AT = 42L
     }
 
     override suspend fun addEntry(listId: String, mediaId: MediaId) = error("not used")
@@ -152,21 +171,6 @@ class ListsViewModelTest {
     }
 
     @Test
-    fun deleteList_delegates_to_the_repository_once_undo_has_passed() = runTest {
-        val marathon = MediaList("1", "Marathon 2026", 0L, 0L)
-        val repository = FakeListsRepository(listOf(marathon))
-        val vm = viewModel(repository)
-        advanceUntilIdle()
-
-        vm.deleteList(marathon)
-        vm.confirmDelete()
-        advanceUntilIdle()
-
-        assertEquals(listOf("1"), repository.deleteCalls)
-        assertTrue(vm.state.value.lists.isEmpty())
-    }
-
-    @Test
     fun a_failed_create_keeps_the_dialog_open_and_says_why() = runTest {
         val repository = FakeListsRepository().apply { writeFailure = IllegalStateException("SQLITE_FULL /data/x.db") }
         val vm = viewModel(repository)
@@ -196,50 +200,68 @@ class ListsViewModelTest {
     }
 
     @Test
-    fun a_delete_hides_the_list_and_undo_brings_it_back_without_deleting() = runTest {
+    fun a_delete_is_saved_at_once_and_offers_undo() = runTest {
+        // #73 review: a delete held back until the snackbar went was lost
+        // with the screen or the process. It is written immediately now.
         val marathon = MediaList("1", "Marathon 2026", 0L, 0L)
         val repository = FakeListsRepository(listOf(marathon))
         val vm = viewModel(repository)
         advanceUntilIdle()
 
         vm.deleteList(marathon)
-        assertEquals(emptyList(), vm.state.value.visibleLists)
-
-        vm.undoDelete()
-        advanceUntilIdle()
-
-        assertEquals(listOf(marathon), vm.state.value.visibleLists)
-        assertEquals(emptyList(), repository.deleteCalls)
-    }
-
-    @Test
-    fun a_delete_happens_when_the_undo_snackbar_goes() = runTest {
-        val marathon = MediaList("1", "Marathon 2026", 0L, 0L)
-        val repository = FakeListsRepository(listOf(marathon))
-        val vm = viewModel(repository)
-        advanceUntilIdle()
-
-        vm.deleteList(marathon)
-        vm.confirmDelete()
         advanceUntilIdle()
 
         assertEquals(listOf("1"), repository.deleteCalls)
-        assertNull(vm.state.value.pendingDelete)
+        assertEquals(emptyList(), vm.state.value.lists)
+        assertEquals(DeletedList(marathon, FakeListsRepository.DELETED_AT), vm.state.value.lastDeleted)
     }
 
     @Test
-    fun a_second_delete_commits_the_first() = runTest {
-        val a = MediaList("1", "A", 0L, 0L)
-        val b = MediaList("2", "B", 0L, 0L)
-        val repository = FakeListsRepository(listOf(a, b))
+    fun undo_restores_with_the_stamp_the_delete_wrote() = runTest {
+        val marathon = MediaList("1", "Marathon 2026", 0L, 0L)
+        val repository = FakeListsRepository(listOf(marathon))
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        vm.deleteList(marathon)
+        advanceUntilIdle()
+
+        vm.undoDelete(vm.state.value.lastDeleted!!)
+        advanceUntilIdle()
+
+        assertEquals(listOf("1" to FakeListsRepository.DELETED_AT), repository.restoreCalls)
+        assertEquals(listOf(marathon), vm.state.value.lists)
+        assertNull(vm.state.value.lastDeleted)
+    }
+
+    @Test
+    fun a_failed_delete_says_so_and_offers_no_undo() = runTest {
+        val marathon = MediaList("1", "Marathon 2026", 0L, 0L)
+        val repository = FakeListsRepository(listOf(marathon)).apply { deleteFailure = IllegalStateException("SQLITE_BUSY") }
         val vm = viewModel(repository)
         advanceUntilIdle()
 
+        vm.deleteList(marathon)
+        advanceUntilIdle()
+
+        assertEquals("Couldn't delete the list.", vm.state.value.message)
+        assertNull(vm.state.value.lastDeleted)
+        assertEquals(listOf(marathon), vm.state.value.lists)
+    }
+
+    @Test
+    fun dismissing_an_older_undo_does_not_clear_a_newer_one() = runTest {
+        val a = MediaList("1", "A", 0L, 0L)
+        val b = MediaList("2", "B", 0L, 0L)
+        val vm = viewModel(FakeListsRepository(listOf(a, b)))
+        advanceUntilIdle()
         vm.deleteList(a)
+        advanceUntilIdle()
+        val first = vm.state.value.lastDeleted!!
         vm.deleteList(b)
         advanceUntilIdle()
 
-        assertEquals(listOf("1"), repository.deleteCalls)
-        assertEquals(b, vm.state.value.pendingDelete)
+        vm.deleteUndoDismissed(first)
+
+        assertEquals(b, vm.state.value.lastDeleted?.list)
     }
 }

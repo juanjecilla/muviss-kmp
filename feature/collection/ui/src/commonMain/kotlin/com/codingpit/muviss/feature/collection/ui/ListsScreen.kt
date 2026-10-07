@@ -54,14 +54,23 @@ fun ListsScreen(
 
     // Same shape as Progress's tick: the change shows at once and the
     // snackbar's Undo takes it back (#73).
-    LaunchedEffect(state.pendingDelete) {
-        val pending = state.pendingDelete ?: return@LaunchedEffect
+    // The delete is already saved; nothing is lost if this effect is cancelled
+    // with the screen. The captured `deleted` is what Undo restores, so a
+    // second delete can never make this snackbar restore the wrong list.
+    LaunchedEffect(state.lastDeleted) {
+        val deleted = state.lastDeleted ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
-            message = "Deleted \u201C${pending.name}\u201D",
+            message = "Deleted \u201C${deleted.list.name}\u201D",
             actionLabel = "Undo",
             duration = SnackbarDuration.Long,
         )
-        if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete() else viewModel.confirmDelete()
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoDelete(deleted) else viewModel.deleteUndoDismissed(deleted)
+    }
+
+    LaunchedEffect(state.message) {
+        val message = state.message ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
+        viewModel.consumeMessage()
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -69,8 +78,8 @@ fun ListsScreen(
             when {
                 state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
                 state.error != null -> Text(state.error!!, modifier = Modifier.padding(top = MuvissSpacing.xxl), style = MaterialTheme.typography.bodyMedium)
-                state.visibleLists.isEmpty() -> EmptyListsState()
-                else -> ListsColumn(state.visibleLists, onOpenList, onEdit = viewModel::startEditing, onDelete = viewModel::deleteList)
+                state.lists.isEmpty() -> EmptyListsState()
+                else -> ListsColumn(state.lists, onOpenList, onEdit = viewModel::startEditing, onDelete = viewModel::deleteList)
             }
         }
         ExtendedFloatingActionButton(

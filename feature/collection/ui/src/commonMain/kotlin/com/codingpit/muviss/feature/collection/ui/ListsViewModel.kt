@@ -26,15 +26,17 @@ data class ListsUiState(
     /** Why the open create/rename dialog's last save failed; the dialog stays open until it works (#73). */
     val dialogError: String? = null,
     /**
-     * A list the user deleted that is still waiting out its Undo snackbar.
-     * It is hidden at once but only deleted when the snackbar goes without
-     * Undo (#73), so taking it back needs no restore path in the repository.
+     * The list just deleted, for as long as its Undo snackbar is up. The delete
+     * is already on disk — a delete held back until the snackbar went would be
+     * lost with the screen or the process (#73) — so Undo restores it.
      */
-    val pendingDelete: MediaList? = null,
-) {
-    /** [lists] minus the one waiting out its Undo. */
-    val visibleLists: List<MediaList> get() = lists.filterNot { it.id == pendingDelete?.id }
-}
+    val lastDeleted: DeletedList? = null,
+    /** One-shot snackbar text, e.g. a delete or restore that failed; cleared by [ListsViewModel.consumeMessage]. */
+    val message: String? = null,
+)
+
+/** A deleted list and the stamp its delete wrote, which the restore needs. */
+data class DeletedList(val list: MediaList, val deletedAtEpochMs: Long)
 
 /**
  * Drives the Lists segment of the Collection screen (EPIC 17): observes
@@ -79,32 +81,34 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
         }
     }
 
-    /**
-     * Hides [list] behind an Undo snackbar. A second delete while one is
-     * pending commits the first: only one snackbar exists, so only one delete
-     * can be undoable at a time.
-     */
+    /** Deletes [list] now and offers Undo; a failure says so instead of leaving the row in place silently (#73). */
     fun deleteList(list: MediaList) {
-        _state.value.pendingDelete?.let(::commitDelete)
-        _state.update { it.copy(pendingDelete = list) }
+        viewModelScope.launchReporting {
+            runCatching { listsUseCases.delete(list.id) }.reportFailure()
+                .onSuccess { stamp -> _state.update { it.copy(lastDeleted = DeletedList(list, stamp)) } }
+                .onFailure { e -> _state.update { it.copy(message = e.toUserMessage(DELETE_FAILED)) } }
+        }
     }
 
-    fun undoDelete() = _state.update { it.copy(pendingDelete = null) }
-
-    /** The Undo snackbar went without Undo: the delete happens now. */
-    fun confirmDelete() {
-        val list = _state.value.pendingDelete ?: return
-        _state.update { it.copy(pendingDelete = null) }
-        commitDelete(list)
+    /** Undo: puts back the list and exactly the entries its delete took with it. */
+    fun undoDelete(deleted: DeletedList) {
+        _state.update { if (it.lastDeleted == deleted) it.copy(lastDeleted = null) else it }
+        viewModelScope.launchReporting {
+            runCatching { listsUseCases.restore(deleted.list.id, deleted.deletedAtEpochMs) }.reportFailure()
+                .onFailure { e -> _state.update { it.copy(message = e.toUserMessage(RESTORE_FAILED)) } }
+        }
     }
 
-    private fun commitDelete(list: MediaList) {
-        viewModelScope.launchReporting { listsUseCases.delete(list.id) }
-    }
+    /** The Undo snackbar for [deleted] went without Undo; the delete simply stands. */
+    fun deleteUndoDismissed(deleted: DeletedList) = _state.update { if (it.lastDeleted == deleted) it.copy(lastDeleted = null) else it }
+
+    fun consumeMessage() = _state.update { it.copy(message = null) }
 
     private companion object {
         const val DEFAULT_ERROR = "Something went wrong"
         const val CREATE_FAILED = "Couldn't create the list."
         const val RENAME_FAILED = "Couldn't rename the list."
+        const val DELETE_FAILED = "Couldn't delete the list."
+        const val RESTORE_FAILED = "Couldn't bring the list back."
     }
 }
