@@ -40,8 +40,14 @@ interface ListsRepository {
 
     suspend fun renameList(listId: String, name: String)
 
-    /** Soft-deletes the list and, cascading, every one of its entries — a deleted list shouldn't leave live orphaned membership rows behind. */
-    suspend fun deleteList(listId: String)
+    /**
+     * Soft-deletes the list and, cascading, every one of its entries — a deleted list shouldn't leave live orphaned membership rows behind.
+     * Returns the stamp it wrote, which [restoreList] needs to tell the cascaded entries from ones removed earlier.
+     */
+    suspend fun deleteList(listId: String): Long
+
+    /** Undoes [deleteList]: the list and exactly the entries that delete cascaded (those stamped [deletedAtEpochMs]). */
+    suspend fun restoreList(listId: String, deletedAtEpochMs: Long)
 
     /**
      * Adds [mediaId] to [listId]. Un-deletes and preserves the original

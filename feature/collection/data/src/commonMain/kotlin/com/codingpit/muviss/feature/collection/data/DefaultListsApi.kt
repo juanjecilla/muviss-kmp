@@ -29,7 +29,9 @@ internal class DefaultListsApi(private val listsUseCases: ListsUseCases) : Lists
 
     override suspend fun renameList(listId: String, name: String) = listsUseCases.rename(listId, name)
 
-    override suspend fun deleteList(listId: String) = listsUseCases.delete(listId)
+    override suspend fun deleteList(listId: String) {
+        listsUseCases.delete(listId)
+    }
 
     override suspend fun addToList(listId: String, mediaId: MediaId) = listsUseCases.addEntry(listId, mediaId)
 

@@ -42,7 +42,7 @@ import kotlin.test.assertEquals
 
 private fun summary(id: MediaId, title: String = id.toString(), status: WatchStatus = WatchStatus.WATCHING) = CollectionSummary(id, title, posterUrl = null, status = status)
 
-internal class FakeCollectionApi(summaries: List<CollectionSummary>, private val failure: Throwable? = null) : CollectionApi {
+internal class FakeCollectionApi(summaries: List<CollectionSummary>, var failure: Throwable? = null) : CollectionApi {
     val flow = MutableStateFlow(summaries)
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
     override fun observeSummaries(): Flow<List<CollectionSummary>> = failure?.let { flow { throw it } } ?: flow
@@ -115,8 +115,13 @@ internal class FakeProgressRepository : ProgressRepository {
 
 internal class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
     val refetched = mutableListOf<MediaId>()
+
+    /** Makes every fetch fail, like a pull-to-refresh with no connection (#73). */
+    var failure: Throwable? = null
+
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
         refetched += mediaId
+        failure?.let { return Result.failure(it) }
         return Result.success(bySeasons[mediaId].orEmpty())
     }
 }
@@ -261,5 +266,36 @@ class ProgressViewModelTest {
             assertEquals(emptyList(), current.items)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun a_refresh_that_cannot_fetch_says_so_and_still_stops_the_spinner() = runTest {
+        val source = FakeEpisodeCatalogSource(mapOf(show to seasons))
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), FakeProgressRepository(), source)
+        advanceUntilIdle()
+
+        source.failure = MetadataError.Offline()
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.refreshing)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.message)
+
+        vm.consumeMessage()
+        assertEquals(null, vm.state.value.message)
+    }
+
+    @Test
+    fun retry_after_a_failed_pipeline_resubscribes() = runTest {
+        val api = FakeCollectionApi(listOf(summary(show)), failure = MetadataError.Offline())
+        val (vm, _) = viewModel(api, FakeProgressRepository())
+        advanceUntilIdle()
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+
+        api.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.error)
     }
 }

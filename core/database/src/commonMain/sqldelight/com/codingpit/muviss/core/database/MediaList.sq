@@ -105,6 +105,20 @@ UPDATE listEntry
 SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
 WHERE listId = :listId AND deleted = 0;
 
+-- Undo of a list delete (EPIC 30, #73). Re-stamped and dirty, so last-write-
+-- wins carries the restore to other devices like any edit.
+restoreList:
+UPDATE mediaList
+SET deleted = 0, updatedAtEpochMs = :now, isDirty = 1
+WHERE id = :id AND deleted = 1;
+
+-- Only the entries that delete cascaded, matched by the stamp it wrote: an
+-- entry removed before the list was deleted stays removed.
+restoreEntriesForList:
+UPDATE listEntry
+SET deleted = 0, updatedAtEpochMs = :now, isDirty = 1
+WHERE listId = :listId AND deleted = 1 AND updatedAtEpochMs = :deletedAt;
+
 selectDirtyLists:
 SELECT * FROM mediaList WHERE isDirty = 1;
 

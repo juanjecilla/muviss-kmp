@@ -27,6 +27,7 @@ private class RecordingListsRepository : ListsRepository {
     }
 
     override suspend fun deleteList(listId: String) = error("not used")
+    override suspend fun restoreList(listId: String, deletedAtEpochMs: Long) = error("not used")
     override suspend fun addEntry(listId: String, mediaId: MediaId) = error("not used")
     override suspend fun removeEntry(listId: String, mediaId: MediaId) = error("not used")
 }

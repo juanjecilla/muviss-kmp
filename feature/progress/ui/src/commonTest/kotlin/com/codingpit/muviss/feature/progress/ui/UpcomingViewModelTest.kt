@@ -34,7 +34,7 @@ import kotlin.test.assertTrue
 
 private fun summary(id: MediaId, title: String = id.toString(), status: WatchStatus = WatchStatus.NOT_STARTED) = CollectionSummary(id, title, posterUrl = null, status = status)
 
-internal class FakeUpcomingCollectionApi(summaries: List<CollectionSummary>, private val failure: Throwable? = null) : CollectionApi {
+internal class FakeUpcomingCollectionApi(summaries: List<CollectionSummary>, var failure: Throwable? = null) : CollectionApi {
     val flow = MutableStateFlow(summaries)
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
     override fun observeSummaries(): Flow<List<CollectionSummary>> = failure?.let { kotlinx.coroutines.flow.flow { throw it } } ?: flow
@@ -52,7 +52,9 @@ internal class FakeUpcomingCollectionApi(summaries: List<CollectionSummary>, pri
 }
 
 internal class FakeUpcomingCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
-    override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = Result.success(bySeasons[mediaId].orEmpty())
+    var failure: Throwable? = null
+
+    override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = failure?.let { Result.failure(it) } ?: Result.success(bySeasons[mediaId].orEmpty())
 }
 
 internal class FakeUpcomingClock(private val millis: Long) : AppClock {
@@ -176,5 +178,35 @@ class UpcomingViewModelTest {
         advanceUntilIdle()
 
         assertEquals(1, vmWithUpdatedSource.state.value.groups.sumOf { it.rows.size })
+    }
+
+    @Test
+    fun a_refresh_that_cannot_fetch_says_so_and_still_stops_the_spinner() = runTest {
+        val source = FakeUpcomingCatalogSource(mapOf(tvShow to emptyList()))
+        val vm = viewModel(FakeUpcomingCollectionApi(listOf(summary(tvShow))), source)
+        advanceUntilIdle()
+
+        source.failure = MetadataError.Offline()
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.refreshing)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.message)
+        vm.consumeMessage()
+        assertEquals(null, vm.state.value.message)
+    }
+
+    @Test
+    fun retry_after_a_failed_pipeline_resubscribes() = runTest {
+        val api = FakeUpcomingCollectionApi(listOf(summary(tvShow)), failure = MetadataError.Offline())
+        val vm = viewModel(api, FakeUpcomingCatalogSource(mapOf(tvShow to emptyList())))
+        advanceUntilIdle()
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+
+        api.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        assertEquals(null, vm.state.value.error)
     }
 }

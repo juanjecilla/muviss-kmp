@@ -108,6 +108,39 @@ class SqlDelightListsRepositoryTest {
     }
 
     @Test
+    fun restoreList_brings_back_the_list_and_only_the_entries_its_delete_took() = runTest {
+        // EPIC 30 (#73): Undo after a list delete. An entry removed *before*
+        // the delete must stay removed; the stamp is what tells them apart.
+        saveSnapshot(matrix)
+        saveSnapshot(show)
+        val list = repository.createList("Marathon")
+        repository.addEntry(list.id, matrix)
+        repository.addEntry(list.id, show)
+        clock.advanceTo(2_000L)
+        repository.removeEntry(list.id, show)
+        clock.advanceTo(3_000L)
+        val deletedAt = repository.deleteList(list.id)
+        clock.advanceTo(4_000L)
+
+        repository.restoreList(list.id, deletedAt)
+
+        repository.observeLists().test {
+            assertEquals(listOf("Marathon"), awaitItem().map { it.name })
+            cancelAndIgnoreRemainingEvents()
+        }
+        repository.observeListIdsContaining(matrix).test {
+            assertEquals(setOf(list.id), awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+        repository.observeListIdsContaining(show).test {
+            assertTrue(awaitItem().isEmpty(), "removed before the delete, so not restored")
+            cancelAndIgnoreRemainingEvents()
+        }
+        // Restored rows are dirty and re-stamped, so sync carries the undo.
+        assertTrue(listQueries.selectDirtyLists().executeAsList().any { it.id == list.id && it.updatedAtEpochMs == 4_000L && !it.deleted })
+    }
+
+    @Test
     fun deleteList_cascades_to_its_entries() = runTest {
         saveSnapshot(matrix)
         val list = repository.createList("Temporary")

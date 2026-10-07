@@ -63,11 +63,20 @@ class SqlDelightListsRepository(
     }
 
     /** Cascades into [MediaListQueries.softDeleteEntriesForList] inside one transaction — see [ListsRepository.deleteList]'s KDoc. */
-    override suspend fun deleteList(listId: String) = withContext(dispatchers.io) {
+    override suspend fun deleteList(listId: String): Long = withContext(dispatchers.io) {
         val now = clock.nowEpochMs()
         queries.transaction {
             queries.softDeleteEntriesForList(now = now, listId = listId)
             queries.softDeleteList(now = now, id = listId)
+        }
+        now
+    }
+
+    override suspend fun restoreList(listId: String, deletedAtEpochMs: Long) = withContext(dispatchers.io) {
+        val now = clock.nowEpochMs()
+        queries.transaction {
+            queries.restoreEntriesForList(now = now, listId = listId, deletedAt = deletedAtEpochMs)
+            queries.restoreList(now = now, id = listId)
         }
     }
 
