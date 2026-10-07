@@ -3,6 +3,8 @@ package com.codingpit.muviss.feature.settings.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
+import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSString
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
@@ -10,7 +12,7 @@ import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.stringByAppendingPathComponent
 import platform.Foundation.writeToFile
 import platform.UIKit.UIActivityViewController
-import platform.UIKit.UIApplication
+import platform.UIKit.popoverPresentationController
 
 /**
  * Writes the export to a temp file and hands it to the system share sheet
@@ -45,15 +47,16 @@ private class IosDataExporter : DataExporter {
             applicationActivities = null,
         )
 
-        // No `popoverPresentationController` anchoring here: this Kotlin/Native
-        // UIKit klib doesn't expose that property on `UIViewController`, and
-        // Muviss ships iPhone + iPad ("1,2" in Info.plist) — on iPad, UIKit
-        // needs a `sourceView`/`sourceRect` or `barButtonItem` set on it before
-        // presenting a popover-style controller, or it throws at runtime. Until
-        // that property is reachable, presenting still works fine on iPhone;
-        // revisit if iPad crashes on this flow.
-        val rootViewController = UIApplication.sharedApplication.keyWindow?.rootViewController
-        rootViewController?.presentViewController(activityController, animated = true, completion = null)
+        // On iPad the share sheet is a popover, and UIKit throws at present
+        // time unless it is anchored. Centred over the presenting view with no
+        // arrow, the way an iPad shows a sheet with no button to point at.
+        val presenter = topViewController() ?: return
+        activityController.popoverPresentationController?.let { popover ->
+            popover.sourceView = presenter.view
+            popover.sourceRect = presenter.view.bounds.useContents { CGRectMake(size.width / 2, size.height / 2, 0.0, 0.0) }
+            popover.permittedArrowDirections = 0u
+        }
+        presenter.presentViewController(activityController, animated = true, completion = null)
     }
 }
 
