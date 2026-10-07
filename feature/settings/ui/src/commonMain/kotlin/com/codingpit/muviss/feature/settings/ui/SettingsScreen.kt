@@ -33,6 +33,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -280,7 +283,7 @@ private fun SectionOverline(text: String, topPadding: Boolean = false) {
         text.uppercase(),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = if (topPadding) MuvissSpacing.l else 0.dp, bottom = MuvissSpacing.xs),
+        modifier = Modifier.padding(top = if (topPadding) MuvissSpacing.l else 0.dp, bottom = MuvissSpacing.xs).semantics { heading() },
     )
 }
 
@@ -394,7 +397,7 @@ private fun PickerRow(
 ) {
     var open by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clickable { open = true }.padding(vertical = MuvissSpacing.m),
+        Modifier.fillMaxWidth().clickable(role = Role.Button) { open = true }.padding(vertical = MuvissSpacing.m),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -449,7 +452,7 @@ private fun ActionRow(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = MuvissSpacing.m),
+        modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(vertical = MuvissSpacing.m),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
