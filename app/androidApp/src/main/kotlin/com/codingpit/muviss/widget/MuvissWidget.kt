@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
 import androidx.glance.action.actionParametersOf
@@ -38,6 +39,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.codingpit.muviss.MainActivity
+import com.codingpit.muviss.R
 import com.codingpit.muviss.core.designsystem.theme.muvissColorScheme
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
@@ -134,13 +136,13 @@ private fun WidgetBody(ui: WatchNextWidgetUi) {
             }
 
             WatchNextWidgetUi.Empty.NOTHING_IN_PROGRESS -> EmptyView(
-                title = "Nothing in progress",
-                body = "Start watching something and it will show up here.",
+                title = LocalContext.current.getString(R.string.widget_nothing_title),
+                body = LocalContext.current.getString(R.string.widget_nothing_body),
             )
 
             WatchNextWidgetUi.Empty.NO_CATALOG_YET -> EmptyView(
-                title = "Open Muviss once",
-                body = "Episode details are downloaded the first time you open the app.",
+                title = LocalContext.current.getString(R.string.widget_no_catalog_title),
+                body = LocalContext.current.getString(R.string.widget_no_catalog_body),
             )
         }
     }
@@ -183,7 +185,7 @@ private fun WidgetRowView(row: WidgetRow) {
                 maxLines = 1,
             )
             Text(
-                row.subtitle(),
+                row.subtitle(LocalContext.current),
                 style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp),
                 maxLines = 1,
             )
@@ -199,12 +201,12 @@ private fun RowAction(row: WidgetRow) {
     val tickable = row.tickable
     when {
         undoable != null -> WidgetButton(
-            label = "Undo",
+            label = LocalContext.current.getString(R.string.widget_undo),
             onClick = actionRunCallback<UndoTickAction>(actionParametersOf(EpisodeIdKey to undoable.toString())),
         )
 
         tickable != null -> WidgetButton(
-            label = "Seen",
+            label = LocalContext.current.getString(R.string.widget_seen),
             onClick = actionRunCallback<TickAction>(actionParametersOf(EpisodeIdKey to tickable.toString())),
         )
 
@@ -225,9 +227,9 @@ private fun WidgetButton(label: String, onClick: Action) {
     )
 }
 
-private fun WidgetRow.subtitle(): String = when {
-    undoable != null -> "Marked seen"
-    episodeLabel == null -> "Open to load episodes"
+private fun WidgetRow.subtitle(context: Context): String = when {
+    undoable != null -> context.getString(R.string.widget_marked_seen)
+    episodeLabel == null -> context.getString(R.string.widget_open_to_load)
     episodeName != null -> "$episodeLabel · $episodeName"
     else -> episodeLabel
 }

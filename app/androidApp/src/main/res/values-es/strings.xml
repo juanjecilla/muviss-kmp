@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Las series que tienes a medias, con un toque para marcarlas.</string>
+    <string name="widget_nothing_title">Nada en curso</string>
+    <string name="widget_nothing_body">Empieza a ver algo y aparecerá aquí.</string>
+    <string name="widget_no_catalog_title">Abre Muviss una vez</string>
+    <string name="widget_no_catalog_body">Los detalles de los episodios se descargan la primera vez que abres la app.</string>
+    <string name="widget_undo">Deshacer</string>
+    <string name="widget_seen">Visto</string>
+    <string name="widget_marked_seen">Marcado como visto</string>
+    <string name="widget_open_to_load">Ábrela para cargar episodios</string>
+    <string name="notification_tap_to_open">Toca para abrir Muviss</string>
+    <string name="notification_episode_out">Ya está disponible %1$s</string>
+    <string name="notification_now_available">Ya disponible</string>
+    <string name="notification_episode_of_show_out">Ya está disponible %1$s de %2$s</string>
+    <string name="notification_show_out">Ya está disponible %1$s</string>
+    <string name="channel_new_episodes">Episodios nuevos</string>
+    <string name="channel_new_episodes_description">Avisos cuando una serie guardada tiene un episodio nuevo</string>
+    <string name="permission_title">¿Quieres saber cuándo salen episodios nuevos?</string>
+    <string name="permission_body">Muviss puede avisarte cuando una serie que sigues tiene un episodio nuevo. Nada más, y puedes cambiarlo en Ajustes.</string>
+    <string name="permission_allow">Permitir</string>
+    <string name="permission_not_now">Ahora no</string>
+    <plurals name="notification_summary_title">
+        <item quantity="one">%1$d serie tiene episodios nuevos</item>
+        <item quantity="other">%1$d series tienen episodios nuevos</item>
+    </plurals>
+</resources>

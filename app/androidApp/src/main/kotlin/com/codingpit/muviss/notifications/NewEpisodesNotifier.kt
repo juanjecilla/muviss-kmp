@@ -66,8 +66,8 @@ class NewEpisodesNotifier(private val context: Context) {
         results.forEach { style.addLine(it.summaryLine()) }
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_muviss)
-            .setContentTitle("${results.size} shows have new episodes")
-            .setContentText("Tap to open Muviss")
+            .setContentTitle(context.resources.getQuantityString(R.plurals.notification_summary_title, results.size, results.size))
+            .setContentText(context.getString(R.string.notification_tap_to_open))
             .setStyle(style)
             .setAutoCancel(true)
             .setGroup(GROUP_KEY)
@@ -107,10 +107,11 @@ class NewEpisodesNotifier(private val context: Context) {
     private fun NewEpisodesResult.notificationId(): Int = NotificationIds.forTitle(mediaId)
 
     /** Content text for the per-show notification; its title already carries the show's name. */
-    private fun NewEpisodesResult.contentText(): String = latestEpisodeLabel?.let { "$it is out" } ?: "Now available"
+    private fun NewEpisodesResult.contentText(): String = latestEpisodeLabel?.let { context.getString(R.string.notification_episode_out, it) } ?: context.getString(R.string.notification_now_available)
 
     /** One line of the summary notification's inbox style, which has no per-show title to lean on. */
-    private fun NewEpisodesResult.summaryLine(): String = latestEpisodeLabel?.let { "$it of $title is out" } ?: "$title is out"
+    private fun NewEpisodesResult.summaryLine(): String = latestEpisodeLabel?.let { context.getString(R.string.notification_episode_of_show_out, it, title) }
+        ?: context.getString(R.string.notification_show_out, title)
 
     companion object {
         private const val CHANNEL_ID = "new_episodes"
@@ -129,8 +130,8 @@ class NewEpisodesNotifier(private val context: Context) {
          */
         fun ensureChannel(context: Context) {
             val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManager.IMPORTANCE_DEFAULT)
-                .setName("New episodes")
-                .setDescription("Alerts when a saved show has a new episode out")
+                .setName(context.getString(R.string.channel_new_episodes))
+                .setDescription(context.getString(R.string.channel_new_episodes_description))
                 .build()
             NotificationManagerCompat.from(context).createNotificationChannel(channel)
         }

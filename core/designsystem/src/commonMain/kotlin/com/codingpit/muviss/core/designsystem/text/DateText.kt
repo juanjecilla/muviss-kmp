@@ -27,7 +27,7 @@ private val MONTHS = listOf(
 
 /**
  * A calendar date as "12 Mar 2024" in the user's language (EPIC 31, #74):
- * `core:common`'s `formatEpochDay` without the hard-coded English month names.
+ * It replaced `core:common`'s `formatEpochDay`, whose month names were English.
  * Day-month-year in both languages this app speaks; a locale that wants
  * another order changes `date_day_month_year`.
  */

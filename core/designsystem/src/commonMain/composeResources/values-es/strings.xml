@@ -32,4 +32,10 @@
     <string name="snooze_placement_mixed_in">Intercaladas</string>
     <string name="snooze_placement_first">Al principio</string>
     <string name="snooze_placement_last">Al final</string>
+
+    <!-- Screen-reader text for the rating row and an episode's tick. -->
+    <string name="a11y_rating_set">Tu valoración, %1$s de %2$d, ajustable</string>
+    <string name="a11y_rating_unset">Tu valoración, sin poner, ajustable</string>
+    <string name="a11y_mark_unwatched">Marcar %1$s como no visto</string>
+    <string name="a11y_mark_watched">Marcar %1$s como visto</string>
 </resources>

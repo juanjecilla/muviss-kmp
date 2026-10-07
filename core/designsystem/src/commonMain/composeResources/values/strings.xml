@@ -34,4 +34,12 @@
     <string name="snooze_placement_mixed_in">Mixed in</string>
     <string name="snooze_placement_first">First</string>
     <string name="snooze_placement_last">Last</string>
+
+    <!-- Screen-reader text for the rating row and an episode's tick. -->
+    <!-- %1$s the rating, e.g. "3.5", %2$d the number of stars. -->
+    <string name="a11y_rating_set">Your rating, %1$s of %2$d, adjustable</string>
+    <string name="a11y_rating_unset">Your rating, not set, adjustable</string>
+    <!-- %1$s identifies the episode, e.g. "S1 · E3". -->
+    <string name="a11y_mark_unwatched">Mark %1$s unwatched</string>
+    <string name="a11y_mark_watched">Mark %1$s watched</string>
 </resources>

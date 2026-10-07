@@ -6,7 +6,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
-import com.codingpit.muviss.core.common.formatEpochDay
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.triage.domain.ObserveSnoozedUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageSnooze
@@ -55,7 +54,7 @@ class SnoozedScreenTest {
 
         // The date is the whole point of the screen: it is the one thing the
         // snackbar could not leave behind.
-        onNodeWithText("Comes back ${formatEpochDay(20_007L)}").assertIsDisplayed()
+        onNodeWithText("Comes back 11 Oct 2024").assertIsDisplayed()
     }
 
     @Test

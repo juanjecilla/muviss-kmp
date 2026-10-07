@@ -5,4 +5,6 @@
     <string name="nav_progress">Progreso</string>
     <string name="nav_profile">Perfil</string>
     <string name="nav_settings">Ajustes</string>
+    <string name="persistence_read_only_tab">Muviss está abierta en otra pestaña. Los cambios que hagas aquí no se guardarán.</string>
+    <string name="persistence_not_persisted">Este navegador no puede guardar tu biblioteca. Los cambios se perderán al cerrar esta pestaña.</string>
 </resources>

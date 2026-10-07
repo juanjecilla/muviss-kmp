@@ -33,6 +33,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.SingletonImageLoader
+import com.codingpit.muviss.app.shared.generated.resources.Res
+import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
+import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
@@ -63,6 +66,7 @@ import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.core.module.Module
@@ -371,8 +375,8 @@ private fun rememberPersistenceWarning(): String? {
     val state by status.state.collectAsStateWithLifecycle()
     return when (state) {
         PersistenceState.Pending, PersistenceState.Durable -> null
-        PersistenceState.ReadOnlyTab -> "Muviss is open in another tab. Changes here won't be saved."
-        PersistenceState.NotPersisted -> "This browser can't save your library. Changes will be lost when you close this tab."
+        PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
+        PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
     }
 }
 

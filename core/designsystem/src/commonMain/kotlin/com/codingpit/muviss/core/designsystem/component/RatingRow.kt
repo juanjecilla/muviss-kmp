@@ -25,8 +25,12 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.generated.resources.Res
+import com.codingpit.muviss.core.designsystem.generated.resources.a11y_rating_set
+import com.codingpit.muviss.core.designsystem.generated.resources.a11y_rating_unset
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.stringResource
 
 /** Test tag prefix; the star at index `i` is tagged `"ratingStar$i"`. */
 const val RATING_STAR_TAG_PREFIX = "ratingStar"
@@ -56,13 +60,14 @@ fun RatingRow(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val description = if (rating != null) {
+        stringResource(Res.string.a11y_rating_set, RatingScale.label(rating), RatingScale.STAR_COUNT)
+    } else {
+        stringResource(Res.string.a11y_rating_unset)
+    }
     Row(
         modifier = modifier.semantics {
-            contentDescription = if (rating != null) {
-                "Your rating, ${RatingScale.label(rating)} of ${RatingScale.STAR_COUNT}, adjustable"
-            } else {
-                "Your rating, not set, adjustable"
-            }
+            contentDescription = description
             progressBarRangeInfo = ProgressBarRangeInfo(
                 current = rating?.let { RatingScale.starsOf(it) } ?: 0f,
                 range = 0f..RatingScale.STAR_COUNT.toFloat(),
