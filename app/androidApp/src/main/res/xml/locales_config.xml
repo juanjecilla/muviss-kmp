@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The UI languages the app ships (EPIC 31, #74). Android 13+ lists them under
+     Settings > Apps > Muviss > Language; keep in step with the values-* folders
+     in every composeResources directory. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="es" />
+</locale-config>

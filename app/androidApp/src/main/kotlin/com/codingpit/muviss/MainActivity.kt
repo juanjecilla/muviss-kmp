@@ -94,10 +94,10 @@ class MainActivity : ComponentActivity() {
                 if (prefs.getBoolean(KEY_ASKED, false) || NotificationPermission.granted(this@MainActivity)) return@repeatOnLifecycle
                 prefs.edit { putBoolean(KEY_ASKED, true) }
                 AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Know when new episodes are out?")
-                    .setMessage("Muviss can tell you when a show you follow has a new episode. Nothing else, and you can change it in Settings.")
-                    .setPositiveButton("Allow") { _, _ -> requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
-                    .setNegativeButton("Not now", null)
+                    .setTitle(R.string.permission_title)
+                    .setMessage(R.string.permission_body)
+                    .setPositiveButton(R.string.permission_allow) { _, _ -> requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                    .setNegativeButton(R.string.permission_not_now, null)
                     .show()
             }
         }

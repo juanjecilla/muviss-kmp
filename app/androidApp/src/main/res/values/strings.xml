@@ -2,4 +2,27 @@
     <string name="app_name">Muviss</string>
     <!-- Shown under the widget's preview in the launcher's widget picker. -->
     <string name="widget_description">The shows you are part-way through, with a one-tap tick.</string>
+    <string name="widget_nothing_title">Nothing in progress</string>
+    <string name="widget_nothing_body">Start watching something and it will show up here.</string>
+    <string name="widget_no_catalog_title">Open Muviss once</string>
+    <string name="widget_no_catalog_body">Episode details are downloaded the first time you open the app.</string>
+    <string name="widget_undo">Undo</string>
+    <string name="widget_seen">Seen</string>
+    <string name="widget_marked_seen">Marked seen</string>
+    <string name="widget_open_to_load">Open to load episodes</string>
+    <string name="notification_tap_to_open">Tap to open Muviss</string>
+    <string name="notification_episode_out">%1$s is out</string>
+    <string name="notification_now_available">Now available</string>
+    <string name="notification_episode_of_show_out">%1$s of %2$s is out</string>
+    <string name="notification_show_out">%1$s is out</string>
+    <string name="channel_new_episodes">New episodes</string>
+    <string name="channel_new_episodes_description">Alerts when a saved show has a new episode out</string>
+    <string name="permission_title">Know when new episodes are out?</string>
+    <string name="permission_body">Muviss can tell you when a show you follow has a new episode. Nothing else, and you can change it in Settings.</string>
+    <string name="permission_allow">Allow</string>
+    <string name="permission_not_now">Not now</string>
+    <plurals name="notification_summary_title">
+        <item quantity="one">%1$d show has new episodes</item>
+        <item quantity="other">%1$d shows have new episodes</item>
+    </plurals>
 </resources>
