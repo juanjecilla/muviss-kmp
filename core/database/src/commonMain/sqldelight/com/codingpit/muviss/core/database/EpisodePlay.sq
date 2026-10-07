@@ -48,6 +48,8 @@ CREATE TABLE episodePlay (
 
 CREATE INDEX episodePlay_episodeId ON episodePlay(episodeId);
 CREATE INDEX episodePlay_mediaId ON episodePlay(mediaId);
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX episodePlay_dirty ON episodePlay(isDirty) WHERE isDirty = 1;
 
 -- The only way a row is written, locally or from a pulled remote change.
 --

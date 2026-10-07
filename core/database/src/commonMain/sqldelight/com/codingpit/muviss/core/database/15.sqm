@@ -1,0 +1,20 @@
+-- EPIC 28 (#70): indexes for the reads that scanned. Migrates a v15 database
+-- to v16 (the filename is the version this migrates FROM). Indexes only: no
+-- table changes, no data moves.
+--
+-- listEntry's primary key is (listId, mediaId), so "which lists hold this
+-- title" (the detail screen's Add to list) scanned the whole table.
+CREATE INDEX listEntry_mediaId ON listEntry(mediaId);
+
+-- Every sync cycle runs a selectDirty per table, and almost every row is
+-- clean. A partial index holds only the dirty rows, so it costs nothing to
+-- keep for a synced library and makes the read a lookup instead of a scan.
+CREATE INDEX collectionEntry_dirty ON collectionEntry(isDirty) WHERE isDirty = 1;
+CREATE INDEX episodeProgress_dirty ON episodeProgress(isDirty) WHERE isDirty = 1;
+CREATE INDEX episodePlay_dirty ON episodePlay(isDirty) WHERE isDirty = 1;
+CREATE INDEX triageDecision_dirty ON triageDecision(isDirty) WHERE isDirty = 1;
+CREATE INDEX triageSnooze_dirty ON triageSnooze(isDirty) WHERE isDirty = 1;
+CREATE INDEX mediaList_dirty ON mediaList(isDirty) WHERE isDirty = 1;
+CREATE INDEX listEntry_dirty ON listEntry(isDirty) WHERE isDirty = 1;
+CREATE INDEX companionLink_dirty ON companionLink(isDirty) WHERE isDirty = 1;
+CREATE INDEX companionPoolOut_dirty ON companionPoolOut(isDirty) WHERE isDirty = 1;

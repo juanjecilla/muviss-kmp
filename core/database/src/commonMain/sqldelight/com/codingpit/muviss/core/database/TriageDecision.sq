@@ -34,6 +34,9 @@ CREATE TABLE triageDecision (
     deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX triageDecision_dirty ON triageDecision(isDirty) WHERE isDirty = 1;
+
 -- Skipped titles are listed newest-first and restores are per-verdict reads,
 -- so the verdict column is worth an index once a few thousand rows exist.
 CREATE INDEX triageDecision_verdict ON triageDecision(verdict);

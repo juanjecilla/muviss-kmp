@@ -26,6 +26,9 @@ CREATE TABLE mediaList (
     deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX mediaList_dirty ON mediaList(isDirty) WHERE isDirty = 1;
+
 -- One row per (list, title) membership. Deliberately carries no title/
 -- poster copy of its own and no foreign key to `collectionEntry` — a title
 -- can be added to a list without ever being saved to the library. Reading
@@ -52,23 +55,25 @@ CREATE TABLE listEntry (
     PRIMARY KEY (listId, mediaId)
 );
 
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX listEntry_dirty ON listEntry(isDirty) WHERE isDirty = 1;
+-- "Which lists hold this title": the primary key leads with listId (EPIC 28, 15.sqm).
+CREATE INDEX listEntry_mediaId ON listEntry(mediaId);
+
 -- List CRUD --
 
 -- [entryCount] only counts entries that currently have a live (non-deleted)
 -- `collectionEntry` snapshot to join against — the same rule
 -- `selectListContents` applies, so a list's badge count always matches
--- what tapping into it shows (see `ListsRepository`'s KDoc).
+-- what tapping into it shows (see `ListsRepository`'s KDoc). A join rather
+-- than a correlated COUNT per list (EPIC 28, #70).
 selectAllLists:
-SELECT
-    mediaList.*,
-    (
-        SELECT COUNT(*)
-        FROM listEntry
-        INNER JOIN collectionEntry ON collectionEntry.mediaId = listEntry.mediaId AND collectionEntry.deleted = 0
-        WHERE listEntry.listId = mediaList.id AND listEntry.deleted = 0
-    ) AS entryCount
+SELECT mediaList.*, COUNT(collectionEntry.mediaId) AS entryCount
 FROM mediaList
+LEFT JOIN listEntry ON listEntry.listId = mediaList.id AND listEntry.deleted = 0
+LEFT JOIN collectionEntry ON collectionEntry.mediaId = listEntry.mediaId AND collectionEntry.deleted = 0
 WHERE mediaList.deleted = 0
+GROUP BY mediaList.id
 ORDER BY mediaList.createdAtEpochMs DESC;
 
 selectListById:
