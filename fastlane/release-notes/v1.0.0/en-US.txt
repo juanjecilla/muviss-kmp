@@ -1,0 +1,9 @@
+Welcome to Muviss 1.0 — a private tracker for movies and TV shows.
+
+• Tick episodes and Muviss works out what you're watching, what's next and what's coming.
+• Fill your library fast: decide one title at a time, or snooze it for later.
+• Watch next, upcoming episodes, new-episode alerts and a home-screen widget.
+• Stats, rewatch history, ratings, notes and your own lists.
+• Import from Trakt, TV Time or CSV.
+
+No account, no ads, no social. Everything stays on your device.
