@@ -80,6 +80,11 @@ internal class FakeCollectionApi : CollectionApi {
     val added = mutableListOf<MediaId>()
     val removed = mutableListOf<MediaId>()
 
+    /** The library snapshot offline-first Detail renders first (EPIC 30, #73). */
+    var saved: MediaDetails? = null
+
+    override suspend fun savedDetails(mediaId: MediaId): MediaDetails? = saved
+
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = membership
     override fun observeSummaries(): Flow<List<CollectionSummary>> = error("not used")
 
@@ -135,6 +140,11 @@ internal class FakeProgressApi : ProgressApi {
     var now = 1_000L
 
     val seenIds: Set<EpisodeId> get() = plays.value.filterValues { it.isNotEmpty() }.keys
+
+    /** The stored episode catalog offline-first Detail renders first (EPIC 30, #73). */
+    var stored: List<Season>? = null
+
+    override suspend fun storedSeasons(mediaId: MediaId): List<Season>? = stored
 
     private fun addPlay(episodeId: EpisodeId) {
         plays.value = plays.value + (episodeId to (plays.value[episodeId].orEmpty() + now))
@@ -266,6 +276,42 @@ class DetailViewModelTest {
             // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
             TestClock(todayEpochMs = 20L * 86_400_000L),
         )
+    }
+
+    @Test
+    fun a_saved_show_offline_renders_from_the_device_with_a_notice_not_an_error() = runTest {
+        // EPIC 30 (#73): Detail used to need the network even for a title whose
+        // snapshot and episode catalog were already stored.
+        val collection = FakeCollectionApi().apply { saved = tvDetails.copy(seasons = emptyList()) }
+        val progress = FakeProgressApi().apply { stored = tvDetails.seasons }
+        val vm = viewModel(collection, progress, detailsToLoad = tvDetails, id = show, repoFakes = DetailRepoFakes(detailsFailure = MetadataError.Offline()))
+        advanceUntilIdle()
+
+        val state = vm.state.value
+        assertEquals("Game of Thrones", state.details?.summary?.title)
+        assertEquals(tvDetails.seasons, state.details?.seasons)
+        assertEquals(MetadataError.Offline().userMessage, state.staleNotice)
+        assertNull(state.error)
+        assertFalse(state.loading)
+    }
+
+    @Test
+    fun a_saved_title_online_is_replaced_by_the_network_answer() = runTest {
+        val collection = FakeCollectionApi().apply { saved = MediaDetails(MediaSummary(show, "Old title")) }
+        val vm = viewModel(collection, detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        assertEquals("Game of Thrones", vm.state.value.details?.summary?.title)
+        assertNull(vm.state.value.staleNotice)
+    }
+
+    @Test
+    fun an_unsaved_title_offline_is_still_an_error() = runTest {
+        val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = MetadataError.Offline()))
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertNull(vm.state.value.details)
     }
 
     @Test

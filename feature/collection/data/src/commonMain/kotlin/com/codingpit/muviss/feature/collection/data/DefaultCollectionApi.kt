@@ -13,7 +13,9 @@ import com.codingpit.muviss.feature.collection.domain.RefreshTitlesUseCase
 import com.codingpit.muviss.feature.collection.domain.RemoveFromCollectionUseCase
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaSummary
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Bridges the collection feature's use cases to its public [CollectionApi]. */
@@ -30,6 +32,15 @@ internal class DefaultCollectionApi(
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = observeEntry(mediaId)
         .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite, it.notificationsMuted, it.rating, it.note, it.revisitWillingness, it.coWatchPinned) } }
+
+    override suspend fun savedDetails(mediaId: MediaId): MediaDetails? = observeEntry(mediaId).first()?.let { entry ->
+        MediaDetails(
+            summary = MediaSummary(id = entry.mediaId, title = entry.title, year = entry.releaseYear, posterUrl = entry.posterUrl),
+            genres = entry.genres,
+            runtimeMinutes = entry.runtimeMinutes,
+            productionStatus = entry.productionStatus,
+        )
+    }
 
     override fun observeSummaries(): Flow<List<CollectionSummary>> = observeCollection()
         .map { entries ->

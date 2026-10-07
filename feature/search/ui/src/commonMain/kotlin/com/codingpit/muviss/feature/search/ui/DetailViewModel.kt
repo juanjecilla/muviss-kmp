@@ -17,6 +17,7 @@ import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.toUserMessage
@@ -30,6 +31,13 @@ data class DetailUiState(
     val loading: Boolean = true,
     val details: MediaDetails? = null,
     val error: String? = null,
+    /**
+     * Set when [details] is the saved copy and the refresh from TMDB failed —
+     * e.g. offline. The screen keeps showing the saved title with a banner and
+     * Retry, instead of an error page for something already on the device
+     * (EPIC 30, #73).
+     */
+    val staleNotice: String? = null,
     val saved: Boolean = false,
     val favorite: Boolean = false,
     /** Per-show new-episode notification opt-out (EPIC 5); only meaningful while [saved] is true. */
@@ -145,16 +153,42 @@ class DetailViewModel(
             .launchInReporting(viewModelScope)
     }
 
+    /**
+     * Offline-first (EPIC 30, #73): a saved title renders from the library
+     * snapshot and the stored episode catalog at once, then the network answer
+     * replaces it. A failed refresh over saved data is a [DetailUiState.staleNotice],
+     * not an error — only a title with nothing on the device shows the error page.
+     */
     fun load() {
         viewModelScope.launchReporting {
-            _state.update { it.copy(loading = true, error = null) }
+            if (_state.value.details == null) {
+                val local = savedCopy()
+                _state.update { it.copy(loading = local == null, details = local, error = null, staleNotice = null) }
+            } else {
+                _state.update { it.copy(error = null, staleNotice = null) }
+            }
             loadDetail(mediaId).fold(
-                onSuccess = { d -> _state.update { it.copy(loading = false, details = d) } },
-                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUserMessage("Something went wrong")) } },
+                onSuccess = { d -> _state.update { it.copy(loading = false, details = d, staleNotice = null) } },
+                onFailure = { e ->
+                    _state.update {
+                        if (it.details != null) {
+                            it.copy(loading = false, staleNotice = e.toUserMessage(REFRESH_FAILED))
+                        } else {
+                            it.copy(loading = false, error = e.toUserMessage("Something went wrong"))
+                        }
+                    }
+                },
             )
         }
         loadWhereToWatch()
         loadMoreLikeThisRow()
+    }
+
+    /** The library snapshot plus the stored episode catalog, or null for a title that is not saved. */
+    private suspend fun savedCopy(): MediaDetails? {
+        val saved = runCatching { collectionApi.savedDetails(mediaId) }.getOrNull() ?: return null
+        val seasons = if (mediaId.type == MediaType.TV) runCatching { progressApi.storedSeasons(mediaId) }.getOrNull().orEmpty() else emptyList()
+        return saved.copy(seasons = seasons)
     }
 
     /**
@@ -329,6 +363,10 @@ class DetailViewModel(
     /** Toggles a movie's watched flag. */
     fun toggleMovieWatched() {
         viewModelScope.launchReporting { progressApi.setMovieWatched(mediaId, !_state.value.movieWatched) }
+    }
+
+    private companion object {
+        const val REFRESH_FAILED = "Couldn't refresh this title."
     }
 }
 
