@@ -270,15 +270,15 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | Wave | Epic | Issue |
 |---|---|---|
 | 0 | Manual actions only the owner can take (billing, accounts, certs, artwork) | #66 |
-| 10 | EPIC 25 CI that gates again | #67 |
+| 10 | EPIC 25 CI that gates again — 2026-10-08: Android Lint on every module (#245), app/desktop unit tests and R8 + licensee on every PR (#248); left: iOS tests and release framework (#49, #50), lockfiles, signed-AAB check | #67 |
 | 10 | EPIC 26 Crash reporting that reports | #68 |
 | 10 | EPIC 27 Network hardening — **merged 2026-09-20** (#96); follow-ups #89-#94 | #69 |
 | 10 | EPIC 28 Data-layer performance — **merged 2026-10-07** (#228 one-query Library, #229 indexes `15.sqm`, #232 lazy Detail) | #70 |
 | 10 | EPIC 38 Repo hygiene and shared test infrastructure | #71 |
 | 11 | EPIC 29 A backup you can restore — **merged 2026-10-07** (#224, #225, #226, #227, #230); iOS device check #240 | #72 |
 | 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes — **merged 2026-10-07** (#202, #203, #208, #209, #212, #213) | #73 |
-| 11 | EPIC 31 Localization (Spanish + app-language selector) — **merged 2026-10-07** (#214-#223, #239); follow-ups #217, #219, #222 | #74 |
-| 11 | EPIC 31b Accessibility — in progress (#233, #238); Lint-as-errors waits on EPIC 25 | #164 |
+| 11 | EPIC 31 Localization (Spanish + app-language selector) — **merged 2026-10-07** (#214-#223, #239); #219 merged 2026-10-08 (#243), iOS widget in #253; left: #217 (sync copy, before sync launches) and #222's desktop loopback messages | #74 |
+| 11 | EPIC 31b Accessibility — in progress (#233, #238); Lint with a11y as errors and the search-field / settings-switch labels in #245; left: a spoken TalkBack/VoiceOver pass | #164 |
 | 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
 | 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
@@ -385,6 +385,15 @@ runs standing in where they could. What that did and did not buy:
   Supabase project. The first real signal arrives when #66 is done.
 
 ## Cross-cutting / backlog
+
+### 2026-10-08
+
+- Android 1.0.0 is live on Google Play; the landing's Play badge links to it (#247). Desktop stays "Coming soon" until EPIC 36's notarised DMG.
+- **#251 — iOS aborted on 5 of 8 fresh installs** (also v1.0.0): two drivers created the schema at once at startup (`CrashReportsConsent` and the graph). Fixed by serializing iOS `DatabaseDriverFactory.create()` and opening the first connection inside the lock (#252). Android's v1.0.0 → `develop` upgrade (which runs `14.sqm` + `15.sqm`) was checked on an emulator: clean, library kept.
+- #249 — an "offline" screen now reloads when the connection returns (`ConnectivityMonitor`, #250); desktop has no signal and keeps a manual Retry.
+- #193 — the Play ramp holds while Sentry shows a new unhandled issue in the release, fail-closed (#255); needs `event:read` on `SENTRY_AUTH_TOKEN`.
+- Play release notes for 1.1.0 are written ahead of the train (#254).
+- Closed as already done or not reproducible: #98 (fixed in #140), #115 (ADR 0021), #176 (no idle churn on current code). #162 and #231 fixed (#246, #244).
 
 **Everything here has an issue.** The tracker is the source of truth for undone
 work; this list is the map. Nothing should appear below without a number beside
