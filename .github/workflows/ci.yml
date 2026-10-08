@@ -176,8 +176,10 @@ jobs:
       - name: Assemble Android debug APK
         run: ./gradlew :app:androidApp:assembleDebug :app:androidApp:verifyDebugApkComposeResources --stacktrace
 
-      # Lint covers the app and, through checkDependencies, every KMP module
-      # (they apply com.android.lint). Accessibility issues are errors; the
+      # Lint covers the app and, through checkDependencies, every module it
+      # ships that has an Android target (muviss.kmp.library applies
+      # com.android.lint). JVM-only test helpers such as :core:testing are not
+      # linted. Accessibility issues are errors; the
       # baseline holds only what predates lint being switched on (#164).
       - name: Android Lint
         run: ./gradlew :app:androidApp:lintDebug --stacktrace
