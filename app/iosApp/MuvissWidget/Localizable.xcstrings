@@ -1,0 +1,136 @@
+{
+  "sourceLanguage": "en",
+  "version": "1.0",
+  "strings": {
+    "Episode": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Episodio"
+          }
+        }
+      }
+    },
+    "Episode details are downloaded the first time you open the app.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los detalles de los episodios se descargan la primera vez que abres la app."
+          }
+        }
+      }
+    },
+    "Mark episode seen": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marcar episodio como visto"
+          }
+        }
+      }
+    },
+    "Marked seen": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marcado como visto"
+          }
+        }
+      }
+    },
+    "Nothing in progress": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada en curso"
+          }
+        }
+      }
+    },
+    "Open Muviss once": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre Muviss una vez"
+          }
+        }
+      }
+    },
+    "Open to load episodes": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ábrela para cargar episodios"
+          }
+        }
+      }
+    },
+    "Seen": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visto"
+          }
+        }
+      }
+    },
+    "Start watching something and it will show up here.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empieza a ver algo y aparecerá aquí."
+          }
+        }
+      }
+    },
+    "The shows you are part-way through, with a one-tap tick.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las series que tienes a medias, con un toque para marcarlas."
+          }
+        }
+      }
+    },
+    "Undo": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deshacer"
+          }
+        }
+      }
+    },
+    "Undo marking episode seen": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deshacer marcar episodio como visto"
+          }
+        }
+      }
+    },
+    "Watch next": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por ver"
+          }
+        }
+      }
+    }
+  }
+}
