@@ -96,7 +96,10 @@ class SyncFlowUiTest {
         // Asserting once here raced it (#162).
         waitUntil(timeoutMillis = 10_000) {
             val status = runBlocking { sync.engine.observeStatus().first() }
-            status.lastSyncedAtEpochMs != syncedBefore && !status.lastAttemptFailed && status.pendingChanges == 0L
+            status.lastSyncedAtEpochMs != syncedBefore &&
+                status.lastAttemptAtEpochMs == status.lastSyncedAtEpochMs &&
+                !status.lastAttemptFailed &&
+                status.pendingChanges == 0L
         }
         waitUntil(timeoutMillis = 10_000) {
             onAllNodesWithTag(SYNC_LAST_SYNCED_TAG).fetchSemanticsNodes().singleOrNull()
