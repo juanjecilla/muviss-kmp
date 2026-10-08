@@ -3,6 +3,8 @@ package com.codingpit.muviss
 import android.app.Application
 import android.content.pm.ApplicationInfo
 import android.util.Log
+import com.codingpit.muviss.core.common.connectivity.AndroidConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
@@ -67,6 +69,8 @@ class MuvissApplication : Application() {
                             single { DatabaseDriverFactory(this@MuvissApplication) }
                             // Settings explains a blocked notification switch (EPIC 30, #73).
                             single<SystemNotificationSettings> { AndroidNotificationSettings(this@MuvissApplication) }
+                            // An offline error retries itself on reconnect (#249).
+                            single<ConnectivityMonitor> { AndroidConnectivityMonitor(this@MuvissApplication) }
                             // Debug builds only: the class-name chain of a swallowed
                             // TMDB failure, in logcat (#177). Loaded after
                             // networkModule's no-op, so this binding wins.

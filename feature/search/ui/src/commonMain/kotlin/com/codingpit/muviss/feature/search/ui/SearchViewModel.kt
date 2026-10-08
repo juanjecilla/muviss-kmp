@@ -4,6 +4,8 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.reconnections
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.designsystem.text.UiText
@@ -81,6 +83,7 @@ data class SearchUiState(
  * drill-down when a chip is tapped. Progress is not touched here — this
  * feature is read-only discovery.
  */
+@Suppress("LongParameterList") // the seventh is the connectivity signal (#249), defaulted so tests can leave it out
 class SearchViewModel(
     private val searchMedia: SearchMediaUseCase,
     private val discoverMedia: DiscoverMediaUseCase,
@@ -88,6 +91,7 @@ class SearchViewModel(
     private val recommendationsUseCase: RecommendationsUseCase,
     private val collectionApi: CollectionApi,
     private val triageApi: TriageApi,
+    connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -113,6 +117,11 @@ class SearchViewModel(
         ) { library, decided, snoozed -> library to (decided + snoozed) }
             .flatMapLatest { (library, decided) -> forYouFlow(library, decided) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
+            .launchInReporting(viewModelScope)
+        // A failure shown while offline retries itself when the connection
+        // comes back, rather than waiting for a tap on Retry (#249).
+        connectivity.reconnections()
+            .onEach { if (_state.value.error != null) retry() }
             .launchInReporting(viewModelScope)
     }
 

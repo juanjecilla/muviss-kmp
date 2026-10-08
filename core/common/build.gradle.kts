@@ -79,6 +79,9 @@ kotlin {
                 api(libs.koin.core)
             }
         }
+        commonTest.dependencies {
+            implementation(libs.kotlinx.coroutinesTest)
+        }
         // Sentry KMP publishes real android/jvm/iOS implementations and no-op
         // stubs for js/wasmJs. There is no default-hierarchy-template bucket
         // shared by exactly android+jvm+ios (it gives androidMain/jvmMain their

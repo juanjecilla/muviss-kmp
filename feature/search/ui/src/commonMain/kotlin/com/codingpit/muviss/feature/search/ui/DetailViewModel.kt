@@ -3,6 +3,8 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.reconnections
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.todayEpochDay
@@ -108,6 +110,7 @@ data class BulkMarkUndo(
  * feature can offer add/remove, favorite, and episode-tracking controls
  * without depending on how either is implemented.
  */
+@Suppress("LongParameterList") // the seventh is the connectivity signal (#249), defaulted so tests can leave it out
 class DetailViewModel(
     private val mediaId: MediaId,
     private val loadDetail: MediaDetailUseCase,
@@ -115,6 +118,7 @@ class DetailViewModel(
     private val loadWatchProviders: WatchProvidersUseCase,
     private val loadMoreLikeThis: MoreLikeThisUseCase,
     private val clock: AppClock,
+    connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
 ) : ViewModel() {
 
     private val collectionApi: CollectionApi get() = peers.collection
@@ -156,6 +160,10 @@ class DetailViewModel(
             .launchInReporting(viewModelScope)
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
+            .launchInReporting(viewModelScope)
+        // Back online with an error page or a stale notice up: fetch again (#249).
+        connectivity.reconnections()
+            .onEach { if (_state.value.error != null || _state.value.staleNotice != null) load() }
             .launchInReporting(viewModelScope)
     }
 
