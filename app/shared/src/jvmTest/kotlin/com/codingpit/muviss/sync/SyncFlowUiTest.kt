@@ -2,6 +2,8 @@
 
 package com.codingpit.muviss.sync
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
@@ -81,11 +83,28 @@ class SyncFlowUiTest {
         onNodeWithTag(SYNC_AUTOMATIC_SWITCH_TAG).performClick()
         waitUntil(timeoutMillis = 10_000) { runBlocking { sync.flags.syncAutomatically.first() } }
 
+        // Whatever sync has already recorded, so the label below is proved to
+        // come from the cycle this change starts, not an earlier one.
+        val syncedBefore = runBlocking { sync.engine.observeStatus().first().lastSyncedAtEpochMs }
+
         // The change goes through the same repository the Library screen uses.
         runBlocking { sync.addMovie() }
         waitUntil(timeoutMillis = 10_000) { server.rows("collection_entry", "alice").size == 1 }
 
-        waitUntil(timeoutMillis = 10_000) { !onAllNodesWithTagExists(SYNC_DETAIL_TAG) }
+        // The row reaching the server is the push; the cycle still has its
+        // pull and its success record to go, and only that moves the label.
+        // Asserting once here raced it (#162).
+        waitUntil(timeoutMillis = 10_000) {
+            val status = runBlocking { sync.engine.observeStatus().first() }
+            status.lastSyncedAtEpochMs != syncedBefore &&
+                status.lastAttemptAtEpochMs == status.lastSyncedAtEpochMs &&
+                !status.lastAttemptFailed &&
+                status.pendingChanges == 0L
+        }
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodesWithTag(SYNC_LAST_SYNCED_TAG).fetchSemanticsNodes().singleOrNull()
+                ?.config?.getOrNull(SemanticsProperties.Text)?.joinToString() == "Synced just now"
+        }
         onNodeWithTag(SYNC_LAST_SYNCED_TAG).assertTextEquals("Synced just now")
     }
 
