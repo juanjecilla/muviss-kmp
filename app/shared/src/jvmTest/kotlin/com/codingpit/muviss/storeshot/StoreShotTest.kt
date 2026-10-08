@@ -6,17 +6,22 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.test.swipe
@@ -168,7 +173,17 @@ class StoreShotTest {
         val nav = NAV.getValue(locale.substringBefore('-'))
         val shots = mutableListOf<Pair<String, java.awt.image.BufferedImage>>()
         fun capture(name: String) {
-            waitForIdle()
+            // A dialog or popup is a second root: onRoot() would throw, and a
+            // shot taken around one would be the wrong store image (#231).
+            settle { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
+            // The test pointer stays where it last touched, and whatever is
+            // under it draws a hover layer: a store image showed a nav tab
+            // and an episode row lit up that nobody was pointing at.
+            waitForOneRoot()
+            onRoot().performMouseInput { moveTo(androidx.compose.ui.geometry.Offset(-10f, -10f)) }
+            settle { true }
+            // settle advanced the clock, and a popup can arrive in that time.
+            waitForOneRoot()
             shots += name to onRoot().captureToImage().toAwtImage()
         }
 
@@ -216,35 +231,50 @@ class StoreShotTest {
         settle { onAllNodes(hasText("Fill your library")).fetchSemanticsNodes().isNotEmpty() }
         onAllNodes(hasText("Fill your library"))[0].performClick()
         onAllNodes(hasText("Got it")).fetchSemanticsNodes().firstOrNull()?.let { onAllNodes(hasText("Got it"))[0].performClick() }
+        // The Discover intro, the triage tutorial and the snooze hint each
+        // say "Got it", and they can arrive one after another: dismiss until
+        // none is left, not just until the card is there (#231).
+        // The last match is the topmost root: a dialog over the hint takes
+        // the click, the hint under it would not.
         settle {
-            onAllNodes(hasText("Got it")).fetchSemanticsNodes().firstOrNull()?.let { onAllNodes(hasText("Got it"))[0].performClick() }
-            onAllNodes(hasTestTag("triage-card")).fetchSemanticsNodes().isNotEmpty()
+            val gotIt = onAllNodes(hasText("Got it"))
+            gotIt.fetchSemanticsNodes().size.takeIf { it > 0 }?.let { gotIt[it - 1].performClick() }
+            onAllNodes(hasTestTag("triage-card")).fetchSemanticsNodes().isNotEmpty() &&
+                onAllNodes(hasText("Got it")).fetchSemanticsNodes().isEmpty()
         }
         capture("triage")
 
         write(shots, locale, dark)
     }
 
+    // Through the click action, not a touch: a touched tab kept its pressed
+    // layer in Skiko, and the triage shot showed Profile lit up under a
+    // screen that no tab owns. A device shows none (checked on an emulator).
     private fun SkikoComposeUiTest.tab(label: String) {
         onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().firstOrNull()
-            ?.let { onAllNodes(hasText(label) and hasClickAction())[0].performClick() }
-            ?: onAllNodes(hasClickAction() and hasAnyDescendantText(label))[0].performClick()
+            ?.let { onAllNodes(hasText(label) and hasClickAction())[0].performSemanticsAction(SemanticsActions.OnClick) }
+            ?: onAllNodes(hasClickAction() and hasAnyDescendantText(label))[0].performSemanticsAction(SemanticsActions.OnClick)
     }
 
     /**
      * Scrolls until the node with [text] sits [marginPx] below the top edge.
-     * The drag is slow so it stops where it is released instead of flinging.
+     * Through the scroll action of the tallest scrollable, not a drag: a drag
+     * that starts on a row leaves that row's pressed layer in the shot.
      */
     private fun SkikoComposeUiTest.bringToTop(text: String, marginPx: Float) {
         waitForIdle()
         val topPx = onAllNodes(hasText(text))[0].getUnclippedBoundsInRoot().top.value * DENSITY
         val distance = topPx - marginPx
         if (kotlin.math.abs(distance) < 4f) return
-        onRoot().performTouchInput {
-            val startY = if (distance > 0) bottom * 0.85f else bottom * 0.15f
-            swipe(start = androidx.compose.ui.geometry.Offset(centerX, startY), end = androidx.compose.ui.geometry.Offset(centerX, startY - distance), durationMillis = 2_000)
-        }
+        val scrollables = onAllNodes(hasScrollAction())
+        val tallest = scrollables.fetchSemanticsNodes().withIndex().maxBy { it.value.size.height }.index
+        scrollables[tallest].performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, distance) }
         waitForIdle()
+    }
+
+    /** Waits without advancing the clock (unlike [settle]) until no popup is up. */
+    private fun SkikoComposeUiTest.waitForOneRoot() {
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
     }
 
     private fun SkikoComposeUiTest.settle(condition: () -> Boolean) {
@@ -253,8 +283,12 @@ class StoreShotTest {
         } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
             // What the screen showed instead, to diagnose a step that never settled.
             val debug = File(System.getProperty("java.io.tmpdir"), "muviss-storeshot-timeout.png")
-            ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", debug)
-            throw AssertionError("StoreShot step did not settle; screen saved to $debug", timeout)
+            // With a popup up there is more than one root; the first is the app.
+            // Before the first composition there is none, and the timeout is
+            // still the error worth reporting.
+            val saved = onAllNodes(isRoot()).fetchSemanticsNodes().isNotEmpty()
+            if (saved) ImageIO.write(onAllNodes(isRoot())[0].captureToImage().toAwtImage(), "png", debug)
+            throw AssertionError("StoreShot step did not settle; ${if (saved) "screen saved to $debug" else "nothing was composed"}", timeout)
         }
         // Let images and the last recomposition land before capturing.
         mainClock.advanceTimeBy(500)
