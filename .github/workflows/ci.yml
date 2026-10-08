@@ -105,7 +105,11 @@ jobs:
     # rather than fails burns all of it.
     timeout-minutes: 45
     steps:
+      # Full history: the release build below takes its versionCode from
+      # `git rev-list --count HEAD` and refuses a shallow clone.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
