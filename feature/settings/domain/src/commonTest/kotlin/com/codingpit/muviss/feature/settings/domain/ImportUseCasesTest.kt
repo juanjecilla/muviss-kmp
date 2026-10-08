@@ -12,6 +12,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 private class FakeExternalIdResolver(private val byImdb: Map<String, MediaId> = emptyMap()) : ExternalIdResolver {
@@ -31,8 +33,9 @@ private class FakeExternalIdResolver(private val byImdb: Map<String, MediaId> = 
 
 private class FakeDetailsSource(private val details: Map<MediaId, MediaDetails> = emptyMap()) : ImportMediaDetailsSource {
     var failFor: MediaId? = null
+    var failure: Throwable = RuntimeException("boom")
     override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> {
-        if (mediaId == failFor) return Result.failure(RuntimeException("boom"))
+        if (mediaId == failFor) return Result.failure(failure)
         return details[mediaId]?.let { Result.success(it) } ?: Result.failure(NoSuchElementException(mediaId.toString()))
     }
 }
@@ -138,7 +141,28 @@ class PreviewImportUseCaseTest {
 
         assertTrue(preview.resolved.isEmpty())
         val unresolved = preview.unresolved.single()
-        assertEquals("No IMDb/TMDB id in the source file", unresolved.reason)
+        assertEquals(UnresolvedReason.NoExternalId, unresolved.reason)
+    }
+
+    @Test
+    fun an_id_tmdb_does_not_know_is_unresolved_as_no_match() = runTest {
+        val csv = "title,type,imdb_id\nLost Film,movie,tt0000001\n"
+
+        val preview = useCase().invoke(csv)
+
+        assertEquals(UnresolvedReason.NoMatch, preview.unresolved.single().reason)
+    }
+
+    @Test
+    fun a_lookup_that_fails_is_not_reported_as_no_match() = runTest {
+        val csv = "title,type,imdb_id\nSome Film,movie,tt0000002\n"
+        val offline = object : ExternalIdResolver {
+            override suspend fun resolve(ref: ExternalTitleRef, type: MediaType?): MediaId? = throw MetadataError.Offline()
+        }
+
+        val preview = useCase(offline).invoke(csv)
+
+        assertEquals(UnresolvedReason.LookupFailed, preview.unresolved.single().reason)
     }
 
     @Test
@@ -166,7 +190,8 @@ class PreviewImportUseCaseTest {
 
     @Test
     fun unrecognized_content_throws() = runTest {
-        assertFailsWith<ImportFileException> { useCase().invoke("not a recognized format at all") }
+        val e = assertFailsWith<ImportFileException> { useCase().invoke("not a recognized format at all") }
+        assertEquals(ImportFileError.Unrecognized, e.kind)
     }
 }
 
@@ -241,7 +266,22 @@ class ApplyImportUseCaseTest {
 
         assertEquals(0, result.importedTitleCount)
         assertEquals(1, result.failed.size)
+        // Not a MetadataError: reported as Unknown, its own text never reaches the UI (#219).
+        assertIs<MetadataError.Unknown>(result.failed.single().error)
         assertTrue(collectionApi.added.isEmpty())
+    }
+
+    @Test
+    fun a_network_failure_keeps_its_kind_so_the_ui_can_say_offline() = runTest {
+        val source = FakeDetailsSource(mapOf(movieId to movieDetails))
+        source.failFor = movieId
+        source.failure = MetadataError.Offline()
+        val useCase = ApplyImportUseCase(source, FakeCollectionApi(), FakeProgressApi())
+        val title = ImportedTitle(ExternalTitleRef(tmdbId = "603"), MediaType.MOVIE, "The Matrix")
+
+        val result = useCase(preview(ResolvedImportTitle(title, movieId)))
+
+        assertIs<MetadataError.Offline>(result.failed.single().error)
     }
 
     @Test
@@ -251,7 +291,7 @@ class ApplyImportUseCaseTest {
         val useCase = ApplyImportUseCase(FakeDetailsSource(), collectionApi, progressApi)
         val unresolvedTitle = UnresolvedImportTitle(
             ImportedTitle(ExternalTitleRef(), MediaType.MOVIE, "Unknown"),
-            reason = "No IMDb/TMDB id in the source file",
+            reason = UnresolvedReason.NoExternalId,
         )
 
         val result = useCase(preview(unresolved = listOf(unresolvedTitle)))

@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.domain
 
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 
 /** Which importer produced an [ImportPayload] — drives format auto-detect and the preview screen's label. */
 enum class ImportSource {
@@ -73,8 +74,26 @@ data class ResolvedImportTitle(
 /** A title [ExternalIdResolver] could not place — reported, never dropped (EPIC 18's acceptance criterion). */
 data class UnresolvedImportTitle(
     val title: ImportedTitle,
-    val reason: String,
+    val reason: UnresolvedReason,
 )
+
+/**
+ * Why a title could not be placed on TMDB. A reason, not copy: the UI words
+ * it in the user's language (#219).
+ */
+enum class UnresolvedReason {
+    /** The source row carried neither an IMDb nor a TMDB id. */
+    NoExternalId,
+
+    /** The source did not say whether the title is a movie or a show. */
+    UnknownMediaType,
+
+    /** The ids were there, but TMDB has nothing for them. */
+    NoMatch,
+
+    /** The lookup itself failed (offline, rate limited): TMDB never answered. */
+    LookupFailed,
+}
 
 /**
  * The preview shown before the user confirms an import: every title split
@@ -97,7 +116,7 @@ data class ImportPreview(
 /** One resolved title whose collection/progress write failed at apply time (e.g. the details fetch errored). */
 data class FailedImportTitle(
     val title: ResolvedImportTitle,
-    val reason: String,
+    val error: MetadataError,
 )
 
 /** The result summary shown after an import runs: what landed, what didn't, and why. */
