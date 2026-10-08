@@ -3,6 +3,8 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -61,6 +63,15 @@ class SearchScreenErrorCopyTest {
         onNodeWithText("Something went wrong").assertExists()
         onNodeWithText("SECRET", substring = true).assertDoesNotExist()
         onNodeWithText("themoviedb", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun the_search_field_says_what_it_is_for() = runComposeUiTest {
+        // EPIC 31b (#164): a bare BasicTextField was announced as "Edit box".
+        setContent { SearchWithFailure(failure = null) }
+        waitForIdle()
+
+        onNode(hasSetTextAction() and hasContentDescription("Search movies & TV")).assertExists()
     }
 
     @Test

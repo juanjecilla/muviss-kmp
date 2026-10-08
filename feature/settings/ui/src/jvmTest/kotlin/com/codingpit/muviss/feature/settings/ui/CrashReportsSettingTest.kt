@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.settings.ui
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
@@ -149,6 +150,17 @@ class CrashReportsSettingTest {
         // Exactly one switch sits on the Privacy row: it is the last toggleable node.
         onAllNodes(isToggleable()).onLast().assertIsOn()
         assertTrue(repository.settings.value.crashReportsEnabled)
+    }
+
+    @Test
+    fun a_screen_reader_hears_the_switch_by_its_name() = runComposeUiTest {
+        // EPIC 31b (#164): the switch used to be its own node, with no label.
+        setContent {
+            MuvissTheme(darkTheme = false) { SettingsScreen(viewModel(FakeRepository()), {}, {}, {}) }
+        }
+        waitForIdle()
+
+        onNode(isToggleable() and hasText("Send crash reports")).performScrollTo().assertIsOn()
     }
 
     @Test

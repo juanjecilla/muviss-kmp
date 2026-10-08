@@ -7,6 +7,10 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
     id("com.android.kotlin.multiplatform.library")
+    // The KMP library plugin creates no lint tasks of its own; this adds
+    // `lint`, and `:app:androidApp`'s `checkDependencies` then covers the
+    // module too (EPIC 31b #164).
+    id("com.android.lint")
 }
 
 val moduleNamespace: String = "com.codingpit.muviss." +

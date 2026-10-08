@@ -39,6 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
@@ -143,12 +146,15 @@ private fun SearchPill(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )
+            val placeholder = stringResource(Res.string.search_placeholder)
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) {
+                    // Drawn only; the field below carries it as its label.
                     Text(
-                        stringResource(Res.string.search_placeholder),
+                        placeholder,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clearAndSetSemantics {},
                     )
                 }
                 BasicTextField(
@@ -157,7 +163,9 @@ private fun SearchPill(
                     singleLine = true,
                     textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth(),
+                    // A bare BasicTextField has no label: TalkBack announced
+                    // only "Edit box" (EPIC 31b, #164).
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder },
                 )
             }
             if (query.isNotEmpty()) {

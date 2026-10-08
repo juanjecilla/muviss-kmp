@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -56,7 +57,7 @@ class SearchScreenInsetsTest {
         // 48dp of safe area on top of the unpadded baseline below. The 48dp
         // difference between these two tests is the assertion; the baseline is
         // the Column's 12dp plus the pill's own 12dp of inner padding.
-        onNodeWithText(PLACEHOLDER).assertTopPositionInRootIsEqualTo(48.dp + PILL_BASELINE_TOP)
+        onNodeWithContentDescription(PLACEHOLDER).assertTopPositionInRootIsEqualTo(48.dp + PILL_BASELINE_TOP)
     }
 
     @Test
@@ -64,7 +65,7 @@ class SearchScreenInsetsTest {
         setContent { SearchUnderTest(NO_INSETS) }
         waitForIdle()
 
-        onNodeWithText(PLACEHOLDER).assertTopPositionInRootIsEqualTo(PILL_BASELINE_TOP)
+        onNodeWithContentDescription(PLACEHOLDER).assertTopPositionInRootIsEqualTo(PILL_BASELINE_TOP)
     }
 
     @Test
