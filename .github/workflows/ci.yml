@@ -145,12 +145,16 @@ jobs:
       # developer's machine bar antialiasing, which the tolerance absorbs.
       #
       # :server:test is named separately — the server is a plain JVM module and
-      # has no jvmTest task to match.
+      # has no jvmTest task to match. So is :app:androidApp's
+      # testDebugUnitTest: an Android application module has no jvmTest
+      # either, and its tests (widget mapper, notification worker) ran
+      # nowhere (#67).
       - name: Unit tests (JVM)
         run: >
           ./gradlew
           jvmTest
           :server:test
+          :app:androidApp:testDebugUnitTest
           --continue
           --stacktrace
 
@@ -189,6 +193,22 @@ jobs:
       # klibs come from the JVM compiler), so it runs here like anywhere else.
       - name: Compile shared source sets (metadata klibs)
         run: ./gradlew allMetadataJar --stacktrace
+
+      # R8 used to run only when a release was cut, so a missing keep rule
+      # surfaced as a crash in an RC (#199). This shrinks the release build on
+      # every PR (debug-signed without the keystore, which is fine here) and
+      # fails if R8 wrote no mapping or reported missing classes. The licence
+      # allow-list (licensee) is part of `check`, which nothing ran either.
+      - name: Release build with R8, and the licence allow-list
+        run: ./gradlew :app:androidApp:assembleRelease :app:androidApp:licenseeAndroidRelease --stacktrace
+
+      - name: R8 left a mapping and no missing rules
+        run: |
+          test -s app/androidApp/build/outputs/mapping/release/mapping.txt
+          if [ -e app/androidApp/build/outputs/mapping/release/missing_rules.txt ]; then
+            cat app/androidApp/build/outputs/mapping/release/missing_rules.txt
+            exit 1
+          fi
 
 
   # JS and Wasm tests live in their own job for the same reason desktop does
@@ -329,6 +349,11 @@ jobs:
       # linked, packaged or launched.
       - name: Compile desktop app
         run: ./gradlew :app:desktopApp:compileKotlin --stacktrace
+
+      # A plain kotlinJvm module: no jvmTest, so the build job's sweep misses
+      # it. Its tests include the OAuth loopback server (#67).
+      - name: Desktop unit tests
+        run: ./gradlew :app:desktopApp:test --stacktrace
 
       # Two tasks, because on Linux they produce different things and only one
       # of them is the artifact users install. `packageDistributionForCurrentOS`
