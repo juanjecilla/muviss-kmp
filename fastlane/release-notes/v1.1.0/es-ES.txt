@@ -1,0 +1,7 @@
+Novedades de Muviss 1.1
+
+• Muviss habla español: toda la app, sus notificaciones y el widget.
+• Restaura una copia de seguridad desde Ajustes. Se combina con lo que ya tienes, así que no pierdes nada. O empieza de cero: borra todos tus datos con un toque.
+• Los títulos de tu biblioteca se abren aunque no tengas conexión.
+• Biblioteca y fichas de series más rápidas, incluso con una biblioteca grande.
+• Mejor con TalkBack: controles con nombre, encabezados y zonas táctiles más grandes.

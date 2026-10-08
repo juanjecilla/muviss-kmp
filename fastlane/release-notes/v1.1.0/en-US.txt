@@ -1,0 +1,7 @@
+What's new in Muviss 1.1
+
+• Muviss speaks Spanish: the whole app, its notifications and the home-screen widget.
+• Restore a backup from Settings. It merges with what you have, so nothing is lost. Or start over: delete all your data in one tap.
+• Titles in your library open even when you're offline.
+• Faster Library and show pages, even with a big library.
+• Better with TalkBack: labelled controls, headings and bigger touch targets.
