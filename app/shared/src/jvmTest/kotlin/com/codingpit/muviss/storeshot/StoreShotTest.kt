@@ -179,8 +179,11 @@ class StoreShotTest {
             // The test pointer stays where it last touched, and whatever is
             // under it draws a hover layer: a store image showed a nav tab
             // and an episode row lit up that nobody was pointing at.
+            waitForOneRoot()
             onRoot().performMouseInput { moveTo(androidx.compose.ui.geometry.Offset(-10f, -10f)) }
             settle { true }
+            // settle advanced the clock, and a popup can arrive in that time.
+            waitForOneRoot()
             shots += name to onRoot().captureToImage().toAwtImage()
         }
 
@@ -269,6 +272,11 @@ class StoreShotTest {
         waitForIdle()
     }
 
+    /** Waits without advancing the clock (unlike [settle]) until no popup is up. */
+    private fun SkikoComposeUiTest.waitForOneRoot() {
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
+    }
+
     private fun SkikoComposeUiTest.settle(condition: () -> Boolean) {
         try {
             waitUntil(timeoutMillis = 20_000) { condition() }
@@ -276,8 +284,11 @@ class StoreShotTest {
             // What the screen showed instead, to diagnose a step that never settled.
             val debug = File(System.getProperty("java.io.tmpdir"), "muviss-storeshot-timeout.png")
             // With a popup up there is more than one root; the first is the app.
-            ImageIO.write(onAllNodes(isRoot())[0].captureToImage().toAwtImage(), "png", debug)
-            throw AssertionError("StoreShot step did not settle; screen saved to $debug", timeout)
+            // Before the first composition there is none, and the timeout is
+            // still the error worth reporting.
+            val saved = onAllNodes(isRoot()).fetchSemanticsNodes().isNotEmpty()
+            if (saved) ImageIO.write(onAllNodes(isRoot())[0].captureToImage().toAwtImage(), "png", debug)
+            throw AssertionError("StoreShot step did not settle; ${if (saved) "screen saved to $debug" else "nothing was composed"}", timeout)
         }
         // Let images and the last recomposition land before capturing.
         mainClock.advanceTimeBy(500)
