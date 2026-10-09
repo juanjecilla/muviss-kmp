@@ -148,16 +148,13 @@ jobs:
       # sets a bundled font on every text style, so a screenshot matches a
       # developer's machine bar antialiasing, which the tolerance absorbs.
       #
-      # :server:test is named separately — the server is a plain JVM module and
-      # has no jvmTest task to match. So is :app:androidApp's
-      # testDebugUnitTest: an Android application module has no jvmTest
-      # either, and its tests (widget mapper, notification worker) ran
-      # nowhere (#67).
+      # :app:androidApp's testDebugUnitTest is named separately: an Android
+      # application module has no jvmTest task to match, and its tests
+      # (widget mapper, notification worker) ran nowhere (#67).
       - name: Unit tests (JVM)
         run: >
           ./gradlew
           jvmTest
-          :server:test
           :app:androidApp:testDebugUnitTest
           --continue
           --stacktrace

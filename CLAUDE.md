@@ -4,7 +4,7 @@ Guidance for Claude Code (and humans) working in the Muviss repo.
 
 ## What this is
 
-Muviss is a Kotlin Multiplatform + Compose Multiplatform tracker for movies and TV shows. Package root `com.codingpit.muviss`. Targets: **Android (primary)**, iOS, Desktop (JVM), Web (JS + Wasm; **launch deferred** — CI compiles it but no longer runs its browser tests, see `docs/EPICS.md` "Web is deferred"), plus a dormant Ktor `:server`. Offline-first, user-focused, no social. Read `CONTEXT.md` for the domain glossary and `docs/adr/` for why things are the way they are.
+Muviss is a Kotlin Multiplatform + Compose Multiplatform tracker for movies and TV shows. Package root `com.codingpit.muviss`. Targets: **Android (primary)**, iOS, Desktop (JVM), Web (JS + Wasm; **launch deferred** — CI compiles it but no longer runs its browser tests, see `docs/EPICS.md` "Web is deferred"). Offline-first, user-focused, no social. Read `CONTEXT.md` for the domain glossary and `docs/adr/` for why things are the way they are.
 
 ## Working agreement
 
@@ -51,7 +51,6 @@ Dependency rule: **`ui → domain ← data`**; cross-feature deps go through the
 :core:designsystem  Compose theme + shared components (PosterImage, MuvissIcons)
 :app:shared         app shell: MuvissApp() — Koin start, theme, NavHost, bottom bar
 :app:{androidApp,desktopApp,webApp,iosApp}   thin platform hosts
-:server             Ktor, dormant (not deployed)
 ```
 
 DI is **Koin**. Each module contributes a Koin module; `app/shared/.../di/AppModules.kt` assembles them. Navigation is the official **Navigation Compose** with `@Serializable` type-safe routes; each feature `:ui` exposes a `NavGraphBuilder.<name>Section()` extension and a `<Name>Route`.
