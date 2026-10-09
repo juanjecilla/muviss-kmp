@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.search.ui
 
 import app.cash.turbine.test
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -36,6 +37,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SearchViewModelTest {
@@ -50,6 +53,7 @@ class SearchViewModelTest {
         repo: FakeRepo,
         collectionApi: FakeSearchCollectionApi = FakeSearchCollectionApi(),
         triageApi: FakeTriageApi = FakeTriageApi(),
+        connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
     ) = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
@@ -57,6 +61,7 @@ class SearchViewModelTest {
         RecommendationsUseCase(repo),
         collectionApi,
         triageApi,
+        connectivity,
     )
 
     private val movieGenre = Genre("28", "Action")
@@ -84,6 +89,84 @@ class SearchViewModelTest {
         assertEquals(listOf(tvGenre), state.tvGenres)
         assertEquals(listOf(popularMovie), state.popularMovies)
         assertEquals(listOf(popularTv), state.popularTv)
+    }
+
+    @Test
+    fun an_offline_error_reloads_by_itself_when_the_connection_returns() = runTest {
+        // #249: the screen used to say "offline" until someone tapped Retry.
+        var reachable = false
+        val online = MutableStateFlow(false)
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, page, _ ->
+                    if (reachable) Result.success(PagedResult(listOf(popularMovie), page, page)) else Result.failure(MetadataError.Offline())
+                },
+            ),
+            connectivity = object : ConnectivityMonitor {
+                override val isOnline: Flow<Boolean> = online
+            },
+        )
+        advanceUntilIdle()
+        assertNotNull(vm.state.value.error)
+
+        reachable = true
+        online.value = true
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.error)
+        assertEquals(listOf(popularMovie), vm.state.value.popularMovies)
+    }
+
+    @Test
+    fun a_reconnection_before_the_failure_still_buys_one_retry() = runTest {
+        // Review of #250: the connection came back while the request was
+        // still in flight, and the request failed afterwards.
+        val online = MutableStateFlow(false)
+        var searches = 0
+        val vm = viewModel(
+            FakeRepo(
+                searchResult = { page ->
+                    searches++
+                    if (searches == 1) Result.failure(MetadataError.Offline()) else Result.success(PagedResult(listOf(searchItem), page, page))
+                },
+            ),
+            connectivity = object : ConnectivityMonitor {
+                override val isOnline: Flow<Boolean> = online
+            },
+        )
+        advanceUntilIdle()
+        online.value = true // nothing is failing yet
+        advanceUntilIdle()
+
+        vm.onQueryChange("result")
+        advanceUntilIdle()
+
+        assertEquals(2, searches)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun a_second_failure_after_that_retry_is_left_for_the_user() = runTest {
+        val online = MutableStateFlow(false)
+        var searches = 0
+        val vm = viewModel(
+            FakeRepo(searchResult = {
+                searches++
+                Result.failure(MetadataError.Offline())
+            }),
+            connectivity = object : ConnectivityMonitor {
+                override val isOnline: Flow<Boolean> = online
+            },
+        )
+        advanceUntilIdle()
+        online.value = true
+        advanceUntilIdle()
+
+        vm.onQueryChange("result")
+        advanceUntilIdle()
+
+        assertEquals(2, searches) // the one retry, then no loop
+        assertNotNull(vm.state.value.error)
     }
 
     @Test

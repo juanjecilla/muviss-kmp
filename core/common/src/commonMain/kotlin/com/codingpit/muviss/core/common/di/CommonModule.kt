@@ -7,6 +7,8 @@ import com.codingpit.muviss.core.common.DefaultAppDispatchers
 import com.codingpit.muviss.core.common.SystemClock
 import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
 import com.codingpit.muviss.core.common.analytics.NoOpAnalyticsTracker
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.DefaultConnectivityMonitor
 import com.codingpit.muviss.core.common.locale.DefaultSystemLocale
 import com.codingpit.muviss.core.common.locale.SystemLocale
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
@@ -23,6 +25,8 @@ val commonModule: Module = module {
     single<AppClock> { SystemClock() }
     single { AppVersion.current }
     single<SystemLocale> { DefaultSystemLocale() }
+    // Android overrides this from MuvissApplication: its monitor needs a Context (#249).
+    single<ConnectivityMonitor> { DefaultConnectivityMonitor() }
     // No vendor is wired; see AnalyticsTracker's KDoc. `FeatureFlags` is bound
     // by feature/settings/data, which owns the appSettings row it reads.
     single<AnalyticsTracker> { NoOpAnalyticsTracker }

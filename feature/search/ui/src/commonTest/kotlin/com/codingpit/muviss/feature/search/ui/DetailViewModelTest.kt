@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.search.ui
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -53,7 +54,7 @@ internal class FakeDetailRepo(
     private val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
     private val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     private val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
-    private val detailsFailure: Throwable? = null,
+    var detailsFailure: Throwable? = null,
 ) : SearchRepository {
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
@@ -73,6 +74,9 @@ internal data class DetailRepoFakes(
     val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     val detailsFailure: Throwable? = null,
+    val connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
+    /** Hands the test the repository, to change what it answers mid-test. */
+    val onRepo: (FakeDetailRepo) -> Unit = {},
 )
 
 internal class FakeCollectionApi : CollectionApi {
@@ -267,6 +271,7 @@ class DetailViewModelTest {
         repoFakes: DetailRepoFakes = DetailRepoFakes(),
     ): DetailViewModel {
         val repo = FakeDetailRepo(detailsToLoad, repoFakes.watchProviders, repoFakes.recommendations, repoFakes.similar, repoFakes.detailsFailure)
+            .also(repoFakes.onRepo)
         return DetailViewModel(
             id,
             MediaDetailUseCase(repo),
@@ -275,6 +280,7 @@ class DetailViewModelTest {
             MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
             // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
             TestClock(todayEpochMs = 20L * 86_400_000L),
+            repoFakes.connectivity,
         )
     }
 
@@ -303,6 +309,31 @@ class DetailViewModelTest {
 
         assertEquals("Game of Thrones", vm.state.value.details?.summary?.title)
         assertNull(vm.state.value.staleNotice)
+    }
+
+    @Test
+    fun an_offline_error_page_reloads_when_the_connection_returns() = runTest {
+        // #249: back online, the page fetches again without a tap on Retry.
+        val online = MutableStateFlow(false)
+        lateinit var repo: FakeDetailRepo
+        val vm = viewModel(
+            repoFakes = DetailRepoFakes(
+                detailsFailure = MetadataError.Offline(),
+                connectivity = object : ConnectivityMonitor {
+                    override val isOnline: Flow<Boolean> = online
+                },
+                onRepo = { repo = it },
+            ),
+        )
+        advanceUntilIdle()
+        assertNotNull(vm.state.value.error)
+
+        repo.detailsFailure = null
+        online.value = true
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.error)
+        assertEquals(details, vm.state.value.details)
     }
 
     @Test

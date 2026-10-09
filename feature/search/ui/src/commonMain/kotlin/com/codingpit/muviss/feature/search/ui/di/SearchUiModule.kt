@@ -16,7 +16,7 @@ import org.koin.dsl.module
 val searchUiModule: Module = module {
     viewModelOf(::SearchViewModel)
     viewModelOf(::DiscoverIntroViewModel)
-    viewModel { (id: MediaId) -> DetailViewModel(id, get(), DetailPeers(get(), get(), get()), get(), get(), get()) }
+    viewModel { (id: MediaId) -> DetailViewModel(id, get(), DetailPeers(get(), get(), get()), get(), get(), get(), get()) }
     viewModel { (id: MediaId) -> AddToListViewModel(id, get()) }
     viewModel { (id: EpisodeId) -> EpisodeDetailViewModel(id, get(), get()) }
 }

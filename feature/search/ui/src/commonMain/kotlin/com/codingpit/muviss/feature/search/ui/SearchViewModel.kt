@@ -4,6 +4,8 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.reconnections
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.designsystem.text.UiText
@@ -29,8 +31,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
@@ -81,6 +86,7 @@ data class SearchUiState(
  * drill-down when a chip is tapped. Progress is not touched here — this
  * feature is read-only discovery.
  */
+@Suppress("LongParameterList") // the seventh is the connectivity signal (#249), defaulted so tests can leave it out
 class SearchViewModel(
     private val searchMedia: SearchMediaUseCase,
     private val discoverMedia: DiscoverMediaUseCase,
@@ -88,12 +94,16 @@ class SearchViewModel(
     private val recommendationsUseCase: RecommendationsUseCase,
     private val collectionApi: CollectionApi,
     private val triageApi: TriageApi,
+    connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+
+    /** A reconnection came while nothing was failing yet; see the init block. */
+    private var reconnectedBeforeFailure = false
 
     init {
         loadDiscover()
@@ -113,6 +123,21 @@ class SearchViewModel(
         ) { library, decided, snoozed -> library to (decided + snoozed) }
             .flatMapLatest { (library, decided) -> forYouFlow(library, decided) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
+            .launchInReporting(viewModelScope)
+        // A failure shown while offline retries itself when the connection
+        // comes back, rather than waiting for a tap on Retry (#249).
+        connectivity.reconnections()
+            .onEach { if (_state.value.error != null) retry() else reconnectedBeforeFailure = true }
+            .launchInReporting(viewModelScope)
+        // A reconnection can land while a request is still in flight and fail
+        // after it: remembered, it buys that failure one retry, no more (#249).
+        _state.map { it.error != null }
+            .distinctUntilChanged()
+            .filter { showing -> showing && reconnectedBeforeFailure }
+            .onEach {
+                reconnectedBeforeFailure = false
+                retry()
+            }
             .launchInReporting(viewModelScope)
     }
 

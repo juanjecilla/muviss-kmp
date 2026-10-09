@@ -3,6 +3,8 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.reconnections
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.todayEpochDay
@@ -30,6 +32,9 @@ import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
@@ -108,6 +113,7 @@ data class BulkMarkUndo(
  * feature can offer add/remove, favorite, and episode-tracking controls
  * without depending on how either is implemented.
  */
+@Suppress("LongParameterList") // the seventh is the connectivity signal (#249), defaulted so tests can leave it out
 class DetailViewModel(
     private val mediaId: MediaId,
     private val loadDetail: MediaDetailUseCase,
@@ -115,6 +121,7 @@ class DetailViewModel(
     private val loadWatchProviders: WatchProvidersUseCase,
     private val loadMoreLikeThis: MoreLikeThisUseCase,
     private val clock: AppClock,
+    connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
 ) : ViewModel() {
 
     private val collectionApi: CollectionApi get() = peers.collection
@@ -123,6 +130,9 @@ class DetailViewModel(
 
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state.asStateFlow()
+
+    /** A reconnection came while nothing was failing yet; see the init block. */
+    private var reconnectedBeforeFailure = false
 
     /** "Today" for aired-vs-unaired decisions in the season list. */
     val todayEpochDay: Long get() = clock.todayEpochDay()
@@ -156,6 +166,20 @@ class DetailViewModel(
             .launchInReporting(viewModelScope)
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
+            .launchInReporting(viewModelScope)
+        // Back online with an error page or a stale notice up: fetch again (#249).
+        connectivity.reconnections()
+            .onEach { if (_state.value.error != null || _state.value.staleNotice != null) load() else reconnectedBeforeFailure = true }
+            .launchInReporting(viewModelScope)
+        // A reconnection can land while a request is still in flight and fail
+        // after it: remembered, it buys that failure one retry, no more (#249).
+        _state.map { it.error != null || it.staleNotice != null }
+            .distinctUntilChanged()
+            .filter { showing -> showing && reconnectedBeforeFailure }
+            .onEach {
+                reconnectedBeforeFailure = false
+                load()
+            }
             .launchInReporting(viewModelScope)
     }
 
