@@ -24,8 +24,14 @@ sealed class MetadataError(message: String, val userMessage: String) : Exception
     /** The source is throttling us (HTTP 429). [retryAfterSeconds] is its `Retry-After`, when it sent one. */
     class RateLimited(val retryAfterSeconds: Int? = null) : MetadataError("Metadata source rate limited the request", "Too many requests right now. Try again in a moment.")
 
-    /** The source rejected our credential (HTTP 401): a configuration fault, not something the user can fix. */
-    class Unauthorized : MetadataError("Metadata source rejected the credential", "Couldn't reach the movie database. Please try again later.")
+    /**
+     * The source rejected our credential (HTTP 401): a configuration fault, not something the user can fix.
+     *
+     * Its copy must not read as a connection problem. It once said "Couldn't reach the movie database", and
+     * a release built with no credential at all (#197) looked offline until someone read the status code;
+     * nor does it promise that later will help (#258). A newer build is the only thing that can.
+     */
+    class Unauthorized : MetadataError("Metadata source rejected the credential", "Muviss can't access the movie database. Updating the app may fix this.")
 
     /** The title, season or episode does not exist at the source (HTTP 404). */
     class NotFound : MetadataError("Metadata source has no such item", "We couldn't find that title.")
