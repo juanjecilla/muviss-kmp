@@ -3,10 +3,12 @@
 package com.codingpit.muviss.core.database
 
 import app.cash.sqldelight.async.coroutines.synchronous
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSLock
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
@@ -35,16 +37,32 @@ private const val DATABASE_FILE_NAME = "muviss.db"
  * launch.
  */
 actual class DatabaseDriverFactory {
-    actual fun create(): SqlDriver {
+    /**
+     * Serialized, and the first connection is opened before returning (#251).
+     * Startup opens two drivers at once — `CrashReportsConsent` reads on its
+     * own while the graph opens the app's — and `NativeSqliteDriver` creates
+     * or migrates the schema lazily, on whichever connection is used first.
+     * Two of those racing on a fresh or upgraded file meant one got
+     * `database is locked` mid-create and the app aborted on 5 of 8 fresh
+     * installs. Inside the lock the second driver finds the schema current
+     * and does nothing; the JVM factory does the same for the same reason.
+     */
+    actual fun create(): SqlDriver = withCreateLock {
         val directory = sharedContainerPath() ?: documentsPath()
         migrateOutOfDocumentsIfNeeded(directory)
-        return NativeSqliteDriver(
+        NativeSqliteDriver(
             schema = MuvissDatabase.Schema.synchronous(),
             name = DATABASE_FILE_NAME,
             onConfiguration = { config ->
                 config.copy(extendedConfig = config.extendedConfig.copy(basePath = directory))
             },
-        )
+        ).also { driver ->
+            // A failed create/migrate must not leave this driver's connections
+            // open behind the caller's back; the caller sees the failure.
+            runCatching { driver.executeQuery(null, "SELECT 1", { QueryResult.Value(Unit) }, 0) }
+                .onFailure { runCatching { driver.close() } }
+                .getOrThrow()
+        }
     }
 
     /** A file this app owns; there is nothing to warn anyone about. */
@@ -77,6 +95,17 @@ private fun migrateOutOfDocumentsIfNeeded(destinationDirectory: String) {
         if (manager.fileExistsAtPath(from) && !manager.fileExistsAtPath(to)) {
             manager.moveItemAtPath(from, toPath = to, error = null)
         }
+    }
+}
+
+private val createLock = NSLock()
+
+private inline fun <T> withCreateLock(block: () -> T): T {
+    createLock.lock()
+    try {
+        return block()
+    } finally {
+        createLock.unlock()
     }
 }
 
