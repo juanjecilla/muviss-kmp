@@ -18,7 +18,11 @@ module SentryGate
 
   # The release name the app reports and the Sentry Gradle plugin stamps on
   # the mapping (`MuvissCrashReporting.releaseOf`): `<appId>@<name>+<code>`.
+  # nil when either part is missing: a name ending in "+" matches nothing in
+  # Sentry, which would read as "no crashes" and let the ramp through.
   def release_name(version_name:, version_code:)
+    return nil if version_name.to_s.empty? || version_code.to_s.empty?
+
     "#{APPLICATION_ID}@#{version_name}+#{version_code}"
   end
 
@@ -55,6 +59,8 @@ module SentryGate
 
   # The whole check: fetch, then decide. Returns nil or the hold reason.
   def check(org:, token:, release:)
+    return hold_reason(issues: [], error: "the production release has no version code to name it by") if release.nil?
+
     hold_reason(issues: fetch(org: org, token: token, release: release))
   rescue StandardError => e
     hold_reason(issues: [], error: e.message)

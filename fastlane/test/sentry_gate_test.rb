@@ -6,6 +6,15 @@ class SentryGateTest < Minitest::Test
     assert_equal "com.codingpit.muviss@1.1.0+160", SentryGate.release_name(version_name: "1.1.0", version_code: 160)
   end
 
+  def test_a_missing_version_code_names_no_release
+    assert_nil SentryGate.release_name(version_name: "1.1.0", version_code: nil)
+    assert_nil SentryGate.release_name(version_name: "", version_code: 160)
+  end
+
+  def test_no_release_name_holds_without_a_request
+    assert_includes SentryGate.check(org: "codingpit", token: "t", release: nil), "no version code"
+  end
+
   def test_query_asks_for_unhandled_issues_first_seen_in_the_release
     query = SentryGate.query("com.codingpit.muviss@1.1.0+160")
     assert_includes query, 'firstRelease:"com.codingpit.muviss@1.1.0+160"'

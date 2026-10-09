@@ -191,7 +191,7 @@ platform :android do
 
       # The crash gate (#193): a raise waits while Sentry has any unhandled
       # issue first seen in this release, or cannot be asked at all.
-      sentry_release = SentryGate.release_name(version_name: tag.delete_prefix("v"), version_code: release.version_codes.first)
+      sentry_release = SentryGate.release_name(version_name: tag.delete_prefix("v"), version_code: release.version_codes&.first)
       hold = SentryGate.check(org: ENV["SENTRY_ORG"], token: ENV["SENTRY_AUTH_TOKEN"], release: sentry_release)
       if hold
         message = "Holding #{sentry_release} at #{release.user_fraction}: #{hold}. Halt it (play-promote.yml -f action=halt) or resolve the issues."
