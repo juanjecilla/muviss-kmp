@@ -118,6 +118,58 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun a_reconnection_before_the_failure_still_buys_one_retry() = runTest {
+        // Review of #250: the connection came back while the request was
+        // still in flight, and the request failed afterwards.
+        val online = MutableStateFlow(false)
+        var searches = 0
+        val vm = viewModel(
+            FakeRepo(
+                searchResult = { page ->
+                    searches++
+                    if (searches == 1) Result.failure(MetadataError.Offline()) else Result.success(PagedResult(listOf(searchItem), page, page))
+                },
+            ),
+            connectivity = object : ConnectivityMonitor {
+                override val isOnline: Flow<Boolean> = online
+            },
+        )
+        advanceUntilIdle()
+        online.value = true // nothing is failing yet
+        advanceUntilIdle()
+
+        vm.onQueryChange("result")
+        advanceUntilIdle()
+
+        assertEquals(2, searches)
+        assertNull(vm.state.value.error)
+    }
+
+    @Test
+    fun a_second_failure_after_that_retry_is_left_for_the_user() = runTest {
+        val online = MutableStateFlow(false)
+        var searches = 0
+        val vm = viewModel(
+            FakeRepo(searchResult = {
+                searches++
+                Result.failure(MetadataError.Offline())
+            }),
+            connectivity = object : ConnectivityMonitor {
+                override val isOnline: Flow<Boolean> = online
+            },
+        )
+        advanceUntilIdle()
+        online.value = true
+        advanceUntilIdle()
+
+        vm.onQueryChange("result")
+        advanceUntilIdle()
+
+        assertEquals(2, searches) // the one retry, then no loop
+        assertNotNull(vm.state.value.error)
+    }
+
+    @Test
     fun discover_failure_surfaces_error() = runTest {
         val vm = viewModel(FakeRepo(movieGenresResult = Result.failure(MetadataError.Offline())))
         vm.state.test {

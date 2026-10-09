@@ -31,8 +31,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
@@ -99,6 +102,9 @@ class SearchViewModel(
 
     private var loadJob: Job? = null
 
+    /** A reconnection came while nothing was failing yet; see the init block. */
+    private var reconnectedBeforeFailure = false
+
     init {
         loadDiscover()
         // Independent of loadDiscover's one-shot load: the library can change
@@ -121,7 +127,17 @@ class SearchViewModel(
         // A failure shown while offline retries itself when the connection
         // comes back, rather than waiting for a tap on Retry (#249).
         connectivity.reconnections()
-            .onEach { if (_state.value.error != null) retry() }
+            .onEach { if (_state.value.error != null) retry() else reconnectedBeforeFailure = true }
+            .launchInReporting(viewModelScope)
+        // A reconnection can land while a request is still in flight and fail
+        // after it: remembered, it buys that failure one retry, no more (#249).
+        _state.map { it.error != null }
+            .distinctUntilChanged()
+            .filter { showing -> showing && reconnectedBeforeFailure }
+            .onEach {
+                reconnectedBeforeFailure = false
+                retry()
+            }
             .launchInReporting(viewModelScope)
     }
 

@@ -32,6 +32,9 @@ import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
@@ -128,6 +131,9 @@ class DetailViewModel(
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state.asStateFlow()
 
+    /** A reconnection came while nothing was failing yet; see the init block. */
+    private var reconnectedBeforeFailure = false
+
     /** "Today" for aired-vs-unaired decisions in the season list. */
     val todayEpochDay: Long get() = clock.todayEpochDay()
 
@@ -163,7 +169,17 @@ class DetailViewModel(
             .launchInReporting(viewModelScope)
         // Back online with an error page or a stale notice up: fetch again (#249).
         connectivity.reconnections()
-            .onEach { if (_state.value.error != null || _state.value.staleNotice != null) load() }
+            .onEach { if (_state.value.error != null || _state.value.staleNotice != null) load() else reconnectedBeforeFailure = true }
+            .launchInReporting(viewModelScope)
+        // A reconnection can land while a request is still in flight and fail
+        // after it: remembered, it buys that failure one retry, no more (#249).
+        _state.map { it.error != null || it.staleNotice != null }
+            .distinctUntilChanged()
+            .filter { showing -> showing && reconnectedBeforeFailure }
+            .onEach {
+                reconnectedBeforeFailure = false
+                load()
+            }
             .launchInReporting(viewModelScope)
     }
 

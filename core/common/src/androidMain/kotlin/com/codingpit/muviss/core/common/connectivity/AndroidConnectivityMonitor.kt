@@ -19,23 +19,23 @@ class AndroidConnectivityMonitor(context: Context) : ConnectivityMonitor {
     private val manager = context.getSystemService(ConnectivityManager::class.java)
 
     override val isOnline: Flow<Boolean> = callbackFlow {
-        fun current(): Boolean = manager.getNetworkCapabilities(manager.activeNetwork)
-            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-
+        // Asked once, here, and never from inside a callback: Android does
+        // not order a synchronous query against the callbacks, so onLost could
+        // read the old network as still validated and the offline edge would
+        // be lost. The callbacks report what they are handed instead.
+        trySend(
+            manager.getNetworkCapabilities(manager.activeNetwork)
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
+        )
         val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                trySend(current())
-            }
-
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 trySend(capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
             }
 
             override fun onLost(network: Network) {
-                trySend(current())
+                trySend(false)
             }
         }
-        trySend(current())
         manager.registerDefaultNetworkCallback(callback)
         awaitClose { manager.unregisterNetworkCallback(callback) }
     }.distinctUntilChanged()
