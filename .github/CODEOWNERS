@@ -1,0 +1,3 @@
+# One maintainer. This only auto-requests a review; the rulesets do not require
+# code-owner approval (CodeRabbit's approval is the required one, ADR 0025).
+* @juanjecilla

@@ -16,8 +16,8 @@ import org.w3c.files.BlobPropertyBag
  * differ enough (`Array<Any?>` vs `JsArray<JsAny?>`) that this can't live in
  * a shared `webMain` source set.
  *
- * Works independently of `:core:database`; see that KDoc for why the export
- * JSON this receives never actually arrives on today's web build.
+ * Works independently of `:core:database`, which persists for real on web
+ * (EPIC 24), so the export it receives is the user's actual library.
  */
 private class WebDataExporter : DataExporter {
     override fun export(json: String, fileName: String) {

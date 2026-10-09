@@ -1007,9 +1007,10 @@ See `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`'s
 2026-07-16 amendment for the full story. Short version: real read/write
 persistence now works on both `js` and `wasmJs`, backed by SQLDelight's
 `web-worker-driver` running SQL.js (SQLite-to-wasm) inside a Web Worker —
-but it is **session-only** (in the worker's memory; a page reload starts
-from an empty database again, there is no OPFS/IndexedDB-backed durability
-yet). Getting the worker to actually load in a webpack-bundled build needed
+and since EPIC 24 it is **durable**: our fork of the worker
+(`core/database/src/webWorker`) restores an IndexedDB snapshot on open and
+re-exports it shortly after each committed write, and only one tab persists
+(CLAUDE.md, "Web + DB"). Getting the worker to actually load in a webpack-bundled build needed
 two non-obvious fixes, both in `app/webApp/webpack.config.d/copy-sqljs-wasm.js`
 and both discovered only by driving a real build's output in a real browser
 (a clean `wasmJsBrowserDistribution` alone does not catch either):
@@ -1037,9 +1038,8 @@ and both discovered only by driving a real build's output in a real browser
 4. Library/Progress/Profile screens: confirm they load without an error
    state (each screen's `.catch { }` would otherwise surface a visible
    error instead of a silent hang or crash — see ADR 0008).
-5. Reload the page; confirm the Settings screen goes back to defaults —
-   this is *expected* today (session-only persistence, see above), not a
-   bug to chase.
+5. Reload the page; confirm the theme you chose in step 3 is still set
+   (the IndexedDB snapshot was restored).
 
 ## 11. Home-screen widgets — EPIC 22
 
