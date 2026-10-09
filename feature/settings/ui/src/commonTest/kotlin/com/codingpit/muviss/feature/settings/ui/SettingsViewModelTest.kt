@@ -2,13 +2,13 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
@@ -67,11 +67,6 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
     override suspend fun exportData(): String = exportResult.getOrThrow()
 }
 
-private object FixedClock : AppClock {
-    // 2026-10-07T12:00:00Z
-    override fun nowEpochMs(): Long = 1_791_374_400_000L
-}
-
 private class FakeEraser : LocalDataEraser {
     var calls = 0
         private set
@@ -104,7 +99,7 @@ class SettingsViewModelTest {
         AppVersion(versionName = "1.0.0", versionCode = 42),
         FakeFeatureFlags(),
         DeleteAllDataUseCase(eraser),
-        FixedClock,
+        FakeClock(1_791_374_400_000L), // 2026-10-07T12:00:00Z
     )
 
     @Test

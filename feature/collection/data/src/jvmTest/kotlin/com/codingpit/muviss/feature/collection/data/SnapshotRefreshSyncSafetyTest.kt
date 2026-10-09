@@ -2,11 +2,10 @@
 
 package com.codingpit.muviss.feature.collection.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.database.CollectionEntry
 import com.codingpit.muviss.core.database.CollectionEntryQueries
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -40,9 +39,7 @@ class SnapshotRefreshSyncSafetyTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         queries = database.collectionEntryQueries
         clock = FakeClock(10_000L)
         repository = SqlDelightCollectionRepository(queries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)

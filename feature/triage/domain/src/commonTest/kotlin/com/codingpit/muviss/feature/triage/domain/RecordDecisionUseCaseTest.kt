@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.triage.domain
 
 import com.codingpit.muviss.core.model.WatchProgress
 import com.codingpit.muviss.core.model.WatchStatusCalculator
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaType
@@ -36,7 +37,7 @@ class RecordDecisionUseCaseTest {
         val progress: FakeProgressApi = FakeProgressApi(),
         val details: FakeTriageDetailsSource,
     ) {
-        val useCase = RecordDecisionUseCase(repository, collection, progress, details, FakeClock())
+        val useCase = RecordDecisionUseCase(repository, collection, progress, details, FakeClock(NOW_EPOCH_MS))
     }
 
     private fun harness(failure: Throwable? = null) = Harness(

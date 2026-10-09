@@ -3,9 +3,9 @@
 package com.codingpit.muviss.feature.progress.ui
 
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -126,10 +126,6 @@ internal class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List
         failure?.let { return Result.failure(it) }
         return Result.success(bySeasons[mediaId].orEmpty())
     }
-}
-
-internal class FakeClock(private val millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
 }
 
 /**

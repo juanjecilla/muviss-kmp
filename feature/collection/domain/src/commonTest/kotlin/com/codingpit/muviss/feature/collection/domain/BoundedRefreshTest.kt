@@ -2,9 +2,9 @@
 
 package com.codingpit.muviss.feature.collection.domain
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.concurrency.REFRESH_CONCURRENCY
 import com.codingpit.muviss.core.common.concurrency.mapBounded
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -101,9 +101,7 @@ class BoundedRefreshTest {
         RefreshAndFindNewEpisodesUseCase(
             repository,
             source,
-            object : AppClock {
-                override fun nowEpochMs(): Long = 0L
-            },
+            FakeClock(0L),
         )()
 
         assertEquals(100, source.fetches)
@@ -119,9 +117,7 @@ class BoundedRefreshTest {
         val useCase = RefreshAndFindNewEpisodesUseCase(
             repository,
             source,
-            object : AppClock {
-                override fun nowEpochMs(): Long = 0L
-            },
+            FakeClock(0L),
         )
         useCase()
 

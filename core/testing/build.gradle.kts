@@ -19,6 +19,10 @@ kotlin {
             // `CountingDriver` wraps a `SqlDriver`, and it is `api` because a
             // consumer's test names the type it builds it over.
             api(libs.sqldelight.runtime)
+            // `FakeClock` implements `AppClock`. Neither `:core:common` nor
+            // `:core:database` may ever take `:core:testing` as a dependency,
+            // test-scoped or not — that would close a cycle.
+            api(projects.core.common)
         }
         // Golden capture needs Skia, so it is JVM-only. `api`, not
         // `implementation`: consumers write `ComposeUiTest` receivers.
@@ -33,6 +37,12 @@ kotlin {
             api(libs.ktor.clientCore)
             api(libs.kotlinx.serializationJson)
             api(libs.kotlinx.coroutinesCore)
+            // `inMemoryDatabase()` hands back a `MuvissDatabase` over a
+            // `JdbcSqliteDriver`, and the schema create goes through
+            // `async-extensions`' `synchronous()`.
+            api(projects.core.database)
+            api(libs.sqldelight.sqliteDriver)
+            implementation(libs.sqldelight.asyncExtensions)
         }
         jvmTest.dependencies {
             implementation(libs.kotlinx.coroutinesTest)

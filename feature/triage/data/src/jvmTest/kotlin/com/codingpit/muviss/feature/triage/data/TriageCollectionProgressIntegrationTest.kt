@@ -2,11 +2,11 @@
 
 package com.codingpit.muviss.feature.triage.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
@@ -62,12 +62,10 @@ class TriageCollectionProgressIntegrationTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        database = MuvissDatabase(driver)
+        database = inMemoryDatabase()
 
         val dispatchers = ImmediateDispatchers(UnconfinedTestDispatcher())
-        val clock = FakeClock()
+        val clock = FakeClock(NOW_EPOCH_MS)
 
         val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApi(progressRepository)
@@ -201,7 +199,7 @@ class TriageCollectionProgressIntegrationTest {
     @Test
     fun `a failed commit still blocks the title from reappearing`() = runTest {
         val offline = CountingDetailsSource(emptyMap())
-        val recordOffline = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, offline, FakeClock())
+        val recordOffline = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, offline, FakeClock(NOW_EPOCH_MS))
 
         assertTrue(recordOffline(ongoing.summary, TriageVerdict.LATER).isFailure)
 

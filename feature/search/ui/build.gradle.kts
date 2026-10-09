@@ -24,6 +24,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
         }
         commonTest.dependencies {
+            // `FakeClock` (the shared `AppClock` fake).
+            implementation(projects.core.testing)
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
         }

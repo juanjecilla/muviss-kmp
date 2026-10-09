@@ -2,14 +2,12 @@
 
 package com.codingpit.muviss.feature.progress.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CoroutineDispatcher
@@ -23,10 +21,6 @@ import kotlin.test.assertEquals
 private class RefreshDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
     override val io = d
-}
-
-private class RefreshClock : AppClock {
-    override fun nowEpochMs(): Long = 1_000L
 }
 
 private class CountingRefresher : WidgetRefresher {
@@ -57,15 +51,13 @@ class WidgetRefreshOnWriteTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         refresher = CountingRefresher()
         repository = SqlDelightProgressRepository(
             database.episodeProgressQueries,
             database.episodePlayQueries,
             RefreshDispatchers(UnconfinedTestDispatcher()),
-            RefreshClock(),
+            FakeClock(1_000L),
             refresher,
         )
     }

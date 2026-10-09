@@ -3,9 +3,9 @@
 package com.codingpit.muviss.feature.collection.ui
 
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
@@ -100,10 +100,6 @@ private class GatedSnapshotSource(private val gate: CompletableDeferred<Unit>) :
     }
 }
 
-private class FakeClock(var now: Long = 0L) : AppClock {
-    override fun nowEpochMs(): Long = now
-}
-
 class CollectionViewModelTest {
 
     @BeforeTest
@@ -120,7 +116,7 @@ class CollectionViewModelTest {
     private fun viewModel(
         repository: FakeCollectionRepository,
         source: MediaSnapshotSource = NoopSnapshotSource(),
-        throttle: CollectionRefreshThrottle = CollectionRefreshThrottle(FakeClock()),
+        throttle: CollectionRefreshThrottle = CollectionRefreshThrottle(FakeClock(0L)),
     ) = CollectionViewModel(
         ObserveCollectionUseCase(repository),
         ToggleFavoriteUseCase(repository),
@@ -241,7 +237,7 @@ class CollectionViewModelTest {
 
     @Test
     fun the_automatic_refresh_only_runs_once_per_throttle_interval() = runTest {
-        val throttle = CollectionRefreshThrottle(FakeClock())
+        val throttle = CollectionRefreshThrottle(FakeClock(0L))
         val source = NoopSnapshotSource()
 
         viewModel(FakeCollectionRepository(listOf(notStarted)), source, throttle)
@@ -272,7 +268,7 @@ class CollectionViewModelTest {
 
     @Test
     fun an_explicit_refresh_still_shows_the_spinner_while_in_flight() = runTest {
-        val throttle = CollectionRefreshThrottle(FakeClock())
+        val throttle = CollectionRefreshThrottle(FakeClock(0L))
         throttle.recordRefresh() // consumes the automatic claim, so only the explicit call below is under test
         val gate = CompletableDeferred<Unit>()
         val vm = viewModel(FakeCollectionRepository(listOf(notStarted)), source = GatedSnapshotSource(gate), throttle = throttle)
@@ -289,7 +285,7 @@ class CollectionViewModelTest {
 
     @Test
     fun an_explicit_refresh_ignores_the_throttle() = runTest {
-        val throttle = CollectionRefreshThrottle(FakeClock())
+        val throttle = CollectionRefreshThrottle(FakeClock(0L))
         val source = NoopSnapshotSource()
         val vm = viewModel(FakeCollectionRepository(listOf(notStarted)), source, throttle)
         advanceUntilIdle()

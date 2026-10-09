@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
@@ -75,7 +76,7 @@ private fun ProgressWithFailure(failure: Throwable) {
 
     val okCollectionApi = FakeUpcomingCollectionApi(emptyList())
     val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
-    val upcomingViewModel = UpcomingViewModel(okCollectionApi, upcomingCache, FakeUpcomingClock(0L))
+    val upcomingViewModel = UpcomingViewModel(okCollectionApi, upcomingCache, FakeClock(0L))
 
     MuvissTheme(darkTheme = false) {
         // Default tab is Watch Next, which is what carries the failure above.

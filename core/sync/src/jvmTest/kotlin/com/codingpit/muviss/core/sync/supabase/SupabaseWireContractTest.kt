@@ -2,7 +2,6 @@ package com.codingpit.muviss.core.sync.supabase
 
 import com.codingpit.muviss.core.sync.CollectionEntryChange
 import com.codingpit.muviss.core.sync.EpisodeProgressChange
-import com.codingpit.muviss.core.sync.FakeClock
 import com.codingpit.muviss.core.sync.InMemorySessionStore
 import com.codingpit.muviss.core.sync.SyncChangeSet
 import com.codingpit.muviss.core.sync.SyncCursor
@@ -11,6 +10,7 @@ import com.codingpit.muviss.core.sync.SyncTable
 import com.codingpit.muviss.core.sync.TEST_BASE_URL
 import com.codingpit.muviss.core.sync.productionLikeClient
 import com.codingpit.muviss.core.sync.sessionFor
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeSupabaseServer
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
