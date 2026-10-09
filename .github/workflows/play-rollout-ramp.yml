@@ -3,7 +3,8 @@ name: Play rollout ramp
 # Takes a staged production rollout from 20% to 100% without anyone clicking
 # (ADR 0025): day 0 → 20% (set by release.yml's promote), day 2 → 50%,
 # day 4 → 100%, counted from the release tag. The policy is
-# fastlane/play_rollout.rb and only ever raises the fraction.
+# fastlane/play_rollout.rb and only ever raises the fraction, and never while
+# Sentry shows a new crash in the release (fastlane/sentry_gate.rb, #193).
 #
 # To stop it, halt the release: `gh workflow run play-promote.yml -f action=halt`.
 # The ramp leaves a halted release alone until someone runs `resume`.
@@ -37,6 +38,11 @@ jobs:
       - name: Raise the rollout if it is due
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # The crash gate (#193): a raise waits while Sentry shows a new
+          # unhandled issue in this release, or cannot be asked. The token
+          # needs event:read (org:read) on top of what mapping uploads use.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
         run: |
           if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
             echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; nothing to ramp."
