@@ -23,6 +23,30 @@ plugins {
     alias(libs.plugins.sqldelight) apply false
     alias(libs.plugins.spotless)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.kover)
+}
+
+// Coverage (EPIC 38, #71): one merged report over every module's JVM tests,
+// uploaded by CI as an artifact. Measured, not enforced — there is no threshold
+// yet, because a number nobody has looked at is not a bar. `merge` applies
+// Kover to the subprojects itself, so no module's build file mentions it.
+// The JVM is where every commonTest runs in CI, so its numbers stand for the
+// shared code; the Android-only hosts are left out (their unit tests run
+// through testDebugUnitTest, which Kover's JVM report does not see).
+kover {
+    merge {
+        subprojects { it.path !in setOf(":app:androidApp", ":app:baselineprofile") }
+    }
+    reports {
+        filters {
+            excludes {
+                // Generated: Compose Resources accessors, SQLDelight queries,
+                // the BuildConfig constants, and Compose's lambda holders.
+                packages("*.generated.resources")
+                classes("*.MuvissBuildConfig*", "*ComposableSingletons*", "com.codingpit.muviss.core.database.*Queries", "com.codingpit.muviss.core.database.*Impl*")
+            }
+        }
+    }
 }
 
 // Captured in root scope where the `libs` accessor is available.

@@ -162,6 +162,29 @@ jobs:
           --continue
           --stacktrace
 
+      # Coverage of the run above (EPIC 38, #71). Kover instruments the test
+      # tasks it already ran, so this only merges and renders. Reported, not
+      # gated: no threshold until someone has decided what the number means.
+      - name: Coverage report (Kover)
+        run: |
+          ./gradlew koverXmlReport koverHtmlReport --stacktrace
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          root = ET.parse("build/reports/kover/report.xml").getroot()
+          print("### Coverage (JVM tests, all modules)\n")
+          print("| | covered | total | % |\n|---|---:|---:|---:|")
+          for c in root.findall("counter"):
+              covered, missed = int(c.get("covered")), int(c.get("missed"))
+              total = covered + missed
+              print(f"| {c.get('type').lower()} | {covered} | {total} | {100 * covered / total:.1f} |")
+          EOF
+
+      - name: Upload the coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: build/reports/kover/
+
       # Golden-image failures are only readable as pictures: the harness writes
       # the actual capture and a magenta-marked diff next to each other, and
       # without them a red run says nothing but "pixels moved".
