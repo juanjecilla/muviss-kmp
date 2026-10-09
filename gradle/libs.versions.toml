@@ -51,6 +51,8 @@ sentryCocoa = "8.58.2"
 # see it.
 sentryGradlePlugin = "6.22.0"
 licensee = "1.12.0"
+# Coverage report only, no threshold yet (EPIC 38, #71).
+kover = "0.9.11"
 androidxWork = "2.10.0"
 
 [libraries]
@@ -166,4 +168,5 @@ sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 licensee = { id = "app.cash.licensee", version.ref = "licensee" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 sentry = { id = "io.sentry.android.gradle", version.ref = "sentryGradlePlugin" }
