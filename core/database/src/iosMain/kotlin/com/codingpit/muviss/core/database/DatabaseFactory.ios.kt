@@ -56,7 +56,13 @@ actual class DatabaseDriverFactory {
             onConfiguration = { config ->
                 config.copy(extendedConfig = config.extendedConfig.copy(basePath = directory))
             },
-        ).also { driver -> driver.executeQuery(null, "SELECT 1", { QueryResult.Value(Unit) }, 0) }
+        ).also { driver ->
+            // A failed create/migrate must not leave this driver's connections
+            // open behind the caller's back; the caller sees the failure.
+            runCatching { driver.executeQuery(null, "SELECT 1", { QueryResult.Value(Unit) }, 0) }
+                .onFailure { runCatching { driver.close() } }
+                .getOrThrow()
+        }
     }
 
     /** A file this app owns; there is nothing to warn anyone about. */
