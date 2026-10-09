@@ -2,11 +2,8 @@
 
 package com.codingpit.muviss.feature.profile.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.billing.Entitlement
 import com.codingpit.muviss.core.billing.EntitlementProvider
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
@@ -23,6 +20,8 @@ import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionExpiredException
 import com.codingpit.muviss.core.sync.SyncTable
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
@@ -49,10 +48,6 @@ class CoreSyncRepositoryAutomaticTest {
         override val io = d
     }
 
-    private class FixedClock : AppClock {
-        override fun nowEpochMs(): Long = 1_000L
-    }
-
     private class ScriptedBackend(session: SyncSession?) : SyncBackend {
         override val id = SyncBackendId.SUPABASE
         val sessionState = MutableStateFlow(session)
@@ -77,9 +72,9 @@ class CoreSyncRepositoryAutomaticTest {
 
     private class Rig(scope: TestScope, backgroundAvailable: Boolean = true) {
         val flags = FakeFeatureFlags()
-        val database: MuvissDatabase = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { MuvissDatabase.Schema.synchronous().create(it) }.let { MuvissDatabase(it) }
+        val database: MuvissDatabase = inMemoryDatabase()
         val backend = ScriptedBackend(SyncSession(SyncBackendId.SUPABASE, "user-1", "person@example.com", "token", null, null))
-        val clock = FixedClock()
+        val clock = FakeClock(1_000L)
         val engine = SyncEngine(
             backend,
             database,

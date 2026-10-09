@@ -1,6 +1,6 @@
 package com.codingpit.muviss.feature.collection.domain
 
-import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -17,10 +17,6 @@ import kotlin.test.assertTrue
 
 private const val TODAY_EPOCH_DAY = 100L
 private const val TODAY_EPOCH_MS = TODAY_EPOCH_DAY * 86_400_000L
-
-private class FakeClock : AppClock {
-    override fun nowEpochMs(): Long = TODAY_EPOCH_MS
-}
 
 /** Test double for [MediaSnapshotSource]: each media id resolves to a canned [MediaDetails] (or a failure). */
 private class FakeMediaSnapshotSource(private val detailsByMediaId: Map<MediaId, Result<MediaDetails>>) : MediaSnapshotSource {
@@ -103,7 +99,7 @@ class RefreshAndFindNewEpisodesUseCaseTest {
         val snapshotSource = FakeMediaSnapshotSource(
             mapOf(severance to Result.success(tvDetailsWithNewEpisode(severance, "Severance", priorAiredCount = 4, newSeason = 2, newNumber = 5))),
         )
-        val useCase = RefreshAndFindNewEpisodesUseCase(repository, snapshotSource, FakeClock())
+        val useCase = RefreshAndFindNewEpisodesUseCase(repository, snapshotSource, FakeClock(TODAY_EPOCH_MS))
 
         val result = useCase()
 
@@ -117,7 +113,7 @@ class RefreshAndFindNewEpisodesUseCaseTest {
         val snapshotSource = FakeMediaSnapshotSource(
             mapOf(severance to Result.success(tvDetailsWithNewEpisode(severance, "Severance", priorAiredCount = 4, newSeason = 2, newNumber = 5))),
         )
-        val useCase = RefreshAndFindNewEpisodesUseCase(repository, snapshotSource, FakeClock())
+        val useCase = RefreshAndFindNewEpisodesUseCase(repository, snapshotSource, FakeClock(TODAY_EPOCH_MS))
 
         val result = useCase()
 
@@ -136,7 +132,7 @@ class RefreshAndFindNewEpisodesUseCaseTest {
                 theBear to Result.success(tvDetailsWithNewEpisode(theBear, "The Bear", priorAiredCount = 2, newSeason = 1, newNumber = 3)),
             ),
         )
-        val useCase = RefreshAndFindNewEpisodesUseCase(repository, snapshotSource, FakeClock())
+        val useCase = RefreshAndFindNewEpisodesUseCase(repository, snapshotSource, FakeClock(TODAY_EPOCH_MS))
 
         val result = useCase()
 

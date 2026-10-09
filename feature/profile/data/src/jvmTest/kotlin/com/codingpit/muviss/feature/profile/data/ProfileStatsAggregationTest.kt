@@ -2,13 +2,12 @@
 
 package com.codingpit.muviss.feature.profile.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -47,17 +46,6 @@ import kotlin.test.assertEquals
 private class StatsAggregationDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
     override val io = d
-}
-
-private class StatsTestClock(private var epochDay: Long) : AppClock {
-    override fun nowEpochMs(): Long = epochDay * MILLIS_PER_DAY
-    fun advanceToEpochDay(day: Long) {
-        epochDay = day
-    }
-
-    private companion object {
-        const val MILLIS_PER_DAY = 86_400_000L
-    }
 }
 
 /** [CollectionApi] wired directly over the real [SqlDelightCollectionRepository] — test-only, mirrors `ProgressCollectionStatusIntegrationTest`'s `RealSeenEpisodesProgressApi`. */
@@ -139,7 +127,7 @@ private class RealProgressApiForStats(private val repository: ProgressRepository
  */
 class ProfileStatsAggregationTest {
 
-    private lateinit var clock: StatsTestClock
+    private lateinit var clock: FakeClock
     private lateinit var collectionApi: CollectionApi
     private lateinit var progressApi: ProgressApi
     private lateinit var useCase: ObserveProfileStatsUseCase
@@ -164,11 +152,9 @@ class ProfileStatsAggregationTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         val dispatchers = StatsAggregationDispatchers(UnconfinedTestDispatcher())
-        clock = StatsTestClock(epochDay = 0)
+        clock = FakeClock(epochMsAtStartOfDay(0))
 
         val progressRepository: ProgressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApiForStats(progressRepository)
@@ -180,7 +166,7 @@ class ProfileStatsAggregationTest {
 
     @Test
     fun aggregates_status_counts_hours_genres_and_a_gapped_streak() = runTest {
-        clock.advanceToEpochDay(10) // "today" for every snapshot below.
+        clock.advanceTo(epochMsAtStartOfDay(10)) // "today" for every snapshot below.
 
         collectionApi.add(
             MediaDetails(
@@ -211,11 +197,11 @@ class ProfileStatsAggregationTest {
         // single day of activity that lands on "today" (10) — exercises the
         // streak's gap handling against real ticked rows, not just the pure
         // calculator (see WatchStreakCalculatorTest for exhaustive gap cases).
-        clock.advanceToEpochDay(5)
+        clock.advanceTo(epochMsAtStartOfDay(5))
         progressApi.setEpisodeSeen(ep1.id, true)
-        clock.advanceToEpochDay(6)
+        clock.advanceTo(epochMsAtStartOfDay(6))
         progressApi.setEpisodeSeen(ep2.id, true)
-        clock.advanceToEpochDay(10)
+        clock.advanceTo(epochMsAtStartOfDay(10))
         progressApi.setMovieWatched(movieA, true)
 
         useCase().test {
@@ -257,7 +243,7 @@ class ProfileStatsAggregationTest {
 
     @Test
     fun a_second_viewing_reaches_the_profile_card_with_its_unit_intact() = runTest {
-        clock.advanceToEpochDay(10)
+        clock.advanceTo(epochMsAtStartOfDay(10))
         collectionApi.add(MediaDetails(summary = MediaSummary(movieA, "Movie A")))
         collectionApi.add(
             MediaDetails(
@@ -270,7 +256,7 @@ class ProfileStatsAggregationTest {
         progressApi.setEpisodeSeen(ep2.id, true)
         progressApi.setMovieWatched(movieA, true)
 
-        clock.advanceToEpochDay(20)
+        clock.advanceTo(epochMsAtStartOfDay(20))
         progressApi.recordPlay(ep1.id)
         progressApi.recordPlay(ep2.id)
         progressApi.recordPlay(EpisodeId.forMovie(movieA))
@@ -294,10 +280,10 @@ class ProfileStatsAggregationTest {
      */
     @Test
     fun a_removed_title_leaves_the_ranking_and_keeps_its_history() = runTest {
-        clock.advanceToEpochDay(10)
+        clock.advanceTo(epochMsAtStartOfDay(10))
         collectionApi.add(MediaDetails(summary = MediaSummary(movieA, "Movie A")))
         progressApi.setMovieWatched(movieA, true)
-        clock.advanceToEpochDay(20)
+        clock.advanceTo(epochMsAtStartOfDay(20))
         progressApi.recordPlay(EpisodeId.forMovie(movieA))
 
         collectionApi.remove(movieA)

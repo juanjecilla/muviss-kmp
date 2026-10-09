@@ -3,13 +3,11 @@
 package com.codingpit.muviss.feature.progress.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.EpisodePlayQueries
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CoroutineDispatcher
@@ -25,13 +23,6 @@ private class RewatchDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val io = d
 }
 
-private class FixedClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun set(newMillis: Long) {
-        millis = newMillis
-    }
-}
-
 /**
  * The rewatch queries in `EpisodePlay.sq`, at the level where their
  * definition actually lives (ADR 0012).
@@ -44,7 +35,7 @@ class RewatchQueryTest {
 
     private lateinit var repository: SqlDelightProgressRepository
     private lateinit var playQueries: EpisodePlayQueries
-    private lateinit var clock: FixedClock
+    private lateinit var clock: FakeClock
 
     private val show = MediaId.tmdbTv("1399")
     private val ep1 = EpisodeId(show, 1, 1)
@@ -59,11 +50,9 @@ class RewatchQueryTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         playQueries = database.episodePlayQueries
-        clock = FixedClock(dec2025)
+        clock = FakeClock(dec2025)
         repository = SqlDelightProgressRepository(
             database.episodeProgressQueries,
             playQueries,
@@ -84,7 +73,7 @@ class RewatchQueryTest {
     @Test
     fun `a second viewing of the same episode is one rewatch`() = runTest {
         repository.setSeen(ep1, seen = true)
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlay(ep1)
 
         assertEquals(mapOf(show to 1), repository.observeRewatchCounts(ALL_TIME).first())
@@ -99,9 +88,9 @@ class RewatchQueryTest {
     @Test
     fun `rewatch in March of an episode first seen in December`() = runTest {
         repository.setSeen(ep1, seen = true) // December 2025
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlay(ep1)
-        clock.set(laterMar2026)
+        clock.advanceTo(laterMar2026)
         repository.recordPlay(ep1)
 
         assertEquals(mapOf(show to 3 - 1), repository.observeRewatchCounts(ALL_TIME).first())
@@ -111,7 +100,7 @@ class RewatchQueryTest {
     @Test
     fun `the window bounds the rewatch, never the first viewing`() = runTest {
         repository.setSeen(ep1, seen = true) // December 2025
-        clock.set(dec2025 + 1)
+        clock.advanceTo(dec2025 + 1)
         repository.recordPlay(ep1) // also December 2025
 
         assertEquals(mapOf(show to 1), repository.observeRewatchCounts(ALL_TIME).first())
@@ -150,7 +139,7 @@ class RewatchQueryTest {
         // The boundary the collapse above sits on: move the clock at all and
         // the two plays get distinct ids and count normally.
         repository.setSeen(ep1, seen = true)
-        clock.set(clock.nowEpochMs() + 1)
+        clock.advanceTo(clock.nowEpochMs() + 1)
         repository.recordPlay(ep1)
 
         assertEquals(mapOf(show to 1), repository.observeRewatchCounts(ALL_TIME).first())
@@ -160,7 +149,7 @@ class RewatchQueryTest {
     fun `over all time the count equals plays minus distinct episodes`() = runTest {
         repository.setSeen(ep1, seen = true)
         repository.setSeen(ep2, seen = true)
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlay(ep1)
         repository.recordPlay(ep2)
         repository.recordPlay(ep2)
@@ -174,7 +163,7 @@ class RewatchQueryTest {
     @Test
     fun `a movie watched twice has one rewatch`() = runTest {
         repository.setSeen(EpisodeId.forMovie(movie), seen = true)
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlay(EpisodeId.forMovie(movie))
 
         assertEquals(mapOf(movie to 1), repository.observeRewatchCounts(ALL_TIME).first())
@@ -188,7 +177,7 @@ class RewatchQueryTest {
     @Test
     fun `a bulk mark over already-seen episodes adds no rewatches`() = runTest {
         repository.setSeen(ep1, seen = true)
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlaysForUnseen(listOf(ep1, ep2))
 
         assertEquals(emptyMap(), repository.observeRewatchCounts(ALL_TIME).first())
@@ -197,7 +186,7 @@ class RewatchQueryTest {
     @Test
     fun `undoing a mistaken tick takes its rewatch back`() = runTest {
         repository.setSeen(ep1, seen = true)
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlay(ep1)
         repository.removeLatestPlay(ep1)
 
@@ -207,7 +196,7 @@ class RewatchQueryTest {
     @Test
     fun `timestamps report the rewatch moment, not the first viewing`() = runTest {
         repository.setSeen(ep1, seen = true) // December
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlay(ep1)
 
         assertEquals(listOf(mar2026), repository.observeRewatchTimestamps(ALL_TIME).first())
@@ -221,7 +210,7 @@ class RewatchQueryTest {
     @Test
     fun `clearing a title's progress removes its rewatches`() = runTest {
         repository.setSeen(ep1, seen = true)
-        clock.set(mar2026)
+        clock.advanceTo(mar2026)
         repository.recordPlay(ep1)
         repository.clearForMedia(show)
 

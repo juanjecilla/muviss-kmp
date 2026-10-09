@@ -1,6 +1,5 @@
 package com.codingpit.muviss.feature.progress.domain
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -103,10 +102,6 @@ class FakeProgressRepository : ProgressRepository {
 
 class MapEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = Result.success(bySeasons[mediaId].orEmpty())
-}
-
-class FixedClock(private val millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
 }
 
 fun testEpisode(show: MediaId, season: Int, number: Int, airDay: Long?) = Episode(

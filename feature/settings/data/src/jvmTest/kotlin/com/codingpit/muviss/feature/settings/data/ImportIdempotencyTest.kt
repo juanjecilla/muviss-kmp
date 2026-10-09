@@ -2,12 +2,10 @@
 
 package com.codingpit.muviss.feature.settings.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -50,10 +48,6 @@ import kotlin.test.assertTrue
 private class IdempotencyDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
     override val io = d
-}
-
-private class IdempotencyClock(private val millis: Long = 0L) : AppClock {
-    override fun nowEpochMs(): Long = millis
 }
 
 /** [CollectionApi] wired directly over the real repository — test-only, mirrors `ProfileStatsAggregationTest`'s equivalent. */
@@ -149,11 +143,9 @@ class ImportIdempotencyTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val db = MuvissDatabase(driver)
+        val db = inMemoryDatabase()
         val dispatchers = IdempotencyDispatchers(UnconfinedTestDispatcher())
-        val clock = IdempotencyClock()
+        val clock = FakeClock(0L)
 
         val progressRepository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApi(progressRepository)

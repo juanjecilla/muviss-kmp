@@ -1,6 +1,5 @@
 package com.codingpit.muviss.feature.triage.data
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
@@ -17,14 +16,6 @@ internal const val NOW_EPOCH_MS = TODAY_EPOCH_DAY * 86_400_000L
 internal class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
     override val io = d
-}
-
-internal class FakeClock(private var millis: Long = NOW_EPOCH_MS) : AppClock {
-    override fun nowEpochMs(): Long = millis
-
-    fun advanceBy(millis: Long) {
-        this.millis += millis
-    }
 }
 
 /**

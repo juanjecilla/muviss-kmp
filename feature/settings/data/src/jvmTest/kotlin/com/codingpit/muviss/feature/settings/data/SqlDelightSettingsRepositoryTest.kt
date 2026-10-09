@@ -2,13 +2,12 @@
 
 package com.codingpit.muviss.feature.settings.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -27,10 +26,6 @@ private class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val io = d
 }
 
-private class FakeClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-}
-
 class SqlDelightSettingsRepositoryTest {
 
     private lateinit var database: MuvissDatabase
@@ -38,9 +33,7 @@ class SqlDelightSettingsRepositoryTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        database = MuvissDatabase(driver)
+        database = inMemoryDatabase()
         repository = SqlDelightSettingsRepository(
             database.appSettingsQueries,
             ExportQueries(database),

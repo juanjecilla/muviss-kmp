@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.progress.domain
 
 import app.cash.turbine.test
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
@@ -42,7 +43,7 @@ class WatchNextUseCaseTest {
         { collectionApi },
         ObserveSeenEpisodesUseCase(repository),
         EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(catalogs)), store),
-        FixedClock(today),
+        FakeClock(today),
     )
 
     @Test

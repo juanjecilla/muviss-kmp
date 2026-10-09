@@ -2,9 +2,9 @@
 
 package com.codingpit.muviss.feature.triage.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.triage.domain.TriageSnooze
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.flow.first
@@ -31,10 +31,8 @@ class SqlDelightTriageSnoozeRepositoryTest {
 
     @BeforeTest
     fun setUp() = runTest {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        database = MuvissDatabase(driver)
-        clock = FakeClock()
+        database = inMemoryDatabase()
+        clock = FakeClock(NOW_EPOCH_MS)
         repository = SqlDelightTriageSnoozeRepository(
             database.triageSnoozeQueries,
             ImmediateDispatchers(UnconfinedTestDispatcher()),

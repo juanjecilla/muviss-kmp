@@ -14,6 +14,8 @@ kotlin {
             implementation(projects.feature.progress.api)
         }
         commonTest.dependencies {
+            // `FakeClock` (the shared `AppClock` fake).
+            implementation(projects.core.testing)
             // Test-only: verdicts are asserted through the *derived* status
             // (ADR 0005), never through anything triage stores itself.
             implementation(projects.core.model)

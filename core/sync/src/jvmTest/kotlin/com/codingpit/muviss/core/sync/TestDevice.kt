@@ -2,15 +2,15 @@
 
 package com.codingpit.muviss.core.sync
 
-import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.database.CollectionEntry
 import com.codingpit.muviss.core.database.EpisodePlay
 import com.codingpit.muviss.core.database.EpisodeProgress
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.supabase.SupabaseSyncBackend
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeSupabaseServer
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -83,7 +83,7 @@ internal class TestDevice(
     val clock = FakeClock(startMillis)
     var sessionStore = InMemorySessionStore(sessionFor(userId).also { server.signUp(userId) })
         private set
-    val driver: SqlDriver = wrapDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)).also { MuvissDatabase.Schema.synchronous().create(it) }
+    val driver: SqlDriver = inMemoryDriver(wrapDriver)
     val database = MuvissDatabase(driver)
     internal var backend = newBackend()
         private set

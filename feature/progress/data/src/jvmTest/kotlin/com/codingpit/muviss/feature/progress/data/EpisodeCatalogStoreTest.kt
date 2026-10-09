@@ -2,12 +2,11 @@
 
 package com.codingpit.muviss.feature.progress.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.CountingDriver
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
@@ -28,13 +27,6 @@ private class CatalogTestDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val io = d
 }
 
-private class CatalogTestClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun advanceTo(newMillis: Long) {
-        millis = newMillis
-    }
-}
-
 private class RecordingCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
     val fetched = mutableListOf<MediaId>()
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> {
@@ -52,7 +44,7 @@ class EpisodeCatalogStoreTest {
 
     private lateinit var driver: CountingDriver
     private lateinit var database: MuvissDatabase
-    private lateinit var clock: CatalogTestClock
+    private lateinit var clock: FakeClock
     private lateinit var store: SqlDelightEpisodeCatalogStore
 
     private val got = MediaId.tmdbTv("1399")
@@ -75,10 +67,9 @@ class EpisodeCatalogStoreTest {
 
     @BeforeTest
     fun setUp() {
-        driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        MuvissDatabase.Schema.synchronous().create(driver)
+        driver = inMemoryDriver(::CountingDriver)
         database = MuvissDatabase(driver)
-        clock = CatalogTestClock(1_000L)
+        clock = FakeClock(1_000L)
         store = SqlDelightEpisodeCatalogStore(database.episodeQueries, CatalogTestDispatchers(UnconfinedTestDispatcher()), clock)
     }
 

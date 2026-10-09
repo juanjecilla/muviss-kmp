@@ -2,8 +2,8 @@
 
 package com.codingpit.muviss.feature.search.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -234,11 +234,6 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = setEpisodeSeen(EpisodeId.forMovie(mediaId), watched)
 }
 
-/** Fixed "today" so aired-vs-unaired is a property of the fixture, not of the calendar. */
-private class TestClock(private val todayEpochMs: Long) : AppClock {
-    override fun nowEpochMs(): Long = todayEpochMs
-}
-
 class DetailViewModelTest {
 
     @BeforeTest
@@ -279,7 +274,7 @@ class DetailViewModelTest {
             WatchProvidersUseCase(repo),
             MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
             // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
-            TestClock(todayEpochMs = 20L * 86_400_000L),
+            FakeClock(20L * 86_400_000L),
             repoFakes.connectivity,
         )
     }

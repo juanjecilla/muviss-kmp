@@ -6,8 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
@@ -73,7 +73,7 @@ class CollectionScreenErrorCopyTest {
             ObserveCollectionUseCase(repository),
             ToggleFavoriteUseCase(repository),
             RefreshCollectionSnapshotsUseCase(repository, NoopSnapshotSource()),
-            CollectionRefreshThrottle(NoopClock()).apply { recordRefresh() },
+            CollectionRefreshThrottle(FakeClock(0L)).apply { recordRefresh() },
         )
         setContent {
             MuvissTheme(darkTheme = false) {
@@ -87,10 +87,6 @@ class CollectionScreenErrorCopyTest {
     }
 }
 
-private class NoopClock : AppClock {
-    override fun nowEpochMs(): Long = 0L
-}
-
 @Composable
 private fun CollectionWithFailure(failure: Throwable) {
     val repository = FakeCollectionRepository(emptyList(), failure = failure)
@@ -98,7 +94,7 @@ private fun CollectionWithFailure(failure: Throwable) {
     // fires it: that refresh reads the same failing repository.observeAll()
     // and would surface the identical mapped copy a second time, as a
     // snackbar message rather than the ErrorState this test targets.
-    val throttle = CollectionRefreshThrottle(NoopClock()).apply { recordRefresh() }
+    val throttle = CollectionRefreshThrottle(FakeClock(0L)).apply { recordRefresh() }
     val viewModel = CollectionViewModel(
         ObserveCollectionUseCase(repository),
         ToggleFavoriteUseCase(repository),
