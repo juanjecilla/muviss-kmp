@@ -45,7 +45,10 @@ When none of the four values are present — the default for a fresh clone —
 `app/androidApp/build.gradle.kts` falls back to **debug signing** for the
 `release` build type, so `assembleRelease`/`bundleRelease` still work for
 every contributor; they just don't produce a Play-Store-installable
-artifact. Both paths are exercised as part of this epic's verification (a
+artifact. CI's release build (`android-release-build.yml`) refuses that
+fallback: it fails unless the AAB is signed and its certificate is not the
+Android debug key, so a missing secret stops the RC instead of uploading a
+debug-signed bundle. Both paths are exercised as part of this epic's verification (a
 disposable throwaway `keytool` keystore was used to prove the signing path
 works end-to-end, then discarded — never committed).
 
