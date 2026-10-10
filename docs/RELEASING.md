@@ -1007,7 +1007,10 @@ See `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`'s
 2026-07-16 amendment for the full story. Short version: real read/write
 persistence now works on both `js` and `wasmJs`, backed by SQLDelight's
 `web-worker-driver` running SQL.js (SQLite-to-wasm) inside a Web Worker —
-and since EPIC 24 it is **durable**: our fork of the worker
+and since EPIC 24 it is **durable on a best-effort basis** — in the tab
+that holds the writer lock, and as long as IndexedDB writes succeed (a
+second tab is read-only, `ReadOnlyTab`; a failed write shows `NotPersisted`):
+our fork of the worker
 (`core/database/src/webWorker`) restores an IndexedDB snapshot on open and
 re-exports it shortly after each committed write, and only one tab persists
 (CLAUDE.md, "Web + DB"). Getting the worker to actually load in a webpack-bundled build needed

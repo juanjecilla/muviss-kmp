@@ -1,3 +1,4 @@
-# One maintainer. This only auto-requests a review; the rulesets do not require
-# code-owner approval (CodeRabbit's approval is the required one, ADR 0025).
+# One maintainer. This only auto-requests a review. The rulesets require one
+# approval but neither a code owner's nor CodeRabbit's specifically; AGENTS.md
+# (ADR 0025) is what makes CodeRabbit's the one we wait for.
 * @juanjecilla

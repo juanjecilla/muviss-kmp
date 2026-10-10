@@ -23,7 +23,11 @@ updates:
     groups:
       toolchain-patches:
         patterns:
-          - org.jetbrains.kotlin*
+          # The compiler and stdlib, and the Gradle plugin markers
+          # (org.jetbrains.kotlin.multiplatform, .plugin.compose, …) — but not
+          # kotlinx or kotlin-wrappers, which are libraries.
+          - org.jetbrains.kotlin:*
+          - org.jetbrains.kotlin.*
           - org.jetbrains.compose*
           - org.jetbrains.androidx*
           - com.android*
@@ -31,7 +35,9 @@ updates:
         patterns:
           - "*"
     ignore:
-      - dependency-name: org.jetbrains.kotlin*
+      - dependency-name: org.jetbrains.kotlin:*
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: org.jetbrains.kotlin.*
         update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: org.jetbrains.compose*
         update-types: [version-update:semver-major, version-update:semver-minor]
