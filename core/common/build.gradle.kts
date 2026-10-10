@@ -3,48 +3,18 @@ import org.jetbrains.kotlin.gradle.plugin.extend
 
 plugins {
     id("muviss.kmp.library")
+    id("muviss.version")
 }
 
-// App version, derived from git exactly the same way :app:androidApp derives
-// versionCode/versionName, and baked into a generated constant — same
-// mechanism as the TMDB key (:core:network) and Sentry DSN (:app:shared), see
-// ADR 0007. Lives here (rather than only in :app:androidApp's Gradle model)
-// because the About screen that shows it is feature/settings/ui, a KMP module
-// with no access to an Android BuildConfig/PackageManager; duplicated instead
-// of shared as a buildSrc function to keep each module's Gradle file
-// self-contained, consistent with the other two generators.
-//
-// Uses ProviderFactory.exec (not java.lang.ProcessBuilder): running an
-// external process directly at configuration time is incompatible with the
-// configuration cache this project enables (see gradle.properties).
-fun gitOutput(vararg args: String): String? = try {
-    val result =
-        providers.exec {
-            commandLine(*args)
-            workingDir = rootDir
-            isIgnoreExitValue = true
-        }
-    if (result.result.get().exitValue != 0) {
-        null
-    } else {
-        result.standardOutput.asText.get().trim().ifEmpty { null }
-    }
-} catch (_: Exception) {
-    null // git not installed / not a git checkout (e.g. a source-only archive)
-}
-
-val gitVersionCode: Int = gitOutput("git", "rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
-
-val gitVersionName: String = run {
-    val describe = gitOutput("git", "describe", "--tags", "--always", "--dirty")
-    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-rc\d+)?(-\d+-g[0-9a-f]+)?(-dirty)?$""")
-    val tagVersion = describe?.let { tagPattern.matchEntire(it)?.groupValues?.get(1) }
-    when {
-        tagVersion != null -> tagVersion
-        describe != null -> "0.1.0-dev.$gitVersionCode+$describe"
-        else -> "0.1.0-dev.$gitVersionCode"
-    }
-}
+// App version, derived from git exactly as :app:androidApp's versionCode/
+// versionName are (MuvissVersion in build-logic), and baked into a generated
+// constant — same mechanism as the TMDB key (:core:network) and Sentry DSN
+// (:app:shared), see ADR 0007. Lives here (rather than only in
+// :app:androidApp's Gradle model) because the About screen that shows it is
+// feature/settings/ui, a KMP module with no access to an Android
+// BuildConfig/PackageManager.
+val gitVersionCode: Int = muvissVersion.code
+val gitVersionName: String = muvissVersion.name
 
 val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/commonMain/kotlin")
 

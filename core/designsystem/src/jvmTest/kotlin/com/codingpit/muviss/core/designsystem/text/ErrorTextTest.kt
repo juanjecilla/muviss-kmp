@@ -30,6 +30,14 @@ class ErrorTextTest {
     }
 
     @Test
+    fun `a rejected credential does not read as being offline`() = runTest {
+        // #258: it used to share the offline wording, which is how #197 hid.
+        val text = MetadataError.Unauthorized().toUiText(UiText.Raw("fallback")).resolveAsync()
+        assertEquals(MetadataError.Unauthorized().userMessage, text)
+        assertEquals(false, text.contains("reach") || text.contains("offline") || text.contains("try again", ignoreCase = true))
+    }
+
+    @Test
     fun `anything else is the fallback, never its message`() = runTest {
         val leaky = IllegalStateException("https://api.themoviedb.org/3?api_key=SECRET")
         assertEquals("fallback", leaky.toUiText(UiText.Raw("fallback")).resolveAsync())
