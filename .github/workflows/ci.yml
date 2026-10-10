@@ -164,7 +164,7 @@ jobs:
       # gated: no threshold until someone has decided what the number means.
       - name: Coverage report (Kover)
         run: |
-          ./gradlew koverXmlReport koverHtmlReport --stacktrace
+          ./gradlew :koverXmlReport :koverHtmlReport --stacktrace
           python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
           import xml.etree.ElementTree as ET
           root = ET.parse("build/reports/kover/report.xml").getroot()
