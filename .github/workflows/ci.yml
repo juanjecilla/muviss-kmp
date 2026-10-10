@@ -200,6 +200,20 @@ jobs:
       - name: Compile web targets (JS + Wasm)
         run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
 
+      # kotlin-js-store/ pins every npm package the JS and Wasm builds resolve.
+      # Kotlin's own store task does not fail on a stale lock — it rewrites the
+      # file with whatever yarn just resolved — so the check is ours: resolve,
+      # store, and fail if that changed anything the PR did not commit (#67).
+      - name: npm lockfiles are committed and current
+        run: |
+          ./gradlew kotlinNpmInstall kotlinStoreYarnLock kotlinWasmNpmInstall kotlinWasmStoreYarnLock --stacktrace
+          if [ -n "$(git status --porcelain -- kotlin-js-store/)" ]; then
+            git status --short -- kotlin-js-store/
+            git diff -- kotlin-js-store/ | head -100
+            echo "::error::kotlin-js-store/ is stale. Run ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock and commit the result."
+            exit 1
+          fi
+
       # The per-target compiles above never touch the *intermediate* source
       # sets' own compilations (`webMain`, `appleMain`, `iosMain`,
       # `nativeMain`): they read those directories straight into the target.
@@ -477,14 +491,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
-    # The only job in this file where the timeout is a spending control rather
-    # than a tidiness one. macOS bills at 10x, so the default 360-minute ceiling
-    # is 3,600 billed minutes from a single hung run — more than an entire
-    # month's free-tier allowance, gone in one afternoon. A successful run here
-    # is ~11 minutes end to end.
-    timeout-minutes: 45
+    # Written when the repo was private and macOS billed at 10x, so the
+    # default 360-minute ceiling was a month's allowance in one hung run. The
+    # repo is public now and standard runners are free, so the ceiling is back
+    # to being about a hang holding the PR. Raised from 45 when the
+    # Kotlin/Native tests and the release link joined the job (#67, #50).
+    timeout-minutes: 75
     steps:
+      # Full history, like `build`: the release framework link below is a
+      # "Release" invocation, and :app:androidApp's guard (which is configured
+      # in the same build) refuses a shallow clone for one, since versionCode
+      # is `git rev-list --count HEAD`. An iOS release needs it too — its
+      # CFBundleVersion is the same commit count.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -523,6 +544,46 @@ jobs:
 
       - name: Link Kotlin/Native framework (iOS simulator)
         run: ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
+      # Every module's tests on Kotlin/Native (#67). The JVM runs commonTest
+      # everywhere else; this is what catches what only K/N rejects — a comma
+      # in a backticked test name, a JVM-only API in commonMain — which used to
+      # surface only in a local `./gradlew build`. Its first local run also
+      # found 43 tests that passed on CI's English runner and failed on a
+      # Spanish Mac, now pinned in muviss.kmp.compose.
+      #
+      # The heap: the K/N compiler runs inside the Gradle daemon and OOMs at
+      # the 4 GiB gradle.properties sets for ~16 GB Linux runners (#49). This
+      # runner has 7 GB, so 5 GiB with two workers, raised here rather than
+      # in gradle.properties.
+      - name: Kotlin/Native tests (iOS simulator)
+        run: >
+          ./gradlew iosSimulatorArm64Test
+          -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+          --max-workers=2
+          --continue
+          --stacktrace
+
+      - name: Upload Kotlin/Native test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-reports
+          if-no-files-found: ignore
+          path: |
+            **/build/reports/tests/iosSimulatorArm64Test/**
+            **/build/test-results/iosSimulatorArm64Test/**
+
+      # The configuration TestFlight and the App Store use, which nothing
+      # linked before (#50). It runs optimisation passes the debug link never
+      # reaches — devirtualisation is where it OOMed in #50 — so a release-only
+      # failure would otherwise first appear while shipping.
+      - name: Link the release framework (iOS simulator)
+        run: >
+          ./gradlew :app:shared:linkReleaseFrameworkIosSimulatorArm64
+          -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+          --max-workers=2
+          --stacktrace
 
       - name: Build the Xcode project
         run: >
