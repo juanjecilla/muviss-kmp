@@ -1008,8 +1008,10 @@ See `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`'s
 persistence now works on both `js` and `wasmJs`, backed by SQLDelight's
 `web-worker-driver` running SQL.js (SQLite-to-wasm) inside a Web Worker —
 and since EPIC 24 it is **durable on a best-effort basis** — in the tab
-that holds the writer lock, and as long as IndexedDB writes succeed (a
-second tab is read-only, `ReadOnlyTab`; a failed write shows `NotPersisted`):
+that holds the writer lock, and as long as IndexedDB writes succeed. A
+second tab runs in memory only (`ReadOnlyTab`), and a browser without Web
+Locks never persists (`NotPersisted`); a snapshot write that fails is only
+logged by the worker and reported nowhere (#292). So:
 our fork of the worker
 (`core/database/src/webWorker`) restores an IndexedDB snapshot on open and
 re-exports it shortly after each committed write, and only one tab persists
@@ -1041,8 +1043,9 @@ and both discovered only by driving a real build's output in a real browser
 4. Library/Progress/Profile screens: confirm they load without an error
    state (each screen's `.catch { }` would otherwise surface a visible
    error instead of a silent hang or crash — see ADR 0008).
-5. Reload the page; confirm the theme you chose in step 3 is still set
-   (the IndexedDB snapshot was restored).
+5. Reload the page; confirm the theme you chose in step 3 is still set.
+   That shows a snapshot was written and restored — not that every write
+   since was, since a failed snapshot write is silent (#292).
 
 ## 11. Home-screen widgets — EPIC 22
 
