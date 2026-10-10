@@ -26,5 +26,11 @@ kotlin {
             // CollectionRefreshThrottle takes an AppClock; the tests fake it. (:core:common is
             // a commonMain dependency now too, so nothing to add here.)
         }
+        // Golden-image capture needs Skia, so the screenshot tests are
+        // JVM-only. `compose.uiTest` and the Skiko desktop binary arrive from
+        // the `muviss.kmp.compose` convention.
+        jvmTest.dependencies {
+            implementation(projects.core.testing)
+        }
     }
 }

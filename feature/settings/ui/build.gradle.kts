@@ -27,6 +27,12 @@ kotlin {
             implementation(projects.feature.collection.api)
             implementation(projects.feature.progress.api)
         }
+        // Golden-image capture needs Skia, so the screenshot tests are
+        // JVM-only. `compose.uiTest` and the Skiko desktop binary arrive from
+        // the `muviss.kmp.compose` convention.
+        jvmTest.dependencies {
+            implementation(projects.core.testing)
+        }
         // FileImporter.android.kt (EPIC 18) needs an activity-result launcher
         // to bridge the system document picker back into a suspend call.
         androidMain.dependencies {

@@ -70,7 +70,7 @@ class SearchScreenInsetsTest {
 
     @Test
     fun search_renders_below_the_safe_area() = runComposeUiTest {
-        setContent { SearchUnderTest(TestSafeAreaInsets) }
+        setContent { SearchUnderTest(TestSafeAreaInsets, darkTheme = false) }
         waitForIdle()
 
         // Wider than the 0.5% default because this frame is almost entirely text,
@@ -80,6 +80,15 @@ class SearchScreenInsetsTest {
         // nothing else. Still far below what any layout shift on this screen
         // would move. See `assertMatchesGolden`.
         assertMatchesGolden("search-screen-insets", tolerance = 0.04)
+    }
+
+    @Test
+    fun search_renders_below_the_safe_area_dark() = runComposeUiTest {
+        setContent { SearchUnderTest(TestSafeAreaInsets, darkTheme = true) }
+        waitForIdle()
+
+        // Same frame, same text, so the same measured drift as the light one.
+        assertMatchesGolden("search-screen-insets-dark", tolerance = 0.04)
     }
 
     private companion object {
@@ -92,7 +101,7 @@ class SearchScreenInsetsTest {
 }
 
 @Composable
-private fun SearchUnderTest(insets: WindowInsets) {
+private fun SearchUnderTest(insets: WindowInsets, darkTheme: Boolean = false) {
     val repo = FakeRepo(
         movieGenresResult = Result.success(listOf(Genre("28", "Action"), Genre("12", "Adventure"))),
         tvGenresResult = Result.success(listOf(Genre("10759", "Action & Adventure"))),
@@ -114,7 +123,7 @@ private fun SearchUnderTest(insets: WindowInsets) {
     // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded
     // on a machine in dark mode compares against a light render on CI and every
     // pixel moves. See `GoldenSurface`.
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface {
             ScreenInsets(insets = insets) {
                 SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {})

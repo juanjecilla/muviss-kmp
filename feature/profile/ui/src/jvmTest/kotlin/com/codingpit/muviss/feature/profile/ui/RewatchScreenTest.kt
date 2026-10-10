@@ -48,11 +48,11 @@ internal val twelveMonths = listOf(1, 3, 7, 2, 1, 5, 8, 3, 1, 2, 6, 4).mapIndexe
 }
 
 @Composable
-internal fun RewatchUnderTest(state: RewatchUiState, onWindowSelected: (RewatchWindow) -> Unit = {}) {
+internal fun RewatchUnderTest(state: RewatchUiState, onWindowSelected: (RewatchWindow) -> Unit = {}, darkTheme: Boolean = false) {
     // Pinned, never left to default: MuvissTheme's darkTheme reads
     // isSystemInDarkTheme(), i.e. the host machine's setting, so a golden
     // recorded in dark mode compares against a light render on CI.
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface {
             RewatchScreenContent(state, onWindowSelected = onWindowSelected, onBack = {})
         }

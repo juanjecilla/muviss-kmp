@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.core.designsystem.component
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.runComposeUiTest
@@ -19,7 +20,8 @@ import kotlin.test.Test
  *
  * `darkTheme` is passed explicitly because `MuvissTheme` otherwise follows the
  * host machine's setting, and a golden recorded in dark mode fails on CI with
- * nearly every pixel moved.
+ * nearly every pixel moved. Both themes are recorded, since a warning colour
+ * that holds up on one background can wash out on the other.
  */
 class PersistenceBannerGoldenTest {
 
@@ -27,15 +29,16 @@ class PersistenceBannerGoldenTest {
 
     @Test
     fun the_read_only_tab_warning_is_legible() = runComposeUiTest {
-        setContent {
-            MuvissTheme(darkTheme = true) {
-                GoldenSurface(width = 412.dp, height = 72.dp) {
-                    PersistenceBanner(message = readOnlyTab)
-                }
-            }
-        }
+        setContent { BannerSample(message = readOnlyTab, darkTheme = true) }
 
         assertMatchesGolden("persistence-banner-read-only-tab", tolerance = BANNER_TOLERANCE)
+    }
+
+    @Test
+    fun the_read_only_tab_warning_is_legible_light() = runComposeUiTest {
+        setContent { BannerSample(message = readOnlyTab, darkTheme = false) }
+
+        assertMatchesGolden("persistence-banner-read-only-tab-light", tolerance = BANNER_TOLERANCE)
     }
 
     /**
@@ -45,16 +48,27 @@ class PersistenceBannerGoldenTest {
      */
     @Test
     fun a_null_message_draws_nothing() = runComposeUiTest {
-        setContent {
-            MuvissTheme(darkTheme = true) {
-                GoldenSurface(width = 412.dp, height = 72.dp) {
-                    PersistenceBanner(message = null)
-                }
-            }
-        }
+        setContent { BannerSample(message = null, darkTheme = true) }
 
         onAllNodes(hasText(readOnlyTab, substring = true)).assertCountEquals(0)
         assertMatchesGolden("persistence-banner-absent")
+    }
+
+    @Test
+    fun a_null_message_draws_nothing_light() = runComposeUiTest {
+        setContent { BannerSample(message = null, darkTheme = false) }
+
+        onAllNodes(hasText(readOnlyTab, substring = true)).assertCountEquals(0)
+        assertMatchesGolden("persistence-banner-absent-light")
+    }
+}
+
+@Composable
+private fun BannerSample(message: String?, darkTheme: Boolean) {
+    MuvissTheme(darkTheme = darkTheme) {
+        GoldenSurface(width = 412.dp, height = 72.dp) {
+            PersistenceBanner(message = message)
+        }
     }
 }
 
