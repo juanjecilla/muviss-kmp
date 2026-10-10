@@ -90,6 +90,24 @@ _Avoid_: skip (that is the "not for me" verdict), later (that is a CollectionEnt
 A MediaItem with a Snooze not yet due. Carries the date it comes back and a snapshot of how it looked when snoozed, so it can be shown again without asking the provider. It becomes deck-eligible on its due date, and a Snooze is never the reason a MediaItem is kept out of the deck twice.
 _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user owns); postponed item.
 
+### First run and data source
+
+**Onboarding**:
+The introduction a fresh install shows once, before anything else: what the app does, plus the few choices worth making up front (new-episode alerts; an Own TMDB Key when offered). Skippable from its first page; skipping keeps whatever was already chosen. An install that existed before Onboarding did never sees it. Everything chosen in it can be changed later in Settings, and it can be replayed from there.
+_Avoid_: tutorial (Triage has its own in-deck tutorial; that is a different thing), welcome screen, setup wizard (nothing in it is required).
+
+**Notification Nudge**:
+A single, dismissible suggestion to turn on new-episode alerts, offered when it first becomes relevant — the user saving their first TV show while alerts are off. Offered at most once, never blocking, and never when the system has notifications blocked.
+_Avoid_: permission prompt (the system dialog is what turning alerts on may lead to, not the nudge itself), reminder.
+
+**Own TMDB Key**:
+A TMDB credential the user supplies so their requests are made under their own TMDB account rather than Muviss's. When present it is always the one used; if TMDB rejects it the user is told, and Muviss's credential is never substituted behind their back (ADR 0027). Belongs to the device, like other per-device settings: never synced, never exported.
+_Avoid_: API key unqualified (the app has its own), BYOK in user-facing copy, token.
+
+**Remote Config**:
+Values Muviss can change after a build has shipped — whether an optional feature is offered, which fallback TMDB credential to use — each with a built-in default that applies offline. It reads nothing about the user (ADR 0026); deciding per user is not something it does today.
+_Avoid_: feature flag (that is the in-code seam both Remote Config and per-device settings sit behind), A/B test, analytics.
+
 ### Co-watch
 
 **Companion**:

@@ -285,6 +285,10 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 11 | EPIC 41 Co-watch: a Shortlist of what two Companions can watch together (**blocked on EPIC 32**; needs ADR 0022, `11.sqm` — collides with EPIC 28, see the claims note) | #118 |
 | 11 | EPIC 42 Snooze: postponing a triage decision (ADR 0023, `12.sqm`) | #135 |
 | 11 | EPIC 44 Invite links: `https://muvissapp.com/invite#…` opens Watch together with the code prefilled (verified App Links / Universal Links; iOS blocked on TEAM_ID; needs an ADR on the fragment) | #185 |
+| 11 | EPIC 45 Remote config via ConfigCat behind `FeatureFlags`, split from #29 (ADR 0026) | #297 |
+| 11 | EPIC 46 Bring your own TMDB key: user → remote → built-in, never a silent fallback (ADR 0027; KSafe spike for secure storage) | #298 |
+| 11 | EPIC 47 First-run onboarding; notifications become opt-in, Notification Nudge, cold Android prompt removed | #299 |
+| — | EPIC 48 Ops Bridge: tool connectors as GitHub Actions (ADR 0028); connector #1 is Sentry → GitHub (#300) | #301 |
 | 12 | EPIC 33 Store assets: fastlane metadata as listing source, `StoreShot` screenshots and feature graphic (public-domain films + fictional shows), privacy URL via GitHub Pages at the public flip (ADR 0024) | #76 |
 | 12 | EPIC 34 Android to Google Play: fastlane `supply`, tag → internal, dispatch → production; local-only v1 (ADR 0024) | #77 |
 | 13 | EPIC 35 iOS to TestFlight and the App Store: fastlane + App Store Connect API key, local-only v1 (ADR 0024) | #78 |
@@ -350,6 +354,17 @@ Stand up a second free-tier project dedicated to dev/verification; decide and do
 
 Top priority alongside #66 — every RLS/migration verification task in the backlog is unsafe to fully automate without this existing first. Done means a second project exists, is documented in `docs/SYNC.md` alongside the existing verification log, and at least one of #88/#100/#129 has been re-run against it end-to-end before anything is promoted to prod.
 
+## EPICs 45–48 — remote config, BYOK, onboarding, Ops Bridge (added 2026-10-10)
+
+From one grilling session. The details, testing and parity sections are in each issue.
+
+- **EPIC 45 (#297) — Remote config.** ConfigCat behind the existing `FeatureFlags` seam, compiled defaults offline, no user object (ADR 0026). Split from #29, which now covers analytics only. First keys: `byokEnabled` and `tmdbFallbackReadToken`, so our TMDB credential can be rotated without a release.
+- **EPIC 46 (#298) — Own TMDB Key.** Not a rate-limit fix (TMDB limits per IP, and each device calls from its own); it is insurance against our key being revoked, and user control. Precedence user → remote → built-in, skipping only absent levels; a rejected user key is reported, never silently replaced (ADR 0027). Starts with a KSafe spike for secure storage on all targets; fallback is Keystore/Keychain on Android/iOS and plaintext on desktop/web. Never synced or exported. Remote parts depend on EPIC 45.
+- **EPIC 47 (#299) — Onboarding.** Skippable from page 1, first run only (the migration marks upgraded installs done), notifications **off** for fresh installs only, `MainActivity`'s cold prompt deleted, a one-time Notification Nudge on the first saved TV show, "Show introduction again" in Settings. Takes the next free `.sqm`. The TMDB-key page arrives with EPIC 46.
+- **EPIC 48 (#301) — Ops Bridge.** Source → item → sink connectors as scheduled GitHub Actions (ADR 0028), never called "sync". Connector #1, Sentry crash → GitHub issue with close-resolves, is the standalone task #300; a hosted service and n8n/Zapier are recorded as future options.
+
+Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key is used, so EPIC 32 (#75) also needs a TMDB commercial licence (#302).
+
 ## Sequencing
 
 Wave 0 first (nothing else runs without CI; EPIC 43 belongs here too — every live-project verification task depends on it existing before it can run safely). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
@@ -385,6 +400,12 @@ runs standing in where they could. What that did and did not buy:
   Supabase project. The first real signal arrives when #66 is done.
 
 ## Cross-cutting / backlog
+
+### 2026-10-10
+
+- EPICs 45–48 filed (#297, #298, #299, #301) with ADRs 0026–0028; Sentry → GitHub connector #300.
+- #302 — TMDB commercial licence needed before any paid tier (blocks #75).
+- #29 narrowed to analytics; remote flags moved to EPIC 45.
 
 ### 2026-10-08
 
