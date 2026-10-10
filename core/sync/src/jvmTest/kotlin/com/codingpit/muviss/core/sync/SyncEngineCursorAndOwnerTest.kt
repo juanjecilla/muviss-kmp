@@ -238,6 +238,55 @@ class SyncEngineCursorAndOwnerTest {
     }
 
     @Test
+    fun merging_forgets_the_previous_accounts_cursors_and_pulls_the_new_one_from_the_start() = runTest {
+        backend.seedRemoteCollectionEntry(remoteEntry("tmdb:movie:1"))
+        backend.seedRemoteCollectionEntry(remoteEntry("tmdb:movie:2"))
+        engine.syncNow()
+        assertEquals(mapOf("collectionEntry" to 2L), cursors(), "the first account's sequence")
+        val other = FakeSyncBackend(session = FAKE_SESSION.copy(userId = "someone-else"))
+        other.seedRemoteCollectionEntry(remoteEntry("tmdb:movie:9", title = "Theirs"))
+        val switched = SyncEngine(other, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+
+        val outcome = switched.resolveAccountChange(AccountChangeResolution.MergeLocalDataIntoAccount)
+
+        assertTrue(outcome is SyncOutcome.Success)
+        assertEquals(emptyMap(), other.pullRequests.single(), "a cursor into another account's sequence would skip rows of this one")
+        // Theirs was seq 1; the two merged rows were pushed as 2 and 3.
+        assertEquals(mapOf("collectionEntry" to 3L), cursors(), "only the new account's sequence is remembered")
+        assertEquals(setOf("tmdb:movie:1", "tmdb:movie:2", "tmdb:movie:9"), localEntries().map { it.mediaId }.toSet(), "both libraries, merged")
+    }
+
+    @Test
+    fun discarding_forgets_the_previous_accounts_cursors() = runTest {
+        backend.seedRemoteCollectionEntry(remoteEntry("tmdb:movie:1"))
+        backend.seedRemoteEpisodeProgress(remoteTick(1))
+        engine.syncNow()
+        assertEquals(mapOf("collectionEntry" to 1L, "episodeProgress" to 2L), cursors())
+        val other = FakeSyncBackend(session = FAKE_SESSION.copy(userId = "someone-else"))
+        val switched = SyncEngine(other, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+
+        switched.resolveAccountChange(AccountChangeResolution.DiscardLocalData)
+
+        assertEquals(emptyMap(), other.pullRequests.single())
+        assertEquals(emptyMap(), cursors(), "an empty account leaves no cursor behind, and none of the old account's survives")
+    }
+
+    @Test
+    fun nothing_reaches_the_new_account_however_often_a_sync_is_asked_for_before_the_choice() = runTest {
+        engine.syncNow()
+        localEntry("tmdb:movie:1", updatedAt = 1_500L, isDirty = true)
+        val other = FakeSyncBackend(session = FAKE_SESSION.copy(userId = "someone-else"))
+        val switched = SyncEngine(other, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+
+        repeat(3) { assertTrue(switched.syncNow() is SyncOutcome.AccountChanged) }
+        assertTrue(switched.resyncEverything() is SyncOutcome.AccountChanged, "the repair path does not get round it either")
+
+        assertTrue(other.pushes.isEmpty())
+        assertTrue(other.pullRequests.isEmpty())
+        assertEquals(FAKE_SESSION.userId, state().ownerAccountId)
+    }
+
+    @Test
     fun resolving_when_the_owner_already_matches_just_syncs() = runTest {
         engine.syncNow()
         localEntry("tmdb:movie:1", updatedAt = 1_500L, isDirty = true)

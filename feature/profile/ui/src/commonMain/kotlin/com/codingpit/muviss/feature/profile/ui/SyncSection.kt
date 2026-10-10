@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -25,14 +26,26 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncCopy
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
 import com.codingpit.muviss.feature.profile.ui.generated.resources.account
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_body
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_body_no_email
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_choose
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_consequences
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_later
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_merge
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_merge_no_email
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_replace
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_replace_no_email
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_change_title
 import com.codingpit.muviss.feature.profile.ui.generated.resources.action_cancel
 import com.codingpit.muviss.feature.profile.ui.generated.resources.action_retry
 import com.codingpit.muviss.feature.profile.ui.generated.resources.resync
@@ -68,6 +81,11 @@ const val SYNC_UNLOCK_TAG = "sync-unlock"
 const val SYNC_RESYNC_DIALOG_TAG = "sync-resync-dialog"
 const val SYNC_RESYNC_CONFIRM_TAG = "sync-resync-confirm"
 const val SYNC_RESYNC_CANCEL_TAG = "sync-resync-cancel"
+const val SYNC_ACCOUNT_DIALOG_TAG = "sync-account-dialog"
+const val SYNC_ACCOUNT_REPLACE_TAG = "sync-account-replace"
+const val SYNC_ACCOUNT_MERGE_TAG = "sync-account-merge"
+const val SYNC_ACCOUNT_LATER_TAG = "sync-account-later"
+const val SYNC_ACCOUNT_CHOOSE_TAG = "sync-account-choose"
 
 fun syncSignInTag(provider: SyncProvider) = "sync-sign-in-${provider.name.lowercase()}"
 
@@ -82,6 +100,9 @@ internal class SyncSectionActions(
     val onResyncEverythingRequested: () -> Unit = {},
     val onResyncEverythingConfirmed: () -> Unit = {},
     val onResyncEverythingDismissed: () -> Unit = {},
+    val onAccountChoiceMade: (AccountChangeChoice) -> Unit = {},
+    val onAccountChoiceDeferred: () -> Unit = {},
+    val onAccountChoiceRequested: () -> Unit = {},
 )
 
 /**
@@ -128,6 +149,7 @@ internal fun SyncSection(sync: SyncUiState, actions: SyncSectionActions, modifie
     }
 
     if (sync.confirmingResync) ResyncDialog(actions)
+    if (sync.choosingAccountLibrary && account is SyncAccountState.SignedIn) AccountChangeDialog(account.email, actions)
 }
 
 @Composable
@@ -191,7 +213,7 @@ private fun SignedOutContent(sync: SyncUiState, actions: SyncSectionActions, exp
 private fun SignedInContent(sync: SyncUiState, account: SyncAccountState.SignedIn, actions: SyncSectionActions) {
     Text(account.email ?: stringResource(Res.string.signed_in), style = MaterialTheme.typography.titleSmall)
     Hint(sync.lastSyncedLabel, Modifier.testTag(SYNC_LAST_SYNCED_TAG))
-    sync.statusDetail?.let { StatusDetail(it, onRetry = actions.onSyncNowClicked, retryEnabled = !sync.syncing) }
+    sync.statusDetail?.let { StatusDetail(it, actions, enabled = !sync.syncing) }
     Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(onClick = actions.onSyncNowClicked, enabled = !sync.syncing, modifier = Modifier.testTag(SYNC_NOW_TAG)) {
             Icon(MuvissIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -202,7 +224,7 @@ private fun SignedInContent(sync: SyncUiState, account: SyncAccountState.SignedI
 }
 
 @Composable
-private fun StatusDetail(detail: SyncStatusDetail, onRetry: () -> Unit, retryEnabled: Boolean) {
+private fun StatusDetail(detail: SyncStatusDetail, actions: SyncSectionActions, enabled: Boolean) {
     val failed = detail is SyncStatusDetail.Failed
     Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -212,7 +234,13 @@ private fun StatusDetail(detail: SyncStatusDetail, onRetry: () -> Unit, retryEna
             modifier = Modifier.weight(1f, fill = false).testTag(SYNC_DETAIL_TAG),
         )
         if (failed) {
-            TextButton(onClick = onRetry, enabled = retryEnabled, modifier = Modifier.testTag(SYNC_RETRY_TAG)) { Text(stringResource(Res.string.action_retry)) }
+            TextButton(onClick = actions.onSyncNowClicked, enabled = enabled, modifier = Modifier.testTag(SYNC_RETRY_TAG)) { Text(stringResource(Res.string.action_retry)) }
+        }
+        // Retrying cannot fix a mismatch; only an answer can.
+        if (detail == SyncStatusDetail.AccountChanged) {
+            TextButton(onClick = actions.onAccountChoiceRequested, enabled = enabled, modifier = Modifier.testTag(SYNC_ACCOUNT_CHOOSE_TAG)) {
+                Text(stringResource(Res.string.account_change_choose))
+            }
         }
     }
 }
@@ -285,6 +313,53 @@ private fun ResyncDialog(actions: SyncSectionActions) {
         },
         dismissButton = {
             TextButton(onClick = actions.onResyncEverythingDismissed, modifier = Modifier.testTag(SYNC_RESYNC_CANCEL_TAG)) { Text(stringResource(Res.string.action_cancel)) }
+        },
+    )
+}
+
+/**
+ * Which library this device keeps, now that a different account is signed in
+ * (#148, the ADR 0019 decision on #75). Blocking: a tap outside does not close
+ * it, so it cannot be brushed away by accident. Closing it on purpose ("Decide
+ * later", Back, Escape) chooses nothing, and nothing syncs: the engine keeps
+ * answering every trigger with an account mismatch until one of the two
+ * buttons is pressed.
+ *
+ * Three stacked buttons rather than AlertDialog's row: both choices name the
+ * account, and an email is too long to share a row with anything.
+ * "Replace" is the filled one, because it is the default.
+ */
+@Composable
+private fun AccountChangeDialog(email: String?, actions: SyncSectionActions) {
+    AlertDialog(
+        onDismissRequest = actions.onAccountChoiceDeferred,
+        properties = DialogProperties(dismissOnClickOutside = false),
+        modifier = Modifier.testTag(SYNC_ACCOUNT_DIALOG_TAG),
+        title = { Text(stringResource(Res.string.account_change_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                Text(if (email != null) stringResource(Res.string.account_change_body, email) else stringResource(Res.string.account_change_body_no_email))
+                Text(stringResource(Res.string.account_change_consequences))
+            }
+        },
+        confirmButton = {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
+                Button(
+                    onClick = { actions.onAccountChoiceMade(AccountChangeChoice.ReplaceWithAccountLibrary) },
+                    modifier = Modifier.fillMaxWidth().testTag(SYNC_ACCOUNT_REPLACE_TAG),
+                ) {
+                    Text(if (email != null) stringResource(Res.string.account_change_replace, email) else stringResource(Res.string.account_change_replace_no_email))
+                }
+                OutlinedButton(
+                    onClick = { actions.onAccountChoiceMade(AccountChangeChoice.AddDeviceLibraryToAccount) },
+                    modifier = Modifier.fillMaxWidth().testTag(SYNC_ACCOUNT_MERGE_TAG),
+                ) {
+                    Text(if (email != null) stringResource(Res.string.account_change_merge, email) else stringResource(Res.string.account_change_merge_no_email))
+                }
+                TextButton(onClick = actions.onAccountChoiceDeferred, modifier = Modifier.fillMaxWidth().testTag(SYNC_ACCOUNT_LATER_TAG)) {
+                    Text(stringResource(Res.string.account_change_later))
+                }
+            }
         },
     )
 }
