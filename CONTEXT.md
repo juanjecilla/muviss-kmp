@@ -66,8 +66,12 @@ The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cl
 _Avoid_: backend, cloud (those are vendors behind this seam).
 
 **Entitlement**:
-Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. Independent of being signed in — one is bought, the other is an account (ADR 0018).
+Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. Independent of being signed in — one is bought, the other is an account (ADR 0018). Belongs to the account, not the device: bought once on a phone, it holds on every device signed in to that account, including those that cannot sell it. Acquired by subscribing, so it ends unless renewed (ADR 0019).
 _Avoid_: subscription, purchase, licence (those are how an Entitlement is acquired, and vendors behind that seam); premium, pro (those name a tier this app does not have).
+
+**Lapsed**:
+An account whose Entitlement has ended. Its synced data is kept but out of reach — nothing syncs, nothing is deleted — and renewing picks up where it stopped. The device's own library is unaffected either way.
+_Avoid_: expired account, cancelled (cancelling is what the user does in the store; the Entitlement only lapses when the paid period runs out); deleted (that is what "Delete account" does, and only that).
 
 **Triage**:
 Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on, plus Snoozed Titles that have come due.
