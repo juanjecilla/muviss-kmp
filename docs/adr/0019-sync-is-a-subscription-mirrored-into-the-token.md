@@ -74,6 +74,19 @@ local edits made meanwhile merging by last-write-wins. The device's own copy
 was never at risk. Only "Delete account" removes server data. Whether keeping
 everything forever stays affordable is EPIC 45 (#257).
 
+## Deleting the account
+
+Both stores require in-app account deletion once accounts exist. Every
+synced table already references `auth.users(id) on delete cascade`, so
+deleting the user row is the whole job — but only a privileged role may.
+EPIC 32's issue proposed a `security definer` RPC; ADR 0022's invariant 4
+rules that out, so deletion is a second Edge Function, `delete-account`,
+which verifies the caller's own JWT and deletes that user with the service
+role. The function is the only place the service role is used for a user's
+data, and it can only ever reach the caller. Play also wants a deletion path
+outside the app; that is a page on the website that explains the in-app
+path and offers an email request, not a second implementation.
+
 ## When the account changes
 
 **Signing out keeps the local library.** The app is offline-first and works
