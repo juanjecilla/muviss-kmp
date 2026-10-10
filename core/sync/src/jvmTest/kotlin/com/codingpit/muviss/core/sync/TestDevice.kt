@@ -58,7 +58,7 @@ internal class InMemorySessionStore(private var session: SyncSession? = null) : 
     }
 }
 
-internal fun sessionFor(userId: String, accessToken: String = "access-$userId", refreshToken: String? = "refresh-$userId", expiresAtEpochMs: Long? = null) = SyncSession(
+internal fun sessionFor(userId: String, accessToken: String = FakeSupabaseServer.accessToken(userId), refreshToken: String? = "refresh-$userId", expiresAtEpochMs: Long? = null) = SyncSession(
     backendId = SyncBackendId.SUPABASE,
     userId = userId,
     email = "$userId@example.com",
@@ -79,9 +79,11 @@ internal class TestDevice(
     startMillis: Long = 1_000L,
     wrapDriver: (SqlDriver) -> SqlDriver = { it },
     private val titleRefresher: TitleRefresher = NoOpTitleRefresher,
+    /** Whether [userId] has paid: an `entitlement` row on the server and a `sync_until` claim in the stored token. */
+    entitled: Boolean = true,
 ) {
     val clock = FakeClock(startMillis)
-    var sessionStore = InMemorySessionStore(sessionFor(userId).also { server.signUp(userId) })
+    var sessionStore = InMemorySessionStore(sessionFor(userId, accessToken = server.signUp(userId, entitled = entitled)))
         private set
     val driver: SqlDriver = wrapDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)).also { MuvissDatabase.Schema.synchronous().create(it) }
     val database = MuvissDatabase(driver)

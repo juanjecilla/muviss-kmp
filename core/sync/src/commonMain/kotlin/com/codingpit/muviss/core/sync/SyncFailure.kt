@@ -95,3 +95,18 @@ enum class SyncFailureReason {
  * means "malformed request".
  */
 class SyncSessionExpiredException(cause: Throwable? = null) : RuntimeException("Sync session expired; sign in again${cause?.message?.let { " ($it)" }.orEmpty()}", cause)
+
+/**
+ * The server's access policy refused a write — on Supabase, a row-level
+ * security refusal (HTTP 403, SQLSTATE `42501`). Part of the [SyncBackend]
+ * contract: `push` fails with this, carrying the backend's own exception as
+ * its [cause], so the engine can tell it apart from every other failure.
+ *
+ * It does not by itself mean "not paid". Since ADR 0019 the server refuses an
+ * account whose credentials carry no live grant, and that is the paywall
+ * ([SyncOutcome.NotEntitled]); but the same refusal answers a write the policy
+ * forbids for any other reason, which stays a failure. [SyncEngine] decides
+ * between the two by asking [SyncBackend.syncGrantedUntil] after the fact, and
+ * [SyncFailureReason.classify] still reads the cause for the second case.
+ */
+class SyncWriteRefusedException(cause: Throwable) : RuntimeException("The sync server's access policy refused the write", cause)

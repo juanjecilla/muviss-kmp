@@ -523,6 +523,71 @@ A lapse takes effect when the current token expires (`jwt_expiry`, one hour)
 or `sync_until` passes, whichever is first. Server rows are kept, read-locked,
 and readable again after a renewal.
 
+### What the client does with it (#279)
+
+The client half lives in `:core:sync` and `:core:billing`, joined in
+`app/shared/.../di/BillingSyncBridge.kt` (`:core:sync` still never depends on
+`:core:billing`).
+
+- **The claim is read, not verified.** `SupabaseSyncBackend.syncGrantedUntil()`
+  decodes `sync_until` from the access token's payload (`SupabaseClaims.kt`);
+  anything malformed reads as no grant. That is enough: the server verifies the
+  same token and compares the same claim on every request, so a forged claim
+  buys a patched client a 403 and nothing else.
+- **No grant, no cycle.** Before anything else — before adopting the account,
+  before a push — `SyncEngine` checks the claim against the device clock. If it
+  is missing or past, the engine renews the session **once** (the token may
+  predate a purchase, made on this device or another) and checks again; still
+  nothing is `SyncOutcome.NotEntitled`, with no table request sent, nothing
+  recorded as a failure, and `lastSyncedAt` untouched. This is what keeps the
+  silent `200 []` from ever reading as a successful sync. The renewal only
+  happens once the client gate (`EntitlementGate`) has already said yes, so a
+  user who never paid costs no refresh — except under `SYNC_ENTITLEMENT_OVERRIDE`
+  against a server with no `entitlement` row, which renews once per cycle.
+- **A refused push.** The backend turns a push answered 403 + `42501` into
+  `SyncWriteRefusedException`. The engine reads it as `NotEntitled` only if the
+  credentials *now* carry no live claim (it ran out mid-cycle, or a 401 renewal
+  minted a token without one); with a live claim it stays
+  `Failed(Unauthorised)` — co-watch forgeries get the same 403/`42501`. After the
+  pull the claim is checked once more, so a grant that lapsed mid-pull does not
+  advance "last synced" either.
+- **`SupabaseEntitlementProvider`** (`:core:billing`, every platform) is bound by
+  `billingModule` whenever `SYNC_ENTITLEMENT_OVERRIDE` is not set, over the
+  `EntitlementSource` the bridge builds on the sync backend (the backend's own
+  session and refresh lock: GoTrue rotates refresh tokens, so a second refresher
+  would break the first). A live claim is `Active` with no request; otherwise
+  `GET /rest/v1/entitlement?select=active,expires_at` decides (`active` and
+  `expires_at` null or future → `Active`, else `Inactive`); a failed read is
+  `Unknown`, which is not a grant. Signed out is `Inactive`.
+- **After a purchase**, `EntitlementProvider.refreshAfterPurchase()` polls that
+  row with backoff (8 reads, about 40 s; `PurchasePolling`) until it is active,
+  **then** renews the session, and returns `Active` once the new token carries
+  the claim — `Unknown` if the webhook has not landed within the budget. The
+  paywall (a later PR) calls it when the store reports the purchase done.
+- **Delete account**: `SyncEngine.deleteAccount()` → `SyncBackend.deleteAccount()`
+  → `POST /functions/v1/delete-account` with the caller's token. On 200 the
+  session is cleared **locally** (no `/logout`: the user is gone), and the
+  engine forgets the owner, the pull cursors and the last failure. **The local
+  library is kept** — ADR 0019 keeps it on sign-out and says nothing about
+  deletion. Clearing the owner is deliberate: otherwise the next sign-in (a new
+  uid even for the same provider identity) is an `AccountChanged` whose default
+  answer, *Replace*, would discard the library; with no owner it is a first sync
+  that adopts and pushes it. The outcome is `AccountDeletionOutcome`
+  (`Deleted` / `NotSignedIn` / `Failed(reason)`) — no text to show.
+
+**Against a project without the `20261010…` migrations** (the hosted one, until
+#282) no token ever carries `sync_until`, so this client reports `NotEntitled`
+on every cycle even with the override. Run against the local stack, or apply
+#282 first.
+
+`FakeSupabaseServer` models all of it: JWT-shaped tokens
+(`FakeSupabaseServer.accessToken(userId, syncUntil)`), the claim gate on every
+synced table, `entitlement` (own row readable, writes refused), tokens minted
+with the claim the hook would stamp at that moment (`grantEntitlement` /
+`revokeEntitlement` reach only tokens minted afterwards), and `delete-account`
+(the still-valid token then gets 409 / `23503`). `signUp` defaults to an
+entitled user; pass `entitled = false` for one who never paid.
+
 **Developing against a project with these migrations**: `SYNC_ENTITLEMENT_OVERRIDE=true`
 only opens the *client* gate. The server now also needs an `entitlement` row
 for your user, written as `postgres` (SQL editor, or `psql` on the local stack):

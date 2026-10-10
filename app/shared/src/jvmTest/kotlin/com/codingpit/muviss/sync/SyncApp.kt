@@ -137,9 +137,8 @@ internal class SyncApp(
 
     /** Puts a live session in the store the backend restores from, as a previous sign-in would have left it. */
     suspend fun signIn() {
-        server.signUp(userId)
         koin.get<SyncSessionStore>().save(
-            SyncSession(SyncBackendId.SUPABASE, userId, "$userId@example.com", "access-$userId", "refresh-$userId", null),
+            SyncSession(SyncBackendId.SUPABASE, userId, "$userId@example.com", server.signUp(userId), "refresh-$userId", null),
         )
     }
 

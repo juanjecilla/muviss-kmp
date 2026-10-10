@@ -73,6 +73,11 @@ class CoreSyncRepositoryAutomaticTest {
         }
 
         override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit> = failure?.let { Result.failure(it) } ?: Result.success(Unit)
+
+        override suspend fun syncGrantedUntil(): Long? = Long.MAX_VALUE
+        override suspend fun refreshSession() = error("not used")
+        override suspend fun fetchEntitlement() = error("not used")
+        override suspend fun deleteAccount() = error("not used")
     }
 
     private class Rig(scope: TestScope, backgroundAvailable: Boolean = true) {

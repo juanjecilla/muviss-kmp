@@ -3,10 +3,14 @@ package com.codingpit.muviss.core.sync.supabase
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.sync.CollectionEntryChange
 import com.codingpit.muviss.core.sync.OAuthProvider
+import com.codingpit.muviss.core.sync.ServerEntitlement
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
+import com.codingpit.muviss.core.sync.SyncFailureReason
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionStore
+import com.codingpit.muviss.core.sync.SyncWriteRefusedException
+import com.codingpit.muviss.core.testing.FakeSupabaseServer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -25,6 +29,7 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -215,6 +220,122 @@ class SupabaseSyncBackendTest {
 
         assertTrue(backend.push(oneDirtyEntry).isSuccess, "the retry after refreshing should carry the request through")
         assertEquals(2, pushAttempts)
+    }
+
+    @Test
+    fun a_401_on_a_token_with_time_left_really_renews_it() = runTest {
+        // The renewal used to re-check the expiry stamp under its lock, find
+        // time left, and hand the rejected token straight back — so the retry
+        // after a 401 on an early-revoked token was the same request again.
+        val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 10_000_000L))
+        val (backend, requests) = backend(store, RecordingClock(1_000L)) { request ->
+            when {
+                request.url.encodedPath.endsWith("/auth/v1/token") -> jsonOk(sessionBody)
+                request.headers[HttpHeaders.Authorization] == "Bearer expired-token" -> respond("""{"message":"JWT expired"}""", HttpStatusCode.Unauthorized)
+                else -> respond("", HttpStatusCode.Created)
+            }
+        }
+
+        assertTrue(backend.push(oneDirtyEntry).isSuccess)
+        assertEquals("Bearer fresh-token", requests.last().headers[HttpHeaders.Authorization])
+        assertEquals(1, requests.count { it.url.encodedPath.endsWith("/auth/v1/token") })
+    }
+
+    // --- The paid gate (ADR 0019) -------------------------------------------
+
+    @Test
+    fun a_push_refused_by_row_level_security_is_a_write_refusal() = runTest {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+            respond(
+                """{"code":"42501","details":null,"hint":null,"message":"new row violates row-level security policy for table \"collection_entry\""}""",
+                HttpStatusCode.Forbidden,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+
+        val failure = backend.push(oneDirtyEntry).exceptionOrNull()
+
+        assertIs<SyncWriteRefusedException>(failure)
+        assertEquals(SyncFailureReason.Unauthorised, SyncFailureReason.classify(failure), "when it is not the paywall it still reads as a refusal")
+    }
+
+    @Test
+    fun a_403_without_the_rls_code_is_an_ordinary_failure() = runTest {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+            respond("""{"message":"forbidden by a proxy"}""", HttpStatusCode.Forbidden)
+        }
+
+        assertIs<SupabaseHttpException>(backend.push(oneDirtyEntry).exceptionOrNull())
+    }
+
+    @Test
+    fun the_grant_is_read_from_the_tokens_sync_until_claim() = runTest {
+        val withClaim = sessionExpiringAt(null).copy(accessToken = FakeSupabaseServer.accessToken("user-1", syncUntil = "2026-11-09T00:16:15Z"))
+        val (backend, requests) = backend(InMemorySessionStore(withClaim), RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+
+        assertEquals(1_794_183_375_000L, backend.syncGrantedUntil())
+        assertTrue(requests.isEmpty(), "the fast path never touches the network")
+    }
+
+    @Test
+    fun a_token_without_the_claim_grants_nothing_and_signed_out_neither() = runTest {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+        assertNull(backend.syncGrantedUntil(), "expired-token is not even a JWT")
+
+        val (signedOut, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+        assertNull(signedOut.syncGrantedUntil())
+    }
+
+    @Test
+    fun the_entitlement_row_is_read_with_postgrests_timestamp_format() = runTest {
+        val (backend, requests) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+            jsonOk("""[{"active":true,"expires_at":"2026-11-09T00:16:15.289+00:00"}]""")
+        }
+
+        assertEquals(ServerEntitlement(active = true, expiresAtEpochMs = 1_794_183_375_289L), backend.fetchEntitlement().getOrThrow())
+        assertEquals("/rest/v1/entitlement", requests.single().url.encodedPath)
+        assertEquals("Bearer expired-token", requests.single().headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun no_entitlement_row_is_no_entitlement() = runTest {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) { jsonOk("[]") }
+
+        assertNull(backend.fetchEntitlement().getOrThrow())
+    }
+
+    @Test
+    fun refreshing_on_demand_renews_a_token_that_has_time_left() = runTest {
+        val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 10_000_000L))
+        val (backend, _) = backend(store, RecordingClock(1_000L)) { jsonOk(sessionBody) }
+
+        assertEquals("fresh-token", backend.refreshSession().getOrThrow().accessToken)
+        assertEquals("fresh-token", backend.session.first()?.accessToken)
+    }
+
+    @Test
+    fun deleting_the_account_calls_the_function_with_the_callers_token_and_signs_out_locally() = runTest {
+        val store = InMemorySessionStore(sessionExpiringAt(null))
+        val (backend, requests) = backend(store, RecordingClock(1_000L)) { jsonOk("""{"deleted":"user-1"}""") }
+
+        assertTrue(backend.deleteAccount().isSuccess)
+
+        val request = requests.single()
+        assertEquals("/functions/v1/delete-account", request.url.encodedPath)
+        assertEquals("POST", request.method.value)
+        assertEquals("Bearer expired-token", request.headers[HttpHeaders.Authorization])
+        assertEquals("anon-key", request.headers["apikey"])
+        assertNull(backend.session.first())
+        assertTrue(store.cleared)
+    }
+
+    @Test
+    fun a_failed_deletion_keeps_the_session() = runTest {
+        val store = InMemorySessionStore(sessionExpiringAt(null))
+        val (backend, _) = backend(store, RecordingClock(1_000L)) { respond("""{"error":"delete failed"}""", HttpStatusCode.InternalServerError) }
+
+        assertTrue(backend.deleteAccount().isFailure)
+        assertNotNull(backend.session.first())
     }
 
     @Test
