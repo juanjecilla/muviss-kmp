@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    id("muviss.version")
 }
 
 // The tray icon (EPIC 23) is the app icon. Rather than keep a second copy of the
@@ -45,8 +46,8 @@ dependencies {
 // -----------------------------------------------------------------------
 // EPIC 12: native installers (DMG/MSI/DEB) via Compose's jpackage wrapper.
 //
-// Versioning mirrors :app:androidApp/:core:common's git-derived scheme (see
-// those files / docs/RELEASING.md item 3) but jpackage's installer formats
+// Versioning comes from the same git-derived scheme as :app:androidApp and
+// :core:common (MuvissVersion in build-logic, docs/RELEASING.md item 3), but jpackage's installer formats
 // are far stricter about *syntax* than an Android versionName:
 //  - DMG (macOS, pkgbuild under the hood): parses as up to 3 dot-separated
 //    integers, and the FIRST one can't be 0 — a "0.x.y" packageVersion (what
@@ -62,30 +63,7 @@ dependencies {
 // always satisfies every format's "major can't be 0" rule, and needs no
 // dev-suffix stripping since it never had one.
 // -----------------------------------------------------------------------
-fun gitOutput(vararg args: String): String? = try {
-    val result =
-        providers.exec {
-            commandLine(*args)
-            workingDir = rootDir
-            isIgnoreExitValue = true
-        }
-    if (result.result.get().exitValue != 0) {
-        null
-    } else {
-        result.standardOutput.asText.get().trim().ifEmpty { null }
-    }
-} catch (_: Exception) {
-    null // git not installed / not a git checkout (e.g. a source-only archive)
-}
-
-val gitVersionCode: Int = gitOutput("git", "rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
-
-val desktopPackageVersion: String = run {
-    val exactTag = gitOutput("git", "describe", "--tags", "--exact-match")
-    val tagPattern = Regex("""^v?([1-9]\d*)\.(\d+)\.(\d+)$""")
-    val tagVersion = exactTag?.let { tagPattern.matchEntire(it) }?.let { "${it.groupValues[1]}.${it.groupValues[2]}.${it.groupValues[3]}" }
-    tagVersion ?: "1.0.$gitVersionCode"
-}
+val desktopPackageVersion: String = muvissVersion.desktopPackageVersion
 
 // -----------------------------------------------------------------------
 // The jlink module list, and the check that keeps it honest (issue #43).

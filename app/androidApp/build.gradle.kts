@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.licensee)
     alias(libs.plugins.sentry)
     alias(libs.plugins.baselineprofile)
+    id("muviss.version")
 }
 
 kotlin {
@@ -118,32 +119,10 @@ val hasReleaseSigningConfig =
         rootProject.file(releaseStoreFile).exists()
 
 // -----------------------------------------------------------------------
-// Versioning derived from git, so nobody has to remember to bump a constant
-// by hand. versionCode = total commit count on HEAD: it only ever goes up,
-// which is all Play Store requires, and works even before the first tag
-// exists (the repo currently has none). versionName mirrors the latest
-// tag when one is reachable, otherwise falls back to a readable dev label.
+// Versioning derived from git (MuvissVersion in build-logic, shared with
+// :core:common and :app:desktopApp): versionCode is the commit count on HEAD,
+// versionName the latest reachable tag or a dev label.
 // -----------------------------------------------------------------------
-// Uses ProviderFactory.exec (not java.lang.ProcessBuilder) because running an
-// external process directly at configuration time is incompatible with the
-// configuration cache this project enables (see gradle.properties); exec()
-// is the supported, cacheable equivalent.
-fun gitOutput(vararg args: String): String? = try {
-    val result =
-        providers.exec {
-            commandLine(*args)
-            workingDir = rootDir
-            isIgnoreExitValue = true
-        }
-    if (result.result.get().exitValue != 0) {
-        null
-    } else {
-        result.standardOutput.asText.get().trim().ifEmpty { null }
-    }
-} catch (_: Exception) {
-    null // git not installed / not a git checkout (e.g. a source-only archive)
-}
-
 // A release build without git would ship versionCode 1, which Play rejects as a
 // downgrade after the first upload (#77) — fail instead. Debug and test builds
 // keep the fallback so a source-only archive still compiles.
@@ -154,36 +133,19 @@ val isReleaseInvocation =
 
 // A shallow clone counts only the commits it fetched (often 1), which is the
 // same downgrade with extra steps.
-val isShallowCheckout = gitOutput("git", "rev-parse", "--is-shallow-repository") == "true"
-
-if (isReleaseInvocation && isShallowCheckout) {
+if (isReleaseInvocation && muvissVersion.isShallowCheckout) {
     error("versionCode comes from `git rev-list --count HEAD`, which is wrong in a shallow clone. Use fetch-depth: 0.")
 }
 
 val gitVersionCode: Int =
-    gitOutput("git", "rev-list", "--count", "HEAD")?.toIntOrNull()
+    muvissVersion.codeOrNull
         ?: if (isReleaseInvocation) {
             error("versionCode comes from `git rev-list --count HEAD`, and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
         } else {
             1
         }
 
-val gitVersionName: String = run {
-    val describe = gitOutput("git", "describe", "--tags", "--always", "--dirty")
-    // `-rcN` is dropped on purpose: production gets the RC binary itself
-    // (ADR 0025), so an RC has to carry the final versionName already.
-    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-rc\d+)?(-\d+-g[0-9a-f]+)?(-dirty)?$""")
-    val tagVersion = describe?.let { tagPattern.matchEntire(it)?.groupValues?.get(1) }
-    when {
-        tagVersion != null -> tagVersion
-
-        // reachable, but no tags yet
-        describe != null -> "0.1.0-dev.$gitVersionCode+$describe"
-
-        // git unavailable
-        else -> "0.1.0-dev.$gitVersionCode"
-    }
-}
+val gitVersionName: String = muvissVersion.name
 
 // -----------------------------------------------------------------------
 // Compose Resources must reach the package (#165). They ride on Android
