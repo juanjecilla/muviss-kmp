@@ -50,12 +50,12 @@ jobs:
       - name: Mint a release App token
         id: app
         if: steps.has-app.outputs.ok == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
@@ -97,7 +97,7 @@ jobs:
     # users get the build (scripts/release/owner-setup.sh configures them).
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -151,7 +151,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # packageVersion comes from the exact tag (app/desktopApp/build.gradle.kts).
           ref: ${{ needs.tag.outputs.tag || github.ref }}
@@ -164,13 +164,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build desktop installer
         env:
@@ -187,7 +187,7 @@ jobs:
         run: ./gradlew ${{ matrix.task }} --stacktrace
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: muviss-desktop-${{ matrix.os }}-${{ needs.tag.outputs.tag || github.run_number }}
           path: ${{ matrix.artifactPath }}
@@ -204,13 +204,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.tag.outputs.tag }}
           fetch-depth: 0
 
       - name: Download the desktop installers
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: muviss-desktop-*
@@ -278,12 +278,12 @@ jobs:
       - name: Mint a release App token
         id: app
         if: steps.has-app.outputs.ok == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           token: ${{ steps.app.outputs.token || github.token }}

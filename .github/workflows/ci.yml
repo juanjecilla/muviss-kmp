@@ -41,7 +41,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       ios: ${{ steps.filter.outputs.ios }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The three-dot diff below needs the merge base, so the default
           # single-commit checkout is not enough.
@@ -107,7 +107,7 @@ jobs:
     steps:
       # Full history: the release build below takes its versionCode from
       # `git rev-list --count HEAD` and refuses a shallow clone.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -118,13 +118,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Spotless (format check)
         run: ./gradlew spotlessCheck --stacktrace
@@ -167,7 +167,7 @@ jobs:
       # without them a red run says nothing but "pixels moved".
       - name: Upload test reports and golden diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports
           if-no-files-found: ignore
@@ -194,7 +194,7 @@ jobs:
 
       - name: Upload the lint report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lint-report
           if-no-files-found: ignore
@@ -290,7 +290,7 @@ jobs:
     # already several times any legitimate runtime.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -299,13 +299,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Nothing in this repo configures the browser: `jsBrowserTest` uses the
       # Kotlin plugin's default karma + `karma-chrome-launcher`, which resolves
@@ -337,7 +337,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-test-reports
           if-no-files-found: ignore
@@ -361,7 +361,7 @@ jobs:
     # See `build`: the risk being bounded is a hang, not a slow build.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -370,13 +370,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Three steps, because they fail on different things and until EPIC 23
       # only the first existed: desktop was compiled on every PR and never
@@ -430,7 +430,7 @@ jobs:
 
       - name: Upload the jlink module report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jlink-modules
           if-no-files-found: ignore
@@ -506,7 +506,7 @@ jobs:
       # in the same build) refuses a shallow clone for one, since versionCode
       # is `git rev-list --count HEAD`. An iOS release needs it too — its
       # CFBundleVersion is the same commit count.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -517,13 +517,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # The single most expensive thing in this file, and it was uncached.
       # `setup-gradle` above caches ~/.gradle; Kotlin/Native keeps its platform
@@ -538,7 +538,7 @@ jobs:
       # belong to. The restore-key prefix means a build-script edit warm-starts
       # from the previous cache rather than falling back to cold.
       - name: Cache Kotlin/Native toolchain and compiler caches
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts') }}
@@ -569,7 +569,7 @@ jobs:
 
       - name: Upload Kotlin/Native test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-test-reports
           if-no-files-found: ignore
