@@ -91,6 +91,28 @@ jobs:
           SENTRY_ENVIRONMENT: production
         run: ./gradlew :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
+      # Without the keystore secrets the build does not fail: it falls back to
+      # debug signing (docs/RELEASING.md), and a debug-signed AAB would then be
+      # uploaded and attached to a release (#67). Play rejects one, but only
+      # after the upload; a dispatch build has no upload and would ship it.
+      # An AAB is jar-signed, so this reads it with keytool — apksigner only
+      # understands APKs. keytool localises its labels ("Owner:" is
+      # "Propietario:" on a Spanish JVM), hence the pinned locale.
+      - name: The AAB is signed, and not with the debug key
+        run: |
+          set -euo pipefail
+          aab=$(ls app/androidApp/build/outputs/bundle/release/*.aab)
+          if ! certs=$(keytool -J-Duser.language=en -J-Duser.country=US -printcert -jarfile "$aab" 2>&1) || ! grep -q "^Owner:" <<<"$certs"; then
+            echo "$certs"
+            echo "::error::$aab is not signed."
+            exit 1
+          fi
+          grep -E "^(Owner:|[[:space:]]+SHA256:)" <<<"$certs"
+          if grep -q "^Owner:.*CN=Android Debug" <<<"$certs"; then
+            echo "::error::$aab is signed with the Android debug key. Are the RELEASE_* and KEYSTORE_BASE64 secrets set?"
+            exit 1
+          fi
+
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
