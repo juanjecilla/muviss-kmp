@@ -1,0 +1,62 @@
+name: Supabase dev
+
+# Applies supabase/ to the dev project (EPIC 43, #151) whenever it changes
+# on develop: migrations, Edge Functions and config (auth hook, redirect
+# allow-list), then runs the pgTAP suite against it. The mirror of prod,
+# which the Supabase GitHub integration deploys from `main` on its own.
+#
+# Dev only, by construction:
+#   - the project ref is written here, not read from a variable;
+#   - the credentials live in the `supabase-dev` environment, which only
+#     `develop` may deploy from;
+#   - the token is a scoped PAT that gets 403 on the prod project.
+on:
+  push:
+    branches: [develop]
+    paths: ['supabase/**', '.github/workflows/supabase-dev.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: supabase-dev
+    env:
+      PROJECT_REF: mnleklzanxxpvmakrbxv
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_DEV_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link the dev project
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      - name: Migrations
+        run: supabase db push
+
+      - name: Edge Functions
+        run: |
+          if [ -d supabase/functions ] && ls supabase/functions/*/index.ts >/dev/null 2>&1; then
+            supabase functions deploy --project-ref "$PROJECT_REF"
+          else
+            echo "No Edge Functions on this branch."
+          fi
+
+      # The whole of config.toml, so dev's auth settings and redirect
+      # allow-list are what the repo says — the drift ADR 0014 warns about.
+      - name: Config
+        run: yes | supabase config push --project-ref "$PROJECT_REF"
+
+      - name: pgTAP against dev
+        run: supabase test db --linked
