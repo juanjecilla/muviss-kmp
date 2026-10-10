@@ -78,6 +78,23 @@
     <!-- %1$s is why it failed. -->
     <string name="sync_failed">Error de sincronización: %1$s</string>
     <string name="sync_account_changed">La biblioteca de este dispositivo pertenece a otra cuenta, así que no se ha sincronizado nada.</string>
+    <!-- The blocking dialog shown when a different account signs in than the one this device's library belongs to (#148). -->
+    <string name="account_change_title">¿Qué biblioteca quieres en este dispositivo?</string>
+    <!-- %1$s is the signed-in account's email. -->
+    <string name="account_change_body">Has iniciado sesión como %1$s, pero la biblioteca de este dispositivo pertenece a otra cuenta. No se sincronizará nada hasta que elijas.</string>
+    <string name="account_change_body_no_email">Has iniciado sesión con una cuenta distinta de aquella a la que pertenece la biblioteca de este dispositivo. No se sincronizará nada hasta que elijas.</string>
+    <string name="account_change_consequences">Si la sustituyes, se borrará la biblioteca de este dispositivo y se descargará la de la cuenta. Si la añades, la biblioteca de este dispositivo se enviará a la cuenta, junto a lo que ya tenga.</string>
+    <!-- %1$s is the signed-in account's email. -->
+    <string name="account_change_replace">Sustituir por la biblioteca de %1$s</string>
+    <!-- %1$s is the signed-in account's email. -->
+    <string name="account_change_merge">Añadir la biblioteca de este dispositivo a %1$s</string>
+    <string name="account_change_replace_no_email">Sustituir por la biblioteca de esta cuenta</string>
+    <string name="account_change_merge_no_email">Añadir la biblioteca de este dispositivo a esta cuenta</string>
+    <string name="account_change_later">Decidir más tarde</string>
+    <!-- On the status line, reopens the dialog after "Decidir más tarde". -->
+    <string name="account_change_choose">Elegir</string>
+    <string name="account_library_replaced">Biblioteca sustituida por la de tu cuenta</string>
+    <string name="account_library_added">La biblioteca de este dispositivo se ha añadido a tu cuenta</string>
     <plurals name="rewatches_episodes">
         <item quantity="one">%1$d episodio revisto</item>
         <item quantity="other">%1$d episodios revistos</item>

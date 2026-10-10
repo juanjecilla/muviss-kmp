@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
+import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
@@ -23,6 +24,8 @@ import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
 import com.codingpit.muviss.feature.profile.domain.syncStatusDetail
 import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_library_added
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_library_replaced
 import com.codingpit.muviss.feature.profile.ui.generated.resources.error_generic
 import com.codingpit.muviss.feature.profile.ui.generated.resources.resynced
 import com.codingpit.muviss.feature.profile.ui.generated.resources.sign_in_failed
@@ -65,6 +68,12 @@ data class SyncUiState(
     val automaticSyncMode: AutomaticSyncMode = AutomaticSyncMode.WhileOpen,
     /** The "Resync everything" confirmation dialog is open. */
     val confirmingResync: Boolean = false,
+    /**
+     * The person closed the "which library?" dialog without choosing. Only
+     * hides it: the account mismatch, and the status line saying so, stay
+     * exactly where they were. See [choosingAccountLibrary].
+     */
+    val accountChoiceDeferred: Boolean = false,
     /** One-shot: a message to surface in a snackbar (sent-code confirmation, sign-in success, sync outcome, or an error). Cleared by [ProfileViewModel.syncMessageShown]. */
     val message: UiText? = null,
 )
@@ -75,6 +84,17 @@ data class SyncUiState(
  * use it yet is a reason to sign in, not something to hide.
  */
 val SyncUiState.automaticSyncEnabled: Boolean get() = automaticSyncAvailable && account is SyncAccountState.SignedIn
+
+/**
+ * The blocking "which library should this device keep?" dialog is up: the
+ * signed-in account is not the one this device's library belongs to, and the
+ * person has neither closed the dialog nor already started answering it.
+ * Derived from the engine's own status rather than from a sync's return value,
+ * so it is there however the mismatch was found: a foreground sync, the end of
+ * sign-in, or this screen's "Sync now".
+ */
+val SyncUiState.choosingAccountLibrary: Boolean
+    get() = account is SyncAccountState.SignedIn && status.accountChanged && !accountChoiceDeferred && !syncing
 
 /** The one line worth saying under the "Synced 3m ago" label, if any. */
 val SyncUiState.statusDetail: SyncStatusDetail? get() = syncStatusDetail(status)
@@ -145,6 +165,8 @@ class ProfileViewModel(
                             automaticSync = automatic,
                             automaticSyncAvailable = syncActions.isBackgroundAvailable,
                             automaticSyncMode = syncActions.automaticSyncMode,
+                            // Once resolved, a later mismatch asks again.
+                            accountChoiceDeferred = it.sync.accountChoiceDeferred && status.accountChanged,
                         ),
                     )
                 }
@@ -270,6 +292,28 @@ class ProfileViewModel(
         }
     }
 
+    /** "Decide later", Back or Escape: closes the dialog and does nothing else. Nothing syncs until a choice is made. */
+    fun onAccountChoiceDeferred() {
+        _state.update { it.copy(sync = it.sync.copy(accountChoiceDeferred = true)) }
+    }
+
+    /** The status line's "Choose" button: brings the dialog back after it was closed. */
+    fun onAccountChoiceRequested() {
+        _state.update { it.copy(sync = it.sync.copy(accountChoiceDeferred = false)) }
+    }
+
+    fun onAccountChoiceMade(choice: AccountChangeChoice) {
+        _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
+        viewModelScope.launchReporting {
+            val success = when (choice) {
+                AccountChangeChoice.ReplaceWithAccountLibrary -> UiText.Resource(Res.string.account_library_replaced)
+                AccountChangeChoice.AddDeviceLibraryToAccount -> UiText.Resource(Res.string.account_library_added)
+            }
+            val message = messageFor(syncActions.resolveAccountChange(choice), success = success)
+            _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
+        }
+    }
+
     fun syncMessageShown() {
         _state.update { it.copy(sync = it.sync.copy(message = null)) }
         // Also clears the shared sign-in failure, or it would be re-emitted to
@@ -279,8 +323,18 @@ class ProfileViewModel(
 
     private suspend fun runSyncNow() {
         _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
-        val message = messageFor(syncActions.syncNow(), success = UiText.Resource(Res.string.synced))
-        _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
+        val outcome = syncActions.syncNow()
+        val message = messageFor(outcome, success = UiText.Resource(Res.string.synced))
+        _state.update {
+            it.copy(
+                sync = it.sync.copy(
+                    syncing = false,
+                    message = message ?: it.sync.message,
+                    // Pressing "Sync now" into a mismatch is asking for the dialog back.
+                    accountChoiceDeferred = it.sync.accountChoiceDeferred && outcome != SyncOutcomeSummary.AccountChanged,
+                ),
+            )
+        }
     }
 
     private fun messageFor(outcome: SyncOutcomeSummary, success: UiText): UiText? = when (outcome) {

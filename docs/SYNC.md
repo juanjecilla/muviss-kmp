@@ -419,8 +419,6 @@ other devices' real edits.
   `clearDirty`'s guard.
 - **An interrupted first sync** re-downloads from the start, since no cursor
   moves until everything drained.
-- **`SyncOutcome.AccountChanged`** shows in Profile as a failed sync until
-  EPIC 32 decides the account-switch policy and builds its confirmation.
 
 ## Automatic sync (EPIC 40, ADR 0021)
 
@@ -454,8 +452,14 @@ usable when signed in and entitled), a per-platform description ("in the
 background" / "when the system allows" / "while Muviss is open"), a status line
 (`Synced 3m ago`, then `4 changes waiting` or `Last sync failed: <reason>` with
 **Retry**), **Resync everything** behind a confirmation, and "Session expired,
-sign in again" when the session died. `AccountChanged` reads as a different
-account owning this device's library and offers nothing to fix it (EPIC 32).
+sign in again" when the session died. `AccountChanged` opens a blocking
+"Which library should this device keep?" dialog (#148, the ADR 0019 decision on
+#75): **Replace with <account>'s library** (`DiscardLocalData`, the default) or
+**Add this device's library to <account>** (`MergeLocalDataIntoAccount`). Both
+reset the cursors and make the signed-in account the owner. "Decide later",
+Back or Escape choose nothing: the status line keeps saying why nothing syncs
+and offers **Choose** to bring the dialog back, and every trigger keeps
+returning `AccountChanged` without pushing.
 
 **Failures** are typed (`Offline | Unauthorised | Server | Unknown`); the reason
 is the leading token of `syncState.lastError` (`REASON: diagnostic text`). Copy

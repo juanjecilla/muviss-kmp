@@ -63,6 +63,16 @@ class SyncSectionGoldenTest {
     @Test
     fun signed_out_with_a_disabled_switch_dark() = runComposeUiTest { golden("signed-out", signedOutDisabledSwitch, darkTheme = true) }
 
+    // Deferred, so the golden is the section and its "Choose" button: the dialog
+    // is a separate window that the root capture does not include.
+    private val accountChangedDeferred = signedInState(status = SyncStatus(accountChanged = true)).copy(accountChoiceDeferred = true)
+
+    @Test
+    fun an_account_mismatch_left_for_later_light() = runComposeUiTest { golden("account-changed", accountChangedDeferred, darkTheme = false) }
+
+    @Test
+    fun an_account_mismatch_left_for_later_dark() = runComposeUiTest { golden("account-changed", accountChangedDeferred, darkTheme = true) }
+
     @Test
     fun an_expired_session_light() = runComposeUiTest { golden("session-expired", sessionExpired, darkTheme = false) }
 
