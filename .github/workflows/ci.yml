@@ -203,6 +203,20 @@ jobs:
       - name: Compile web targets (JS + Wasm)
         run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
 
+      # kotlin-js-store/ pins every npm package the JS and Wasm builds resolve.
+      # Kotlin's own store task does not fail on a stale lock — it rewrites the
+      # file with whatever yarn just resolved — so the check is ours: resolve,
+      # store, and fail if that changed anything the PR did not commit (#67).
+      - name: npm lockfiles are committed and current
+        run: |
+          ./gradlew kotlinNpmInstall kotlinStoreYarnLock kotlinWasmNpmInstall kotlinWasmStoreYarnLock --stacktrace
+          if [ -n "$(git status --porcelain -- kotlin-js-store/)" ]; then
+            git status --short -- kotlin-js-store/
+            git diff -- kotlin-js-store/ | head -100
+            echo "::error::kotlin-js-store/ is stale. Run ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock and commit the result."
+            exit 1
+          fi
+
       # The per-target compiles above never touch the *intermediate* source
       # sets' own compilations (`webMain`, `appleMain`, `iosMain`,
       # `nativeMain`): they read those directories straight into the target.

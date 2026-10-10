@@ -43,7 +43,14 @@ Pods/
 
 # Web
 node_modules/
-kotlin-js-store/
+# kotlin-js-store/ is tracked on purpose: its two yarn.lock files pin every npm
+# package the JS and Wasm builds resolve, and Kotlin's yarn-lock check fails the
+# build when a dependency change is not reflected in them (#67). Refresh with
+# ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock.
+
+# Heap dumps from a Gradle/Kotlin OOM (#49) and Android Studio captures
+*.hprof
+captures/
 
 # Supabase CLI: local state and the linked project ref (supabase/.temp),
 # never the migrations — those are the schema's source of truth (docs/SYNC.md).
