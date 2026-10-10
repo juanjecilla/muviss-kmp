@@ -260,6 +260,11 @@ class SyncEngine(
      */
     private suspend fun guarded(block: suspend () -> SyncOutcome): SyncOutcome = runCatching { block() }.getOrElse { failure ->
         if (failure is CancellationException) throw failure
+        // A refused push is the paywall only when the credentials that made it
+        // carry no live grant (ADR 0019). The same refusal answers a write the
+        // policy forbids for any other reason — a forged co-watch row is the
+        // known one — and that stays a failure.
+        if (failure.isWriteRefusal() && !credentialsGrantSync()) return@getOrElse SyncOutcome.NotEntitled
         val reason = SyncFailureReason.classify(failure)
         val detail = failure.message ?: failure::class.simpleName ?: "Sync failed"
         recordFailure(reason, detail)
@@ -267,6 +272,10 @@ class SyncEngine(
     }
 
     private suspend fun syncCycle(userId: String, beforePush: suspend () -> Unit = {}): SyncOutcome {
+        // Before anything, including adopting the account: a server that will
+        // refuse every push and answer every pull with nothing must not be
+        // talked to as though it were syncing (ADR 0019).
+        if (!serverWillAcceptSync()) return SyncOutcome.NotEntitled
         database.syncStateQueries.ensureRow()
         val owner = currentOwner()
         when {
@@ -306,12 +315,82 @@ class SyncEngine(
         if (pulled > 0) refreshWidgets()
         if (touched.isNotEmpty()) refreshTitles(touched)
 
+        // The grant can lapse mid-cycle — a 401 renewal mid-pull mints a token
+        // without the claim — and an unentitled pull is `200 []`, which looks
+        // exactly like "nothing new". Whatever pages did arrive were real and
+        // stay applied; what must not happen is "last synced" advancing over
+        // a pull that could not see anything.
+        if (!credentialsGrantSync()) return SyncOutcome.NotEntitled
+
         // "Last synced" answers "when did this device last complete a cycle",
         // and must advance even when the pull came back empty.
         val finishedAt = clock.nowEpochMs()
         database.appSettingsQueries.updateLastSyncedAt(finishedAt)
         database.syncStateQueries.recordSuccess(finishedAt)
         return SyncOutcome.Success(pushedCount = pushed, pulledCount = pulled, syncedAtEpochMs = finishedAt)
+    }
+
+    /** Whether the session's credentials carry a grant the server will still honour now. Local; no network. */
+    private suspend fun credentialsGrantSync(): Boolean = backend.syncGrantedUntil()?.let { it > clock.nowEpochMs() } ?: false
+
+    /**
+     * Whether the server will accept this cycle at all. Credentials are minted
+     * with the grant they had at the time, so a purchase — on this device or on
+     * another — reaches the server's gate only through new ones. The engine
+     * only gets here once [EntitlementGate] has said yes, so credentials that
+     * say no are the stale ones: renew them once and ask again. A renewal that
+     * fails propagates (offline, or a dead session) and is reported as such.
+     */
+    private suspend fun serverWillAcceptSync(): Boolean {
+        if (credentialsGrantSync()) return true
+        backend.refreshSession().getOrThrow()
+        return credentialsGrantSync()
+    }
+
+    private fun Throwable.isWriteRefusal(): Boolean {
+        var current: Throwable? = this
+        var depth = 0
+        while (current != null && depth < MAX_CAUSE_DEPTH) {
+            if (current is SyncWriteRefusedException) return true
+            current = current.cause
+            depth++
+        }
+        return false
+    }
+
+    /**
+     * Deletes the signed-in account and everything the server holds for it
+     * (ADR 0019), one cycle's lock held so no push can race it into a 409 on
+     * the vanished user.
+     *
+     * The device's library is **kept**. ADR 0019 keeps it on sign-out and says
+     * nothing about deletion, and the app is offline-first: deleting an account
+     * is leaving sync, not leaving the app. What is forgotten is whose library it
+     * was — the owner and the pull cursors both belonged to an account that no
+     * longer exists. Left in place, the next sign-in (a new uid, even with the
+     * same provider identity) would read as an [SyncOutcome.AccountChanged]
+     * whose default answer discards this very library; with no owner it is a
+     * first sync instead, which adopts the library and pushes all of it.
+     */
+    suspend fun deleteAccount(): AccountDeletionOutcome = withContext(dispatchers.io) {
+        syncMutex.withLock {
+            if (backend.session.first() == null) return@withLock AccountDeletionOutcome.NotSignedIn
+            backend.deleteAccount().fold(
+                onSuccess = {
+                    database.syncStateQueries.ensureRow()
+                    database.transaction {
+                        database.syncStateQueries.setOwner(null)
+                        database.syncStateQueries.clearFailure()
+                        changeLog.resetCursors()
+                    }
+                    AccountDeletionOutcome.Deleted
+                },
+                onFailure = { failure ->
+                    if (failure is CancellationException) throw failure
+                    AccountDeletionOutcome.Failed(SyncFailureReason.classify(failure))
+                },
+            )
+        }
     }
 
     private suspend fun currentOwner(): String? = database.syncStateQueries.selectState().awaitAsOneOrNull()?.ownerAccountId
@@ -358,6 +437,19 @@ class SyncEngine(
 }
 
 private const val OUTCOME_FAILED = "FAILED"
+private const val MAX_CAUSE_DEPTH = 8
+
+/** The outcome of [SyncEngine.deleteAccount]. Copy keys off [Failed.reason]; there is no text to show. */
+sealed interface AccountDeletionOutcome {
+    /** The server deleted the account and its data; this device is signed out and keeps its library. */
+    data object Deleted : AccountDeletionOutcome
+
+    /** There was no account to delete. */
+    data object NotSignedIn : AccountDeletionOutcome
+
+    /** Nothing was deleted (or the server cannot say it was); the session is untouched unless it was dead. */
+    data class Failed(val reason: SyncFailureReason) : AccountDeletionOutcome
+}
 
 /** What [SyncEngine.observeStatus] reports; everything the Profile status line needs, and no copy. */
 data class SyncStatusSnapshot(

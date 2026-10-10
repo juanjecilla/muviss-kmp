@@ -26,6 +26,11 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.io.IOException
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import java.util.Base64
 
 /**
  * A stand-in for a Supabase project, at the HTTP boundary.
@@ -66,6 +71,18 @@ import java.io.IOException
  * - **RLS by bearer token**: each registered token maps to one user, reads and
  *   writes see only that user's rows, and an unknown or revoked token is a
  *   `401`.
+ * - **The paid gate** (ADR 0019, `20261010000000_entitlement.sql` and
+ *   `20261010000100_sync_requires_entitlement.sql`): tokens are JWT-shaped
+ *   ([accessToken]) and every synced table requires a `sync_until` claim in
+ *   the future by [serverClock]. Without one a push is `403` / `42501` and a
+ *   pull is a silent `200 []`. Tokens are minted with the claim the token hook
+ *   would stamp from the user's `entitlement` row *at that moment*, so a grant
+ *   ([grantEntitlement]) reaches only tokens minted after it. The
+ *   `entitlement` table is readable by its owner (`[]` when there is no row)
+ *   and refuses client writes (`403` / `42501`).
+ * - **`functions/v1/delete-account`**: deletes the bearer's user and, by
+ *   cascade, every row and the entitlement; their refresh tokens die with
+ *   them. A push with the still-valid access token is then `409` / `23503`.
  * - **Injectable failures and latency**: [failWith], [dropConnection],
  *   [latencyMs] and the [onRequest] hook, which is how a test edits a local
  *   row *while* a push is in flight.
@@ -123,6 +140,13 @@ class FakeSupabaseServer(
 
     /** Refresh token to user id. Single use: redeeming one rotates it. */
     private val refreshTokens = mutableMapOf<String, String>()
+    private class EntitlementRow(val active: Boolean, val expiresAtEpochMs: Long?)
+
+    /** `public.entitlement`, by user id. Written only by the test (standing in for the webhook); clients may read their own row. */
+    private val entitlements = mutableMapOf<String, EntitlementRow>()
+
+    /** Users removed by `delete-account`. Their access tokens still verify — a JWT outlives its user — but every row and the user itself are gone. */
+    private val deletedUsers = mutableSetOf<String>()
     private var nextSeq = 1L
     private var nextUser = 1
     private var nextToken = 1
@@ -153,16 +177,45 @@ class FakeSupabaseServer(
 
     // ------------------------------------------------------------- accounts ---
 
-    /** Registers a user with a live access token and refresh token, as if they had signed in. Returns the access token. */
+    /**
+     * Registers a user with a live access token and refresh token, as if they
+     * had signed in. Returns the access token.
+     *
+     * [entitled] (the default, because nearly every test is about syncing)
+     * gives the user an `entitlement` row with no end date, and the default
+     * [accessToken] carries the matching `sync_until` claim — what a paid user's
+     * sign-in gets from the token hook. Pass `false` for a user who never paid:
+     * no row, and a token without the claim.
+     */
     fun signUp(
         userId: String,
-        accessToken: String = "access-$userId",
+        entitled: Boolean = true,
+        accessToken: String = accessToken(userId, syncUntil = if (entitled) SYNC_FOREVER else null),
         refreshToken: String = "refresh-$userId",
     ): String = synchronized(lock) {
+        if (entitled) entitlements[userId] = EntitlementRow(active = true, expiresAtEpochMs = null) else entitlements.remove(userId)
         accessTokens[accessToken] = userId
         refreshTokens[refreshToken] = userId
         accessToken
     }
+
+    /**
+     * What the RevenueCat webhook does on a purchase: writes [userId]'s
+     * `entitlement` row. Like the real server, tokens already handed out keep
+     * the claim they were minted with — only a refresh (or a new sign-in) picks
+     * this up.
+     */
+    fun grantEntitlement(userId: String, expiresAtEpochMs: Long? = null) = synchronized(lock) {
+        entitlements[userId] = EntitlementRow(active = true, expiresAtEpochMs = expiresAtEpochMs)
+    }
+
+    /** What an `EXPIRATION` event does: the row stays, inactive. Existing tokens keep their claim until it passes or they are replaced. */
+    fun revokeEntitlement(userId: String) = synchronized(lock) {
+        entitlements[userId] = EntitlementRow(active = false, expiresAtEpochMs = entitlements[userId]?.expiresAtEpochMs)
+    }
+
+    /** Whether [userId] has been deleted through `delete-account`. */
+    fun isDeleted(userId: String): Boolean = synchronized(lock) { userId in deletedUsers }
 
     /** Makes [accessToken] stop working, as if it had expired; the next request carrying it is a 401. */
     fun expireAccessToken(accessToken: String) = synchronized(lock) { accessTokens.remove(accessToken) }
@@ -219,6 +272,7 @@ class FakeSupabaseServer(
             recordedRequest.path == "/auth/v1/token" -> synchronized(lock) { refresh(recordedRequest) }
             recordedRequest.path == "/auth/v1/signup" -> synchronized(lock) { signUpAnonymously() }
             recordedRequest.path == "/auth/v1/logout" -> respond("", HttpStatusCode.NoContent)
+            recordedRequest.path == "/functions/v1/delete-account" -> synchronized(lock) { deleteAccount(recordedRequest) }
             recordedRequest.table != null -> synchronized(lock) { rest(recordedRequest) }
             else -> json("""{"message":"no route"}""", HttpStatusCode.NotFound)
         }
@@ -258,26 +312,97 @@ class FakeSupabaseServer(
         return json(newSession(userId))
     }
 
+    /** A new anonymous user has no `entitlement` row, so its token carries no claim — exactly as on the real server. */
     private fun MockRequestHandleScope.signUpAnonymously(): HttpResponseData = json(newSession("anon-${nextUser++}"))
 
     private fun newSession(userId: String): String {
-        val access = "access-$userId-${nextToken++}"
+        val access = accessToken(userId, syncUntil = claimFor(userId), id = "access-$userId-${nextToken++}")
         val refresh = "refresh-$userId-${nextToken++}"
         accessTokens[access] = userId
         refreshTokens[refresh] = userId
         return """{"access_token":"$access","refresh_token":"$refresh","expires_in":3600,"user":{"id":"$userId","is_anonymous":false}}"""
     }
 
+    /**
+     * `custom_access_token_hook`: an active grant with no end renders as
+     * [SYNC_FOREVER], one that ends in the future as that instant; inactive,
+     * expired or missing omits the claim.
+     */
+    private fun claimFor(userId: String): String? {
+        val row = entitlements[userId]?.takeIf { it.active } ?: return null
+        val expiresAt = row.expiresAtEpochMs ?: return SYNC_FOREVER
+        return if (expiresAt > serverClock()) Instant.ofEpochMilli(expiresAt).truncatedTo(ChronoUnit.SECONDS).toString() else null
+    }
+
+    /**
+     * `functions/delete-account`: resolves the user from the bearer token (GoTrue's
+     * `/auth/v1/user`), then hard-deletes them — every row cascades, the
+     * entitlement goes, and their refresh tokens with the sessions. The access
+     * token keeps verifying, as a JWT does until it expires; what it addresses
+     * is gone.
+     */
+    private fun MockRequestHandleScope.deleteAccount(request: Request): HttpResponseData {
+        if (request.method != "POST") return json("""{"error":"method not allowed"}""", HttpStatusCode.MethodNotAllowed)
+        val userId = bearerOf(request)?.let { accessTokens[it] }?.takeUnless { it in deletedUsers }
+            ?: return json("""{"error":"invalid session"}""", HttpStatusCode.Unauthorized)
+        deletedUsers += userId
+        entitlements.remove(userId)
+        stores.values.forEach { table -> table.keys.removeAll { it.startsWith("$userId|") } }
+        refreshTokens.values.removeAll { it == userId }
+        return json("""{"deleted":"$userId"}""")
+    }
+
+    private fun bearerOf(request: Request): String? = request.headers.entries.firstOrNull { it.key.equals(HttpHeaders.Authorization, ignoreCase = true) }?.value?.removePrefix("Bearer ")
+
+    /** Whether [token]'s `sync_until` claim is still in the future by the server's clock — the comparison every synced table's policy makes. */
+    private fun grantsSync(token: String): Boolean {
+        val payload = token.split('.').getOrNull(1) ?: return false
+        val claims = runCatching { Json.parseToJsonElement(Base64.getUrlDecoder().decode(payload).decodeToString()) as JsonObject }.getOrNull() ?: return false
+        val until = (claims["sync_until"] as? JsonPrimitive)?.contentOrNull ?: return false
+        return runCatching { Instant.parse(until).toEpochMilli() > serverClock() }.getOrDefault(false)
+    }
+
+    private fun MockRequestHandleScope.entitlement(request: Request, userId: String): HttpResponseData = when (request.method) {
+        "GET" -> {
+            val row = entitlements[userId]
+            val body = if (row == null) {
+                "[]"
+            } else {
+                // PostgREST's timestamptz rendering: fractional seconds and an explicit offset.
+                val expires = row.expiresAtEpochMs?.let { "\"" + Instant.ofEpochMilli(it).atOffset(ZoneOffset.UTC).format(POSTGREST_TIMESTAMP) + "\"" } ?: "null"
+                """[{"active":${row.active},"expires_at":$expires}]"""
+            }
+            json(body)
+        }
+
+        // No client insert/update/delete policy, and only `select` granted.
+        else -> json(pgError("42501", "permission denied for table entitlement"), HttpStatusCode.Forbidden)
+    }
+
     // ------------------------------------------------------------------ rest ---
 
     private fun MockRequestHandleScope.rest(request: Request): HttpResponseData {
         val table = request.table!!
-        val schema = SCHEMAS[table] ?: return json(pgError("PGRST205", "Could not find the table 'public.$table'"), HttpStatusCode.NotFound)
+        if (table != ENTITLEMENT && table !in SCHEMAS) return json(pgError("PGRST205", "Could not find the table 'public.$table'"), HttpStatusCode.NotFound)
         if (request.headers.keys.none { it.equals("apikey", ignoreCase = true) }) {
             return json(pgError("PGRST301", "No API key found in request"), HttpStatusCode.Unauthorized)
         }
-        val bearer = request.headers.entries.firstOrNull { it.key.equals(HttpHeaders.Authorization, ignoreCase = true) }?.value?.removePrefix("Bearer ")
+        val bearer = bearerOf(request)
         val userId = bearer?.let { accessTokens[it] } ?: return json(pgError("PGRST301", "JWT expired"), HttpStatusCode.Unauthorized)
+        if (table == ENTITLEMENT) return entitlement(request, userId)
+        val schema = SCHEMAS.getValue(table)
+        // `(auth.jwt()->>'sync_until')::timestamptz > now()` in every synced
+        // table's `using` and `with check` (20261010000100): without it a write
+        // is an RLS refusal and a read matches no rows — a silent `200 []`.
+        if (!grantsSync(bearer)) {
+            return when (request.method) {
+                "GET" -> json("[]")
+                else -> json(pgError("42501", "new row violates row-level security policy for table \"$table\""), HttpStatusCode.Forbidden)
+            }
+        }
+        if (userId in deletedUsers && request.method == "POST") {
+            return json(pgError("23503", "insert or update on table \"$table\" violates foreign key constraint \"${table}_user_id_fkey\""), HttpStatusCode.Conflict)
+        }
         return when (request.method) {
             "POST" -> {
                 val merge = request.headers.entries.any { it.key.equals("Prefer", ignoreCase = true) && "resolution=merge-duplicates" in it.value }
@@ -429,10 +554,33 @@ class FakeSupabaseServer(
             ?.let { "null value in column \"${it.key}\" of relation \"$name\" violates not-null constraint" }
     }
 
-    private companion object {
-        const val UPDATED_AT = "updated_at_epoch_ms"
-        const val SERVER_SEQ = "server_seq"
-        val RESERVED_PARAMETERS = setOf("select", "order", "limit", "offset")
+    companion object {
+        /** The claim the token hook stamps for an active grant with no end date. */
+        const val SYNC_FOREVER = "9999-12-31T23:59:59Z"
+
+        /**
+         * A JWT-shaped access token for [userId], carrying [syncUntil] as its
+         * `sync_until` claim (omitted when null) — the shape Supabase hands out
+         * since ADR 0019. Unsigned: the client reads the payload without
+         * verifying it, and this server recognises tokens by the registry, not
+         * the signature. [id] keeps two tokens for one user distinct.
+         */
+        fun accessToken(userId: String, syncUntil: String? = SYNC_FOREVER, id: String = "access-$userId"): String {
+            val payload = buildJsonObject {
+                put("sub", userId)
+                put("jti", id)
+                put("role", "authenticated")
+                if (syncUntil != null) put("sync_until", syncUntil)
+            }.toString()
+            val encoder = Base64.getUrlEncoder().withoutPadding()
+            return "${encoder.encodeToString("""{"alg":"none","typ":"JWT"}""".toByteArray())}.${encoder.encodeToString(payload.toByteArray())}.fake"
+        }
+
+        private const val ENTITLEMENT = "entitlement"
+        private val POSTGREST_TIMESTAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSxxx")
+        private const val UPDATED_AT = "updated_at_epoch_ms"
+        private const val SERVER_SEQ = "server_seq"
+        private val RESERVED_PARAMETERS = setOf("select", "order", "limit", "offset")
 
         private val text = Column(Type.TEXT)
         private val nullableText = Column(Type.TEXT, nullable = true)
@@ -444,7 +592,7 @@ class FakeSupabaseServer(
         private fun textDefault(value: String) = Column(Type.TEXT, default = JsonPrimitive(value))
 
         /** Mirrors `supabase/migrations/` — the sync schema plus everything later migrations added. Keep them in step. */
-        val SCHEMAS: Map<String, TableSchema> = listOf(
+        private val SCHEMAS: Map<String, TableSchema> = listOf(
             TableSchema(
                 "collection_entry",
                 listOf("media_id"),

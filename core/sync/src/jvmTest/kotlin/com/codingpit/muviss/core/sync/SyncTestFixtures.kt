@@ -185,6 +185,39 @@ internal class FakeSyncBackend(
         return Result.success(Unit)
     }
 
+    /** What [syncGrantedUntil] reports — the token claim, as far as the engine can see. Unbounded by default, as a backend with no server-side gate is. */
+    var grantedUntil: Long? = Long.MAX_VALUE
+
+    /** What [grantedUntil] becomes after a [refreshSession], or null to leave it as it was. Models "the new token carries the claim". */
+    var grantAfterRefresh: Long? = null
+
+    var refreshFailure: Throwable? = null
+    var refreshes = 0
+        private set
+
+    var entitlementRecord: Result<ServerEntitlement?> = Result.success(null)
+    var deleteFailure: Throwable? = null
+    var deletions = 0
+        private set
+
+    override suspend fun syncGrantedUntil(): Long? = if (sessionState.value == null) null else grantedUntil
+
+    override suspend fun refreshSession(): Result<SyncSession> {
+        refreshes++
+        refreshFailure?.let { return Result.failure(it) }
+        grantAfterRefresh?.let { grantedUntil = it }
+        return Result.success(checkNotNull(sessionState.value))
+    }
+
+    override suspend fun fetchEntitlement(): Result<ServerEntitlement?> = entitlementRecord
+
+    override suspend fun deleteAccount(): Result<Unit> {
+        deletions++
+        deleteFailure?.let { return Result.failure(it) }
+        sessionState.value = null
+        return Result.success(Unit)
+    }
+
     private fun <V> pagesOf(stored: Collection<Stored<V>>, after: Long, wrap: (List<V>) -> SyncChangeSet): List<Pair<SyncChangeSet, SyncCursor>> = stored
         .filter { it.seq > after }
         .sortedBy { it.seq }
