@@ -26,6 +26,7 @@ class RewatchGoldenTest {
         setContent {
             RewatchUnderTest(
                 RewatchUiState(loading = false, stats = RewatchStats(ranking = populatedRanking, monthly = twelveMonths)),
+                darkTheme = false,
             )
         }
         waitForIdle()
@@ -35,7 +36,10 @@ class RewatchGoldenTest {
     @Test
     fun the_empty_screen_teaches_the_gesture() = runComposeUiTest {
         setContent {
-            RewatchUnderTest(RewatchUiState(loading = false, stats = RewatchStats(monthly = twelveMonths.map { it.copy(rewatches = 0) })))
+            RewatchUnderTest(
+                RewatchUiState(loading = false, stats = RewatchStats(monthly = twelveMonths.map { it.copy(rewatches = 0) })),
+                darkTheme = false,
+            )
         }
         waitForIdle()
         assertMatchesGolden("rewatch-empty", tolerance = TEXT_HEAVY_TOLERANCE)
@@ -53,6 +57,7 @@ class RewatchGoldenTest {
                         monthly = twelveMonths,
                     ),
                 ),
+                darkTheme = false,
             )
         }
         waitForIdle()
@@ -61,16 +66,73 @@ class RewatchGoldenTest {
 
     @Test
     fun the_profile_card_is_a_short_list_with_a_way_in() = runComposeUiTest {
-        setContent { CardUnderTest(cardEntries) }
+        setContent { CardUnderTest(cardEntries, darkTheme = false) }
         waitForIdle()
         assertMatchesGolden("rewatch-card", tolerance = TEXT_HEAVY_TOLERANCE)
     }
 
     @Test
     fun the_empty_profile_card_still_says_something() = runComposeUiTest {
-        setContent { CardUnderTest(emptyList()) }
+        setContent { CardUnderTest(emptyList(), darkTheme = false) }
         waitForIdle()
         assertMatchesGolden("rewatch-card-empty", tolerance = TEXT_HEAVY_TOLERANCE)
+    }
+
+    @Test
+    fun the_ranking_reads_as_two_lists_over_a_year_of_trend_dark() = runComposeUiTest {
+        setContent {
+            RewatchUnderTest(
+                RewatchUiState(loading = false, stats = RewatchStats(ranking = populatedRanking, monthly = twelveMonths)),
+                darkTheme = true,
+            )
+        }
+        waitForIdle()
+        assertMatchesGolden("rewatch-ranking-dark", tolerance = TEXT_HEAVY_TOLERANCE)
+    }
+
+    @Test
+    fun the_empty_screen_teaches_the_gesture_dark() = runComposeUiTest {
+        setContent {
+            RewatchUnderTest(
+                RewatchUiState(loading = false, stats = RewatchStats(monthly = twelveMonths.map { it.copy(rewatches = 0) })),
+                darkTheme = true,
+            )
+        }
+        waitForIdle()
+        assertMatchesGolden("rewatch-empty-dark", tolerance = TEXT_HEAVY_TOLERANCE)
+    }
+
+    @Test
+    fun this_year_narrows_the_lists_but_not_the_chart_dark() = runComposeUiTest {
+        setContent {
+            RewatchUnderTest(
+                RewatchUiState(
+                    loading = false,
+                    stats = RewatchStats(
+                        window = RewatchWindow.THIS_YEAR,
+                        ranking = populatedRanking.copy(movies = emptyList()),
+                        monthly = twelveMonths,
+                    ),
+                ),
+                darkTheme = true,
+            )
+        }
+        waitForIdle()
+        assertMatchesGolden("rewatch-this-year-dark", tolerance = TEXT_HEAVY_TOLERANCE)
+    }
+
+    @Test
+    fun the_profile_card_is_a_short_list_with_a_way_in_dark() = runComposeUiTest {
+        setContent { CardUnderTest(cardEntries, darkTheme = true) }
+        waitForIdle()
+        assertMatchesGolden("rewatch-card-dark", tolerance = TEXT_HEAVY_TOLERANCE)
+    }
+
+    @Test
+    fun the_empty_profile_card_still_says_something_dark() = runComposeUiTest {
+        setContent { CardUnderTest(emptyList(), darkTheme = true) }
+        waitForIdle()
+        assertMatchesGolden("rewatch-card-empty-dark", tolerance = TEXT_HEAVY_TOLERANCE)
     }
 }
 

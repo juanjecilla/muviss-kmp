@@ -68,56 +68,9 @@ class CrashReportsSettingTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private class FakeRepository(initial: AppSettings = AppSettings()) : SettingsRepository {
-        val settings = MutableStateFlow(initial)
-
-        override fun observeSettings(): Flow<AppSettings> = settings
-        override suspend fun setTheme(theme: AppTheme) = settings.update { it.copy(theme = theme) }
-        override suspend fun setLanguage(language: String) = settings.update { it.copy(language = language) }
-        override suspend fun setRegion(region: String) = settings.update { it.copy(region = region) }
-        override suspend fun setNotificationsEnabled(enabled: Boolean) = settings.update { it.copy(notificationsEnabled = enabled) }
-        override suspend fun setCrashReportsEnabled(enabled: Boolean) = settings.update { it.copy(crashReportsEnabled = enabled) }
-        override suspend fun exportData(): String = "{}"
-    }
-
-    private object NoFlags : FeatureFlags {
-        override val triageControlScheme = MutableStateFlow(TriageControlScheme.DEFAULT)
-        override val animationsEnabled = MutableStateFlow(true)
-        override val triageDeckAnimations = MutableStateFlow(true)
-        override val syncAutomatically = MutableStateFlow(false)
-        override val triageSnoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
-        override val triageSnoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
-        override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
-        override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
-        override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit
-        override suspend fun setSyncAutomatically(enabled: Boolean) = Unit
-        override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = Unit
-        override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
-    }
-
     private var erased = 0
 
-    private fun viewModel(repository: FakeRepository) = SettingsViewModel(
-        ObserveSettingsUseCase(repository),
-        SettingsActions(
-            SetThemeUseCase(repository),
-            SetLanguageUseCase(repository),
-            SetRegionUseCase(repository),
-            SetNotificationsEnabledUseCase(repository),
-            SetCrashReportsEnabledUseCase(repository),
-            ExportDataUseCase(repository),
-        ),
-        AppVersion(versionName = "1.0.0", versionCode = 1),
-        NoFlags,
-        DeleteAllDataUseCase(object : LocalDataEraser {
-            override suspend fun deleteAllData() {
-                erased++
-            }
-        }),
-        object : AppClock {
-            override fun nowEpochMs(): Long = 0L
-        },
-    )
+    private fun viewModel(repository: FakeRepository) = settingsViewModel(repository, onDeleteAll = { erased++ })
 
     /** EPIC 29 (#72): Delete all data is two steps, and the first one cannot delete anything. */
     @Test
@@ -235,3 +188,58 @@ class CrashReportsSettingTest {
         onNodeWithTag(NOTIFICATIONS_BLOCKED_TAG).assertDoesNotExist()
     }
 }
+
+/*
+ * Fakes for rendering the real [SettingsScreen], shared with `SettingsGoldenTest`.
+ * File-level rather than nested in the class so the golden reuses them instead
+ * of adding a fifth `FeatureFlags` fake (CLAUDE.md counts them: a new flag
+ * breaks every copy).
+ */
+
+internal class FakeRepository(initial: AppSettings = AppSettings()) : SettingsRepository {
+    val settings = MutableStateFlow(initial)
+
+    override fun observeSettings(): Flow<AppSettings> = settings
+    override suspend fun setTheme(theme: AppTheme) = settings.update { it.copy(theme = theme) }
+    override suspend fun setLanguage(language: String) = settings.update { it.copy(language = language) }
+    override suspend fun setRegion(region: String) = settings.update { it.copy(region = region) }
+    override suspend fun setNotificationsEnabled(enabled: Boolean) = settings.update { it.copy(notificationsEnabled = enabled) }
+    override suspend fun setCrashReportsEnabled(enabled: Boolean) = settings.update { it.copy(crashReportsEnabled = enabled) }
+    override suspend fun exportData(): String = "{}"
+}
+
+internal object NoFlags : FeatureFlags {
+    override val triageControlScheme = MutableStateFlow(TriageControlScheme.DEFAULT)
+    override val animationsEnabled = MutableStateFlow(true)
+    override val triageDeckAnimations = MutableStateFlow(true)
+    override val syncAutomatically = MutableStateFlow(false)
+    override val triageSnoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
+    override val triageSnoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
+    override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
+    override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
+    override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit
+    override suspend fun setSyncAutomatically(enabled: Boolean) = Unit
+    override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = Unit
+    override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
+}
+
+/** A [SettingsViewModel] over [repository], [NoFlags] and a fixed clock; [onDeleteAll] observes the eraser. */
+internal fun settingsViewModel(repository: FakeRepository, onDeleteAll: () -> Unit = {}) = SettingsViewModel(
+    ObserveSettingsUseCase(repository),
+    SettingsActions(
+        SetThemeUseCase(repository),
+        SetLanguageUseCase(repository),
+        SetRegionUseCase(repository),
+        SetNotificationsEnabledUseCase(repository),
+        SetCrashReportsEnabledUseCase(repository),
+        ExportDataUseCase(repository),
+    ),
+    AppVersion(versionName = "1.0.0", versionCode = 1),
+    NoFlags,
+    DeleteAllDataUseCase(object : LocalDataEraser {
+        override suspend fun deleteAllData() = onDeleteAll()
+    }),
+    object : AppClock {
+        override fun nowEpochMs(): Long = 0L
+    },
+)
