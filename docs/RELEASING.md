@@ -523,10 +523,9 @@ clicks sign in.
 
 ### App icon
 
-`app/desktopApp/icons/{icon.icns,icon.ico,icon.png}` are a **placeholder**
-generated programmatically (a flat rounded-square "play" glyph) — there's no
-real Muviss brand artwork yet. Regenerating them from real artwork later is
-a manual follow-up; nothing in the build depends on their content, only
+`app/desktopApp/icons/{icon.icns,icon.ico,icon.png}` are the real app icon,
+rasterised from the SVG masters in `docs/design/icon-src/` (#163), like every
+other platform's. Regenerate them from there; the build depends only on
 their presence/format (`.icns` for `macOS { iconFile }`, `.ico` for
 `windows { iconFile }`, `.png` for `linux { iconFile }`).
 
@@ -985,13 +984,11 @@ required (module workers and the wasm fetch both need an HTTP origin).
 
 `app/webApp/src/webMain/resources/manifest.webmanifest` + `icons/` (192,
 512, a maskable 512, a 32×32 favicon, and a 180×180 Apple touch icon) are
-all derived from `app/desktopApp/icons/icon.png` via `sips` (same
-placeholder-art caveat item 7 gives the desktop icons — there's no real
-Muviss brand artwork yet, so regenerating these from real artwork later is
-a manual follow-up, same as the desktop ones). `theme_color`/`background_color`
+regenerated from the same `docs/design/icon-src/` masters as every other
+platform's icon (#163). `theme_color`/`background_color`
 in the manifest and the `<meta name="theme-color">` in `index.html` match
-the app's actual Material theme (`Purple = 0xFF6C5CE7`, `core/designsystem/.../Theme.kt`),
-not a placeholder color. Verified installable in Chrome (the manifest
+`MuvissPalette` (`:core:designsystem`), corrected from the old purple
+placeholder in #163. Verified installable in Chrome (the manifest
 resolves, icons load, `display: "standalone"` is honored) as part of this
 epic's live-browser check — an actual "Install" prompt/App icon on a home
 screen was not captured (no mobile device in this environment), but the
