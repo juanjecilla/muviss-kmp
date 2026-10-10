@@ -255,7 +255,10 @@ It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
 only) another `release/*` branch is open. The branch starts with one commit:
 draft release notes for every listing locale, seeded from the `feat`/`fix`
-subjects since the last release, first line `DRAFT: …`.
+subjects since the last release, first line `DRAFT: …`, and this version's
+section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
+uncapped). The changelog is generated, not edited: a fix merged into the
+release branch later is in the RC but not in that section.
 
 Then:
 

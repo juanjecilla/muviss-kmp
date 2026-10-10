@@ -88,12 +88,40 @@ seeded="$(git -C "$r" show release/1.1.0:fastlane/release-notes/v1.1.0/en-US.txt
 grep -q '^DRAFT:' <<<"$seeded" && pass "notes are marked draft" || fail "notes are marked draft"
 grep -q -- '- snooze a card' <<<"$seeded" && grep -q -- '- offline copy' <<<"$seeded" && ! grep -q noise <<<"$seeded" \
   && pass "notes list feat/fix only" || fail "notes list feat/fix only: $seeded"
+log="$(git -C "$r" show release/1.1.0:CHANGELOG.md)"
+grep -q '^## 1.1.0 — ' <<<"$log" && pass "changelog gets a section for the version" || fail "changelog section: $log"
+grep -q -- '^- \*\*triage\*\*: snooze a card$' <<<"$log" && grep -q -- '^- \*\*search\*\*: offline copy$' <<<"$log" \
+  && ! grep -q noise <<<"$log" && pass "changelog lists feat/fix with their scope" || fail "changelog items: $log"
+[ "$(grep -n '### Features' <<<"$log" | cut -d: -f1)" -lt "$(grep -n '### Fixes' <<<"$log" | cut -d: -f1)" ] \
+  && pass "features come before fixes" || fail "features come before fixes"
 git -C "$r" switch -q develop
 (cd "$r" && scripts/release/start-release.sh 1.2.0 >/dev/null 2>&1); expect_eq "refuses a second release in flight" "$?" "1"
 git -C "$r" push -q origin 'v1.0.0^{commit}:refs/heads/main'
 (cd "$r" && scripts/release/start-release.sh 1.0.1 --hotfix >/dev/null 2>&1); expect_eq "a hotfix jumps the queue" "$?" "0"
 [ "$(git -C "$origin" rev-parse 'hotfix/1.0.1^')" = "$(git -C "$origin" rev-parse 'v1.0.0^{commit}')" ] \
   && pass "hotfix is cut from main" || fail "hotfix is cut from main"
+
+# A newer section goes above the older ones, and a breaking change says so.
+r5="$(new_repo)"
+mkdir -p "$r5/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r5/scripts/release/"
+printf '# Changelog\n\nheader\n\n## 1.0.0 — 2026-10-07\n\nFirst release.\n' >"$r5/CHANGELOG.md"
+git -C "$r5" add -A; commit "$r5" "chore: init"; git -C "$r5" tag -a v1.0.0 -m t
+commit "$r5" "feat(sync)!: accounts"; commit "$r5" "feat: great news!"; commit "$r5" "chore: noise"
+o5="$(mktemp -d)"; git -C "$o5" init -q --bare -b develop
+git -C "$r5" remote add origin "$o5"; git -C "$r5" push -q origin develop --tags
+(cd "$r5" && scripts/release/start-release.sh 2.0.0 >/dev/null 2>&1); expect_eq "cuts release/2.0.0" "$?" "0"
+log5="$(git -C "$r5" show release/2.0.0:CHANGELOG.md)"
+[ "$(grep -n '^## 2.0.0' <<<"$log5" | cut -d: -f1)" -lt "$(grep -n '^## 1.0.0' <<<"$log5" | cut -d: -f1)" ] \
+  && grep -q '^header$' <<<"$log5" && pass "new section above the old, header kept" || fail "section order: $log5"
+grep -q -- '^- \*\*sync\*\*: accounts (breaking)$' <<<"$log5" && pass "breaking change is marked" || fail "breaking: $log5"
+grep -q -- '^- great news!$' <<<"$log5" && pass "a ! in the subject is not breaking" || fail "subject bang: $log5"
+r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r6/scripts/release/"
+git -C "$r6" add -A; commit "$r6" "chore: init"; git -C "$r6" tag -a v1.0.0 -m t; commit "$r6" "ci: only"
+o6="$(mktemp -d)"; git -C "$o6" init -q --bare -b develop
+git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
+(cd "$r6" && scripts/release/start-release.sh 1.0.1 >/dev/null 2>&1)
+grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)" \
+  && pass "a release with no feat/fix says so" || fail "maintenance-only section"
 
 echo
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
