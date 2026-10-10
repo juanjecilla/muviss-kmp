@@ -20,7 +20,11 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
+#
+# False on purpose (#75): a table added without thinking about its grants
+# should be unreachable, not readable by every holder of the anon key. Every
+# migration since 20261010000100 grants exactly what each role needs.
+auto_expose_new_tables = false
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -316,9 +320,15 @@ max_frequency = "5s"
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
-# [auth.hook.custom_access_token]
-# enabled = true
-# uri = "pg-functions://<database>/<schema>/<hook_name>"
+#
+# Stamps `sync_until` into every access token from `public.entitlement`
+# (ADR 0019, migration 20261010000000). Every synced table's RLS policy
+# compares against that claim, so with the hook OFF nobody can sync at all —
+# on a hosted project it has to be enabled too (Authentication -> Hooks, or
+# `supabase config push`), in the same change that applies the migration.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 [auth.sms.twilio]
@@ -422,6 +432,17 @@ deno_version = 2
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
+
+# RevenueCat authenticates with a shared secret in `Authorization`, not a
+# Supabase JWT, so the gateway's JWT check has to be off for this one function;
+# it compares the header against REVENUECAT_WEBHOOK_SECRET itself (ADR 0019).
+[functions.revenuecat-webhook]
+verify_jwt = false
+
+# The caller's own JWT is verified twice: by the gateway here, and by the
+# function resolving the user from it with GoTrue before it deletes anything.
+[functions.delete-account]
+verify_jwt = true
 
 [analytics]
 enabled = true

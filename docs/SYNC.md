@@ -20,7 +20,10 @@ gated three times (ADR 0021), see [Automatic sync](#automatic-sync-epic-40-adr-0
    store wired up (every build today) `:core:billing` binds
    `NoEntitlementProvider`, which reports Inactive — set
    `SYNC_ENTITLEMENT_OVERRIDE=true` in `local.properties` to grant it to your own
-   build.
+   build. Since EPIC 32 the **server** enforces it too, through a `sync_until`
+   claim the token hook stamps from `public.entitlement` — so against a project
+   with those migrations the override alone is not enough, see
+   [Entitlement](#entitlement-the-servers-half-of-the-paid-gate-epic-32-adr-0019).
 
 An unavailable build renders no sync UI at all; an unentitled one renders the
 row and a paywall. Those are deliberately opposite, see ADR 0018.
@@ -479,6 +482,103 @@ whole flow against `FakeSupabaseServer`. These need a device or a project:
 - **Desktop.** Package (`packageDistributionForCurrentOS`), sign in, switch on, leave the app open 20 minutes, check the status line advanced. Close it and confirm nothing runs.
 - **Web.** Two tabs on the same origin: change tabs and back, toggle the network offline and online, watch the requests. Expect nothing until web sign-in exists (#46).
 - **Live project.** The end-to-end flow against a real Supabase project, with `SYNC_ENTITLEMENT_OVERRIDE=true`, is still unverified (#88, #100).
+
+## Entitlement: the server's half of the paid gate (EPIC 32, ADR 0019)
+
+The `EntitlementGate` inside `SyncEngine` keeps an honest client honest. The
+server enforces the same rule on its own, because the anon key ships in every
+binary and a patched client skips any check it likes.
+
+**Pieces** (all under `supabase/`):
+
+| Piece | What it does |
+|---|---|
+| `public.entitlement(user_id, active, expires_at, updated_at, source_event, source_event_at)` | The mirror of RevenueCat's answer. RLS on; a client may **select its own row** and nothing else; there is no insert/update/delete policy, so only the service role writes. A trigger refuses an event older than the one already applied (`source_event_at`), because webhooks arrive at least once and in any order. |
+| `public.custom_access_token_hook(event jsonb)` | Supabase Auth's custom access token hook, enabled in `config.toml` (`[auth.hook.custom_access_token]`). Runs on every token GoTrue mints (sign-in and every refresh) and stamps `sync_until` — the grant's end as `YYYY-MM-DDTHH:MM:SSZ`, or `9999-12-31T23:59:59Z` for an active grant with no end. Inactive, expired or absent → the claim is **omitted** (and stripped if it came in). |
+| Every synced table's policy | `auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now()` in both `using` and `with check` (co-watch: `(auth.uid() = user_id or auth.uid() = recipient_id) and …` / `auth.uid() = user_id and …`). Still flat — ADR 0022's invariant 4. A missing claim casts to null and fails closed. |
+| `functions/revenuecat-webhook` | RevenueCat → `entitlement`, as the service role. Checks `Authorization` against `REVENUECAT_WEBHOOK_SECRET` (constant time), only acts on entitlement id `sync`, requires `app_user_id` to be a Supabase uid, answers 200 for event types that do not change access. `REVENUECAT_ALLOWED_ENVIRONMENTS` (default `PRODUCTION`) decides whether `SANDBOX` purchases count. JWT verification is off for this function only. |
+| `functions/delete-account` | `POST` with the caller's own access token. Resolves the user through GoTrue (`/auth/v1/user`) and hard-deletes exactly that user with the admin API; every table cascades from `auth.users`. Never takes a user id from the request. |
+
+**Event mapping** (`revenuecat-webhook/logic.ts`): `INITIAL_PURCHASE`,
+`RENEWAL`, `UNCANCELLATION`, `NON_RENEWING_PURCHASE`, `PRODUCT_CHANGE`,
+`SUBSCRIPTION_EXTENDED`, `TEMPORARY_ENTITLEMENT_GRANT`, `REFUND_REVERSED` grant
+until `expiration_at_ms` (null = no end). `CANCELLATION` and `BILLING_ISSUE`
+keep access but move its end to `expiration_at_ms` (null = ends now, never
+"forever"). `EXPIRATION` revokes. `TRANSFER` revokes every Supabase uid in
+`transferred_from` and gives `transferred_to` the best live grant the sources
+held (best effort; #281). Everything else, including unknown types, is a 200 no-op.
+
+**What a client sees** (observed against the local stack):
+
+| Situation | Result |
+|---|---|
+| Push (insert or `merge-duplicates` upsert over an existing row) without a valid `sync_until` | **HTTP 403**, PostgREST code **`42501`**, `new row violates row-level security policy for table "…"` |
+| Pull without a valid `sync_until` | **HTTP 200 `[]`** — indistinguishable from "nothing new", so it must not be read as success when the engine already knows it is not entitled |
+| Token minted before the purchase landed | still no claim: wait for the `entitlement` row to turn active, *then* refresh the session |
+| Client writes `entitlement` | HTTP 403, `42501` `permission denied for table entitlement` |
+| anon (no token) on any synced table or `entitlement` | HTTP 401, `42501` `permission denied for table …` (anon holds no privilege since `20261010000100`) |
+| Push with a still-valid token after `delete-account` | HTTP 409, `23503` (the user row is gone) |
+
+A lapse takes effect when the current token expires (`jwt_expiry`, one hour)
+or `sync_until` passes, whichever is first. Server rows are kept, read-locked,
+and readable again after a renewal.
+
+**Developing against a project with these migrations**: `SYNC_ENTITLEMENT_OVERRIDE=true`
+only opens the *client* gate. The server now also needs an `entitlement` row
+for your user, written as `postgres` (SQL editor, or `psql` on the local stack):
+
+```sql
+insert into public.entitlement (user_id, active, expires_at, source_event)
+values ('<your auth uid>', true, null, 'MANUAL:dev')
+on conflict (user_id) do update set active = true, expires_at = null;
+```
+
+then sign out and in again (or wait for a refresh) so the token carries the
+claim.
+
+### Running the server tests locally
+
+Local stack only — Docker, no project, nothing deployed. Neither suite runs in
+CI yet (#280):
+
+```bash
+supabase start                      # once; applies config.toml (the hook included)
+supabase db reset                   # every migration from empty
+supabase test db                    # pgTAP: sync_server_seq + sync_entitlement
+supabase stop
+```
+
+The Edge Functions' logic is tested with Deno, either installed or in a
+container:
+
+```bash
+docker run --rm -v "$PWD/supabase/functions:/fn" -w /fn denoland/deno:2.1.4 \
+  sh -c 'deno fmt --check && deno lint && deno check */index.ts && deno test --allow-net=jsr.io'
+```
+
+To exercise the functions against the local stack, put
+`REVENUECAT_WEBHOOK_SECRET=…` (and `REVENUECAT_ALLOWED_ENVIRONMENTS=SANDBOX,PRODUCTION`)
+in an env file outside the repo and run `supabase functions serve --env-file <it>`;
+they answer on `http://127.0.0.1:54321/functions/v1/<name>`. A local user with
+a password (admin API, `email_confirm: true`) signs in with
+`/auth/v1/token?grant_type=password`, which is how the hook's claim can be
+seen end to end.
+
+### Applying it to a hosted project (not done; owner step, #282)
+
+Nothing above has been deployed. Applying it is one change, in this order,
+because the policies refuse every sync the moment they land:
+
+1. `supabase db push` (both `20261010…` migrations).
+2. Enable the hook on the project (Authentication → Hooks, or
+   `supabase config push`) — without it no token carries `sync_until` and
+   nobody can sync.
+3. `supabase secrets set REVENUECAT_WEBHOOK_SECRET=…` and
+   `supabase functions deploy revenuecat-webhook delete-account`.
+4. In RevenueCat: webhook URL `https://<ref>.supabase.co/functions/v1/revenuecat-webhook`,
+   Authorization header value = the same secret, entitlement identifier `sync`.
+5. Insert an `entitlement` row for every account that should keep syncing
+   (see above), then re-run `scripts/sync/verify-rls.sh`.
 
 ## Auth endpoints used
 
