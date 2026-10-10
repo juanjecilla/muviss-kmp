@@ -106,7 +106,7 @@ r5="$(new_repo)"
 mkdir -p "$r5/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r5/scripts/release/"
 printf '# Changelog\n\nheader\n\n## 1.0.0 — 2026-10-07\n\nFirst release.\n' >"$r5/CHANGELOG.md"
 git -C "$r5" add -A; commit "$r5" "chore: init"; git -C "$r5" tag -a v1.0.0 -m t
-commit "$r5" "feat(sync)!: accounts"; commit "$r5" "chore: noise"
+commit "$r5" "feat(sync)!: accounts"; commit "$r5" "feat: great news!"; commit "$r5" "chore: noise"
 o5="$(mktemp -d)"; git -C "$o5" init -q --bare -b develop
 git -C "$r5" remote add origin "$o5"; git -C "$r5" push -q origin develop --tags
 (cd "$r5" && scripts/release/start-release.sh 2.0.0 >/dev/null 2>&1); expect_eq "cuts release/2.0.0" "$?" "0"
@@ -114,6 +114,7 @@ log5="$(git -C "$r5" show release/2.0.0:CHANGELOG.md)"
 [ "$(grep -n '^## 2.0.0' <<<"$log5" | cut -d: -f1)" -lt "$(grep -n '^## 1.0.0' <<<"$log5" | cut -d: -f1)" ] \
   && grep -q '^header$' <<<"$log5" && pass "new section above the old, header kept" || fail "section order: $log5"
 grep -q -- '^- \*\*sync\*\*: accounts (breaking)$' <<<"$log5" && pass "breaking change is marked" || fail "breaking: $log5"
+grep -q -- '^- great news!$' <<<"$log5" && pass "a ! in the subject is not breaking" || fail "subject bang: $log5"
 r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r6/scripts/release/"
 git -C "$r6" add -A; commit "$r6" "chore: init"; git -C "$r6" tag -a v1.0.0 -m t; commit "$r6" "ci: only"
 o6="$(mktemp -d)"; git -C "$o6" init -q --bare -b develop

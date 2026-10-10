@@ -120,11 +120,12 @@ fi
 # changelog is for people reading the repo rather than a 500-character store
 # field. Written when the branch is cut, so a fix that lands on the release
 # branch afterwards is in the RC but not here; the GitHub Release's compare
-# link is the exhaustive list.
+# link is the exhaustive list. Only a `!` in the header (`feat(x)!:`) marks a
+# breaking change; one in the subject is the subject's.
 changelog_items() { # <type>
   git log --no-merges --format='%s' "$range" \
     | grep -E "^$1(\([^)]*\))?!?: " \
-    | sed -E "s/^$1\(([^)]*)\)(!?): (.*)$/- **\1**: \3\2/; s/^$1(!?): (.*)$/- \2\1/; s/!$/ (breaking)/" || true
+    | sed -E "s/^$1\(([^)]*)\)!: (.*)$/- **\1**: \2 (breaking)/; s/^$1\(([^)]*)\): (.*)$/- **\1**: \2/; s/^$1!: (.*)$/- \1 (breaking)/; s/^$1: (.*)$/- \1/" || true
 }
 features="$(changelog_items feat)"
 fixes="$(changelog_items fix)"
