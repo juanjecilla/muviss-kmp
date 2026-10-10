@@ -487,7 +487,14 @@ jobs:
     # Kotlin/Native tests and the release link joined the job (#67, #50).
     timeout-minutes: 75
     steps:
+      # Full history, like `build`: the release framework link below is a
+      # "Release" invocation, and :app:androidApp's guard (which is configured
+      # in the same build) refuses a shallow clone for one, since versionCode
+      # is `git rev-list --count HEAD`. An iOS release needs it too — its
+      # CFBundleVersion is the same commit count.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
