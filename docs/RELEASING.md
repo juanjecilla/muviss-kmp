@@ -1057,6 +1057,15 @@ an empty library.
 
 ### iOS: one-time setup
 
+`scripts/release/apple-setup.sh` walks through all of this and the rest of the
+Apple side — membership, Team ID, App Group, both App IDs (with Sign in with
+Apple), the App Store Connect record, the App Store Connect API key and the
+Developer ID certificate for the DMG — storing what CI will need as GitHub
+secrets (`APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
+`APP_STORE_CONNECT_KEY_P8`, `MACOS_DEVELOPER_ID_P12_BASE64`,
+`MACOS_DEVELOPER_ID_P12_PASSWORD`) and `APPLE_TEAM_ID` as a variable. The
+steps it automates are the ones below.
+
 1. **Fill in `TEAM_ID`** in `app/iosApp/Configuration/Config.xcconfig` (Xcode
    > Signing & Capabilities shows it once a team is selected). Same value the
    rest of §9 needs; it is gitignored-by-convention only in the sense that it
