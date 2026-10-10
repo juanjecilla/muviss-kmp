@@ -52,14 +52,14 @@ class ProgressGoldenTest {
     fun watch_next_lists_each_show_at_its_next_episode() = runComposeUiTest {
         setContent { WatchNextUnderTest(darkTheme = false) }
         waitForIdle()
-        assertMatchesGolden("progress-watch-next")
+        assertMatchesGolden("progress-watch-next", tolerance = WATCH_NEXT_TOLERANCE)
     }
 
     @Test
     fun watch_next_lists_each_show_at_its_next_episode_dark() = runComposeUiTest {
         setContent { WatchNextUnderTest(darkTheme = true) }
         waitForIdle()
-        assertMatchesGolden("progress-watch-next-dark")
+        assertMatchesGolden("progress-watch-next-dark", tolerance = WATCH_NEXT_TOLERANCE)
     }
 }
 
@@ -130,3 +130,12 @@ private fun WatchNextUnderTest(darkTheme: Boolean) {
         }
     }
 }
+
+/**
+ * Wider than the 0.5% default for the same font-rasterising reason as
+ * `TriageDeckGoldenTest.DECK_TOLERANCE`: posters carry most of the frame, but
+ * each row's title and episode line is text. Measured on `ubuntu-latest`
+ * against the macOS recording (#278): 0.756% light, 0.728% dark, glyph edges
+ * only. About 1.5x that.
+ */
+private const val WATCH_NEXT_TOLERANCE = 0.012

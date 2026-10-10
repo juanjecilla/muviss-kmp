@@ -59,13 +59,13 @@ class DetailGoldenTest {
     @Test
     fun a_saved_show_opens_on_its_header() = runComposeUiTest {
         showDetail(darkTheme = false)
-        assertMatchesGolden("detail-show")
+        assertMatchesGolden("detail-show", tolerance = DETAIL_TOLERANCE)
     }
 
     @Test
     fun a_saved_show_opens_on_its_header_dark() = runComposeUiTest {
         showDetail(darkTheme = true)
-        assertMatchesGolden("detail-show-dark")
+        assertMatchesGolden("detail-show-dark", tolerance = DETAIL_TOLERANCE)
     }
 
     @Test
@@ -73,7 +73,7 @@ class DetailGoldenTest {
         showDetail(darkTheme = false)
         onNodeWithTag(DETAIL_LIST_TAG).performScrollToKey("seasonsHeader")
         waitForIdle()
-        assertMatchesGolden("detail-seasons")
+        assertMatchesGolden("detail-seasons", tolerance = DETAIL_TOLERANCE)
     }
 
     @Test
@@ -81,7 +81,7 @@ class DetailGoldenTest {
         showDetail(darkTheme = true)
         onNodeWithTag(DETAIL_LIST_TAG).performScrollToKey("seasonsHeader")
         waitForIdle()
-        assertMatchesGolden("detail-seasons-dark")
+        assertMatchesGolden("detail-seasons-dark", tolerance = DETAIL_TOLERANCE)
     }
 
     private fun ComposeUiTest.showDetail(darkTheme: Boolean) {
@@ -154,3 +154,12 @@ private fun DetailUnderTest(darkTheme: Boolean) {
         }
     }
 }
+
+/**
+ * Wider than the 0.5% default: the header is mostly overview text and the
+ * season list is a column of episode titles, and Linux rasterises the bundled
+ * font heavier than macOS. Measured on `ubuntu-latest` against the macOS
+ * recording (#278): header 1.724% / 1.707% (light / dark), seasons 1.875% /
+ * 1.873%, glyph edges only. About 1.5x the larger.
+ */
+private const val DETAIL_TOLERANCE = 0.028

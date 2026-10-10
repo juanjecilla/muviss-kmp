@@ -41,14 +41,14 @@ class SettingsGoldenTest {
     fun settings_opens_on_its_first_sections() = runComposeUiTest {
         setContent { SettingsUnderTest(darkTheme = false) }
         waitForIdle()
-        assertMatchesGolden("settings-screen")
+        assertMatchesGolden("settings-screen", tolerance = SETTINGS_TOLERANCE)
     }
 
     @Test
     fun settings_opens_on_its_first_sections_dark() = runComposeUiTest {
         setContent { SettingsUnderTest(darkTheme = true) }
         waitForIdle()
-        assertMatchesGolden("settings-screen-dark")
+        assertMatchesGolden("settings-screen-dark", tolerance = SETTINGS_TOLERANCE)
     }
 }
 
@@ -60,3 +60,12 @@ private fun SettingsUnderTest(darkTheme: Boolean) {
         }
     }
 }
+
+/**
+ * Wider than the 0.5% default: the settings screen is section headers, labels
+ * and supporting text from edge to edge, and Linux rasterises the bundled font
+ * heavier than macOS. Measured on `ubuntu-latest` against the macOS recording
+ * (#278): 2.596% light, 2.577% dark, every marked pixel a glyph edge. About
+ * 1.5x that, and still far below what a moved or missing row costs.
+ */
+private const val SETTINGS_TOLERANCE = 0.04
