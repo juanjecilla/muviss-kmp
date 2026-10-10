@@ -12,13 +12,18 @@ every script; read it before trusting the output.
 
 ## Running them
 
-Everything runs from the repo root, against a linked project and a connected
-device:
+Everything runs from the repo root, against the **dev** project
+(`mnleklzanxxpvmakrbxv`, EPIC 43) by default, and a connected device whose
+build points at the same project (`SUPABASE_URL` in `local.properties`):
 
 ```bash
-supabase link --project-ref <ref>     # once; writes supabase/.temp/project-ref
-scripts/sync/sync-status.sh
+scripts/sync/sync-status.sh                                        # dev
+MUVISS_SUPABASE_TARGET=prod MUVISS_I_MEAN_PROD=yes scripts/sync/sync-status.sh   # prod, on purpose
 ```
+
+They no longer read the CLI's linked project. Prod's migrations are applied
+by the Supabase GitHub integration when a release merges into `main`; dev's
+by hand for now (`supabase db push` from a worktree linked to dev, #151).
 
 Two things break these more often than any bug:
 

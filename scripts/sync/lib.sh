@@ -56,11 +56,26 @@ pull_database() {
 
 # ---------------------------------------------------------------- supabase ---
 
+# Which project these scripts talk to (EPIC 43, #151). Dev unless asked
+# otherwise: several of them create rows, and the only project they used to
+# know was production. Never the CLI's linked project — `supabase link` is
+# global state that a `db push` in another terminal also reads, so "whatever
+# is linked" is how a check meant for dev lands on prod.
+#
+#   MUVISS_SUPABASE_TARGET=prod MUVISS_I_MEAN_PROD=yes scripts/sync/...   # prod, deliberately
+#   SUPABASE_PROJECT_REF=<ref> scripts/sync/...                         # anything else
+MUVISS_DEV_REF="mnleklzanxxpvmakrbxv"   # "Muviss dev"
+MUVISS_PROD_REF="sodjedenvnvsuktbxevt"  # "Muviss app" — real users' data
 project_ref() {
-  local ref_file="supabase/.temp/project-ref"
   if [ -n "${SUPABASE_PROJECT_REF:-}" ]; then echo "$SUPABASE_PROJECT_REF"; return; fi
-  [ -f "$ref_file" ] || { echo "not linked — run 'supabase link --project-ref <ref>' first" >&2; exit 1; }
-  tr -d '\r\n' < "$ref_file"
+  case "${MUVISS_SUPABASE_TARGET:-dev}" in
+    dev) echo "$MUVISS_DEV_REF" ;;
+    prod)
+      [ "${MUVISS_I_MEAN_PROD:-}" = yes ] \
+        || { echo "refusing prod without MUVISS_I_MEAN_PROD=yes (these scripts write test rows)" >&2; exit 1; }
+      echo "$MUVISS_PROD_REF" ;;
+    *) echo "MUVISS_SUPABASE_TARGET must be dev or prod" >&2; exit 1 ;;
+  esac
 }
 
 anon_key() {
