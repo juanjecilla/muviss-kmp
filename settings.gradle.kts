@@ -73,11 +73,10 @@ listOf("search", "collection", "progress", "profile", "settings", "triage", "cow
     }
 }
 
-// Apps + server
+// Apps
 include(":app:androidApp")
 // Baseline profile generator (EPIC 34, #77): a com.android.test module run by hand on a device.
 include(":app:baselineprofile")
 include(":app:desktopApp")
 include(":app:shared")
 include(":app:webApp")
-include(":server")
