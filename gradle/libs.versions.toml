@@ -18,22 +18,22 @@ androidx-uiautomator = "2.4.0"
 composeMultiplatform = "1.11.1"
 junit = "4.13.2"
 kotlin = "2.4.0"
-kotlin-wrappers = "2026.6.1"
+kotlin-wrappers = "2026.9.3"
 kotlinx-coroutines = "1.11.0"
-kotlinx-serialization = "1.9.0"
-ktor = "3.5.0"
+kotlinx-serialization = "1.11.0"
+ktor = "3.6.0"
 material3 = "1.9.0"
 material3Adaptive = "1.2.0"
 
 # Added for Muviss
 koin = "4.2.2"
-sqldelight = "2.3.2"
-coil = "3.3.0"
+sqldelight = "2.4.1"
+coil = "3.6.3"
 navigationCompose = "2.9.2"
 turbine = "1.2.1"
 detekt = "1.23.8"
-detektCompose = "0.6.2"
-spotless = "8.8.0"
+detektCompose = "0.6.7"
+spotless = "8.10.3"
 ktlint = "1.8.0"
 sentryKmp = "0.27.0"
 # The Cocoa SDK version `sentryKmp`'s cinterop klibs were generated against
@@ -48,8 +48,8 @@ sentryCocoa = "8.58.2"
 # stamps `release`/`dist`. It is a build-time tool: it runs on the build machine
 # and is not part of the shipped app, so the `licensee` allow-list below does not
 # see it.
-sentryGradlePlugin = "6.22.0"
-licensee = "1.12.0"
+sentryGradlePlugin = "6.23.0"
+licensee = "1.14.1"
 androidxWork = "2.10.0"
 
 [libraries]
