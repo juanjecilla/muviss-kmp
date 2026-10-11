@@ -26,5 +26,11 @@ kotlin {
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
         }
+        // Golden-image capture needs Skia, so the screenshot tests are
+        // JVM-only. `compose.uiTest` and the Skiko desktop binary arrive from
+        // the `muviss.kmp.compose` convention.
+        jvmTest.dependencies {
+            implementation(projects.core.testing)
+        }
     }
 }
