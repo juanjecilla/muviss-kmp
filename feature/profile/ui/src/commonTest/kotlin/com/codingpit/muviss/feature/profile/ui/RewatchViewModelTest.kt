@@ -2,9 +2,9 @@
 
 package com.codingpit.muviss.feature.profile.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.epochDayOfCivil
 import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -97,10 +97,6 @@ private class RewatchProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = error("not used")
 }
 
-private class RewatchClock(private val epochMs: Long) : AppClock {
-    override fun nowEpochMs(): Long = epochMs
-}
-
 class RewatchViewModelTest {
 
     private val office = MediaId.tmdbTv("2316")
@@ -129,7 +125,7 @@ class RewatchViewModelTest {
         progressApi.countsForAllTime = mapOf(office to 41, poorThings to 5)
         progressApi.countsForThisYear = mapOf(office to 4)
         viewModel = RewatchViewModel(
-            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(today))),
         )
     }
 
@@ -175,7 +171,7 @@ class RewatchViewModelTest {
     fun the_trend_always_covers_twelve_months_whatever_the_window() = runTest {
         progressApi.timestamps = listOf(epochMsAtStartOfDay(epochDayOfCivil(2026, 3, 2)))
         viewModel = RewatchViewModel(
-            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(today))),
         )
         advanceUntilIdle()
         val allTime = viewModel.state.value.stats.monthly
@@ -192,7 +188,7 @@ class RewatchViewModelTest {
     fun an_empty_history_is_not_an_error() = runTest {
         progressApi.countsForAllTime = emptyMap()
         viewModel = RewatchViewModel(
-            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(today))),
         )
         advanceUntilIdle()
 
@@ -205,7 +201,7 @@ class RewatchViewModelTest {
     fun a_metadata_error_shows_its_mapped_copy() = runTest {
         collectionApi.failure = MetadataError.RateLimited(retryAfterSeconds = 12)
         viewModel = RewatchViewModel(
-            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(today))),
         )
         advanceUntilIdle()
 
@@ -216,7 +212,7 @@ class RewatchViewModelTest {
     fun a_raw_exception_never_reaches_the_screen() = runTest {
         collectionApi.failure = IllegalStateException("Unable to resolve host api.themoviedb.org?api_key=SECRET")
         viewModel = RewatchViewModel(
-            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(today))),
         )
         advanceUntilIdle()
 
@@ -227,7 +223,7 @@ class RewatchViewModelTest {
     fun retry_after_a_failed_load_resubscribes() = runTest {
         collectionApi.failure = MetadataError.Offline()
         viewModel = RewatchViewModel(
-            ObserveRewatchStatsUseCase(collectionApi, progressApi, RewatchClock(epochMsAtStartOfDay(today))),
+            ObserveRewatchStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(today))),
         )
         advanceUntilIdle()
         assertEquals(MetadataError.Offline().userMessage, viewModel.state.value.error.text())

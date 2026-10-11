@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.sync
 
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeSupabaseServer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first

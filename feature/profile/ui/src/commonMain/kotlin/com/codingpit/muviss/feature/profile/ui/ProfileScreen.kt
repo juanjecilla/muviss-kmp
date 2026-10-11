@@ -178,6 +178,9 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
                     onResyncEverythingRequested = viewModel::onResyncEverythingRequested,
                     onResyncEverythingConfirmed = viewModel::onResyncEverythingConfirmed,
                     onResyncEverythingDismissed = viewModel::onResyncEverythingDismissed,
+                    onAccountChoiceMade = viewModel::onAccountChoiceMade,
+                    onAccountChoiceDeferred = viewModel::onAccountChoiceDeferred,
+                    onAccountChoiceRequested = viewModel::onAccountChoiceRequested,
                 ),
             )
             HorizontalDivider()
