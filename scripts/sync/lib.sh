@@ -56,12 +56,40 @@ pull_database() {
 
 # ---------------------------------------------------------------- supabase ---
 
-project_ref() {
-  local ref_file="supabase/.temp/project-ref"
-  if [ -n "${SUPABASE_PROJECT_REF:-}" ]; then echo "$SUPABASE_PROJECT_REF"; return; fi
-  [ -f "$ref_file" ] || { echo "not linked — run 'supabase link --project-ref <ref>' first" >&2; exit 1; }
-  tr -d '\r\n' < "$ref_file"
+# Which project these scripts talk to (EPIC 43, #151). Dev unless asked
+# otherwise: several of them create rows, and the only project they used to
+# know was production. Never the CLI's linked project — `supabase link` is
+# global state that a `db push` in another terminal also reads, so "whatever
+# is linked" is how a check meant for dev lands on prod.
+#
+#   MUVISS_SUPABASE_TARGET=prod MUVISS_I_MEAN_PROD=yes scripts/sync/...   # prod, deliberately
+#   SUPABASE_PROJECT_REF=<ref> scripts/sync/...                         # anything else
+MUVISS_DEV_REF="mnleklzanxxpvmakrbxv"   # "Muviss dev"
+MUVISS_PROD_REF="sodjedenvnvsuktbxevt"  # "Muviss app" — real users' data
+# Resolved once, when this file is sourced, so a refusal exits the script
+# itself: an `exit` inside `$(project_ref)` would only end that substitution,
+# and the caller would go on with `https://.supabase.co`. The prod check runs
+# on the resolved ref, so an inherited SUPABASE_PROJECT_REF naming prod needs
+# the same confirmation as MUVISS_SUPABASE_TARGET=prod.
+resolve_project_ref() {
+  local ref
+  if [ -n "${SUPABASE_PROJECT_REF:-}" ]; then
+    ref="$SUPABASE_PROJECT_REF"
+  else
+    case "${MUVISS_SUPABASE_TARGET:-dev}" in
+      dev) ref="$MUVISS_DEV_REF" ;;
+      prod) ref="$MUVISS_PROD_REF" ;;
+      *) echo "MUVISS_SUPABASE_TARGET must be dev or prod" >&2; return 1 ;;
+    esac
+  fi
+  if [ "$ref" = "$MUVISS_PROD_REF" ] && [ "${MUVISS_I_MEAN_PROD:-}" != yes ]; then
+    echo "refusing prod without MUVISS_I_MEAN_PROD=yes (these scripts write test rows)" >&2
+    return 1
+  fi
+  MUVISS_PROJECT_REF="$ref"
 }
+resolve_project_ref || exit 1
+project_ref() { echo "$MUVISS_PROJECT_REF"; }
 
 anon_key() {
   supabase projects api-keys --project-ref "$(project_ref)" -o json 2>/dev/null \
