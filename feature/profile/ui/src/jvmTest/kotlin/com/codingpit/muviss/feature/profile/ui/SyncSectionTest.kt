@@ -23,6 +23,7 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
+import com.codingpit.muviss.feature.profile.domain.LastSynced
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
@@ -46,14 +47,14 @@ private val signedIn = SyncAccountState.SignedIn("person@example.com")
 internal fun signedInState(
     automaticSync: Boolean = false,
     status: SyncStatus = SyncStatus(lastSyncedAtEpochMs = 0L),
-    label: String = "Synced 3m ago",
+    lastSynced: LastSynced = LastSynced.MinutesAgo(3),
     syncing: Boolean = false,
     mode: AutomaticSyncMode = AutomaticSyncMode.InBackground,
     available: Boolean = true,
 ) = SyncUiState(
     account = signedIn,
     status = status,
-    lastSyncedLabel = label,
+    lastSynced = lastSynced,
     automaticSync = automaticSync,
     automaticSyncAvailable = available,
     automaticSyncMode = mode,
@@ -206,7 +207,7 @@ class SyncSectionTest {
 
     @Test
     fun a_quiet_signed_in_section_shows_only_when_it_last_synced() = runComposeUiTest {
-        setContent { SyncSectionUnderTest(signedInState(label = "Synced 3m ago")) }
+        setContent { SyncSectionUnderTest(signedInState(lastSynced = LastSynced.MinutesAgo(3))) }
         waitForIdle()
 
         onNodeWithTag(SYNC_LAST_SYNCED_TAG).assertTextEquals("Synced 3m ago")

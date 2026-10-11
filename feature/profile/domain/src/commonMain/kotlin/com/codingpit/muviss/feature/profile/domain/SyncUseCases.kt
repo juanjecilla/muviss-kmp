@@ -47,7 +47,7 @@ class SyncActions(
 
     suspend fun completeSignIn(authCode: String): Result<Unit> = repository.completeSignIn(authCode)
 
-    fun observeSignInFailure(): Flow<String?> = repository.observeSignInFailure()
+    fun observeSignInFailure(): Flow<SignInFailure?> = repository.observeSignInFailure()
 
     fun signInFailureShown() = repository.signInFailureShown()
 
