@@ -388,7 +388,8 @@ runs standing in where they could. What that did and did not buy:
 
 ### 2026-10-12
 
-- **#300 built** (`.github/workflows/sentry-issues.yml`, `fastlane/sentry_issues.rb`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it resolves the crash in the next release. Needs `event:write` on `SENTRY_AUTH_TOKEN`. Ops Bridge connector #1; EPIC 48 (#301) lifts its source / item / sink shape.
+- **#300 built** (`.github/workflows/sentry-issues.yml`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it resolves the crash in the next release. Needs `event:write` on `SENTRY_AUTH_TOKEN`.
+- **EPIC 48 (#301) built**: the Ops Bridge (`fastlane/ops_bridge/`, README says how to add a connector). #300's script is refactored onto its source / item / sink shape, and connector #2 opens an issue per Play review of 3 stars or fewer (daily; the Reviews API keeps one week; no reviewer name). Owner step: tick *Reply to reviews* for the Play service account.
 
 ### 2026-10-10
 
