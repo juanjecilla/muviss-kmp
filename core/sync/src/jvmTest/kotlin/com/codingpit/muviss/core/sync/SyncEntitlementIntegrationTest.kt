@@ -142,7 +142,7 @@ class SyncEntitlementIntegrationTest {
     // --- Delete account ----------------------------------------------------
 
     @Test
-    fun deleting_the_account_removes_the_server_data_signs_out_and_keeps_the_library() = runTest {
+    fun deleting_the_account_removes_the_server_data_signs_out_and_erases_the_library() = runTest {
         val device = TestDevice(server)
         device.saveEntry("tmdb:movie:603")
         assertIs<SyncOutcome.Success>(device.sync())
@@ -154,30 +154,49 @@ class SyncEntitlementIntegrationTest {
         assertTrue(server.rows("collection_entry", "alice").isEmpty())
         assertNull(device.backend.session.first(), "signed out locally")
         assertTrue(device.sessionStore.cleared, "and the session does not come back on a restart")
-        assertNotNull(device.entry("tmdb:movie:603"), "the device's own library is kept")
-        assertNull(state(device)?.ownerAccountId, "it no longer belongs to an account that exists")
+        assertNull(device.entry("tmdb:movie:603"), "the device's library is erased with the account")
+        assertNull(state(device), "the sync state belonged to the account and is erased with it")
         assertTrue(device.database.syncCursorQueries.selectAll().executeAsList().isEmpty(), "the cursors were a dead account's")
         val request = server.requests.single { it.path == "/functions/v1/delete-account" }
         assertEquals("Bearer ${FakeSupabaseServer.accessToken("alice")}", request.headers.getValue("Authorization"))
     }
 
     @Test
-    fun after_deleting_the_account_a_new_one_adopts_the_library_instead_of_asking_to_discard_it() = runTest {
+    fun a_local_erasure_that_fails_after_the_server_deleted_says_so_and_still_forgets_the_owner() = runTest {
+        val device = TestDevice(server)
+        device.saveEntry("tmdb:movie:603")
+        assertIs<SyncOutcome.Success>(device.sync())
+        device.eraseFailure = IllegalStateException("disk full")
+
+        val outcome = device.engine.deleteAccount()
+
+        assertIs<AccountDeletionOutcome.DeletedLocalDataNotErased>(outcome, "the account is gone, so this is not a Failed")
+        assertTrue(server.isDeleted("alice"))
+        assertNull(device.backend.session.first(), "signed out locally, as after a full deletion")
+        assertNotNull(device.entry("tmdb:movie:603"), "the erasure threw, so the library is still here")
+        assertNull(state(device)?.ownerAccountId, "it still forgets whose library this is, so the next sign-in is a first sync")
+    }
+
+    @Test
+    fun after_deleting_the_account_a_new_one_starts_a_first_sync_instead_of_asking_to_discard_anything() = runTest {
         val device = TestDevice(server)
         device.saveEntry("tmdb:movie:603")
         assertIs<SyncOutcome.Success>(device.sync())
         device.engine.deleteAccount()
 
         device.signInAs("alice-again")
+        device.saveEntry("tmdb:movie:550")
         val outcome = device.sync()
 
         assertIs<SyncOutcome.Success>(outcome, "an AccountChanged here would offer Replace — the default — and wipe the library")
-        assertNotNull(server.row("collection_entry", "alice-again", "tmdb:movie:603"))
+        assertNotNull(server.row("collection_entry", "alice-again", "tmdb:movie:550"))
+        assertNull(device.entry("tmdb:movie:603"), "the deleted account's library was erased, not carried over")
     }
 
     @Test
-    fun a_failed_deletion_keeps_the_session_and_the_owner() = runTest {
+    fun a_failed_deletion_keeps_the_session_the_owner_and_the_library() = runTest {
         val device = TestDevice(server)
+        device.saveEntry("tmdb:movie:603")
         assertIs<SyncOutcome.Success>(device.sync())
         server.failWith(500, body = """{"error":"delete failed"}""") { it.path == "/functions/v1/delete-account" }
 
@@ -186,6 +205,7 @@ class SyncEntitlementIntegrationTest {
         assertEquals(AccountDeletionOutcome.Failed(SyncFailureReason.Server), outcome)
         assertNotNull(device.backend.session.first())
         assertEquals("alice", state(device)?.ownerAccountId)
+        assertNotNull(device.entry("tmdb:movie:603"), "the server said no, so nothing local may change")
         assertTrue(!server.isDeleted("alice"))
     }
 
