@@ -2,10 +2,10 @@
 
 package com.codingpit.muviss.feature.triage.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.TriageDecision
 import com.codingpit.muviss.models.MediaId
@@ -29,10 +29,8 @@ class SqlDelightTriageDecisionRepositoryTest {
 
     @BeforeTest
     fun setUp() = runTest {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        database = MuvissDatabase(driver)
-        clock = FakeClock()
+        database = inMemoryDatabase()
+        clock = FakeClock(NOW_EPOCH_MS)
         repository = SqlDelightTriageDecisionRepository(
             database.triageDecisionQueries,
             ImmediateDispatchers(UnconfinedTestDispatcher()),

@@ -1,0 +1,18 @@
+name: Idea
+description: Something Muviss should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation and what gets in the way, rather than the feature itself.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+  - type: markdown
+    attributes:
+      value: Muviss is a personal tracker with no social features by design (feeds, follows, comments), so ideas in that direction will be declined.

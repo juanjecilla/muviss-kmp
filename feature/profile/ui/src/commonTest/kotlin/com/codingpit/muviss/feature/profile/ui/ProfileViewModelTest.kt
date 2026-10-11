@@ -2,7 +2,8 @@
 
 package com.codingpit.muviss.feature.profile.ui
 
-import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -116,14 +117,6 @@ private class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = error("not used")
 }
 
-private class FixedClock(private val epochDay: Long) : AppClock {
-    override fun nowEpochMs(): Long = epochDay * MILLIS_PER_DAY
-
-    private companion object {
-        const val MILLIS_PER_DAY = 86_400_000L
-    }
-}
-
 private class FakeSyncRepository(
     override val isAvailable: Boolean = true,
     initialAccount: SyncAccountState = SyncAccountState.SignedOut,
@@ -208,10 +201,10 @@ class ProfileViewModelTest {
         syncRepository: FakeSyncRepository = FakeSyncRepository(),
     ): ProfileViewModel = ProfileViewModel(
         ObserveProfileUseCase(profileRepository),
-        ObserveProfileStatsUseCase(collectionApi, progressApi, FixedClock(epochDay = 0)),
+        ObserveProfileStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(0))),
         ProfileActions(SetDisplayNameUseCase(profileRepository), SetAvatarUseCase(profileRepository)),
         SyncActions(syncRepository, ObserveSyncAccountUseCase(syncRepository), ObserveLastSyncedAtUseCase(syncRepository)),
-        FixedClock(epochDay = 0),
+        FakeClock(epochMsAtStartOfDay(0)),
     )
 
     @Test
