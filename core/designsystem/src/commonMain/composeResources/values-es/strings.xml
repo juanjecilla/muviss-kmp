@@ -4,7 +4,7 @@
     <string name="carousel_see_all">Ver todo ›</string>
 
     <string name="error_rate_limited">Demasiadas solicitudes ahora mismo. Inténtalo de nuevo en un momento.</string>
-    <string name="error_unauthorized">No se pudo conectar con la base de datos de películas. Inténtalo más tarde.</string>
+    <string name="error_unauthorized">Muviss no puede acceder a la base de datos de películas. Actualizar la app puede solucionarlo.</string>
     <string name="error_not_found">No hemos encontrado ese título.</string>
     <string name="error_offline">Parece que no tienes conexión. Compruébala e inténtalo de nuevo.</string>
     <string name="error_unknown">Algo ha fallado. Inténtalo de nuevo.</string>
