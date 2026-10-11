@@ -95,6 +95,54 @@ interface SyncBackend {
      * short page then means "capped", not "finished".
      */
     suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit>
+
+    /**
+     * Until when the current session's credentials let it sync, **as the
+     * server will judge them**, in epoch milliseconds — or null when they grant
+     * nothing, or there is no session. Reads only what the device holds; never
+     * touches the network.
+     *
+     * Since ADR 0019 the server enforces the paid entitlement itself, through a
+     * claim stamped into the token, and refuses a push from credentials without
+     * one (and answers a pull with nothing at all, indistinguishable from
+     * "nothing new"). [SyncEngine] asks this before a cycle so neither of those
+     * ever reads as a successful sync. A backend with no server-side gate
+     * returns [Long.MAX_VALUE] for any session.
+     */
+    suspend fun syncGrantedUntil(): Long?
+
+    /**
+     * Replaces the session's credentials with fresh ones, so that they carry
+     * whatever the server says *now*. Credentials are minted with the grant
+     * they had at the time: after a purchase, nothing but new ones lets the
+     * account sync (ADR 0019). Fails with [SyncSessionExpiredException] when
+     * the session cannot be renewed, which also signs it out.
+     */
+    suspend fun refreshSession(): Result<SyncSession>
+
+    /**
+     * The server's own record of this account's sync entitlement, or null when
+     * it has none (the account never paid). This is the mirror the store's
+     * webhook writes, readable by its owner only — so a device that never sells
+     * (desktop) can still learn that its user paid on a phone.
+     */
+    suspend fun fetchEntitlement(): Result<ServerEntitlement?>
+
+    /**
+     * Deletes the signed-in **account** and everything the server holds for it,
+     * then signs this device out. Irreversible. The device's own library is not
+     * touched here; what happens to it is [SyncEngine.deleteAccount]'s call.
+     */
+    suspend fun deleteAccount(): Result<Unit>
+}
+
+/**
+ * A server's record of an account's sync entitlement (ADR 0019): [active] is
+ * whether it is granted at all, and [expiresAtEpochMs] when it ends, null for a
+ * grant with no end date.
+ */
+data class ServerEntitlement(val active: Boolean, val expiresAtEpochMs: Long?) {
+    fun isActiveAt(nowEpochMs: Long): Boolean = active && (expiresAtEpochMs == null || expiresAtEpochMs > nowEpochMs)
 }
 
 /**

@@ -58,7 +58,7 @@ internal class InMemorySessionStore(private var session: SyncSession? = null) : 
     }
 }
 
-internal fun sessionFor(userId: String, accessToken: String = "access-$userId", refreshToken: String? = "refresh-$userId", expiresAtEpochMs: Long? = null) = SyncSession(
+internal fun sessionFor(userId: String, accessToken: String = FakeSupabaseServer.accessToken(userId), refreshToken: String? = "refresh-$userId", expiresAtEpochMs: Long? = null) = SyncSession(
     backendId = SyncBackendId.SUPABASE,
     userId = userId,
     email = "$userId@example.com",
@@ -79,14 +79,33 @@ internal class TestDevice(
     startMillis: Long = 1_000L,
     wrapDriver: (SqlDriver) -> SqlDriver = { it },
     private val titleRefresher: TitleRefresher = NoOpTitleRefresher,
+    /** Whether [userId] has paid: an `entitlement` row on the server and a `sync_until` claim in the stored token. */
+    entitled: Boolean = true,
 ) {
     val clock = FakeClock(startMillis)
-    var sessionStore = InMemorySessionStore(sessionFor(userId).also { server.signUp(userId) })
+    var sessionStore = InMemorySessionStore(sessionFor(userId, accessToken = server.signUp(userId, entitled = entitled)))
         private set
     val driver: SqlDriver = wrapDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)).also { MuvissDatabase.Schema.synchronous().create(it) }
     val database = MuvissDatabase(driver)
     internal var backend = newBackend()
         private set
+
+    /**
+     * What "erase this device" does in these tests: the real eraser is
+     * `SqlDelightLocalDataEraser` in `:feature:settings:data`, which `:core:sync`
+     * cannot depend on, and it is covered there (`LocalDataEraserTest`). This
+     * clears the same sync-visible state. Set [eraseFailure] to make it throw.
+     */
+    var eraseFailure: Exception? = null
+    private val localDataEraser = AccountLocalDataEraser {
+        eraseFailure?.let { throw it }
+        database.transaction {
+            database.collectionEntryQueries.deleteAll()
+            database.syncCursorQueries.deleteAll()
+            database.syncStateQueries.deleteRow()
+        }
+    }
+
     var engine = newEngine()
         private set
 
@@ -98,7 +117,14 @@ internal class TestDevice(
         clock = clock,
     )
 
-    private fun newEngine() = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, titleRefresher = titleRefresher)
+    private fun newEngine() = SyncEngine(
+        backend,
+        database,
+        ImmediateDispatchers(UnconfinedTestDispatcher()),
+        clock,
+        titleRefresher = titleRefresher,
+        localDataEraser = localDataEraser,
+    )
 
     /**
      * Signs the person out and a different one in on this same installation:

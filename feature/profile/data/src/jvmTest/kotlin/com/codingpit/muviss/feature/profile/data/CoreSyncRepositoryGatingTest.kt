@@ -66,6 +66,10 @@ class CoreSyncRepositoryGatingTest {
         override suspend fun signOut() = Unit
         override suspend fun push(changes: SyncChangeSet) = Result.success(Unit)
         override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit) = Result.success(Unit)
+        override suspend fun syncGrantedUntil(): Long? = Long.MAX_VALUE
+        override suspend fun refreshSession() = error("not used")
+        override suspend fun fetchEntitlement() = error("not used")
+        override suspend fun deleteAccount() = error("not used")
     }
 
     private class StubEntitlements(entitlement: Entitlement) : EntitlementProvider {

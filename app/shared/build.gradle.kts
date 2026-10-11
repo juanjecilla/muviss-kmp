@@ -103,6 +103,8 @@ kotlin {
             implementation(projects.feature.progress.data)
             implementation(projects.feature.profile.data)
             implementation(projects.feature.settings.data)
+            // The account-deletion bridge erases through settings' own use case (ADR 0019).
+            implementation(projects.feature.settings.domain)
             implementation(projects.feature.triage.data)
             implementation(projects.feature.cowatch.data)
 
