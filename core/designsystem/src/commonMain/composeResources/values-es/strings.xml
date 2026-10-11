@@ -4,6 +4,7 @@
     <string name="carousel_see_all">Ver todo ›</string>
 
     <string name="error_rate_limited">Demasiadas solicitudes ahora mismo. Inténtalo de nuevo en un momento.</string>
+    <string name="error_own_key_rejected">TMDB ha rechazado tu clave. Revísala en Ajustes, en Fuente de datos de TMDB.</string>
     <string name="error_unauthorized">Muviss no puede acceder a la base de datos de películas. Actualizar la app puede solucionarlo.</string>
     <string name="error_not_found">No hemos encontrado ese título.</string>
     <string name="error_offline">Parece que no tienes conexión. Compruébala e inténtalo de nuevo.</string>

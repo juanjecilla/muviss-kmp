@@ -5,6 +5,7 @@ import com.codingpit.muviss.core.common.di.commonModule
 import com.codingpit.muviss.core.database.di.databaseModule
 import com.codingpit.muviss.core.network.di.networkModule
 import com.codingpit.muviss.core.remoteconfig.di.remoteConfigModule
+import com.codingpit.muviss.core.secrets.di.secretsModule
 import com.codingpit.muviss.core.sync.di.syncModule
 import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
@@ -29,6 +30,8 @@ val appModules: List<Module> =
         databaseModule,
         networkModule,
         remoteConfigModule,
+        // Before networkModule's consumers resolve it; Android's host overrides it with a Context-built store.
+        secretsModule,
         billingModule,
         syncModule,
         // After syncModule: it overrides that module's permissive default

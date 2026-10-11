@@ -106,6 +106,9 @@ fun SettingsScreen(
     onOpenLicenses: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenTriage: () -> Unit,
+    // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
+    // the screen works without it, so the many tests of everything else do not need a Koin graph.
+    tmdbKey: TmdbKeyViewModel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
@@ -179,6 +182,13 @@ fun SettingsScreen(
             selectedCode = state.settings.region,
             onSelect = viewModel::onRegionSelected,
         )
+        if (tmdbKey != null) {
+            val keyState by tmdbKey.state.collectAsStateWithLifecycle()
+            if (keyState.visible) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                TmdbKeyRow(keyState, onSave = tmdbKey::save, onUseMuviss = tmdbKey::useMuvissKey, onDismiss = tmdbKey::dismissProblem)
+            }
+        }
 
         SectionOverline(stringResource(Res.string.section_triage), topPadding = true)
         ActionRow(

@@ -65,6 +65,7 @@ include(":core:designsystem")
 include(":core:billing")
 include(":core:sync")
 include(":core:remoteconfig")
+include(":core:secrets")
 include(":core:testing")
 
 // Feature slices (each: :api / :domain / :data / :ui)
