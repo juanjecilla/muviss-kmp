@@ -14,6 +14,7 @@ import com.codingpit.muviss.core.sync.SyncFailureReason
 import com.codingpit.muviss.core.sync.SyncOutcome
 import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
+import com.codingpit.muviss.feature.profile.domain.SignInFailure
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
@@ -122,7 +123,7 @@ class CoreSyncRepository(
 
     override suspend fun completeSignIn(authCode: String): Result<Unit> = backend.completeOAuth(authCode).map { }
 
-    override fun observeSignInFailure(): Flow<String?> = signInFeedback.lastFailure
+    override fun observeSignInFailure(): Flow<SignInFailure?> = signInFeedback.lastFailure.map { it?.toDomain() }
 
     override fun signInFailureShown() = signInFeedback.consume()
 
@@ -153,6 +154,13 @@ class CoreSyncRepository(
         SyncFailureReason.Unauthorised -> SyncFailureKind.Unauthorised
         SyncFailureReason.Server -> SyncFailureKind.Server
         SyncFailureReason.Unknown -> SyncFailureKind.Unknown
+    }
+
+    private fun com.codingpit.muviss.core.sync.SignInFailure.toDomain(): SignInFailure = when (this) {
+        com.codingpit.muviss.core.sync.SignInFailure.Generic -> SignInFailure.Generic
+        is com.codingpit.muviss.core.sync.SignInFailure.TimedOut -> SignInFailure.TimedOut(minutes)
+        com.codingpit.muviss.core.sync.SignInFailure.NoCode -> SignInFailure.NoCode
+        is com.codingpit.muviss.core.sync.SignInFailure.Declined -> SignInFailure.Declined(reason)
     }
 
     private fun summarise(outcome: SyncOutcome): SyncOutcomeSummary = when (outcome) {
