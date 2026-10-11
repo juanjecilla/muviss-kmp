@@ -1128,3 +1128,39 @@ because building it needs Xcode and a team. Expect to adjust:
    names an episode.** This is the whole point of the stored catalog; if it
    goes blank, the App Group is not wired up and the extension is reading its
    own empty database.
+
+## 12. Remote config (ConfigCat) — EPIC 45 / issue #297
+
+Remote Config (ADR 0026) serves two values without a release: `byokEnabled`
+and `tmdbFallbackReadToken`. It is **off until you create the product**: a
+build with a blank `CONFIGCAT_SDK_KEY` binds a defaults-only implementation
+that never makes a request, which is what every local, CI and current release
+build does.
+
+Owner steps to switch it on:
+
+1. Create a ConfigCat account and a product ("Muviss") with **EU data
+   governance** (the code asks for it; a product on the global CDN would
+   mismatch). Free tier is enough: two settings, one fetch per active device
+   per hour at most.
+2. Create the two settings with exactly these **keys**:
+   `byokEnabled` (boolean, default `false`) and `tmdbFallbackReadToken`
+   (text, default empty — empty means "use the built-in credential").
+3. Copy the environment's **SDK key**. It ships in the binary like the TMDB
+   credential, so it must be the read-only key ConfigCat shows; never a
+   management API credential.
+4. `gh secret set CONFIGCAT_SDK_KEY` (or `scripts/release/owner-setup.sh`), and
+   `CONFIGCAT_SDK_KEY=…` in `local.properties` for a local build. Set
+   `BYOK_ENABLED=true` locally to see the compiled default flip.
+
+**Rotating the TMDB credential** (the reason this exists): put the new v4 read
+token in `tmdbFallbackReadToken`. Installs pick it up on their next foreground
+(within an hour), and a cold start applies the stored copy before its first
+TMDB request. Background workers (new-episode checks, background sync) never
+fetch; they use whatever the last foreground stored. The served token is no more
+secret than the one in the APK — the point is rotation, not secrecy. Clear the
+setting to fall back to the built-in credential.
+
+`docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
+(it exposes the device IP to ConfigCat and sends nothing about the user), so
+setting the secret needs no further copy change.

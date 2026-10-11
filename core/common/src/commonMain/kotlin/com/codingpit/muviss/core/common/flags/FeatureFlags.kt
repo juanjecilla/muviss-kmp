@@ -83,8 +83,11 @@ enum class SnoozePlacement {
 /**
  * Seam for runtime feature flags.
  *
- * The only implementation today reads the local `appSettings` row, so every
- * flag is a per-device preference the user sets in Settings. It is declared as
+ * The only implementation reads the local `appSettings` row, so almost every
+ * flag is a per-device preference the user sets in Settings. [byokEnabled] is
+ * the exception: it is served by
+ * [RemoteConfig][com.codingpit.muviss.core.common.remoteconfig.RemoteConfig]
+ * and is read-only here. It is declared as
  * an interface here — rather than being folded into `SettingsApi` — so that a
  * remote configuration source can be bound in its place later without any
  * caller changing, exactly as `MetadataProvider` (ADR 0001) and `SyncBackend`
@@ -137,6 +140,13 @@ interface FeatureFlags {
 
     /** Where a due Snooze re-enters the deck. Per device, like the period. */
     val triageSnoozePlacement: Flow<SnoozePlacement>
+
+    /**
+     * Whether the app *offers* to take an Own TMDB Key (EPIC 46). Served by
+     * Remote Config, so there is no setter, and it governs the entry UI only: a
+     * stored key keeps being used when this turns off (ADR 0027).
+     */
+    val byokEnabled: Flow<Boolean>
 
     suspend fun setTriageControlScheme(scheme: TriageControlScheme)
 

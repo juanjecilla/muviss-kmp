@@ -249,8 +249,10 @@ check_optional() { has_secret TMDB_API_KEY && has_secret SENTRY_DSN; }
 do_optional() {
   say "Release builds without TMDB_API_KEY cannot search; without SENTRY_DSN crash reporting no-ops."
   say "Sentry mapping upload also wants SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT."
+  say "CONFIGCAT_SDK_KEY (EPIC 45) switches remote config on; blank = defaults only. Use a READ-ONLY SDK key"
+  say "from a ConfigCat product with EU data governance (docs/RELEASING.md, 'Remote config')."
   local name val
-  for name in TMDB_API_KEY TMDB_READ_TOKEN SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT; do
+  for name in TMDB_API_KEY TMDB_READ_TOKEN CONFIGCAT_SDK_KEY SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT; do
     has_secret "$name" && continue
     read -r -s -p "    $name (empty = skip): " val; echo
     [ -z "$val" ] || gh secret set "$name" --repo "$REPO" --body "$val"
