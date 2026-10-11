@@ -19,6 +19,8 @@ kotlin {
             implementation(libs.kotlinx.coroutinesTest)
         }
         jvmTest.dependencies {
+            // `FakeClock` and `inMemoryDatabase()`.
+            implementation(projects.core.testing)
             implementation(libs.sqldelight.sqliteDriver)
         }
     }

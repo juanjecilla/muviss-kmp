@@ -2,14 +2,13 @@
 
 package com.codingpit.muviss.feature.collection.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
@@ -36,13 +35,6 @@ import kotlin.test.assertEquals
 private class StatusTestDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
     override val io = d
-}
-
-private class StatusTestClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun advanceToEpochDay(day: Long) {
-        millis = day * 86_400_000L
-    }
 }
 
 /**
@@ -97,7 +89,7 @@ private class RealSeenEpisodesProgressApi(private val repository: SqlDelightProg
  */
 class ProgressCollectionStatusIntegrationTest {
 
-    private lateinit var clock: StatusTestClock
+    private lateinit var clock: FakeClock
     private lateinit var progressApi: ProgressApi
     private lateinit var collectionRepository: SqlDelightCollectionRepository
 
@@ -128,12 +120,10 @@ class ProgressCollectionStatusIntegrationTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val db = MuvissDatabase(driver)
+        val db = inMemoryDatabase()
         val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
-        clock = StatusTestClock(0L)
-        clock.advanceToEpochDay(150) // "today" — episodes A, B, C have aired; D hasn't yet.
+        clock = FakeClock(0L)
+        clock.advanceTo(epochMsAtStartOfDay(150)) // "today" — episodes A, B, C have aired; D hasn't yet.
         val progressRepository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealSeenEpisodesProgressApi(progressRepository)
         collectionRepository = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, clock)
