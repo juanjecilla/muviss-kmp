@@ -85,6 +85,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.section_data
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_privacy
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_triage
 import com.codingpit.muviss.feature.settings.ui.generated.resources.settings_title
+import com.codingpit.muviss.feature.settings.ui.generated.resources.show_introduction
 import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_period
 import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_placement
 import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animations
@@ -106,6 +107,7 @@ fun SettingsScreen(
     onOpenLicenses: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenTriage: () -> Unit,
+    onReplayIntroduction: () -> Unit = {},
     // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
     // the screen works without it, so the many tests of everything else do not need a Koin graph.
     tmdbKey: TmdbKeyViewModel? = null,
@@ -155,7 +157,7 @@ fun SettingsScreen(
             checked = state.settings.notificationsEnabled,
             onToggle = viewModel::onNotificationsToggled,
         )
-        NotificationsBlockedNote(state.settings.notificationsEnabled)
+        NotificationsBlockedNote(state.settings.notificationsEnabled || state.notificationsDenied)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         SwitchRow(
             label = stringResource(Res.string.animations),
@@ -283,6 +285,7 @@ fun SettingsScreen(
         AboutSection(
             appVersionName = state.appVersion.versionName,
             onOpenLicenses = onOpenLicenses,
+            onReplayIntroduction = onReplayIntroduction,
             onTestCrash = { throw MuvissTestCrash() },
         )
     }
@@ -496,7 +499,12 @@ private fun ActionRow(
  * it like any other, which makes it the opt-out check too.
  */
 @Composable
-internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, onTestCrash: () -> Unit) {
+internal fun AboutSection(
+    appVersionName: String,
+    onOpenLicenses: () -> Unit,
+    onTestCrash: () -> Unit,
+    onReplayIntroduction: () -> Unit = {},
+) {
     var versionTaps by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         Text(
@@ -521,6 +529,19 @@ internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, on
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(MuvissSpacing.m),
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onReplayIntroduction).padding(vertical = MuvissSpacing.s).testTag(REPLAY_INTRODUCTION_TAG),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(Res.string.show_introduction), style = MaterialTheme.typography.bodyLarge)
+            Icon(
+                MuvissIcons.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
             )
         }
         Row(
@@ -551,7 +572,8 @@ private fun TriageControlScheme.displayName(): String = stringResource(
     },
 )
 
-internal const val VERSION_ROW_TAG = "settings_version_row"
+internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
+const val VERSION_ROW_TAG = "settings_version_row"
 
 internal const val TEST_CRASH_TAPS = 7
 

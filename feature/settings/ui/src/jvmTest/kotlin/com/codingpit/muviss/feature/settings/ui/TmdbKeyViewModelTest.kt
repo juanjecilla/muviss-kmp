@@ -2,12 +2,13 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import com.codingpit.muviss.core.designsystem.component.TmdbKeyProblem
+import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
+import com.codingpit.muviss.feature.settings.api.TmdbDataSource
+import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.feature.settings.domain.ClearTmdbKeyUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveTmdbDataSourceUseCase
-import com.codingpit.muviss.feature.settings.domain.SaveTmdbKeyResult
 import com.codingpit.muviss.feature.settings.domain.SaveTmdbKeyUseCase
-import com.codingpit.muviss.feature.settings.domain.TmdbDataSource
-import com.codingpit.muviss.feature.settings.domain.TmdbKeySettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +27,7 @@ import kotlin.test.assertTrue
 /** EPIC 46: the row is offered while Remote Config allows it, and stays while a key is in use. */
 class TmdbKeyViewModelTest {
 
-    private class FakeTmdbKeySettings : TmdbKeySettings {
+    private class FakeTmdbKeyApi : TmdbKeyApi {
         val source = MutableStateFlow(TmdbDataSource.MUVISS)
         var result = SaveTmdbKeyResult.SAVED
         val saved = mutableListOf<String>()
@@ -46,7 +47,7 @@ class TmdbKeyViewModelTest {
         }
     }
 
-    private val settings = FakeTmdbKeySettings()
+    private val settings = FakeTmdbKeyApi()
 
     @BeforeTest
     fun setUp() {

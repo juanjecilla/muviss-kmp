@@ -10,7 +10,7 @@ SIGUE LO QUE VES
 SABE QUÉ VIENE AHORA
 • A continuación: todas las series que sigues, con su próximo episodio sin ver y un toque para marcarlo.
 • Próximos estrenos: las fechas de emisión de tus series, día a día.
-• Avisos de nuevos episodios cuando se emite algo que sigues.
+• Avisos de nuevos episodios cuando se emite algo que sigues: desactivados hasta que los actives, en una breve introducción al abrir la app o en Ajustes.
 • Un widget en la pantalla de inicio para tener el siguiente episodio a un toque.
 
 LLENA TU BIBLIOTECA EN UN MOMENTO

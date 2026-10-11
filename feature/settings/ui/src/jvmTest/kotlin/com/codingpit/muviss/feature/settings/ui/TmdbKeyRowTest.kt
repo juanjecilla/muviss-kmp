@@ -9,8 +9,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.designsystem.component.TMDB_KEY_FIELD_TAG
+import com.codingpit.muviss.core.designsystem.component.TMDB_KEY_SAVE_TAG
+import com.codingpit.muviss.core.designsystem.component.TMDB_KEY_USE_MUVISS_TAG
+import com.codingpit.muviss.core.designsystem.component.TmdbKeyProblem
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
-import com.codingpit.muviss.feature.settings.domain.TmdbDataSource
+import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

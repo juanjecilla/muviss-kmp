@@ -64,7 +64,7 @@ export const en = {
       { icon: "check", title: "Episode tracking", body: "Per-episode ticks, season progress, and bulk marks that only tick what has actually aired." },
       { icon: "repeat", title: "Rewatch history", body: "Watched it three times? Muviss remembers every viewing and when it happened." },
       { icon: "star", title: "Ratings & notes", body: "Rate titles and keep a private note on each one." },
-      { icon: "bell", title: "New-episode alerts", body: "Get notified when a new episode of a show you follow is out.", platforms: "Android · iOS" },
+      { icon: "bell", title: "New-episode alerts", body: "Get notified when a new episode of a show you follow is out — only if you turn it on. Off until you do.", platforms: "Android · iOS" },
       { icon: "widget", title: "Home-screen widgets", body: "Your next episode on the home screen, with a one-tap tick and undo.", platforms: "Android · iOS" },
       { icon: "import", title: "Import", body: "Bring your history from Trakt, TV Time or a CSV file." },
       { icon: "export", title: "Back up & restore", body: "Your data is yours: back everything up to a file, restore it on any device, or delete it all." },

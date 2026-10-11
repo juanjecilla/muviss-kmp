@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
-import com.codingpit.muviss.feature.settings.domain.TmdbDataSource
+import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import kotlin.test.Test
 
 /** Both states of the TMDB data source row, in both themes (EPIC 46). */

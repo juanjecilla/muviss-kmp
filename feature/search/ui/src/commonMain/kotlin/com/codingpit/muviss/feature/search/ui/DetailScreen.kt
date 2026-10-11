@@ -161,6 +161,8 @@ fun DetailScreen(
     onBack: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
     onOpenEpisode: (EpisodeId) -> Unit = {},
+    // Null where there is nothing to offer (most tests): Detail works without it.
+    nudge: NotificationNudgeViewModel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
@@ -195,6 +197,7 @@ fun DetailScreen(
                     onEditNote = { editingNote = true },
                     onOpenEpisode = onOpenEpisode,
                     onTapSeenEpisode = { tickedEpisode = it },
+                    notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
                 )
                 if (maxWidth >= EXPANDED_BREAKPOINT) {
                     DetailExpanded(state, viewModel, callbacks)
@@ -265,6 +268,8 @@ private class DetailCallbacks(
     val onEditNote: () -> Unit,
     val onOpenEpisode: (EpisodeId) -> Unit,
     val onTapSeenEpisode: (EpisodeId) -> Unit,
+    /** The Notification Nudge (EPIC 47), given the title; draws nothing unless it is due. */
+    val notificationNudge: (@Composable (title: String) -> Unit)? = null,
 )
 
 /**
@@ -360,6 +365,11 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
     // refresh failed. Say so, and offer the refresh again.
     state.staleNotice?.let { notice ->
         item(key = "stale", contentType = "banner") { Box(section) { StaleBanner(notice, onRetry = viewModel::load) } }
+    }
+
+    // The Notification Nudge (EPIC 47): non-blocking, once ever, only on the first saved TV show.
+    callbacks.notificationNudge?.let { nudge ->
+        item(key = "notificationNudge", contentType = "banner") { Box(section) { nudge(details.summary.title) } }
     }
 
     // A skipped title (ADR 0010) leaves nothing in the library, so this line

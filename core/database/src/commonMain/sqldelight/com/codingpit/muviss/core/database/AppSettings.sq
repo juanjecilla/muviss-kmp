@@ -72,6 +72,14 @@
 -- on every snooze instead of applying one, which is also the only route to a
 -- freely chosen date.
 --
+-- `onboardingCompleted` and `notificationNudgeDismissed` were added in
+-- `17.sqm` (EPIC 47, ADR 0029). Both per-device and NOT synced, like every
+-- preference above. `onboardingCompleted` defaults to 0, which is what makes a
+-- *fresh* install see the introduction: only a row `ensureRow` creates starts
+-- there, and the migration marks every row that already exists as completed
+-- (so an upgraded install never sees it). `notificationNudgeDismissed` is the
+-- once-ever mark for the Notification Nudge.
+--
 -- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
 -- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
 -- is already true on every install that exists — folding the snooze hint into
@@ -95,7 +103,9 @@ CREATE TABLE appSettings (
     triageSnoozePeriod TEXT NOT NULL DEFAULT 'ONE_WEEK',
     triageSnoozePlacement TEXT NOT NULL DEFAULT 'MIXED_IN',
     triageSnoozeHintSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
-    discoverIntroSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    discoverIntroSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    onboardingCompleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    notificationNudgeDismissed INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -110,9 +120,15 @@ WHERE id = 0;
 -- not a schema one — INSERT OR IGNORE means it only ever affects a row that
 -- does not exist yet, so no `.sqm` migration is needed and no existing
 -- install's saved language changes.
+-- `notificationsEnabled` seeds as 0 (EPIC 47): a brand-new install is asked in
+-- Onboarding, in the nudge or in Settings, never opted in by default. Like
+-- `language` above this is a query literal, and it only ever reaches a row that
+-- does not exist yet, so no install that has the app keeps anything but its own
+-- stored choice (the column DEFAULT stays 1 because SQLite cannot change a
+-- default without rebuilding the table, and nothing relies on it).
 ensureRow:
 INSERT OR IGNORE INTO appSettings(id, theme, language, region, notificationsEnabled)
-VALUES (0, 'SYSTEM', '', 'US', 1);
+VALUES (0, 'SYSTEM', '', 'US', 0);
 
 updateTheme:
 UPDATE appSettings SET theme = :theme WHERE id = 0;
@@ -134,6 +150,12 @@ UPDATE appSettings SET syncCursorEpochMs = :syncCursorEpochMs WHERE id = 0;
 
 updateTriageControlScheme:
 UPDATE appSettings SET triageControlScheme = :triageControlScheme WHERE id = 0;
+
+updateOnboardingCompleted:
+UPDATE appSettings SET onboardingCompleted = :onboardingCompleted WHERE id = 0;
+
+updateNotificationNudgeDismissed:
+UPDATE appSettings SET notificationNudgeDismissed = :notificationNudgeDismissed WHERE id = 0;
 
 updateTriageTutorialSeen:
 UPDATE appSettings SET triageTutorialSeen = :triageTutorialSeen WHERE id = 0;

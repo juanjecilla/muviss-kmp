@@ -5,20 +5,18 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.designsystem.component.TmdbKeyProblem
+import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
+import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.feature.settings.domain.ClearTmdbKeyUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveTmdbDataSourceUseCase
-import com.codingpit.muviss.feature.settings.domain.SaveTmdbKeyResult
 import com.codingpit.muviss.feature.settings.domain.SaveTmdbKeyUseCase
-import com.codingpit.muviss.feature.settings.domain.TmdbDataSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-
-/** Why the last attempt to save a key did not take. Shown under the field; never carries TMDB's or Ktor's text. */
-enum class TmdbKeyProblem { MALFORMED, REJECTED, COULD_NOT_CHECK }
 
 data class TmdbKeyUiState(
     /** Whether Settings shows the row at all: the app offers it (Remote Config), or a key is already in use. */

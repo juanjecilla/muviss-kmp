@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.settings.domain
 
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import kotlinx.coroutines.flow.Flow
 
 /** Observes the current app settings; the source the theme, locale, and notification UI reads from. */
@@ -23,8 +25,21 @@ class SetRegionUseCase(private val repository: SettingsRepository) {
 }
 
 /** Flips the global notifications toggle; persisted only — EPIC 5 wires the actual notifications. */
-class SetNotificationsEnabledUseCase(private val repository: SettingsRepository) {
-    suspend operator fun invoke(enabled: Boolean) = repository.setNotificationsEnabled(enabled)
+class SetNotificationsEnabledUseCase(
+    private val repository: SettingsRepository,
+    private val permission: NotificationPermissionRequester,
+) {
+    suspend operator fun invoke(enabled: Boolean): NotificationsChange {
+        if (!enabled) {
+            repository.setNotificationsEnabled(false)
+            return NotificationsChange.DISABLED
+        }
+        // Asked before anything is stored: a switch that reads "on" while the OS blocks the
+        // alert is the lie the Settings note used to have to apologise for.
+        if (!permission.request()) return NotificationsChange.DENIED
+        repository.setNotificationsEnabled(true)
+        return NotificationsChange.ENABLED
+    }
 }
 
 /** Flips the "Send crash reports" switch; the app shell forwards it to the reporter live. */
@@ -55,7 +70,7 @@ class SettingsActions(
     suspend fun setTheme(theme: AppTheme) = setThemeUseCase(theme)
     suspend fun setLanguage(language: String) = setLanguageUseCase(language)
     suspend fun setRegion(region: String) = setRegionUseCase(region)
-    suspend fun setNotificationsEnabled(enabled: Boolean) = setNotificationsEnabledUseCase(enabled)
+    suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = setNotificationsEnabledUseCase(enabled)
     suspend fun setCrashReportsEnabled(enabled: Boolean) = setCrashReportsEnabledUseCase(enabled)
     suspend fun exportData(): String = exportDataUseCase()
 }
