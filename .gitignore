@@ -77,3 +77,8 @@ fastlane/test_output/
 fastlane/metadata/android/*/changelogs/
 vendor/bundle/
 .bundle/
+
+# Local secrets. Never committed; the dev Supabase credentials live in the
+# supabase-dev GitHub environment and the owner's Keychain.
+.env
+.env.*
