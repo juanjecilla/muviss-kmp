@@ -24,7 +24,22 @@ class SyncEngineEntitlementTest {
     private val database = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { MuvissDatabase.Schema.synchronous().create(it) }.let { MuvissDatabase(it) }
     private val clock = FakeClock(1_000L)
     private val backend = FakeSyncBackend()
-    private val engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+    private var erasures = 0
+    private val localDataEraser = AccountLocalDataEraser {
+        erasures++
+        database.transaction {
+            database.collectionEntryQueries.deleteAll()
+            database.syncCursorQueries.deleteAll()
+            database.syncStateQueries.deleteRow()
+        }
+    }
+    private val engine = SyncEngine(
+        backend,
+        database,
+        ImmediateDispatchers(UnconfinedTestDispatcher()),
+        clock,
+        localDataEraser = localDataEraser,
+    )
 
     private fun lastSyncedAt(): Long? = database.appSettingsQueries.selectSettings().executeAsOneOrNull()?.lastSyncedAtEpochMs
 
@@ -112,7 +127,7 @@ class SyncEngineEntitlementTest {
     // --- Delete account ----------------------------------------------------
 
     @Test
-    fun a_deleted_account_forgets_its_ownership_its_cursors_and_its_failure_but_keeps_the_library() = runTest {
+    fun a_deleted_account_erases_the_library_and_forgets_its_ownership_cursors_and_failure() = runTest {
         seedDirtyEntry()
         assertIs<SyncOutcome.Success>(engine.syncNow())
         database.syncStateQueries.recordFailure(error = "SERVER: down", attemptedAtEpochMs = 2_000L)
@@ -122,15 +137,15 @@ class SyncEngineEntitlementTest {
 
         assertEquals(AccountDeletionOutcome.Deleted, outcome)
         assertEquals(1, backend.deletions)
-        val state = database.syncStateQueries.selectState().executeAsOne()
-        assertNull(state.ownerAccountId)
-        assertNull(state.lastOutcome)
+        assertEquals(1, erasures)
+        assertNull(database.syncStateQueries.selectState().executeAsOneOrNull(), "the state row belonged to the account and is erased")
         assertTrue(database.syncCursorQueries.selectAll().executeAsList().isEmpty())
-        assertEquals(1, database.collectionEntryQueries.selectAll().executeAsList().size)
+        assertEquals(0, database.collectionEntryQueries.selectAll().executeAsList().size, "the library is erased with the account")
     }
 
     @Test
     fun a_failed_deletion_says_why_and_changes_nothing() = runTest {
+        seedDirtyEntry()
         assertIs<SyncOutcome.Success>(engine.syncNow())
         backend.deleteFailure = SyncSessionExpiredException()
 
@@ -138,6 +153,27 @@ class SyncEngineEntitlementTest {
 
         assertEquals(AccountDeletionOutcome.Failed(SyncFailureReason.Unauthorised), outcome)
         assertEquals(FAKE_SESSION.userId, database.syncStateQueries.selectState().executeAsOne().ownerAccountId)
+        assertEquals(0, erasures, "the server did not confirm, so nothing local is erased")
+        assertEquals(1, database.collectionEntryQueries.selectAll().executeAsList().size)
+    }
+
+    @Test
+    fun a_local_erasure_failure_after_the_server_confirmed_is_reported_and_still_forgets_the_owner() = runTest {
+        seedDirtyEntry()
+        assertIs<SyncOutcome.Success>(engine.syncNow())
+        val failingEngine = SyncEngine(
+            backend,
+            database,
+            ImmediateDispatchers(UnconfinedTestDispatcher()),
+            clock,
+            localDataEraser = AccountLocalDataEraser { error("disk full") },
+        )
+
+        val outcome = failingEngine.deleteAccount()
+
+        assertEquals(AccountDeletionOutcome.DeletedLocalDataNotErased(SyncFailureReason.Unknown), outcome)
+        assertNull(database.syncStateQueries.selectState().executeAsOne().ownerAccountId)
+        assertEquals(1, database.collectionEntryQueries.selectAll().executeAsList().size, "the erasure threw, so the library stays")
     }
 
     @Test

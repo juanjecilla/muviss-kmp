@@ -2,6 +2,7 @@ package com.codingpit.muviss.di
 
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceStatus
+import com.codingpit.muviss.core.sync.AccountLocalDataEraser
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
@@ -87,6 +88,9 @@ class AppGraphTest {
         // EPIC 40: the coordinator and the settings it follows are part of the graph.
         assertNotNull(koin.get<SyncCoordinator>())
         assertNotNull(koin.get<AutomaticSyncSettings>())
+        // ADR 0019: the seam that deleting the account erases through. If the bridge
+        // did not bind it, the deletion would silently keep the library.
+        assertNotNull(koin.get<AccountLocalDataEraser>())
     }
 
     /**

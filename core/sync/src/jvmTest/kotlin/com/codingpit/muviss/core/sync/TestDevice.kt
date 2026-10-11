@@ -89,6 +89,23 @@ internal class TestDevice(
     val database = MuvissDatabase(driver)
     internal var backend = newBackend()
         private set
+
+    /**
+     * What "erase this device" does in these tests: the real eraser is
+     * `SqlDelightLocalDataEraser` in `:feature:settings:data`, which `:core:sync`
+     * cannot depend on, and it is covered there (`LocalDataEraserTest`). This
+     * clears the same sync-visible state. Set [eraseFailure] to make it throw.
+     */
+    var eraseFailure: Exception? = null
+    private val localDataEraser = AccountLocalDataEraser {
+        eraseFailure?.let { throw it }
+        database.transaction {
+            database.collectionEntryQueries.deleteAll()
+            database.syncCursorQueries.deleteAll()
+            database.syncStateQueries.deleteRow()
+        }
+    }
+
     var engine = newEngine()
         private set
 
@@ -100,7 +117,14 @@ internal class TestDevice(
         clock = clock,
     )
 
-    private fun newEngine() = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, titleRefresher = titleRefresher)
+    private fun newEngine() = SyncEngine(
+        backend,
+        database,
+        ImmediateDispatchers(UnconfinedTestDispatcher()),
+        clock,
+        titleRefresher = titleRefresher,
+        localDataEraser = localDataEraser,
+    )
 
     /**
      * Signs the person out and a different one in on this same installation:

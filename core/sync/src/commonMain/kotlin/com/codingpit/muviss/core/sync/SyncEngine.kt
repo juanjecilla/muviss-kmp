@@ -106,6 +106,7 @@ class SyncEngine(
     private val widgetRefresher: WidgetRefresher = AppWidgets,
     private val automatic: AutomaticSyncSettings = AutomaticSyncSettings(),
     private val titleRefresher: TitleRefresher = NoOpTitleRefresher,
+    private val localDataEraser: AccountLocalDataEraser = NoOpAccountLocalDataEraser,
 ) : SyncRunner {
     private val availability get() = automatic.availability
     private val syncAutomatically get() = automatic.switch
@@ -360,36 +361,54 @@ class SyncEngine(
 
     /**
      * Deletes the signed-in account and everything the server holds for it
-     * (ADR 0019), one cycle's lock held so no push can race it into a 409 on
-     * the vanished user.
+     * (ADR 0019), then erases this device's library, one cycle's lock held so no
+     * push can race it into a 409 on the vanished user.
      *
-     * The device's library is **kept**. ADR 0019 keeps it on sign-out and says
-     * nothing about deletion, and the app is offline-first: deleting an account
-     * is leaving sync, not leaving the app. What is forgotten is whose library it
-     * was — the owner and the pull cursors both belonged to an account that no
-     * longer exists. Left in place, the next sign-in (a new uid, even with the
-     * same provider identity) would read as an [SyncOutcome.AccountChanged]
-     * whose default answer discards this very library; with no owner it is a
-     * first sync instead, which adopts the library and pushes all of it.
+     * The device's library is **erased**, and the person is told so before this
+     * is called (the confirmation copy belongs to the UI that calls it). A
+     * deleted account's library cannot be synced to anyone, and keeping it would
+     * leave a copy of data the person asked to delete. The erasure is the
+     * injected [AccountLocalDataEraser], which is Settings' "Delete all data",
+     * so the two cannot drift apart.
+     *
+     * It runs only after the server confirms, and a failed server call touches
+     * nothing locally. If the server confirmed but the local erasure throws,
+     * the account is still gone, so the engine forgets whose library this was
+     * (the owner and the cursors) and reports [AccountDeletionOutcome.DeletedLocalDataNotErased]
+     * rather than a success.
      */
     suspend fun deleteAccount(): AccountDeletionOutcome = withContext(dispatchers.io) {
         syncMutex.withLock {
             if (backend.session.first() == null) return@withLock AccountDeletionOutcome.NotSignedIn
             backend.deleteAccount().fold(
-                onSuccess = {
-                    database.syncStateQueries.ensureRow()
-                    database.transaction {
-                        database.syncStateQueries.setOwner(null)
-                        database.syncStateQueries.clearFailure()
-                        changeLog.resetCursors()
-                    }
-                    AccountDeletionOutcome.Deleted
-                },
+                onSuccess = { eraseAfterAccountDeleted() },
                 onFailure = { failure ->
                     if (failure is CancellationException) throw failure
                     AccountDeletionOutcome.Failed(SyncFailureReason.classify(failure))
                 },
             )
+        }
+    }
+
+    private suspend fun eraseAfterAccountDeleted(): AccountDeletionOutcome {
+        val erasure = runCatching { localDataEraser.eraseLocalData() }.exceptionOrNull()
+        if (erasure is CancellationException) throw erasure
+        if (erasure == null) {
+            refreshWidgets()
+            return AccountDeletionOutcome.Deleted
+        }
+        forgetOwner()
+        refreshWidgets()
+        return AccountDeletionOutcome.DeletedLocalDataNotErased(SyncFailureReason.classify(erasure))
+    }
+
+    /** The owner, the cursors and the last failure all belonged to an account that no longer exists. */
+    private suspend fun forgetOwner() {
+        database.syncStateQueries.ensureRow()
+        database.transaction {
+            database.syncStateQueries.setOwner(null)
+            database.syncStateQueries.clearFailure()
+            changeLog.resetCursors()
         }
     }
 
@@ -441,13 +460,21 @@ private const val MAX_CAUSE_DEPTH = 8
 
 /** The outcome of [SyncEngine.deleteAccount]. Copy keys off [Failed.reason]; there is no text to show. */
 sealed interface AccountDeletionOutcome {
-    /** The server deleted the account and its data; this device is signed out and keeps its library. */
+    /** The server deleted the account and its data, and this device is signed out and its library erased. */
     data object Deleted : AccountDeletionOutcome
+
+    /**
+     * The server deleted the account and this device is signed out, but the
+     * local library could not be erased. The account is gone either way, so this
+     * is not [Failed]: the UI should say the account was deleted and offer
+     * "Delete all data" for the rest. [reason] says what went wrong, with no text.
+     */
+    data class DeletedLocalDataNotErased(val reason: SyncFailureReason) : AccountDeletionOutcome
 
     /** There was no account to delete. */
     data object NotSignedIn : AccountDeletionOutcome
 
-    /** Nothing was deleted (or the server cannot say it was); the session is untouched unless it was dead. */
+    /** Nothing was deleted (or the server cannot say it was); the session and the library are untouched unless the session was dead. */
     data class Failed(val reason: SyncFailureReason) : AccountDeletionOutcome
 }
 

@@ -566,14 +566,21 @@ The client half lives in `:core:sync` and `:core:billing`, joined in
   paywall (a later PR) calls it when the store reports the purchase done.
 - **Delete account**: `SyncEngine.deleteAccount()` → `SyncBackend.deleteAccount()`
   → `POST /functions/v1/delete-account` with the caller's token. On 200 the
-  session is cleared **locally** (no `/logout`: the user is gone), and the
-  engine forgets the owner, the pull cursors and the last failure. **The local
-  library is kept** — ADR 0019 keeps it on sign-out and says nothing about
-  deletion. Clearing the owner is deliberate: otherwise the next sign-in (a new
-  uid even for the same provider identity) is an `AccountChanged` whose default
-  answer, *Replace*, would discard the library; with no owner it is a first sync
-  that adopts and pushes it. The outcome is `AccountDeletionOutcome`
-  (`Deleted` / `NotSignedIn` / `Failed(reason)`) — no text to show.
+  session is cleared **locally** (no `/logout`: the user is gone), and then this
+  device's library is **erased** through `AccountLocalDataEraser` — the same
+  erase as Settings' "Delete all data" (`DeleteAllDataUseCase`, bound by
+  `accountDeletionBridgeModule` in `:app:shared`, the same join as
+  `TitleRefresher`; `:core:sync` cannot depend on settings). Erasing clears the
+  library, the sync cursors and the `syncState` row, so the next sign-in is a
+  first sync with nothing to ask about. The person must be told before this
+  runs: the confirmation copy is the calling UI's (none exists yet).
+  A failed server call touches **nothing** locally. If the server confirmed and
+  the erase then throws, the account is gone regardless: the engine forgets the
+  owner, the cursors and the last failure, and reports
+  `DeletedLocalDataNotErased(reason)`, not `Failed`. The outcome is
+  `AccountDeletionOutcome` (`Deleted` / `DeletedLocalDataNotErased(reason)` /
+  `NotSignedIn` / `Failed(reason)`) — no text to show.
+  Signing out (as opposed to deleting) still keeps the library; ADR 0019.
 
 **Against a project without the `20261010…` migrations** (the hosted one, until
 #282) no token ever carries `sync_until`, so this client reports `NotEntitled`

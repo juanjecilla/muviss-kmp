@@ -32,6 +32,8 @@ val appModules: List<Module> =
         // After syncModule: it overrides that module's permissive default
         // EntitlementGate, and Koin's last binding wins.
         billingSyncBridgeModule,
+        // After syncModule too: it overrides that module's no-op AccountLocalDataEraser.
+        accountDeletionBridgeModule,
         searchDataModule,
         searchUiModule,
         collectionDataModule,
