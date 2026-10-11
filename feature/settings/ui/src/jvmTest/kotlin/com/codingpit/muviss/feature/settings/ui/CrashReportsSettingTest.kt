@@ -13,7 +13,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
@@ -21,6 +20,7 @@ import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
@@ -239,7 +239,5 @@ internal fun settingsViewModel(repository: FakeRepository, onDeleteAll: () -> Un
     DeleteAllDataUseCase(object : LocalDataEraser {
         override suspend fun deleteAllData() = onDeleteAll()
     }),
-    object : AppClock {
-        override fun nowEpochMs(): Long = 0L
-    },
+    FakeClock(0L),
 )

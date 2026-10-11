@@ -23,6 +23,8 @@ kotlin {
             implementation(libs.turbine)
         }
         jvmTest.dependencies {
+            // `FakeClock` and `inMemoryDatabase()`.
+            implementation(projects.core.testing)
             implementation(libs.sqldelight.sqliteDriver)
             // Test-only: the idempotent-import integration test wires the real
             // collection and progress repositories against one shared in-memory

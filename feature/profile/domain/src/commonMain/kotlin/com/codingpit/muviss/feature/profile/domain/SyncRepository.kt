@@ -71,4 +71,11 @@ interface SyncRepository {
 
     /** Forgets where every pull stopped, sends the whole library again and pulls it all: the repair path. Slow in proportion to the library. */
     suspend fun resyncEverything(): SyncOutcomeSummary
+
+    /**
+     * Answers a [SyncOutcomeSummary.AccountChanged] with the person's [choice],
+     * then syncs. Both choices make the signed-in account the owner and start
+     * every pull from the beginning; nothing is pushed before this is called.
+     */
+    suspend fun resolveAccountChange(choice: AccountChangeChoice): SyncOutcomeSummary
 }

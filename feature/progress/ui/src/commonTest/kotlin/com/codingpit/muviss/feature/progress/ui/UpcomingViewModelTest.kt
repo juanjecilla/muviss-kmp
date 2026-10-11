@@ -2,9 +2,9 @@
 
 package com.codingpit.muviss.feature.progress.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -59,10 +59,6 @@ internal class FakeUpcomingCatalogSource(private val bySeasons: Map<MediaId, Lis
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = failure?.let { Result.failure(it) } ?: Result.success(bySeasons[mediaId].orEmpty())
 }
 
-internal class FakeUpcomingClock(private val millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-}
-
 class UpcomingViewModelTest {
 
     @BeforeTest
@@ -91,7 +87,7 @@ class UpcomingViewModelTest {
     ) = UpcomingViewModel(
         collectionApi,
         EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore()),
-        FakeUpcomingClock(today),
+        FakeClock(today),
     )
 
     @Test
@@ -174,7 +170,7 @@ class UpcomingViewModelTest {
         val vmWithUpdatedSource = UpcomingViewModel(
             FakeUpcomingCollectionApi(listOf(summary(tvShow))),
             EpisodeCatalogCache(FetchEpisodeCatalogUseCase(updatedSource), InMemoryEpisodeCatalogStore()),
-            FakeUpcomingClock(today),
+            FakeClock(today),
         )
         vmWithUpdatedSource.refresh()
         advanceUntilIdle()

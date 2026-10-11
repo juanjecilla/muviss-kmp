@@ -1,6 +1,5 @@
 package com.codingpit.muviss.feature.triage.domain
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -12,10 +11,6 @@ import com.codingpit.muviss.models.Season
 
 internal const val TODAY_EPOCH_DAY = 20_000L
 internal const val NOW_EPOCH_MS = TODAY_EPOCH_DAY * 86_400_000L
-
-internal class FakeClock(private var millis: Long = NOW_EPOCH_MS) : AppClock {
-    override fun nowEpochMs(): Long = millis
-}
 
 internal fun movie(id: String = "1", title: String = "Movie $id") = MediaSummary(MediaId.tmdbMovie(id), title)
 

@@ -2,12 +2,12 @@
 
 package com.codingpit.muviss.feature.triage.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.CountingDriver
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
@@ -63,12 +63,11 @@ class TriagePerformanceBudgetTest {
 
     @BeforeTest
     fun setUp() {
-        driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        MuvissDatabase.Schema.synchronous().create(driver)
+        driver = inMemoryDriver(::CountingDriver)
         database = MuvissDatabase(driver)
 
         val dispatchers = ImmediateDispatchers(UnconfinedTestDispatcher())
-        val clock = FakeClock()
+        val clock = FakeClock(NOW_EPOCH_MS)
         val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApi(progressRepository)
         collectionApi = RealCollectionApi(
@@ -82,7 +81,7 @@ class TriagePerformanceBudgetTest {
     @Test
     fun `caught up on a 750-episode show costs exactly one details fetch`() = runTest {
         val details = CountingDetailsSource(mapOf(hugeShow.id to hugeShow))
-        val record = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, details, FakeClock())
+        val record = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, details, FakeClock(NOW_EPOCH_MS))
 
         record(hugeShow.summary, TriageVerdict.CAUGHT_UP).getOrThrow()
 
@@ -99,7 +98,7 @@ class TriagePerformanceBudgetTest {
             collectionApi,
             progressApi,
             CountingDetailsSource(mapOf(hugeShow.id to hugeShow)),
-            FakeClock(),
+            FakeClock(NOW_EPOCH_MS),
         )
         driver.reset()
 
@@ -117,7 +116,7 @@ class TriagePerformanceBudgetTest {
             collectionApi,
             progressApi,
             CountingDetailsSource(mapOf(hugeShow.id to hugeShow)),
-            FakeClock(),
+            FakeClock(NOW_EPOCH_MS),
         )
 
         // Deliberately loose: this is a canary for an accidentally quadratic
