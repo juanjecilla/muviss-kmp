@@ -29,24 +29,36 @@ class ScreenInsetsGoldenTest {
 
     @Test
     fun insets_hold_content_clear_of_the_unsafe_area() = runComposeUiTest {
-        setContent { InsetSample(TestSafeAreaInsets) }
+        setContent { InsetSample(TestSafeAreaInsets, darkTheme = false) }
         assertMatchesGolden("screen-insets-with")
     }
 
     @Test
     fun no_insets_means_no_offset() = runComposeUiTest {
-        setContent { InsetSample(WindowInsets(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp)) }
+        setContent { InsetSample(WindowInsets(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp), darkTheme = false) }
         assertMatchesGolden("screen-insets-without")
+    }
+
+    @Test
+    fun insets_hold_content_clear_of_the_unsafe_area_dark() = runComposeUiTest {
+        setContent { InsetSample(TestSafeAreaInsets, darkTheme = true) }
+        assertMatchesGolden("screen-insets-with-dark")
+    }
+
+    @Test
+    fun no_insets_means_no_offset_dark() = runComposeUiTest {
+        setContent { InsetSample(WindowInsets(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp), darkTheme = true) }
+        assertMatchesGolden("screen-insets-without-dark")
     }
 }
 
 @androidx.compose.runtime.Composable
-private fun InsetSample(insets: WindowInsets) {
+private fun InsetSample(insets: WindowInsets, darkTheme: Boolean) {
     // Pinned, never left to default: `MuvissTheme`'s `darkTheme` reads
     // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded
     // on a machine in dark mode compares against a light render on CI and every
     // pixel moves. See `GoldenSurface`.
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface(width = 300.dp, height = 300.dp) {
             ScreenInsets(insets = insets) {
                 Box(

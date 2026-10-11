@@ -255,7 +255,10 @@ It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
 only) another `release/*` branch is open. The branch starts with one commit:
 draft release notes for every listing locale, seeded from the `feat`/`fix`
-subjects since the last release, first line `DRAFT: …`.
+subjects since the last release, first line `DRAFT: …`, and this version's
+section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
+uncapped). The changelog is generated, not edited: a fix merged into the
+release branch later is in the RC but not in that section.
 
 Then:
 
@@ -1007,9 +1010,15 @@ See `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`'s
 2026-07-16 amendment for the full story. Short version: real read/write
 persistence now works on both `js` and `wasmJs`, backed by SQLDelight's
 `web-worker-driver` running SQL.js (SQLite-to-wasm) inside a Web Worker —
-but it is **session-only** (in the worker's memory; a page reload starts
-from an empty database again, there is no OPFS/IndexedDB-backed durability
-yet). Getting the worker to actually load in a webpack-bundled build needed
+and since EPIC 24 it is **durable on a best-effort basis** — in the tab
+that holds the writer lock, and as long as IndexedDB writes succeed. A
+second tab runs in memory only (`ReadOnlyTab`), and a browser without Web
+Locks never persists (`NotPersisted`); a snapshot write that fails is only
+logged by the worker and reported nowhere (#292). So:
+our fork of the worker
+(`core/database/src/webWorker`) restores an IndexedDB snapshot on open and
+re-exports it shortly after each committed write, and only one tab persists
+(CLAUDE.md, "Web + DB"). Getting the worker to actually load in a webpack-bundled build needed
 two non-obvious fixes, both in `app/webApp/webpack.config.d/copy-sqljs-wasm.js`
 and both discovered only by driving a real build's output in a real browser
 (a clean `wasmJsBrowserDistribution` alone does not catch either):
@@ -1037,9 +1046,9 @@ and both discovered only by driving a real build's output in a real browser
 4. Library/Progress/Profile screens: confirm they load without an error
    state (each screen's `.catch { }` would otherwise surface a visible
    error instead of a silent hang or crash — see ADR 0008).
-5. Reload the page; confirm the Settings screen goes back to defaults —
-   this is *expected* today (session-only persistence, see above), not a
-   bug to chase.
+5. Reload the page; confirm the theme you chose in step 3 is still set.
+   That shows a snapshot was written and restored — not that every write
+   since was, since a failed snapshot write is silent (#292).
 
 ## 11. Home-screen widgets — EPIC 22
 
@@ -1056,6 +1065,15 @@ directory (ADR 0016) — the app works exactly as before and the widget shows
 an empty library.
 
 ### iOS: one-time setup
+
+`scripts/release/apple-setup.sh` walks through all of this and the rest of the
+Apple side — membership, Team ID, App Group, both App IDs (with Sign in with
+Apple), the App Store Connect record, the App Store Connect API key and the
+Developer ID certificate for the DMG — storing what CI will need as GitHub
+secrets (`APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
+`APP_STORE_CONNECT_KEY_P8`, `MACOS_DEVELOPER_ID_P12_BASE64`,
+`MACOS_DEVELOPER_ID_P12_PASSWORD`) and `APPLE_TEAM_ID` as a variable. The
+steps it automates are the ones below.
 
 1. **Fill in `TEAM_ID`** in `app/iosApp/Configuration/Config.xcconfig` (Xcode
    > Signing & Capabilities shows it once a team is selected). Same value the

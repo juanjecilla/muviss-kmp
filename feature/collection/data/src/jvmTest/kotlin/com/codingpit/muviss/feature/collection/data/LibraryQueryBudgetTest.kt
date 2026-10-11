@@ -1,11 +1,11 @@
 package com.codingpit.muviss.feature.collection.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.CountingDriver
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -66,8 +66,7 @@ class LibraryQueryBudgetTest {
     }
 
     private suspend fun library(size: Int): Triple<CountingDriver, MuvissDatabase, SqlDelightCollectionRepository> {
-        val driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        MuvissDatabase.Schema.synchronous().create(driver)
+        val driver = inMemoryDriver(::CountingDriver)
         val database = MuvissDatabase(driver)
         val repository = SqlDelightCollectionRepository(database.collectionEntryQueries, dispatchers, FakeClock(1_000L))
         (1..size).forEach { repository.upsertSnapshot(movie(it)) }
