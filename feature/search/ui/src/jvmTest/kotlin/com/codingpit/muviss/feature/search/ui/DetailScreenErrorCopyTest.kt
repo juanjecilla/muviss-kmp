@@ -8,8 +8,8 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
@@ -83,10 +83,6 @@ class DetailScreenErrorCopyTest {
     }
 }
 
-private class NoopClock : AppClock {
-    override fun nowEpochMs(): Long = 0L
-}
-
 @Composable
 private fun DetailWithFailure(failure: Throwable, saved: Boolean = false) {
     val mediaId = MediaId.tmdbMovie("603")
@@ -98,7 +94,7 @@ private fun DetailWithFailure(failure: Throwable, saved: Boolean = false) {
         DetailPeers(collection, FakeProgressApi(), FakeTriageApi()),
         WatchProvidersUseCase(repo),
         MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
-        NoopClock(),
+        FakeClock(0L),
     )
     MuvissTheme(darkTheme = false) {
         DetailScreen(viewModel = viewModel, onBack = {}, onOpenDetail = {}, onOpenEpisode = {})

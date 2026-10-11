@@ -6,10 +6,10 @@ Website: **[muvissapp.com](https://muvissapp.com)** (source in [`website/`](webs
 
 > User-focused, no social features. Data comes from [TMDB](https://www.themoviedb.org/) behind a pluggable source abstraction.
 
-## Features (this pass)
+## Features
 
-- **Search & discovery** — debounced TMDB search + weekly trending, movie/TV detail with seasons & episodes. *(fully implemented — the reference vertical slice)*
-- **Collection, Progress, Profile, Settings** — scaffolded slices, filled in per the [epics](docs/EPICS.md).
+- **Search & discovery** — debounced TMDB search, trending, genres and where-to-watch; movie/TV detail with seasons, episodes and rewatch history.
+- **Library, Progress, Profile, Settings** — collection and custom lists, episode tracking and "watch next", stats, triage, calendar, ratings and notes, import, backup and restore, home-screen widgets, English and Spanish. Every slice is a real implementation; [docs/EPICS.md](docs/EPICS.md) has what each epic shipped.
 
 ## Architecture
 

@@ -14,6 +14,8 @@ kotlin {
             implementation(projects.feature.collection.api)
         }
         commonTest.dependencies {
+            // `FakeClock` (the shared `AppClock` fake).
+            implementation(projects.core.testing)
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
         }

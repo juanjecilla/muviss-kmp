@@ -1,6 +1,6 @@
 package com.codingpit.muviss.feature.cowatch.domain
 
-import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -9,10 +9,6 @@ import kotlin.test.assertTrue
 
 /** `underscore_case` — see [InviteCodeTest]. */
 class WatchProviderRefresherTest {
-
-    private class FakeClock(var now: Long = 0L) : AppClock {
-        override fun nowEpochMs(): Long = now
-    }
 
     private class FakeCache : WatchProviderCache {
         val stored = mutableMapOf<MediaId, CachedProviders>()
@@ -44,7 +40,7 @@ class WatchProviderRefresherTest {
     fun a_never_cached_title_is_fetched_and_stored() = runTest {
         val cache = FakeCache()
         val source = FakeSource().apply { nextResult = Result.success(setOf("8")) }
-        val refresher = WatchProviderRefresher(cache, source, FakeClock())
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
 
         val result = refresher.refresh(setOf(id))
 
@@ -57,7 +53,7 @@ class WatchProviderRefresherTest {
     fun a_fresh_cache_entry_is_served_without_a_fetch() = runTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource()
-        val clock = FakeClock(now = 1_000L) // well inside the default 24h TTL
+        val clock = FakeClock(1_000L) // well inside the default 24h TTL
         val refresher = WatchProviderRefresher(cache, source, clock)
 
         val result = refresher.refresh(setOf(id))
@@ -71,7 +67,7 @@ class WatchProviderRefresherTest {
         val oneDayMs = 24 * 60 * 60 * 1000L
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource().apply { nextResult = Result.success(setOf("9")) }
-        val clock = FakeClock(now = oneDayMs + 1)
+        val clock = FakeClock(oneDayMs + 1)
         val refresher = WatchProviderRefresher(cache, source, clock)
 
         val result = refresher.refresh(setOf(id))
@@ -86,7 +82,7 @@ class WatchProviderRefresherTest {
         // stuck behind the TTL.
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource(region = "GB").apply { nextResult = Result.success(setOf("30")) }
-        val clock = FakeClock(now = 1L) // far inside the TTL
+        val clock = FakeClock(1L) // far inside the TTL
         val refresher = WatchProviderRefresher(cache, source, clock)
 
         val result = refresher.refresh(setOf(id))
@@ -100,7 +96,7 @@ class WatchProviderRefresherTest {
         val oneDayMs = 24 * 60 * 60 * 1000L
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource().apply { nextResult = Result.failure(RuntimeException("offline")) }
-        val clock = FakeClock(now = oneDayMs + 1)
+        val clock = FakeClock(oneDayMs + 1)
         val refresher = WatchProviderRefresher(cache, source, clock)
 
         val result = refresher.refresh(setOf(id))
@@ -112,7 +108,7 @@ class WatchProviderRefresherTest {
     fun a_failed_fetch_with_nothing_cached_yields_an_empty_set_not_an_error() = runTest {
         val cache = FakeCache()
         val source = FakeSource().apply { nextResult = Result.failure(RuntimeException("offline")) }
-        val refresher = WatchProviderRefresher(cache, source, FakeClock())
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
 
         val result = refresher.refresh(setOf(id))
 
@@ -123,7 +119,7 @@ class WatchProviderRefresherTest {
     fun an_empty_request_touches_neither_the_cache_nor_the_source() = runTest {
         val cache = FakeCache()
         val source = FakeSource()
-        val refresher = WatchProviderRefresher(cache, source, FakeClock())
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
 
         assertTrue(refresher.refresh(emptySet()).isEmpty())
         assertEquals(0, cache.getCallCount)
