@@ -18,8 +18,8 @@ import kotlin.test.assertEquals
 internal val cardEntries = listOf(showEntry("The Office", 41), showEntry("Gilmore Girls", 18), movieEntry("Poor Things", 5))
 
 @Composable
-internal fun CardUnderTest(entries: List<RewatchEntry>, onOpenRewatch: () -> Unit = {}) {
-    MuvissTheme(darkTheme = false) {
+internal fun CardUnderTest(entries: List<RewatchEntry>, onOpenRewatch: () -> Unit = {}, darkTheme: Boolean = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface { MostRewatchedCard(entries, onOpenRewatch) }
     }
 }
