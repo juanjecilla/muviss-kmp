@@ -200,10 +200,24 @@ ENV_FILE="local.properties"   # gitignored; already holds TMDB_*/SENTRY_* the sa
 APP_ID="com.codingpit.muviss"
 WIDGET_ID="com.codingpit.muviss.MuvissWidget"
 APP_GROUP="group.com.codingpit.muviss"
+# Every gh call below targets this repository, whatever the checkout's remote
+# or an inherited GH_REPO says: a fork would take the secrets and report success.
+export GH_REPO="juanjecilla/muviss-kmp"
+
+# require KEY "Label" stops before anything is saved when a required answer is
+# empty (Enter with no previous value, or stdin at EOF).
+require() {
+  if [[ -z "${!1}" ]]; then
+    warn "$2 is required; nothing was saved. Re-run the wizard."
+    exit 1
+  fi
+}
 
 TOTAL_STAGES=7
 
 banner "Apple setup for Muviss"
+say "Secrets and variables go to $GH_REPO."
+confirm "Is that the right repository?" || { warn "Stopped; nothing was saved."; exit 1; }
 
 stage "Join the Apple Developer Program"
 say "Everything else needs a paid membership (99 USD/year)."
@@ -217,6 +231,7 @@ stage "Team ID"
 open_url "https://developer.apple.com/account"
 step "Scroll to Membership details and copy the Team ID (10 characters)."
 ask APPLE_TEAM_ID "Paste the Team ID:"
+require APPLE_TEAM_ID "The Team ID"
 write_env APPLE_TEAM_ID "$APPLE_TEAM_ID"
 set_var APPLE_TEAM_ID "$APPLE_TEAM_ID"
 note "For local Xcode builds, also put it in app/iosApp/Configuration/Config.xcconfig"
@@ -249,11 +264,15 @@ pause "Press Enter once the app record exists"
 stage "App Store Connect API key"
 say "One key lets CI upload to TestFlight and notarise the macOS DMG, with no Apple ID password."
 open_url "https://appstoreconnect.apple.com/access/integrations/api"
+step "A new team first has to ask for API access: if the page shows Request Access,"
+step "the Account Holder clicks it and accepts the terms. Wait for it to be granted."
 step "Team Keys → + (Generate API Key). Name: Muviss CI. Access: App Manager. Generate."
 step "Copy the Issuer ID shown above the table, and the new key's Key ID."
 warn "Download the .p8 now: Apple only lets you download it once."
 ask APP_STORE_CONNECT_ISSUER_ID "Paste the Issuer ID:"
 ask APP_STORE_CONNECT_KEY_ID "Paste the Key ID:"
+require APP_STORE_CONNECT_ISSUER_ID "The Issuer ID"
+require APP_STORE_CONNECT_KEY_ID "The Key ID"
 ask P8_PATH "Path to the downloaded AuthKey_<KeyID>.p8:"
 P8_PATH="${P8_PATH/#\~/$HOME}"
 if [[ -f "$P8_PATH" ]]; then
@@ -280,6 +299,7 @@ ask P12_PATH "Path to the exported .p12:"
 P12_PATH="${P12_PATH/#\~/$HOME}"
 ask_secret MACOS_DEVELOPER_ID_P12_PASSWORD "The .p12's password:"
 if [[ -f "$P12_PATH" ]]; then
+  require MACOS_DEVELOPER_ID_P12_PASSWORD "The .p12 password"
   set_secret MACOS_DEVELOPER_ID_P12_BASE64 "$(base64 -i "$P12_PATH" | tr -d '\n')"
   set_secret MACOS_DEVELOPER_ID_P12_PASSWORD "$MACOS_DEVELOPER_ID_P12_PASSWORD"
   note "Delete the loose .p12 once it is stored; the keychain keeps the original."
