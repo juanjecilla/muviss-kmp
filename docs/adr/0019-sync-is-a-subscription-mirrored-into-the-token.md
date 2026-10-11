@@ -86,9 +86,9 @@ everything forever stays affordable is EPIC 45 (#257).
 
 Both stores require in-app account deletion once accounts exist. Every
 synced table already references `auth.users(id) on delete cascade`, and so
-does `entitlement`, so deleting the user row is the whole job — the mirror
-goes with it, and a later webhook for that `appUserID` writes a row for a
-user that no longer exists, which the foreign key refuses — but only a privileged role may.
+does `entitlement`, so deleting the user row is the whole job: the mirror
+goes with it, and a later webhook for that `appUserID` is refused by the
+foreign key. But only a privileged role may delete it.
 EPIC 32's issue proposed a `security definer` RPC; ADR 0022's invariant 4
 rules that out, so deletion is a second Edge Function, `delete-account`,
 which verifies the caller's own JWT and deletes that user with the service
