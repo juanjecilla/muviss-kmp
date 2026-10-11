@@ -10,6 +10,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
+import com.codingpit.muviss.feature.profile.domain.LastSynced
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveLastSyncedAtUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
@@ -19,6 +20,7 @@ import com.codingpit.muviss.feature.profile.domain.ProfileActions
 import com.codingpit.muviss.feature.profile.domain.ProfileRepository
 import com.codingpit.muviss.feature.profile.domain.SetAvatarUseCase
 import com.codingpit.muviss.feature.profile.domain.SetDisplayNameUseCase
+import com.codingpit.muviss.feature.profile.domain.SignInFailure
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
@@ -138,7 +140,7 @@ private class FakeSyncRepository(
     var completeSignInResult: Result<Unit> = Result.success(Unit)
     var syncNowResult: SyncOutcomeSummary = SyncOutcomeSummary.Success(1_000L)
     var signOutCalled = false
-    val signInFailure = MutableStateFlow<String?>(null)
+    val signInFailure = MutableStateFlow<SignInFailure?>(null)
     var failureShownCount = 0
 
     override fun observeAccount(): Flow<SyncAccountState> = account
@@ -169,7 +171,7 @@ private class FakeSyncRepository(
         return completeSignInResult
     }
 
-    override fun observeSignInFailure(): Flow<String?> = signInFailure
+    override fun observeSignInFailure(): Flow<SignInFailure?> = signInFailure
 
     override fun signInFailureShown() {
         failureShownCount++
@@ -349,7 +351,7 @@ class ProfileViewModelTest {
         val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
 
-        repository.signInFailure.value = "code challenge does not match"
+        repository.signInFailure.value = SignInFailure.Declined("code challenge does not match")
         advanceUntilIdle()
 
         assertEquals("code challenge does not match", vm.state.value.sync.message.text())
@@ -360,7 +362,7 @@ class ProfileViewModelTest {
         val repository = FakeSyncRepository()
         val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
-        repository.signInFailure.value = "invalid grant"
+        repository.signInFailure.value = SignInFailure.Generic
         advanceUntilIdle()
 
         vm.syncMessageShown()
@@ -500,7 +502,7 @@ class ProfileViewModelTest {
 
         repository.status.value = SyncStatus(lastSyncedAtEpochMs = 0L, pendingChanges = 4)
         advanceUntilIdle()
-        assertEquals("Synced just now", vm.state.value.sync.lastSyncedLabel)
+        assertEquals(LastSynced.JustNow, vm.state.value.sync.lastSynced)
         assertEquals(SyncStatusDetail.Waiting(4), vm.state.value.sync.statusDetail)
 
         repository.status.value = SyncStatus(lastSyncedAtEpochMs = 0L, pendingChanges = 4, lastFailure = SyncFailureKind.Offline)

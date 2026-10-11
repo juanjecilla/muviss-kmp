@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
+import com.codingpit.muviss.feature.profile.domain.LastSynced
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileUseCase
@@ -16,12 +17,11 @@ import com.codingpit.muviss.feature.profile.domain.ProfileActions
 import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
-import com.codingpit.muviss.feature.profile.domain.SyncCopy
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncStatus
 import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
-import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
+import com.codingpit.muviss.feature.profile.domain.lastSynced
 import com.codingpit.muviss.feature.profile.domain.syncStatusDetail
 import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
 import com.codingpit.muviss.feature.profile.ui.generated.resources.account_library_added
@@ -47,7 +47,7 @@ import kotlinx.coroutines.flow.update
 data class SyncUiState(
     val account: SyncAccountState = SyncAccountState.Unavailable,
     val lastSyncedAtEpochMs: Long? = null,
-    val lastSyncedLabel: String = "Never synced",
+    val lastSynced: LastSynced = LastSynced.Never,
     val syncing: Boolean = false,
     /** Set when sign-in has produced an authorize URL the screen should open in a browser; cleared by [ProfileViewModel.authUrlOpened]. */
     val pendingAuthUrl: String? = null,
@@ -161,7 +161,7 @@ class ProfileViewModel(
                             account = account,
                             status = status,
                             lastSyncedAtEpochMs = status.lastSyncedAtEpochMs,
-                            lastSyncedLabel = lastSyncedLabel(status.lastSyncedAtEpochMs, clock.nowEpochMs()),
+                            lastSynced = lastSynced(status.lastSyncedAtEpochMs, clock.nowEpochMs()),
                             automaticSync = automatic,
                             automaticSyncAvailable = syncActions.isBackgroundAvailable,
                             automaticSyncMode = syncActions.automaticSyncMode,
@@ -177,13 +177,13 @@ class ProfileViewModel(
         // redeemed at app scope (ADR 0014) — so the reason arrives here as a
         // stream rather than as a call's return value.
         syncActions.observeSignInFailure()
-            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = UiText.Raw(failure))) } }
+            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = failure.toUiText())) } }
             .launchInReporting(viewModelScope)
     }
 
     /**
-     * Recomputes `lastSyncedLabel` against the current time (#117:
-     * `lastSyncedLabel` is otherwise only recomputed when the status stream
+     * Recomputes `lastSynced` against the current time (#117:
+     * `lastSynced` is otherwise only recomputed when the status stream
      * emits, so "Synced just now" stays "just now" on a screen left open with
      * nothing else happening — no new sync, no new failure).
      *
@@ -202,8 +202,8 @@ class ProfileViewModel(
      * suggested, and it sidesteps the trap entirely rather than working
      * around it.
      */
-    fun refreshLastSyncedLabel() {
-        _state.update { it.copy(sync = it.sync.copy(lastSyncedLabel = lastSyncedLabel(it.sync.lastSyncedAtEpochMs, clock.nowEpochMs()))) }
+    fun refreshLastSynced() {
+        _state.update { it.copy(sync = it.sync.copy(lastSynced = lastSynced(it.sync.lastSyncedAtEpochMs, clock.nowEpochMs()))) }
     }
 
     fun onEditNameRequested() {
@@ -347,8 +347,7 @@ class ProfileViewModel(
 
         is SyncOutcomeSummary.Success -> success
 
-        // SyncCopy is still English (#217): sync copy moves out of :domain with the sync launch.
-        is SyncOutcomeSummary.Failed -> UiText.Resource(Res.string.sync_failed, UiText.Raw(SyncCopy.failure(outcome.kind)))
+        is SyncOutcomeSummary.Failed -> UiText.Resource(Res.string.sync_failed, outcome.kind.toUiText())
 
         SyncOutcomeSummary.AccountChanged -> UiText.Resource(Res.string.sync_account_changed)
     }

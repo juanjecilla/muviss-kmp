@@ -60,7 +60,7 @@ interface SyncRepository {
      * may be while no profile screen exists (ADR 0014). Cleared through
      * [signInFailureShown] once displayed.
      */
-    fun observeSignInFailure(): Flow<String?>
+    fun observeSignInFailure(): Flow<SignInFailure?>
 
     fun signInFailureShown()
 

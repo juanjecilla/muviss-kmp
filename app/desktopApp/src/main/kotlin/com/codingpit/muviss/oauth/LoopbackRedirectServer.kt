@@ -2,6 +2,7 @@ package com.codingpit.muviss.oauth
 
 import com.codingpit.muviss.core.sync.OAUTH_CODE_PARAM
 import com.codingpit.muviss.core.sync.OAuthRedirectTarget
+import com.codingpit.muviss.core.sync.SignInFailure
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -17,6 +18,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -99,7 +101,7 @@ class LoopbackRedirectServer(
             delay(timeout)
             // Same reasoning as SignInFeedback's own KDoc: a sign-in that
             // failed must not look identical to one that was never attempted.
-            signInFeedback.report("Sign-in timed out after ${timeout.inWholeMinutes} minutes. Try again.")
+            signInFeedback.report(SignInFailure.TimedOut(timeout.inWholeMinutes.toInt()))
             release()
         }
 
@@ -125,15 +127,15 @@ class LoopbackRedirectServer(
 
         when {
             code != null -> {
-                respond(PAGE_SUCCESS)
+                respond(callbackPage(signedIn = true))
                 _codes.tryEmit(code)
             }
 
             // GoTrue redirects here with an `error` rather than a code when the
             // user declines on the provider's page, or the flow state expired.
             else -> {
-                respond(PAGE_FAILURE)
-                signInFeedback.report(error ?: "The sign-in redirect carried no authorization code.")
+                respond(callbackPage(signedIn = false))
+                signInFeedback.report(if (error != null) SignInFailure.Declined(error) else SignInFailure.NoCode)
             }
         }
         release()
@@ -163,16 +165,6 @@ class LoopbackRedirectServer(
         val TIMEOUT: Duration = 5.minutes
 
         fun redirectUriFor(port: Int): String = "http://127.0.0.1:$port$CALLBACK_PATH"
-
-        private const val PAGE_SUCCESS =
-            "<!doctype html><meta charset=utf-8><title>Muviss</title>" +
-                "<body style=\"font-family:system-ui;text-align:center;padding-top:4rem\">" +
-                "<h1>You're signed in</h1><p>You can close this tab and go back to Muviss.</p>"
-
-        private const val PAGE_FAILURE =
-            "<!doctype html><meta charset=utf-8><title>Muviss</title>" +
-                "<body style=\"font-family:system-ui;text-align:center;padding-top:4rem\">" +
-                "<h1>Sign-in didn't finish</h1><p>You can close this tab. Muviss will explain what went wrong.</p>"
     }
 }
 
@@ -189,3 +181,22 @@ internal fun String?.queryParam(name: String): String? = this
     ?.substringAfter('=', "")
     ?.takeIf { it.isNotEmpty() }
     ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
+
+/**
+ * The page the browser lands on after the redirect. English or Spanish by the
+ * JVM default locale: this is a throwaway page in the browser, outside Compose,
+ * so Compose Resources are not on offer and two literals are the simplest
+ * thing that is honest (#222).
+ */
+internal fun callbackPage(signedIn: Boolean, language: String = Locale.getDefault().language): String {
+    val spanish = language == "es"
+    val (heading, body) = when {
+        signedIn && spanish -> "Has iniciado sesi\u00f3n" to "Puedes cerrar esta pesta\u00f1a y volver a Muviss."
+        signedIn -> "You're signed in" to "You can close this tab and go back to Muviss."
+        spanish -> "No se complet\u00f3 el inicio de sesi\u00f3n" to "Puedes cerrar esta pesta\u00f1a. Muviss te explicar\u00e1 qu\u00e9 sali\u00f3 mal."
+        else -> "Sign-in didn't finish" to "You can close this tab. Muviss will explain what went wrong."
+    }
+    return "<!doctype html><html lang=${if (spanish) "es" else "en"}><meta charset=utf-8><title>Muviss</title>" +
+        "<body style=\"font-family:system-ui;text-align:center;padding-top:4rem\">" +
+        "<h1>$heading</h1><p>$body</p>"
+}

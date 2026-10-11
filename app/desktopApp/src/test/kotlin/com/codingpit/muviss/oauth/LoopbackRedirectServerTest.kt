@@ -1,5 +1,6 @@
 package com.codingpit.muviss.oauth
 
+import com.codingpit.muviss.core.sync.SignInFailure
 import com.codingpit.muviss.core.sync.SignInFeedback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -125,7 +126,7 @@ class LoopbackRedirectServerTest {
         val (status, body) = withContext(Dispatchers.IO) { get("$uri?code=abc123&state=xyz") }
 
         assertEquals(200, status)
-        assertTrue(body.contains("You can close this tab"), "expected the close-the-tab page, got: $body")
+        assertEquals(callbackPage(signedIn = true), body, "expected the signed-in page")
         assertEquals("abc123", received.await())
     }
 
@@ -140,7 +141,7 @@ class LoopbackRedirectServerTest {
         // Declining on the provider's page is a real outcome, not a code that
         // failed to arrive — and it has to be distinguishable from never having
         // tried (see SignInFeedback's KDoc).
-        assertEquals("User declined", feedback.lastFailure.first())
+        assertEquals(SignInFailure.Declined("User declined"), feedback.lastFailure.first())
     }
 
     @Test
@@ -164,7 +165,7 @@ class LoopbackRedirectServerTest {
 
         advanceTimeBy(5.minutes + 1.minutes)
 
-        assertTrue(feedback.lastFailure.first().orEmpty().contains("timed out"))
+        assertEquals(SignInFailure.TimedOut(5), feedback.lastFailure.first())
         // Freed, not merely forgotten: the next attempt must be able to bind it
         // again, and the user's second try is the common case after a timeout.
         squat(LoopbackRedirectServer.PORTS.first()).close()

@@ -43,7 +43,7 @@ sealed interface SyncAccountState {
     /**
      * Signed out, but not by choice: the session died (the refresh token was
      * rejected) and the last sync said so. Rendered as [SignedOut] plus
-     * [SyncCopy.SESSION_EXPIRED], so a silent stop cannot pass for "never
+     * the UI's "session expired" line, so a silent stop cannot pass for "never
      * signed in". Cleared by signing in again or signing out on purpose.
      */
     data object SessionExpired : SyncAccountState
@@ -91,4 +91,19 @@ enum class AccountChangeChoice {
 
     /** Keep this device's library and send all of it to the signed-in account, alongside what the account already holds. */
     AddDeviceLibraryToAccount,
+}
+
+/**
+ * Why a sign-in attempt did not finish, mirrored from
+ * `core.sync.SignInFailure` for the same reason as [SyncAccountState]. The
+ * wording is the UI's; [Declined.reason] is the identity provider's own text.
+ */
+sealed interface SignInFailure {
+    data object Generic : SignInFailure
+
+    data class TimedOut(val minutes: Int) : SignInFailure
+
+    data object NoCode : SignInFailure
+
+    data class Declined(val reason: String?) : SignInFailure
 }

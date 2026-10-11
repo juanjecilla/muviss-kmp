@@ -20,28 +20,43 @@ import kotlinx.coroutines.flow.asStateFlow
  * not been tried: the user returns to the app, still signed out, with nothing
  * on screen. See ADR 0014.
  *
- * A plain string rather than a typed error, so a caller with copy of its own
- * (a timeout, an OAuth `error` query param GoTrue hands back) can pass it
- * straight through. [message] must already be fixed, screen-safe copy —
- * **never** an exception's own text: an OAuth code exchange can fail with a
- * Ktor/Supabase exception whose message embeds the request URL, the same
- * leak EPIC 27 swept out of every other view model (see CLAUDE.md,
- * "Network errors are `MetadataError`, never exception text"; issue #90 was
- * this constructor's own corner of it). Pass null for no copy of your own —
- * [report] falls back to a fixed default.
+ * A typed [SignInFailure] rather than a string, so the screen that shows it
+ * owns the wording (and its translation) and nothing here is copy. The one
+ * free-text field, [SignInFailure.Declined.reason], is the identity provider's
+ * own `error_description` from the redirect URL, never an exception's text:
+ * an OAuth code exchange can fail with a Ktor/Supabase exception whose
+ * message embeds the request URL, the same leak EPIC 27 swept out of every
+ * other view model (see CLAUDE.md, "Network errors are `MetadataError`, never
+ * exception text"; issue #90 was this constructor's own corner of it). Report
+ * [SignInFailure.Generic] when there is nothing of your own to say.
  */
 class SignInFeedback {
-    private val state = MutableStateFlow<String?>(null)
+    private val state = MutableStateFlow<SignInFailure?>(null)
 
     /** The last failure, or null when there is nothing to report. Cleared by [consume] once shown. */
-    val lastFailure: Flow<String?> = state.asStateFlow()
+    val lastFailure: Flow<SignInFailure?> = state.asStateFlow()
 
-    fun report(message: String?) {
-        state.value = message?.takeIf { it.isNotBlank() } ?: "Couldn't finish signing in"
+    fun report(failure: SignInFailure = SignInFailure.Generic) {
+        state.value = failure
     }
 
-    /** Called once the message has been shown, so it is not repeated on the next recomposition. */
+    /** Called once the failure has been shown, so it is not repeated on the next recomposition. */
     fun consume() {
         state.value = null
     }
+}
+
+/** Why a sign-in attempt did not finish. Structured so the UI chooses the words. */
+sealed interface SignInFailure {
+    /** Something went wrong and there is nothing of our own to add. */
+    data object Generic : SignInFailure
+
+    /** The browser round trip never came back within [minutes] (desktop's loopback listener). */
+    data class TimedOut(val minutes: Int) : SignInFailure
+
+    /** The redirect came back without an authorization code. */
+    data object NoCode : SignInFailure
+
+    /** The provider sent the person back with an error; [reason] is its own `error_description` or `error`, or null. */
+    data class Declined(val reason: String?) : SignInFailure
 }

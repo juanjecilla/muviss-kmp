@@ -105,4 +105,34 @@
     </plurals>
     <!-- Screen-reader summary of the genre donut; %1$s lists "Drama 40%, Comedy 20%" (EPIC 31b, #164). -->
     <string name="a11y_genre_summary">Genres: %1$s</string>
+    <!-- Sync status copy, moved out of :feature:profile:domain (#217). -->
+    <string name="sync_session_expired">Session expired, sign in again.</string>
+    <!-- The reason after "Sync failed: " / "Last sync failed: ", so lower case and no full stop. -->
+    <string name="sync_failure_offline">you seem to be offline</string>
+    <string name="sync_failure_unauthorised">your session was refused, sign in again</string>
+    <string name="sync_failure_server">the sync service had a problem, try again later</string>
+    <string name="sync_failure_unknown">something went wrong</string>
+    <!-- %1$s is why it failed (one of the sync_failure_* lines). -->
+    <string name="sync_detail_failed">Last sync failed: %1$s</string>
+    <string name="sync_detail_account_changed">This device's library belongs to a different account, so nothing is syncing.</string>
+    <plurals name="sync_changes_waiting">
+        <item quantity="one">%1$d change waiting</item>
+        <item quantity="other">%1$d changes waiting</item>
+    </plurals>
+    <string name="sync_automatic_in_background">Keep this device in sync in the background, even when Muviss is closed.</string>
+    <string name="sync_automatic_when_system_allows">Sync when the system allows it. iOS decides when, so it can be hours between runs.</string>
+    <string name="sync_automatic_while_open">Sync while Muviss is open. Nothing runs once you close it.</string>
+    <string name="sync_last_never">Never synced</string>
+    <string name="sync_last_just_now">Synced just now</string>
+    <!-- Abbreviated units, so no plural: "Synced 3m ago", "Synced 2h ago", "Synced 4d ago". -->
+    <string name="sync_last_minutes_ago">Synced %1$dm ago</string>
+    <string name="sync_last_hours_ago">Synced %1$dh ago</string>
+    <string name="sync_last_days_ago">Synced %1$dd ago</string>
+    <!-- Why a sign-in did not finish; shown once in a snackbar. -->
+    <string name="sign_in_failure_generic">Couldn't finish signing in</string>
+    <string name="sign_in_failure_no_code">The sign-in redirect carried no authorization code.</string>
+    <plurals name="sign_in_failure_timed_out">
+        <item quantity="one">Sign-in timed out after %1$d minute. Try again.</item>
+        <item quantity="other">Sign-in timed out after %1$d minutes. Try again.</item>
+    </plurals>
 </resources>
