@@ -28,10 +28,10 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
-import com.codingpit.muviss.feature.profile.domain.SyncCopy
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
 import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
@@ -185,7 +185,7 @@ private fun SignedOutContent(sync: SyncUiState, actions: SyncSectionActions, exp
         // A session that died is not the same as never having signed in, and a
         // silent stop would look exactly like it.
         Text(
-            SyncCopy.SESSION_EXPIRED,
+            SyncSessionExpiredText.resolve(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.testTag(SYNC_SESSION_EXPIRED_TAG),
@@ -212,7 +212,7 @@ private fun SignedOutContent(sync: SyncUiState, actions: SyncSectionActions, exp
 @Composable
 private fun SignedInContent(sync: SyncUiState, account: SyncAccountState.SignedIn, actions: SyncSectionActions) {
     Text(account.email ?: stringResource(Res.string.signed_in), style = MaterialTheme.typography.titleSmall)
-    Hint(sync.lastSyncedLabel, Modifier.testTag(SYNC_LAST_SYNCED_TAG))
+    Hint(sync.lastSynced.toUiText().resolve(), Modifier.testTag(SYNC_LAST_SYNCED_TAG))
     sync.statusDetail?.let { StatusDetail(it, actions, enabled = !sync.syncing) }
     Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(onClick = actions.onSyncNowClicked, enabled = !sync.syncing, modifier = Modifier.testTag(SYNC_NOW_TAG)) {
@@ -228,7 +228,7 @@ private fun StatusDetail(detail: SyncStatusDetail, actions: SyncSectionActions, 
     val failed = detail is SyncStatusDetail.Failed
     Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            SyncCopy.detail(detail),
+            detail.toUiText().resolve(),
             style = MaterialTheme.typography.bodySmall,
             color = if (failed || detail == SyncStatusDetail.AccountChanged) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f, fill = false).testTag(SYNC_DETAIL_TAG),
@@ -278,7 +278,7 @@ private fun AutomaticSyncRow(sync: SyncUiState, actions: SyncSectionActions) {
         Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, style = MaterialTheme.typography.bodyMedium)
             Text(
-                SyncCopy.automaticSyncDescription(sync.automaticSyncMode),
+                sync.automaticSyncMode.toUiText().resolve(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.testTag(SYNC_AUTOMATIC_DESCRIPTION_TAG),

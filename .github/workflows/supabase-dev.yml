@@ -30,6 +30,7 @@ jobs:
     environment: supabase-dev
     env:
       PROJECT_REF: mnleklzanxxpvmakrbxv
+      POOLER_HOST: aws-0-eu-west-1.pooler.supabase.com
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_DEV_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
     steps:
@@ -45,8 +46,18 @@ jobs:
       - name: Link the dev project
         run: supabase link --project-ref "$PROJECT_REF"
 
+      # GitHub's runners have no IPv6 and the database's direct host is
+      # IPv6-only; `supabase link` does not save the IPv4 pooler URL for the
+      # commands after it, so they get it explicitly. Session mode (5432),
+      # because migrations and pgTAP need a session.
+      - name: Database URL (session pooler)
+        run: |
+          pw=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')
+          echo "::add-mask::$pw"
+          echo "DB_URL=postgresql://postgres.$PROJECT_REF:$pw@$POOLER_HOST:5432/postgres" >> "$GITHUB_ENV"
+
       - name: Migrations
-        run: supabase db push
+        run: supabase db push --db-url "$DB_URL"
 
       - name: Edge Functions
         run: |
@@ -62,4 +73,4 @@ jobs:
         run: supabase config push --yes --project-ref "$PROJECT_REF"
 
       - name: pgTAP against dev
-        run: supabase test db --linked
+        run: supabase test db --db-url "$DB_URL"

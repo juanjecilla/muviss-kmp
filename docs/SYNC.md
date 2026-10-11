@@ -463,7 +463,7 @@ returning `AccountChanged` without pushing.
 
 **Failures** are typed (`Offline | Unauthorised | Server | Unknown`); the reason
 is the leading token of `syncState.lastError` (`REASON: diagnostic text`). Copy
-is `SyncCopy`, never an exception's message.
+is `feature/profile/ui`'s `SyncCopy.kt` (Compose Resources, en + es; the domain returns kinds, not strings), never an exception's message.
 
 ### Verifying it by hand
 
