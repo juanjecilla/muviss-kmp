@@ -66,7 +66,7 @@ The abstraction (`:core:sync`) that pushes/pulls local changes to an optional cl
 _Avoid_: backend, cloud (those are vendors behind this seam).
 
 **Entitlement**:
-Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. Independent of being signed in — one is bought, the other is an account (ADR 0018). Belongs to the account, not the device: bought once on a phone, it holds on every device signed in to that account, including those that cannot sell it. Acquired by subscribing, so it ends unless renewed (ADR 0019).
+Whether the user currently holds the paid feature. Distinct from whether the build *has* the feature at all: a build without it shows nothing, a build with it that the user has not paid for shows the feature and a way to buy it. A different thing from being signed in — one is bought, the other is an account (ADR 0018) — but not separable from it: buying needs an account to hold it, and a signed-out user holds none. Belongs to the account, not the device: bought once on a phone, it holds on every device signed in to that account, including those that cannot sell it. Acquired by subscribing, so it ends unless renewed (ADR 0019).
 _Avoid_: subscription, purchase, licence (those are how an Entitlement is acquired, and vendors behind that seam); premium, pro (those name a tier this app does not have).
 
 **Lapsed**:

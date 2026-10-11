@@ -44,8 +44,16 @@ too. A Supabase custom-access-token hook reads `entitlement` and stamps a
 becomes
 
 ```sql
+for all
 using (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now())
+with check (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now())
 ```
+
+Both clauses, and one policy per table: a `using` alone would leave an
+`insert` checked against the old owner-only `with check`, so a lapsed
+account could still write, and any other permissive policy left on the
+table would be OR-ed in and reopen it. The pgTAP suite asserts both, and
+exactly one policy per table.
 
 That keeps ADR 0022's invariant 4 — every policy a direct comparison, no
 subquery, no `security definer` — which a policy reading `entitlement`
@@ -77,8 +85,10 @@ everything forever stays affordable is EPIC 45 (#257).
 ## Deleting the account
 
 Both stores require in-app account deletion once accounts exist. Every
-synced table already references `auth.users(id) on delete cascade`, so
-deleting the user row is the whole job — but only a privileged role may.
+synced table already references `auth.users(id) on delete cascade`, and so
+does `entitlement`, so deleting the user row is the whole job — the mirror
+goes with it, and a later webhook for that `appUserID` writes a row for a
+user that no longer exists, which the foreign key refuses — but only a privileged role may.
 EPIC 32's issue proposed a `security definer` RPC; ADR 0022's invariant 4
 rules that out, so deletion is a second Edge Function, `delete-account`,
 which verifies the caller's own JWT and deletes that user with the service
