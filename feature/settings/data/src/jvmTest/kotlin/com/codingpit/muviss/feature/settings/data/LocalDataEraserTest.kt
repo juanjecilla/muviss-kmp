@@ -2,12 +2,10 @@ package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -25,14 +23,12 @@ class LocalDataEraserTest {
 
     @Test
     fun `after deleting everything the export is a fresh install's`() = runTest {
-        val database = MuvissDatabase(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { MuvissDatabase.Schema.synchronous().create(it) })
+        val database = inMemoryDatabase()
         val repository = SqlDelightSettingsRepository(
             database.appSettingsQueries,
             ExportQueries(database),
             dispatchers,
-            object : AppClock {
-                override fun nowEpochMs(): Long = 1L
-            },
+            FakeClock(1L),
             AppVersion("1", 1L),
         )
         val fixture = javaClass.getResource("/backups/v1-export.json")!!.readText()

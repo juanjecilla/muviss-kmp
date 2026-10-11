@@ -21,6 +21,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
+import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
@@ -253,12 +254,93 @@ class SyncSectionTest {
     }
 
     @Test
-    fun an_account_mismatch_is_explained_and_has_no_retry() = runComposeUiTest {
-        setContent { SyncSectionUnderTest(signedInState(status = SyncStatus(pendingChanges = 3, lastFailure = SyncFailureKind.Server, accountChanged = true))) }
+    fun an_account_mismatch_is_explained_and_offers_a_choice_not_a_retry() = runComposeUiTest {
+        val deferred = signedInState(status = SyncStatus(pendingChanges = 3, lastFailure = SyncFailureKind.Server, accountChanged = true)).copy(accountChoiceDeferred = true)
+        setContent { SyncSectionUnderTest(deferred) }
         waitForIdle()
 
         onNodeWithTag(SYNC_DETAIL_TAG).assertTextEquals("This device's library belongs to a different account, so nothing is syncing.")
         onNodeWithTag(SYNC_RETRY_TAG).assertDoesNotExist()
+        onNodeWithTag(SYNC_ACCOUNT_CHOOSE_TAG).assertIsDisplayed()
+        onNodeWithTag(SYNC_ACCOUNT_DIALOG_TAG).assertDoesNotExist()
+    }
+
+    // --- a different account (#148) -------------------------------------------------
+
+    @Test
+    fun a_mismatch_opens_the_library_choice_naming_the_account() = runComposeUiTest {
+        setContent { SyncSectionUnderTest(signedInState(status = SyncStatus(accountChanged = true))) }
+        waitForIdle()
+
+        onNodeWithTag(SYNC_ACCOUNT_DIALOG_TAG).assertIsDisplayed()
+        onNodeWithTag(SYNC_ACCOUNT_REPLACE_TAG).assertTextEquals("Replace with person@example.com's library")
+        onNodeWithTag(SYNC_ACCOUNT_MERGE_TAG).assertTextEquals("Add this device's library to person@example.com")
+    }
+
+    @Test
+    fun an_account_without_an_email_is_still_named_sensibly() = runComposeUiTest {
+        setContent { SyncSectionUnderTest(SyncUiState(account = SyncAccountState.SignedIn(email = null), status = SyncStatus(accountChanged = true))) }
+        waitForIdle()
+
+        onNodeWithTag(SYNC_ACCOUNT_REPLACE_TAG).assertTextEquals("Replace with this account's library")
+        onNodeWithTag(SYNC_ACCOUNT_MERGE_TAG).assertTextEquals("Add this device's library to this account")
+    }
+
+    @Test
+    fun each_library_choice_calls_back_with_its_own_answer() = runComposeUiTest {
+        val choices = mutableListOf<AccountChangeChoice>()
+        setContent { SyncSectionUnderTest(signedInState(status = SyncStatus(accountChanged = true)), SyncSectionActions(onAccountChoiceMade = { choices += it })) }
+        waitForIdle()
+
+        onNodeWithTag(SYNC_ACCOUNT_REPLACE_TAG).performClick()
+        onNodeWithTag(SYNC_ACCOUNT_MERGE_TAG).performClick()
+
+        assertEquals(listOf(AccountChangeChoice.ReplaceWithAccountLibrary, AccountChangeChoice.AddDeviceLibraryToAccount), choices)
+    }
+
+    @Test
+    fun deciding_later_closes_the_dialog_and_choose_brings_it_back() = runComposeUiTest {
+        val calls = mutableListOf<String>()
+        var state by mutableStateOf(signedInState(status = SyncStatus(accountChanged = true)))
+        setContent {
+            SyncSectionUnderTest(
+                state,
+                SyncSectionActions(
+                    onAccountChoiceMade = { calls += "chose $it" },
+                    onAccountChoiceDeferred = {
+                        calls += "deferred"
+                        state = state.copy(accountChoiceDeferred = true)
+                    },
+                    onAccountChoiceRequested = {
+                        calls += "requested"
+                        state = state.copy(accountChoiceDeferred = false)
+                    },
+                ),
+            )
+        }
+        waitForIdle()
+
+        onNodeWithTag(SYNC_ACCOUNT_LATER_TAG).performClick()
+        waitForIdle()
+        onNodeWithTag(SYNC_ACCOUNT_DIALOG_TAG).assertDoesNotExist()
+        onNodeWithTag(SYNC_DETAIL_TAG).assertTextEquals("This device's library belongs to a different account, so nothing is syncing.")
+
+        onNodeWithTag(SYNC_ACCOUNT_CHOOSE_TAG).performClick()
+        waitForIdle()
+        onNodeWithTag(SYNC_ACCOUNT_DIALOG_TAG).assertIsDisplayed()
+        assertEquals(listOf("deferred", "requested"), calls, "closing the dialog chose nothing")
+    }
+
+    @Test
+    fun no_library_choice_while_the_accounts_match_or_a_sync_is_running() = runComposeUiTest {
+        var state by mutableStateOf(signedInState())
+        setContent { SyncSectionUnderTest(state) }
+        waitForIdle()
+        onNodeWithTag(SYNC_ACCOUNT_DIALOG_TAG).assertDoesNotExist()
+
+        state = signedInState(status = SyncStatus(accountChanged = true), syncing = true)
+        waitForIdle()
+        onNodeWithTag(SYNC_ACCOUNT_DIALOG_TAG).assertDoesNotExist()
     }
 
     // --- actions --------------------------------------------------------------------

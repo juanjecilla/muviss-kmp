@@ -2,6 +2,7 @@
 
 import org.jetbrains.compose.ComposeExtension
 import org.jetbrains.compose.ComposePlugin
+import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
 
 // Convention for UI-bearing multiplatform modules: layers Compose Multiplatform
 // on top of the base library convention.
@@ -77,4 +78,14 @@ tasks.withType<Test>().configureEach {
     systemProperty("user.country", "US")
     systemProperty("muviss.golden.dir", goldenDir)
     systemProperty("muviss.golden.record", recordGoldens.toString())
+}
+
+// The same pin for Kotlin/Native. A simulator takes its language from the Mac
+// it was created on, not from anything Gradle sets, so on a Spanish-language
+// Mac 43 iOS tests failed asserting "Retry" against "Reintentar" while CI's
+// English runner passed. Launch arguments land in NSUserDefaults' argument
+// domain, which NSLocale reads before the device's own setting; the K/N test
+// runner ignores arguments it does not recognise.
+tasks.withType<KotlinNativeSimulatorTest>().configureEach {
+    args = args + listOf("-AppleLanguages", "(en-US)", "-AppleLocale", "en_US")
 }

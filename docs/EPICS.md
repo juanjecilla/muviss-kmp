@@ -279,7 +279,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes — **merged 2026-10-07** (#202, #203, #208, #209, #212, #213) | #73 |
 | 11 | EPIC 31 Localization (Spanish + app-language selector) — **merged 2026-10-07** (#214-#223, #239); #219 merged 2026-10-08 (#243), iOS widget in #253; left: #217 (sync copy, before sync launches) and #222's desktop loopback messages | #74 |
 | 11 | EPIC 31b Accessibility — in progress (#233, #238); Lint with a11y as errors and the search-field / settings-switch labels in #245; left: a spoken TalkBack/VoiceOver pass | #164 |
-| 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
+| 11 | EPIC 32 Sync goes live, paid via RevenueCat — ADR 0019 written 2026-10-10 (subscription, RevenueCat → Edge Function mirror, `sync_until` JWT claim, Android + iOS launch together); needs EPIC 43 first | #75 |
 | 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
 | 11 | EPIC 41 Co-watch: a Shortlist of what two Companions can watch together (**blocked on EPIC 32**; needs ADR 0022, `11.sqm` — collides with EPIC 28, see the claims note) | #118 |
@@ -385,6 +385,15 @@ runs standing in where they could. What that did and did not buy:
   Supabase project. The first real signal arrives when #66 is done.
 
 ## Cross-cutting / backlog
+
+### 2026-10-10
+
+- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 45 (#257). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
+- #197 verified on an emulator against the v1.0.0 AAB and closed; its misleading copy is #258 (#266). #34, #40 closed — #163 had already shipped the icons. #222 folded into EPIC 32.
+- EPIC 25: npm lockfiles tracked and gated (#259), debug-signed AAB refused (#260), Kotlin/Native tests and the release framework on the iOS lane (#262 — it found 43 iOS tests that failed on a Spanish-language Mac).
+- EPIC 38: repo files + Dependabot (#261), `:server` removed (#263), `MuvissVersion` + catalog SDK levels (#264), generated CHANGELOG (#265), Kover (#268), shared fakes (#269), goldens in both themes 41 → 76 (#278).
+- EPIC 32 in flight, all dark: account-switch dialog (#276), server entitlement + claim + deletion on the local stack only (#283; hosted rollout order is #282), client half (#279).
+- Found: #267, #271, #273, #274, #275, #277, #280, #281.
 
 ### 2026-10-08
 
