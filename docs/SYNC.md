@@ -453,8 +453,8 @@ background" / "when the system allows" / "while Muviss is open"), a status line
 (`Synced 3m ago`, then `4 changes waiting` or `Last sync failed: <reason>` with
 **Retry**), **Resync everything** behind a confirmation, and "Session expired,
 sign in again" when the session died. `AccountChanged` opens a blocking
-"Which library should this device keep?" dialog (#148, the ADR 0019 decision on
-#75): **Replace with <account>'s library** (`DiscardLocalData`, the default) or
+"Which library should this device keep?" dialog (#148, the ADR 0019 decision
+on #75): **Replace with <account>'s library** (`DiscardLocalData`, the default) or
 **Add this device's library to <account>** (`MergeLocalDataIntoAccount`). Both
 reset the cursors and make the signed-in account the owner. "Decide later",
 Back or Escape choose nothing: the status line keeps saying why nothing syncs
