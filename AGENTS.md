@@ -74,7 +74,12 @@ the "why", and reviewers read them.
   (`feat(triage): …`) — the release train reads those titles' squash commits
   to pick the next version (`feat` → minor, otherwise patch, `!` → major).
 - **`main` is not a target.** Only `release/*` and `hotfix/*` merge into it, by
-  merge commit. A fix for a release in flight is a PR into `release/x.y.z`.
+  merge commit. A fix for a version in flight is a PR into that version's
+  `release/x.y.z` (or `hotfix/x.y.z`). It joins the version's milestone by itself,
+  and when it merges the bot opens it again into every newer release branch and
+  into `develop` (ADR 0029). A forward PR that conflicts stays open for you to
+  resolve, and a forward PR into a release branch holds that version's promotion
+  until it merges. `docs/RELEASING.md` § Staged releases has the stages and gates.
 - **Merge when it is green and approved, not before.** Wait for every required
   check (`gh pr checks --watch`), then for CodeRabbit's approval:
   1. Read each of its comments and either fix it or reply on the thread with

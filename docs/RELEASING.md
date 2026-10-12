@@ -106,9 +106,17 @@ otherwise.
 `versionCode`/`versionName` are derived from git in
 `app/androidApp/build.gradle.kts` — there is no hardcoded version anywhere:
 
-- `versionCode` = `git rev-list --count HEAD` (total commits on HEAD). It
-  only ever increases, which is all Play requires, and is well-defined
-  before the first tag exists.
+- `versionCode` = `major·1 000 000 + minor·10 000 + patch·100 + rcN` on an
+  exact release tag, `vX.Y.Z` or `vX.Y.Z-rcN` (so 1.1.0-rc4 is 1010004). A
+  release code is unique per candidate, rises with every version and RC, and
+  starts above every count-based code already uploaded (ADR 0029). Any other
+  build (untagged, ahead of a tag, dirty) keeps `git rev-list --count HEAD`, so
+  local builds still install over each other. minor, patch and rcN are capped at
+  99 and refused above it, rather than wrapped into a code that is already taken.
+  The formula is `MuvissVersion.releaseCode` in `build-logic` (tested by
+  `./gradlew -p build-logic test`, a CI step) and `scripts/release/version-code.sh`,
+  which the workflows and fastlane call. They must agree; both test suites pin
+  the same values.
 - `versionName` = the latest reachable tag (`git describe --tags --always
   --dirty`, `v` prefix stripped) when one exists, otherwise
   `0.1.0-dev.<count>+<short-sha>` (and `0.1.0-dev.<count>` if git itself
@@ -271,29 +279,83 @@ fewer**, labelled `from-play-review` + `user-feedback`.
 ### The flow
 
 ```
-feature/x ──squash──► develop ──(Monday night train, or start-release.sh)──► release/1.3.0
-                         ▲                                                       │ every push:
-                         │                                                       │  tag v1.3.0-rcN → signed AAB
-                         │                                                       │  → Play internal + GitHub pre-release
-                         │                                              PR, merge commit
-                         │                                                       ▼
-                         └──── back-merge PR (merge commit) ◄──────────────── main ── tag v1.3.0
-                                                                                  → promote rcN to production 20%
-                                                                                    (approve in the `production` environment)
-                                                                                  → ramp 50% day 2, 100% day 4
-                                                                                  → GitHub Release: rcN's AAB + DMG/DEB/MSI
+feature/x ──squash──► develop ──(Monday train)──► release/1.3.0 ── every push: tag vX.Y.Z-rcN
+                         ▲                          │             → signed AAB → Play INTERNAL
+                         │                          │
+                         │        Sunday, week 0    ▼
+                         │        gates pass ──► Play BETA (open testing), same RC binary
+                         │                          │
+                         │        Sunday, week 1    ▼
+                         │        gates pass ──► PR release/1.3.0 → main, merged as the App
+                         │                          │  (release.yml: tag v1.3.0, promote beta → production 20%)
+                         │                          │  ramp 50% day 2, 100% day 4 (play-rollout-ramp.yml)
+                         └── back-merge PR ◄────────┘  GitHub Release: the RC's AAB + DMG/DEB/MSI
 hotfix/1.3.1 is cut from main (start-release.sh 1.3.1 --hotfix) and goes the same way.
 ```
 
+Every version walks three stages (ADR 0029). See **Staged releases** below for
+the schedule, the gates and where a fix goes.
+
 | workflow | trigger | does |
 |---|---|---|
-| `ci.yml` | PRs into `develop`/`main`; pushes to `develop`, `main`, `release/**`, `hotfix/**` | build, tests, desktop, iOS |
+| `ci.yml` | PRs into `develop`/`main`; pushes to `develop`, `main`, `release/**`, `hotfix/**` | build, tests, desktop, iOS, build-logic tests (versionCode) |
 | `pr-guards.yml` | PRs into `develop`/`main`, incl. retitle/relabel | `main-source-guard`, `release-notes-guard`, `landing-guard`, release tooling tests |
-| `release-train.yml` | nightly 23:00 UTC; acts on `RELEASE_TRAIN_DAY` (default `1`, Monday); dispatch | cut `release/<next>` if `develop` has new commits and no release is open |
+| `release-train.yml` | nightly 23:00 UTC; acts on `RELEASE_TRAIN_DAY` (default `1`, Monday); dispatch | cut `release/<next>` if `develop` has new commits and no version is still in internal; create its milestone and "Release X.Y.Z" issue |
 | `release-rc.yml` | push to `release/**`, `hotfix/**` | tag `vX.Y.Z-rcN`, build (`android-release-build.yml`), Play internal, pre-release |
-| `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, promote, desktop installers, GitHub Release, back-merge PR |
-| `play-rollout-ramp.yml` | daily 08:00 UTC; dispatch | raise the production fraction along the ramp |
-| `play-promote.yml` | dispatch | `promote`, `rollout`, `halt`, `resume` |
+| `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App |
+| `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, promote beta → production (20%), desktop installers, GitHub Release, back-merge PR |
+| `release-forward.yml` | a PR merged into `release/*` or `hotfix/*` | open the fix again into every newer `release/*` and `develop` |
+| `release-milestone.yml` | a PR opened into `release/*` or `hotfix/*` | milestone `X.Y.Z` on it |
+| `play-rollout-ramp.yml` | daily 08:00 UTC; dispatch | raise the production fraction along the ramp; close the release issue at 100% |
+| `play-promote.yml` | dispatch | `rollout`, `halt`, `resume` (and `promote`, by hand) |
+
+### Staged releases (ADR 0029)
+
+| When | Stage | What happens |
+|---|---|---|
+| Monday 23:00 UTC (week 0) | internal | The train cuts `release/X.Y.Z`; the RC goes to the internal track. |
+| Sunday after (week 0) | open beta | The same RC binary is promoted from internal to the `beta` track (open testing). |
+| Sunday a week later (week 1) | production | `release/X.Y.Z` merges into `main` as the release App; `release.yml` promotes the beta build to production at 20%. The daily ramp takes it to 100%. |
+
+- **Up to three versions in flight, one per stage.** The train holds only while
+  a version is still in internal, because a new RC would replace it on that one
+  track. A version in beta, or ramping in production, does not stop a cut.
+- **Production is fully automatic** on the Sunday path: the `production`
+  environment's approval is not asked (the gates and the crash gate that holds
+  the ramp stand in for it). A manual merge into `main` still asks for it.
+- **Every step is gated.** A held version says why on its "Release X.Y.Z" issue
+  and is retried the next Sunday, or by a dispatch of `release-promote.yml`
+  (`dry_run` defaults on: it prints every decision and changes nothing). The gates:
+  - an open issue or PR labelled `release-blocker` in the version's milestone;
+  - an open PR into `release/X.Y.Z` (a fix in flight);
+  - the newest RC is not the branch head (a commit landed after it was built),
+    or that RC's `release-rc.yml` run did not succeed;
+  - CI on the branch head is not green;
+  - the store notes still carry `DRAFT:` (or are missing), checked at the beta
+    step too, since testers see them;
+  - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
+    first seen in that build;
+  - another version is still on the beta track (one per stage);
+  - for production: the version has not had its full week on beta. A held beta
+    step pushes production back with it.
+- **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
+  rollout (the ramp leaves a halted release alone until `resume`). A
+  `release-blocker` issue or PR in the milestone holds the next Sunday step. The
+  Sunday step does not read Play's halt state, so a halted release can still be
+  moved to beta or merged into `main`: halt it, and put a `release-blocker` on
+  its milestone, to stop both.
+- **Where a fix goes.** A fix for a version in flight is a PR into
+  `release/X.Y.Z` (or `hotfix/X.Y.Z`), labelled into that milestone
+  automatically. When it merges, `release-forward.yml` opens it again, as the
+  release App, into every newer open `release/*` branch and into `develop`, each
+  linking the original. A forward PR that conflicts is still opened, empty, and
+  stays open for a person; a forward PR into a release branch holds that
+  version's promotion until it merges. Each push to a release branch is a new RC.
+- **Owner prerequisites.** The `beta` (open testing) track must exist in Play
+  Console with a tester opt-in URL. The release App needs **Contents**,
+  **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
+  it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
+  refused (the step then holds, with that reason).
 
 ### Cutting a release
 
@@ -308,7 +370,10 @@ scripts/release/next-version.sh                   # what the train would cut
 
 It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
-only) another `release/*` branch is open. The branch starts with one commit:
+only) a `release/*` branch is open. The train applies ADR 0029's stagger rule
+itself and passes `--stagger-checked`; a hand cut refuses while any release
+branch is open, unless you pass that flag after checking that none is still in
+internal. The branch starts with one commit:
 draft release notes for every listing locale, seeded from the `feat`/`fix`
 subjects since the last release, first line `DRAFT: …`, and this version's
 section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
@@ -321,19 +386,23 @@ Then:
 2. Fix anything on the release branch (PRs into `release/x.y.z`). Each push is a new RC.
 3. Rewrite the notes for users in every locale and delete the `DRAFT:` line —
    `release-notes-guard` fails the PR into `main` until you do.
-4. Open the PR `release/x.y.z → main` and **merge with a merge commit** — or
+4. Nothing, on the scheduled path: the Sunday step after the beta opens the PR
+   `release/x.y.z → main` and merges it as the App (see **Staged releases**). To
+   merge by hand instead, open that PR and **merge with a merge commit** — or
    Actions > **Ship release** > Run workflow (`action: ship`), which opens it,
    waits for the approval and checks, and merges it that way.
-5. Approve the `production` deployment in the run. The ramp takes it from there;
-   halt with `gh workflow run play-promote.yml -f action=halt`.
+5. On a manual merge, approve the `production` deployment in the run. The ramp
+   takes it from there; halt with `gh workflow run play-promote.yml -f action=halt`.
 6. Merge the back-merge PR into `develop` **with a merge commit** (it is labelled
    `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch) — or run
    **Ship release** with `action: back-merge` (pass the version as `branch` when
    more than one back-merge PR is open).
 
-Production always gets the newest `vX.Y.Z-rcN`. If the branch moved after its
-last RC, `release.yml` warns and still promotes the RC — push again to get a
-new candidate first. A release with no RC fails at the tag step.
+Production gets the build on the beta track: the RC that the Sunday step promoted
+to beta, which its gates required to be the branch head. If the branch has moved
+since, the gates hold the Sunday step until a new candidate is built. A manual
+merge is not gated that way, so `release.yml` warns and still promotes the beta
+build. A release with no RC fails at the tag step.
 
 ### Branch protection
 
@@ -341,7 +410,9 @@ Rulesets (applied by `scripts/release/owner-setup.sh`), admins may bypass:
 
 - **main**: PR, 1 approval, merge commits only, checks `build`, `desktop`, `ios`,
   `Release tooling tests`, `PRs into main come from release/* or hotfix/*`,
-  `Release notes are final`.
+  `Release notes are final`. The `muviss-release` App is a **bypass actor** here:
+  the Sunday step merges the release PR as the App, without a CodeRabbit approval
+  (ADR 0029). Its gates, not the approval, are what stand in for it.
 - **develop**: PR, 1 approval, squash or merge, checks `build`, `desktop`, `ios`,
   `Release tooling tests`, `Features reach the landing`.
 - **release-tags** (`refs/tags/v*`): only admins and the `muviss-release` App
@@ -355,11 +426,18 @@ example `ios` on a docs-only PR) count as passing.
 ### The release App
 
 `muviss-release` is a private GitHub App (secrets `RELEASE_APP_ID`,
-`RELEASE_APP_PRIVATE_KEY`; variable `RELEASE_APP_ID`). The train, the RC tags
-and the back-merge PR use its token because anything done with `GITHUB_TOKEN`
-starts no workflow: a train branch would never build an RC, and a back-merge
-PR would never get CI. Without the App, the RC and release jobs fall back to
-`GITHUB_TOKEN` (and the tag ruleset will refuse them), and the train fails.
+`RELEASE_APP_PRIVATE_KEY`; variable `RELEASE_APP_ID`). The train, the RC tags,
+the back-merge PR, the Sunday promotion, and the forward PRs use its token
+because anything done with `GITHUB_TOKEN` starts no workflow: a train branch
+would never build an RC, and a PR opened with it would never get CI. Without
+the App, the RC and release jobs fall back to `GITHUB_TOKEN` (and the tag
+ruleset will refuse them), and the train fails.
+
+Its permissions (ADR 0029): **Contents** write (train branches, forward
+branches, RC tags), **Pull requests** write (back-merge, forward and release
+PRs, merging), **Issues** write (the release issues, milestones, and the
+blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
+It is a bypass actor on the `main` ruleset (see **Branch protection**).
 
 ### Shared build
 
@@ -373,9 +451,10 @@ upload to exercise the build.
 ### Publishing to Google Play (ADR 0024, EPIC 34 / #77)
 
 Wired in `android-release-build.yml` (`fastlane android internal`, from
-`release-rc.yml`), `release.yml` (`android promote`), `play-rollout-ramp.yml`
-(`android ramp`) and `play-promote.yml` (`promote`, `rollout`, `halt`,
-`resume`). The ramp policy is `fastlane/play_rollout.rb`, tested by
+`release-rc.yml`), `release-promote.yml` (`android beta`, from the Sunday step),
+`release.yml` (`android promote`), `play-rollout-ramp.yml` (`android ramp`) and
+`play-promote.yml` (`promote`, `rollout`, `halt`, `resume`). The ramp policy is
+`fastlane/play_rollout.rb`, tested by
 `fastlane/test/play_rollout_test.rb`. The Fastfile is
 `fastlane/Fastfile`; run any lane locally with `bundle exec fastlane <lane>`
 (Ruby 3.1+, `.ruby-version` pins 3.3 — macOS's system Ruby 2.6 is too old).
@@ -392,7 +471,7 @@ Wired in `android-release-build.yml` (`fastlane android internal`, from
   listing locale at `fastlane/release-notes/vX.Y.Z/<locale>.txt` (max 500
   characters), written on the release branch; every RC of that version uses
   them. They are keyed by version, not by versionCode, because the versionCode
-  is a commit count nobody knows until the commit lands. The lane copies them
+  comes from the RC tag, which exists only once the candidate is built. The lane copies them
   to supply's `changelogs/<versionCode>.txt` (generated, gitignored).
 - **The first production release is a draft too**: with
   `PLAY_RELEASE_STATUS=draft`, `promote` creates a draft production release
@@ -407,9 +486,13 @@ The decisions behind it:
 - **fastlane `supply`**, not gradle-play-publisher: it consumes the built `.aab`,
   so AGP/Gradle upgrades cannot break publishing. Ruby is pinned by a
   `Gemfile`/`Gemfile.lock` at the repo root.
-- **An RC uploads to the internal track only.** Production happens when the
-  release branch merges into `main`, behind the `production` environment's
-  approval, at 20% (ADR 0025).
+- **An RC uploads to the internal track only, and the track moves it on.** The
+  Sunday step after the train's cut promotes it internal → `beta` (Play's open
+  testing track, `fastlane android beta`), and the Sunday a week later merges the
+  release into `main`, where `release.yml` promotes the beta build to production
+  at 20% (`fastlane android promote`, which checks the beta track's latest is the
+  approved RC). The `production` environment's approval applies only to a manual
+  merge (ADR 0029; it was the whole of ADR 0025's gate).
 - **Listing copy and screenshots live in `fastlane/metadata/android/<locale>/`**
   and are the source of truth (`docs/store/LISTING.md` explains them).
 - Secret: `PLAY_SERVICE_ACCOUNT_JSON` (a Play Console service account with
