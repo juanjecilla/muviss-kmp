@@ -66,6 +66,7 @@ class SentryIssuesTest < Minitest::Test
   def test_the_body_carries_the_facts_and_the_marker_and_nothing_raw
     body = SentryIssues.render_body(ISSUE)
     assert_includes body, "[MUVISS-7](https://sentry.io/organizations/codingpit/issues/123/)"
+    assert_includes body, "**Title:** `java.lang.IllegalStateException: boom`"
     assert_includes body, "`com.codingpit.muviss.Foo in bar`"
     assert_includes body, "`com.codingpit.muviss@1.1.0+160`"
     assert_includes body, "`com.codingpit.muviss@1.1.1+170`"
@@ -107,7 +108,8 @@ class SentryIssuesTest < Minitest::Test
     page2 = [{ "body" => SentryIssues.marker("MUVISS-3") }, { "body" => "hand-written, no marker" }]
     responses = {
       [:get, "https://api.github.com/repos/o/r/issues?page=2"] => [200, page2, {}],
-      [:get, "https://api.github.com/repos/o/r/issues?labels=from-sentry"] => [200, page1, { "link" => '<https://api.github.com/repos/o/r/issues?page=2>; rel="next"' }],
+      # state=all: a closed (resolved) issue still counts, or the next sync would reopen it as new.
+      [:get, "https://api.github.com/repos/o/r/issues?labels=from-sentry&state=all"] => [200, page1, { "link" => '<https://api.github.com/repos/o/r/issues?page=2>; rel="next"' }],
     }
     http = FakeHttp.new(responses)
     sink = SentryIssues::GithubSink.new(repo: "o/r", token: "t", http: http)
