@@ -2327,7 +2327,7 @@ multicast-dns@^7.2.5:
 "muviss-sqljs-worker@file:../../core/database/src/webWorker":
   version "1.0.0"
   dependencies:
-    sql.js "1.10.3"
+    sql.js "1.14.2"
 
 negotiator@0.6.3:
   version "0.6.3"
@@ -2982,6 +2982,11 @@ sql.js@1.10.3:
   version "1.10.3"
   resolved "https://registry.yarnpkg.com/sql.js/-/sql.js-1.10.3.tgz#cd05043a9e2667010cd0520180577c90df8dd990"
   integrity sha512-H46aWtQkdyjZwFQgraUruy5h/DyJBbAK3EA/WEMqiqF6PGPfKBSKBj/er3dVyYqVIoYfRf5TFM/loEjtQIrqJg==
+
+sql.js@1.14.2:
+  version "1.14.2"
+  resolved "https://registry.yarnpkg.com/sql.js/-/sql.js-1.14.2.tgz#01088911d183482b6f961b3563233df69edc9ab5"
+  integrity sha512-3ZGPovObMFrdw79zrUHbfdE/DLIsy8jdNdssmMSQuRAymedU6q84asPt0kgiqrdMYlPegDItiIMfmIXzZnYFcw==
 
 "statuses@>= 1.5.0 < 2", statuses@~1.5.0:
   version "1.5.0"
