@@ -1,0 +1,76 @@
+name: Supabase dev
+
+# Applies supabase/ to the dev project (EPIC 43, #151) whenever it changes
+# on develop: migrations, Edge Functions and config (auth hook, redirect
+# allow-list), then runs the pgTAP suite against it. The mirror of prod,
+# which the Supabase GitHub integration deploys from `main` on its own.
+#
+# Dev only, by construction:
+#   - the project ref is written here, not read from a variable;
+#   - the credentials live in the `supabase-dev` environment, which only
+#     `develop` may deploy from;
+#   - the token is a scoped PAT that gets 403 on the prod project.
+on:
+  push:
+    branches: [develop]
+    paths: ['supabase/**', '.github/workflows/supabase-dev.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: supabase-dev
+    env:
+      PROJECT_REF: mnleklzanxxpvmakrbxv
+      POOLER_HOST: aws-0-eu-west-1.pooler.supabase.com
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_DEV_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+    steps:
+      # Pinned: this job holds the dev access token and DB password.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
+        with:
+          version: latest
+
+      - name: Link the dev project
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      # GitHub's runners have no IPv6 and the database's direct host is
+      # IPv6-only; `supabase link` does not save the IPv4 pooler URL for the
+      # commands after it, so they get it explicitly. Session mode (5432),
+      # because migrations and pgTAP need a session.
+      - name: Database URL (session pooler)
+        run: |
+          pw=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')
+          echo "::add-mask::$pw"
+          echo "DB_URL=postgresql://postgres.$PROJECT_REF:$pw@$POOLER_HOST:5432/postgres" >> "$GITHUB_ENV"
+
+      - name: Migrations
+        run: supabase db push --db-url "$DB_URL"
+
+      - name: Edge Functions
+        run: |
+          if [ -d supabase/functions ] && ls supabase/functions/*/index.ts >/dev/null 2>&1; then
+            supabase functions deploy --project-ref "$PROJECT_REF"
+          else
+            echo "No Edge Functions on this branch."
+          fi
+
+      # The whole of config.toml, so dev's auth settings and redirect
+      # allow-list are what the repo says — the drift ADR 0014 warns about.
+      - name: Config
+        run: supabase config push --yes --project-ref "$PROJECT_REF"
+
+      - name: pgTAP against dev
+        run: supabase test db --db-url "$DB_URL"

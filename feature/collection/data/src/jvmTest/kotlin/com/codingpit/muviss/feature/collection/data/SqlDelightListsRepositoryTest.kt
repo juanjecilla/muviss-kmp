@@ -2,12 +2,11 @@
 
 package com.codingpit.muviss.feature.collection.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.MediaListQueries
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -28,9 +27,7 @@ class SqlDelightListsRepositoryTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         listQueries = database.mediaListQueries
         collectionQueries = database.collectionEntryQueries
         clock = FakeClock(1_000L)

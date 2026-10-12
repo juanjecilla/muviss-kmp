@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.profile.data
 
 import com.codingpit.muviss.core.billing.EntitlementProvider
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.sync.AccountChangeResolution
 import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.OAuthRedirectTarget
 import com.codingpit.muviss.core.sync.SignInFeedback
@@ -11,7 +12,9 @@ import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncFailureReason
 import com.codingpit.muviss.core.sync.SyncOutcome
+import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
+import com.codingpit.muviss.feature.profile.domain.SignInFailure
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
@@ -120,7 +123,7 @@ class CoreSyncRepository(
 
     override suspend fun completeSignIn(authCode: String): Result<Unit> = backend.completeOAuth(authCode).map { }
 
-    override fun observeSignInFailure(): Flow<String?> = signInFeedback.lastFailure
+    override fun observeSignInFailure(): Flow<SignInFailure?> = signInFeedback.lastFailure.map { it?.toDomain() }
 
     override fun signInFailureShown() = signInFeedback.consume()
 
@@ -139,11 +142,25 @@ class CoreSyncRepository(
 
     override suspend fun resyncEverything(): SyncOutcomeSummary = if (isAvailable) summarise(engine.resyncEverything()) else SyncOutcomeSummary.Unavailable
 
+    override suspend fun resolveAccountChange(choice: AccountChangeChoice): SyncOutcomeSummary = if (isAvailable) summarise(engine.resolveAccountChange(choice.toEngine())) else SyncOutcomeSummary.Unavailable
+
+    private fun AccountChangeChoice.toEngine(): AccountChangeResolution = when (this) {
+        AccountChangeChoice.ReplaceWithAccountLibrary -> AccountChangeResolution.DiscardLocalData
+        AccountChangeChoice.AddDeviceLibraryToAccount -> AccountChangeResolution.MergeLocalDataIntoAccount
+    }
+
     private fun SyncFailureReason.toDomain(): SyncFailureKind = when (this) {
         SyncFailureReason.Offline -> SyncFailureKind.Offline
         SyncFailureReason.Unauthorised -> SyncFailureKind.Unauthorised
         SyncFailureReason.Server -> SyncFailureKind.Server
         SyncFailureReason.Unknown -> SyncFailureKind.Unknown
+    }
+
+    private fun com.codingpit.muviss.core.sync.SignInFailure.toDomain(): SignInFailure = when (this) {
+        com.codingpit.muviss.core.sync.SignInFailure.Generic -> SignInFailure.Generic
+        is com.codingpit.muviss.core.sync.SignInFailure.TimedOut -> SignInFailure.TimedOut(minutes)
+        com.codingpit.muviss.core.sync.SignInFailure.NoCode -> SignInFailure.NoCode
+        is com.codingpit.muviss.core.sync.SignInFailure.Declined -> SignInFailure.Declined(reason)
     }
 
     private fun summarise(outcome: SyncOutcome): SyncOutcomeSummary = when (outcome) {
@@ -159,11 +176,10 @@ class CoreSyncRepository(
 
         is SyncOutcome.Failed -> SyncOutcomeSummary.Failed(outcome.reason.toDomain())
 
-        // EPIC 39 built the mechanism (`SyncEngine.resolveAccountChange`);
-        // the confirmation that decides between discarding this device's
-        // library and merging it belongs to the account work (EPIC 32's
-        // ADR 0019), so until then this is surfaced clearly and left alone
-        // rather than silently syncing one person's library into another's.
+        // Nothing moved. The Profile screen asks which library to keep and
+        // answers through [resolveAccountChange]; until then every trigger,
+        // automatic or not, keeps landing here rather than silently syncing
+        // one person's library into another's.
         is SyncOutcome.AccountChanged -> SyncOutcomeSummary.AccountChanged
     }
 }

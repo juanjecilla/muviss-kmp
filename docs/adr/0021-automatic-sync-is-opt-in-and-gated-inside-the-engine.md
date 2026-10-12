@@ -74,8 +74,8 @@ walks the cause chain and matches transport errors by class *name*, because
 `DarwinHttpRequestException` are different classes on every target and common code
 sees none of them. A rejected token refresh now throws `SyncSessionExpiredException`
 (public, part of the `SyncBackend` contract) instead of surfacing as an HTTP 400
-that reads like a server fault. Copy comes from `SyncCopy` in
-`feature/profile/domain`, keyed by a mirror enum; it never reads `e.message`.
+that reads like a server fault. Copy comes from `SyncCopy.kt` in
+`feature/profile/ui` (localized resources, #217), keyed by a mirror enum in the domain; it never reads `e.message`.
 This mirrors EPIC 27's `MetadataError` idea without depending on it.
 
 **`SyncFailureReason` and `MetadataError` stay two taxonomies, on purpose**
@@ -89,7 +89,7 @@ will keep changing independently — the TMDB side already grew `RateLimited`
 after this one shipped. A shared `NetworkFailure` core both map onto was
 considered and rejected for the same reason plus the churn of touching every
 call site of both: the actual overlap is four names and a `when` branch each,
-not a real duplication problem. `SyncCopy` and `MetadataError.toUserMessage`
+not a real duplication problem. The sync copy and `MetadataError.toUserMessage`
 independently keeping to "never raw exception text" (CLAUDE.md's EPIC 27 rule)
 is what actually needs to stay true, and both do.
 
