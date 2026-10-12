@@ -1,0 +1,6 @@
+DRAFT: rewrite for users in en-US (max 500 chars) and delete this line before release/1.1.0 merges into main.
+- ask which library to keep when a different account signs in (#276)
+- a rejected TMDB credential no longer reads as being offline (#266)
+- the Play ramp holds while a release has a new crash (#193) (#255)
+- the iOS widget speaks Spanish (#222) (#253)
+- serialize the first database open, so a fresh install stops crashing (#251) (#252)
