@@ -85,7 +85,7 @@ jobs:
             echo "version=$VERSION"
             echo "tag=$TAG"
             echo "rc_tag=$RC_TAG"
-            echo "rc_version_code=$(git rev-list --count "$RC_TAG")"
+            echo "rc_version_code=$(scripts/release/version-code.sh "$RC_TAG")"
           } >> "$GITHUB_OUTPUT"
           echo "### Released \`$TAG\` (promoting \`$RC_TAG\`)" >> "$GITHUB_STEP_SUMMARY"
 
