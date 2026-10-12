@@ -80,7 +80,7 @@ The account's server rows are **kept and read-locked**: the policies above
 stop matching, nothing is purged, and renewing resumes where it stopped, with
 local edits made meanwhile merging by last-write-wins. The device's own copy
 was never at risk. Only "Delete account" removes server data. Whether keeping
-everything forever stays affordable is EPIC 45 (#257).
+everything forever stays affordable is EPIC 49 (#257).
 
 ## Deleting the account
 
