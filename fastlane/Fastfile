@@ -92,18 +92,43 @@ platform :android do
     )
   end
 
-  desc "Promote the latest internal release to production at a staged rollout"
+  # The Sunday step (ADR 0029) puts the RC on open beta a week before production.
+  # Play's open testing track is called "beta" in its API.
+  desc "Promote the internal release to open beta (the beta track)"
+  lane :beta do |options|
+    if options[:version_code]
+      expected = Integer(options[:version_code])
+      latest = google_play_track_version_codes(track: "internal", json_key_data: json_key_data).max
+      UI.user_error!("Internal track's latest is #{latest}, but the RC for the beta step is #{expected}") unless latest == expected
+    end
+
+    draft = ENV.fetch("PLAY_RELEASE_STATUS", "completed") == PlayRollout::DRAFT
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "beta",
+      track_promote_release_status: draft ? PlayRollout::DRAFT : PlayRollout::COMPLETED,
+      json_key_data: json_key_data,
+      skip_upload_aab: true,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Promote the open-beta release to production at a staged rollout"
   lane :promote do |options|
     rollout = Float(options[:rollout] || "0.2")
     UI.user_error!("rollout must be in (0, 1]") unless rollout > 0 && rollout <= 1
 
-    # release.yml passes the RC's versionCode: promoting "the latest internal
-    # release" must mean the candidate this merge approved, not whatever was
-    # uploaded last.
+    # release.yml passes the RC's versionCode: promoting "the beta release" must
+    # mean the candidate this merge approved, not whatever was promoted last.
+    # Production promotes from beta, a week after the beta step (ADR 0029).
     if options[:version_code]
       expected = Integer(options[:version_code])
-      latest = google_play_track_version_codes(track: "internal", json_key_data: json_key_data).max
-      UI.user_error!("Internal track's latest is #{latest}, but the approved RC is #{expected}") unless latest == expected
+      latest = google_play_track_version_codes(track: "beta", json_key_data: json_key_data).max
+      UI.user_error!("Beta track's latest is #{latest}, but the approved RC is #{expected}") unless latest == expected
     end
 
     # Until the app's first production release has been reviewed, Play only
@@ -111,7 +136,7 @@ platform :android do
     # that first one for review in the Console (docs/RELEASING.md).
     draft = ENV.fetch("PLAY_RELEASE_STATUS", "completed") == PlayRollout::DRAFT
     upload_to_play_store(
-      track: "internal",
+      track: "beta",
       track_promote_to: "production",
       rollout: draft ? nil : rollout.to_s,
       # On a promote, release_status describes the *source* release; the
@@ -189,6 +214,7 @@ platform :android do
     age_days = (Time.now.to_i - tagged_at) / 86_400.0
     UI.message("#{tag} is #{age_days.round(2)} days old")
 
+    ramped_to_full = false
     edit_production_release do |release|
       step = PlayRollout.next_step(status: release.status, fraction: release.user_fraction, age_days: age_days)
       next false unless step
@@ -205,8 +231,14 @@ platform :android do
         next false
       end
 
-      apply!(release, *step)
+      applied = apply!(release, *step)
+      ramped_to_full = applied && step[0] == PlayRollout::COMPLETED
+      applied
     end
+
+    # release-promote.yml's `complete` closes the release issue on this signal
+    # (ADR 0029). Written only after the edit committed.
+    File.write(ENV["RAMP_RESULT_FILE"], "completed\n") if ramped_to_full && ENV["RAMP_RESULT_FILE"]
   end
 
   desc "Halt the staged production rollout (the ramp leaves halted releases alone)"
