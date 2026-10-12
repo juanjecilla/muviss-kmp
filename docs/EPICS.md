@@ -295,6 +295,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 13 | EPIC 36 Desktop on a GitHub Release: notarised DMG, **unsigned** MSI for v1 (signing is #179), DEB (ADR 0024) | #79 |
 | 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
 | — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
+| — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0029) | #342 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
