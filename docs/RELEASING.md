@@ -211,6 +211,34 @@ messages, exceptions and breadcrumbs in `beforeSend`/`beforeBreadcrumb`.
 **Version pairing.** `sentryKmp` and `sentryCocoa` move together (see the catalog);
 last checked 2026-09-20: 0.27.0 is the latest KMP release and pins Cocoa 8.58.2.
 
+### Sentry to GitHub (#300, Ops Bridge connector #1)
+
+`.github/workflows/sentry-issues.yml` opens one GitHub issue per new **unhandled
+production** crash and resolves the crash in Sentry when that issue is closed.
+Sentry's own GitHub integration can do the first half automatically only on its
+Business plan; this runs on any plan, with the token the Play ramp's crash gate
+(`fastlane/sentry_gate.rb`) already uses.
+
+- **Hourly** (and by hand, dry by default): lists `is:unresolved error.unhandled:true
+  environment:production`, narrowed to `SENTRY_PROJECT` when it is set, and opens an issue
+  labelled `crash` + `from-sentry` for each one that has none. The body is counts and names
+  only (short id, culprit, first and last release, events, users, link) and ends in
+  `<!-- sentry:MUVISS-N -->`; never a raw event.
+- **Idempotent**: the marker is looked up in the existing `from-sentry` issues (open and
+  closed, not the search index, which lags) before anything is created, so re-running changes
+  nothing. A crash that comes back after its issue was closed does **not** reopen it (#327).
+- **Closing a `from-sentry` issue** resolves the Sentry issue *in the next release*
+  (`PUT /organizations/{org}/issues/?id=…`, the id from `/shortids/{short_id}/`). Reopening
+  does not unresolve it.
+- **Token scope: `event:write` is new.** The gate only reads (`event:read`, `org:read`);
+  resolving needs `event:write` on the same `SENTRY_AUTH_TOKEN`. Without it the hourly run
+  still works and only the close-to-resolve step fails (HTTP 403 in the run log).
+- **Secrets**: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, optionally `SENTRY_PROJECT` (all already
+  set for the mapping upload and the gate). With no token the workflow does nothing.
+- **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
+  what it would open). Tests: `ruby fastlane/test/sentry_issues_test.rb`, run by `pr-guards`.
+  Nothing here has been run against a live Sentry project (#328).
+
 ## 5. Branches, the release train and CI (ADR 0025)
 
 ### The flow

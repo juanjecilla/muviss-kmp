@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Check fastlane/release-notes for this version
         env:
           HEAD_REF: ${{ github.head_ref }}
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: Check the PR touches website/ when it ships a feature
@@ -83,8 +83,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
       - name: Rollout ramp policy
-        run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb
+        run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb && ruby fastlane/test/sentry_issues_test.rb
