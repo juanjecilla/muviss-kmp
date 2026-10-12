@@ -387,6 +387,10 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-12
+
+- **#300 built** (`.github/workflows/sentry-issues.yml`, `fastlane/sentry_issues.rb`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it as completed resolves the crash in the next release (a close as "not planned" or duplicate does not). Needs `event:write` on `SENTRY_AUTH_TOKEN`. Ops Bridge connector #1; EPIC 48 (#301) lifts its source / item / sink shape.
+
 ### 2026-10-10
 
 - Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 49 (#257; first filed as EPIC 45, renumbered when remote config took 45). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
