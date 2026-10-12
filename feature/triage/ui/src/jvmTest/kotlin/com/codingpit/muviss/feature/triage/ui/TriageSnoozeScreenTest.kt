@@ -17,6 +17,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,7 @@ class TriageSnoozeScreenTest {
         waitForIdle()
 
         val stored = harness.snoozes.snoozes.value.getValue(filmA.id)
-        assertEquals(FakeClock().todayEpochDay() + 7, stored.dueAtEpochDay)
+        assertEquals(FakeClock(NOW_EPOCH_MS).todayEpochDay() + 7, stored.dueAtEpochDay)
         // A Snooze is not a verdict (ADR 0023): nothing is decided, nothing saved.
         assertTrue(harness.repository.decisions.value.isEmpty())
         assertTrue(harness.collection.added.isEmpty())
@@ -179,7 +180,7 @@ class TriageSnoozeScreenTest {
         onNodeWithText("3 months").performClick()
         waitForIdle()
 
-        assertEquals(FakeClock().todayEpochDay() + 90, harness.snoozes.snoozes.value.getValue(filmA.id).dueAtEpochDay)
+        assertEquals(FakeClock(NOW_EPOCH_MS).todayEpochDay() + 90, harness.snoozes.snoozes.value.getValue(filmA.id).dueAtEpochDay)
     }
 
     @Test

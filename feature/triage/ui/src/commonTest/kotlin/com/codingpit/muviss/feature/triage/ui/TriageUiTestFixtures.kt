@@ -1,12 +1,12 @@
 package com.codingpit.muviss.feature.triage.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.analytics.AnalyticsEvent
 import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -74,10 +74,6 @@ internal fun detailsFor(summary: MediaSummary): MediaDetails = when (summary.typ
             ),
         ),
     )
-}
-
-internal class FakeClock(private val millis: Long = NOW_EPOCH_MS) : AppClock {
-    override fun nowEpochMs(): Long = millis
 }
 
 internal class RecordingAnalytics : AnalyticsTracker {
@@ -349,7 +345,7 @@ internal class TriageHarness(
     val preferences = FakeTriagePreferences(tutorialSeen)
     val flags = FakeFeatureFlags(flagsConfig.scheme, deckAnimations = flagsConfig.deckAnimations)
     val snoozes = FakeTriageSnoozeRepository()
-    private val clock = FakeClock()
+    private val clock = FakeClock(NOW_EPOCH_MS)
 
     private val record = RecordDecisionUseCase(repository, collection, progress, details, clock)
 

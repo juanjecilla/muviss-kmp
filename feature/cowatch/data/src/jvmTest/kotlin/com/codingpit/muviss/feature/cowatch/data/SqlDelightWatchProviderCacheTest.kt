@@ -2,11 +2,10 @@
 
 package com.codingpit.muviss.feature.cowatch.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -21,15 +20,11 @@ private class CacheTestDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val io = d
 }
 
-private class CacheTestClock(var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-}
-
 /** [SqlDelightWatchProviderCache] against a real database (EPIC 41 follow-up, #122). */
 class SqlDelightWatchProviderCacheTest {
 
     private lateinit var database: MuvissDatabase
-    private lateinit var clock: CacheTestClock
+    private lateinit var clock: FakeClock
     private lateinit var cache: SqlDelightWatchProviderCache
 
     private val movie = MediaId.tmdbMovie("1")
@@ -37,10 +32,8 @@ class SqlDelightWatchProviderCacheTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        database = MuvissDatabase(driver)
-        clock = CacheTestClock(1_000L)
+        database = inMemoryDatabase()
+        clock = FakeClock(1_000L)
         cache = SqlDelightWatchProviderCache(database, clock, CacheTestDispatchers(UnconfinedTestDispatcher()))
     }
 
@@ -51,7 +44,7 @@ class SqlDelightWatchProviderCacheTest {
 
     @Test
     fun `a put round-trips region, ids and the write-time timestamp`() = runTest {
-        clock.millis = 5_000L
+        clock.epochMs = 5_000L
         cache.put(movie, region = "US", flatrateProviderIds = setOf("8", "337"))
 
         val cached = cache.get(setOf(movie))[movie]!!
@@ -70,7 +63,7 @@ class SqlDelightWatchProviderCacheTest {
     @Test
     fun `a second put for the same id replaces rather than accumulates`() = runTest {
         cache.put(movie, region = "US", flatrateProviderIds = setOf("8"))
-        clock.millis = 2_000L
+        clock.epochMs = 2_000L
         cache.put(movie, region = "GB", flatrateProviderIds = setOf("30"))
 
         val cached = cache.get(setOf(movie))[movie]!!

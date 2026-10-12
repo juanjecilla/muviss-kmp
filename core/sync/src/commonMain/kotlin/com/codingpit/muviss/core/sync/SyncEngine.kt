@@ -166,7 +166,7 @@ class SyncEngine(
             ownerAccountId = state?.ownerAccountId,
             lastAttemptAtEpochMs = state?.lastAttemptAtEpochMs,
             lastAttemptFailed = failed,
-            lastFailure = if (failed) SyncFailureReason.fromStored(state?.lastError) ?: SyncFailureReason.Unknown else null,
+            lastFailure = if (failed) SyncFailureReason.fromStored(state.lastError) ?: SyncFailureReason.Unknown else null,
             consecutiveFailures = state?.consecutiveFailures?.toInt() ?: 0,
             pendingChanges = pending,
         )

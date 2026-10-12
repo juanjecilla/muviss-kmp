@@ -255,7 +255,10 @@ It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
 only) another `release/*` branch is open. The branch starts with one commit:
 draft release notes for every listing locale, seeded from the `feat`/`fix`
-subjects since the last release, first line `DRAFT: …`.
+subjects since the last release, first line `DRAFT: …`, and this version's
+section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
+uncapped). The changelog is generated, not edited: a fix merged into the
+release branch later is in the RC but not in that section.
 
 Then:
 
@@ -523,10 +526,9 @@ clicks sign in.
 
 ### App icon
 
-`app/desktopApp/icons/{icon.icns,icon.ico,icon.png}` are a **placeholder**
-generated programmatically (a flat rounded-square "play" glyph) — there's no
-real Muviss brand artwork yet. Regenerating them from real artwork later is
-a manual follow-up; nothing in the build depends on their content, only
+`app/desktopApp/icons/{icon.icns,icon.ico,icon.png}` are the real app icon,
+rasterised from the SVG masters in `docs/design/icon-src/` (#163), like every
+other platform's. Regenerate them from there; the build depends only on
 their presence/format (`.icns` for `macOS { iconFile }`, `.ico` for
 `windows { iconFile }`, `.png` for `linux { iconFile }`).
 
@@ -985,13 +987,11 @@ required (module workers and the wasm fetch both need an HTTP origin).
 
 `app/webApp/src/webMain/resources/manifest.webmanifest` + `icons/` (192,
 512, a maskable 512, a 32×32 favicon, and a 180×180 Apple touch icon) are
-all derived from `app/desktopApp/icons/icon.png` via `sips` (same
-placeholder-art caveat item 7 gives the desktop icons — there's no real
-Muviss brand artwork yet, so regenerating these from real artwork later is
-a manual follow-up, same as the desktop ones). `theme_color`/`background_color`
+regenerated from the same `docs/design/icon-src/` masters as every other
+platform's icon (#163). `theme_color`/`background_color`
 in the manifest and the `<meta name="theme-color">` in `index.html` match
-the app's actual Material theme (`Purple = 0xFF6C5CE7`, `core/designsystem/.../Theme.kt`),
-not a placeholder color. Verified installable in Chrome (the manifest
+`MuvissPalette` (`:core:designsystem`), corrected from the old purple
+placeholder in #163. Verified installable in Chrome (the manifest
 resolves, icons load, `display: "standalone"` is honored) as part of this
 epic's live-browser check — an actual "Install" prompt/App icon on a home
 screen was not captured (no mobile device in this environment), but the
@@ -1065,6 +1065,15 @@ directory (ADR 0016) — the app works exactly as before and the widget shows
 an empty library.
 
 ### iOS: one-time setup
+
+`scripts/release/apple-setup.sh` walks through all of this and the rest of the
+Apple side — membership, Team ID, App Group, both App IDs (with Sign in with
+Apple), the App Store Connect record, the App Store Connect API key and the
+Developer ID certificate for the DMG — storing what CI will need as GitHub
+secrets (`APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
+`APP_STORE_CONNECT_KEY_P8`, `MACOS_DEVELOPER_ID_P12_BASE64`,
+`MACOS_DEVELOPER_ID_P12_PASSWORD`) and `APPLE_TEAM_ID` as a variable. The
+steps it automates are the ones below.
 
 1. **Fill in `TEAM_ID`** in `app/iosApp/Configuration/Config.xcconfig` (Xcode
    > Signing & Capabilities shows it once a team is selected). Same value the
