@@ -28,7 +28,7 @@ material3Adaptive = "1.2.0"
 # Added for Muviss
 koin = "4.2.2"
 sqldelight = "2.4.1"
-coil = "3.6.3"
+coil = "3.3.0"
 navigationCompose = "2.9.2"
 turbine = "1.2.1"
 detekt = "1.23.8"
