@@ -19,6 +19,8 @@ concurrency:
 
 permissions:
   contents: read
+  # Closing the release issue at 100% (release-promote.yml's `complete`).
+  issues: write
 
 jobs:
   ramp:
@@ -43,6 +45,8 @@ jobs:
           # needs event:read (org:read) on top of what mapping uploads use.
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          # The ramp writes this file when it reaches 100% (the Fastfile's ramp lane).
+          RAMP_RESULT_FILE: ${{ runner.temp }}/ramp-result.txt
         run: |
           if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
             echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; nothing to ramp."
@@ -52,4 +56,17 @@ jobs:
             echo "::notice::No release tag yet; nothing to ramp."
             exit 0
           fi
+          rm -f "$RAMP_RESULT_FILE"
           bundle exec fastlane android ramp
+
+      # ADR 0029: a version whose rollout reached 100% is finished, so its
+      # "Release X.Y.Z" issue closes. Only the newest tag can be ramping.
+      - name: Close the release issue at 100%
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RAMP_RESULT_FILE: ${{ runner.temp }}/ramp-result.txt
+        run: |
+          [ -s "$RAMP_RESULT_FILE" ] || exit 0
+          VERSION="$(git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1 | sed 's/^v//')"
+          ruby fastlane/release_promote.rb complete "$VERSION"
