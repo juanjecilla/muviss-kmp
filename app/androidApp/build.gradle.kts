@@ -235,6 +235,10 @@ tasks.register("verifyReleaseExceptionClasses") {
     group = "verification"
     description = "Fails if R8 merged one of the app's exceptions into another class (#199)."
     dependsOn("minifyReleaseWithR8")
+    // AGP 9.1+ rewrites mapping.txt after R8, merging the Compose mapping into it
+    // (`mergeReleaseComposeMapping`). Reading it without that dependency is an
+    // undeclared overlap Gradle refuses, and it failed the 1.1.0 RC build.
+    dependsOn(tasks.matching { it.name == "mergeReleaseComposeMapping" })
     val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
     // A local copy: the action must not capture the build script (configuration cache).
     val canaries = exceptionCanaries
