@@ -34,7 +34,8 @@ module OpsBridge
       sync(connector: connector, sink: GithubSink.new(repo: env["GITHUB_REPOSITORY"], token: env["GITHUB_TOKEN"]), dry_run: dry_run, log: log)
     else
       issue = JSON.parse(File.read(env.fetch("GITHUB_EVENT_PATH"))).fetch("issue")
-      resolve_closed(connector: connector, labels: issue.fetch("labels").map { |label| label["name"] }, body: issue["body"], dry_run: dry_run, log: log)
+      resolve_closed(connector: connector, labels: issue.fetch("labels").map { |label| label["name"] }, body: issue["body"],
+                     state_reason: issue["state_reason"], dry_run: dry_run, log: log)
     end
     0
   rescue ApiError, ArgumentError, KeyError => e

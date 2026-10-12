@@ -151,13 +151,19 @@ module OpsBridge
 
   # The closed-issue run: ask the connector to resolve what a closed issue was opened for.
   # Returns the id it resolved, or nil if the issue is not one of that connector's.
-  def resolve_closed(connector:, labels:, body:, dry_run: false, log: ->(_line) {})
+  # Only a close as completed resolves: "not planned" or "duplicate" means nobody fixed it,
+  # and resolving would hide it (for Sentry, from the next sync and from the ramp's crash gate).
+  def resolve_closed(connector:, labels:, body:, state_reason: "completed", dry_run: false, log: ->(_line) {})
     unless connector.respond_to?(:resolve)
       log.call("#{connector.name} has no reverse mapping; nothing to resolve")
       return nil
     end
     unless labels.include?(connector.source_label)
       log.call("not a #{connector.source_label} issue; nothing to resolve")
+      return nil
+    end
+    unless state_reason.nil? || state_reason == "completed"
+      log.call("closed as #{state_reason}; not resolving")
       return nil
     end
 

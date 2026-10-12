@@ -290,6 +290,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 13 | EPIC 35 iOS to TestFlight and the App Store: fastlane + App Store Connect API key, local-only v1 (ADR 0024) | #78 |
 | 13 | EPIC 36 Desktop on a GitHub Release: notarised DMG, **unsigned** MSI for v1 (signing is #179), DEB (ADR 0024) | #79 |
 | 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
+| — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
@@ -388,12 +389,12 @@ runs standing in where they could. What that did and did not buy:
 
 ### 2026-10-12
 
-- **#300 built** (`.github/workflows/sentry-issues.yml`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it resolves the crash in the next release. Needs `event:write` on `SENTRY_AUTH_TOKEN`.
+- **#300 built** (`.github/workflows/sentry-issues.yml`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it as completed resolves the crash in the next release (a close as "not planned" or duplicate does not). Needs `event:write` on `SENTRY_AUTH_TOKEN`.
 - **EPIC 48 (#301) built**: the Ops Bridge (`fastlane/ops_bridge/`, README says how to add a connector). #300's script is refactored onto its source / item / sink shape, and connector #2 opens an issue per Play review of 3 stars or fewer (daily; the Reviews API keeps one week; no reviewer name). Owner step: tick *Reply to reviews* for the Play service account.
 
 ### 2026-10-10
 
-- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 45 (#257). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
+- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 49 (#257; first filed as EPIC 45, renumbered when remote config took 45). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
 - #197 verified on an emulator against the v1.0.0 AAB and closed; its misleading copy is #258 (#266). #34, #40 closed — #163 had already shipped the icons. #222 folded into EPIC 32.
 - EPIC 25: npm lockfiles tracked and gated (#259), debug-signed AAB refused (#260), Kotlin/Native tests and the release framework on the iOS lane (#262 — it found 43 iOS tests that failed on a Spanish-language Mac).
 - EPIC 38: repo files + Dependabot (#261), `:server` removed (#263), `MuvissVersion` + catalog SDK levels (#264), generated CHANGELOG (#265), Kover (#268), shared fakes (#269), goldens in both themes 41 → 76 (#278).

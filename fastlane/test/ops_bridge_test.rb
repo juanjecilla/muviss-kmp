@@ -43,7 +43,8 @@ class OpsBridgeTest < Minitest::Test
     page2 = [{ "body" => OpsBridge.marker("stub", "3") }, { "body" => "hand-written, no marker" }, { "body" => OpsBridge.marker("other", "4") }]
     sink, = github(
       [:get, "https://api.github.com/repos/o/r/issues?page=2"] => [200, page2, {}],
-      [:get, "https://api.github.com/repos/o/r/issues?labels=from-stub"] => [200, page1, { "link" => '<https://api.github.com/repos/o/r/issues?page=2>; rel="next"' }],
+      # state=all: a closed issue still counts, or the next sync would open its item again.
+      [:get, "https://api.github.com/repos/o/r/issues?labels=from-stub&state=all"] => [200, page1, { "link" => '<https://api.github.com/repos/o/r/issues?page=2>; rel="next"' }],
     )
     assert_equal %w[1 3], sink.known_ids(StubConnector.new([]))
   end
@@ -122,6 +123,21 @@ class OpsBridgeTest < Minitest::Test
   def test_a_connector_with_no_reverse_mapping_does_nothing
     connector = StubConnector.new([], resolvable: false)
     assert_nil OpsBridge.resolve_closed(connector: connector, labels: %w[from-stub], body: OpsBridge.marker("stub", "a"))
+  end
+
+  def test_a_close_as_not_planned_or_duplicate_resolves_nothing
+    connector = StubConnector.new([])
+    %w[not_planned duplicate].each do |reason|
+      assert_nil OpsBridge.resolve_closed(connector: connector, labels: %w[from-stub], body: OpsBridge.marker("stub", "a"),
+                                          state_reason: reason)
+    end
+    assert_empty connector.resolved
+  end
+
+  def test_a_close_as_completed_resolves
+    connector = StubConnector.new([])
+    OpsBridge.resolve_closed(connector: connector, labels: %w[from-stub], body: OpsBridge.marker("stub", "a"), state_reason: "completed")
+    assert_equal ["a"], connector.resolved
   end
 
   def test_a_dry_run_close_resolves_nothing

@@ -29,6 +29,7 @@ module OpsBridge
         short_id = issue.fetch("shortId")
         rows = [
           ["Sentry", issue["permalink"] ? "[#{short_id}](#{issue['permalink']})" : short_id],
+          ["Title", code(issue["title"])],
           ["Culprit", code(issue["culprit"])],
           ["First seen in", code(release_of(issue["firstRelease"]))],
           ["Last seen in", code(release_of(issue["lastRelease"]))],

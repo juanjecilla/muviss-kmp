@@ -42,6 +42,7 @@ class SentryConnectorTest < Minitest::Test
   def test_the_body_carries_the_facts_and_the_marker_and_nothing_raw
     body = Sentry.render_body(ISSUE)
     assert_includes body, "[MUVISS-7](https://sentry.io/organizations/codingpit/issues/123/)"
+    assert_includes body, "**Title:** `java.lang.IllegalStateException: boom`"
     assert_includes body, "`com.codingpit.muviss.Foo in bar`"
     assert_includes body, "`com.codingpit.muviss@1.1.0+160`"
     assert_includes body, "`com.codingpit.muviss@1.1.1+170`"
