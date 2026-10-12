@@ -126,12 +126,12 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
     // nothing else happening. Ticking from here — the composition's own
     // effect, cancelled automatically when this screen leaves composition —
     // rather than from a `viewModelScope` coroutine in `ProfileViewModel`:
-    // see `refreshLastSyncedLabel`'s KDoc for why a ViewModel-owned infinite
+    // see `refreshLastSynced`'s KDoc for why a ViewModel-owned infinite
     // loop is the wrong place for this.
     LaunchedEffect(Unit) {
         while (isActive) {
             delay(LAST_SYNCED_LABEL_TICK)
-            viewModel.refreshLastSyncedLabel()
+            viewModel.refreshLastSynced()
         }
     }
 
@@ -178,6 +178,9 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
                     onResyncEverythingRequested = viewModel::onResyncEverythingRequested,
                     onResyncEverythingConfirmed = viewModel::onResyncEverythingConfirmed,
                     onResyncEverythingDismissed = viewModel::onResyncEverythingDismissed,
+                    onAccountChoiceMade = viewModel::onAccountChoiceMade,
+                    onAccountChoiceDeferred = viewModel::onAccountChoiceDeferred,
+                    onAccountChoiceRequested = viewModel::onAccountChoiceRequested,
                 ),
             )
             HorizontalDivider()

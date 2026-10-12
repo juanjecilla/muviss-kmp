@@ -13,6 +13,12 @@ plugins {
     id("com.android.lint")
 }
 
+// SDK levels come from the version catalog, like :app:androidApp's, so a
+// compileSdk bump is one line and cannot leave the libraries behind (#71).
+// Precompiled scripts get no `libs` accessor, hence the lookup by name.
+val catalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
+fun sdkLevel(name: String): Int = catalog.findVersion(name).get().requiredVersion.toInt()
+
 val moduleNamespace: String = "com.codingpit.muviss." +
     path.removePrefix(":").replace(":", ".").replace("-", "")
 
@@ -37,8 +43,8 @@ kotlin {
 
     androidLibrary {
         namespace = moduleNamespace
-        compileSdk = 36
-        minSdk = 24
+        compileSdk = sdkLevel("android-compileSdk")
+        minSdk = sdkLevel("android-minSdk")
 
         compilerOptions {
             jvmTarget = JvmTarget.JVM_11

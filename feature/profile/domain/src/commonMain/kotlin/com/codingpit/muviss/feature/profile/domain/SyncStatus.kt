@@ -43,7 +43,7 @@ sealed interface SyncAccountState {
     /**
      * Signed out, but not by choice: the session died (the refresh token was
      * rejected) and the last sync said so. Rendered as [SignedOut] plus
-     * [SyncCopy.SESSION_EXPIRED], so a silent stop cannot pass for "never
+     * the UI's "session expired" line, so a silent stop cannot pass for "never
      * signed in". Cleared by signing in again or signing out on purpose.
      */
     data object SessionExpired : SyncAccountState
@@ -68,8 +68,42 @@ sealed interface SyncOutcomeSummary {
 
     /**
      * This device's library belongs to a different account than the one signed
-     * in, so nothing moved. Surfaced clearly and left there: whether to discard
-     * or merge is EPIC 32's decision (ADR 0019), not this screen's.
+     * in, so nothing moved. Nothing will until the person answers with
+     * [SyncRepository.resolveAccountChange] — sending one person's library into
+     * another's account is not something to do on their behalf.
      */
     data object AccountChanged : SyncOutcomeSummary
+}
+
+/**
+ * The answer to [SyncOutcomeSummary.AccountChanged]: what happens to the
+ * library on this device now that a different account is signed in (the
+ * ADR 0019 decision recorded on #75). A domain mirror of
+ * `core.sync.AccountChangeResolution`, for the same reason as [SyncAccountState].
+ */
+enum class AccountChangeChoice {
+    /**
+     * Delete this device's library and take the signed-in account's. The
+     * default: nothing of the previous person's survives on the device, and
+     * nothing of theirs is sent into someone else's account.
+     */
+    ReplaceWithAccountLibrary,
+
+    /** Keep this device's library and send all of it to the signed-in account, alongside what the account already holds. */
+    AddDeviceLibraryToAccount,
+}
+
+/**
+ * Why a sign-in attempt did not finish, mirrored from
+ * `core.sync.SignInFailure` for the same reason as [SyncAccountState]. The
+ * wording is the UI's; [Declined.reason] is the identity provider's own text.
+ */
+sealed interface SignInFailure {
+    data object Generic : SignInFailure
+
+    data class TimedOut(val minutes: Int) : SignInFailure
+
+    data object NoCode : SignInFailure
+
+    data class Declined(val reason: String?) : SignInFailure
 }

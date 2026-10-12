@@ -205,7 +205,7 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
                 // exchange can fail with a Ktor/Supabase exception whose text
                 // embeds the request URL, same reason `TmdbProvider` never
                 // shows a raw exception either (see EPIC 27, CLAUDE.md).
-                .onFailure { feedback.report(null) }
+                .onFailure { feedback.report() }
         }
     }
 }

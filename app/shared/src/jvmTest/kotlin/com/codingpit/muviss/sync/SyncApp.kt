@@ -1,7 +1,5 @@
 package com.codingpit.muviss.sync
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.billing.Entitlement
 import com.codingpit.muviss.core.billing.EntitlementProvider
 import com.codingpit.muviss.core.common.AppClock
@@ -20,6 +18,7 @@ import com.codingpit.muviss.core.sync.SyncTiming
 import com.codingpit.muviss.core.sync.supabase.createSupabaseSyncBackend
 import com.codingpit.muviss.core.testing.CountingDriver
 import com.codingpit.muviss.core.testing.FakeSupabaseServer
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.models.MediaDetails
@@ -77,7 +76,7 @@ internal class SyncApp(
     backgroundAvailable: Boolean = true,
     timing: SyncTiming? = null,
 ) {
-    val driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { MuvissDatabase.Schema.synchronous().create(it) })
+    val driver = CountingDriver(inMemoryDriver())
     val database = MuvissDatabase(driver)
     val entitlements = ControllableEntitlements(entitlement)
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
