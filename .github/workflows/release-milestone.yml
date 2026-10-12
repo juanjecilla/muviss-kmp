@@ -1,0 +1,38 @@
+name: Release milestone
+
+# A PR into release/X.Y.Z or hotfix/X.Y.Z gets the milestone X.Y.Z (ADR 0029),
+# so the version's fixes and its release-blocker issues are one list. The train
+# creates the milestone for each cut; this covers a branch cut by hand
+# (scripts/release/milestone.sh). Forward PRs from release-forward.yml get it too.
+#
+# GITHUB_TOKEN is enough: this only sets metadata, and pushes and opens nothing.
+on:
+  pull_request:
+    branches: [ 'release/**', 'hotfix/**' ]
+    types: [ opened, reopened ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  milestone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Put the PR under the version's milestone
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: scripts/release/milestone.sh "$PR" "$BASE"

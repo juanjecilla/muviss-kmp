@@ -1,0 +1,60 @@
+name: Forward a fix
+
+# A PR merged into release/X.Y.Z or hotfix/X.Y.Z is opened again, as the release
+# App, into every newer open release/* branch and into develop, each linking the
+# original (ADR 0029), so a fix made on an older line is not lost from the next
+# release. A forward PR whose cherry-pick conflicts is still opened, empty, and
+# stays open for a person (scripts/release/forward-fix.sh).
+#
+# The App, not GITHUB_TOKEN: it pushes the forward branches, and the PRs it opens
+# need CI runs and must start release-milestone.yml. A forward PR is not
+# forwarded again: its original already went to every line.
+on:
+  pull_request:
+    branches: [ 'release/**', 'hotfix/**' ]
+    types: [ closed ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  forward:
+    if: github.event.pull_request.merged == true && !startsWith(github.event.pull_request.head.ref, 'forward/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # Keeps the App's credentials, which the forward branches are pushed with.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Commit as the release App
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
+
+      - name: Forward the fix to the newer lines and develop
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SOURCE: ${{ github.event.pull_request.base.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: scripts/release/forward-fix.sh all "$PR" "$SOURCE" "$MERGE_SHA"
