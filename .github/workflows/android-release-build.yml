@@ -79,6 +79,9 @@ jobs:
           # when set; the v3 key is the fallback (CLAUDE.md, #91, #197).
           TMDB_READ_TOKEN: ${{ secrets.TMDB_READ_TOKEN }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          # Remote config (EPIC 45, ADR 0026). Blank = defaults only, no request ever
+          # made; the secret is set when the owner has created the ConfigCat product.
+          CONFIGCAT_SDK_KEY: ${{ secrets.CONFIGCAT_SDK_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           # Sentry Gradle plugin (:app:androidApp/build.gradle.kts): uploads the
           # R8 mapping only when all three of these are set, and does nothing —

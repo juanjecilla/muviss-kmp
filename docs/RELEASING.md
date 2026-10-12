@@ -211,6 +211,34 @@ messages, exceptions and breadcrumbs in `beforeSend`/`beforeBreadcrumb`.
 **Version pairing.** `sentryKmp` and `sentryCocoa` move together (see the catalog);
 last checked 2026-09-20: 0.27.0 is the latest KMP release and pins Cocoa 8.58.2.
 
+### Sentry to GitHub (#300, Ops Bridge connector #1)
+
+`.github/workflows/sentry-issues.yml` opens one GitHub issue per new **unhandled
+production** crash and resolves the crash in Sentry when that issue is closed.
+Sentry's own GitHub integration can do the first half automatically only on its
+Business plan; this runs on any plan, with the token the Play ramp's crash gate
+(`fastlane/sentry_gate.rb`) already uses.
+
+- **Hourly** (and by hand, dry by default): lists `is:unresolved error.unhandled:true
+  environment:production`, narrowed to `SENTRY_PROJECT` when it is set, and opens an issue
+  labelled `crash` + `from-sentry` for each one that has none. The body is counts and names
+  only (short id, culprit, first and last release, events, users, link) and ends in
+  `<!-- sentry:MUVISS-N -->`; never a raw event.
+- **Idempotent**: the marker is looked up in the existing `from-sentry` issues (open and
+  closed, not the search index, which lags) before anything is created, so re-running changes
+  nothing. A crash that comes back after its issue was closed does **not** reopen it (#327).
+- **Closing a `from-sentry` issue** resolves the Sentry issue *in the next release*
+  (`PUT /organizations/{org}/issues/?id=…`, the id from `/shortids/{short_id}/`). Reopening
+  does not unresolve it.
+- **Token scope: `event:write` is new.** The gate only reads (`event:read`, `org:read`);
+  resolving needs `event:write` on the same `SENTRY_AUTH_TOKEN`. Without it the hourly run
+  still works and only the close-to-resolve step fails (HTTP 403 in the run log).
+- **Secrets**: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, optionally `SENTRY_PROJECT` (all already
+  set for the mapping upload and the gate). With no token the workflow does nothing.
+- **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
+  what it would open). Tests: `ruby fastlane/test/sentry_issues_test.rb`, run by `pr-guards`.
+  Nothing here has been run against a live Sentry project (#328).
+
 ## 5. Branches, the release train and CI (ADR 0025)
 
 ### The flow
@@ -1128,3 +1156,42 @@ because building it needs Xcode and a team. Expect to adjust:
    names an episode.** This is the whole point of the stored catalog; if it
    goes blank, the App Group is not wired up and the extension is reading its
    own empty database.
+
+## 12. Remote config (ConfigCat) — EPIC 45 / issue #297
+
+Remote Config (ADR 0026) serves two values without a release: `byokEnabled`
+and `tmdbFallbackReadToken`. It is **off until you create the product**: a
+build with a blank `CONFIGCAT_SDK_KEY` binds a defaults-only implementation
+that never makes a request, which is what every local, CI and current release
+build does.
+
+Owner steps to switch it on:
+
+1. Create a ConfigCat account and a product ("Muviss") with **EU data
+   governance** (the code asks for it; a product on the global CDN would
+   mismatch). Free tier is enough: two settings, one fetch per active device
+   per hour at most.
+2. Create the two settings with exactly these **keys**:
+   `byokEnabled` (boolean, default `false`) and `tmdbFallbackReadToken`
+   (text). ConfigCat will not save an empty text value, so give it a
+   placeholder such as `none`: the app only uses the value when it has the
+   shape of a TMDB v4 read token (`eyJ…`, three dot-separated parts), and
+   anything else means "use the built-in credential".
+3. Copy the environment's **SDK key**. It ships in the binary like the TMDB
+   credential, so it must be the read-only key ConfigCat shows; never a
+   management API credential.
+4. `gh secret set CONFIGCAT_SDK_KEY` (or `scripts/release/owner-setup.sh`), and
+   `CONFIGCAT_SDK_KEY=…` in `local.properties` for a local build. Set
+   `BYOK_ENABLED=true` locally to see the compiled default flip.
+
+**Rotating the TMDB credential** (the reason this exists): put the new v4 read
+token in `tmdbFallbackReadToken`. Installs pick it up on their next foreground
+(within an hour), and a cold start applies the stored copy before its first
+TMDB request. Background workers (new-episode checks, background sync) never
+fetch; they use whatever the last foreground stored. The served token is no more
+secret than the one in the APK — the point is rotation, not secrecy. Set it back to
+`none` to fall back to the built-in credential.
+
+`docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
+(it exposes the device IP to ConfigCat and sends nothing about the user), so
+setting the secret needs no further copy change.

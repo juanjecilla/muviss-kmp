@@ -102,6 +102,7 @@ internal class FakeFeatureFlags(
     override val triageDeckAnimations: Flow<Boolean> = deck
     private val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
+    override val byokEnabled: Flow<Boolean> = MutableStateFlow(false)
 
     /** Settable directly, like the motion flags, so a deck test can pick a period without suspending. */
     val snoozePeriod = MutableStateFlow(snoozePeriodInitial)

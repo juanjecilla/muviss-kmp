@@ -7,8 +7,10 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
@@ -31,6 +33,7 @@ import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
 class AppSettingsFeatureFlags(
     private val queries: AppSettingsQueries,
     private val dispatchers: AppDispatchers,
+    remoteConfig: RemoteConfig,
 ) : FeatureFlags {
 
     override val triageControlScheme: Flow<TriageControlScheme> = settings()
@@ -52,6 +55,9 @@ class AppSettingsFeatureFlags(
 
     override val triageSnoozePlacement: Flow<SnoozePlacement> = settings()
         .map { row -> SnoozePlacement.fromStored(row?.triageSnoozePlacement) }
+
+    // Not a column: served to every install, so nothing local can write it.
+    override val byokEnabled: Flow<Boolean> = remoteConfig.values.map { it.byokEnabled }.distinctUntilChanged()
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = withContext(dispatchers.io) {
         ensureRow()
