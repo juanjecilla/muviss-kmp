@@ -271,6 +271,22 @@ class SentryIssuesTest < Minitest::Test
     assert_empty source.resolved
   end
 
+  def test_a_close_as_not_planned_or_duplicate_resolves_nothing
+    source = StubSource.new([])
+    %w[not_planned duplicate].each do |reason|
+      assert_nil SentryIssues.resolve_closed(labels: %w[from-sentry], body: SentryIssues.render_body(ISSUE),
+                                             source: source, state_reason: reason)
+    end
+    assert_empty source.resolved
+  end
+
+  def test_a_close_as_completed_resolves
+    source = StubSource.new([])
+    SentryIssues.resolve_closed(labels: %w[from-sentry], body: SentryIssues.render_body(ISSUE), source: source,
+                                state_reason: "completed")
+    assert_equal ["MUVISS-7"], source.resolved
+  end
+
   def test_a_dry_run_close_resolves_nothing
     source = StubSource.new([])
     SentryIssues.resolve_closed(labels: %w[from-sentry], body: SentryIssues.render_body(ISSUE), source: source, dry_run: true)

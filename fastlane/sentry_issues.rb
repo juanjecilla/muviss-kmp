@@ -259,9 +259,16 @@ module SentryIssues
 
   # The closed-issue run: resolve the Sentry issue a closed `from-sentry` GitHub issue was opened for.
   # Returns the short id it resolved, or nil if the issue is not one of ours.
-  def resolve_closed(labels:, body:, source:, dry_run: false, log: ->(_line) {})
+  # Only a close as completed resolves: "not planned" or "duplicate" means
+  # nobody fixed it, and a resolved crash drops out of the sync and the ramp gate.
+  def resolve_closed(labels:, body:, source:, state_reason: "completed", dry_run: false, log: ->(_line) {})
     unless labels.include?(SOURCE_LABEL)
       log.call("not a #{SOURCE_LABEL} issue; nothing to resolve")
+      return nil
+    end
+
+    unless state_reason.nil? || state_reason == "completed"
+      log.call("closed as #{state_reason}; not resolving in Sentry")
       return nil
     end
 
@@ -292,7 +299,8 @@ module SentryIssues
     when "resolve"
       event = JSON.parse(File.read(env.fetch("GITHUB_EVENT_PATH")))
       issue = event.fetch("issue")
-      resolve_closed(labels: issue.fetch("labels").map { |label| label["name"] }, body: issue["body"], source: source, dry_run: dry_run, log: log)
+      resolve_closed(labels: issue.fetch("labels").map { |label| label["name"] }, body: issue["body"],
+                     state_reason: issue["state_reason"], source: source, dry_run: dry_run, log: log)
     else
       raise ArgumentError, "usage: sentry_issues.rb sync|resolve"
     end
