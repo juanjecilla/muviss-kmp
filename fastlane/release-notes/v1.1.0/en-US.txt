@@ -1,6 +1,7 @@
-DRAFT: rewrite for users in en-US (max 500 chars) and delete this line before release/1.1.0 merges into main.
-- ask which library to keep when a different account signs in (#276)
-- a rejected TMDB credential no longer reads as being offline (#266)
-- the Play ramp holds while a release has a new crash (#193) (#255)
-- the iOS widget speaks Spanish (#222) (#253)
-- serialize the first database open, so a fresh install stops crashing (#251) (#252)
+What's new in Muviss 1.1
+
+• Muviss speaks Spanish: the whole app, its notifications and the home-screen widget.
+• Restore a backup from Settings. It merges with what you have, so nothing is lost. Or start over: delete all your data.
+• Titles in your library open even when you're offline, and screens reload by themselves when you're back online.
+• Faster Library and show pages, even with a big library.
+• Better with TalkBack: labelled controls, headings and bigger touch targets.
