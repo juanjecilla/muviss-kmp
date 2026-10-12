@@ -52,7 +52,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-          persist-credentials: false
+          # The App's token stays in the checkout: the fetch below needs it when
+          # the repository is private.
           token: ${{ steps.app.outputs.token }}
 
       # Every release branch and tag: the gates read the RC tags and branch heads.
