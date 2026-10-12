@@ -283,6 +283,7 @@ private class FakeFeatureFlags : FeatureFlags {
     override val triageDeckAnimations: Flow<Boolean> = deckAnimations
     val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
+    override val byokEnabled: Flow<Boolean> = MutableStateFlow(false)
     val snoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
     val snoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
     override val triageSnoozePeriod: Flow<SnoozePeriod> = snoozePeriod

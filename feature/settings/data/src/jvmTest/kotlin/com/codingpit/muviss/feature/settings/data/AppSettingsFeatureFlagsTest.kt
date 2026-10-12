@@ -5,6 +5,8 @@ package com.codingpit.muviss.feature.settings.data
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
@@ -32,6 +34,7 @@ class AppSettingsFeatureFlagsTest {
                 override val default: CoroutineDispatcher = dispatcher
                 override val io: CoroutineDispatcher = dispatcher
             },
+            DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
         )
     }
 

@@ -4,6 +4,7 @@ import com.codingpit.muviss.core.billing.di.billingModule
 import com.codingpit.muviss.core.common.di.commonModule
 import com.codingpit.muviss.core.database.di.databaseModule
 import com.codingpit.muviss.core.network.di.networkModule
+import com.codingpit.muviss.core.remoteconfig.di.remoteConfigModule
 import com.codingpit.muviss.core.sync.di.syncModule
 import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
@@ -27,6 +28,7 @@ val appModules: List<Module> =
         commonModule,
         databaseModule,
         networkModule,
+        remoteConfigModule,
         billingModule,
         syncModule,
         // After syncModule: it overrides that module's permissive default

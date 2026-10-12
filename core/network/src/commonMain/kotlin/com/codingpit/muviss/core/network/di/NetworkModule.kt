@@ -25,6 +25,6 @@ val networkModule: Module = module {
     // No-op here; a host overrides it in debug builds only (#177). Koin's last
     // binding wins, so the host's module must load after this one.
     single<TmdbFailureTrace> { TmdbFailureTrace.None }
-    single<MetadataProvider> { TmdbProvider(get(), get(), get()) }
+    single<MetadataProvider> { TmdbProvider(get(), get(), get(), get()) }
     single { MetadataProviderRegistry(getAll<MetadataProvider>()) }
 }
