@@ -40,6 +40,13 @@ licensee {
     // deliberately rather than by widening the list to "anything permissive".
     allow("BSD-3-Clause")
     allowUrl("https://opensource.org/license/mit")
+    // EPIC 45: ConfigCat's Kotlin SDK and its one non-Kotlin-stdlib dependency
+    // (kotlin-semver) are MIT, but their POMs name the licence by the URL of
+    // the LICENSE file on GitHub instead of an SPDX id. Checked against each
+    // repository's licence file, and pinned to exactly these two URLs rather
+    // than allowing "any raw.githubusercontent.com".
+    allowUrl("https://raw.githubusercontent.com/configcat/kotlin-sdk/main/LICENSE")
+    allowUrl("https://raw.githubusercontent.com/z4kn4fein/kotlin-semver/main/LICENSE")
 }
 
 dependencies {

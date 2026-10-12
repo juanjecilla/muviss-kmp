@@ -213,6 +213,7 @@ internal object NoFlags : FeatureFlags {
     override val animationsEnabled = MutableStateFlow(true)
     override val triageDeckAnimations = MutableStateFlow(true)
     override val syncAutomatically = MutableStateFlow(false)
+    override val byokEnabled = MutableStateFlow(false)
     override val triageSnoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
     override val triageSnoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit

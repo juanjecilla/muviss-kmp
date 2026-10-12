@@ -285,11 +285,16 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 11 | EPIC 41 Co-watch: a Shortlist of what two Companions can watch together (**blocked on EPIC 32**; needs ADR 0022, `11.sqm` — collides with EPIC 28, see the claims note) | #118 |
 | 11 | EPIC 42 Snooze: postponing a triage decision (ADR 0023, `12.sqm`) | #135 |
 | 11 | EPIC 44 Invite links: `https://muvissapp.com/invite#…` opens Watch together with the code prefilled (verified App Links / Universal Links; iOS blocked on TEAM_ID; needs an ADR on the fragment) | #185 |
+| 11 | EPIC 45 Remote config via ConfigCat behind `FeatureFlags`, split from #29 (ADR 0026) | #297 |
+| 11 | EPIC 46 Bring your own TMDB key: user → remote → built-in, never a silent fallback (ADR 0027; KSafe spike for secure storage) | #298 |
+| 11 | EPIC 47 First-run onboarding; notifications become opt-in, Notification Nudge, cold Android prompt removed | #299 |
+| — | EPIC 48 Ops Bridge: tool connectors as GitHub Actions (ADR 0028); connector #1 is Sentry → GitHub (#300) | #301 |
 | 12 | EPIC 33 Store assets: fastlane metadata as listing source, `StoreShot` screenshots and feature graphic (public-domain films + fictional shows), privacy URL via GitHub Pages at the public flip (ADR 0024) | #76 |
 | 12 | EPIC 34 Android to Google Play: fastlane `supply`, tag → internal, dispatch → production; local-only v1 (ADR 0024) | #77 |
 | 13 | EPIC 35 iOS to TestFlight and the App Store: fastlane + App Store Connect API key, local-only v1 (ADR 0024) | #78 |
 | 13 | EPIC 36 Desktop on a GitHub Release: notarised DMG, **unsigned** MSI for v1 (signing is #179), DEB (ADR 0024) | #79 |
 | 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
+| — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
@@ -350,6 +355,17 @@ Stand up a second free-tier project dedicated to dev/verification; decide and do
 
 Top priority alongside #66 — every RLS/migration verification task in the backlog is unsafe to fully automate without this existing first. Done means a second project exists, is documented in `docs/SYNC.md` alongside the existing verification log, and at least one of #88/#100/#129 has been re-run against it end-to-end before anything is promoted to prod.
 
+## EPICs 45–48 — remote config, BYOK, onboarding, Ops Bridge (added 2026-10-10)
+
+From one grilling session. The details, testing and parity sections are in each issue.
+
+- **EPIC 45 (#297) — Remote config.** ConfigCat behind the existing `FeatureFlags` seam, compiled defaults offline, no user object (ADR 0026). Split from #29, which now covers analytics only. First keys: `byokEnabled` and `tmdbFallbackReadToken`, so our TMDB credential can be rotated without a release.
+- **EPIC 46 (#298) — Own TMDB Key.** Not a rate-limit fix (TMDB limits per IP, and each device calls from its own); it is insurance against our key being revoked, and user control. Precedence user → remote → built-in, skipping only absent levels; a rejected user key is reported, never silently replaced (ADR 0027). Storage is KSafe on all six targets: Android Keystore, iOS Keychain, and on desktop the OS credential store (DPAPI / Keychain / Secret Service) with a software-key fallback where none is reachable; the browser has no OS store, so on web the key is encrypted with key material the browser holds. Threat model: those last two stop casual copying (a synced folder, a backup, a screenshot of a file), not someone who can already read the user's profile; accepted because a TMDB key is free, read-only and revocable at themoviedb.org, and web is deferred. A packaged desktop build needs KSafe's JDK modules for OS custody — check it on the DMG/MSI/DEB. Never synced or exported. Remote parts depend on EPIC 45.
+- **EPIC 47 (#299) — Onboarding.** Skippable from page 1, first run only (the migration marks upgraded installs done), notifications **off** for fresh installs only, `MainActivity`'s cold prompt deleted, a one-time Notification Nudge on the first saved TV show, "Show introduction again" in Settings. Takes the next free `.sqm`. The TMDB-key page arrives with EPIC 46.
+- **EPIC 48 (#301) — Ops Bridge.** Source → item → sink connectors as scheduled GitHub Actions (ADR 0028), never called "sync". Connector #1, Sentry crash → GitHub issue with close-resolves, is the standalone task #300; a hosted service and n8n/Zapier are recorded as future options.
+
+Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key is used, so EPIC 32 (#75) also needs a TMDB commercial licence (#302).
+
 ## Sequencing
 
 Wave 0 first (nothing else runs without CI; EPIC 43 belongs here too — every live-project verification task depends on it existing before it can run safely). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
@@ -386,14 +402,23 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-12
+
+- **#300 built** (`.github/workflows/sentry-issues.yml`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it as completed resolves the crash in the next release (a close as "not planned" or duplicate does not). Needs `event:write` on `SENTRY_AUTH_TOKEN`.
+- **EPIC 48 (#301) built**: the Ops Bridge (`fastlane/ops_bridge/`, README says how to add a connector). #300's script is refactored onto its source / item / sink shape, and connector #2 opens an issue per Play review of 3 stars or fewer (daily; the Reviews API keeps one week; no reviewer name). Owner step: tick *Reply to reviews* for the Play service account.
+
 ### 2026-10-10
 
-- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 45 (#257). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
+- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 49 (#257; first filed as EPIC 45, renumbered when remote config took 45). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
 - #197 verified on an emulator against the v1.0.0 AAB and closed; its misleading copy is #258 (#266). #34, #40 closed — #163 had already shipped the icons. #222 folded into EPIC 32.
 - EPIC 25: npm lockfiles tracked and gated (#259), debug-signed AAB refused (#260), Kotlin/Native tests and the release framework on the iOS lane (#262 — it found 43 iOS tests that failed on a Spanish-language Mac).
 - EPIC 38: repo files + Dependabot (#261), `:server` removed (#263), `MuvissVersion` + catalog SDK levels (#264), generated CHANGELOG (#265), Kover (#268), shared fakes (#269), goldens in both themes 41 → 76 (#278).
 - EPIC 32 in flight, all dark: account-switch dialog (#276), server entitlement + claim + deletion on the local stack only (#283; hosted rollout order is #282), client half (#279).
 - Found: #267, #271, #273, #274, #275, #277, #280, #281.
+- EPICs 45–48 filed (#297, #298, #299, #301) with ADRs 0026–0028; Sentry → GitHub connector #300.
+- **EPIC 45 (#297) built, dark until the owner creates the ConfigCat product** (`docs/RELEASING.md` §12): `RemoteConfig` seam, `:core:remoteconfig`, `16.sqm` config cache, per-request `TmdbCredentialSource`. Takes `16.sqm`; EPIC 47 (#299) therefore takes `17.sqm`.
+- #302 — TMDB commercial licence needed before any paid tier (blocks #75).
+- #29 narrowed to analytics; remote flags moved to EPIC 45.
 
 ### 2026-10-08
 
