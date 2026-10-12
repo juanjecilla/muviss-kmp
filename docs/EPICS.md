@@ -389,7 +389,7 @@ runs standing in where they could. What that did and did not buy:
 
 ### 2026-10-12
 
-- **#300 built** (`.github/workflows/sentry-issues.yml`, `fastlane/sentry_issues.rb`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it resolves the crash in the next release. Needs `event:write` on `SENTRY_AUTH_TOKEN`. Ops Bridge connector #1; EPIC 48 (#301) lifts its source / item / sink shape.
+- **#300 built** (`.github/workflows/sentry-issues.yml`, `fastlane/sentry_issues.rb`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it as completed resolves the crash in the next release (a close as "not planned" or duplicate does not). Needs `event:write` on `SENTRY_AUTH_TOKEN`. Ops Bridge connector #1; EPIC 48 (#301) lifts its source / item / sink shape.
 
 ### 2026-10-10
 

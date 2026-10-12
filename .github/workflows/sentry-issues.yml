@@ -7,6 +7,7 @@ name: Sentry issues
 #
 #   hourly / by hand : open one issue per new unhandled production crash
 #   issue closed     : resolve the Sentry issue it was opened for, in the next release
+#                      (closed as completed only; not planned / duplicate leave it open)
 #
 # The scripts are idempotent: re-running, or a double-delivered event, changes nothing.
 # fastlane/sentry_issues.rb has the logic and fastlane/test/sentry_issues_test.rb the tests.
