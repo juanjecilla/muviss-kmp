@@ -108,6 +108,10 @@ _Avoid_: permission prompt (the system dialog is what turning alerts on may lead
 A TMDB credential the user supplies so their requests are made under their own TMDB account rather than Muviss's. When present it is always the one used; if TMDB rejects it the user is told, and Muviss's credential is never substituted behind their back (ADR 0027). Belongs to the device, like other per-device settings: never synced, never exported.
 _Avoid_: API key unqualified (the app has its own), BYOK in user-facing copy, token.
 
+**TMDB Credential Chain**:
+The order in which a TMDB request picks its credential: the user's Own TMDB Key, then the fallback token Remote Config serves, then the one built into the app. A level is skipped only when it is absent, never because TMDB rejected it (ADR 0027). Resolved once per request, so a change applies without a restart.
+_Avoid_: fallback (it suggests moving on after a failure, which the chain never does), key rotation (that is what the remote level is for, not what the chain is).
+
 **Remote Config**:
 Values Muviss can change after a build has shipped — whether an optional feature is offered, which fallback TMDB credential to use — each with a built-in default that applies offline. It reads nothing about the user (ADR 0026); deciding per user is not something it does today.
 _Avoid_: feature flag (that is the in-code seam both Remote Config and per-device settings sit behind), A/B test, analytics.

@@ -245,14 +245,16 @@ do_play_forms() {
 }
 
 # --- 11. optional secrets ---------------------------------------------------------------
-check_optional() { has_secret TMDB_API_KEY && has_secret SENTRY_DSN; }
+check_optional() { has_secret TMDB_API_KEY && has_secret SENTRY_DSN && has_secret CONFIGCAT_SDK_KEY; }
 do_optional() {
   say "Release builds without TMDB_API_KEY cannot search; without SENTRY_DSN crash reporting no-ops."
   say "Sentry mapping upload also wants SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT."
+  say "CONFIGCAT_SDK_KEY (EPIC 45) switches remote config on; blank = defaults only. Use a READ-ONLY SDK key"
+  say "from a ConfigCat product with EU data governance (docs/RELEASING.md, 'Remote config')."
   say "The Sentry token needs event:read for the Play ramp gate and, for the crash -> GitHub issue connector"
-  say "(#300), event:write to resolve a crash when its issue is closed (docs/RELEASING.md, 'Sentry to GitHub')".
+  say "(#300), event:write to resolve a crash when its issue is closed (docs/RELEASING.md, 'Sentry to GitHub')."
   local name val
-  for name in TMDB_API_KEY TMDB_READ_TOKEN SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT; do
+  for name in TMDB_API_KEY TMDB_READ_TOKEN CONFIGCAT_SDK_KEY SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT; do
     has_secret "$name" && continue
     read -r -s -p "    $name (empty = skip): " val; echo
     [ -z "$val" ] || gh secret set "$name" --repo "$REPO" --body "$val"

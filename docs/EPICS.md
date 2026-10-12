@@ -415,6 +415,7 @@ runs standing in where they could. What that did and did not buy:
 - EPIC 32 in flight, all dark: account-switch dialog (#276), server entitlement + claim + deletion on the local stack only (#283; hosted rollout order is #282), client half (#279).
 - Found: #267, #271, #273, #274, #275, #277, #280, #281.
 - EPICs 45–48 filed (#297, #298, #299, #301) with ADRs 0026–0028; Sentry → GitHub connector #300.
+- **EPIC 45 (#297) built, dark until the owner creates the ConfigCat product** (`docs/RELEASING.md` §12): `RemoteConfig` seam, `:core:remoteconfig`, `16.sqm` config cache, per-request `TmdbCredentialSource`. Takes `16.sqm`; EPIC 47 (#299) therefore takes `17.sqm`.
 - #302 — TMDB commercial licence needed before any paid tier (blocks #75).
 - #29 narrowed to analytics; remote flags moved to EPIC 45.
 

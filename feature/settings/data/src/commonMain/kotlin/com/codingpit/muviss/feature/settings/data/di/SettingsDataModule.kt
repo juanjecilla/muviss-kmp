@@ -68,7 +68,7 @@ val settingsDataModule: Module = module {
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
     single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get()) }
     factory { DeleteAllDataUseCase(get()) }
-    single<FeatureFlags> { AppSettingsFeatureFlags(get(), get()) }
+    single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
     single { SettingsLocaleSync(get(), get(), get(), get()) } withOptions { createdAtStart() }

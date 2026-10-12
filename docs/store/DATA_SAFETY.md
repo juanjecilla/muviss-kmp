@@ -40,7 +40,7 @@ collects, stores, or shares for its own purposes.
 
 ## Is all user data encrypted in transit?
 
-**Yes.** All network calls (TMDB, Sentry) use HTTPS.
+**Yes.** All network calls (TMDB, Sentry, ConfigCat) use HTTPS.
 
 ## Does your app provide a way for users to request data deletion?
 
@@ -53,6 +53,13 @@ uninstalling. This is stated in `docs/PRIVACY.md`.
 - **TMDB** (themoviedb.org) — search queries / media IDs, to fetch metadata.
 - **Sentry** (sentry.io) — crash reports, only in release builds with
   `SENTRY_DSN` configured (see `docs/RELEASING.md`).
+- **ConfigCat** (configcat.com) — Muviss downloads its remote configuration
+  (EPIC 45, ADR 0026), only in release builds with `CONFIGCAT_SDK_KEY`
+  configured. **No data is sent about the user**: no identifier, and the values
+  are evaluated locally. The request exposes the device's IP address to
+  ConfigCat as any request does; Muviss stores none. This is not "data
+  collected" in Play's sense (nothing is sent *from* the app about the user),
+  but record it here so the answer stays consistent with `docs/PRIVACY.md`.
 
 ## Target audience / content rating
 
