@@ -28,6 +28,7 @@ material3Adaptive = "1.2.0"
 # Added for Muviss
 koin = "4.2.2"
 sqldelight = "2.4.1"
+configcat = "5.1.0"
 coil = "3.3.0"
 navigationCompose = "2.9.2"
 turbine = "1.2.1"
@@ -91,6 +92,9 @@ kotlinx-coroutinesCore = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-co
 kotlinx-coroutinesTest = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-serializationJson = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 wrappers-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlin-wrappers" }
+
+# Remote config (EPIC 45, ADR 0026)
+configcat-kotlinClient = { module = "com.configcat:configcat-kotlin-client", version.ref = "configcat" }
 
 # Koin (DI)
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }

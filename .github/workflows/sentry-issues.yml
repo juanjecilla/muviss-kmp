@@ -1,0 +1,85 @@
+name: Sentry issues
+
+# Sentry crash -> GitHub issue, and closing the issue resolves the crash (#300,
+# Ops Bridge connector #1, ADR 0028). Sentry's own GitHub integration can open
+# issues automatically only on its Business plan; this does the same on any plan
+# and shares its token with the Play ramp's crash gate (fastlane/sentry_gate.rb).
+#
+#   hourly / by hand : open one issue per new unhandled production crash
+#   issue closed     : resolve the Sentry issue it was opened for, in the next release
+#                      (closed as completed only; not planned / duplicate leave it open)
+#
+# The scripts are idempotent: re-running, or a double-delivered event, changes nothing.
+# The logic is fastlane/ops_bridge/connectors/sentry.rb (EPIC 48); its tests are fastlane/test/sentry_connector_test.rb.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only say what would be opened; write nothing"
+        type: boolean
+        default: true
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Open issues for new crashes
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    # One run at a time: two overlapping runs would both see "no issue yet".
+    concurrency:
+      group: sentry-issues-sync
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Sync
+        env:
+          # Needs event:read to list issues; resolving (below) needs event:write too.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # A scheduled run is never dry; a manual one is unless asked otherwise.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "SENTRY_AUTH_TOKEN is not set; nothing to do (docs/RELEASING.md, 'Sentry to GitHub')."
+            exit 0
+          fi
+          ruby fastlane/ops_bridge.rb sync sentry
+
+  resolve:
+    name: Resolve the Sentry issue
+    if: github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'from-sentry')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Resolve
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "SENTRY_AUTH_TOKEN is not set; cannot resolve (docs/RELEASING.md, 'Sentry to GitHub')."
+            exit 0
+          fi
+          ruby fastlane/ops_bridge.rb resolve sentry

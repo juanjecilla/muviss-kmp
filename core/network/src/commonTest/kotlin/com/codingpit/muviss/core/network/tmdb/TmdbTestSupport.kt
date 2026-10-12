@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.withLock
 /** A provider over a [MockEngine] with the same base plugins `createHttpClient` installs, and waits recorded rather than slept. */
 internal class ProviderFixture(
     credentials: TmdbCredentials = TmdbCredentials(apiKey = API_KEY),
+    credentialSource: TmdbCredentialSource = FixedTmdbCredentialSource(credentials),
     maxConcurrentRequests: Int = TmdbProvider.DEFAULT_MAX_CONCURRENT_REQUESTS,
     handler: MockRequestHandler,
 ) {
@@ -37,7 +38,7 @@ internal class ProviderFixture(
                 handler(request)
             },
         ) { install(ContentNegotiation) { json(muvissJson) } },
-        credentials = credentials,
+        credentialSource = credentialSource,
         locale = DefaultMetadataLocale(),
         retryPolicy = TmdbRetryPolicy(jitterMs = 0, delay = { delays += it }),
         maxConcurrentRequests = maxConcurrentRequests,

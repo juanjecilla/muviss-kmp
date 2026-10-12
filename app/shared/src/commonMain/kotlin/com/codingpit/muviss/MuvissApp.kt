@@ -36,7 +36,9 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
 import com.codingpit.muviss.core.database.PersistenceStatus
@@ -126,6 +128,7 @@ fun MuvissApp(
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
         AutoSyncOnForeground()
+        RefreshRemoteConfigOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
             CompositionLocalProvider(LocalSystemNotificationSettings provides koinInject<SystemNotificationSettings>()) {
@@ -157,6 +160,27 @@ private fun AutoSyncOnForeground() {
     PlatformSyncTriggers(coordinator)
     LifecycleEventEffect(Lifecycle.Event.ON_START) { coordinator.onForeground() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { coordinator.onForeground() }
+}
+
+/**
+ * Asks Remote Config for a fresh copy whenever the app comes to the foreground
+ * (EPIC 45, ADR 0026). [RemoteConfig.refreshIfStale] decides whether an hour has
+ * passed, so `ON_START` on every return costs nothing in the common case, and a
+ * defaults-only build makes no request at all.
+ *
+ * Off the main thread and launched, never awaited: a slow CDN must not delay the
+ * first frame or any screen. Background paths (the WorkManager and BGTask
+ * workers, the desktop timer) never go through here, so they read whatever was
+ * stored at the last foreground.
+ */
+@Composable
+private fun RefreshRemoteConfigOnForeground() {
+    val remoteConfig = koinInject<RemoteConfig>()
+    val io = koinInject<AppDispatchers>().io
+    val scope = rememberCoroutineScope()
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        scope.launch(io) { remoteConfig.refreshIfStale() }
+    }
 }
 
 /**

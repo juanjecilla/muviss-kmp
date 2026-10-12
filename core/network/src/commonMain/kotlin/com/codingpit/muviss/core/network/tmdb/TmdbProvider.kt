@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.network.DefaultMetadataLocale
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
@@ -56,7 +57,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
  */
 class TmdbProvider internal constructor(
     client: HttpClient,
-    private val credentials: TmdbCredentials,
+    private val credentialSource: TmdbCredentialSource,
     private val locale: MetadataLocale,
     retryPolicy: TmdbRetryPolicy,
     maxConcurrentRequests: Int,
@@ -65,11 +66,15 @@ class TmdbProvider internal constructor(
 
     constructor(
         client: HttpClient,
+        remoteConfig: RemoteConfig,
         locale: MetadataLocale = DefaultMetadataLocale(),
         failureTrace: TmdbFailureTrace = TmdbFailureTrace.None,
     ) : this(
         client = client,
-        credentials = TmdbCredentials(MuvissBuildConfig.TMDB_READ_TOKEN, MuvissBuildConfig.TMDB_API_KEY),
+        credentialSource = RemoteFirstTmdbCredentialSource(
+            remoteConfig,
+            TmdbCredentials(MuvissBuildConfig.TMDB_READ_TOKEN, MuvissBuildConfig.TMDB_API_KEY),
+        ),
         locale = locale,
         retryPolicy = TmdbRetryPolicy(),
         maxConcurrentRequests = DEFAULT_MAX_CONCURRENT_REQUESTS,
@@ -238,6 +243,8 @@ class TmdbProvider internal constructor(
     }
 
     private suspend fun request(path: String, fresh: Boolean, configure: HttpRequestBuilder.() -> Unit): HttpResponse {
+        // Resolved per request, before the call: the builder below is not suspending.
+        val credentials = credentialSource.current()
         suspend fun HttpClient.fetch() = get("$BASE/$path") {
             authorize(credentials)
             configure()
