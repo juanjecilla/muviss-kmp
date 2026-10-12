@@ -124,6 +124,9 @@
 # time warning, "An error occurred when parsing kotlin metadata") and falls
 # back to static analysis, which sees the constructor as unused and strips
 # it — crashing every release install before any app code runs (#147).
+# Re-checked on AGP 9.1.1 (#192): R8 no longer logs that warning, but nobody has
+# run a minified build on a device without these two rules, so they stay until
+# someone does (a mapping.txt inspection cannot show a stripped constructor).
 # The broader RoomDatabase rule covers any other AndroidX library that
 # generates a Room _Impl the same way under this R8/Kotlin combination, since
 # this app doesn't call Room directly and can't enumerate them by hand.
