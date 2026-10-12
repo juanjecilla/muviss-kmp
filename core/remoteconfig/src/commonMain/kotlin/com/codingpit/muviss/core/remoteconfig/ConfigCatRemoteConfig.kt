@@ -78,7 +78,7 @@ internal class ConfigCatRemoteConfig(
         val next = runCatchingNonCancellation {
             RemoteValues(
                 byokEnabled = client.getValue(KEY_BYOK_ENABLED, defaults.byokEnabled),
-                tmdbFallbackReadToken = client.getValue(KEY_TMDB_FALLBACK_TOKEN, "").trim().ifEmpty { null },
+                tmdbFallbackReadToken = tmdbReadTokenOrNull(client.getValue(KEY_TMDB_FALLBACK_TOKEN, "")),
             )
         } ?: defaults
         state.value = next
@@ -94,6 +94,17 @@ internal class ConfigCatRemoteConfig(
     }
 
     companion object {
+        /**
+         * The served value only replaces the built-in credential when it has the shape of a
+         * TMDB v4 read token (a JWT: `eyJ…` and three dot-separated base64url parts). ConfigCat
+         * cannot store an empty text setting, so "use the built-in one" is any placeholder —
+         * `none`, `-`, or the `""` its editor saves when you type two quotes — and a placeholder
+         * sent as a Bearer token would fail every TMDB request as Unauthorized.
+         */
+        internal fun tmdbReadTokenOrNull(served: String): String? = served.trim().takeIf { TMDB_READ_TOKEN.matches(it) }
+
+        private val TMDB_READ_TOKEN = Regex("""eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
+
         const val KEY_BYOK_ENABLED = "byokEnabled"
         const val KEY_TMDB_FALLBACK_TOKEN = "tmdbFallbackReadToken"
 

@@ -24,8 +24,13 @@ import kotlin.test.assertTrue
 class ConfigCatRemoteConfigTest {
 
     private val defaults = RemoteValues(byokEnabled = false)
+
+    private companion object {
+        /** Shaped like a TMDB v4 read token (a JWT); nothing else replaces the built-in one. */
+        const val ROTATED = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJyb3RhdGVkIn0.c2lnbmF0dXJl"
+    }
     private var requests = 0
-    private var body: String = served(byok = true, token = "rotated-token")
+    private var body: String = served(byok = true, token = ROTATED)
     private var status = HttpStatusCode.OK
 
     private fun served(byok: Boolean, token: String): String = """
@@ -70,7 +75,7 @@ class ConfigCatRemoteConfigTest {
     fun a_refresh_serves_the_remote_values() = runTest {
         val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
         config.refreshIfStale()
-        assertEquals(RemoteValues(byokEnabled = true, tmdbFallbackReadToken = "rotated-token"), config.values.value)
+        assertEquals(RemoteValues(byokEnabled = true, tmdbFallbackReadToken = ROTATED), config.values.value)
     }
 
     @Test
@@ -100,7 +105,7 @@ class ConfigCatRemoteConfigTest {
         val restarted = remote(key, db, FakeClock(0))
         val stored = restarted.awaitStored()
 
-        assertEquals("rotated-token", stored.tmdbFallbackReadToken)
+        assertEquals(ROTATED, stored.tmdbFallbackReadToken)
         assertEquals(true, stored.byokEnabled)
         assertEquals(requestsBefore, requests, "reading the stored copy must not touch the network")
     }
@@ -112,6 +117,24 @@ class ConfigCatRemoteConfigTest {
         config.refreshIfStale()
         assertEquals(defaults, config.values.value)
         assertNull(config.values.value.tmdbFallbackReadToken)
+    }
+
+    @Test
+    fun a_placeholder_served_token_means_use_the_built_in_one() = runTest {
+        // ConfigCat cannot save an empty text setting, so the owner types a placeholder.
+        for (placeholder in listOf("\"\"", "none", "-", "  ", "not-a-token")) {
+            assertNull(ConfigCatRemoteConfig.tmdbReadTokenOrNull(placeholder), placeholder)
+        }
+        assertEquals(ROTATED, ConfigCatRemoteConfig.tmdbReadTokenOrNull("  $ROTATED\n"))
+    }
+
+    @Test
+    fun two_quote_characters_served_mean_use_the_built_in_one() = runTest {
+        body = served(byok = false, token = "\\\"\\\"") // JSON for the two-character string ""
+        val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
+        config.refreshIfStale()
+        assertNull(config.values.value.tmdbFallbackReadToken)
+        assertTrue(requests >= 1)
     }
 
     @Test

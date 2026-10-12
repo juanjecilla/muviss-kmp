@@ -1145,7 +1145,10 @@ Owner steps to switch it on:
    per hour at most.
 2. Create the two settings with exactly these **keys**:
    `byokEnabled` (boolean, default `false`) and `tmdbFallbackReadToken`
-   (text, default empty — empty means "use the built-in credential").
+   (text). ConfigCat will not save an empty text value, so give it a
+   placeholder such as `none`: the app only uses the value when it has the
+   shape of a TMDB v4 read token (`eyJ…`, three dot-separated parts), and
+   anything else means "use the built-in credential".
 3. Copy the environment's **SDK key**. It ships in the binary like the TMDB
    credential, so it must be the read-only key ConfigCat shows; never a
    management API credential.
@@ -1158,8 +1161,8 @@ token in `tmdbFallbackReadToken`. Installs pick it up on their next foreground
 (within an hour), and a cold start applies the stored copy before its first
 TMDB request. Background workers (new-episode checks, background sync) never
 fetch; they use whatever the last foreground stored. The served token is no more
-secret than the one in the APK — the point is rotation, not secrecy. Clear the
-setting to fall back to the built-in credential.
+secret than the one in the APK — the point is rotation, not secrecy. Set it back to
+`none` to fall back to the built-in credential.
 
 `docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
 (it exposes the device IP to ConfigCat and sends nothing about the user), so
