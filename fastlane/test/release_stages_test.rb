@@ -118,6 +118,14 @@ class ReleaseStagesTest < Minitest::Test
     assert_equal ["1.1.0"], plan["adopt"]
   end
 
+  def test_a_hand_broken_marker_holds_the_train_and_names_the_issue
+    broken = { "title" => "Release 1.1.0", "body" => "<!-- muviss-release: {\"version\":\"1.1.0\",\"stage\":\"beta\",} -->" }
+    plan = ReleaseStages.plan(open: ["1.1.0"], issues: [broken])
+    assert_equal ["1.1.0"], plan["unreadable"]
+    assert_includes plan["hold"], "Release 1.1.0"
+    assert_empty plan["adopt"], "an unreadable issue must not be adopted as a second one"
+  end
+
   def test_no_open_release_means_no_hold
     plan = ReleaseStages.plan(open: [], issues: [])
     assert_nil plan["hold"]

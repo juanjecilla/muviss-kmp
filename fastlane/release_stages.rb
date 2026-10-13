@@ -106,12 +106,23 @@ module ReleaseStages
   # A version still in internal holds the next cut: it is on the one internal
   # track, and the new RC would replace it there. A version with no issue (a
   # branch cut before this rule existed) is adopted and counts as internal.
+  #
+  # A marker that no longer parses (people edit it by hand to move a date) holds
+  # the train too, naming the issue, rather than crashing the run with no reason:
+  # nobody can tell which stage that version is in until it is fixed.
   def plan(open:, issues:)
     stages = {}
     adopt = []
+    unreadable = []
     open.each do |version|
       issue = issues.find { |i| i["title"] == title(version) }
-      if issue && (stage = stage_of(issue["body"]))
+      begin
+        stage = issue && stage_of(issue["body"])
+      rescue JSON::ParserError
+        unreadable << version
+        next
+      end
+      if stage
         stages[version] = stage
       else
         adopt << version
@@ -119,12 +130,13 @@ module ReleaseStages
       end
     end
     held = stages.select { |_, stage| stage == INTERNAL }.keys
-    hold = if held.empty?
-             nil
-           else
-             "#{held.join(', ')} still in internal: the train cuts after it moves to open beta"
-           end
-    { "hold" => hold, "adopt" => adopt, "stages" => stages }
+    reasons = []
+    reasons << "#{held.join(', ')} still in internal: the train cuts after it moves to open beta" unless held.empty?
+    unreadable.each do |version|
+      reasons << "the marker in issue \"#{title(version)}\" is not valid JSON: fix it so the train knows #{version}'s stage"
+    end
+    hold = reasons.empty? ? nil : reasons.join("; ")
+    { "hold" => hold, "adopt" => adopt, "stages" => stages, "unreadable" => unreadable }
   end
 
   def status_of(state, step)
