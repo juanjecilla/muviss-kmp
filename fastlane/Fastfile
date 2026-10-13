@@ -223,16 +223,25 @@ platform :android do
     true
   end
 
-  desc "Raise the production rollout along the ramp, from the latest release tag's age"
+  desc "Raise the production rollout along the ramp, from its release tag's age"
   lane :ramp do
-    tag = sh("git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1", log: false).strip
-    UI.user_error!("No release tag found") if tag.empty?
-    tagged_at = Integer(sh("git", "for-each-ref", "--format=%(creatordate:unix)", "refs/tags/#{tag}", log: false).strip)
-    age_days = (Time.now.to_i - tagged_at) / 86_400.0
-    UI.message("#{tag} is #{age_days.round(2)} days old")
+    newest = sh("git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1", log: false).strip
+    UI.user_error!("No release tag found") if newest.empty?
 
     ramped_to_full = false
+    tag = nil
     edit_production_release do |release|
+      # The release Play is rolling out, not the newest tag: with staged
+      # releases a newer version can be tagged while this one still ramps.
+      tag = PlayRollout.tag_for(release.version_codes&.max) || newest
+      tagged_at = sh("git", "for-each-ref", "--format=%(creatordate:unix)", "refs/tags/#{tag}", log: false).strip
+      if tagged_at.empty?
+        UI.important("Production #{release.version_codes&.join(',')} has no #{tag} tag; leaving it alone")
+        next false
+      end
+      age_days = (Time.now.to_i - Integer(tagged_at)) / 86_400.0
+      UI.message("#{tag} is #{age_days.round(2)} days old")
+
       step = PlayRollout.next_step(status: release.status, fraction: release.user_fraction, age_days: age_days)
       next false unless step
 
@@ -254,8 +263,9 @@ platform :android do
     end
 
     # release-promote.yml's `complete` closes the release issue on this signal
-    # (ADR 0030). Written only after the edit committed.
-    File.write(ENV["RAMP_RESULT_FILE"], "completed\n") if ramped_to_full && ENV["RAMP_RESULT_FILE"]
+    # (ADR 0030): the version that reached 100%, written only after the edit
+    # committed.
+    File.write(ENV["RAMP_RESULT_FILE"], "#{tag.delete_prefix('v')}\n") if ramped_to_full && ENV["RAMP_RESULT_FILE"]
   end
 
   desc "Halt the staged production rollout (the ramp leaves halted releases alone)"

@@ -29,6 +29,10 @@ module ReleaseGates
     when ReleaseStages::INTERNAL
       state["beta_on"] && today >= Date.iso8601(state["beta_on"]) ? :beta : nil
     when ReleaseStages::BETA
+      # Merged into main, but the Play promotion after it failed: retry only
+      # the promotion, never the merge.
+      return :play_retry if state["merged_on"]
+
       done = state["beta_done_on"]
       done && today >= ReleaseStages.production_on(Date.iso8601(done)) ? :production : nil
     end
@@ -108,8 +112,9 @@ class ReleasePromotion
       step = ReleaseGates.due_step(state, @today)
       next Outcome.new(state["version"], nil, :not_due, []) unless step
 
-      facts = gather(state)
-      reasons = ReleaseGates.holds(facts: facts)
+      # The merge already passed every gate; what is left is Play alone.
+      facts = step == :play_retry ? retry_facts(state) : gather(state)
+      reasons = step == :play_retry ? retry_holds(facts) : ReleaseGates.holds(facts: facts)
       unless reasons.empty?
         hold!(issue, state, reasons)
         next Outcome.new(state["version"], step, :held, reasons)
@@ -118,7 +123,7 @@ class ReleasePromotion
         @out.puts "would #{step} #{state['version']}"
         next Outcome.new(state["version"], step, :would_do, [])
       end
-      problem = perform!(step, issue, state, facts)
+      problem, state = perform!(step, issue, state, facts)
       if problem
         hold!(issue, state, [problem])
         next Outcome.new(state["version"], step, :held, [problem])
@@ -147,7 +152,7 @@ class ReleasePromotion
 
     state = state.merge("stage" => ReleaseStages::PRODUCTION, "production_started_on" => @today.iso8601, "holds" => [])
     @github.update_issue(issue["number"], ReleaseStages.render(state))
-    @github.comment(issue["number"], "Promoted to production at 20% from beta (outside the Sunday step).")
+    @github.comment(issue["number"], "Promoted to production at 20% by release.yml (a manual merge, outside the Sunday step).")
   end
 
   private
@@ -199,6 +204,15 @@ class ReleasePromotion
     facts
   end
 
+  def retry_facts(state)
+    rc = state["rc_tag"]
+    { rc_tag: rc, rc_code: rc && safe("version code") { @git.version_code(rc) } }
+  end
+
+  def retry_holds(facts)
+    facts[:rc_code] ? [] : ["the merged RC's versionCode could not be read"]
+  end
+
   # Read again each time, not from the start of the run: a production step that
   # ran a moment ago has already left the beta track.
   def others_in_beta(version)
@@ -224,27 +238,45 @@ class ReleasePromotion
   # Returns nil when the step went through, or the reason it did not (the
   # version is then held with that reason, and retried next Sunday).
   def perform!(step, issue, state, facts)
+    return promote_to_production!(issue, state, facts) if step == :play_retry
+
     version = state["version"]
     rc = facts[:rc_tag]
     if step == :beta
       problem = act("promote #{rc} to open beta") { @play.promote_to_beta(facts[:rc_code]) }
-      return problem if problem
+      return [problem, state] if problem
 
       state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => @today.iso8601, "rc_tag" => rc, "holds" => [])
       persist(issue, state, "Promoted #{rc} (versionCode #{facts[:rc_code]}) from internal to open beta.")
-      nil
+      [nil, state]
     else
       pr = nil
       problem = act("open the PR into main") { pr = @github.release_pr(version) || @github.open_release_pr(version) }
-      return problem if problem
+      return [problem, state] if problem
 
       problem = act("merge release/#{version} into main") { @github.merge(pr, facts[:head]) }
-      return problem if problem
+      return [problem, state] if problem
 
-      state = state.merge("stage" => ReleaseStages::PRODUCTION, "production_started_on" => @today.iso8601, "rc_tag" => rc, "holds" => [])
-      persist(issue, state, "Merged release/#{version} into main (PR ##{pr}). release.yml now promotes #{rc} from beta to production at 20%.")
-      nil
+      # Recorded before Play is asked: if the promotion fails, the next run
+      # retries only the promotion, and never merges again.
+      state = state.merge("merged_on" => @today.iso8601, "release_pr" => pr, "rc_tag" => rc, "holds" => [])
+      persist(issue, state, "Merged release/#{version} into main (PR ##{pr}); release.yml tags v#{version}.")
+      promote_to_production!(issue, state, facts)
     end
+  end
+
+  # Beta → production here, not in release.yml: the run then reaches a newer
+  # version's beta step only once this one has left the beta track, so the
+  # two never race for it (ADR 0030). The version stays `beta` until Play
+  # took it, which is what keeps a failed promotion pending.
+  def promote_to_production!(issue, state, facts)
+    rc = facts[:rc_tag]
+    problem = act("promote #{rc} from beta to production") { @play.promote_to_production(facts[:rc_code]) }
+    return [problem, state] if problem
+
+    state = state.merge("stage" => ReleaseStages::PRODUCTION, "production_started_on" => @today.iso8601, "holds" => [])
+    persist(issue, state, "Promoted #{rc} (versionCode #{facts[:rc_code]}) from beta to production at 20%. The daily ramp takes it to 100%.")
+    [nil, state]
   end
 
   # Runs one side effect. A failure becomes the hold's reason, without the
@@ -394,6 +426,11 @@ module ReleasePromotionAdapters
     def promote_to_beta(version_code)
       Shell.capture("bundle", "exec", "fastlane", "android", "beta", "version_code:#{version_code}", env: @env)
     end
+
+    # Open beta → production at 20%, for the RC with this versionCode.
+    def promote_to_production(version_code)
+      Shell.capture("bundle", "exec", "fastlane", "android", "promote", "rollout:0.2", "version_code:#{version_code}", env: @env)
+    end
   end
 
   class Sentry
@@ -418,7 +455,7 @@ if __FILE__ == $PROGRAM_NAME
     promotion = ReleasePromotion.new(
       github: github,
       git: ReleasePromotionAdapters::Git.new,
-      play: ReleasePromotionAdapters::Play.new(ENV.to_h.select { |k, _| k == "PLAY_SERVICE_ACCOUNT_JSON" }),
+      play: ReleasePromotionAdapters::Play.new(ENV.to_h.select { |k, _| %w[PLAY_SERVICE_ACCOUNT_JSON PLAY_RELEASE_STATUS].include?(k) }),
       sentry: ReleasePromotionAdapters::Sentry.new,
       today: Date.today,
       apply: apply,

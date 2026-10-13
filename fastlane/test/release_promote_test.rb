@@ -124,6 +124,12 @@ class FakePlay
 
     @calls << code
   end
+
+  def promote_to_production(code)
+    raise @error if @error
+
+    @calls << [:production, code]
+  end
 end
 
 class FakeSentry
@@ -237,10 +243,50 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal :done, outcome_for(outcomes, "1.1.0").status
     assert_includes @github.calls, [:open_release_pr, "1.1.0"]
     assert_includes @github.calls.map(&:first), :merge
-    assert_equal [], @play.calls, "production is promoted by release.yml, not here"
+    assert_equal [[:production, 1_010_003]], @play.calls, "the Sunday step promotes, not release.yml"
     state = state_of("1.1.0")
     assert_equal "production", state["stage"]
     assert_equal "2026-10-25", state["production_started_on"]
+    assert_equal "2026-10-25", state["merged_on"]
+  end
+
+  def test_a_failed_promotion_after_the_merge_stays_pending_on_beta
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-18")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+    @play.error = RuntimeError.new("Play said no")
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_equal ["could not promote v1.1.0-rc3 from beta to production (RuntimeError)"], outcome.reasons
+    state = state_of("1.1.0")
+    assert_equal "beta", state["stage"], "Play still has it on beta"
+    assert_equal "2026-10-25", state["merged_on"], "the merge is remembered, so it is not repeated"
+    assert_equal ["could not promote v1.1.0-rc3 from beta to production (RuntimeError)"], state["holds"]
+  end
+
+  def test_a_merge_whose_play_promotion_failed_retries_only_the_promotion
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-18", "merged_on" => "2026-10-25", "rc_tag" => "v1.1.0-rc3")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+    @github.calls.clear
+    outcome = outcome_for(run_on(Date.new(2026, 11, 1)), "1.1.0")
+    assert_equal :done, outcome.status
+    assert_equal [[:production, 1_010_003]], @play.calls
+    refute_includes @github.calls.map(&:first), :merge, "the release PR is not merged again"
+    assert_equal "production", state_of("1.1.0")["stage"]
+  end
+
+  def test_a_failed_retry_stays_pending_and_says_why
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-18", "merged_on" => "2026-10-25", "rc_tag" => "v1.1.0-rc3")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+    @play.error = RuntimeError.new("Play said no")
+    outcome = outcome_for(run_on(Date.new(2026, 11, 1)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_equal ["could not promote v1.1.0-rc3 from beta to production (RuntimeError)"], outcome.reasons
+    state = state_of("1.1.0")
+    assert_equal "beta", state["stage"]
+    assert_equal "2026-10-25", state["merged_on"]
   end
 
   def test_a_refused_merge_holds_the_production_step_with_its_reason
@@ -272,8 +318,21 @@ class ReleasePromotionTest < Minitest::Test
     outcomes = run_on(SUNDAY_BETA)
     assert_equal :done, outcome_for(outcomes, "1.1.0").status
     assert_equal :done, outcome_for(outcomes, "1.2.0").status
-    assert_equal [1_020_001], @play.calls
+    assert_equal [[:production, 1_010_003], 1_020_001], @play.calls, "production leaves beta before the next version takes it"
     assert_equal "production", state_of("1.1.0")["stage"]
+  end
+
+  def test_a_pending_production_promotion_holds_the_next_beta
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-11")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+    add_version("1.2.0", "internal")
+    add_rc("1.2.0", rc: 1, code: 1_020_001)
+    @play.error = RuntimeError.new("Play said no")
+    outcomes = run_on(SUNDAY_BETA)
+    assert_equal :held, outcome_for(outcomes, "1.1.0").status
+    assert_equal :held, outcome_for(outcomes, "1.2.0").status
+    assert_includes outcome_for(outcomes, "1.2.0").reasons.join, "1.1.0 is still on the beta track"
   end
 
   def test_a_version_still_on_the_beta_track_holds_a_new_beta

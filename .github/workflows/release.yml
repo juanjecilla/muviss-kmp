@@ -3,10 +3,11 @@ name: Release
 # A release or hotfix branch merged into main is a release (ADR 0025):
 #
 #   tag            vX.Y.Z on the merge commit; delete the merged branch
-#   promote        the RC on Play's beta track → production at 20% (ADR 0030).
-#                  On the scheduled path (the PR is labelled auto-release)
-#                  there is no approval; on a manual merge the `production`
-#                  environment asks. play-rollout-ramp.yml takes it to 100%.
+#   promote        on a manual merge: the RC (from beta, or internal if it never
+#                  went to beta) → production at 20%, behind the `production`
+#                  environment. The scheduled path (labelled auto-release) is
+#                  promoted by the Sunday step itself (ADR 0030).
+#                  play-rollout-ramp.yml takes it to 100% from there.
 #   desktop        DMG / DEB / MSI built from the tag
 #   github-release the RC's own AAB (never rebuilt) + the desktop installers
 #   back-merge     a PR main → develop, so develop sees the tag and any fix
@@ -98,7 +99,7 @@ jobs:
   # before users get the build (scripts/release/owner-setup.sh configures them).
   promote:
     needs: tag
-    if: needs.tag.result == 'success' && !contains(join(github.event.pull_request.labels.*.name, ','), 'auto-release')
+    if: needs.tag.result == 'success' && !contains(github.event.pull_request.labels.*.name, 'auto-release')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
@@ -132,41 +133,10 @@ jobs:
           # The release issue says so too (ADR 0030); a no-op without one.
           ruby fastlane/release_promote.rb record-production "$VERSION"
 
-  # The scheduled path (ADR 0030): release-promote.yml's Sunday step merged the
-  # PR as the release App, labelled auto-release, after every gate passed. No
-  # approval is asked here: the crash gate in the daily ramp is what holds the
-  # rollout if the build is bad.
-  promote-auto:
-    needs: tag
-    if: needs.tag.result == 'success' && contains(join(github.event.pull_request.labels.*.name, ','), 'auto-release')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1.328.0
-        with:
-          bundler-cache: true
-
-      - name: Promote the beta RC to production (20%)
-        env:
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
-          VERSION_CODE: ${{ needs.tag.outputs.rc_version_code }}
-          VERSION: ${{ needs.tag.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; skipping the promotion."
-            exit 0
-          fi
-          bundle exec fastlane android promote rollout:0.2 "version_code:$VERSION_CODE"
-          ruby fastlane/release_promote.rb record-production "$VERSION"
+  # The scheduled path (ADR 0030) is not promoted here: release-promote.yml's
+  # Sunday step merged the PR as the release App (labelled auto-release) and
+  # promotes beta → production itself, in the same run and before any newer
+  # version takes the beta track, so the two can never race for it.
 
   # On dispatch, build the AAB alone (no upload) so the release path can be
   # exercised without a version.
