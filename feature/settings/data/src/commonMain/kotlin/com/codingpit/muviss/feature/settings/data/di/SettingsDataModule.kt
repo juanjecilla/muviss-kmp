@@ -5,9 +5,11 @@ import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.feature.settings.data.AppSettingsFeatureFlags
 import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
 import com.codingpit.muviss.feature.settings.data.ExportQueries
+import com.codingpit.muviss.feature.settings.data.OwnTmdbKeySettings
 import com.codingpit.muviss.feature.settings.data.RegistryImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
 import com.codingpit.muviss.feature.settings.data.SqlDelightBackupRestorer
@@ -16,6 +18,7 @@ import com.codingpit.muviss.feature.settings.data.SqlDelightSettingsRepository
 import com.codingpit.muviss.feature.settings.data.TmdbExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.ApplyImportUseCase
 import com.codingpit.muviss.feature.settings.domain.BackupRestorer
+import com.codingpit.muviss.feature.settings.domain.ClearTmdbKeyUseCase
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExternalIdResolver
@@ -25,7 +28,9 @@ import com.codingpit.muviss.feature.settings.domain.ImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.domain.ImportParser
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
+import com.codingpit.muviss.feature.settings.domain.ObserveTmdbDataSourceUseCase
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
+import com.codingpit.muviss.feature.settings.domain.SaveTmdbKeyUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
@@ -64,11 +69,12 @@ val settingsDataModule: Module = module {
             get(),
         )
     }
-    single<SettingsApi> { DefaultSettingsApi(get()) }
+    single<SettingsApi> { DefaultSettingsApi(get(), get()) }
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
-    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get()) }
+    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get()) }
+    single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
     factory { DeleteAllDataUseCase(get()) }
-    single<FeatureFlags> { AppSettingsFeatureFlags(get(), get()) }
+    single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
     single { SettingsLocaleSync(get(), get(), get(), get()) } withOptions { createdAtStart() }
@@ -77,9 +83,12 @@ val settingsDataModule: Module = module {
     factory { SetThemeUseCase(get()) }
     factory { SetLanguageUseCase(get()) }
     factory { SetRegionUseCase(get()) }
-    factory { SetNotificationsEnabledUseCase(get()) }
+    factory { SetNotificationsEnabledUseCase(get(), get()) }
     factory { SetCrashReportsEnabledUseCase(get()) }
     factory { ExportDataUseCase(get()) }
+    factory { ObserveTmdbDataSourceUseCase(get()) }
+    factory { SaveTmdbKeyUseCase(get()) }
+    factory { ClearTmdbKeyUseCase(get()) }
     factory { SettingsActions(get(), get(), get(), get(), get(), get()) }
 
     single<ExternalIdResolver> { TmdbExternalIdResolver(get(), get()) }

@@ -10,7 +10,7 @@ name: Sentry issues
 #                      (closed as completed only; not planned / duplicate leave it open)
 #
 # The scripts are idempotent: re-running, or a double-delivered event, changes nothing.
-# fastlane/sentry_issues.rb has the logic and fastlane/test/sentry_issues_test.rb the tests.
+# The logic is fastlane/ops_bridge/connectors/sentry.rb (EPIC 48); its tests are fastlane/test/sentry_connector_test.rb.
 
 on:
   schedule:
@@ -41,7 +41,7 @@ jobs:
       group: sentry-issues-sync
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
@@ -59,7 +59,7 @@ jobs:
             echo "SENTRY_AUTH_TOKEN is not set; nothing to do (docs/RELEASING.md, 'Sentry to GitHub')."
             exit 0
           fi
-          ruby fastlane/sentry_issues.rb sync
+          ruby fastlane/ops_bridge.rb sync sentry
 
   resolve:
     name: Resolve the Sentry issue
@@ -69,7 +69,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
@@ -82,4 +82,4 @@ jobs:
             echo "SENTRY_AUTH_TOKEN is not set; cannot resolve (docs/RELEASING.md, 'Sentry to GitHub')."
             exit 0
           fi
-          ruby fastlane/sentry_issues.rb resolve
+          ruby fastlane/ops_bridge.rb resolve sentry

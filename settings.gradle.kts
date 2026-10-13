@@ -64,10 +64,12 @@ include(":core:network")
 include(":core:designsystem")
 include(":core:billing")
 include(":core:sync")
+include(":core:remoteconfig")
+include(":core:secrets")
 include(":core:testing")
 
 // Feature slices (each: :api / :domain / :data / :ui)
-listOf("search", "collection", "progress", "profile", "settings", "triage", "cowatch").forEach { feature ->
+listOf("search", "collection", "progress", "profile", "settings", "triage", "cowatch", "onboarding").forEach { feature ->
     listOf("api", "domain", "data", "ui").forEach { layer ->
         include(":feature:$feature:$layer")
     }

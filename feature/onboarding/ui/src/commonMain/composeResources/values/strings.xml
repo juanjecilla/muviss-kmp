@@ -1,0 +1,39 @@
+<resources>
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_back">Back</string>
+    <string name="onboarding_start">Start</string>
+
+    <string name="onboarding_welcome_title">Track what you watch</string>
+    <string name="onboarding_welcome_body">Muviss keeps every movie and show you watch — episode by episode, offline, and only on your device. No sign-up, no feed, no ads.</string>
+
+    <string name="onboarding_library_title">Your library, your progress</string>
+    <string name="onboarding_library_body">Save titles and tick episodes as you watch. Their status follows what you have actually seen, so you never set it by hand.</string>
+
+    <string name="onboarding_watch_next_title">Always know what is next</string>
+    <string name="onboarding_watch_next_body">The Progress tab lists every show you are part-way through, with its next unseen episode and a one-tap tick.</string>
+    <string name="onboarding_watch_next_widget">The home-screen widget puts it one tap away.</string>
+
+    <string name="onboarding_discover_title">Find something new</string>
+    <string name="onboarding_discover_body">Go through titles one at a time and decide in a tap — not for me, later, watching, or caught up — to fill your library fast.</string>
+
+    <string name="onboarding_import_title">Already tracking elsewhere?</string>
+    <string name="onboarding_import_body">Bring your history from Trakt, TV Time, a CSV file or a Muviss backup.</string>
+    <string name="onboarding_import_action">Import…</string>
+
+    <string name="onboarding_notifications_title">New episode alerts</string>
+    <string name="onboarding_notifications_body">Get a notification when a show you follow has a new episode. It is off until you turn it on, and you can change it any time in Settings.</string>
+    <string name="onboarding_notifications_switch">New episode alerts</string>
+    <string name="onboarding_notifications_blocked">Notifications are blocked for Muviss in the system settings, so they cannot be turned on from here.</string>
+    <string name="onboarding_notifications_open_settings">Open settings</string>
+
+    <string name="onboarding_key_title">Your TMDB key</string>
+    <string name="onboarding_key_body">Muviss gets titles from TMDB using its own key. If you have a TMDB account you can use yours instead. It is optional, and you can change it later in Settings.</string>
+    <string name="onboarding_key_muviss">Using Muviss\'s key</string>
+    <string name="onboarding_key_yours">Using your key</string>
+    <string name="onboarding_key_use_own">Use my own key</string>
+    <string name="onboarding_key_change">Change key</string>
+
+    <string name="onboarding_done_title">You are all set</string>
+    <string name="onboarding_done_body">Search for a title to start your library.</string>
+</resources>

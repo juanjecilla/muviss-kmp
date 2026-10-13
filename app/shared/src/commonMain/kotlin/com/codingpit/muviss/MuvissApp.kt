@@ -5,8 +5,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -20,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -36,7 +40,9 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
 import com.codingpit.muviss.core.database.PersistenceStatus
@@ -53,6 +59,9 @@ import com.codingpit.muviss.di.rememberDatabaseDriverFactory
 import com.codingpit.muviss.feature.collection.ui.collectionSection
 import com.codingpit.muviss.feature.cowatch.ui.CompanionsRoute
 import com.codingpit.muviss.feature.cowatch.ui.coWatchSection
+import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
+import com.codingpit.muviss.feature.onboarding.ui.OnboardingRoute
+import com.codingpit.muviss.feature.onboarding.ui.onboardingSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
@@ -60,11 +69,13 @@ import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
+import com.codingpit.muviss.feature.settings.ui.ImportRoute
 import com.codingpit.muviss.feature.settings.ui.LocalSystemNotificationSettings
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
 import com.codingpit.muviss.sync.PlatformSyncTriggers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
@@ -126,10 +137,18 @@ fun MuvissApp(
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
         AutoSyncOnForeground()
+        RefreshRemoteConfigOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
             CompositionLocalProvider(LocalSystemNotificationSettings provides koinInject<SystemNotificationSettings>()) {
-                MuvissScaffold(controller, deepLinkMediaId, onDeepLinkConsumed)
+                val startRoute = rememberStartRoute(deepLinkMediaId)
+                if (startRoute == null) {
+                    // The decision is one local read; drawing nothing meanwhile beats flashing
+                    // the Search tab (and the trending request it makes) before the introduction.
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+                } else {
+                    MuvissScaffold(controller, startRoute, deepLinkMediaId, onDeepLinkConsumed)
+                }
             }
         }
     }
@@ -157,6 +176,27 @@ private fun AutoSyncOnForeground() {
     PlatformSyncTriggers(coordinator)
     LifecycleEventEffect(Lifecycle.Event.ON_START) { coordinator.onForeground() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { coordinator.onForeground() }
+}
+
+/**
+ * Asks Remote Config for a fresh copy whenever the app comes to the foreground
+ * (EPIC 45, ADR 0026). [RemoteConfig.refreshIfStale] decides whether an hour has
+ * passed, so `ON_START` on every return costs nothing in the common case, and a
+ * defaults-only build makes no request at all.
+ *
+ * Off the main thread and launched, never awaited: a slow CDN must not delay the
+ * first frame or any screen. Background paths (the WorkManager and BGTask
+ * workers, the desktop timer) never go through here, so they read whatever was
+ * stored at the last foreground.
+ */
+@Composable
+private fun RefreshRemoteConfigOnForeground() {
+    val remoteConfig = koinInject<RemoteConfig>()
+    val io = koinInject<AppDispatchers>().io
+    val scope = rememberCoroutineScope()
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        scope.launch(io) { remoteConfig.refreshIfStale() }
+    }
 }
 
 /**
@@ -211,6 +251,31 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
 }
 
 /**
+ * Where this session starts, or null until it is known (EPIC 47).
+ *
+ * A fresh install starts on the introduction; an upgraded install and everyone after the first
+ * run start on Search. **A launch that arrives with a deep link starts on Search too** — a widget
+ * or a notification tap lands where the user tapped, and the introduction stays pending for the
+ * next plain launch rather than being marked done: they may not have seen it yet.
+ *
+ * Decided once, from the first value: the flag flips to completed the moment the introduction
+ * finishes, and a start destination that followed it would rebuild the graph under the user.
+ */
+@Composable
+private fun rememberStartRoute(deepLinkMediaId: String?): Any? {
+    val onboarding = koinInject<OnboardingApi>()
+    val completed by produceState<Boolean?>(initialValue = null) { value = onboarding.observeCompleted().first() }
+    return remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
+}
+
+/** The decision [rememberStartRoute] makes, apart from the reading: null while [completed] is unknown. */
+internal fun startRouteFor(completed: Boolean?, hasDeepLink: Boolean): Any? = when {
+    completed == null -> null
+    completed || hasDeepLink -> SearchRoute
+    else -> OnboardingRoute()
+}
+
+/**
  * Binds the platform-built [DatabaseDriverFactory] instance into the Koin
  * graph. It has to be created in composition (Android needs a `Context`), so
  * it cannot live in the common [appModules] list alongside `databaseModule`.
@@ -228,6 +293,7 @@ internal fun coWatchEntry(availability: SyncAvailability, open: () -> Unit): (()
 @Composable
 private fun MuvissScaffold(
     controller: MuvissAppController,
+    startRoute: Any,
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
 ) {
@@ -264,12 +330,15 @@ private fun MuvissScaffold(
     // nav rail on medium and expanded — a rail keeps posters full-width and
     // five destinations never warrant a drawer (design doc §06).
     val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
-    val layoutType =
-        if (windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)) {
-            NavigationSuiteType.NavigationRail
-        } else {
-            NavigationSuiteType.NavigationBar
-        }
+    val showingOnboarding = currentDestination?.hasRoute(OnboardingRoute::class) == true
+    val layoutType = when {
+        // The introduction is full-screen: nothing in the bar is reachable until it ends.
+        showingOnboarding -> NavigationSuiteType.None
+
+        windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) -> NavigationSuiteType.NavigationRail
+
+        else -> NavigationSuiteType.NavigationBar
+    }
 
     // Amber pill indicator + amber selected label, per the design mockups.
     // Built here because the navigationSuiteItems DSL is not composable.
@@ -318,7 +387,7 @@ private fun MuvissScaffold(
                 PersistenceBanner(message = rememberPersistenceWarning())
                 NavHost(
                     navController = navController,
-                    startDestination = SearchRoute,
+                    startDestination = startRoute,
                     // M3 fade-through: outgoing fades and settles to 0.92, incoming
                     // fades in from 1.02 — every destination inherits it from here.
                     enterTransition = {
@@ -349,7 +418,23 @@ private fun MuvissScaffold(
                         onOpenCoWatch = openCoWatch,
                     )
                     profileSection(navController, onOpenCompanions = openCoWatch)
-                    settingsSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                    settingsSection(
+                        navController,
+                        onOpenTriage = { navController.navigate(TriageRoute) },
+                        onReplayIntroduction = { navController.navigate(OnboardingRoute(replay = true)) },
+                    )
+                    onboardingSection(
+                        onFinished = { replay ->
+                            if (replay) {
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate(SearchRoute) { popUpTo<OnboardingRoute> { inclusive = true } }
+                            }
+                        },
+                        // Import belongs to Settings' :ui, a peer (ADR 0004), so the shell makes the hop;
+                        // finishing it pops back here with the page the user was on.
+                        onOpenImport = { navController.navigate(ImportRoute) },
+                    )
                     // Not a top-level destination — reached from Discover and Settings.
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
