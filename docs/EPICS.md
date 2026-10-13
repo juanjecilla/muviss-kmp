@@ -295,6 +295,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 13 | EPIC 36 Desktop on a GitHub Release: notarised DMG, **unsigned** MSI for v1 (signing is #179), DEB (ADR 0024) | #79 |
 | 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
 | — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
+| — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0030) | #342 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
@@ -418,7 +419,7 @@ runs standing in where they could. What that did and did not buy:
 - EPICs 45–48 filed (#297, #298, #299, #301) with ADRs 0026–0028; Sentry → GitHub connector #300.
 - **EPIC 45 (#297) built, dark until the owner creates the ConfigCat product** (`docs/RELEASING.md` §12): `RemoteConfig` seam, `:core:remoteconfig`, `16.sqm` config cache, per-request `TmdbCredentialSource`. Takes `16.sqm`; EPIC 47 (#299) therefore takes `17.sqm`.
 - **EPIC 46 (#298) built, dark until `byokEnabled` is flipped**: `SecretStore` + `:core:secrets` (KSafe), `OwnTmdbKey` with shape detection and validation against TMDB, `MetadataError.OwnKeyRejected`, Settings > TMDB data source, scrubber shapes. Landing and Play copy wait for the flag (they would advertise a row nobody can see yet).
-- **EPIC 47 (#299) built**: `:feature:onboarding`, `17.sqm`, notifications off for fresh installs only and asked at the moment of turning them on (`NotificationPermissionRequester`; the Android and iOS cold prompts are gone), the Notification Nudge on Detail, "Show introduction again" in Settings. ADR 0029. The TMDB key page appears only while `byokEnabled`.
+- **EPIC 47 (#299) built**: `:feature:onboarding`, `17.sqm`, notifications off for fresh installs only and asked at the moment of turning them on (`NotificationPermissionRequester`; the Android and iOS cold prompts are gone), the Notification Nudge on Detail, "Show introduction again" in Settings. ADR 0030. The TMDB key page appears only while `byokEnabled`.
 - #302 — TMDB commercial licence needed before any paid tier (blocks #75).
 - #29 narrowed to analytics; remote flags moved to EPIC 45.
 
