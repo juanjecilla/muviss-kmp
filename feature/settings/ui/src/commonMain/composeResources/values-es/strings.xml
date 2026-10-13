@@ -133,4 +133,10 @@
     <string name="import_file_no_importer">Muviss aún no puede importar este tipo de archivo</string>
     <string name="import_file_unreadable_backup">Parece una copia de seguridad de Muviss, pero no se ha podido leer</string>
     <string name="import_file_newer_backup">Esta copia la hizo una versión más reciente de Muviss. Actualiza la app para restaurarla</string>
+
+    <!-- EPIC 46: Ajustes > Fuente de datos de TMDB -->
+    <string name="tmdb_source">Fuente de datos de TMDB</string>
+    <string name="tmdb_source_muviss">Clave de Muviss</string>
+    <string name="tmdb_source_yours">Tu clave</string>
+    <string name="show_introduction">Mostrar la introducción otra vez</string>
 </resources>

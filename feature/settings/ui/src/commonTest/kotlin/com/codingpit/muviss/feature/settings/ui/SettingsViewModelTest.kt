@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -76,9 +77,20 @@ private class FakeEraser : LocalDataEraser {
     }
 }
 
+private class FakePermission(var answer: Boolean = true) : NotificationPermissionRequester {
+    var asked = 0
+        private set
+
+    override suspend fun request(): Boolean {
+        asked++
+        return answer
+    }
+}
+
 class SettingsViewModelTest {
 
     private val eraser = FakeEraser()
+    private val permission = FakePermission()
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -92,7 +104,7 @@ class SettingsViewModelTest {
             SetThemeUseCase(repository),
             SetLanguageUseCase(repository),
             SetRegionUseCase(repository),
-            SetNotificationsEnabledUseCase(repository),
+            SetNotificationsEnabledUseCase(repository, permission),
             SetCrashReportsEnabledUseCase(repository),
             ExportDataUseCase(repository),
         ),
@@ -154,15 +166,47 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun onNotificationsToggled_persists() = runTest {
+    fun onNotificationsToggled_on_asks_the_os_and_persists_when_it_agrees() = runTest {
         val repository = FakeSettingsRepository()
         val vm = viewModel(repository)
+        advanceUntilIdle()
+
+        vm.onNotificationsToggled(true)
+        advanceUntilIdle()
+
+        assertEquals(1, permission.asked)
+        assertEquals(true, vm.state.value.settings.notificationsEnabled)
+        assertEquals(false, vm.state.value.notificationsDenied)
+    }
+
+    @Test
+    fun onNotificationsToggled_on_stores_nothing_when_the_os_refuses() = runTest {
+        permission.answer = false
+        val repository = FakeSettingsRepository()
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+
+        vm.onNotificationsToggled(true)
+        advanceUntilIdle()
+
+        assertEquals(false, repository.flow.value.notificationsEnabled, "a switch must never read on for an alert that cannot arrive")
+        assertEquals(true, vm.state.value.notificationsDenied, "the screen needs to say why the switch snapped back")
+    }
+
+    @Test
+    fun onNotificationsToggled_off_never_asks_the_os_and_clears_a_denial() = runTest {
+        permission.answer = false
+        val repository = FakeSettingsRepository()
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        vm.onNotificationsToggled(true)
         advanceUntilIdle()
 
         vm.onNotificationsToggled(false)
         advanceUntilIdle()
 
-        assertEquals(false, vm.state.value.settings.notificationsEnabled)
+        assertEquals(1, permission.asked, "only the first, enabling, toggle asks")
+        assertEquals(false, vm.state.value.notificationsDenied)
     }
 
     @Test
@@ -283,6 +327,7 @@ private class FakeFeatureFlags : FeatureFlags {
     override val triageDeckAnimations: Flow<Boolean> = deckAnimations
     val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
+    override val byokEnabled: Flow<Boolean> = MutableStateFlow(false)
     val snoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
     val snoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
     override val triageSnoozePeriod: Flow<SnoozePeriod> = snoozePeriod

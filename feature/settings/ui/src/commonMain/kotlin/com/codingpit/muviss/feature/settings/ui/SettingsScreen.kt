@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -85,6 +86,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.section_data
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_privacy
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_triage
 import com.codingpit.muviss.feature.settings.ui.generated.resources.settings_title
+import com.codingpit.muviss.feature.settings.ui.generated.resources.show_introduction
 import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_period
 import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_placement
 import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animations
@@ -97,6 +99,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_light
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_system
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_attribution
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_language
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -106,6 +109,10 @@ fun SettingsScreen(
     onOpenLicenses: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenTriage: () -> Unit,
+    onReplayIntroduction: () -> Unit = {},
+    // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
+    // the screen works without it, so the many tests of everything else do not need a Koin graph.
+    tmdbKey: TmdbKeyViewModel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
@@ -152,7 +159,7 @@ fun SettingsScreen(
             checked = state.settings.notificationsEnabled,
             onToggle = viewModel::onNotificationsToggled,
         )
-        NotificationsBlockedNote(state.settings.notificationsEnabled)
+        NotificationsBlockedNote(state.settings.notificationsEnabled || state.notificationsDenied)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         SwitchRow(
             label = stringResource(Res.string.animations),
@@ -179,6 +186,13 @@ fun SettingsScreen(
             selectedCode = state.settings.region,
             onSelect = viewModel::onRegionSelected,
         )
+        if (tmdbKey != null) {
+            val keyState by tmdbKey.state.collectAsStateWithLifecycle()
+            if (keyState.visible) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                TmdbKeyRow(keyState, onSave = tmdbKey::save, onUseMuviss = tmdbKey::useMuvissKey, onDismiss = tmdbKey::dismissProblem)
+            }
+        }
 
         SectionOverline(stringResource(Res.string.section_triage), topPadding = true)
         ActionRow(
@@ -273,6 +287,7 @@ fun SettingsScreen(
         AboutSection(
             appVersionName = state.appVersion.versionName,
             onOpenLicenses = onOpenLicenses,
+            onReplayIntroduction = onReplayIntroduction,
             onTestCrash = { throw MuvissTestCrash() },
         )
     }
@@ -325,9 +340,11 @@ private fun AppTheme.label(): StringResource = when (this) {
 private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     val system = LocalSystemNotificationSettings.current
     var blocked by remember { mutableStateOf(system.blocked()) }
+    val scope = rememberCoroutineScope()
     LifecycleResumeEffect(system) {
-        blocked = system.blocked()
-        onPauseOrDispose { }
+        // Awaited, not the cached blocked(): iOS only answers asynchronously.
+        val check = scope.launch { blocked = system.blockedNow() }
+        onPauseOrDispose { check.cancel() }
     }
     if (!enabledInApp || !blocked) return
     Row(
@@ -344,7 +361,7 @@ private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     }
 }
 
-/** The platform's notification state; Android provides a real one from `MuvissApp` (EPIC 30, #73). */
+/** The platform's notification state; Android and iOS bind a real one, provided from `MuvissApp` (EPIC 30, #73; iOS EPIC 47). */
 val LocalSystemNotificationSettings = staticCompositionLocalOf<SystemNotificationSettings> { SystemNotificationSettings.None }
 
 internal const val NOTIFICATIONS_BLOCKED_TAG = "settings-notifications-blocked"
@@ -486,7 +503,12 @@ private fun ActionRow(
  * it like any other, which makes it the opt-out check too.
  */
 @Composable
-internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, onTestCrash: () -> Unit) {
+internal fun AboutSection(
+    appVersionName: String,
+    onOpenLicenses: () -> Unit,
+    onTestCrash: () -> Unit,
+    onReplayIntroduction: () -> Unit = {},
+) {
     var versionTaps by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         Text(
@@ -511,6 +533,19 @@ internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, on
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(MuvissSpacing.m),
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onReplayIntroduction).padding(vertical = MuvissSpacing.s).testTag(REPLAY_INTRODUCTION_TAG),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(Res.string.show_introduction), style = MaterialTheme.typography.bodyLarge)
+            Icon(
+                MuvissIcons.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
             )
         }
         Row(
@@ -541,7 +576,8 @@ private fun TriageControlScheme.displayName(): String = stringResource(
     },
 )
 
-internal const val VERSION_ROW_TAG = "settings_version_row"
+internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
+const val VERSION_ROW_TAG = "settings_version_row"
 
 internal const val TEST_CRASH_TAPS = 7
 

@@ -211,7 +211,11 @@ messages, exceptions and breadcrumbs in `beforeSend`/`beforeBreadcrumb`.
 **Version pairing.** `sentryKmp` and `sentryCocoa` move together (see the catalog);
 last checked 2026-09-20: 0.27.0 is the latest KMP release and pins Cocoa 8.58.2.
 
-### Sentry to GitHub (#300, Ops Bridge connector #1)
+### The Ops Bridge: Sentry and Play reviews to GitHub issues (#300, EPIC 48)
+
+Both connectors share one shape (`fastlane/ops_bridge/`, see its README for how to add a third): a connector polls its source, a sink opens one GitHub issue per new item, an optional reverse mapping acts on a closed issue.
+
+#### Sentry crash to issue (#300, connector #1)
 
 `.github/workflows/sentry-issues.yml` opens one GitHub issue per new **unhandled
 production** crash and resolves the crash in Sentry when that issue is closed.
@@ -236,8 +240,31 @@ Business plan; this runs on any plan, with the token the Play ramp's crash gate
 - **Secrets**: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, optionally `SENTRY_PROJECT` (all already
   set for the mapping upload and the gate). With no token the workflow does nothing.
 - **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
-  what it would open). Tests: `ruby fastlane/test/sentry_issues_test.rb`, run by `pr-guards`.
+  what it would open). Tests: `ruby fastlane/test/sentry_connector_test.rb` and `ops_bridge_test.rb`, run by `pr-guards`.
   Nothing here has been run against a live Sentry project (#328).
+
+#### Play reviews to issue (EPIC 48, connector #2)
+
+`.github/workflows/play-reviews.yml` opens one issue per Google Play review of **3 stars or
+fewer**, labelled `from-play-review` + `user-feedback`.
+
+- **Daily, not weekly**: the Reviews API returns only reviews **with text**, created or edited
+  in the **last week**, and only for production versions. A gap longer than a week loses reviews
+  for good (the console's CSV export is the only way back). One issue per review id, so an
+  edited review does not open a second.
+- **The reviewer's name is never copied** (the repository goes public). The body has the rating,
+  app version, Android API level, device model, language and date, and the review text in a code
+  fence, so an `@name` inside it cannot ping anyone. Reviews of 4 and 5 stars are praise, not work.
+- **No reverse mapping**: closing the issue changes nothing in Play.
+- **Owner step: a Play Console grant.** The service account behind `PLAY_SERVICE_ACCOUNT_JSON`
+  (the upload account) needs the permission **Reply to reviews** (Users and permissions >
+  the account > App permissions). Play has no read-only reviews permission, so the account
+  *could* reply; nothing here does, and the key lives only in Actions. Without the grant the run
+  fails with HTTP 403 and opens nothing. It also needs the Google Play Android Developer API
+  enabled in the account's Cloud project (the upload already needs that).
+- Stdlib only: the OAuth token is a signed JWT exchanged at Google (`PlayReviews#access_token`),
+  no gems. Try it: Actions > "Play reviews" > Run workflow (dry run is on by default).
+  Tests: `ruby fastlane/test/play_reviews_test.rb`. Never run against the live API.
 
 ## 5. Branches, the release train and CI (ADR 0025)
 
@@ -1159,3 +1186,42 @@ because building it needs Xcode and a team. Expect to adjust:
    names an episode.** This is the whole point of the stored catalog; if it
    goes blank, the App Group is not wired up and the extension is reading its
    own empty database.
+
+## 12. Remote config (ConfigCat) — EPIC 45 / issue #297
+
+Remote Config (ADR 0026) serves two values without a release: `byokEnabled`
+and `tmdbFallbackReadToken`. It is **off until you create the product**: a
+build with a blank `CONFIGCAT_SDK_KEY` binds a defaults-only implementation
+that never makes a request, which is what every local, CI and current release
+build does.
+
+Owner steps to switch it on:
+
+1. Create a ConfigCat account and a product ("Muviss") with **EU data
+   governance** (the code asks for it; a product on the global CDN would
+   mismatch). Free tier is enough: two settings, one fetch per active device
+   per hour at most.
+2. Create the two settings with exactly these **keys**:
+   `byokEnabled` (boolean, default `false`) and `tmdbFallbackReadToken`
+   (text). ConfigCat will not save an empty text value, so give it a
+   placeholder such as `none`: the app only uses the value when it has the
+   shape of a TMDB v4 read token (`eyJ…`, three dot-separated parts), and
+   anything else means "use the built-in credential".
+3. Copy the environment's **SDK key**. It ships in the binary like the TMDB
+   credential, so it must be the read-only key ConfigCat shows; never a
+   management API credential.
+4. `gh secret set CONFIGCAT_SDK_KEY` (or `scripts/release/owner-setup.sh`), and
+   `CONFIGCAT_SDK_KEY=…` in `local.properties` for a local build. Set
+   `BYOK_ENABLED=true` locally to see the compiled default flip.
+
+**Rotating the TMDB credential** (the reason this exists): put the new v4 read
+token in `tmdbFallbackReadToken`. Installs pick it up on their next foreground
+(within an hour), and a cold start applies the stored copy before its first
+TMDB request. Background workers (new-episode checks, background sync) never
+fetch; they use whatever the last foreground stored. The served token is no more
+secret than the one in the APK — the point is rotation, not secrecy. Set it back to
+`none` to fall back to the built-in credential.
+
+`docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
+(it exposes the device IP to ConfigCat and sends nothing about the user), so
+setting the secret needs no further copy change.

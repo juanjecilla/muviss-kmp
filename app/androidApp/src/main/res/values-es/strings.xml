@@ -16,10 +16,6 @@
     <string name="notification_show_out">Ya está disponible %1$s</string>
     <string name="channel_new_episodes">Episodios nuevos</string>
     <string name="channel_new_episodes_description">Avisos cuando una serie guardada tiene un episodio nuevo</string>
-    <string name="permission_title">¿Quieres saber cuándo salen episodios nuevos?</string>
-    <string name="permission_body">Muviss puede avisarte cuando una serie que sigues tiene un episodio nuevo. Nada más, y puedes cambiarlo en Ajustes.</string>
-    <string name="permission_allow">Permitir</string>
-    <string name="permission_not_now">Ahora no</string>
     <plurals name="notification_summary_title">
         <item quantity="one">%1$d serie tiene episodios nuevos</item>
         <item quantity="many">%1$d series tienen episodios nuevos</item>

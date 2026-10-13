@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.network.DefaultMetadataLocale
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
@@ -56,7 +57,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
  */
 class TmdbProvider internal constructor(
     client: HttpClient,
-    private val credentials: TmdbCredentials,
+    private val credentialSource: TmdbCredentialSource,
     private val locale: MetadataLocale,
     retryPolicy: TmdbRetryPolicy,
     maxConcurrentRequests: Int,
@@ -65,11 +66,17 @@ class TmdbProvider internal constructor(
 
     constructor(
         client: HttpClient,
+        remoteConfig: RemoteConfig,
+        ownKey: OwnTmdbKey? = null,
         locale: MetadataLocale = DefaultMetadataLocale(),
         failureTrace: TmdbFailureTrace = TmdbFailureTrace.None,
     ) : this(
         client = client,
-        credentials = TmdbCredentials(MuvissBuildConfig.TMDB_READ_TOKEN, MuvissBuildConfig.TMDB_API_KEY),
+        credentialSource = ChainedTmdbCredentialSource(
+            ownKey,
+            remoteConfig,
+            TmdbCredentials(MuvissBuildConfig.TMDB_READ_TOKEN, MuvissBuildConfig.TMDB_API_KEY),
+        ),
         locale = locale,
         retryPolicy = TmdbRetryPolicy(),
         maxConcurrentRequests = DEFAULT_MAX_CONCURRENT_REQUESTS,
@@ -231,12 +238,23 @@ class TmdbProvider internal constructor(
         fresh: Boolean = false,
         crossinline configure: HttpRequestBuilder.() -> Unit = {},
     ): T = inFlight.withPermit {
-        tmdbCall(onFailure = { failure, mapped -> failureTrace.record(tmdbFailureLine(path, failure, mapped)) }) {
-            request(path, fresh) { configure() }.body<T>()
+        val resolved = credentialSource.current()
+        try {
+            tmdbCall(onFailure = { failure, mapped -> failureTrace.record(tmdbFailureLine(path, failure, mapped)) }) {
+                request(path, fresh, resolved.credentials) { configure() }.body<T>()
+            }
+        } catch (rejected: MetadataError.Unauthorized) {
+            // ADR 0027: a rejected Own TMDB Key is reported as such and is never retried under ours.
+            throw if (resolved.origin == TmdbCredentialOrigin.User) MetadataError.OwnKeyRejected() else rejected
         }
     }
 
-    private suspend fun request(path: String, fresh: Boolean, configure: HttpRequestBuilder.() -> Unit): HttpResponse {
+    private suspend fun request(
+        path: String,
+        fresh: Boolean,
+        credentials: TmdbCredentials,
+        configure: HttpRequestBuilder.() -> Unit,
+    ): HttpResponse {
         suspend fun HttpClient.fetch() = get("$BASE/$path") {
             authorize(credentials)
             configure()
