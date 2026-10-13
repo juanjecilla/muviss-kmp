@@ -1,6 +1,6 @@
 name: Release milestone
 
-# A PR into release/X.Y.Z or hotfix/X.Y.Z gets the milestone X.Y.Z (ADR 0029),
+# A PR into release/X.Y.Z or hotfix/X.Y.Z gets the milestone X.Y.Z (ADR 0030),
 # so the version's fixes and its release-blocker issues are one list. The train
 # creates the milestone for each cut; this covers a branch cut by hand
 # (scripts/release/milestone.sh). Forward PRs from release-forward.yml get it too.

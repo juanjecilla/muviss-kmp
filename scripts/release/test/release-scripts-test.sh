@@ -186,7 +186,7 @@ expect_eq "rc3 of 1.1.0 is below rc4" "$(( $("$SCRIPTS/version-code.sh" v1.1.0-r
 "$SCRIPTS/version-code.sh" >/dev/null 2>&1; expect_eq "no argument is refused" "$?" "2"
 
 
-echo "forward-fix.sh (ADR 0029)"
+echo "forward-fix.sh (ADR 0030)"
 ffbin="$(mktemp -d)"
 cat >"$ffbin/gh" <<'FAKEGH'
 #!/bin/bash
@@ -226,7 +226,7 @@ expect_eq "a merge commit is forwarded as its branch's change (-m 1)" "$(ff forw
 expect_eq "and no PR is created for it" "$(grep -c 'pr create' "$FAKE_GH_LOG")" "0"
 ff bogus >/dev/null 2>&1; expect_eq "an unknown command is refused" "$?" "2"
 
-echo "milestone.sh (ADR 0029)"
+echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'
 #!/bin/bash

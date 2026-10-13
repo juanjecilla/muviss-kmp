@@ -1,5 +1,5 @@
 #!/bin/bash
-# Forward propagation of a fix (ADR 0029). A PR merged into release/X.Y.Z or
+# Forward propagation of a fix (ADR 0030). A PR merged into release/X.Y.Z or
 # hotfix/X.Y.Z is opened again, as a PR, into every newer open release/* branch
 # and into develop, each linking the original, so a fix made on the oldest line
 # is not lost from the next release. The PRs are opened by the release App
@@ -68,7 +68,7 @@ forward() {
   git push -q --force origin "HEAD:refs/heads/$branch"
 
   title="chore(release): forward #$pr to $target"
-  body="Forwards #$pr, merged into \`$source\`, so \`$target\` gets the same fix (ADR 0029). The original is #$pr."
+  body="Forwards #$pr, merged into \`$source\`, so \`$target\` gets the same fix (ADR 0030). The original is #$pr."
   if [ "$status" = "conflict" ]; then
     body="$body
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Puts a PR into release/X.Y.Z or hotfix/X.Y.Z under the milestone X.Y.Z (ADR
-# 0029), so work is pinned to the version it ships in. The milestone is created
+# 0030), so work is pinned to the version it ships in. The milestone is created
 # when the branch was cut by hand (the train creates it otherwise). A base that
 # is not a release or hotfix branch is left alone.
 #

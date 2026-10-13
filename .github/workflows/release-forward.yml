@@ -2,7 +2,7 @@ name: Forward a fix
 
 # A PR merged into release/X.Y.Z or hotfix/X.Y.Z is opened again, as the release
 # App, into every newer open release/* branch and into develop, each linking the
-# original (ADR 0029), so a fix made on an older line is not lost from the next
+# original (ADR 0030), so a fix made on an older line is not lost from the next
 # release. A forward PR whose cherry-pick conflicts is still opened, empty, and
 # stays open for a person (scripts/release/forward-fix.sh).
 #
