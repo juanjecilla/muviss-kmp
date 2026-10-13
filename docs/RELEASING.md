@@ -401,8 +401,10 @@ Then:
 Production gets the build on the beta track: the RC that the Sunday step promoted
 to beta, which its gates required to be the branch head. If the branch has moved
 since, the gates hold the Sunday step until a new candidate is built. A manual
-merge is not gated that way, so `release.yml` warns and still promotes the beta
-build. A release with no RC fails at the tag step.
+merge is not gated that way, so `release.yml` warns and still promotes the RC.
+It promotes from beta, or from internal when the approved RC never went to beta
+(a hotfix, or a version shipped ahead of its Sunday). A release with no RC fails
+at the tag step.
 
 ### Branch protection
 
