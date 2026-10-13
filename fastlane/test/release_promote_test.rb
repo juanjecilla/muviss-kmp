@@ -389,6 +389,27 @@ class ReleasePromotionTest < Minitest::Test
     assert_includes @out.string, "no release issue for 9.9.9"
   end
 
+  def test_a_hand_broken_marker_skips_that_version_and_still_promotes_the_others
+    add_version("1.0.0", "beta", "beta_done_on" => "2026-10-11")
+    broken = @github.issues.find { |i| i["title"] == "Release 1.0.0" }
+    broken["body"] = broken["body"].sub(/\}(\s*-->)/, ',}\\1')
+    outcomes = run_on(SUNDAY_BETA)
+    assert_nil outcome_for(outcomes, "1.0.0")
+    assert_equal :done, outcome_for(outcomes, "1.1.0").status
+    assert_includes @out.string, "\"Release 1.0.0\" is not valid JSON"
+  end
+
+  def test_complete_on_a_hand_broken_marker_says_so_instead_of_crashing
+    add_version("1.0.0", "production")
+    broken = @github.issues.find { |i| i["title"] == "Release 1.0.0" }
+    broken["body"] = broken["body"].sub(/\}(\s*-->)/, ',}\\1')
+    promotion = ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                                     today: Date.new(2026, 10, 25), apply: true, out: @out)
+    promotion.complete("1.0.0")
+    assert_includes @out.string, "no readable marker; nothing to close"
+    refute broken["closed"]
+  end
+
   def test_the_sentry_release_name_is_the_one_the_app_reports
     @sentry.answer = nil
     run_on(SUNDAY_BETA)

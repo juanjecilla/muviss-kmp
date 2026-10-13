@@ -131,6 +131,7 @@ class ReleasePromotion
   def complete(version)
     issue, state = find(version)
     return @out.puts("no release issue for #{version}; nothing to close") unless issue
+    return @out.puts("the release issue for #{version} has no readable marker; nothing to close") unless state
 
     state = state.merge("stage" => ReleaseStages::DONE, "completed_on" => @today.iso8601, "holds" => [])
     @github.update_issue(issue["number"], ReleaseStages.render(state))
@@ -141,6 +142,7 @@ class ReleasePromotion
   def record_production(version)
     issue, state = find(version)
     return @out.puts("no release issue for #{version}; nothing to record") unless issue
+    return @out.puts("the release issue for #{version} has no readable marker; nothing to record") unless state
     return if %w[production done].include?(state["stage"])
 
     state = state.merge("stage" => ReleaseStages::PRODUCTION, "production_started_on" => @today.iso8601, "holds" => [])
@@ -151,7 +153,7 @@ class ReleasePromotion
   private
 
   def live_records
-    @github.release_issues.map { |issue| [issue, ReleaseStages.parse(issue["body"])] }
+    @github.release_issues.map { |issue| [issue, state_of(issue)] }
       .select { |_, state| state && [ReleaseStages::INTERNAL, ReleaseStages::BETA].include?(state["stage"]) }
   end
 
@@ -159,7 +161,17 @@ class ReleasePromotion
     issue = @github.release_issues.find { |i| i["title"] == ReleaseStages.title(version) }
     return [nil, nil] unless issue
 
-    [issue, ReleaseStages.parse(issue["body"])]
+    [issue, state_of(issue)]
+  end
+
+  # People edit the marker by hand to move a date, so it can stop parsing. That
+  # version is skipped, loudly and by name, rather than crashing the step for
+  # every other version (the train holds on it too, ReleaseStages.plan).
+  def state_of(issue)
+    ReleaseStages.parse(issue["body"])
+  rescue JSON::ParserError
+    @out.puts "::warning::the marker in issue ##{issue['number']} \"#{issue['title']}\" is not valid JSON; skipping it until it is fixed"
+    nil
   end
 
   # Every fact the gates need. A read that fails becomes nil (holds), not a crash.
