@@ -1,6 +1,6 @@
 # Git flow, a weekly release train, and production gets the tested RC
 
-> **Amended by ADR 0029 (2026-10-12):** three versions in flight (internal → open beta → production, a week each), production merged and promoted automatically, `versionCode` derived from the version.
+> **Amended by ADR 0030 (2026-10-12):** three versions in flight (internal → open beta → production, a week each), production merged and promoted automatically, `versionCode` derived from the version.
 
 ADR 0024 shipped every store from one `vX.Y.Z` tag pushed by hand onto `main`, and `main` took every merged PR. That worked while nothing had ever been released. Once versions reach users, `main` has to mean "what users run", and building a release has to stop depending on someone remembering to cut it. This supersedes ADR 0024's "one tag triggers everything" mechanism. Its other decisions stay: local-only v1, fastlane, internal first, and one version line for every platform.
 
