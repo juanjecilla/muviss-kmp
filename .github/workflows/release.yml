@@ -71,6 +71,9 @@ jobs:
           TAG="v$VERSION"
           RC_TAG="$(git tag -l "$TAG-rc*" | sort -V | tail -1)"
           [ -n "$RC_TAG" ] || { echo "::error::no release candidate was ever built for $VERSION (no $TAG-rc* tag); nothing to promote"; exit 1; }
+          # Before any ref changes: an RC the formula cannot encode stops the job
+          # here, not after the tag is pushed and the branch deleted.
+          RC_VERSION_CODE="$(scripts/release/version-code.sh "$RC_TAG")"
           # The merge must ship what the candidate was: if the branch moved
           # after its last RC, that newer code was never on a tester's phone.
           [ "$(git rev-parse "$RC_TAG^{commit}")" = "$(git rev-parse "origin/$HEAD_REF" 2>/dev/null || git rev-parse "$MERGE_SHA^2")" ] \
@@ -85,7 +88,7 @@ jobs:
             echo "version=$VERSION"
             echo "tag=$TAG"
             echo "rc_tag=$RC_TAG"
-            echo "rc_version_code=$(scripts/release/version-code.sh "$RC_TAG")"
+            echo "rc_version_code=$RC_VERSION_CODE"
           } >> "$GITHUB_OUTPUT"
           echo "### Released \`$TAG\` (promoting \`$RC_TAG\`)" >> "$GITHUB_STEP_SUMMARY"
 

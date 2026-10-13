@@ -18,18 +18,26 @@ if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-rc([0-9]+))?$ ]]; then
   exit 2
 fi
 
-# 10# forces base 10, so "08" is not an invalid octal literal.
-MAJOR=$((10#${BASH_REMATCH[1]}))
-MINOR=$((10#${BASH_REMATCH[2]}))
-PATCH=$((10#${BASH_REMATCH[3]}))
-RC=$((10#${BASH_REMATCH[5]:-0}))
+RAW_MAJOR="${BASH_REMATCH[1]}" RAW_MINOR="${BASH_REMATCH[2]}" RAW_PATCH="${BASH_REMATCH[3]}" RAW_RC="${BASH_REMATCH[5]:-0}"
 
-for field in "$MINOR" "$PATCH" "$RC"; do
-  if [ "$field" -gt 99 ]; then
+# Checked as strings first: Bash arithmetic wraps silently, so a 20-digit
+# field would come out small rather than fail. Leading zeros are allowed.
+for field in "$RAW_MINOR" "$RAW_PATCH" "$RAW_RC"; do
+  if [[ ! "$field" =~ ^0*[0-9]{1,2}$ ]]; then
     echo "version-code.sh: minor, patch and rc must be 0..99 (got '$TAG')" >&2
     exit 2
   fi
 done
+if [[ ! "$RAW_MAJOR" =~ ^0*[0-9]{1,4}$ ]]; then
+  echo "version-code.sh: '$TAG' overflows an Int versionCode" >&2
+  exit 2
+fi
+
+# 10# forces base 10, so "08" is not an invalid octal literal.
+MAJOR=$((10#$RAW_MAJOR))
+MINOR=$((10#$RAW_MINOR))
+PATCH=$((10#$RAW_PATCH))
+RC=$((10#$RAW_RC))
 
 CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + RC))
 if [ "$CODE" -gt 2147483647 ]; then

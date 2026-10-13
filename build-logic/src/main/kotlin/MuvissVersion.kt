@@ -32,7 +32,8 @@ class MuvissVersion(private val providers: ProviderFactory, private val rootDir:
      * always have. Null without git.
      */
     val codeOrNull: Int? by lazy {
-        codeFor(exactTag = git("describe", "--tags", "--exact-match", "--match", "v*"), commitCount = commitCountOrNull)
+        // --dirty: a modified tree reads "vX.Y.Z-dirty", which is not a release tag.
+        codeFor(exactTag = git("describe", "--tags", "--exact-match", "--dirty", "--match", "v*"), commitCount = commitCountOrNull)
     }
 
     /** [codeOrNull], or 1 so a source-only archive still builds. Release builds must not ship this fallback. */

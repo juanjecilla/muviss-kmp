@@ -49,6 +49,7 @@ class MuvissVersionTest {
         assertEquals(300, MuvissVersion.codeFor(exactTag = null, commitCount = 300))
         assertEquals(300, MuvissVersion.codeFor(exactTag = "v1.1.0-rc3-2-gabc1234", commitCount = 300))
         assertEquals(300, MuvissVersion.codeFor(exactTag = "not-a-version", commitCount = 300))
+        assertEquals(300, MuvissVersion.codeFor(exactTag = "v1.1.0-rc3-dirty", commitCount = 300))
         assertNull(MuvissVersion.codeFor(exactTag = null, commitCount = null))
     }
 
