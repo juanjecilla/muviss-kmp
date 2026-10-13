@@ -133,4 +133,17 @@
     <string name="import_file_no_importer">Muviss aún no puede importar este tipo de archivo</string>
     <string name="import_file_unreadable_backup">Parece una copia de seguridad de Muviss, pero no se ha podido leer</string>
     <string name="import_file_newer_backup">Esta copia la hizo una versión más reciente de Muviss. Actualiza la app para restaurarla</string>
+
+    <!-- EPIC 46: Ajustes > Fuente de datos de TMDB -->
+    <string name="tmdb_source">Fuente de datos de TMDB</string>
+    <string name="tmdb_source_muviss">Clave de Muviss</string>
+    <string name="tmdb_source_yours">Tu clave</string>
+    <string name="tmdb_source_body">Muviss obtiene los títulos de TMDB. Si tienes tu propia cuenta de TMDB, puedes pegar su token de acceso de lectura v4 o su clave de API v3 y tus peticiones se harán con ella. La clave se queda en este dispositivo: nunca se sincroniza ni se exporta.</string>
+    <string name="tmdb_key_field">Clave de TMDB</string>
+    <string name="tmdb_key_save">Comprobar y guardar</string>
+    <string name="tmdb_key_use_muviss">Usar la clave de Muviss</string>
+    <string name="tmdb_key_checking">Comprobando con TMDB…</string>
+    <string name="tmdb_key_problem_malformed">Eso no parece una clave de TMDB. Pega el token de acceso de lectura v4 o la clave de API v3 de 32 caracteres.</string>
+    <string name="tmdb_key_problem_rejected">TMDB ha rechazado esa clave. Revísala e inténtalo de nuevo.</string>
+    <string name="tmdb_key_problem_could_not_check">No se pudo comprobar la clave ahora. Revisa tu conexión e inténtalo de nuevo.</string>
 </resources>

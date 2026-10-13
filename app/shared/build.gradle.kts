@@ -85,6 +85,7 @@ kotlin {
             implementation(projects.core.designsystem)
             implementation(projects.core.network)
             implementation(projects.core.remoteconfig)
+            implementation(projects.core.secrets)
             implementation(projects.core.database)
             implementation(projects.core.billing)
             implementation(projects.core.sync)

@@ -17,6 +17,7 @@ fun NavGraphBuilder.settingsSection(navController: NavController, onOpenTriage: 
             // must not depend on (ADR 0004) — the app shell owns both graphs
             // and hands the navigation down, same as progressSection does.
             onOpenTriage = onOpenTriage,
+            tmdbKey = koinViewModel<TmdbKeyViewModel>(),
         )
     }
     composable<LicensesRoute> {

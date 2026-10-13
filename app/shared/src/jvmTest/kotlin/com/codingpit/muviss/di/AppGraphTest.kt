@@ -2,6 +2,8 @@ package com.codingpit.muviss.di
 
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.network.MetadataProvider
@@ -60,7 +62,12 @@ class AppGraphTest {
     private fun startGraph(): Koin {
         val directory = createTempDirectory("muviss-app-graph").toFile()
         val app = startKoin {
-            modules(appModules + module { single { DatabaseDriverFactory(directory) } })
+            modules(
+                appModules + module {
+                    single { DatabaseDriverFactory(directory) }
+                    single<SecretStore> { InMemorySecretStore() }
+                },
+            )
         }
         koin = app.koin
         return app.koin

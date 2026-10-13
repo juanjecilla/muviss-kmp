@@ -29,6 +29,7 @@ material3Adaptive = "1.2.0"
 koin = "4.2.2"
 sqldelight = "2.3.2"
 configcat = "5.1.0"
+ksafe = "3.3.0"
 coil = "3.3.0"
 navigationCompose = "2.9.2"
 turbine = "1.2.1"
@@ -95,6 +96,9 @@ wrappers-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", ve
 
 # Remote config (EPIC 45, ADR 0026)
 configcat-kotlinClient = { module = "com.configcat:configcat-kotlin-client", version.ref = "configcat" }
+
+# Encrypted key/value storage for secrets (EPIC 46, ADR 0027)
+ksafe = { module = "eu.anifantakis:ksafe", version.ref = "ksafe" }
 
 # Koin (DI)
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
