@@ -3,7 +3,7 @@ name: Release
 # A release or hotfix branch merged into main is a release (ADR 0025):
 #
 #   tag            vX.Y.Z on the merge commit; delete the merged branch
-#   promote        the RC on Play's beta track → production at 20% (ADR 0029).
+#   promote        the RC on Play's beta track → production at 20% (ADR 0030).
 #                  On the scheduled path (the PR is labelled auto-release)
 #                  there is no approval; on a manual merge the `production`
 #                  environment asks. play-rollout-ramp.yml takes it to 100%.
@@ -127,10 +127,10 @@ jobs:
             exit 0
           fi
           bundle exec fastlane android promote rollout:0.2 "version_code:$VERSION_CODE"
-          # The release issue says so too (ADR 0029); a no-op without one.
+          # The release issue says so too (ADR 0030); a no-op without one.
           ruby fastlane/release_promote.rb record-production "$VERSION"
 
-  # The scheduled path (ADR 0029): release-promote.yml's Sunday step merged the
+  # The scheduled path (ADR 0030): release-promote.yml's Sunday step merged the
   # PR as the release App, labelled auto-release, after every gate passed. No
   # approval is asked here: the crash gate in the daily ramp is what holds the
   # rollout if the build is bad.

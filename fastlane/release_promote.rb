@@ -1,4 +1,4 @@
-# The Sunday step of the staged releases (ADR 0029): promote every version whose
+# The Sunday step of the staged releases (ADR 0030): promote every version whose
 # step is due, when every gate passes, and hold it (saying why on its release
 # issue) when one does not. A held version is retried the next Sunday, or by a
 # dispatch of release-promote.yml.
@@ -317,8 +317,8 @@ module ReleasePromotionAdapters
     end
 
     def open_release_pr(version)
-      body = "Ships **#{version}** to production (ADR 0029). Opened by the Sunday promotion (release-promote.yml). Merged with a merge commit by the release App; merging tags v#{version} and release.yml promotes the newest beta build."
-      gh("label", "create", "auto-release", "--repo", @repo, "--color", "1D76DB", "--description", "Merged by the Sunday promotion, so release.yml promotes without the production approval (ADR 0029)", "--force")
+      body = "Ships **#{version}** to production (ADR 0030). Opened by the Sunday promotion (release-promote.yml). Merged with a merge commit by the release App; merging tags v#{version} and release.yml promotes the newest beta build."
+      gh("label", "create", "auto-release", "--repo", @repo, "--color", "1D76DB", "--description", "Merged by the Sunday promotion, so release.yml promotes without the production approval (ADR 0030)", "--force")
       url = gh("pr", "create", "--repo", @repo, "--base", "main", "--head", "release/#{version}", "--title", "release: #{version}", "--label", "auto-release", "--body", body)
       Integer(url.split("/").last)
     end

@@ -92,7 +92,7 @@ platform :android do
     )
   end
 
-  # The Sunday step (ADR 0029) puts the RC on open beta a week before production.
+  # The Sunday step (ADR 0030) puts the RC on open beta a week before production.
   # Play's open testing track is called "beta" in its API.
   desc "Promote the internal release to open beta (the beta track)"
   lane :beta do |options|
@@ -124,7 +124,7 @@ platform :android do
 
     # release.yml passes the RC's versionCode: promoting "the beta release" must
     # mean the candidate this merge approved, not whatever was promoted last.
-    # Production promotes from beta, a week after the beta step (ADR 0029).
+    # Production promotes from beta, a week after the beta step (ADR 0030).
     if options[:version_code]
       expected = Integer(options[:version_code])
       latest = google_play_track_version_codes(track: "beta", json_key_data: json_key_data).max
@@ -237,7 +237,7 @@ platform :android do
     end
 
     # release-promote.yml's `complete` closes the release issue on this signal
-    # (ADR 0029). Written only after the edit committed.
+    # (ADR 0030). Written only after the edit committed.
     File.write(ENV["RAMP_RESULT_FILE"], "completed\n") if ramped_to_full && ENV["RAMP_RESULT_FILE"]
   end
 

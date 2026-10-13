@@ -1,6 +1,6 @@
 name: Release promote
 
-# The Sunday step of the staged releases (ADR 0029). Every version in flight is
+# The Sunday step of the staged releases (ADR 0030). Every version in flight is
 # checked: a version in internal is promoted to open beta, and one in beta is
 # merged into main (so release.yml tags it and promotes the beta build to
 # production at 20%) once it has had a full week on beta. Each step runs only
@@ -8,7 +8,7 @@ name: Release promote
 # on its "Release X.Y.Z" issue and is retried next Sunday.
 #
 # The production step needs no approval: the gates and the crash gate that
-# holds the ramp are what stand in for it (ADR 0029). `play-promote.yml` halts.
+# holds the ramp are what stand in for it (ADR 0030). `play-promote.yml` halts.
 #
 # Dispatch it to see every decision first: dry_run defaults to true, and a
 # dry run changes nothing, on GitHub or in Play.
@@ -72,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          # The crash gate (#193, ADR 0029): a step waits while Sentry shows a new
+          # The crash gate (#193, ADR 0030): a step waits while Sentry shows a new
           # unhandled issue in the build, or cannot be asked.
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}

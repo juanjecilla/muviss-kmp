@@ -59,7 +59,7 @@ jobs:
           rm -f "$RAMP_RESULT_FILE"
           bundle exec fastlane android ramp
 
-      # ADR 0029: a version whose rollout reached 100% is finished, so its
+      # ADR 0030: a version whose rollout reached 100% is finished, so its
       # "Release X.Y.Z" issue closes. Only the newest tag can be ramping.
       - name: Close the release issue at 100%
         env:
