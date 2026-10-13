@@ -1,5 +1,5 @@
 #!/bin/bash
-# The per-version milestone and "Release X.Y.Z" issue (ADR 0029), used by
+# The per-version milestone and "Release X.Y.Z" issue (ADR 0030), used by
 # .github/workflows/release-train.yml and release-promote.yml. The issue's
 # marker is the version's state; the schedule and the arithmetic live in
 # fastlane/release_stages.rb. GitHub calls go through `gh`, which reads GH_REPO.
@@ -14,8 +14,8 @@ cd "$(dirname "$0")/../.." || exit 1
 STAGES=fastlane/release_stages.rb
 
 labels() {
-  gh label create release --color 0E8A16 --description "A staged release's tracking issue (ADR 0029)" --force >/dev/null
-  gh label create release-blocker --color B60205 --description "Holds the next staged release step (ADR 0029)" --force >/dev/null
+  gh label create release --color 0E8A16 --description "A staged release's tracking issue (ADR 0030)" --force >/dev/null
+  gh label create release-blocker --color B60205 --description "Holds the next staged release step (ADR 0030)" --force >/dev/null
 }
 
 plan() {

@@ -1,4 +1,4 @@
-# Staged releases (ADR 0029): every version walks internal -> open beta ->
+# Staged releases (ADR 0030): every version walks internal -> open beta ->
 # production, a week apart, unless a gate holds it. This file is the schedule
 # arithmetic, the stagger rule the train applies, and the format of the
 # "Release X.Y.Z" issue that carries each version's state. The workflows make
@@ -28,7 +28,7 @@ module ReleaseStages
 
   module_function
 
-  # The Sunday after the cut: six days after a Monday cut (ADR 0029).
+  # The Sunday after the cut: six days after a Monday cut (ADR 0030).
   def beta_on(cut_on)
     ahead = (7 - cut_on.wday) % 7
     cut_on + (ahead.zero? ? 7 : ahead)

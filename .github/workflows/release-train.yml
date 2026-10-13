@@ -1,6 +1,6 @@
 name: Release train
 
-# The weekly cut (ADR 0025, staged by ADR 0029). Once a week, at night, cut
+# The weekly cut (ADR 0025, staged by ADR 0030). Once a week, at night, cut
 # release/X.Y.Z from develop when develop has commits since the last release —
 # the version bumped from the conventional commits (scripts/release/next-version.sh).
 # Pushing the branch starts release-rc.yml, so the candidate is on Play's
@@ -9,7 +9,7 @@ name: Release train
 #
 # Skips, writing why to the run summary:
 #   - nothing new on develop since the last vX.Y.Z;
-#   - a version is still in internal (ADR 0029): the new RC would replace it on
+#   - a version is still in internal (ADR 0030): the new RC would replace it on
 #     that one track. A version past internal (open beta, ramping in production)
 #     does not stop the cut. That case also comments on a "Release train
 #     blocked" issue so it is seen.
@@ -95,7 +95,7 @@ jobs:
             scripts/release/release-issue.sh ensure "$v" "$(scripts/release/release-issue.sh cut-date "$v")"
           done
 
-          # The stagger rule (ADR 0029): a version still in internal holds the cut.
+          # The stagger rule (ADR 0030): a version still in internal holds the cut.
           HOLD="$(jq -r '.hold // empty' <<<"$PLAN")"
           if [ -n "$HOLD" ]; then
             MSG="Release train $(date -u +%F): skipped — $HOLD."

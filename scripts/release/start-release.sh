@@ -33,7 +33,7 @@ for arg in "$@"; do
   case "$arg" in
     --hotfix) KIND=hotfix ;;
     --dry-run) DRY_RUN=1 ;;
-    # The train has applied ADR 0029's stagger rule (release_stages.rb plan),
+    # The train has applied ADR 0030's stagger rule (release_stages.rb plan),
     # so another open release is allowed as long as it is past internal.
     --stagger-checked) STAGGER_CHECKED=1 ;;
     *) die "unknown option '$arg'" ;;
@@ -61,7 +61,7 @@ git rev-parse -q --verify "refs/heads/$BRANCH" >/dev/null \
 git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null \
   && die "tag v$VERSION already exists"
 
-# A version still in internal blocks the next cut (ADR 0029): two RCs on the
+# A version still in internal blocks the next cut (ADR 0030): two RCs on the
 # internal track would replace each other, and "promote the latest" would pick
 # whichever pushed last. Versions past internal (beta, production) are fine. The
 # train checks the stage itself and passes --stagger-checked; a hand cut without

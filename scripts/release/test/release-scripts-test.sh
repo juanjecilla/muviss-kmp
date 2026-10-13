@@ -125,7 +125,7 @@ git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
 grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)" \
   && pass "a release with no feat/fix says so" || fail "maintenance-only section"
 
-echo "release-issue.sh (ADR 0029)"
+echo "release-issue.sh (ADR 0030)"
 # A fake gh: records every call, answers the reads the script makes.
 fakebin="$(mktemp -d)"
 cat >"$fakebin/gh" <<'FAKEGH'
