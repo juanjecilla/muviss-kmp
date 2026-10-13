@@ -124,11 +124,28 @@ platform :android do
 
     # release.yml passes the RC's versionCode: promoting "the beta release" must
     # mean the candidate this merge approved, not whatever was promoted last.
-    # Production promotes from beta, a week after the beta step (ADR 0030).
+    # Production promotes from beta, a week after the beta step (ADR 0030). A
+    # manual merge (allow_internal:true) may ship an RC that never went to beta,
+    # a hotfix or a version ahead of its Sunday; it is then taken from internal,
+    # and only when internal's latest is that exact RC.
+    source = "beta"
     if options[:version_code]
       expected = Integer(options[:version_code])
-      latest = google_play_track_version_codes(track: "beta", json_key_data: json_key_data).max
-      UI.user_error!("Beta track's latest is #{latest}, but the approved RC is #{expected}") unless latest == expected
+      latest_on = lambda do |track|
+        google_play_track_version_codes(track: track, json_key_data: json_key_data).max
+      rescue StandardError => e
+        UI.message("Could not read the #{track} track (#{e.class}); treating it as empty")
+        nil
+      end
+      beta_latest = latest_on.call("beta")
+      unless beta_latest == expected
+        internal_latest = options[:allow_internal].to_s == "true" ? latest_on.call("internal") : nil
+        unless internal_latest == expected
+          UI.user_error!("Beta track's latest is #{beta_latest.inspect}#{internal_latest ? ", internal's is #{internal_latest}" : ''}, but the approved RC is #{expected}")
+        end
+        source = "internal"
+        UI.important("#{expected} is not on beta; promoting it from internal (manual release)")
+      end
     end
 
     # Until the app's first production release has been reviewed, Play only
@@ -136,7 +153,7 @@ platform :android do
     # that first one for review in the Console (docs/RELEASING.md).
     draft = ENV.fetch("PLAY_RELEASE_STATUS", "completed") == PlayRollout::DRAFT
     upload_to_play_store(
-      track: "beta",
+      track: source,
       track_promote_to: "production",
       rollout: draft ? nil : rollout.to_s,
       # On a promote, release_status describes the *source* release; the

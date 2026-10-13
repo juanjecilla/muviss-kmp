@@ -126,7 +126,9 @@ jobs:
             echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; skipping the promotion."
             exit 0
           fi
-          bundle exec fastlane android promote rollout:0.2 "version_code:$VERSION_CODE"
+          # A manual merge may ship an RC that never went to beta (a hotfix, or
+          # ahead of its Sunday): the lane then takes it from internal.
+          bundle exec fastlane android promote rollout:0.2 "version_code:$VERSION_CODE" allow_internal:true
           # The release issue says so too (ADR 0030); a no-op without one.
           ruby fastlane/release_promote.rb record-production "$VERSION"
 
@@ -143,7 +145,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1.328.0
