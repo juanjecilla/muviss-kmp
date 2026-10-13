@@ -1,11 +1,15 @@
 package com.codingpit.muviss.core.network.di
 
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.core.network.MetadataProviderRegistry
 import com.codingpit.muviss.core.network.createHttpClient
+import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
 import com.codingpit.muviss.core.network.tmdb.TmdbFailureTrace
 import com.codingpit.muviss.core.network.tmdb.TmdbProvider
+import io.ktor.client.HttpClient
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -25,6 +29,9 @@ val networkModule: Module = module {
     // No-op here; a host overrides it in debug builds only (#177). Koin's last
     // binding wins, so the host's module must load after this one.
     single<TmdbFailureTrace> { TmdbFailureTrace.None }
-    single<MetadataProvider> { TmdbProvider(get(), get(), get(), get()) }
+    single { OwnTmdbKey(get<SecretStore>(), get<HttpClient>()) }
+    single<MetadataProvider> {
+        TmdbProvider(get<HttpClient>(), get<RemoteConfig>(), get<OwnTmdbKey>(), get<MetadataLocale>(), get<TmdbFailureTrace>())
+    }
     single { MetadataProviderRegistry(getAll<MetadataProvider>()) }
 }

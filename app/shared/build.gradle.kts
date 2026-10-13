@@ -85,6 +85,7 @@ kotlin {
             implementation(projects.core.designsystem)
             implementation(projects.core.network)
             implementation(projects.core.remoteconfig)
+            implementation(projects.core.secrets)
             implementation(projects.core.database)
             implementation(projects.core.billing)
             implementation(projects.core.sync)
@@ -97,6 +98,7 @@ kotlin {
             implementation(projects.feature.settings.ui)
             implementation(projects.feature.triage.ui)
             implementation(projects.feature.cowatch.ui)
+            implementation(projects.feature.onboarding.ui)
 
             // Feature data (Koin modules)
             implementation(projects.feature.search.data)
@@ -106,6 +108,9 @@ kotlin {
             implementation(projects.feature.settings.data)
             implementation(projects.feature.triage.data)
             implementation(projects.feature.cowatch.data)
+            implementation(projects.feature.onboarding.data)
+            // The shell asks onboarding whether the introduction has been seen (its contract only).
+            implementation(projects.feature.onboarding.api)
 
             implementation(libs.navigation.compose)
             implementation(libs.compose.material3.adaptiveNavigationSuite)

@@ -5,11 +5,14 @@ import com.codingpit.muviss.core.common.di.commonModule
 import com.codingpit.muviss.core.database.di.databaseModule
 import com.codingpit.muviss.core.network.di.networkModule
 import com.codingpit.muviss.core.remoteconfig.di.remoteConfigModule
+import com.codingpit.muviss.core.secrets.di.secretsModule
 import com.codingpit.muviss.core.sync.di.syncModule
 import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
 import com.codingpit.muviss.feature.cowatch.data.di.coWatchDataModule
 import com.codingpit.muviss.feature.cowatch.ui.di.coWatchUiModule
+import com.codingpit.muviss.feature.onboarding.data.di.onboardingDataModule
+import com.codingpit.muviss.feature.onboarding.ui.di.onboardingUiModule
 import com.codingpit.muviss.feature.profile.data.di.profileDataModule
 import com.codingpit.muviss.feature.profile.ui.di.profileUiModule
 import com.codingpit.muviss.feature.progress.data.di.progressDataModule
@@ -29,6 +32,8 @@ val appModules: List<Module> =
         databaseModule,
         networkModule,
         remoteConfigModule,
+        // Before networkModule's consumers resolve it; Android's host overrides it with a Context-built store.
+        secretsModule,
         billingModule,
         syncModule,
         // After syncModule: it overrides that module's permissive default
@@ -52,4 +57,6 @@ val appModules: List<Module> =
         triageUiModule,
         coWatchDataModule,
         coWatchUiModule,
+        onboardingDataModule,
+        onboardingUiModule,
     )

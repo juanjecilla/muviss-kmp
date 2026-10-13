@@ -417,6 +417,8 @@ runs standing in where they could. What that did and did not buy:
 - Found: #267, #271, #273, #274, #275, #277, #280, #281.
 - EPICs 45–48 filed (#297, #298, #299, #301) with ADRs 0026–0028; Sentry → GitHub connector #300.
 - **EPIC 45 (#297) built, dark until the owner creates the ConfigCat product** (`docs/RELEASING.md` §12): `RemoteConfig` seam, `:core:remoteconfig`, `16.sqm` config cache, per-request `TmdbCredentialSource`. Takes `16.sqm`; EPIC 47 (#299) therefore takes `17.sqm`.
+- **EPIC 46 (#298) built, dark until `byokEnabled` is flipped**: `SecretStore` + `:core:secrets` (KSafe), `OwnTmdbKey` with shape detection and validation against TMDB, `MetadataError.OwnKeyRejected`, Settings > TMDB data source, scrubber shapes. Landing and Play copy wait for the flag (they would advertise a row nobody can see yet).
+- **EPIC 47 (#299) built**: `:feature:onboarding`, `17.sqm`, notifications off for fresh installs only and asked at the moment of turning them on (`NotificationPermissionRequester`; the Android and iOS cold prompts are gone), the Notification Nudge on Detail, "Show introduction again" in Settings. ADR 0029. The TMDB key page appears only while `byokEnabled`.
 - #302 — TMDB commercial licence needed before any paid tier (blocks #75).
 - #29 narrowed to analytics; remote flags moved to EPIC 45.
 

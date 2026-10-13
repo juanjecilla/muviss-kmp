@@ -10,7 +10,7 @@ TRACK WHAT YOU WATCH
 KNOW WHAT'S NEXT
 • Watch next: every show you're following, with its next unseen episode and a one-tap tick.
 • Upcoming: air dates for your shows, day by day.
-• New-episode notifications when something you follow airs.
+• New-episode notifications when something you follow airs — off until you turn them on, in a short first-run introduction or in Settings.
 • A home-screen widget so the next episode is one tap away.
 
 FILL YOUR LIBRARY FAST

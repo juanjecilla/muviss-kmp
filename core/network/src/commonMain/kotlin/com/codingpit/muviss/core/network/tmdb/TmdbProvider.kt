@@ -67,11 +67,13 @@ class TmdbProvider internal constructor(
     constructor(
         client: HttpClient,
         remoteConfig: RemoteConfig,
+        ownKey: OwnTmdbKey? = null,
         locale: MetadataLocale = DefaultMetadataLocale(),
         failureTrace: TmdbFailureTrace = TmdbFailureTrace.None,
     ) : this(
         client = client,
-        credentialSource = RemoteFirstTmdbCredentialSource(
+        credentialSource = ChainedTmdbCredentialSource(
+            ownKey,
             remoteConfig,
             TmdbCredentials(MuvissBuildConfig.TMDB_READ_TOKEN, MuvissBuildConfig.TMDB_API_KEY),
         ),
@@ -237,14 +239,23 @@ class TmdbProvider internal constructor(
         fresh: Boolean = false,
         crossinline configure: HttpRequestBuilder.() -> Unit = {},
     ): T = inFlight.withPermit {
-        tmdbCall(onFailure = { failure, mapped -> failureTrace.record(tmdbFailureLine(path, failure, mapped)) }) {
-            request(path, fresh) { configure() }.body<T>()
+        val resolved = credentialSource.current()
+        try {
+            tmdbCall(onFailure = { failure, mapped -> failureTrace.record(tmdbFailureLine(path, failure, mapped)) }) {
+                request(path, fresh, resolved.credentials) { configure() }.body<T>()
+            }
+        } catch (rejected: MetadataError.Unauthorized) {
+            // ADR 0027: a rejected Own TMDB Key is reported as such and is never retried under ours.
+            throw if (resolved.origin == TmdbCredentialOrigin.User) MetadataError.OwnKeyRejected() else rejected
         }
     }
 
-    private suspend fun request(path: String, fresh: Boolean, configure: HttpRequestBuilder.() -> Unit): HttpResponse {
-        // Resolved per request, before the call: the builder below is not suspending.
-        val credentials = credentialSource.current()
+    private suspend fun request(
+        path: String,
+        fresh: Boolean,
+        credentials: TmdbCredentials,
+        configure: HttpRequestBuilder.() -> Unit,
+    ): HttpResponse {
         suspend fun HttpClient.fetch() = get("$BASE/$path") {
             authorize(credentials)
             configure()

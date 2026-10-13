@@ -6,7 +6,12 @@ import androidx.navigation.compose.composable
 import org.koin.compose.viewmodel.koinViewModel
 
 /** Registers this feature's destinations into the app NavGraphBuilder. */
-fun NavGraphBuilder.settingsSection(navController: NavController, onOpenTriage: () -> Unit) {
+fun NavGraphBuilder.settingsSection(
+    navController: NavController,
+    onOpenTriage: () -> Unit,
+    // Onboarding's route belongs to a peer feature's :ui (ADR 0004), so the shell makes the hop.
+    onReplayIntroduction: () -> Unit = {},
+) {
     composable<SettingsRoute> {
         val viewModel = koinViewModel<SettingsViewModel>()
         SettingsScreen(
@@ -17,6 +22,8 @@ fun NavGraphBuilder.settingsSection(navController: NavController, onOpenTriage: 
             // must not depend on (ADR 0004) — the app shell owns both graphs
             // and hands the navigation down, same as progressSection does.
             onOpenTriage = onOpenTriage,
+            onReplayIntroduction = onReplayIntroduction,
+            tmdbKey = koinViewModel<TmdbKeyViewModel>(),
         )
     }
     composable<LicensesRoute> {

@@ -110,4 +110,11 @@
     <!-- Screen-reader state of a season header (EPIC 31b, #164). -->
     <string name="a11y_expanded">Expanded</string>
     <string name="a11y_collapsed">Collapsed</string>
+
+    <!-- EPIC 47: the Notification Nudge -->
+    <string name="nudge_question">Get told when new episodes of %1$s air?</string>
+    <string name="nudge_turn_on">Turn on</string>
+    <string name="nudge_dismiss">Dismiss</string>
+    <string name="nudge_blocked">Notifications are blocked for Muviss in the system settings.</string>
+    <string name="nudge_open_settings">Open settings</string>
 </resources>

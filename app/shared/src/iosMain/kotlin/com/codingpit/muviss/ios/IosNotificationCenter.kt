@@ -3,6 +3,7 @@ package com.codingpit.muviss.ios
 import com.codingpit.muviss.NotificationText
 import com.codingpit.muviss.ResourceNotificationText
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.setValue
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionBadge
@@ -18,6 +19,7 @@ import platform.UserNotifications.UNNotificationResponse
 import platform.UserNotifications.UNUserNotificationCenter
 import platform.UserNotifications.UNUserNotificationCenterDelegateProtocol
 import platform.darwin.NSObject
+import kotlin.coroutines.resume
 
 /**
  * iOS counterpart of `:app:androidApp`'s `NewEpisodesNotifier` +
@@ -39,16 +41,25 @@ import platform.darwin.NSObject
 object IosNotificationCenter {
 
     /**
-     * Installs the tap delegate and requests permission. Safe to call on
-     * every launch, background or foreground: [UNUserNotificationCenter]
-     * only prompts the user the first time — a later call with a status
-     * already determined just invokes the completion handler immediately.
+     * Installs the tap delegate. It no longer asks for permission (EPIC 47): that
+     * used to happen here, on every launch, before the user had any reason to say
+     * yes. The prompt now appears only when they turn notifications on, through
+     * [IosNotificationPermissionRequester].
      */
     fun configure() {
         UNUserNotificationCenter.currentNotificationCenter().delegate = delegate
+    }
+
+    /**
+     * Asks iOS for permission. [UNUserNotificationCenter] prompts only the first
+     * time; once the answer is determined it calls the handler straight back with
+     * that answer, so asking again is harmless and a refusal stays a refusal.
+     */
+    internal suspend fun requestPermission(): Boolean = suspendCancellableCoroutine { continuation ->
         val options = UNAuthorizationOptionAlert or UNAuthorizationOptionSound or UNAuthorizationOptionBadge
-        UNUserNotificationCenter.currentNotificationCenter()
-            .requestAuthorizationWithOptions(options) { _, _ -> }
+        UNUserNotificationCenter.currentNotificationCenter().requestAuthorizationWithOptions(options) { granted, _ ->
+            continuation.resume(granted)
+        }
     }
 
     /**

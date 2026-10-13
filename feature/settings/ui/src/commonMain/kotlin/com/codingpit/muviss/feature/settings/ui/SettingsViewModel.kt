@@ -13,6 +13,7 @@ import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
+import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
@@ -49,6 +50,8 @@ data class SettingsUiState(
     /** The app-wide motion switch. While it is off every per-feature motion row below is inert. */
     val animationsEnabled: Boolean = true,
     val triageDeckAnimations: Boolean = true,
+    /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
+    val notificationsDenied: Boolean = false,
 )
 
 /**
@@ -147,7 +150,11 @@ class SettingsViewModel(
     }
 
     fun onNotificationsToggled(enabled: Boolean) {
-        viewModelScope.launchReporting { actions.setNotificationsEnabled(enabled) }
+        viewModelScope.launchReporting {
+            val change = actions.setNotificationsEnabled(enabled)
+            // A refusal stores nothing, so the switch snaps back; this is what lets the screen say why.
+            _state.update { it.copy(notificationsDenied = change == NotificationsChange.DENIED) }
+        }
     }
 
     fun onCrashReportsToggled(enabled: Boolean) {

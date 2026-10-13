@@ -1,0 +1,39 @@
+<resources>
+    <string name="onboarding_skip">Omitir</string>
+    <string name="onboarding_next">Siguiente</string>
+    <string name="onboarding_back">Atrás</string>
+    <string name="onboarding_start">Empezar</string>
+
+    <string name="onboarding_welcome_title">Sigue lo que ves</string>
+    <string name="onboarding_welcome_body">Muviss lleva la cuenta de cada película y serie que ves, episodio a episodio, sin conexión y solo en tu dispositivo. Sin registro, sin feed, sin anuncios.</string>
+
+    <string name="onboarding_library_title">Tu biblioteca, tu progreso</string>
+    <string name="onboarding_library_body">Guarda títulos y marca episodios al verlos. Su estado sigue lo que realmente has visto, así que nunca lo fijas a mano.</string>
+
+    <string name="onboarding_watch_next_title">Sabe siempre qué toca</string>
+    <string name="onboarding_watch_next_body">La pestaña Progreso lista cada serie que tienes a medias, con su próximo episodio sin ver y una marca con un toque.</string>
+    <string name="onboarding_watch_next_widget">El widget de la pantalla de inicio lo deja a un toque.</string>
+
+    <string name="onboarding_discover_title">Encuentra algo nuevo</string>
+    <string name="onboarding_discover_body">Repasa títulos de uno en uno y decide con un toque (no es para mí, luego, viéndola o al día) para llenar tu biblioteca rápido.</string>
+
+    <string name="onboarding_import_title">¿Ya llevas la cuenta en otro sitio?</string>
+    <string name="onboarding_import_body">Trae tu historial de Trakt, TV Time, un archivo CSV o una copia de Muviss.</string>
+    <string name="onboarding_import_action">Importar…</string>
+
+    <string name="onboarding_notifications_title">Avisos de episodios nuevos</string>
+    <string name="onboarding_notifications_body">Recibe un aviso cuando una serie que sigues tiene un episodio nuevo. Están desactivados hasta que los actives, y puedes cambiarlo cuando quieras en Ajustes.</string>
+    <string name="onboarding_notifications_switch">Avisos de episodios nuevos</string>
+    <string name="onboarding_notifications_blocked">Las notificaciones de Muviss están bloqueadas en los ajustes del sistema, así que no se pueden activar desde aquí.</string>
+    <string name="onboarding_notifications_open_settings">Abrir ajustes</string>
+
+    <string name="onboarding_key_title">Tu clave de TMDB</string>
+    <string name="onboarding_key_body">Muviss obtiene los títulos de TMDB con su propia clave. Si tienes una cuenta de TMDB, puedes usar la tuya. Es opcional y puedes cambiarla luego en Ajustes.</string>
+    <string name="onboarding_key_muviss">Usando la clave de Muviss</string>
+    <string name="onboarding_key_yours">Usando tu clave</string>
+    <string name="onboarding_key_use_own">Usar mi propia clave</string>
+    <string name="onboarding_key_change">Cambiar clave</string>
+
+    <string name="onboarding_done_title">Todo listo</string>
+    <string name="onboarding_done_body">Busca un título para empezar tu biblioteca.</string>
+</resources>
