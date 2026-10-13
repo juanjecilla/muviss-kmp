@@ -11,7 +11,7 @@ Muviss is a Kotlin Multiplatform + Compose Multiplatform tracker for movies and 
 **Git flow (ADR 0025).** Branch from and open PRs against **`develop`** (squash
 merge). `main` only takes `release/*` and `hotfix/*` merges and holds what users
 run. Never push to either directly; see `AGENTS.md` for the merge protocol.
-**Releases are staged (ADR 0029):** each version walks internal → open beta →
+**Releases are staged (ADR 0030):** each version walks internal → open beta →
 production a week apart, on Sunday steps the bot runs when every gate passes; up
 to three versions are in flight. A fix for a version goes into its
 `release/X.Y.Z` PR and moves forward by itself. `docs/RELEASING.md` § Staged

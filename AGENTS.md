@@ -77,7 +77,7 @@ the "why", and reviewers read them.
   merge commit. A fix for a version in flight is a PR into that version's
   `release/x.y.z` (or `hotfix/x.y.z`). It joins the version's milestone by itself,
   and when it merges the bot opens it again into every newer release branch and
-  into `develop` (ADR 0029). A forward PR that conflicts stays open for you to
+  into `develop` (ADR 0030). A forward PR that conflicts stays open for you to
   resolve, and a forward PR into a release branch holds that version's promotion
   until it merges. `docs/RELEASING.md` § Staged releases has the stages and gates.
 - **Merge when it is green and approved, not before.** Wait for every required

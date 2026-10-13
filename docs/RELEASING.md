@@ -109,7 +109,7 @@ otherwise.
 - `versionCode` = `major·1 000 000 + minor·10 000 + patch·100 + rcN` on an
   exact release tag, `vX.Y.Z` or `vX.Y.Z-rcN` (so 1.1.0-rc4 is 1010004). A
   release code is unique per candidate, rises with every version and RC, and
-  starts above every count-based code already uploaded (ADR 0029). Any other
+  starts above every count-based code already uploaded (ADR 0030). Any other
   build (untagged, ahead of a tag, dirty) keeps `git rev-list --count HEAD`, so
   local builds still install over each other. minor, patch and rcN are capped at
   99 and refused above it, rather than wrapped into a code that is already taken.
@@ -293,7 +293,7 @@ feature/x ──squash──► develop ──(Monday train)──► release/1.
 hotfix/1.3.1 is cut from main (start-release.sh 1.3.1 --hotfix) and goes the same way.
 ```
 
-Every version walks three stages (ADR 0029). See **Staged releases** below for
+Every version walks three stages (ADR 0030). See **Staged releases** below for
 the schedule, the gates and where a fix goes.
 
 | workflow | trigger | does |
@@ -309,7 +309,7 @@ the schedule, the gates and where a fix goes.
 | `play-rollout-ramp.yml` | daily 08:00 UTC; dispatch | raise the production fraction along the ramp; close the release issue at 100% |
 | `play-promote.yml` | dispatch | `rollout`, `halt`, `resume` (and `promote`, by hand) |
 
-### Staged releases (ADR 0029)
+### Staged releases (ADR 0030)
 
 | When | Stage | What happens |
 |---|---|---|
@@ -370,7 +370,7 @@ scripts/release/next-version.sh                   # what the train would cut
 
 It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
-only) a `release/*` branch is open. The train applies ADR 0029's stagger rule
+only) a `release/*` branch is open. The train applies ADR 0030's stagger rule
 itself and passes `--stagger-checked`; a hand cut refuses while any release
 branch is open, unless you pass that flag after checking that none is still in
 internal. The branch starts with one commit:
@@ -412,7 +412,7 @@ Rulesets (applied by `scripts/release/owner-setup.sh`), admins may bypass:
   `Release tooling tests`, `PRs into main come from release/* or hotfix/*`,
   `Release notes are final`. The `muviss-release` App is a **bypass actor** here:
   the Sunday step merges the release PR as the App, without a CodeRabbit approval
-  (ADR 0029). Its gates, not the approval, are what stand in for it.
+  (ADR 0030). Its gates, not the approval, are what stand in for it.
 - **develop**: PR, 1 approval, squash or merge, checks `build`, `desktop`, `ios`,
   `Release tooling tests`, `Features reach the landing`.
 - **release-tags** (`refs/tags/v*`): only admins and the `muviss-release` App
@@ -433,7 +433,7 @@ would never build an RC, and a PR opened with it would never get CI. Without
 the App, the RC and release jobs fall back to `GITHUB_TOKEN` (and the tag
 ruleset will refuse them), and the train fails.
 
-Its permissions (ADR 0029): **Contents** write (train branches, forward
+Its permissions (ADR 0030): **Contents** write (train branches, forward
 branches, RC tags), **Pull requests** write (back-merge, forward and release
 PRs, merging), **Issues** write (the release issues, milestones, and the
 blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
@@ -492,7 +492,7 @@ The decisions behind it:
   release into `main`, where `release.yml` promotes the beta build to production
   at 20% (`fastlane android promote`, which checks the beta track's latest is the
   approved RC). The `production` environment's approval applies only to a manual
-  merge (ADR 0029; it was the whole of ADR 0025's gate).
+  merge (ADR 0030; it was the whole of ADR 0025's gate).
 - **Listing copy and screenshots live in `fastlane/metadata/android/<locale>/`**
   and are the source of truth (`docs/store/LISTING.md` explains them).
 - Secret: `PLAY_SERVICE_ACCOUNT_JSON` (a Play Console service account with
