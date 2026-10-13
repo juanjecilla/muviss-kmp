@@ -132,7 +132,7 @@ jobs:
       - name: Detekt (static analysis)
         run: ./gradlew detekt --stacktrace
 
-      # The versionCode formula (ADR 0029) is pure Kotlin in build-logic; a
+      # The versionCode formula (ADR 0030) is pure Kotlin in build-logic; a
       # change to it must not reach a release without these running.
       - name: Build-logic tests (versionCode formula)
         run: ./gradlew -p build-logic test --stacktrace

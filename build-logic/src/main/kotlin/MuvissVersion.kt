@@ -25,7 +25,7 @@ class MuvissVersion(private val providers: ProviderFactory, private val rootDir:
     val commitCount: Int get() = commitCountOrNull ?: 1
 
     /**
-     * Android's versionCode (ADR 0029). A build on an exact `vX.Y.Z` or
+     * Android's versionCode (ADR 0030). A build on an exact `vX.Y.Z` or
      * `vX.Y.Z-rcN` tag gets [releaseCode], unique per candidate and rising with
      * every version and RC. Anything else (untagged, ahead of a tag, dirty)
      * keeps the commit count, so local builds install over each other as they
@@ -94,7 +94,7 @@ class MuvissVersion(private val providers: ProviderFactory, private val rootDir:
         private val DESKTOP_TAG = Regex("""^v?([1-9]\d*)\.(\d+)\.(\d+)$""")
         private val EXACT_RELEASE_TAG = Regex("""^v(\d+)\.(\d+)\.(\d+)(-rc(\d+))?$""")
 
-        /** minor, patch and rcN each get two decimal digits in the versionCode (ADR 0029). */
+        /** minor, patch and rcN each get two decimal digits in the versionCode (ADR 0030). */
         const val MAX_TWO_DIGIT_FIELD = 99
 
         /**
@@ -113,7 +113,7 @@ class MuvissVersion(private val providers: ProviderFactory, private val rootDir:
         }
 
         /**
-         * `major × 1 000 000 + minor × 10 000 + patch × 100 + rcN` (ADR 0029):
+         * `major × 1 000 000 + minor × 10 000 + patch × 100 + rcN` (ADR 0030):
          * 1.1.0-rc4 is 1 010 004. Refuses rather than wraps: a reused code is a
          * Play rejection, and an overflowed one is a silent downgrade.
          */

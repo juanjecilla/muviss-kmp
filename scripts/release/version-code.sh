@@ -1,5 +1,5 @@
 #!/bin/bash
-# Prints the Android versionCode of a release tag (ADR 0029):
+# Prints the Android versionCode of a release tag (ADR 0030):
 #
 #   major × 1 000 000 + minor × 10 000 + patch × 100 + rcN
 #

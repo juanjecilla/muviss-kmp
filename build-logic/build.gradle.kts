@@ -9,7 +9,7 @@ dependencies {
     implementation(libs.compose.gradlePlugin)
     implementation(libs.kotlin.composeCompiler.gradlePlugin)
 
-    // MuvissVersion's versionCode formula (ADR 0029) is pure Kotlin; these run
+    // MuvissVersion's versionCode formula (ADR 0030) is pure Kotlin; these run
     // without git: `./gradlew -p build-logic test`.
     testImplementation(libs.kotlin.testJunit)
     testImplementation(libs.junit)

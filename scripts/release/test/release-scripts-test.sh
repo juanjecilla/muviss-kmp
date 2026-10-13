@@ -123,7 +123,7 @@ git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
 grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)" \
   && pass "a release with no feat/fix says so" || fail "maintenance-only section"
 
-echo "version-code.sh (ADR 0029)"
+echo "version-code.sh (ADR 0030)"
 expect_eq "1.1.0-rc4 is 1010004" "$("$SCRIPTS/version-code.sh" v1.1.0-rc4)" "1010004"
 expect_eq "a final tag is rc 0" "$("$SCRIPTS/version-code.sh" v1.0.0)" "1000000"
 expect_eq "1.0.1-rc12 is 1000112" "$("$SCRIPTS/version-code.sh" v1.0.1-rc12)" "1000112"
