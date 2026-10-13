@@ -123,5 +123,22 @@ git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
 grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)" \
   && pass "a release with no feat/fix says so" || fail "maintenance-only section"
 
+echo "version-code.sh (ADR 0030)"
+expect_eq "1.1.0-rc4 is 1010004" "$("$SCRIPTS/version-code.sh" v1.1.0-rc4)" "1010004"
+expect_eq "a final tag is rc 0" "$("$SCRIPTS/version-code.sh" v1.0.0)" "1000000"
+expect_eq "1.0.1-rc12 is 1000112" "$("$SCRIPTS/version-code.sh" v1.0.1-rc12)" "1000112"
+expect_eq "9.99.99-rc99 is 9999999" "$("$SCRIPTS/version-code.sh" v9.99.99-rc99)" "9999999"
+expect_eq "leading zeros are decimal" "$("$SCRIPTS/version-code.sh" v1.08.09-rc08)" "1080908"
+expect_eq "next RC outranks the count-based rc3 (~176)" "$(( $("$SCRIPTS/version-code.sh" v1.1.0-rc4) > 176 ))" "1"
+expect_eq "rc3 of 1.1.0 is below rc4" "$(( $("$SCRIPTS/version-code.sh" v1.1.0-rc3) < $("$SCRIPTS/version-code.sh" v1.1.0-rc4) ))" "1"
+"$SCRIPTS/version-code.sh" 1.1.0 >/dev/null 2>&1; expect_eq "a bare version without v is refused" "$?" "2"
+"$SCRIPTS/version-code.sh" v1.1.0-4 >/dev/null 2>&1; expect_eq "a dash without rc is refused" "$?" "2"
+"$SCRIPTS/version-code.sh" v1.18446744073709551616.0 >/dev/null 2>&1; expect_eq "a minor that would wrap to 0 is refused" "$?" "2"
+"$SCRIPTS/version-code.sh" v18446744073709551617.0.0 >/dev/null 2>&1; expect_eq "a major that would wrap is refused" "$?" "2"
+"$SCRIPTS/version-code.sh" v2148.0.0 >/dev/null 2>&1; expect_eq "a major past Int is refused" "$?" "2"
+"$SCRIPTS/version-code.sh" v1.100.0 >/dev/null 2>&1; expect_eq "minor above 99 is refused" "$?" "2"
+"$SCRIPTS/version-code.sh" v1.0.0-rc100 >/dev/null 2>&1; expect_eq "rc above 99 is refused" "$?" "2"
+"$SCRIPTS/version-code.sh" >/dev/null 2>&1; expect_eq "no argument is refused" "$?" "2"
+
 echo
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }

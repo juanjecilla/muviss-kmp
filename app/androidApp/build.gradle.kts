@@ -129,8 +129,9 @@ val hasReleaseSigningConfig =
 
 // -----------------------------------------------------------------------
 // Versioning derived from git (MuvissVersion in build-logic, shared with
-// :core:common and :app:desktopApp): versionCode is the commit count on HEAD,
-// versionName the latest reachable tag or a dev label.
+// :core:common and :app:desktopApp): versionCode is `major·1e6 + minor·1e4 +
+// patch·100 + rcN` on an exact release tag, else the commit count on HEAD
+// (ADR 0030); versionName is the latest reachable tag or a dev label.
 // -----------------------------------------------------------------------
 // A release build without git would ship versionCode 1, which Play rejects as a
 // downgrade after the first upload (#77) — fail instead. Debug and test builds
@@ -141,15 +142,16 @@ val isReleaseInvocation =
     }
 
 // A shallow clone counts only the commits it fetched (often 1), which is the
-// same downgrade with extra steps.
+// same downgrade with extra steps. The release formula does not read the count,
+// but an untagged release build falls back to it.
 if (isReleaseInvocation && muvissVersion.isShallowCheckout) {
-    error("versionCode comes from `git rev-list --count HEAD`, which is wrong in a shallow clone. Use fetch-depth: 0.")
+    error("versionCode comes from git (the release tag, or `git rev-list --count HEAD`), which is wrong in a shallow clone. Use fetch-depth: 0.")
 }
 
 val gitVersionCode: Int =
     muvissVersion.codeOrNull
         ?: if (isReleaseInvocation) {
-            error("versionCode comes from `git rev-list --count HEAD`, and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
+            error("versionCode comes from git (the release tag, or `git rev-list --count HEAD`), and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
         } else {
             1
         }
