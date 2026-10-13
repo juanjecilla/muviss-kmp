@@ -227,11 +227,12 @@ class TmdbProvider internal constructor(
      *
      * A cached request that fails with [InvalidCacheStateException] is made once
      * more on [freshClient]. Ktor's `HttpCache` throws it when it revalidates a
-     * stale entry, the server answers 304, and the entry the 304 points at cannot
-     * be found (the 304's `Vary` differs from the stored response's). The entry
-     * stays in memory, so without this fallback the same call fails the same way
-     * until the process dies — which shipped as a Search screen that said
-     * "offline" on a phone that was online.
+     * stale entry, the server answers 304, and no stored entry can be found for
+     * the 304. Ktor 3.5 also threw it for a 304 whose `Vary` differed from the
+     * stored response's; Ktor 3.6 answers that case from the stored entry instead
+     * (see `TmdbCacheTest`). The entry stays in memory, so without this fallback
+     * the same call would fail the same way until the process dies — which
+     * shipped as a Search screen that said "offline" on a phone that was online.
      */
     private suspend inline fun <reified T> get(
         path: String,
