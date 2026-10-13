@@ -28,15 +28,19 @@ VERSION="${1:-}"
 shift || true
 KIND=release
 DRY_RUN=
+STAGGER_CHECKED=
 for arg in "$@"; do
   case "$arg" in
     --hotfix) KIND=hotfix ;;
     --dry-run) DRY_RUN=1 ;;
+    # The train has applied ADR 0030's stagger rule (release_stages.rb plan),
+    # so another open release is allowed as long as it is past internal.
+    --stagger-checked) STAGGER_CHECKED=1 ;;
     *) die "unknown option '$arg'" ;;
   esac
 done
 
-[ -n "$VERSION" ] || die "usage: $0 <X.Y.Z> [--hotfix] [--dry-run]"
+[ -n "$VERSION" ] || die "usage: $0 <X.Y.Z> [--hotfix] [--dry-run] [--stagger-checked]"
 # Plain X.Y.Z: the tags derived from it (vX.Y.Z-rcN, vX.Y.Z) must keep
 # matching app/androidApp/build.gradle.kts's versionName pattern.
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -57,12 +61,15 @@ git rev-parse -q --verify "refs/heads/$BRANCH" >/dev/null \
 git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null \
   && die "tag v$VERSION already exists"
 
-# One release in flight at a time: two open release branches would each upload
-# RCs to the same internal track, and "promote the latest" would pick whichever
-# pushed last. Hotfixes are exempt — they exist to jump that queue.
-if [ "$KIND" = release ]; then
+# A version still in internal blocks the next cut (ADR 0030): two RCs on the
+# internal track would replace each other, and "promote the latest" would pick
+# whichever pushed last. Versions past internal (beta, production) are fine. The
+# train checks the stage itself and passes --stagger-checked; a hand cut without
+# it refuses while any release branch is open, the conservative reading.
+# Hotfixes are exempt — they exist to jump that queue.
+if [ "$KIND" = release ] && [ -z "$STAGGER_CHECKED" ]; then
   open="$(git ls-remote --heads origin 'release/*' | awk '{print $2}' | sed 's#refs/heads/##')"
-  [ -z "$open" ] || die "a release is already in flight: $open — merge or delete it first"
+  [ -z "$open" ] || die "a release is already open: $open — run it through the train (it checks the stage), or pass --stagger-checked once you have checked that none is still in internal"
 fi
 
 # The Play Console rejects a versionName it has already seen, after the build.

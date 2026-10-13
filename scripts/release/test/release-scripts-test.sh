@@ -95,7 +95,9 @@ grep -q -- '^- \*\*triage\*\*: snooze a card$' <<<"$log" && grep -q -- '^- \*\*s
 [ "$(grep -n '### Features' <<<"$log" | cut -d: -f1)" -lt "$(grep -n '### Fixes' <<<"$log" | cut -d: -f1)" ] \
   && pass "features come before fixes" || fail "features come before fixes"
 git -C "$r" switch -q develop
-(cd "$r" && scripts/release/start-release.sh 1.2.0 >/dev/null 2>&1); expect_eq "refuses a second release in flight" "$?" "1"
+(cd "$r" && scripts/release/start-release.sh 1.2.0 >/dev/null 2>&1); expect_eq "refuses a second release while one is open" "$?" "1"
+(cd "$r" && scripts/release/start-release.sh 1.2.0 --stagger-checked >/dev/null 2>&1); expect_eq "--stagger-checked lets the train's cut through" "$?" "0"
+git -C "$r" switch -q develop
 git -C "$r" push -q origin 'v1.0.0^{commit}:refs/heads/main'
 (cd "$r" && scripts/release/start-release.sh 1.0.1 --hotfix >/dev/null 2>&1); expect_eq "a hotfix jumps the queue" "$?" "0"
 [ "$(git -C "$origin" rev-parse 'hotfix/1.0.1^')" = "$(git -C "$origin" rev-parse 'v1.0.0^{commit}')" ] \
@@ -122,6 +124,49 @@ git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
 (cd "$r6" && scripts/release/start-release.sh 1.0.1 >/dev/null 2>&1)
 grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)" \
   && pass "a release with no feat/fix says so" || fail "maintenance-only section"
+
+echo "release-issue.sh (ADR 0030)"
+# A fake gh: records every call, answers the reads the script makes.
+fakebin="$(mktemp -d)"
+cat >"$fakebin/gh" <<'FAKEGH'
+#!/bin/bash
+echo "gh $*" >>"$FAKE_GH_LOG"
+case "$*" in
+  "issue list"*"title,body"*) printf '%s' "${FAKE_ISSUES_JSON:-[]}" ;;
+  "issue list"*) printf '%s' "${FAKE_TITLES:-}" ;;
+  "api --paginate"*) printf '%s' "${FAKE_MILESTONE:-}" ;;
+esac
+exit 0
+FAKEGH
+chmod +x "$fakebin/gh"
+export GH_REPO=muviss/test FAKE_GH_LOG="$(mktemp)"
+r7="$(new_repo)"; mkdir -p "$r7/scripts/release" "$r7/fastlane"
+cp "$SCRIPTS/release-issue.sh" "$r7/scripts/release/"; cp "$REPO_ROOT/fastlane/release_stages.rb" "$r7/fastlane/"
+# The script finds its repo root from its own path, so every call runs the copy
+# inside the throwaway repo; the worktree's copy would query the real origin.
+RI="$r7/scripts/release/release-issue.sh"
+issue() { PATH="$fakebin:$PATH" "$RI" "$@"; }
+commit "$r7" "chore: init"
+o7="$(mktemp -d)"; git -C "$o7" init -q --bare -b develop; git -C "$r7" remote add origin "$o7"
+git -C "$r7" push -q origin develop
+git -C "$r7" switch -q -c release/1.1.0; GIT_COMMITTER_DATE="2026-10-05T12:00:00Z" git -C "$r7" commit -q --allow-empty -m "chore(release): notes"
+git -C "$r7" push -q origin release/1.1.0; git -C "$r7" switch -q develop
+(cd "$r7" && issue ensure 1.1.0 2026-10-12 >/dev/null); expect_eq "a new version gets a milestone" "$(grep -c 'api -X POST repos/muviss/test/milestones' "$FAKE_GH_LOG")" "1"
+expect_eq "and an issue titled Release X.Y.Z" "$(grep -c -- '--title Release 1.1.0 --label release --milestone 1.1.0' "$FAKE_GH_LOG")" "1"
+: >"$FAKE_GH_LOG"; FAKE_TITLES="Release 1.1.0" FAKE_MILESTONE="7" issue ensure 1.1.0 2026-10-12 >/dev/null
+expect_eq "an existing issue is left alone" "$(grep -c 'issue create' "$FAKE_GH_LOG")" "0"
+: >"$FAKE_GH_LOG"; FAKE_TITLES="Release 1.1.01" issue ensure 1.1.0 2026-10-12 >/dev/null
+expect_eq "a near title does not count" "$(grep -c 'issue create' "$FAKE_GH_LOG")" "1"
+expect_eq "cut-date is the first commit past develop" "$(cd "$r7" && PATH="$fakebin:$PATH" "$RI" cut-date 1.1.0)" "2026-10-05"
+: >"$FAKE_GH_LOG"; plan_out="$(cd "$r7" && FAKE_ISSUES_JSON='[]' PATH="$fakebin:$PATH" "$RI" plan)"
+expect_eq "a branch with no issue is adopted" "$(ruby -rjson -e 'print JSON.parse(ARGV[0])["adopt"].join(",")' "$plan_out")" "1.1.0"
+expect_eq "and it holds the train, being internal" "$(ruby -rjson -e 'print JSON.parse(ARGV[0])["hold"].nil? ? "none" : "held"' "$plan_out")" "held"
+beta_json='[{"title":"Release 1.1.0","body":"<!-- muviss-release: {\"version\":\"1.1.0\",\"stage\":\"beta\"} -->"}]'
+plan_out="$(cd "$r7" && FAKE_ISSUES_JSON="$beta_json" PATH="$fakebin:$PATH" "$RI" plan)"
+expect_eq "a version in beta does not hold the train" "$(ruby -rjson -e 'print JSON.parse(ARGV[0])["hold"].nil? ? "none" : "held"' "$plan_out")" "none"
+: >"$FAKE_GH_LOG"; (cd "$r7" && PATH="$fakebin:$PATH" "$RI" labels)
+expect_eq "labels are created idempotently (release, release-blocker)" "$(grep -c 'label create' "$FAKE_GH_LOG")" "2"
+PATH="$fakebin:$PATH" "$SCRIPTS/release-issue.sh" bogus >/dev/null 2>&1; expect_eq "an unknown command is refused" "$?" "2"
 
 echo "version-code.sh (ADR 0030)"
 expect_eq "1.1.0-rc4 is 1010004" "$("$SCRIPTS/version-code.sh" v1.1.0-rc4)" "1010004"

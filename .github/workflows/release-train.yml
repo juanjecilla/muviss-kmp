@@ -1,14 +1,22 @@
 name: Release train
 
-# The weekly cut (ADR 0025). Once a week, at night, if develop has commits since
-# the last release, cut release/X.Y.Z from it — the version bumped from the
-# conventional commits (scripts/release/next-version.sh). Pushing the branch
-# starts release-rc.yml, so the candidate is on Play's internal track by morning.
+# The weekly cut (ADR 0025, staged by ADR 0030). Once a week, at night, cut
+# release/X.Y.Z from develop when develop has commits since the last release —
+# the version bumped from the conventional commits (scripts/release/next-version.sh).
+# Pushing the branch starts release-rc.yml, so the candidate is on Play's
+# internal track by morning. Each cut also gets a milestone X.Y.Z and a
+# "Release X.Y.Z" issue carrying its schedule (scripts/release/release-issue.sh).
 #
 # Skips, writing why to the run summary:
 #   - nothing new on develop since the last vX.Y.Z;
-#   - a release branch is still open (one release in flight at a time); that
-#     case also comments on a "Release train blocked" issue so it is seen.
+#   - a version is still in internal (ADR 0030): the new RC would replace it on
+#     that one track. A version past internal (open beta, ramping in production)
+#     does not stop the cut. That case also comments on a "Release train
+#     blocked" issue so it is seen.
+#
+# A release branch with no release issue (cut before this rule) is adopted: its
+# issue is created with the cut date taken from its first commit, and it counts
+# as internal until its issue says otherwise.
 #
 # The cron fires every night; the job runs on the day in the repo variable
 # RELEASE_TRAIN_DAY (ISO weekday, 1 = Monday, the default), so the day can move
@@ -45,7 +53,8 @@ jobs:
           fi
 
       # GITHUB_TOKEN cannot do this job: a branch it pushes starts no workflow,
-      # so release-rc.yml would never run.
+      # so release-rc.yml would never run, and an issue it opens does not start
+      # the workflows that watch for them.
       - name: Mint a release App token
         id: app
         if: steps.day.outputs.run == 'true'
@@ -74,11 +83,22 @@ jobs:
       - name: Cut the release branch
         if: steps.day.outputs.run == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          OPEN="$(git ls-remote --heads origin 'release/*' | awk '{print $2}' | sed 's#refs/heads/##')"
-          if [ -n "$OPEN" ]; then
-            MSG="Release train $(date -u +%F): skipped — \`$OPEN\` is still open. Merge it into main (or delete it) and the next train will cut."
+          set -euo pipefail
+          scripts/release/release-issue.sh labels
+
+          # Adopt an open release branch that has no release issue yet.
+          PLAN="$(scripts/release/release-issue.sh plan)"
+          for v in $(jq -r '.adopt[]' <<<"$PLAN"); do
+            scripts/release/release-issue.sh ensure "$v" "$(scripts/release/release-issue.sh cut-date "$v")"
+          done
+
+          # The stagger rule (ADR 0030): a version still in internal holds the cut.
+          HOLD="$(jq -r '.hold // empty' <<<"$PLAN")"
+          if [ -n "$HOLD" ]; then
+            MSG="Release train $(date -u +%F): skipped — $HOLD."
             echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
             ISSUE="$(gh issue list --state open --search 'in:title "Release train blocked"' --json number --jq '.[0].number')"
             if [ -n "$ISSUE" ]; then
@@ -99,8 +119,11 @@ jobs:
           fi
           [ "$CODE" -eq 0 ] || exit "$CODE"
 
-          scripts/release/start-release.sh "$VERSION"
-          echo "Release train $(date -u +%F): cut \`release/$VERSION\`." >> "$GITHUB_STEP_SUMMARY"
+          # --stagger-checked: the hold above is the stagger rule; start-release.sh
+          # would otherwise refuse while any release branch is open.
+          scripts/release/start-release.sh "$VERSION" --stagger-checked
+          scripts/release/release-issue.sh ensure "$VERSION"
+          echo "Release train $(date -u +%F): cut \`release/$VERSION\`, milestone and issue created." >> "$GITHUB_STEP_SUMMARY"
 
           # A blocked-train issue is resolved once a train runs again.
           ISSUE="$(gh issue list --state open --search 'in:title "Release train blocked"' --json number --jq '.[0].number')"
