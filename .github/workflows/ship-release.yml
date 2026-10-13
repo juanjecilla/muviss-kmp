@@ -100,7 +100,7 @@ jobs:
           BRANCH: ${{ steps.branch.outputs.name }}
           VERSION: ${{ steps.branch.outputs.version }}
         run: |
-          N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[]|select(.isCrossRepository|not)][0].number // empty')"
           if [ -z "$N" ]; then
             RC="$(gh release list -R "$REPO" --limit 50 --json tagName --jq "[.[].tagName|select(startswith(\"v$VERSION-rc\"))][0]")"
             URL="$(gh pr create -R "$REPO" --base main --head "$BRANCH" --title "release: $VERSION" --body "Ships **$VERSION** to production: merging tags \`v$VERSION\` and promotes ${RC:-the newest RC} from Play internal to production at 20%, behind the \`production\` environment approval (release.yml). Opened by the Ship release workflow; merge with a merge commit.")"
@@ -121,9 +121,11 @@ jobs:
           ACTION: ${{ inputs.action }}
           INPUT: ${{ inputs.branch }}
         run: |
+          # Only PRs whose head is this repository: a fork can open one from a
+          # branch with the same name, and it must never be the one merged.
           if [ "$ACTION" = back-merge ]; then
             # release.yml names it back-merge/vX.Y.Z. Never guess between two.
-            OPEN="$(gh pr list -R "$REPO" --base develop --state open --json number,headRefName --jq '.[]|select(.headRefName|startswith("back-merge/"))|"\(.number) \(.headRefName)"')"
+            OPEN="$(gh pr list -R "$REPO" --base develop --state open --json number,headRefName,isCrossRepository --jq '.[]|select(.isCrossRepository|not)|select(.headRefName|startswith("back-merge/"))|"\(.number) \(.headRefName)"')"
             if [ -n "$INPUT" ]; then
               OPEN="$(echo "$OPEN" | awk -v b="back-merge/v${INPUT#v}" '$2 == b')"
             fi
@@ -131,7 +133,7 @@ jobs:
             [ "$(echo "$OPEN" | wc -l)" -eq 1 ] || { echo "::error::several back-merge PRs are open, pass the version as 'branch': $(echo $OPEN)"; exit 1; }
             N="${OPEN%% *}"
           else
-            N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+            N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[]|select(.isCrossRepository|not)][0].number // empty')"
             [ -n "$N" ] || { echo "::error::no open PR from $BRANCH into main; run with action=open or ship"; exit 1; }
           fi
           echo "number=$N" >> "$GITHUB_OUTPUT"
