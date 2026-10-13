@@ -51,6 +51,9 @@ uninstalling. This is stated in `docs/PRIVACY.md`.
 ## Third parties data is shared with
 
 - **TMDB** (themoviedb.org) — search queries / media IDs, to fetch metadata.
+  If the user supplies their own TMDB key (EPIC 46), it is sent to TMDB the
+  same way Muviss's own is; it is stored encrypted on the device and never
+  leaves it for any other destination.
 - **Sentry** (sentry.io) — crash reports, only in release builds with
   `SENTRY_DSN` configured (see `docs/RELEASING.md`).
 - **ConfigCat** (configcat.com) — Muviss downloads its remote configuration

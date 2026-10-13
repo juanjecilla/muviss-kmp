@@ -5,13 +5,17 @@ import android.content.pm.ApplicationInfo
 import android.util.Log
 import com.codingpit.muviss.core.common.connectivity.AndroidConnectivityMonitor
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.network.tmdb.TmdbFailureTrace
+import com.codingpit.muviss.core.secrets.androidSecretStore
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.di.appModules
+import com.codingpit.muviss.notifications.AndroidNotificationPermissionRequester
 import com.codingpit.muviss.notifications.AndroidNotificationSettings
 import com.codingpit.muviss.notifications.NewEpisodesNotifier
 import com.codingpit.muviss.notifications.NewEpisodesScheduler
@@ -67,8 +71,13 @@ class MuvissApplication : Application() {
                     appModules +
                         module {
                             single { DatabaseDriverFactory(this@MuvissApplication) }
+                            // The Own TMDB Key lives in the Android Keystore (EPIC 46); KSafe needs a
+                            // Context, so this replaces secretsModule's default.
+                            single<SecretStore> { androidSecretStore(this@MuvissApplication) }
                             // Settings explains a blocked notification switch (EPIC 30, #73).
                             single<SystemNotificationSettings> { AndroidNotificationSettings(this@MuvissApplication) }
+                            // Turning notifications on asks the OS here, not on first launch (EPIC 47).
+                            single<NotificationPermissionRequester> { AndroidNotificationPermissionRequester(this@MuvissApplication) }
                             // An offline error retries itself on reconnect (#249).
                             single<ConnectivityMonitor> { AndroidConnectivityMonitor(this@MuvissApplication) }
                             // Debug builds only: the class-name chain of a swallowed

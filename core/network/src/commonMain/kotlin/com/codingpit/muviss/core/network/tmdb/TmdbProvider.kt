@@ -67,11 +67,13 @@ class TmdbProvider internal constructor(
     constructor(
         client: HttpClient,
         remoteConfig: RemoteConfig,
+        ownKey: OwnTmdbKey? = null,
         locale: MetadataLocale = DefaultMetadataLocale(),
         failureTrace: TmdbFailureTrace = TmdbFailureTrace.None,
     ) : this(
         client = client,
-        credentialSource = RemoteFirstTmdbCredentialSource(
+        credentialSource = ChainedTmdbCredentialSource(
+            ownKey,
             remoteConfig,
             TmdbCredentials(MuvissBuildConfig.TMDB_READ_TOKEN, MuvissBuildConfig.TMDB_API_KEY),
         ),
@@ -225,25 +227,35 @@ class TmdbProvider internal constructor(
      *
      * A cached request that fails with [InvalidCacheStateException] is made once
      * more on [freshClient]. Ktor's `HttpCache` throws it when it revalidates a
-     * stale entry, the server answers 304, and the entry the 304 points at cannot
-     * be found (the 304's `Vary` differs from the stored response's). The entry
-     * stays in memory, so without this fallback the same call fails the same way
-     * until the process dies — which shipped as a Search screen that said
-     * "offline" on a phone that was online.
+     * stale entry, the server answers 304, and no stored entry can be found for
+     * the 304. Ktor 3.5 also threw it for a 304 whose `Vary` differed from the
+     * stored response's; Ktor 3.6 answers that case from the stored entry instead
+     * (see `TmdbCacheTest`). The entry stays in memory, so without this fallback
+     * the same call would fail the same way until the process dies — which
+     * shipped as a Search screen that said "offline" on a phone that was online.
      */
     private suspend inline fun <reified T> get(
         path: String,
         fresh: Boolean = false,
         crossinline configure: HttpRequestBuilder.() -> Unit = {},
     ): T = inFlight.withPermit {
-        tmdbCall(onFailure = { failure, mapped -> failureTrace.record(tmdbFailureLine(path, failure, mapped)) }) {
-            request(path, fresh) { configure() }.body<T>()
+        val resolved = credentialSource.current()
+        try {
+            tmdbCall(onFailure = { failure, mapped -> failureTrace.record(tmdbFailureLine(path, failure, mapped)) }) {
+                request(path, fresh, resolved.credentials) { configure() }.body<T>()
+            }
+        } catch (rejected: MetadataError.Unauthorized) {
+            // ADR 0027: a rejected Own TMDB Key is reported as such and is never retried under ours.
+            throw if (resolved.origin == TmdbCredentialOrigin.User) MetadataError.OwnKeyRejected() else rejected
         }
     }
 
-    private suspend fun request(path: String, fresh: Boolean, configure: HttpRequestBuilder.() -> Unit): HttpResponse {
-        // Resolved per request, before the call: the builder below is not suspending.
-        val credentials = credentialSource.current()
+    private suspend fun request(
+        path: String,
+        fresh: Boolean,
+        credentials: TmdbCredentials,
+        configure: HttpRequestBuilder.() -> Unit,
+    ): HttpResponse {
         suspend fun HttpClient.fetch() = get("$BASE/$path") {
             authorize(credentials)
             configure()

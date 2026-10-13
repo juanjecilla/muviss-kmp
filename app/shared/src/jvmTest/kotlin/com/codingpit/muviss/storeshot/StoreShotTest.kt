@@ -30,11 +30,14 @@ import coil3.asImage
 import coil3.compose.AsyncImagePreviewHandler
 import coil3.compose.LocalAsyncImagePreviewHandler
 import com.codingpit.muviss.MuvissApp
+import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.profile.domain.ProfileRepository
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.domain.AppTheme
@@ -112,6 +115,7 @@ class StoreShotTest {
             modules(
                 appModules + module {
                     single { DatabaseDriverFactory(directory) }
+                    single<SecretStore> { InMemorySecretStore() }
                     // Overrides networkModule's TmdbProvider: nothing reaches TMDB.
                     single<MetadataProvider> { catalog.provider() }
                     // The release build's gate: sync and co-watch are paid and
@@ -148,6 +152,8 @@ class StoreShotTest {
         seasons(c.glassHarbor).first().episodes.take(3).forEach { progress.recordPlay(it.id) }
         progress.recordPlay(EpisodeId(c.paperMoons.id, 1, 1))
 
+        // A fresh database starts on the introduction (EPIC 47); the store images show the app itself.
+        koin.get<OnboardingApi>().markCompleted()
         koin.get<ProfileRepository>().setDisplayName("Alex")
         collection.setFavorite(c.lighthouse.id, true)
         collection.setFavorite(c.glassHarbor.id, true)

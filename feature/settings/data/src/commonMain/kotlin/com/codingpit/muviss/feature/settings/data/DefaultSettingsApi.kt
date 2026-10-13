@@ -1,20 +1,27 @@
 package com.codingpit.muviss.feature.settings.data
 
+import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /** [SettingsApi] over [SettingsRepository], translating domain [AppTheme] to the API's own [ThemeMode]. */
-internal class DefaultSettingsApi(private val repository: SettingsRepository) : SettingsApi {
+internal class DefaultSettingsApi(
+    private val repository: SettingsRepository,
+    private val setNotifications: SetNotificationsEnabledUseCase,
+) : SettingsApi {
 
     override fun observeThemeMode(): Flow<ThemeMode> = repository.observeSettings().map { it.theme.toApi() }
 
     override fun observeNotificationsEnabled(): Flow<Boolean> = repository.observeSettings().map { it.notificationsEnabled }
 
     override fun observeCrashReportsEnabled(): Flow<Boolean> = repository.observeSettings().map { it.crashReportsEnabled }
+
+    override suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = setNotifications(enabled)
 
     private fun AppTheme.toApi(): ThemeMode = when (this) {
         AppTheme.LIGHT -> ThemeMode.LIGHT

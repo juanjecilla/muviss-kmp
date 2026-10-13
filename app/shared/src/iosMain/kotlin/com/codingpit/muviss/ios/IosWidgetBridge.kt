@@ -1,5 +1,6 @@
 package com.codingpit.muviss.ios
 
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -62,7 +63,12 @@ object IosWidgetBridge : KoinComponent {
     fun ensureStarted() {
         if (KoinPlatformTools.defaultContext().getOrNull() == null) {
             startKoin {
-                modules(appModules + module { single { DatabaseDriverFactory() } })
+                modules(
+                    appModules + module {
+                        single { DatabaseDriverFactory() }
+                        single<NotificationPermissionRequester> { IosNotificationPermissionRequester }
+                    },
+                )
             }
         }
     }
