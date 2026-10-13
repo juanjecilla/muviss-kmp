@@ -4,6 +4,7 @@
     <string name="carousel_see_all">Ver todo ›</string>
 
     <string name="error_rate_limited">Demasiadas solicitudes ahora mismo. Inténtalo de nuevo en un momento.</string>
+    <string name="error_own_key_rejected">TMDB ha rechazado tu clave. Revísala en Ajustes, en Fuente de datos de TMDB.</string>
     <string name="error_unauthorized">Muviss no puede acceder a la base de datos de películas. Actualizar la app puede solucionarlo.</string>
     <string name="error_not_found">No hemos encontrado ese título.</string>
     <string name="error_offline">Parece que no tienes conexión. Compruébala e inténtalo de nuevo.</string>
@@ -38,4 +39,15 @@
     <string name="a11y_rating_unset">Tu valoración, sin poner, ajustable</string>
     <string name="a11y_mark_unwatched">Marcar %1$s como no visto</string>
     <string name="a11y_mark_watched">Marcar %1$s como visto</string>
+
+    <!-- EPIC 46: the Own TMDB Key dialog, shared by Settings and Onboarding -->
+    <string name="action_cancel">Cancelar</string>
+    <string name="tmdb_source_body">Muviss obtiene los títulos de TMDB. Si tienes tu propia cuenta de TMDB, puedes pegar su token de acceso de lectura v4 o su clave de API v3 y tus peticiones se harán con ella. La clave se queda en este dispositivo: nunca se sincroniza ni se exporta.</string>
+    <string name="tmdb_key_field">Clave de TMDB</string>
+    <string name="tmdb_key_save">Comprobar y guardar</string>
+    <string name="tmdb_key_use_muviss">Usar la clave de Muviss</string>
+    <string name="tmdb_key_checking">Comprobando con TMDB…</string>
+    <string name="tmdb_key_problem_malformed">Eso no parece una clave de TMDB. Pega el token de acceso de lectura v4 o la clave de API v3 de 32 caracteres.</string>
+    <string name="tmdb_key_problem_rejected">TMDB ha rechazado esa clave. Revísala e inténtalo de nuevo.</string>
+    <string name="tmdb_key_problem_could_not_check">No se pudo comprobar la clave ahora. Revisa tu conexión e inténtalo de nuevo.</string>
 </resources>

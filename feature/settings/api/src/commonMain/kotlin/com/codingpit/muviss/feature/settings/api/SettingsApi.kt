@@ -20,6 +20,23 @@ interface SettingsApi {
      * value is read *before* Koin exists at startup, straight from `appSettings`.
      */
     fun observeCrashReportsEnabled(): Flow<Boolean>
+
+    /**
+     * Turns new-episode notifications on or off. Turning them **on** asks the OS first
+     * (EPIC 47) and stores nothing if it says no, so the switch never claims an alert
+     * that cannot arrive. The one door every surface uses — Settings, Onboarding and
+     * the Notification Nudge — so none of them can forget to ask.
+     */
+    suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange
+}
+
+/** What [SettingsApi.setNotificationsEnabled] ended up doing. */
+enum class NotificationsChange {
+    ENABLED,
+    DISABLED,
+
+    /** The user asked for them and the OS said no. Nothing was stored; the setting is as it was. */
+    DENIED,
 }
 
 /**

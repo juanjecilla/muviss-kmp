@@ -93,4 +93,11 @@
     <!-- Screen-reader state of a season header (EPIC 31b, #164). -->
     <string name="a11y_expanded">Desplegada</string>
     <string name="a11y_collapsed">Plegada</string>
+
+    <!-- EPIC 47: the Notification Nudge -->
+    <string name="nudge_question">¿Quieres que te avisemos cuando salgan episodios nuevos de %1$s?</string>
+    <string name="nudge_turn_on">Activar</string>
+    <string name="nudge_dismiss">Descartar</string>
+    <string name="nudge_blocked">Las notificaciones de Muviss están bloqueadas en los ajustes del sistema.</string>
+    <string name="nudge_open_settings">Abrir ajustes</string>
 </resources>

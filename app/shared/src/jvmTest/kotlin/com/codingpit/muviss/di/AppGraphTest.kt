@@ -1,7 +1,10 @@
 package com.codingpit.muviss.di
 
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.network.MetadataProvider
@@ -11,6 +14,7 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
 import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
+import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -60,7 +64,12 @@ class AppGraphTest {
     private fun startGraph(): Koin {
         val directory = createTempDirectory("muviss-app-graph").toFile()
         val app = startKoin {
-            modules(appModules + module { single { DatabaseDriverFactory(directory) } })
+            modules(
+                appModules + module {
+                    single { DatabaseDriverFactory(directory) }
+                    single<SecretStore> { InMemorySecretStore() }
+                },
+            )
         }
         koin = app.koin
         return app.koin
@@ -95,6 +104,10 @@ class AppGraphTest {
         assertNotNull(koin.get<RemoteConfig>())
         assertNotNull(koin.get<MetadataProvider>())
         assertNotNull(koin.get<FeatureFlags>())
+        // EPIC 47: the nudge reads the library and Settings through their :api, resolved lazily; the
+        // contract must resolve in both orders with the rest of the graph.
+        assertNotNull(koin.get<OnboardingApi>())
+        assertNotNull(koin.get<NotificationPermissionRequester>())
     }
 
     /**

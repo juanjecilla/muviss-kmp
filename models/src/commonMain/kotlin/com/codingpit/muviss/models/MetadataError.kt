@@ -33,6 +33,13 @@ sealed class MetadataError(message: String, val userMessage: String) : Exception
      */
     class Unauthorized : MetadataError("Metadata source rejected the credential", "Muviss can't access the movie database. Updating the app may fix this.")
 
+    /**
+     * TMDB rejected the credential the **user** supplied (an Own TMDB Key, EPIC 46, ADR 0027). Unlike
+     * [Unauthorized] this one *is* something the user can fix, and the copy says where: it is never
+     * answered by quietly retrying with Muviss's credential, which would hide the very thing the user chose.
+     */
+    class OwnKeyRejected : MetadataError("Metadata source rejected the user's own key", "TMDB rejected your key. Check it in Settings, under TMDB data source.")
+
     /** The title, season or episode does not exist at the source (HTTP 404). */
     class NotFound : MetadataError("Metadata source has no such item", "We couldn't find that title.")
 

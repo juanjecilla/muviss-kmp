@@ -1,6 +1,8 @@
 package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.MuvissCrashReporting
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
@@ -48,7 +50,13 @@ object IosAppStartup {
         MuvissCrashReporting.start(DatabaseDriverFactory())
         if (KoinPlatformTools.defaultContext().getOrNull() == null) {
             startKoin {
-                modules(appModules + module { single { DatabaseDriverFactory() } })
+                modules(
+                    appModules + module {
+                        single { DatabaseDriverFactory() }
+                        single<NotificationPermissionRequester> { IosNotificationPermissionRequester }
+                        single<SystemNotificationSettings> { IosNotificationSettings }
+                    },
+                )
             }
         }
         MuvissCrashReporting.followSettings()
@@ -56,5 +64,6 @@ object IosAppStartup {
         IosBackgroundRefresh.register()
         IosBackgroundRefresh.scheduleNext()
         IosNotificationCenter.configure()
+        IosNotificationSettings.refresh()
     }
 }

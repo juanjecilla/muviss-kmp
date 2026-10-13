@@ -20,9 +20,13 @@ ANDROID_METADATA = "metadata/android"
 ANDROID_METADATA_FOR_ACTIONS = "fastlane/metadata/android"
 
 platform :android do
-  # Must match app/androidApp/build.gradle.kts: versionCode = commit count on HEAD.
+  # The versionCode of the release candidate: `major·1e6 + minor·1e4 + patch·100
+  # + rcN` (ADR 0030), the same formula as app/androidApp's build (MuvissVersion)
+  # and scripts/release/version-code.sh. RELEASE_TAG is the RC tag (release-rc.yml
+  # passes it); without it, the exact tag at HEAD.
   def version_code
-    Integer(sh("git", "rev-list", "--count", "HEAD", log: false).strip)
+    tag = ENV["RELEASE_TAG"] || sh("git", "describe", "--tags", "--exact-match", log: false).strip
+    Integer(sh("../scripts/release/version-code.sh", tag, log: false).strip)
   end
 
   def json_key_data

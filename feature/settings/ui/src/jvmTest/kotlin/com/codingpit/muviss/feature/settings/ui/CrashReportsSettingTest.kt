@@ -18,6 +18,7 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
@@ -166,7 +167,7 @@ class CrashReportsSettingTest {
         val system = FakeSystemNotifications(blocked = true)
         setContent {
             CompositionLocalProvider(LocalSystemNotificationSettings provides system) {
-                MuvissTheme(darkTheme = false) { SettingsScreen(viewModel(FakeRepository()), {}, {}, {}) }
+                MuvissTheme(darkTheme = false) { SettingsScreen(viewModel(FakeRepository(AppSettings(notificationsEnabled = true))), {}, {}, {}) }
             }
         }
         waitForIdle()
@@ -225,13 +226,17 @@ internal object NoFlags : FeatureFlags {
 }
 
 /** A [SettingsViewModel] over [repository], [NoFlags] and a fixed clock; [onDeleteAll] observes the eraser. */
-internal fun settingsViewModel(repository: FakeRepository, onDeleteAll: () -> Unit = {}) = SettingsViewModel(
+internal fun settingsViewModel(
+    repository: FakeRepository,
+    onDeleteAll: () -> Unit = {},
+    permission: NotificationPermissionRequester = NotificationPermissionRequester.Granted,
+) = SettingsViewModel(
     ObserveSettingsUseCase(repository),
     SettingsActions(
         SetThemeUseCase(repository),
         SetLanguageUseCase(repository),
         SetRegionUseCase(repository),
-        SetNotificationsEnabledUseCase(repository),
+        SetNotificationsEnabledUseCase(repository, permission),
         SetCrashReportsEnabledUseCase(repository),
         ExportDataUseCase(repository),
     ),

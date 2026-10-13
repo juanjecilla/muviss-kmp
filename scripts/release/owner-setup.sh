@@ -223,6 +223,8 @@ do_play_sa() {
   say "  2. Play Console → Users and permissions → Invite the service account's email,"
   say "     app: Muviss, permissions: Release to production, Release apps to testing tracks,"
   say "     Manage testing tracks, Edit store listing."
+  say "     For the Play reviews -> GitHub issues connector (EPIC 48) also tick 'Reply to reviews':"
+  say "     Play has no read-only reviews permission, so the account could reply; nothing here does."
   open_url "https://console.cloud.google.com/iam-admin/serviceaccounts"
   wait_enter || return 1
   local json
