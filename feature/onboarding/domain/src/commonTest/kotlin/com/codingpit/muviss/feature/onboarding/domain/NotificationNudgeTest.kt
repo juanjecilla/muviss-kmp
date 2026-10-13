@@ -3,8 +3,12 @@ package com.codingpit.muviss.feature.onboarding.domain
 import app.cash.turbine.test
 import com.codingpit.muviss.feature.onboarding.api.NotificationNudgeResult
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,6 +39,7 @@ class NotificationNudgeTest {
     private val enabled = MutableStateFlow(false)
     private var osAnswer = true
     private var osFailure: Throwable? = null
+    private var osWaitsForever = false
 
     private fun nudge(canNotify: Boolean = true) = NotificationNudge(
         tvShows = library,
@@ -43,6 +48,7 @@ class NotificationNudgeTest {
         canNotify = canNotify,
         turnOn = {
             osFailure?.let { throw it }
+            if (osWaitsForever) awaitCancellation()
             osAnswer
         },
     )
@@ -120,6 +126,15 @@ class NotificationNudgeTest {
     fun a_turn_on_that_throws_still_spends_the_nudge() = runTest {
         osFailure = IllegalStateException("no window to prompt over")
         assertFailsWith<IllegalStateException> { nudge().accept() }
+        assertEquals(true, repository.dismissed.value)
+    }
+
+    @Test
+    fun a_cancelled_turn_on_still_spends_the_nudge() = runTest {
+        osWaitsForever = true
+        val attempt = launch { nudge().accept() }
+        runCurrent()
+        attempt.cancelAndJoin()
         assertEquals(true, repository.dismissed.value)
     }
 }

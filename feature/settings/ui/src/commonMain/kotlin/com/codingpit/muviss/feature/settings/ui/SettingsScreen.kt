@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -98,6 +99,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_light
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_system
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_attribution
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_language
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -338,9 +340,11 @@ private fun AppTheme.label(): StringResource = when (this) {
 private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     val system = LocalSystemNotificationSettings.current
     var blocked by remember { mutableStateOf(system.blocked()) }
+    val scope = rememberCoroutineScope()
     LifecycleResumeEffect(system) {
-        blocked = system.blocked()
-        onPauseOrDispose { }
+        // Awaited, not the cached blocked(): iOS only answers asynchronously.
+        val check = scope.launch { blocked = system.blockedNow() }
+        onPauseOrDispose { check.cancel() }
     }
     if (!enabledInApp || !blocked) return
     Row(

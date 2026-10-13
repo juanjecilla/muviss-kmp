@@ -1,12 +1,14 @@
 package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
+import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationOpenNotificationSettingsURLString
 import platform.UserNotifications.UNAuthorizationStatusDenied
 import platform.UserNotifications.UNUserNotificationCenter
 import kotlin.concurrent.AtomicInt
+import kotlin.coroutines.resume
 
 /**
  * iOS's [SystemNotificationSettings] (EPIC 47). A refusal is as sticky here as on
@@ -15,9 +17,8 @@ import kotlin.concurrent.AtomicInt
  *
  * [blocked] is synchronous but iOS only answers asynchronously
  * (`getNotificationSettingsWithCompletionHandler`), so it returns the last answer and
- * asks again. The answer is refreshed at startup and after every permission request,
- * so it is current by the time a screen reads it. Coming back from the Settings app
- * can leave it one read behind; the next resume corrects it.
+ * asks again; [blockedNow] waits for iOS's answer, and is what a screen re-checking on
+ * resume uses. The cache is refreshed at startup and after every permission request.
  */
 internal object IosNotificationSettings : SystemNotificationSettings {
 
@@ -26,6 +27,14 @@ internal object IosNotificationSettings : SystemNotificationSettings {
     override fun blocked(): Boolean {
         refresh()
         return denied.value == 1
+    }
+
+    override suspend fun blockedNow(): Boolean = suspendCancellableCoroutine { continuation ->
+        UNUserNotificationCenter.currentNotificationCenter().getNotificationSettingsWithCompletionHandler { settings ->
+            val isDenied = settings?.authorizationStatus == UNAuthorizationStatusDenied
+            denied.value = if (isDenied) 1 else 0
+            continuation.resume(isDenied)
+        }
     }
 
     override fun open() {

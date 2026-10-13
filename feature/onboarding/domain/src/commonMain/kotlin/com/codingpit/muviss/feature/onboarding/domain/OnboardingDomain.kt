@@ -2,8 +2,10 @@ package com.codingpit.muviss.feature.onboarding.domain
 
 import com.codingpit.muviss.feature.onboarding.api.NotificationNudgeResult
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.withContext
 
 /** The two per-device flags onboarding owns. Neither is synced. */
 interface OnboardingRepository {
@@ -39,11 +41,12 @@ class NotificationNudge(
     }
 
     suspend fun accept(): NotificationNudgeResult {
-        // Spent even when asking throws: "at most once ever" holds for a failed attempt too.
+        // Spent even when asking throws or is cancelled: "at most once ever" holds for a
+        // failed attempt too, and a cancelled coroutine's own I/O would stop before writing.
         val enabled = try {
             turnOn()
         } finally {
-            repository.dismissNudge()
+            withContext(NonCancellable) { repository.dismissNudge() }
         }
         return if (enabled) NotificationNudgeResult.ENABLED else NotificationNudgeResult.DENIED
     }
