@@ -287,7 +287,8 @@ feature/x ──squash──► develop ──(Monday train)──► release/1.
                          │                          │
                          │        Sunday, week 1    ▼
                          │        gates pass ──► PR release/1.3.0 → main, merged as the App
-                         │                          │  (release.yml: tag v1.3.0, promote beta → production 20%)
+                         │                          │  then beta → production 20% by the same run
+                         │                          │  (release.yml: tag v1.3.0)
                          │                          │  ramp 50% day 2, 100% day 4 (play-rollout-ramp.yml)
                          └── back-merge PR ◄────────┘  GitHub Release: the RC's AAB + DMG/DEB/MSI
 hotfix/1.3.1 is cut from main (start-release.sh 1.3.1 --hotfix) and goes the same way.
@@ -302,8 +303,8 @@ the schedule, the gates and where a fix goes.
 | `pr-guards.yml` | PRs into `develop`/`main`, incl. retitle/relabel | `main-source-guard`, `release-notes-guard`, `landing-guard`, release tooling tests |
 | `release-train.yml` | nightly 23:00 UTC; acts on `RELEASE_TRAIN_DAY` (default `1`, Monday); dispatch | cut `release/<next>` if `develop` has new commits and no version is still in internal; create its milestone and "Release X.Y.Z" issue |
 | `release-rc.yml` | push to `release/**`, `hotfix/**` | tag `vX.Y.Z-rcN`, build (`android-release-build.yml`), Play internal, pre-release |
-| `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App |
-| `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, promote beta → production (20%), desktop installers, GitHub Release, back-merge PR |
+| `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App and promote beta → production (20%) |
+| `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, on a manual merge promote → production (20%), desktop installers, GitHub Release, back-merge PR |
 | `release-forward.yml` | a PR merged into `release/*` or `hotfix/*` | open the fix again into every newer `release/*` and `develop` |
 | `release-milestone.yml` | a PR opened into `release/*` or `hotfix/*` | milestone `X.Y.Z` on it |
 | `play-rollout-ramp.yml` | daily 08:00 UTC; dispatch | raise the production fraction along the ramp; close the release issue at 100% |
@@ -315,7 +316,7 @@ the schedule, the gates and where a fix goes.
 |---|---|---|
 | Monday 23:00 UTC (week 0) | internal | The train cuts `release/X.Y.Z`; the RC goes to the internal track. |
 | Sunday after (week 0) | open beta | The same RC binary is promoted from internal to the `beta` track (open testing). |
-| Sunday a week later (week 1) | production | `release/X.Y.Z` merges into `main` as the release App; `release.yml` promotes the beta build to production at 20%. The daily ramp takes it to 100%. |
+| Sunday a week later (week 1) | production | `release/X.Y.Z` merges into `main` as the release App (`release.yml` tags it), and the same run promotes the beta build to production at 20%. The daily ramp takes it to 100%. |
 
 - **Up to three versions in flight, one per stage.** The train holds only while
   a version is still in internal, because a new RC would replace it on that one
@@ -323,6 +324,12 @@ the schedule, the gates and where a fix goes.
 - **Production is fully automatic** on the Sunday path: the `production`
   environment's approval is not asked (the gates and the crash gate that holds
   the ramp stand in for it). A manual merge into `main` still asks for it.
+- **Production leaves beta before the next version arrives.** The Sunday step
+  runs production before beta and promotes production itself, so a newer RC
+  never takes the beta track while an older one is still being read from it.
+  If Play refuses the promotion after the merge, the version stays on beta
+  with `merged_on` in its marker, and the next run (or a dispatch) retries
+  only the promotion, never the merge; the newer beta waits for it.
 - **Every step is gated.** A held version says why on its "Release X.Y.Z" issue
   and is retried the next Sunday, or by a dispatch of `release-promote.yml`
   (`dry_run` defaults on: it prints every decision and changes nothing). The gates:
@@ -491,10 +498,11 @@ The decisions behind it:
 - **An RC uploads to the internal track only, and the track moves it on.** The
   Sunday step after the train's cut promotes it internal → `beta` (Play's open
   testing track, `fastlane android beta`), and the Sunday a week later merges the
-  release into `main`, where `release.yml` promotes the beta build to production
-  at 20% (`fastlane android promote`, which checks the beta track's latest is the
-  approved RC). The `production` environment's approval applies only to a manual
-  merge (ADR 0030; it was the whole of ADR 0025's gate).
+  release into `main` and promotes the beta build to production at 20%
+  (`fastlane android promote`, which checks the beta track's latest is the
+  approved RC). On a manual merge `release.yml` promotes instead, behind the
+  `production` environment's approval (ADR 0030; it was the whole of ADR 0025's
+  gate), and may take an RC that never went to beta from internal.
 - **Listing copy and screenshots live in `fastlane/metadata/android/<locale>/`**
   and are the source of truth (`docs/store/LISTING.md` explains them).
 - Secret: `PLAY_SERVICE_ACCOUNT_JSON` (a Play Console service account with
