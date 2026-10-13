@@ -1,0 +1,192 @@
+name: Ship release
+
+# The owner's one click from a tested release candidate to production
+# (ADR 0025): open the PR `release/X.Y.Z → main` (or `hotfix/X.Y.Z`), wait for
+# its approval and checks, and merge it with a merge commit. That merge is what
+# release.yml acts on — tag vX.Y.Z, then promote the newest RC to Play
+# production behind the `production` environment, which still asks the owner
+# to approve. Nothing here bypasses that gate or the main ruleset.
+#
+#   ship        open the PR if needed, wait up to `wait_minutes`, merge
+#   open        only open (or find) the PR
+#   merge       merge the existing PR now; fails unless it is approved and green
+#   back-merge  after the release: merge release.yml's `back-merge/vX.Y.Z → develop`
+#               PR (merge commit) once approved and green, waiting like ship
+#
+# Test the RC from Play's internal track before running this.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'ship = open, wait, merge; open = only open the PR; merge = merge it now; back-merge = merge the back-merge PR into develop'
+        type: choice
+        options: [ship, open, merge, back-merge]
+        default: ship
+      branch:
+        description: 'release/X.Y.Z or hotfix/X.Y.Z (blank = the one open release or hotfix branch). back-merge: the version X.Y.Z, or blank for the only open back-merge PR'
+        type: string
+        default: ''
+      wait_minutes:
+        description: 'ship: how long to wait for the approval and checks'
+        type: string
+        default: '180'
+
+concurrency:
+  group: ship-release
+  cancel-in-progress: false
+
+# The waiting is done with GITHUB_TOKEN, which only reads; the App token that
+# writes is minted right before each write, because it expires after an hour
+# and the wait can be longer.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+
+jobs:
+  ship:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      # GITHUB_TOKEN cannot do the writes: a PR it opens runs no checks, and a
+      # merge it makes would not start release.yml.
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Which branch
+        id: branch
+        if: inputs.action != 'back-merge'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          INPUT: ${{ inputs.branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -n "$INPUT" ]; then
+            BRANCH="$INPUT"
+          else
+            OPEN="$(gh api "repos/$REPO/branches?per_page=100" --paginate --jq '.[].name' | grep -E '^(release|hotfix)/' || true)"
+            [ -n "$OPEN" ] || { echo "::error::no release/* or hotfix/* branch is open; the train cuts one (release-train.yml)"; exit 1; }
+            [ "$(echo "$OPEN" | wc -l)" -eq 1 ] || { echo "::error::several are open, pass one as 'branch': $(echo $OPEN)"; exit 1; }
+            BRANCH="$OPEN"
+          fi
+          [[ "$BRANCH" =~ ^(release|hotfix)/[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::'$BRANCH' is not release/X.Y.Z or hotfix/X.Y.Z"; exit 1; }
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "version=${BRANCH#*/}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: inputs.action != 'back-merge'
+        with:
+          ref: ${{ steps.branch.outputs.name }}
+          persist-credentials: false
+
+      # The same gate pr-guards runs on the PR, checked before anything is opened:
+      # merging into main promotes to production with these notes.
+      - name: Release notes are final
+        if: inputs.action != 'back-merge'
+        run: scripts/release/check-release-notes.sh "${{ steps.branch.outputs.version }}" --final
+
+      - name: Open the PR into main
+        id: pr
+        if: inputs.action == 'ship' || inputs.action == 'open'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          VERSION: ${{ steps.branch.outputs.version }}
+        run: |
+          N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[]|select(.isCrossRepository|not)][0].number // empty')"
+          if [ -z "$N" ]; then
+            RC="$(gh release list -R "$REPO" --limit 50 --json tagName --jq "[.[].tagName|select(startswith(\"v$VERSION-rc\"))][0]")"
+            URL="$(gh pr create -R "$REPO" --base main --head "$BRANCH" --title "release: $VERSION" --body "Ships **$VERSION** to production: merging tags \`v$VERSION\` and promotes ${RC:-the newest RC} from Play internal to production at 20%, behind the \`production\` environment approval (release.yml). Opened by the Ship release workflow; merge with a merge commit.")"
+            N="${URL##*/}"
+            echo "Opened #$N" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Found #$N" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "number=$N" >> "$GITHUB_OUTPUT"
+
+      - name: Which PR
+        id: target
+        if: inputs.action != 'open'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          ACTION: ${{ inputs.action }}
+          INPUT: ${{ inputs.branch }}
+        run: |
+          # Only PRs whose head is this repository: a fork can open one from a
+          # branch with the same name, and it must never be the one merged.
+          if [ "$ACTION" = back-merge ]; then
+            # release.yml names it back-merge/vX.Y.Z. Never guess between two.
+            OPEN="$(gh pr list -R "$REPO" --base develop --state open --json number,headRefName,isCrossRepository --jq '.[]|select(.isCrossRepository|not)|select(.headRefName|startswith("back-merge/"))|"\(.number) \(.headRefName)"')"
+            if [ -n "$INPUT" ]; then
+              OPEN="$(echo "$OPEN" | awk -v b="back-merge/v${INPUT#v}" '$2 == b')"
+            fi
+            [ -n "$OPEN" ] || { echo "::error::no matching open back-merge/* PR into develop (release.yml opens it after a release)"; exit 1; }
+            [ "$(echo "$OPEN" | wc -l)" -eq 1 ] || { echo "::error::several back-merge PRs are open, pass the version as 'branch': $(echo $OPEN)"; exit 1; }
+            N="${OPEN%% *}"
+          else
+            N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[]|select(.isCrossRepository|not)][0].number // empty')"
+            [ -n "$N" ] || { echo "::error::no open PR from $BRANCH into main; run with action=open or ship"; exit 1; }
+          fi
+          echo "number=$N" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the approval and green checks
+        if: inputs.action != 'open'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          N: ${{ steps.target.outputs.number }}
+          ACTION: ${{ inputs.action }}
+          WAIT: ${{ inputs.wait_minutes }}
+        run: |
+          [ "$ACTION" = merge ] && WAIT=0
+          deadline=$(( $(date +%s) + WAIT * 60 ))
+          while :; do
+            STATE="$(gh pr view "$N" -R "$REPO" --json reviewDecision,mergeStateStatus --jq '"\(.reviewDecision) \(.mergeStateStatus)"')"
+            # Every check counted, not just the required ones: pass or skipped only.
+            CHECKS="$(gh pr checks "$N" -R "$REPO" --json bucket --jq '[.[].bucket]|if length == 0 then "none" elif any(. == "fail" or . == "cancel") then "fail" elif any(. == "pending") then "pending" else "pass" end' || true)"
+            echo "#$N: $STATE, checks $CHECKS"
+            if [[ "$STATE" == *DIRTY* ]]; then echo "::error::#$N conflicts with its base"; exit 1; fi
+            if [ "$CHECKS" = fail ]; then echo "::error::a check is failing on #$N"; exit 1; fi
+            # UNSTABLE means a non-passing status, so only CLEAN (or HAS_HOOKS) is green.
+            case "$STATE $CHECKS" in
+              "APPROVED CLEAN pass"|"APPROVED HAS_HOOKS pass") break ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::#$N is not mergeable yet ($STATE, checks $CHECKS). Run again with action=merge once it is approved and green."
+              exit 1
+            fi
+            sleep 60
+          done
+
+      # A fresh token: the first one may have expired during the wait.
+      - name: Mint a release App token for the merge
+        id: app-merge
+        if: inputs.action != 'open'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Merge
+        if: inputs.action != 'open'
+        env:
+          GH_TOKEN: ${{ steps.app-merge.outputs.token }}
+          REPO: ${{ github.repository }}
+          N: ${{ steps.target.outputs.number }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          gh pr merge "$N" -R "$REPO" --merge
+          if [ "$ACTION" = back-merge ]; then
+            echo "Merged back-merge #$N into develop." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Merged #$N into main: release.yml now tags it and waits for the production approval." >> "$GITHUB_STEP_SUMMARY"
+          fi

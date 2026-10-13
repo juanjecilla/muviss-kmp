@@ -321,11 +321,15 @@ Then:
 2. Fix anything on the release branch (PRs into `release/x.y.z`). Each push is a new RC.
 3. Rewrite the notes for users in every locale and delete the `DRAFT:` line —
    `release-notes-guard` fails the PR into `main` until you do.
-4. Open the PR `release/x.y.z → main` and **merge with a merge commit**.
+4. Open the PR `release/x.y.z → main` and **merge with a merge commit** — or
+   Actions > **Ship release** > Run workflow (`action: ship`), which opens it,
+   waits for the approval and checks, and merges it that way.
 5. Approve the `production` deployment in the run. The ramp takes it from there;
    halt with `gh workflow run play-promote.yml -f action=halt`.
 6. Merge the back-merge PR into `develop` **with a merge commit** (it is labelled
-   `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch).
+   `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch) — or run
+   **Ship release** with `action: back-merge` (pass the version as `branch` when
+   more than one back-merge PR is open).
 
 Production always gets the newest `vX.Y.Z-rcN`. If the branch moved after its
 last RC, `release.yml` warns and still promotes the RC — push again to get a
