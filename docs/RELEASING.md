@@ -328,7 +328,8 @@ Then:
    halt with `gh workflow run play-promote.yml -f action=halt`.
 6. Merge the back-merge PR into `develop` **with a merge commit** (it is labelled
    `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch) — or run
-   **Ship release** with `action: back-merge`.
+   **Ship release** with `action: back-merge` (pass the version as `branch` when
+   more than one back-merge PR is open).
 
 Production always gets the newest `vX.Y.Z-rcN`. If the branch moved after its
 last RC, `release.yml` warns and still promotes the RC — push again to get a
