@@ -30,11 +30,13 @@ class TmdbKeyViewModelTest {
         val source = MutableStateFlow(TmdbDataSource.MUVISS)
         var result = SaveTmdbKeyResult.SAVED
         val saved = mutableListOf<String>()
+        var failure: Throwable? = null
 
         override fun observeSource(): Flow<TmdbDataSource> = source
 
         override suspend fun save(raw: String): SaveTmdbKeyResult {
             saved += raw
+            failure?.let { throw it }
             if (result == SaveTmdbKeyResult.SAVED) source.value = TmdbDataSource.YOURS
             return result
         }
@@ -139,5 +141,18 @@ class TmdbKeyViewModelTest {
 
         assertTrue(done)
         assertEquals(TmdbDataSource.MUVISS, vm.state.value.source)
+    }
+
+    @Test
+    fun a_store_failure_releases_the_dialog_with_a_problem() = runTest {
+        NoFlags.byokEnabled.value = true
+        val vm = viewModel()
+        settings.failure = IllegalStateException("keystore unavailable")
+        var done = false
+        vm.save("a".repeat(32)) { done = true }
+
+        assertFalse(vm.state.value.checking, "a thrown save must not leave the dialog locked")
+        assertEquals(TmdbKeyProblem.COULD_NOT_CHECK, vm.state.value.problem)
+        assertFalse(done)
     }
 }

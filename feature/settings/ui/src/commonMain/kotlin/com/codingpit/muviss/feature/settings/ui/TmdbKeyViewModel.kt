@@ -59,13 +59,19 @@ class TmdbKeyViewModel(
         if (_state.value.checking) return
         _state.update { it.copy(checking = true, problem = null) }
         viewModelScope.launchReporting {
-            val problem = when (saveKey(raw)) {
-                SaveTmdbKeyResult.SAVED -> null
-                SaveTmdbKeyResult.MALFORMED -> TmdbKeyProblem.MALFORMED
-                SaveTmdbKeyResult.REJECTED -> TmdbKeyProblem.REJECTED
-                SaveTmdbKeyResult.COULD_NOT_CHECK -> TmdbKeyProblem.COULD_NOT_CHECK
+            // A store failure (Keystore, Keychain) throws out of saveKey; the
+            // dialog is locked while `checking`, so it must be released anyway.
+            var problem: TmdbKeyProblem? = TmdbKeyProblem.COULD_NOT_CHECK
+            try {
+                problem = when (saveKey(raw)) {
+                    SaveTmdbKeyResult.SAVED -> null
+                    SaveTmdbKeyResult.MALFORMED -> TmdbKeyProblem.MALFORMED
+                    SaveTmdbKeyResult.REJECTED -> TmdbKeyProblem.REJECTED
+                    SaveTmdbKeyResult.COULD_NOT_CHECK -> TmdbKeyProblem.COULD_NOT_CHECK
+                }
+            } finally {
+                _state.update { it.copy(checking = false, problem = problem) }
             }
-            _state.update { it.copy(checking = false, problem = problem) }
             if (problem == null) onSaved()
         }
     }
