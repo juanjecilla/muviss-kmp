@@ -5,10 +5,12 @@ package com.codingpit.muviss.feature.settings.data
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -19,6 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 private class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
@@ -53,7 +56,8 @@ class SqlDelightSettingsRepositoryTest {
             // is what turns this into a concrete TMDB language.
             assertEquals("", settings.language)
             assertEquals("US", settings.region)
-            assertTrue(settings.notificationsEnabled)
+            // EPIC 47: a brand-new row is not opted in; Onboarding, the nudge or Settings ask.
+            assertFalse(settings.notificationsEnabled)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -104,7 +108,7 @@ class SqlDelightSettingsRepositoryTest {
     fun setCrashReportsEnabled_persists_and_reaches_the_api() = runTest {
         repository.setCrashReportsEnabled(false)
 
-        DefaultSettingsApi(repository).observeCrashReportsEnabled().test {
+        DefaultSettingsApi(repository, SetNotificationsEnabledUseCase(repository, NotificationPermissionRequester.Granted)).observeCrashReportsEnabled().test {
             assertEquals(false, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }

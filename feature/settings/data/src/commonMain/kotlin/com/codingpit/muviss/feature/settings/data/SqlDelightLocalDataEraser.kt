@@ -1,7 +1,9 @@
 package com.codingpit.muviss.feature.settings.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import kotlinx.coroutines.withContext
 
@@ -20,6 +22,8 @@ import kotlinx.coroutines.withContext
 class SqlDelightLocalDataEraser(
     private val database: MuvissDatabase,
     private val dispatchers: AppDispatchers,
+    private val ownTmdbKey: OwnTmdbKey,
+    private val secrets: SecretStore,
 ) : LocalDataEraser {
 
     override suspend fun deleteAllData() = withContext(dispatchers.io) {
@@ -47,5 +51,10 @@ class SqlDelightLocalDataEraser(
             database.syncCursorQueries.deleteAll()
             database.syncStateQueries.deleteRow()
         }
+        // The Own TMDB Key (EPIC 46) is not in the database. `clear` also drops the copy the
+        // provider holds in memory, so the next request is Muviss's; `clearAll` then wipes the
+        // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
+        ownTmdbKey.clear()
+        secrets.clearAll()
     }
 }

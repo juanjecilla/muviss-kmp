@@ -29,6 +29,16 @@ never leaves the device even incidentally.
 
    This product uses the TMDB API but is not endorsed or certified by TMDB.
 
+   **Your own TMDB key (optional).** Where the app offers it, Settings → TMDB
+   data source lets you use your own TMDB credential instead of Muviss's, so
+   your requests are made under your own TMDB account. The key is stored only
+   on your device, encrypted with a key held by the platform (Android Keystore,
+   iOS Keychain, the desktop's OS secret store, or the browser's WebCrypto),
+   and is sent only to TMDB. It is never synced, never included in a data
+   export, and removed by **Delete all data**. It is also excluded from
+   Android's backups (Muviss turns them off entirely) and scrubbed from crash
+   reports.
+
 2. **Sentry (crash reporting)** — optional, and you can turn it off. It is on
    by default in release builds, and off in developer builds (which have no
    Sentry project configured, see `docs/RELEASING.md`). **Settings → Privacy →

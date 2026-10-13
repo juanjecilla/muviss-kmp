@@ -211,7 +211,11 @@ messages, exceptions and breadcrumbs in `beforeSend`/`beforeBreadcrumb`.
 **Version pairing.** `sentryKmp` and `sentryCocoa` move together (see the catalog);
 last checked 2026-09-20: 0.27.0 is the latest KMP release and pins Cocoa 8.58.2.
 
-### Sentry to GitHub (#300, Ops Bridge connector #1)
+### The Ops Bridge: Sentry and Play reviews to GitHub issues (#300, EPIC 48)
+
+Both connectors share one shape (`fastlane/ops_bridge/`, see its README for how to add a third): a connector polls its source, a sink opens one GitHub issue per new item, an optional reverse mapping acts on a closed issue.
+
+#### Sentry crash to issue (#300, connector #1)
 
 `.github/workflows/sentry-issues.yml` opens one GitHub issue per new **unhandled
 production** crash and resolves the crash in Sentry when that issue is closed.
@@ -236,8 +240,31 @@ Business plan; this runs on any plan, with the token the Play ramp's crash gate
 - **Secrets**: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, optionally `SENTRY_PROJECT` (all already
   set for the mapping upload and the gate). With no token the workflow does nothing.
 - **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
-  what it would open). Tests: `ruby fastlane/test/sentry_issues_test.rb`, run by `pr-guards`.
+  what it would open). Tests: `ruby fastlane/test/sentry_connector_test.rb` and `ops_bridge_test.rb`, run by `pr-guards`.
   Nothing here has been run against a live Sentry project (#328).
+
+#### Play reviews to issue (EPIC 48, connector #2)
+
+`.github/workflows/play-reviews.yml` opens one issue per Google Play review of **3 stars or
+fewer**, labelled `from-play-review` + `user-feedback`.
+
+- **Daily, not weekly**: the Reviews API returns only reviews **with text**, created or edited
+  in the **last week**, and only for production versions. A gap longer than a week loses reviews
+  for good (the console's CSV export is the only way back). One issue per review id, so an
+  edited review does not open a second.
+- **The reviewer's name is never copied** (the repository goes public). The body has the rating,
+  app version, Android API level, device model, language and date, and the review text in a code
+  fence, so an `@name` inside it cannot ping anyone. Reviews of 4 and 5 stars are praise, not work.
+- **No reverse mapping**: closing the issue changes nothing in Play.
+- **Owner step: a Play Console grant.** The service account behind `PLAY_SERVICE_ACCOUNT_JSON`
+  (the upload account) needs the permission **Reply to reviews** (Users and permissions >
+  the account > App permissions). Play has no read-only reviews permission, so the account
+  *could* reply; nothing here does, and the key lives only in Actions. Without the grant the run
+  fails with HTTP 403 and opens nothing. It also needs the Google Play Android Developer API
+  enabled in the account's Cloud project (the upload already needs that).
+- Stdlib only: the OAuth token is a signed JWT exchanged at Google (`PlayReviews#access_token`),
+  no gems. Try it: Actions > "Play reviews" > Run workflow (dry run is on by default).
+  Tests: `ruby fastlane/test/play_reviews_test.rb`. Never run against the live API.
 
 ## 5. Branches, the release train and CI (ADR 0025)
 
@@ -294,11 +321,15 @@ Then:
 2. Fix anything on the release branch (PRs into `release/x.y.z`). Each push is a new RC.
 3. Rewrite the notes for users in every locale and delete the `DRAFT:` line —
    `release-notes-guard` fails the PR into `main` until you do.
-4. Open the PR `release/x.y.z → main` and **merge with a merge commit**.
+4. Open the PR `release/x.y.z → main` and **merge with a merge commit** — or
+   Actions > **Ship release** > Run workflow (`action: ship`), which opens it,
+   waits for the approval and checks, and merges it that way.
 5. Approve the `production` deployment in the run. The ramp takes it from there;
    halt with `gh workflow run play-promote.yml -f action=halt`.
 6. Merge the back-merge PR into `develop` **with a merge commit** (it is labelled
-   `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch).
+   `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch) — or run
+   **Ship release** with `action: back-merge` (pass the version as `branch` when
+   more than one back-merge PR is open).
 
 Production always gets the newest `vX.Y.Z-rcN`. If the branch moved after its
 last RC, `release.yml` warns and still promotes the RC — push again to get a

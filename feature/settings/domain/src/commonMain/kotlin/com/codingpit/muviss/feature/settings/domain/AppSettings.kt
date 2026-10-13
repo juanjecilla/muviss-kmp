@@ -5,7 +5,7 @@ data class AppSettings(
     val theme: AppTheme = AppTheme.SYSTEM,
     val language: String = SupportedLocales.DEFAULT_LANGUAGE,
     val region: String = SupportedLocales.DEFAULT_REGION,
-    val notificationsEnabled: Boolean = true,
+    val notificationsEnabled: Boolean = false,
     /** "Send crash reports". On by default; a per-device preference, never synced. */
     val crashReportsEnabled: Boolean = true,
 )
