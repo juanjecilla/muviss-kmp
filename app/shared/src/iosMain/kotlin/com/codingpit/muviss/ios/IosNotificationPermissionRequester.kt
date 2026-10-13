@@ -4,5 +4,8 @@ import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequ
 
 /** iOS's [NotificationPermissionRequester] (EPIC 47): the system prompt, shown when the user turns alerts on. */
 internal object IosNotificationPermissionRequester : NotificationPermissionRequester {
-    override suspend fun request(): Boolean = IosNotificationCenter.requestPermission()
+    override suspend fun request(): Boolean = IosNotificationCenter.requestPermission().also {
+        // A refusal is sticky from here on; the blocked note reads this.
+        IosNotificationSettings.refresh()
+    }
 }

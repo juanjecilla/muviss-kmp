@@ -357,7 +357,7 @@ private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     }
 }
 
-/** The platform's notification state; Android provides a real one from `MuvissApp` (EPIC 30, #73). */
+/** The platform's notification state; Android and iOS bind a real one, provided from `MuvissApp` (EPIC 30, #73; iOS EPIC 47). */
 val LocalSystemNotificationSettings = staticCompositionLocalOf<SystemNotificationSettings> { SystemNotificationSettings.None }
 
 internal const val NOTIFICATIONS_BLOCKED_TAG = "settings-notifications-blocked"

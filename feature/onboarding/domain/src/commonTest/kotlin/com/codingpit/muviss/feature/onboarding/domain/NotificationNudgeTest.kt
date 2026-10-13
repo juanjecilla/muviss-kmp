@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class NotificationNudgeTest {
 
@@ -33,13 +34,17 @@ class NotificationNudgeTest {
     private val library = MutableStateFlow(listOf(show))
     private val enabled = MutableStateFlow(false)
     private var osAnswer = true
+    private var osFailure: Throwable? = null
 
     private fun nudge(canNotify: Boolean = true) = NotificationNudge(
         tvShows = library,
         notificationsEnabled = enabled,
         repository = repository,
         canNotify = canNotify,
-        turnOn = { osAnswer },
+        turnOn = {
+            osFailure?.let { throw it }
+            osAnswer
+        },
     )
 
     private suspend fun NotificationNudge.eligible(id: MediaId = show): Boolean {
@@ -108,6 +113,13 @@ class NotificationNudgeTest {
     @Test
     fun dismissing_spends_it_too() = runTest {
         nudge().dismiss()
+        assertEquals(true, repository.dismissed.value)
+    }
+
+    @Test
+    fun a_turn_on_that_throws_still_spends_the_nudge() = runTest {
+        osFailure = IllegalStateException("no window to prompt over")
+        assertFailsWith<IllegalStateException> { nudge().accept() }
         assertEquals(true, repository.dismissed.value)
     }
 }

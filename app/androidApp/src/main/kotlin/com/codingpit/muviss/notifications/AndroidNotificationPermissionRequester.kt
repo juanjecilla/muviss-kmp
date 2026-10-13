@@ -44,6 +44,9 @@ class AndroidNotificationPermissionRequester(private val context: Context) : Not
         // sticky and the launcher below would answer "no" at once. Either way the system settings
         // screen (`SystemNotificationSettings.open`) is the only way forward.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        // A second tap while the prompt is up waits for the same answer: replacing `pending`
+        // would leave the first caller suspended with nothing left to complete it.
+        pending?.let { return it.await() }
         val start = launch ?: return false
         val answer = CompletableDeferred<Boolean>().also { pending = it }
         start()

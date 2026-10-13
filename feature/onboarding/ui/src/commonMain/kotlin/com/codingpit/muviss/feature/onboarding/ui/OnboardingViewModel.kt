@@ -107,13 +107,19 @@ class OnboardingViewModel(
         if (_state.value.keyChecking) return
         _state.update { it.copy(keyChecking = true, keyProblem = null) }
         viewModelScope.launchReporting {
-            val problem = when (tmdbKey.save(raw)) {
-                SaveTmdbKeyResult.SAVED -> null
-                SaveTmdbKeyResult.MALFORMED -> TmdbKeyProblem.MALFORMED
-                SaveTmdbKeyResult.REJECTED -> TmdbKeyProblem.REJECTED
-                SaveTmdbKeyResult.COULD_NOT_CHECK -> TmdbKeyProblem.COULD_NOT_CHECK
+            // As in Settings' TmdbKeyViewModel: a store failure throws out of save, and the
+            // dialog is locked while `keyChecking`, so it is released whatever happens.
+            var problem: TmdbKeyProblem? = TmdbKeyProblem.COULD_NOT_CHECK
+            try {
+                problem = when (tmdbKey.save(raw)) {
+                    SaveTmdbKeyResult.SAVED -> null
+                    SaveTmdbKeyResult.MALFORMED -> TmdbKeyProblem.MALFORMED
+                    SaveTmdbKeyResult.REJECTED -> TmdbKeyProblem.REJECTED
+                    SaveTmdbKeyResult.COULD_NOT_CHECK -> TmdbKeyProblem.COULD_NOT_CHECK
+                }
+            } finally {
+                _state.update { it.copy(keyChecking = false, keyProblem = problem) }
             }
-            _state.update { it.copy(keyChecking = false, keyProblem = problem) }
             if (problem == null) onSaved()
         }
     }

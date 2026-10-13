@@ -54,11 +54,13 @@ internal class FakeTmdbKeyApi : TmdbKeyApi {
     val source = MutableStateFlow(TmdbDataSource.MUVISS)
     var result = SaveTmdbKeyResult.SAVED
     val saved = mutableListOf<String>()
+    var failure: Throwable? = null
 
     override fun observeSource(): Flow<TmdbDataSource> = source
 
     override suspend fun save(raw: String): SaveTmdbKeyResult {
         saved += raw
+        failure?.let { throw it }
         if (result == SaveTmdbKeyResult.SAVED) source.value = TmdbDataSource.YOURS
         return result
     }

@@ -39,8 +39,12 @@ class NotificationNudge(
     }
 
     suspend fun accept(): NotificationNudgeResult {
-        val enabled = turnOn()
-        repository.dismissNudge()
+        // Spent even when asking throws: "at most once ever" holds for a failed attempt too.
+        val enabled = try {
+            turnOn()
+        } finally {
+            repository.dismissNudge()
+        }
         return if (enabled) NotificationNudgeResult.ENABLED else NotificationNudgeResult.DENIED
     }
 

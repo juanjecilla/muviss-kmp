@@ -142,6 +142,17 @@ class OnboardingViewModelTest {
     }
 
     @Test
+    fun a_store_failure_releases_the_key_dialog_with_a_problem() = runTest {
+        val vm = viewModel()
+        key.failure = IllegalStateException("keychain unavailable")
+        var done = false
+        vm.saveKey("a".repeat(32)) { done = true }
+        assertFalse(vm.state.value.keyChecking, "a thrown save must not leave the dialog locked")
+        assertEquals(TmdbKeyProblem.COULD_NOT_CHECK, vm.state.value.keyProblem)
+        assertFalse(done)
+    }
+
+    @Test
     fun going_back_to_muvisss_key_clears_the_own_one() = runTest {
         val vm = viewModel()
         vm.saveKey("a".repeat(32)) {}
