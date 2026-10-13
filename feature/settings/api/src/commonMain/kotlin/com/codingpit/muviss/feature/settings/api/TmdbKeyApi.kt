@@ -1,4 +1,4 @@
-package com.codingpit.muviss.feature.settings.domain
+package com.codingpit.muviss.feature.settings.api
 
 import kotlinx.coroutines.flow.Flow
 
@@ -20,11 +20,11 @@ enum class SaveTmdbKeyResult {
 }
 
 /**
- * The Own TMDB Key as Settings sees it (ADR 0027). The key itself never crosses
+ * The Own TMDB Key as the rest of the app sees it (ADR 0027): Settings and Onboarding both set it through this. The key itself never crosses
  * this seam outward: a screen can set it and clear it, and learn only whose
  * credential is in use.
  */
-interface TmdbKeySettings {
+interface TmdbKeyApi {
     fun observeSource(): Flow<TmdbDataSource>
 
     /** Checks [raw] with TMDB and keeps it only if TMDB accepts it. */
@@ -32,16 +32,4 @@ interface TmdbKeySettings {
 
     /** Back to Muviss's credential. */
     suspend fun clear()
-}
-
-class ObserveTmdbDataSourceUseCase(private val settings: TmdbKeySettings) {
-    operator fun invoke(): Flow<TmdbDataSource> = settings.observeSource()
-}
-
-class SaveTmdbKeyUseCase(private val settings: TmdbKeySettings) {
-    suspend operator fun invoke(raw: String): SaveTmdbKeyResult = settings.save(raw)
-}
-
-class ClearTmdbKeyUseCase(private val settings: TmdbKeySettings) {
-    suspend operator fun invoke() = settings.clear()
 }

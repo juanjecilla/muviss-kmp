@@ -14,6 +14,13 @@ interface SystemNotificationSettings {
     /** True when the OS will not show Muviss's notifications, whatever the in-app switch says. */
     fun blocked(): Boolean
 
+    /**
+     * [blocked], asked of the OS now. A platform that only answers asynchronously (iOS)
+     * returns its last known answer from [blocked]; this waits for the fresh one, so a
+     * screen re-checking on resume sees what the user just changed in system settings.
+     */
+    suspend fun blockedNow(): Boolean = blocked()
+
     /** Opens the system screen where the user can allow them again. */
     fun open()
 

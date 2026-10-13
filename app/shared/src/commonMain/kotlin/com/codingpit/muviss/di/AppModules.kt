@@ -11,6 +11,8 @@ import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
 import com.codingpit.muviss.feature.cowatch.data.di.coWatchDataModule
 import com.codingpit.muviss.feature.cowatch.ui.di.coWatchUiModule
+import com.codingpit.muviss.feature.onboarding.data.di.onboardingDataModule
+import com.codingpit.muviss.feature.onboarding.ui.di.onboardingUiModule
 import com.codingpit.muviss.feature.profile.data.di.profileDataModule
 import com.codingpit.muviss.feature.profile.ui.di.profileUiModule
 import com.codingpit.muviss.feature.progress.data.di.progressDataModule
@@ -55,4 +57,6 @@ val appModules: List<Module> =
         triageUiModule,
         coWatchDataModule,
         coWatchUiModule,
+        onboardingDataModule,
+        onboardingUiModule,
     )

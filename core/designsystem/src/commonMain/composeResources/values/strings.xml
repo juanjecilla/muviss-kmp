@@ -43,4 +43,15 @@
     <!-- %1$s identifies the episode, e.g. "S1 · E3". -->
     <string name="a11y_mark_unwatched">Mark %1$s unwatched</string>
     <string name="a11y_mark_watched">Mark %1$s watched</string>
+
+    <!-- EPIC 46: the Own TMDB Key dialog, shared by Settings and Onboarding -->
+    <string name="action_cancel">Cancel</string>
+    <string name="tmdb_source_body">Muviss gets titles from TMDB. If you have your own TMDB account, you can paste its v4 read access token or v3 API key and your requests are made under it instead. The key stays on this device: it is never synced or exported.</string>
+    <string name="tmdb_key_field">TMDB key</string>
+    <string name="tmdb_key_save">Check and save</string>
+    <string name="tmdb_key_use_muviss">Use Muviss\'s key</string>
+    <string name="tmdb_key_checking">Checking with TMDB…</string>
+    <string name="tmdb_key_problem_malformed">That doesn\'t look like a TMDB key. Paste the v4 read access token or the 32-character v3 API key.</string>
+    <string name="tmdb_key_problem_rejected">TMDB rejected that key. Check it and try again.</string>
+    <string name="tmdb_key_problem_could_not_check">Couldn\'t check the key right now. Check your connection and try again.</string>
 </resources>
