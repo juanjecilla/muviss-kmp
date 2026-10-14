@@ -28,7 +28,13 @@ permissions:
 
 jobs:
   forward:
-    if: github.event.pull_request.merged == true && !startsWith(github.event.pull_request.head.ref, 'forward/')
+    # A forward PR is one the release App opened from a forward/ branch of this
+    # repository; a fork's branch of the same name is an ordinary fix.
+    if: >-
+      github.event.pull_request.merged == true &&
+      !(startsWith(github.event.pull_request.head.ref, 'forward/') &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.type == 'Bot')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
