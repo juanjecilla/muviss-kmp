@@ -52,6 +52,18 @@ class LoopbackRedirectServerTest {
      */
     private val realScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Three ports the OS just handed out free, not [LoopbackRedirectServer.PORTS].
+     *
+     * The real ports sit inside Linux's and macOS's ephemeral range, so on a CI
+     * runner an unrelated outgoing connection (Gradle, the cache action) can
+     * briefly own one, and tests that squat nothing failed with "all in use"
+     * (#273). The real list is pinned by [the real ports are the allow-listed ones].
+     */
+    private val ports: List<Int> = List(3) { ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")) }
+        .onEach { it.close() }
+        .map { it.localPort }
+
     @AfterTest
     fun tearDown() {
         realScope.cancel()
@@ -74,32 +86,43 @@ class LoopbackRedirectServerTest {
     }
 
     @Test
+    fun `the real ports are the allow-listed ones`() {
+        // Each must be on supabase/config.toml's additional_redirect_urls
+        // (ADR 0017); changing one here without the other breaks sign-in.
+        assertEquals(listOf(53682, 53683, 53684), LoopbackRedirectServer.PORTS)
+        val config = java.io.File("../../supabase/config.toml").readText()
+        LoopbackRedirectServer.PORTS.forEach { port ->
+            assertTrue(LoopbackRedirectServer.redirectUriFor(port) in config, "port $port is missing from supabase/config.toml")
+        }
+    }
+
+    @Test
     fun `the redirect it hands out is the port it actually bound`() = runTest {
-        val server = LoopbackRedirectServer(realScope, SignInFeedback())
+        val server = LoopbackRedirectServer(realScope, SignInFeedback(), ports = ports)
 
         val uri = server.reserve()
 
-        assertEquals(LoopbackRedirectServer.redirectUriFor(LoopbackRedirectServer.PORTS.first()), uri)
+        assertEquals(LoopbackRedirectServer.redirectUriFor(ports.first()), uri)
         server.release()
     }
 
     @Test
     fun `a taken port falls through to the next one`() = runTest {
-        squat(LoopbackRedirectServer.PORTS[0])
-        val server = LoopbackRedirectServer(realScope, SignInFeedback())
+        squat(ports[0])
+        val server = LoopbackRedirectServer(realScope, SignInFeedback(), ports = ports)
 
         val uri = server.reserve()
 
         // The one that matters: a second Muviss window, or any process holding
         // 53682, must not make signing in impossible.
-        assertEquals(LoopbackRedirectServer.redirectUriFor(LoopbackRedirectServer.PORTS[1]), uri)
+        assertEquals(LoopbackRedirectServer.redirectUriFor(ports[1]), uri)
         server.release()
     }
 
     @Test
     fun `every port taken fails loudly rather than hanging`() = runTest {
-        LoopbackRedirectServer.PORTS.forEach { squat(it) }
-        val server = LoopbackRedirectServer(realScope, SignInFeedback())
+        ports.forEach { squat(it) }
+        val server = LoopbackRedirectServer(realScope, SignInFeedback(), ports = ports)
 
         val error = runCatching { server.reserve() }.exceptionOrNull()
 
@@ -112,7 +135,7 @@ class LoopbackRedirectServerTest {
 
     @Test
     fun `the code in the redirect reaches the codes flow`() = runTest {
-        val server = LoopbackRedirectServer(realScope, SignInFeedback())
+        val server = LoopbackRedirectServer(realScope, SignInFeedback(), ports = ports)
         val uri = server.reserve()
         // UNDISPATCHED so the collector has actually subscribed before the
         // request is made. `codes` has no replay — a single-use authorization
@@ -133,7 +156,7 @@ class LoopbackRedirectServerTest {
     @Test
     fun `a redirect carrying an error reports it instead of a code`() = runTest {
         val feedback = SignInFeedback()
-        val server = LoopbackRedirectServer(realScope, feedback)
+        val server = LoopbackRedirectServer(realScope, feedback, ports = ports)
         val uri = server.reserve()
 
         withContext(Dispatchers.IO) { get("$uri?error=access_denied&error_description=User+declined") }
@@ -146,7 +169,7 @@ class LoopbackRedirectServerTest {
 
     @Test
     fun `a request to any other path is not a sign-in`() = runTest {
-        val server = LoopbackRedirectServer(realScope, SignInFeedback())
+        val server = LoopbackRedirectServer(realScope, SignInFeedback(), ports = ports)
         val uri = server.reserve()
         val root = uri.removeSuffix(LoopbackRedirectServer.CALLBACK_PATH)
 
@@ -160,7 +183,7 @@ class LoopbackRedirectServerTest {
     fun `an abandoned sign-in times out, says so, and frees the port`() = runTest {
         val feedback = SignInFeedback()
         // The scope is this test's, so the timeout runs on virtual time.
-        val server = LoopbackRedirectServer(this, feedback, timeout = 5.minutes)
+        val server = LoopbackRedirectServer(this, feedback, timeout = 5.minutes, ports = ports)
         server.reserve()
 
         advanceTimeBy(5.minutes + 1.minutes)
@@ -168,12 +191,12 @@ class LoopbackRedirectServerTest {
         assertEquals(SignInFailure.TimedOut(5), feedback.lastFailure.first())
         // Freed, not merely forgotten: the next attempt must be able to bind it
         // again, and the user's second try is the common case after a timeout.
-        squat(LoopbackRedirectServer.PORTS.first()).close()
+        squat(ports.first()).close()
     }
 
     @Test
     fun `reserving twice supersedes the first attempt`() = runTest {
-        val server = LoopbackRedirectServer(realScope, SignInFeedback())
+        val server = LoopbackRedirectServer(realScope, SignInFeedback(), ports = ports)
 
         val first = server.reserve()
         val second = server.reserve()
@@ -186,7 +209,7 @@ class LoopbackRedirectServerTest {
 
     @Test
     fun `releasing twice is harmless`() = runTest {
-        val server = LoopbackRedirectServer(realScope, SignInFeedback())
+        val server = LoopbackRedirectServer(realScope, SignInFeedback(), ports = ports)
         server.reserve()
 
         server.release()
