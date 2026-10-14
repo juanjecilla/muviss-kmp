@@ -90,12 +90,13 @@ jobs:
         with:
           persist-credentials: false
       # Every third-party action is pinned to a full commit SHA, tag in a
-      # comment (#311): a moving tag can change what runs next to the signing
+      # comment (#311). The SHA must end the `uses:` value itself: one that only
+      # appears later on the line, in the comment, does not count: a moving tag can change what runs next to the signing
       # keys and the Play credentials. Dependabot keeps the pins current.
       - name: Actions are pinned to commit SHAs
         run: |
           UNPINNED="$(grep -rnE '^\s*(- )?uses: ' .github/workflows .github/actions 2>/dev/null \
-            | grep -vE 'uses: \./' | grep -vE '@[0-9a-f]{40}( |$)' || true)"
+            | grep -vE 'uses: \./' | grep -vE 'uses: [^[:space:]#]+@[0-9a-f]{40}([[:space:]]|$)' || true)"
           if [ -n "$UNPINNED" ]; then
             echo "::error::pin these actions to a full commit SHA (tag as a comment):"
             echo "$UNPINNED"
