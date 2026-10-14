@@ -2,6 +2,8 @@
 
 package com.codingpit.muviss.feature.collection.ui
 
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.collection.domain.ListsRepository
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaList
@@ -69,7 +71,7 @@ class ListContentsViewModelTest {
         val vm = ListContentsViewModel("list-1", ListsUseCases(repository))
         advanceUntilIdle()
 
-        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error.text())
     }
 
     @Test
@@ -79,7 +81,7 @@ class ListContentsViewModelTest {
         val vm = ListContentsViewModel("list-1", ListsUseCases(repository))
         advanceUntilIdle()
 
-        assertEquals("Something went wrong", vm.state.value.error)
+        assertEquals("Something went wrong", vm.state.value.error.text())
     }
 
     @Test
@@ -110,3 +112,6 @@ class ListContentsViewModelTest {
         kotlin.test.assertFalse(vm.state.value.loading)
     }
 }
+
+/** What the user would read, in the test JVM's pinned en-US. */
+private suspend fun UiText?.text(): String? = this?.resolveAsync()

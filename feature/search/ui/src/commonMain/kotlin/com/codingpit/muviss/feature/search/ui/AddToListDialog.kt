@@ -24,6 +24,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.feature.collection.api.ListSummary
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_create
+import com.codingpit.muviss.feature.search.ui.generated.resources.action_done
+import com.codingpit.muviss.feature.search.ui.generated.resources.add_to_list
+import com.codingpit.muviss.feature.search.ui.generated.resources.list_with_count
+import com.codingpit.muviss.feature.search.ui.generated.resources.new_list_name
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Detail's "Add to list" affordance (EPIC 17): every list with a checkmark
@@ -39,7 +46,7 @@ fun AddToListDialog(viewModel: AddToListViewModel, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add to list") },
+        title = { Text(stringResource(Res.string.add_to_list)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LazyColumn(modifier = Modifier.height(200.dp)) {
@@ -56,7 +63,7 @@ fun AddToListDialog(viewModel: AddToListViewModel, onDismiss: () -> Unit) {
                     OutlinedTextField(
                         value = newListName,
                         onValueChange = { newListName = it },
-                        placeholder = { Text("New list name") },
+                        placeholder = { Text(stringResource(Res.string.new_list_name)) },
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
@@ -66,12 +73,12 @@ fun AddToListDialog(viewModel: AddToListViewModel, onDismiss: () -> Unit) {
                             newListName = ""
                         },
                         enabled = newListName.isNotBlank(),
-                    ) { Text("Create") }
+                    ) { Text(stringResource(Res.string.action_create)) }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_done)) }
         },
     )
 }
@@ -80,6 +87,6 @@ fun AddToListDialog(viewModel: AddToListViewModel, onDismiss: () -> Unit) {
 private fun ListMembershipRow(list: ListSummary, checked: Boolean, onToggle: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() })
-        Text("${list.name} (${list.entryCount})", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(Res.string.list_with_count, list.name, list.entryCount), style = MaterialTheme.typography.bodyMedium)
     }
 }

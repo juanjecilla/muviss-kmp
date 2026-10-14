@@ -2,7 +2,8 @@
 
 package com.codingpit.muviss.feature.search.ui
 
-import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -53,7 +54,7 @@ internal class FakeDetailRepo(
     private val watchProviders: Result<WatchProviders> = Result.success(WatchProviders()),
     private val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     private val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
-    private val detailsFailure: Throwable? = null,
+    var detailsFailure: Throwable? = null,
 ) : SearchRepository {
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
@@ -73,12 +74,20 @@ internal data class DetailRepoFakes(
     val recommendations: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     val similar: Result<PagedResult<MediaSummary>> = Result.success(PagedResult(emptyList(), 1, 1)),
     val detailsFailure: Throwable? = null,
+    val connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
+    /** Hands the test the repository, to change what it answers mid-test. */
+    val onRepo: (FakeDetailRepo) -> Unit = {},
 )
 
 internal class FakeCollectionApi : CollectionApi {
     private val membership = MutableStateFlow<CollectionMembership?>(null)
     val added = mutableListOf<MediaId>()
     val removed = mutableListOf<MediaId>()
+
+    /** The library snapshot offline-first Detail renders first (EPIC 30, #73). */
+    var saved: MediaDetails? = null
+
+    override suspend fun savedDetails(mediaId: MediaId): MediaDetails? = saved
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = membership
     override fun observeSummaries(): Flow<List<CollectionSummary>> = error("not used")
@@ -135,6 +144,11 @@ internal class FakeProgressApi : ProgressApi {
     var now = 1_000L
 
     val seenIds: Set<EpisodeId> get() = plays.value.filterValues { it.isNotEmpty() }.keys
+
+    /** The stored episode catalog offline-first Detail renders first (EPIC 30, #73). */
+    var stored: List<Season>? = null
+
+    override suspend fun storedSeasons(mediaId: MediaId): List<Season>? = stored
 
     private fun addPlay(episodeId: EpisodeId) {
         plays.value = plays.value + (episodeId to (plays.value[episodeId].orEmpty() + now))
@@ -220,11 +234,6 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = setEpisodeSeen(EpisodeId.forMovie(mediaId), watched)
 }
 
-/** Fixed "today" so aired-vs-unaired is a property of the fixture, not of the calendar. */
-private class TestClock(private val todayEpochMs: Long) : AppClock {
-    override fun nowEpochMs(): Long = todayEpochMs
-}
-
 class DetailViewModelTest {
 
     @BeforeTest
@@ -257,6 +266,7 @@ class DetailViewModelTest {
         repoFakes: DetailRepoFakes = DetailRepoFakes(),
     ): DetailViewModel {
         val repo = FakeDetailRepo(detailsToLoad, repoFakes.watchProviders, repoFakes.recommendations, repoFakes.similar, repoFakes.detailsFailure)
+            .also(repoFakes.onRepo)
         return DetailViewModel(
             id,
             MediaDetailUseCase(repo),
@@ -264,8 +274,70 @@ class DetailViewModelTest {
             WatchProvidersUseCase(repo),
             MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
             // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
-            TestClock(todayEpochMs = 20L * 86_400_000L),
+            FakeClock(20L * 86_400_000L),
+            repoFakes.connectivity,
         )
+    }
+
+    @Test
+    fun a_saved_show_offline_renders_from_the_device_with_a_notice_not_an_error() = runTest {
+        // EPIC 30 (#73): Detail used to need the network even for a title whose
+        // snapshot and episode catalog were already stored.
+        val collection = FakeCollectionApi().apply { saved = tvDetails.copy(seasons = emptyList()) }
+        val progress = FakeProgressApi().apply { stored = tvDetails.seasons }
+        val vm = viewModel(collection, progress, detailsToLoad = tvDetails, id = show, repoFakes = DetailRepoFakes(detailsFailure = MetadataError.Offline()))
+        advanceUntilIdle()
+
+        val state = vm.state.value
+        assertEquals("Game of Thrones", state.details?.summary?.title)
+        assertEquals(tvDetails.seasons, state.details?.seasons)
+        assertEquals(MetadataError.Offline().userMessage, state.staleNotice.text())
+        assertNull(state.error)
+        assertFalse(state.loading)
+    }
+
+    @Test
+    fun a_saved_title_online_is_replaced_by_the_network_answer() = runTest {
+        val collection = FakeCollectionApi().apply { saved = MediaDetails(MediaSummary(show, "Old title")) }
+        val vm = viewModel(collection, detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        assertEquals("Game of Thrones", vm.state.value.details?.summary?.title)
+        assertNull(vm.state.value.staleNotice)
+    }
+
+    @Test
+    fun an_offline_error_page_reloads_when_the_connection_returns() = runTest {
+        // #249: back online, the page fetches again without a tap on Retry.
+        val online = MutableStateFlow(false)
+        lateinit var repo: FakeDetailRepo
+        val vm = viewModel(
+            repoFakes = DetailRepoFakes(
+                detailsFailure = MetadataError.Offline(),
+                connectivity = object : ConnectivityMonitor {
+                    override val isOnline: Flow<Boolean> = online
+                },
+                onRepo = { repo = it },
+            ),
+        )
+        advanceUntilIdle()
+        assertNotNull(vm.state.value.error)
+
+        repo.detailsFailure = null
+        online.value = true
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.error)
+        assertEquals(details, vm.state.value.details)
+    }
+
+    @Test
+    fun an_unsaved_title_offline_is_still_an_error() = runTest {
+        val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = MetadataError.Offline()))
+        advanceUntilIdle()
+
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error.text())
+        assertNull(vm.state.value.details)
     }
 
     @Test
@@ -273,7 +345,7 @@ class DetailViewModelTest {
         val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = MetadataError.RateLimited(retryAfterSeconds = 12)))
         advanceUntilIdle()
 
-        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error.text())
     }
 
     @Test
@@ -282,7 +354,7 @@ class DetailViewModelTest {
         val vm = viewModel(repoFakes = DetailRepoFakes(detailsFailure = leaky))
         advanceUntilIdle()
 
-        assertEquals("Something went wrong", vm.state.value.error)
+        assertEquals("Something went wrong", vm.state.value.error.text())
     }
 
     @Test
@@ -489,7 +561,7 @@ class DetailViewModelTest {
         assertNotNull(undo)
         assertEquals(listOf(episode2.id), undo.episodeIds, "episode1 was already seen, so the undo must not touch it")
         // Names the season, rather than showing a raw template to the user.
-        assertEquals("${season.name} marked seen", undo.message)
+        assertEquals("${season.name} marked seen", undo.message.text())
 
         vm.undoBulkMark()
         advanceUntilIdle()

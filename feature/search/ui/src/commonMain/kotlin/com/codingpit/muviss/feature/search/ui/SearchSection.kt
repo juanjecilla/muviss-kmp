@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
@@ -13,8 +15,12 @@ import org.koin.core.parameter.parametersOf
 fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: () -> Unit) {
     composable<SearchRoute> {
         val viewModel = koinViewModel<SearchViewModel>()
+        val intro = koinViewModel<DiscoverIntroViewModel>()
+        val introVisible by intro.visible.collectAsStateWithLifecycle()
         SearchScreen(
             viewModel = viewModel,
+            introVisible = introVisible,
+            onIntroDismissed = intro::dismiss,
             onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
             // Triage's route lives in a peer feature's :ui (ADR 0004), so the
             // app shell owns the navigation and passes it down.

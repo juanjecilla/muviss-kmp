@@ -1,0 +1,11 @@
+-- EPIC 30 (#73): the one-time Discover intro. Migrates a v14 database to v15
+-- (the filename is the version this migrates FROM).
+--
+-- A per-device onboarding flag on the singleton appSettings row, like
+-- `triageTutorialSeen` (4.sqm) and `triageSnoozeHintSeen` (12.sqm).
+ALTER TABLE appSettings ADD COLUMN discoverIntroSeen INTEGER NOT NULL DEFAULT 0;
+
+-- Someone upgrading with a library already built does not need to be told
+-- what the app is for; only a genuinely new install sees the intro.
+UPDATE appSettings SET discoverIntroSeen = 1
+WHERE EXISTS (SELECT 1 FROM collectionEntry WHERE deleted = 0);

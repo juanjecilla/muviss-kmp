@@ -2,13 +2,9 @@
 
 package com.codingpit.muviss.feature.profile.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.billing.Entitlement
 import com.codingpit.muviss.core.billing.EntitlementProvider
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
-import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.DeepLinkRedirectTarget
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
@@ -23,6 +19,8 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncTable
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
@@ -50,10 +48,6 @@ class CoreSyncRepositoryGatingTest {
     private class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
         override val default = d
         override val io = d
-    }
-
-    private class FixedClock : AppClock {
-        override fun nowEpochMs(): Long = 1_000L
     }
 
     private class StubBackend(session: SyncSession?) : SyncBackend {
@@ -87,12 +81,10 @@ class CoreSyncRepositoryGatingTest {
         entitlement: Entitlement = Entitlement.Active,
         session: SyncSession? = signedIn,
     ): CoreSyncRepository {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         val backend = StubBackend(session)
         val gate = EntitlementGate { entitlement.isEntitled }
-        val clock = FixedClock()
+        val clock = FakeClock(1_000L)
         val engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, gate)
         return CoreSyncRepository(
             availability = SyncAvailability { configured },

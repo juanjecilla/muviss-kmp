@@ -38,20 +38,25 @@ Node version is pinned in `.nvmrc`.
 
 ## Screenshots (#168)
 
-These are captured by hand from a real build. Put them in
-`public/screenshots/<name>-light.png` and `<name>-dark.png`, portrait
-1080×2400. A missing file renders a branded placeholder, and if only one theme
-exists it is used for both.
+Generated, not captured: StoreShot (`app/shared/src/jvmTest/.../storeshot/`)
+renders the real app over a seeded, entirely fictional catalogue and writes
+`public/screenshots/<name>-light.png` and `<name>-dark.png`, 1080×1920, along
+with the Play screenshots. Regenerate after a UI change:
+
+```bash
+./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot
+```
 
 | name | screen |
 |---|---|
-| `detail-seasons` | A show's detail, seasons expanded with some episodes ticked (hero) |
-| `library` | Library with a status filter |
+| `detail-seasons` | A show's detail, current season expanded with episodes ticked (hero) |
+| `library` | Library, Watching filter |
 | `watch-next` | Progress → Watch next |
 | `triage` | A triage card with the verdict buttons |
-| `profile-stats` | Profile with stats and charts |
+| `profile-stats` | Profile stats and charts |
 
-None of the screenshots may show sync or co-watch UI.
+StoreShot forces the release build's sync gate off, so no screenshot can show
+sync or co-watch UI, whatever this machine's `local.properties` says.
 
 `public/og.png` is generated from `assets/og.svg`:
 `rsvg-convert -w 1200 -h 630 assets/og.svg -o public/og.png`.

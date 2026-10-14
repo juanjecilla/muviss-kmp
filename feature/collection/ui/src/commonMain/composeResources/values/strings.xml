@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the default locale: every key lives here first. values-es mirrors it. -->
+<resources>
+    <string name="library_title">Library</string>
+    <string name="segment_library">Library</string>
+    <string name="segment_lists">Lists</string>
+    <!-- %1$s is the current type filter, e.g. "Movies". -->
+    <string name="filter_by_type">Filter by type (%1$s)</string>
+    <!-- %1$s is the current sort, e.g. "Rating". -->
+    <string name="sort_by">Sort (%1$s)</string>
+
+    <string name="empty_movies_title">No movies here</string>
+    <string name="empty_tv_title">No TV shows here</string>
+    <string name="empty_type_body">Nothing in this tab matches the type filter.</string>
+    <string name="empty_favorites_title">No favorites yet</string>
+    <string name="empty_favorites_body">Tap the heart on a saved title to add one.</string>
+    <string name="empty_library_title">Nothing here yet</string>
+    <string name="empty_library_body">Search for a movie or show and add it to your library.</string>
+    <string name="find_something">Find something to watch</string>
+
+    <!-- A status chip with its count, e.g. "Watching 12". -->
+    <string name="filter_with_count">%1$s %2$d</string>
+    <string name="filter_not_started">Not started</string>
+    <string name="filter_watching">Watching</string>
+    <string name="filter_watched">Watched</string>
+    <string name="filter_finished">Finished</string>
+    <string name="filter_favorites">★ Favorites</string>
+    <string name="type_all">All</string>
+    <string name="type_movies">Movies</string>
+    <string name="type_tv">TV shows</string>
+    <string name="sort_recently_added">Recently added</string>
+    <string name="sort_rating">Rating</string>
+    <string name="sort_title">Title</string>
+
+    <string name="error_generic">Something went wrong</string>
+    <string name="refresh_failed">Couldn't refresh your library</string>
+
+    <string name="action_back">Back</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_create">Create</string>
+    <string name="action_save">Save</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_remove">Remove</string>
+
+    <string name="list_contents_empty_title">Nothing in this list yet</string>
+    <string name="list_contents_empty_body">Add a title from its detail screen.</string>
+    <!-- %1$s is the list's name. -->
+    <string name="list_deleted">Deleted “%1$s”</string>
+    <string name="new_list">New list</string>
+    <string name="rename_list">Rename list</string>
+    <string name="lists_empty_title">No lists yet</string>
+    <string name="lists_empty_body">Tap “New list” to start one, like “Marathon 2026”.</string>
+    <plurals name="list_titles">
+        <item quantity="one">%1$d title</item>
+        <item quantity="other">%1$d titles</item>
+    </plurals>
+    <!-- Screen-reader label. %1$s is the list's name. -->
+    <string name="delete_list">Delete %1$s</string>
+    <string name="list_name_placeholder">List name</string>
+    <string name="list_create_failed">Couldn't create the list.</string>
+    <string name="list_rename_failed">Couldn't rename the list.</string>
+    <string name="list_delete_failed">Couldn't delete the list.</string>
+    <string name="list_restore_failed">Couldn't bring the list back.</string>
+</resources>

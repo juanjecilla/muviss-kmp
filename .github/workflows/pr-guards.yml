@@ -87,4 +87,4 @@ jobs:
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
       - name: Rollout ramp policy
-        run: ruby fastlane/test/play_rollout_test.rb
+        run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb

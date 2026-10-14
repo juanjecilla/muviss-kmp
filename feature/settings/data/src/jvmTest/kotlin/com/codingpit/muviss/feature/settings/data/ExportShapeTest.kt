@@ -21,7 +21,10 @@ class ExportShapeTest {
     @Test
     fun `the export covers exactly the user's own data`() {
         assertEquals(
-            listOf("exportedAtEpochMs", "collection", "progress", "triage", "plays"),
+            listOf(
+                "formatVersion", "appVersion", "exportedAtEpochMs", "collection", "progress", "triage", "plays",
+                "snoozes", "lists", "listEntries", "profile",
+            ),
             MuvissDataExport.serializer().descriptor.elementNames.toList(),
             "the episode catalog is TMDB's data cached locally, not the user's — see ADR 0015",
         )

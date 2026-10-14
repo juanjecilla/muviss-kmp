@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spanish (Spain). Mirrors values/strings.xml key for key. -->
+<resources>
+    <string name="action_back">Atrás</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_retry">Reintentar</string>
+    <string name="action_close">Cerrar</string>
+    <string name="error_generic">Algo ha ido mal</string>
+    <string name="error_rewatches">No se pudieron cargar los revisionados</string>
+    <string name="edit_name">Editar nombre</string>
+    <string name="avatar">Avatar</string>
+    <string name="your_name">Tu nombre</string>
+    <string name="no_stats_title">Aún no hay estadísticas</string>
+    <string name="no_stats_body">Guarda títulos en tu biblioteca y marca episodios para ver tus estadísticas aquí.</string>
+    <string name="stats">Estadísticas</string>
+    <string name="stat_movies_watched">películas vistas</string>
+    <string name="stat_episodes_seen">episodios vistos</string>
+    <string name="stat_hours_watched">horas vistas</string>
+    <!-- %1$s is hours with one decimal. -->
+    <string name="hours_short">%1$s h</string>
+    <!-- %1$d days. -->
+    <string name="days_short">%1$d d</string>
+    <!-- %1$d is the longest streak in days. -->
+    <string name="stat_streak">racha (mejor %1$d d)</string>
+    <string name="by_status">Por estado</string>
+    <string name="by_genre">Por género</string>
+    <string name="status_not_started">Sin empezar</string>
+    <string name="status_watching">Viendo</string>
+    <string name="status_watched">Vista</string>
+    <string name="status_finished">Terminada</string>
+    <string name="genre_other">Otros</string>
+    <string name="genre_tags">etiquetas de género</string>
+    <!-- One letter per month, comma-separated, January first. -->
+    <string name="month_initials">E,F,M,A,M,J,J,A,S,O,N,D</string>
+    <string name="most_rewatched">Lo más revisto</string>
+    <string name="see_all">Ver todo</string>
+    <!-- %1$s is rewatch_how_to. -->
+    <string name="nothing_rewatched_card">Aún no has vuelto a ver nada. %1$s</string>
+    <!-- Names the gesture, because nothing else in the app does: every install upgraded with zero rewatches (ADR 0011). -->
+    <string name="rewatch_how_to">Toca un episodio que ya hayas visto y elige «Visto otra vez».</string>
+    <string name="nothing_rewatched_year">Nada revisto este año</string>
+    <string name="nothing_rewatched">Aún no has vuelto a ver nada</string>
+    <string name="rewatch_trend">Revisionados · últimos 12 meses</string>
+    <string name="ranking_shows">Series</string>
+    <string name="ranking_movies">Películas</string>
+    <string name="window_all_time">Siempre</string>
+    <string name="window_this_year">Este año</string>
+    <!-- %1$d position, %2$s title, %3$s the rewatch count. -->
+    <string name="rewatch_row_description">%1$d. %2$s, %3$s</string>
+    <string name="watch_together">Ver juntos</string>
+    <string name="watch_together_body">Vincúlate con alguien y mirad qué podéis ver juntos.</string>
+    <string name="sync_title">Sincroniza entre dispositivos</string>
+    <string name="sync_pitch">Ten tu biblioteca, tu progreso y tu historial de revisionados en todos tus dispositivos.</string>
+    <string name="paywall_body">Tu biblioteca, tu progreso y tu historial de revisionados, al día en cada dispositivo donde inicies sesión.</string>
+    <string name="paywall_unavailable">Las compras aún no están disponibles en esta versión.</string>
+    <string name="sync_unlock">Desbloquear sincronización</string>
+    <string name="sign_out">Cerrar sesión</string>
+    <string name="account">Cuenta</string>
+    <string name="sync_local_only">Por ahora todo se queda en este dispositivo.</string>
+    <!-- %1$s is the provider, e.g. GitHub. -->
+    <string name="sign_in_with">Iniciar sesión con %1$s</string>
+    <string name="signed_in">Sesión iniciada</string>
+    <string name="syncing">Sincronizando…</string>
+    <string name="sync_now">Sincronizar ahora</string>
+    <string name="sync_automatically">Sincronizar automáticamente</string>
+    <string name="state_on">Activado</string>
+    <string name="state_off">Desactivado</string>
+    <string name="resync_everything">Volver a sincronizar todo</string>
+    <string name="resync_question">¿Volver a sincronizar todo?</string>
+    <string name="resync_body">Se enviará toda tu biblioteca a tu cuenta de nuevo y se descargará todo lo que contiene. Puede tardar un rato y consumir datos. No se borra nada.</string>
+    <string name="resync">Sincronizar</string>
+    <string name="sync_not_configured">La sincronización no está configurada en esta versión</string>
+    <string name="sign_in_failed">No se pudo iniciar sesión</string>
+    <string name="resynced">Todo sincronizado de nuevo</string>
+    <string name="synced">Sincronizado</string>
+    <string name="sync_paid">La sincronización es una función de pago</string>
+    <!-- %1$s is why it failed. -->
+    <string name="sync_failed">Error de sincronización: %1$s</string>
+    <string name="sync_account_changed">La biblioteca de este dispositivo pertenece a otra cuenta, así que no se ha sincronizado nada.</string>
+    <!-- The blocking dialog shown when a different account signs in than the one this device's library belongs to (#148). -->
+    <string name="account_change_title">¿Qué biblioteca quieres en este dispositivo?</string>
+    <!-- %1$s is the signed-in account's email. -->
+    <string name="account_change_body">Has iniciado sesión como %1$s, pero la biblioteca de este dispositivo pertenece a otra cuenta. No se sincronizará nada hasta que elijas.</string>
+    <string name="account_change_body_no_email">Has iniciado sesión con una cuenta distinta de aquella a la que pertenece la biblioteca de este dispositivo. No se sincronizará nada hasta que elijas.</string>
+    <string name="account_change_consequences">Si la sustituyes, se borrará la biblioteca de este dispositivo y se descargará la de la cuenta. Si la añades, la biblioteca de este dispositivo se enviará a la cuenta, junto a lo que ya tenga.</string>
+    <!-- %1$s is the signed-in account's email. -->
+    <string name="account_change_replace">Sustituir por la biblioteca de %1$s</string>
+    <!-- %1$s is the signed-in account's email. -->
+    <string name="account_change_merge">Añadir la biblioteca de este dispositivo a %1$s</string>
+    <string name="account_change_replace_no_email">Sustituir por la biblioteca de esta cuenta</string>
+    <string name="account_change_merge_no_email">Añadir la biblioteca de este dispositivo a esta cuenta</string>
+    <string name="account_change_later">Decidir más tarde</string>
+    <!-- On the status line, reopens the dialog after "Decidir más tarde". -->
+    <string name="account_change_choose">Elegir</string>
+    <string name="account_library_replaced">Biblioteca sustituida por la de tu cuenta</string>
+    <string name="account_library_added">La biblioteca de este dispositivo se ha añadido a tu cuenta</string>
+    <plurals name="rewatches_episodes">
+        <item quantity="one">%1$d episodio revisto</item>
+        <item quantity="other">%1$d episodios revistos</item>
+    </plurals>
+    <plurals name="rewatches">
+        <item quantity="one">revista %1$d vez</item>
+        <item quantity="other">revista %1$d veces</item>
+    </plurals>
+    <!-- Screen-reader summary of the genre donut; %1$s lists "Drama 40%, Comedy 20%" (EPIC 31b, #164). -->
+    <string name="a11y_genre_summary">Géneros: %1$s</string>
+    <string name="sync_session_expired">La sesión ha caducado, vuelve a iniciar sesión.</string>
+    <string name="sync_failure_offline">parece que no tienes conexión</string>
+    <string name="sync_failure_unauthorised">se rechazó tu sesión, vuelve a iniciar sesión</string>
+    <string name="sync_failure_server">el servicio de sincronización tuvo un problema, inténtalo más tarde</string>
+    <string name="sync_failure_unknown">algo salió mal</string>
+    <string name="sync_detail_failed">La última sincronización falló: %1$s</string>
+    <string name="sync_detail_account_changed">La biblioteca de este dispositivo pertenece a otra cuenta, así que no se está sincronizando nada.</string>
+    <plurals name="sync_changes_waiting">
+        <item quantity="one">%1$d cambio pendiente</item>
+        <item quantity="other">%1$d cambios pendientes</item>
+    </plurals>
+    <string name="sync_automatic_in_background">Mantén este dispositivo sincronizado en segundo plano, incluso con Muviss cerrada.</string>
+    <string name="sync_automatic_when_system_allows">Sincroniza cuando el sistema lo permita. iOS decide cuándo, así que pueden pasar horas entre una y otra.</string>
+    <string name="sync_automatic_while_open">Sincroniza mientras Muviss está abierta. No se ejecuta nada al cerrarla.</string>
+    <string name="sync_last_never">Nunca sincronizado</string>
+    <string name="sync_last_just_now">Sincronizado ahora mismo</string>
+    <string name="sync_last_minutes_ago">Sincronizado hace %1$d min</string>
+    <string name="sync_last_hours_ago">Sincronizado hace %1$d h</string>
+    <string name="sync_last_days_ago">Sincronizado hace %1$d d</string>
+    <string name="sign_in_failure_generic">No se pudo completar el inicio de sesión</string>
+    <string name="sign_in_failure_no_code">La redirección del inicio de sesión no incluía un código de autorización.</string>
+    <plurals name="sign_in_failure_timed_out">
+        <item quantity="one">El inicio de sesión caducó tras %1$d minuto. Inténtalo de nuevo.</item>
+        <item quantity="other">El inicio de sesión caducó tras %1$d minutos. Inténtalo de nuevo.</item>
+    </plurals>
+</resources>

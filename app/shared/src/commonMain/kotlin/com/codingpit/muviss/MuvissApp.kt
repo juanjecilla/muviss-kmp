@@ -17,6 +17,7 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaul
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -32,6 +33,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.SingletonImageLoader
+import com.codingpit.muviss.app.shared.generated.resources.Res
+import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
+import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
 import com.codingpit.muviss.core.database.PersistenceStatus
@@ -55,11 +60,13 @@ import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
+import com.codingpit.muviss.feature.settings.ui.LocalSystemNotificationSettings
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.core.module.Module
@@ -121,7 +128,9 @@ fun MuvissApp(
         AutoSyncOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
-            MuvissScaffold(controller, deepLinkMediaId, onDeepLinkConsumed)
+            CompositionLocalProvider(LocalSystemNotificationSettings provides koinInject<SystemNotificationSettings>()) {
+                MuvissScaffold(controller, deepLinkMediaId, onDeepLinkConsumed)
+            }
         }
     }
 }
@@ -196,7 +205,7 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
                 // exchange can fail with a Ktor/Supabase exception whose text
                 // embeds the request URL, same reason `TmdbProvider` never
                 // shows a raw exception either (see EPIC 27, CLAUDE.md).
-                .onFailure { feedback.report(null) }
+                .onFailure { feedback.report() }
         }
     }
 }
@@ -330,7 +339,11 @@ private fun MuvissScaffold(
                     },
                 ) {
                     searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
-                    collectionSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    collectionSection(
+                        navController,
+                        onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
+                        onOpenSearch = { controller.destinations.firstOrNull { it.key == "search" }?.let(controller::navigateTo) },
+                    )
                     progressSection(
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenCoWatch = openCoWatch,
@@ -362,8 +375,8 @@ private fun rememberPersistenceWarning(): String? {
     val state by status.state.collectAsStateWithLifecycle()
     return when (state) {
         PersistenceState.Pending, PersistenceState.Durable -> null
-        PersistenceState.ReadOnlyTab -> "Muviss is open in another tab. Changes here won't be saved."
-        PersistenceState.NotPersisted -> "This browser can't save your library. Changes will be lost when you close this tab."
+        PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
+        PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
     }
 }
 

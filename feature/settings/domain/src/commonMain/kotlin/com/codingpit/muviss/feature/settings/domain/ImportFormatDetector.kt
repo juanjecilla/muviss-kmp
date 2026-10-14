@@ -2,7 +2,8 @@ package com.codingpit.muviss.feature.settings.domain
 
 /**
  * Auto-detects which [ImportSource] a picked file's raw content is: JSON
- * (`{`/`[`) is always Trakt (the only JSON format supported); CSV is sniffed
+ * (`{`/`[`) is Trakt, unless it is Muviss's own backup ([isMuvissBackup]),
+ * which is restored rather than imported and so is no [ImportSource]; CSV is sniffed
  * by header — TV Time's episodes/movies exports use column names Muviss's
  * own generic format doesn't, and vice versa (see each parser's KDoc for the
  * exact columns). Null means neither shape matched — the UI reports the file
@@ -19,6 +20,7 @@ object ImportFormatDetector {
     )
 
     fun detect(content: String): ImportSource? {
+        if (isMuvissBackup(content)) return null
         val trimmed = content.trimStart()
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) return ImportSource.TRAKT
 
@@ -31,4 +33,16 @@ object ImportFormatDetector {
             else -> null
         }
     }
+
+    /**
+     * A file Muviss's own export wrote, of any version (EPIC 29, #72). Keyed on
+     * `exportedAtEpochMs`, the one field every version has carried and no
+     * Trakt export does; it used to be read as Trakt and import nothing.
+     */
+    fun isMuvissBackup(content: String): Boolean {
+        val trimmed = content.trimStart()
+        return trimmed.startsWith("{") && BACKUP_MARKER.containsMatchIn(trimmed)
+    }
+
+    private val BACKUP_MARKER = Regex("\"exportedAtEpochMs\"\\s*:")
 }

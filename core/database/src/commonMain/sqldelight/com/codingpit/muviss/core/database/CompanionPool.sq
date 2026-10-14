@@ -47,6 +47,9 @@ CREATE TABLE companionPoolOut (
     PRIMARY KEY (companionUserId, mediaId)
 );
 
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX companionPoolOut_dirty ON companionPoolOut(isDirty) WHERE isDirty = 1;
+
 CREATE TABLE companionPoolIn (
     companionUserId TEXT NOT NULL,
     mediaId TEXT NOT NULL,

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="progress_title">Progreso</string>
+    <string name="tab_watch_next">Por ver</string>
+    <string name="tab_upcoming">Próximos</string>
+    <string name="cowatch_entry">Ver juntos con alguien</string>
+    <string name="action_undo">Deshacer</string>
+
+    <string name="tick_snackbar">T%1$dE%2$d marcado como visto</string>
+    <string name="watch_next_empty_title">Nada por ver</string>
+    <string name="watch_next_empty_body">Añade una serie a tu biblioteca y empieza a verla para que aparezca aquí.</string>
+    <string name="watch_next_episode">T%1$d E%2$d · %3$s</string>
+    <string name="watch_next_caught_up">Al día: esperando nuevos episodios</string>
+    <string name="mark_watched_description">Marcar %1$s como visto</string>
+
+    <string name="error_generic">Algo ha fallado</string>
+    <string name="refresh_failed">No se pudo actualizar. Mostrando lo guardado.</string>
+
+    <string name="upcoming_none_title">Nada próximamente</string>
+    <string name="upcoming_none_body">Todas tus series guardadas han terminado o aún no tienen episodios programados.</string>
+    <string name="upcoming_empty_title">Aún no hay nada</string>
+    <string name="upcoming_empty_body">Guarda una serie en tu biblioteca para ver sus próximos episodios.</string>
+    <string name="upcoming_episode">T%1$dE%2$d · %3$s</string>
+    <string name="bucket_today">Hoy</string>
+    <string name="bucket_this_week">Esta semana</string>
+    <string name="bucket_later">Más adelante</string>
+
+    <string name="date_today">Hoy</string>
+    <string name="date_tomorrow">Mañana</string>
+    <string name="weekday_0">domingo</string>
+    <string name="weekday_1">lunes</string>
+    <string name="weekday_2">martes</string>
+    <string name="weekday_3">miércoles</string>
+    <string name="weekday_4">jueves</string>
+    <string name="weekday_5">viernes</string>
+    <string name="weekday_6">sábado</string>
+    <string name="month_1">ene</string>
+    <string name="month_2">feb</string>
+    <string name="month_3">mar</string>
+    <string name="month_4">abr</string>
+    <string name="month_5">may</string>
+    <string name="month_6">jun</string>
+    <string name="month_7">jul</string>
+    <string name="month_8">ago</string>
+    <string name="month_9">sept</string>
+    <string name="month_10">oct</string>
+    <string name="month_11">nov</string>
+    <string name="month_12">dic</string>
+    <string name="date_month_day">%2$d %1$s</string>
+    <string name="next_episode_of">el siguiente episodio de %1$s</string>
+</resources>

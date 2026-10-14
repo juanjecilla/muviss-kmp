@@ -12,20 +12,14 @@ import com.codingpit.muviss.feature.collection.domain.CollectionEntry
 import com.codingpit.muviss.feature.collection.domain.CollectionRepository
 import com.codingpit.muviss.feature.collection.domain.airedEpisodeCount
 import com.codingpit.muviss.feature.collection.domain.totalEpisodeCount
-import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.ProductionStatus
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
-import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 
 /**
  * SQLDelight-backed [CollectionRepository] over `CollectionEntry.sq`.
@@ -34,42 +28,28 @@ import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
  * its favorite flag, rating, note, and original add date. [refreshSnapshot] is
  * the provider-data half on its own, and is not a synced write (EPIC 39).
  *
- * [seenEpisodes][CollectionEntry.seenEpisodes] is never stored here — it is
- * joined in reactively from the progress feature via [progressApi] (its
- * `:api`, per ADR 0004's cross-feature rule) so [CollectionEntry.status]
- * reflects real ticks (ADR 0005).
+ * [seenEpisodes][CollectionEntry.seenEpisodes] is never stored here: both
+ * reads join it in from `episodeProgress` in SQL (`selectAllWithSeen`), so
+ * [CollectionEntry.status] reflects real ticks (ADR 0005) and the Library is
+ * one query per invalidation however large it is (EPIC 28, #70). It used to
+ * open one `ProgressApi.observeSeenEpisodes` Flow per entry. Like the data
+ * export, this reads the shared table rather than the progress feature's
+ * `:api`: a count over `:core:database`'s rows, not progress's domain.
  */
 class SqlDelightCollectionRepository(
     private val queries: CollectionEntryQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
-    private val progressApi: ProgressApi,
 ) : CollectionRepository {
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    override fun observeAll(): Flow<List<CollectionEntry>> = queries.selectAll()
+    override fun observeAll(): Flow<List<CollectionEntry>> = queries.selectAllWithSeen(::entryOf)
         .asFlow()
         .mapToList(dispatchers.io)
-        .flatMapLatest { rows -> combineWithProgress(rows) }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = queries.selectById(mediaId.toString())
+    override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = queries.selectByIdWithSeen(mediaId.toString(), ::visibleEntryOf)
         .asFlow()
         .mapToOneOrNull(dispatchers.io)
-        .flatMapLatest { row ->
-            val visible = row?.takeUnless { it.deleted }
-            if (visible == null) flowOf(null) else withSeenEpisodes(visible)
-        }
-
-    /** Joins each row with its live seen-episode count, recombining whenever either side changes. */
-    private fun combineWithProgress(rows: List<CollectionEntryRow>): Flow<List<CollectionEntry>> = when {
-        rows.isEmpty() -> flowOf(emptyList())
-        else -> combine(rows.map { row -> withSeenEpisodes(row) }) { it.toList() }
-    }
-
-    private fun withSeenEpisodes(row: CollectionEntryRow): Flow<CollectionEntry> = progressApi
-        .observeSeenEpisodes(MediaId.parse(row.mediaId))
-        .map { seen -> toDomain(row, seenEpisodes = seen.size) }
+        .map { it?.entry }
 
     override suspend fun upsertSnapshot(details: MediaDetails) = withContext(dispatchers.io) {
         val id = details.summary.id.toString()
@@ -168,24 +148,85 @@ class SqlDelightCollectionRepository(
         Unit
     }
 
-    private fun toDomain(row: CollectionEntryRow, seenEpisodes: Int = 0): CollectionEntry = CollectionEntry(
-        mediaId = MediaId.parse(row.mediaId),
-        title = row.title,
-        posterUrl = row.posterUrl,
-        releaseYear = row.releaseYear?.toInt(),
-        productionStatus = ProductionStatus.valueOf(row.productionStatus),
-        totalEpisodes = row.totalEpisodes.toInt(),
-        airedEpisodes = row.airedEpisodes.toInt(),
-        favorite = row.favorite,
-        addedAtEpochMs = row.addedAtEpochMs,
-        seenEpisodes = seenEpisodes,
-        genres = row.genres.toGenreList(),
-        runtimeMinutes = row.runtimeMinutes?.toInt(),
-        notificationsMuted = row.notificationsMuted,
-        rating = row.rating?.toInt(),
-        note = row.note,
-        revisitWillingness = row.revisitWillingness,
-        coWatchPinned = row.coWatchPinned,
+    /** A row of `selectByIdWithSeen`, with a deleted entry read as absent. A wrapper because a query mapper cannot return null. */
+    private class Visible(val entry: CollectionEntry?)
+
+    @Suppress("LongParameterList", "UNUSED_PARAMETER") // the query's columns, in order; the sync bookkeeping ones are not the domain's
+    private fun visibleEntryOf(
+        mediaId: String,
+        mediaType: String,
+        title: String,
+        posterUrl: String?,
+        releaseYear: Long?,
+        productionStatus: String,
+        totalEpisodes: Long,
+        airedEpisodes: Long,
+        favorite: Boolean,
+        genres: String,
+        runtimeMinutes: Long?,
+        addedAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        isDirty: Boolean,
+        deleted: Boolean,
+        notificationsMuted: Boolean,
+        rating: Long?,
+        note: String?,
+        revisitWillingness: Boolean?,
+        coWatchPinned: Boolean,
+        seenCount: Long,
+    ): Visible = Visible(
+        entry = if (deleted) {
+            null
+        } else {
+            entryOf(
+                mediaId, mediaType, title, posterUrl, releaseYear, productionStatus, totalEpisodes, airedEpisodes,
+                favorite, genres, runtimeMinutes, addedAtEpochMs, updatedAtEpochMs, isDirty, deleted,
+                notificationsMuted, rating, note, revisitWillingness, coWatchPinned, seenCount,
+            )
+        },
+    )
+
+    @Suppress("LongParameterList", "UNUSED_PARAMETER") // the query's columns, in order; the sync bookkeeping ones are not the domain's
+    private fun entryOf(
+        mediaId: String,
+        mediaType: String,
+        title: String,
+        posterUrl: String?,
+        releaseYear: Long?,
+        productionStatus: String,
+        totalEpisodes: Long,
+        airedEpisodes: Long,
+        favorite: Boolean,
+        genres: String,
+        runtimeMinutes: Long?,
+        addedAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        isDirty: Boolean,
+        deleted: Boolean,
+        notificationsMuted: Boolean,
+        rating: Long?,
+        note: String?,
+        revisitWillingness: Boolean?,
+        coWatchPinned: Boolean,
+        seenCount: Long,
+    ): CollectionEntry = CollectionEntry(
+        mediaId = MediaId.parse(mediaId),
+        title = title,
+        posterUrl = posterUrl,
+        releaseYear = releaseYear?.toInt(),
+        productionStatus = ProductionStatus.valueOf(productionStatus),
+        totalEpisodes = totalEpisodes.toInt(),
+        airedEpisodes = airedEpisodes.toInt(),
+        favorite = favorite,
+        addedAtEpochMs = addedAtEpochMs,
+        seenEpisodes = seenCount.toInt(),
+        genres = genres.toGenreList(),
+        runtimeMinutes = runtimeMinutes?.toInt(),
+        notificationsMuted = notificationsMuted,
+        rating = rating?.toInt(),
+        note = note,
+        revisitWillingness = revisitWillingness,
+        coWatchPinned = coWatchPinned,
     )
 }
 

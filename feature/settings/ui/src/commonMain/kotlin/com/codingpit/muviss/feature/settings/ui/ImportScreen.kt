@@ -32,10 +32,41 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.StatTile
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.feature.settings.domain.ImportApplyResult
 import com.codingpit.muviss.feature.settings.domain.ImportSource
 import com.codingpit.muviss.feature.settings.domain.UnresolvedImportTitle
+import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
+import com.codingpit.muviss.feature.settings.ui.generated.resources.action_cancel
+import com.codingpit.muviss.feature.settings.ui.generated.resources.action_done
+import com.codingpit.muviss.feature.settings.ui.generated.resources.choose_file
+import com.codingpit.muviss.feature.settings.ui.generated.resources.episodes_to_mark
+import com.codingpit.muviss.feature.settings.ui.generated.resources.format_csv
+import com.codingpit.muviss.feature.settings.ui.generated.resources.format_trakt
+import com.codingpit.muviss.feature.settings.ui.generated.resources.format_tv_time
+import com.codingpit.muviss.feature.settings.ui.generated.resources.import_another
+import com.codingpit.muviss.feature.settings.ui.generated.resources.import_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.import_complete
+import com.codingpit.muviss.feature.settings.ui.generated.resources.import_title
+import com.codingpit.muviss.feature.settings.ui.generated.resources.import_titles_action
+import com.codingpit.muviss.feature.settings.ui.generated.resources.importing
+import com.codingpit.muviss.feature.settings.ui.generated.resources.items_marked_watched
+import com.codingpit.muviss.feature.settings.ui.generated.resources.matching_titles
+import com.codingpit.muviss.feature.settings.ui.generated.resources.preview_file
+import com.codingpit.muviss.feature.settings.ui.generated.resources.progress_of
+import com.codingpit.muviss.feature.settings.ui.generated.resources.reading_file
+import com.codingpit.muviss.feature.settings.ui.generated.resources.rows_skipped
+import com.codingpit.muviss.feature.settings.ui.generated.resources.saving_titles
+import com.codingpit.muviss.feature.settings.ui.generated.resources.titles_failed
+import com.codingpit.muviss.feature.settings.ui.generated.resources.titles_found
+import com.codingpit.muviss.feature.settings.ui.generated.resources.titles_imported
+import com.codingpit.muviss.feature.settings.ui.generated.resources.titles_unresolved
+import com.codingpit.muviss.feature.settings.ui.generated.resources.unmatched
+import com.codingpit.muviss.feature.settings.ui.generated.resources.unresolved_titles
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * The Settings > Import screen (EPIC 18): pick a file, preview what it
@@ -63,7 +94,7 @@ fun ImportScreen(viewModel: ImportViewModel, onDone: () -> Unit) {
         when (val step = state.step) {
             // A failed read or parse lands back on PickFile; Retry opens the
             // picker again, so the error and its way out are one control (#73).
-            is ImportStep.PickFile -> if (error != null) ErrorState(error, onRetry = ::pickFile) else PickFileStep(onPickFile = ::pickFile)
+            is ImportStep.PickFile -> if (error != null) ErrorState(error.resolve(), onRetry = ::pickFile) else PickFileStep(onPickFile = ::pickFile)
 
             is ImportStep.Resolving -> ResolvingStep(step)
 
@@ -72,6 +103,12 @@ fun ImportScreen(viewModel: ImportViewModel, onDone: () -> Unit) {
             is ImportStep.Applying -> ApplyingStep(step)
 
             is ImportStep.Summary -> SummaryStep(step.result, onImportAnother = viewModel::startOver, onDone = onDone)
+
+            is ImportStep.BackupPreview -> BackupPreviewStep(step, onConfirm = viewModel::confirmRestore, onCancel = viewModel::cancelPreview)
+
+            ImportStep.Restoring -> RestoringStep()
+
+            is ImportStep.Restored -> RestoredStep(step.result, onImportAnother = viewModel::startOver, onDone = onDone)
         }
     }
 }
@@ -81,9 +118,9 @@ private const val IMPORT_STEP_COUNT = 4
 /** Which of the 4 user-visible steps (pick → preview → import → done) a state-machine step belongs to. */
 private fun ImportStep.ordinalStep(): Int = when (this) {
     is ImportStep.PickFile -> 0
-    is ImportStep.Resolving, is ImportStep.Preview -> 1
-    is ImportStep.Applying -> 2
-    is ImportStep.Summary -> 3
+    is ImportStep.Resolving, is ImportStep.Preview, is ImportStep.BackupPreview -> 1
+    is ImportStep.Applying, ImportStep.Restoring -> 2
+    is ImportStep.Summary, is ImportStep.Restored -> 3
 }
 
 /** Four segments; amber up to and including the current step. */
@@ -108,9 +145,9 @@ private fun StepIndicator(current: Int) {
 private fun PickFileStep(onPickFile: () -> Unit) {
     EmptyState(
         icon = MuvissIcons.Import,
-        title = "Import from another tracker",
-        body = "Supports a Trakt export (JSON), a TV Time data export (CSV), or Muviss's own CSV format. See docs/IMPORT.md for details.",
-        actionLabel = "Choose file",
+        title = stringResource(Res.string.import_title),
+        body = stringResource(Res.string.import_body),
+        actionLabel = stringResource(Res.string.choose_file),
         onAction = onPickFile,
     )
 }
@@ -118,16 +155,16 @@ private fun PickFileStep(onPickFile: () -> Unit) {
 @Composable
 private fun ResolvingStep(step: ImportStep.Resolving) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Reading ${step.fileName}…", style = MaterialTheme.typography.titleMedium)
-        ProgressRow(step.done, step.total, label = "Matching titles")
+        Text(stringResource(Res.string.reading_file, step.fileName), style = MaterialTheme.typography.titleMedium)
+        ProgressRow(step.done, step.total, label = stringResource(Res.string.matching_titles))
     }
 }
 
 @Composable
 private fun ApplyingStep(step: ImportStep.Applying) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Importing…", style = MaterialTheme.typography.titleMedium)
-        ProgressRow(step.done, step.total, label = "Saving titles")
+        Text(stringResource(Res.string.importing), style = MaterialTheme.typography.titleMedium)
+        ProgressRow(step.done, step.total, label = stringResource(Res.string.saving_titles))
     }
 }
 
@@ -138,7 +175,7 @@ private fun ProgressRow(done: Int, total: Int, label: String) {
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             LinearProgressIndicator(progress = { done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
-            Text("$label: $done of $total", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.progress_of, label, done, total), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -147,8 +184,8 @@ private fun ProgressRow(done: Int, total: Int, label: String) {
 private fun PreviewStep(step: ImportStep.Preview, onConfirm: () -> Unit, onCancel: () -> Unit) {
     val preview = step.preview
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Preview: ${step.fileName}", style = MaterialTheme.typography.titleMedium)
-        Text(preview.source.label(), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.preview_file, step.fileName), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(preview.source.label()), style = MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         SummaryCounts(
             titleCount = preview.titleCount,
@@ -156,15 +193,15 @@ private fun PreviewStep(step: ImportStep.Preview, onConfirm: () -> Unit, onCance
             unresolvedCount = preview.unresolvedCount,
         )
         if (preview.skippedRowCount > 0) {
-            Text("${preview.skippedRowCount} row(s) in the file couldn't be read and were skipped.", style = MaterialTheme.typography.bodySmall)
+            Text(pluralStringResource(Res.plurals.rows_skipped, preview.skippedRowCount, preview.skippedRowCount), style = MaterialTheme.typography.bodySmall)
         }
         if (preview.unresolved.isNotEmpty()) {
-            Text("Unresolved titles", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(Res.string.unresolved_titles), style = MaterialTheme.typography.titleSmall)
             UnresolvedList(preview.unresolved, modifier = Modifier.weight(1f, fill = false))
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) { Text("Import ${preview.resolved.size} title(s)") }
-            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) { Text(pluralStringResource(Res.plurals.import_titles_action, preview.resolved.size, preview.resolved.size)) }
+            OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) { Text(stringResource(Res.string.action_cancel)) }
         }
     }
 }
@@ -172,19 +209,19 @@ private fun PreviewStep(step: ImportStep.Preview, onConfirm: () -> Unit, onCance
 @Composable
 private fun SummaryCounts(titleCount: Int, episodeCount: Int, unresolvedCount: Int) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        StatTile(titleCount.toString(), "titles found", Modifier.weight(1f))
-        StatTile(episodeCount.toString(), "episodes to mark", Modifier.weight(1f))
-        StatTile(unresolvedCount.toString(), "unmatched", Modifier.weight(1f))
+        StatTile(titleCount.toString(), stringResource(Res.string.titles_found), Modifier.weight(1f))
+        StatTile(episodeCount.toString(), stringResource(Res.string.episodes_to_mark), Modifier.weight(1f))
+        StatTile(unresolvedCount.toString(), stringResource(Res.string.unmatched), Modifier.weight(1f))
     }
 }
 
 @Composable
 private fun UnresolvedList(unresolved: List<UnresolvedImportTitle>, modifier: Modifier = Modifier) {
     LazyColumn(modifier) {
-        items(unresolved, key = { it.title.displayTitle + it.reason }) { entry ->
+        items(unresolved, key = { it.title.displayTitle + it.reason.name }) { entry ->
             Column(Modifier.padding(vertical = 4.dp)) {
                 Text(entry.title.displayTitle, style = MaterialTheme.typography.bodyMedium)
-                Text(entry.reason, style = MaterialTheme.typography.labelSmall)
+                Text(entry.reason.toUiText().resolve(), style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -199,33 +236,33 @@ private fun SummaryStep(result: ImportApplyResult, onImportAnother: () -> Unit, 
             tint = MaterialTheme.colorScheme.tertiary,
             modifier = Modifier.size(40.dp),
         )
-        Text("Import complete", style = MaterialTheme.typography.titleMedium)
-        Text("${result.importedTitleCount} title(s) imported", style = MaterialTheme.typography.bodyMedium)
-        Text("${result.episodeTickCount} episode(s)/movie(s) marked watched", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(Res.string.import_complete), style = MaterialTheme.typography.titleMedium)
+        Text(pluralStringResource(Res.plurals.titles_imported, result.importedTitleCount, result.importedTitleCount), style = MaterialTheme.typography.bodyMedium)
+        Text(pluralStringResource(Res.plurals.items_marked_watched, result.episodeTickCount, result.episodeTickCount), style = MaterialTheme.typography.bodyMedium)
         if (result.unresolved.isNotEmpty()) {
-            Text("${result.unresolved.size} title(s) unresolved", style = MaterialTheme.typography.bodyMedium)
+            Text(pluralStringResource(Res.plurals.titles_unresolved, result.unresolved.size, result.unresolved.size), style = MaterialTheme.typography.bodyMedium)
             UnresolvedList(result.unresolved, modifier = Modifier.weight(1f, fill = false))
         }
         if (result.failed.isNotEmpty()) {
-            Text("${result.failed.size} title(s) failed to import", style = MaterialTheme.typography.bodyMedium)
+            Text(pluralStringResource(Res.plurals.titles_failed, result.failed.size, result.failed.size), style = MaterialTheme.typography.bodyMedium)
             LazyColumn(Modifier.weight(1f, fill = false)) {
                 items(result.failed, key = { it.title.mediaId.toString() }) { failure ->
                     Column(Modifier.padding(vertical = 4.dp)) {
                         Text(failure.title.title.displayTitle, style = MaterialTheme.typography.bodyMedium)
-                        Text(failure.reason, style = MaterialTheme.typography.labelSmall)
+                        Text(failure.reasonText().resolve(), style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
-            OutlinedButton(onClick = onImportAnother, modifier = Modifier.fillMaxWidth()) { Text("Import another file") }
+            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(Res.string.action_done)) }
+            OutlinedButton(onClick = onImportAnother, modifier = Modifier.fillMaxWidth()) { Text(stringResource(Res.string.import_another)) }
         }
     }
 }
 
-private fun ImportSource.label(): String = when (this) {
-    ImportSource.TRAKT -> "Detected format: Trakt export"
-    ImportSource.TV_TIME -> "Detected format: TV Time export"
-    ImportSource.GENERIC_CSV -> "Detected format: generic CSV"
+private fun ImportSource.label(): StringResource = when (this) {
+    ImportSource.TRAKT -> Res.string.format_trakt
+    ImportSource.TV_TIME -> Res.string.format_tv_time
+    ImportSource.GENERIC_CSV -> Res.string.format_csv
 }

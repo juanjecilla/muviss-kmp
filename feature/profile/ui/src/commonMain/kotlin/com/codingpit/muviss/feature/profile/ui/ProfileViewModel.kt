@@ -5,7 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
+import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
+import com.codingpit.muviss.feature.profile.domain.LastSynced
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileUseCase
@@ -13,14 +17,23 @@ import com.codingpit.muviss.feature.profile.domain.ProfileActions
 import com.codingpit.muviss.feature.profile.domain.ProfileStats
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
-import com.codingpit.muviss.feature.profile.domain.SyncCopy
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
 import com.codingpit.muviss.feature.profile.domain.SyncStatus
 import com.codingpit.muviss.feature.profile.domain.SyncStatusDetail
-import com.codingpit.muviss.feature.profile.domain.lastSyncedLabel
+import com.codingpit.muviss.feature.profile.domain.lastSynced
 import com.codingpit.muviss.feature.profile.domain.syncStatusDetail
-import com.codingpit.muviss.models.toUserMessage
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_library_added
+import com.codingpit.muviss.feature.profile.ui.generated.resources.account_library_replaced
+import com.codingpit.muviss.feature.profile.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.profile.ui.generated.resources.resynced
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sign_in_failed
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_account_changed
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_failed
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_not_configured
+import com.codingpit.muviss.feature.profile.ui.generated.resources.sync_paid
+import com.codingpit.muviss.feature.profile.ui.generated.resources.synced
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +47,7 @@ import kotlinx.coroutines.flow.update
 data class SyncUiState(
     val account: SyncAccountState = SyncAccountState.Unavailable,
     val lastSyncedAtEpochMs: Long? = null,
-    val lastSyncedLabel: String = "Never synced",
+    val lastSynced: LastSynced = LastSynced.Never,
     val syncing: Boolean = false,
     /** Set when sign-in has produced an authorize URL the screen should open in a browser; cleared by [ProfileViewModel.authUrlOpened]. */
     val pendingAuthUrl: String? = null,
@@ -55,8 +68,14 @@ data class SyncUiState(
     val automaticSyncMode: AutomaticSyncMode = AutomaticSyncMode.WhileOpen,
     /** The "Resync everything" confirmation dialog is open. */
     val confirmingResync: Boolean = false,
+    /**
+     * The person closed the "which library?" dialog without choosing. Only
+     * hides it: the account mismatch, and the status line saying so, stay
+     * exactly where they were. See [choosingAccountLibrary].
+     */
+    val accountChoiceDeferred: Boolean = false,
     /** One-shot: a message to surface in a snackbar (sent-code confirmation, sign-in success, sync outcome, or an error). Cleared by [ProfileViewModel.syncMessageShown]. */
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 /**
@@ -66,6 +85,17 @@ data class SyncUiState(
  */
 val SyncUiState.automaticSyncEnabled: Boolean get() = automaticSyncAvailable && account is SyncAccountState.SignedIn
 
+/**
+ * The blocking "which library should this device keep?" dialog is up: the
+ * signed-in account is not the one this device's library belongs to, and the
+ * person has neither closed the dialog nor already started answering it.
+ * Derived from the engine's own status rather than from a sync's return value,
+ * so it is there however the mismatch was found: a foreground sync, the end of
+ * sign-in, or this screen's "Sync now".
+ */
+val SyncUiState.choosingAccountLibrary: Boolean
+    get() = account is SyncAccountState.SignedIn && status.accountChanged && !accountChoiceDeferred && !syncing
+
 /** The one line worth saying under the "Synced 3m ago" label, if any. */
 val SyncUiState.statusDetail: SyncStatusDetail? get() = syncStatusDetail(status)
 
@@ -73,7 +103,7 @@ data class ProfileUiState(
     val loading: Boolean = true,
     val profile: LocalProfile = LocalProfile.DEFAULT,
     val stats: ProfileStats = ProfileStats(),
-    val error: String? = null,
+    val error: UiText? = null,
     val isEditingName: Boolean = false,
     val sync: SyncUiState = SyncUiState(),
 )
@@ -113,7 +143,7 @@ class ProfileViewModel(
     private fun observeProfileAndStats() {
         profileObservation?.cancel()
         profileObservation = combine(observeProfile(), observeProfileStats()) { profile, stats -> profile to stats }
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { (profile, stats) -> _state.update { it.copy(loading = false, profile = profile, stats = stats, error = null) } }
             .launchInReporting(viewModelScope)
     }
@@ -131,10 +161,12 @@ class ProfileViewModel(
                             account = account,
                             status = status,
                             lastSyncedAtEpochMs = status.lastSyncedAtEpochMs,
-                            lastSyncedLabel = lastSyncedLabel(status.lastSyncedAtEpochMs, clock.nowEpochMs()),
+                            lastSynced = lastSynced(status.lastSyncedAtEpochMs, clock.nowEpochMs()),
                             automaticSync = automatic,
                             automaticSyncAvailable = syncActions.isBackgroundAvailable,
                             automaticSyncMode = syncActions.automaticSyncMode,
+                            // Once resolved, a later mismatch asks again.
+                            accountChoiceDeferred = it.sync.accountChoiceDeferred && status.accountChanged,
                         ),
                     )
                 }
@@ -145,13 +177,13 @@ class ProfileViewModel(
         // redeemed at app scope (ADR 0014) — so the reason arrives here as a
         // stream rather than as a call's return value.
         syncActions.observeSignInFailure()
-            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = failure)) } }
+            .onEach { failure -> if (failure != null) _state.update { it.copy(sync = it.sync.copy(message = failure.toUiText())) } }
             .launchInReporting(viewModelScope)
     }
 
     /**
-     * Recomputes `lastSyncedLabel` against the current time (#117:
-     * `lastSyncedLabel` is otherwise only recomputed when the status stream
+     * Recomputes `lastSynced` against the current time (#117:
+     * `lastSynced` is otherwise only recomputed when the status stream
      * emits, so "Synced just now" stays "just now" on a screen left open with
      * nothing else happening — no new sync, no new failure).
      *
@@ -170,8 +202,8 @@ class ProfileViewModel(
      * suggested, and it sidesteps the trap entirely rather than working
      * around it.
      */
-    fun refreshLastSyncedLabel() {
-        _state.update { it.copy(sync = it.sync.copy(lastSyncedLabel = lastSyncedLabel(it.sync.lastSyncedAtEpochMs, clock.nowEpochMs()))) }
+    fun refreshLastSynced() {
+        _state.update { it.copy(sync = it.sync.copy(lastSynced = lastSynced(it.sync.lastSyncedAtEpochMs, clock.nowEpochMs()))) }
     }
 
     fun onEditNameRequested() {
@@ -207,7 +239,7 @@ class ProfileViewModel(
      */
     fun onSignInClicked(provider: SyncProvider) {
         if (!syncActions.isAvailable) {
-            _state.update { it.copy(sync = it.sync.copy(message = "Sync isn't set up for this build")) }
+            _state.update { it.copy(sync = it.sync.copy(message = UiText.Resource(Res.string.sync_not_configured))) }
             return
         }
         viewModelScope.launchReporting {
@@ -218,7 +250,7 @@ class ProfileViewModel(
                     sync = it.sync.copy(
                         syncing = false,
                         pendingAuthUrl = result.getOrNull(),
-                        message = result.exceptionOrNull()?.let { e -> e.toUserMessage("Couldn't start sign-in") },
+                        message = result.exceptionOrNull()?.let { e -> e.toUiText(UiText.Resource(Res.string.sign_in_failed)) },
                     ),
                 )
             }
@@ -255,7 +287,29 @@ class ProfileViewModel(
     fun onResyncEverythingConfirmed() {
         _state.update { it.copy(sync = it.sync.copy(confirmingResync = false, syncing = true)) }
         viewModelScope.launchReporting {
-            val message = messageFor(syncActions.resyncEverything(), success = "Everything resynced")
+            val message = messageFor(syncActions.resyncEverything(), success = UiText.Resource(Res.string.resynced))
+            _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
+        }
+    }
+
+    /** "Decide later", Back or Escape: closes the dialog and does nothing else. Nothing syncs until a choice is made. */
+    fun onAccountChoiceDeferred() {
+        _state.update { it.copy(sync = it.sync.copy(accountChoiceDeferred = true)) }
+    }
+
+    /** The status line's "Choose" button: brings the dialog back after it was closed. */
+    fun onAccountChoiceRequested() {
+        _state.update { it.copy(sync = it.sync.copy(accountChoiceDeferred = false)) }
+    }
+
+    fun onAccountChoiceMade(choice: AccountChangeChoice) {
+        _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
+        viewModelScope.launchReporting {
+            val success = when (choice) {
+                AccountChangeChoice.ReplaceWithAccountLibrary -> UiText.Resource(Res.string.account_library_replaced)
+                AccountChangeChoice.AddDeviceLibraryToAccount -> UiText.Resource(Res.string.account_library_added)
+            }
+            val message = messageFor(syncActions.resolveAccountChange(choice), success = success)
             _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
         }
     }
@@ -269,26 +323,32 @@ class ProfileViewModel(
 
     private suspend fun runSyncNow() {
         _state.update { it.copy(sync = it.sync.copy(syncing = true)) }
-        val message = messageFor(syncActions.syncNow(), success = "Synced")
-        _state.update { it.copy(sync = it.sync.copy(syncing = false, message = message ?: it.sync.message)) }
+        val outcome = syncActions.syncNow()
+        val message = messageFor(outcome, success = UiText.Resource(Res.string.synced))
+        _state.update {
+            it.copy(
+                sync = it.sync.copy(
+                    syncing = false,
+                    message = message ?: it.sync.message,
+                    // Pressing "Sync now" into a mismatch is asking for the dialog back.
+                    accountChoiceDeferred = it.sync.accountChoiceDeferred && outcome != SyncOutcomeSummary.AccountChanged,
+                ),
+            )
+        }
     }
 
-    private fun messageFor(outcome: SyncOutcomeSummary, success: String): String? = when (outcome) {
+    private fun messageFor(outcome: SyncOutcomeSummary, success: UiText): UiText? = when (outcome) {
         SyncOutcomeSummary.Unavailable, SyncOutcomeSummary.NotSignedIn -> null
 
         // Worth a message, unlike the two above: those states have no
         // visible sync button to have been pressed, whereas an entitlement
         // can lapse while the screen is open and leave a stale one there.
-        SyncOutcomeSummary.NotEntitled -> "Sync is a paid feature"
+        SyncOutcomeSummary.NotEntitled -> UiText.Resource(Res.string.sync_paid)
 
         is SyncOutcomeSummary.Success -> success
 
-        is SyncOutcomeSummary.Failed -> "Sync failed: ${SyncCopy.failure(outcome.kind)}"
+        is SyncOutcomeSummary.Failed -> UiText.Resource(Res.string.sync_failed, outcome.kind.toUiText())
 
-        SyncOutcomeSummary.AccountChanged -> "This device's library belongs to a different account, so nothing was synced."
-    }
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
+        SyncOutcomeSummary.AccountChanged -> UiText.Resource(Res.string.sync_account_changed)
     }
 }

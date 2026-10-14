@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -56,7 +57,7 @@ class SearchScreenInsetsTest {
         // 48dp of safe area on top of the unpadded baseline below. The 48dp
         // difference between these two tests is the assertion; the baseline is
         // the Column's 12dp plus the pill's own 12dp of inner padding.
-        onNodeWithText(PLACEHOLDER).assertTopPositionInRootIsEqualTo(48.dp + PILL_BASELINE_TOP)
+        onNodeWithContentDescription(PLACEHOLDER).assertTopPositionInRootIsEqualTo(48.dp + PILL_BASELINE_TOP)
     }
 
     @Test
@@ -64,12 +65,12 @@ class SearchScreenInsetsTest {
         setContent { SearchUnderTest(NO_INSETS) }
         waitForIdle()
 
-        onNodeWithText(PLACEHOLDER).assertTopPositionInRootIsEqualTo(PILL_BASELINE_TOP)
+        onNodeWithContentDescription(PLACEHOLDER).assertTopPositionInRootIsEqualTo(PILL_BASELINE_TOP)
     }
 
     @Test
     fun search_renders_below_the_safe_area() = runComposeUiTest {
-        setContent { SearchUnderTest(TestSafeAreaInsets) }
+        setContent { SearchUnderTest(TestSafeAreaInsets, darkTheme = false) }
         waitForIdle()
 
         // Wider than the 0.5% default because this frame is almost entirely text,
@@ -79,6 +80,15 @@ class SearchScreenInsetsTest {
         // nothing else. Still far below what any layout shift on this screen
         // would move. See `assertMatchesGolden`.
         assertMatchesGolden("search-screen-insets", tolerance = 0.04)
+    }
+
+    @Test
+    fun search_renders_below_the_safe_area_dark() = runComposeUiTest {
+        setContent { SearchUnderTest(TestSafeAreaInsets, darkTheme = true) }
+        waitForIdle()
+
+        // Same frame, same text, so the same measured drift as the light one.
+        assertMatchesGolden("search-screen-insets-dark", tolerance = 0.04)
     }
 
     private companion object {
@@ -91,7 +101,7 @@ class SearchScreenInsetsTest {
 }
 
 @Composable
-private fun SearchUnderTest(insets: WindowInsets) {
+private fun SearchUnderTest(insets: WindowInsets, darkTheme: Boolean = false) {
     val repo = FakeRepo(
         movieGenresResult = Result.success(listOf(Genre("28", "Action"), Genre("12", "Adventure"))),
         tvGenresResult = Result.success(listOf(Genre("10759", "Action & Adventure"))),
@@ -113,7 +123,7 @@ private fun SearchUnderTest(insets: WindowInsets) {
     // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded
     // on a machine in dark mode compares against a light render on CI and every
     // pixel moves. See `GoldenSurface`.
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface {
             ScreenInsets(insets = insets) {
                 SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {})

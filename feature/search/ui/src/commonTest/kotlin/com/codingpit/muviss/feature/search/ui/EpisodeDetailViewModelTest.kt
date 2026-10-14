@@ -70,7 +70,7 @@ class EpisodeDetailViewModelTest {
         val vm = viewModel(result = Result.failure(MetadataError.NotFound()))
         advanceUntilIdle()
 
-        assertEquals(MetadataError.NotFound().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.NotFound().userMessage, vm.state.value.error.text())
     }
 
     @Test
@@ -78,7 +78,7 @@ class EpisodeDetailViewModelTest {
         val vm = viewModel(result = Result.failure(IllegalStateException("Timeout for https://api.themoviedb.org/3/tv/1?api_key=SECRET")))
         advanceUntilIdle()
 
-        assertEquals("Something went wrong", vm.state.value.error)
+        assertEquals("Something went wrong", vm.state.value.error.text())
     }
 
     @Test

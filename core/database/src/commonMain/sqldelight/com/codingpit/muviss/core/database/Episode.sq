@@ -61,3 +61,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 deleteForMedia:
 DELETE FROM episode
 WHERE mediaId = :mediaId;
+
+-- Settings > Delete all data (EPIC 29, #72). The catalog is a cache, but a
+-- device that was asked to forget everything should not keep what it cached.
+deleteAll:
+DELETE FROM episode;

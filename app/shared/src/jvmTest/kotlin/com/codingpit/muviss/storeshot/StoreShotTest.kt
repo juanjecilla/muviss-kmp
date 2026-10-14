@@ -1,0 +1,334 @@
+@file:OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+
+package com.codingpit.muviss.storeshot
+
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SkikoComposeUiTest
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.unit.Density
+import coil3.asImage
+import coil3.compose.AsyncImagePreviewHandler
+import coil3.compose.LocalAsyncImagePreviewHandler
+import com.codingpit.muviss.MuvissApp
+import com.codingpit.muviss.core.database.DatabaseDriverFactory
+import com.codingpit.muviss.core.network.MetadataProvider
+import com.codingpit.muviss.core.sync.SyncAvailability
+import com.codingpit.muviss.di.appModules
+import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.profile.domain.ProfileRepository
+import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.SettingsRepository
+import com.codingpit.muviss.models.EpisodeId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.koin.core.Koin
+import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
+import org.koin.dsl.module
+import java.io.File
+import java.util.Locale
+import javax.imageio.ImageIO
+import kotlin.io.path.createTempDirectory
+import kotlin.test.Test
+
+/**
+ * StoreShot (EPIC 33, #76, #168): the Play screenshots and the landing's
+ * screenshots, rendered from the real app rather than captured by hand.
+ *
+ * The real Koin graph runs over a temp database seeded through the real APIs,
+ * with [StoreShotCatalog] as the only metadata source, and the real
+ * `MuvissApp()` is driven through its bottom bar at a phone's size and
+ * density (1080x1920 px at 2.625x, i.e. 411dp wide — the phone layout).
+ * Posters come from [StoreShotPosters] through Coil's preview handler, which
+ * is why the content runs with `LocalInspectionMode` on.
+ *
+ * Off by default; it writes into the repository:
+ *
+ *   ./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot
+ *
+ * - `fastlane/metadata/android/<locale>/images/phoneScreenshots/` — Play, en-US and es-ES, light
+ * - `website/public/screenshots/<name>-{light,dark}.png` — the landing, English
+ *
+ * 9:16, because Play refuses a screenshot whose long side is over twice the short one.
+ */
+class StoreShotTest {
+
+    private val enabled = System.getProperty("muviss.storeshot") == "true"
+
+    @Test
+    fun render_the_store_and_landing_screenshots() {
+        if (!enabled) return
+        val today = System.currentTimeMillis() / DAY_MS
+        val catalog = StoreShotCatalog(today)
+        val koin = startGraph(catalog)
+        val defaultLocale = Locale.getDefault()
+        // viewModelScope runs on Main, which a test JVM has no platform
+        // dispatcher for; the other UI suites install one the same way.
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        try {
+            runBlocking { seed(koin, catalog, today) }
+            // en-US only until EPIC 31 (#74) translates the feature screens: a Spanish
+            // shot would show mostly English copy. Play falls back to the default
+            // language's screenshots for the es-ES listing.
+            for ((locale, dark) in listOf("en-US" to false, "en-US" to true)) {
+                runBlocking { koin.get<SettingsRepository>().setTheme(if (dark) AppTheme.DARK else AppTheme.LIGHT) }
+                Locale.setDefault(Locale.forLanguageTag(locale))
+                shoot(catalog, locale, dark)
+            }
+        } finally {
+            Locale.setDefault(defaultLocale)
+            stopKoin()
+            Dispatchers.resetMain()
+        }
+    }
+
+    private fun startGraph(catalog: StoreShotCatalog): Koin {
+        val directory = createTempDirectory("muviss-storeshot").toFile()
+        return startKoin {
+            modules(
+                appModules + module {
+                    single { DatabaseDriverFactory(directory) }
+                    // Overrides networkModule's TmdbProvider: nothing reaches TMDB.
+                    single<MetadataProvider> { catalog.provider() }
+                    // The release build's gate: sync and co-watch are paid and
+                    // compiled out of v1 (ADR 0018, ADR 0024), so the store must
+                    // never show their UI — even when this machine's
+                    // local.properties turns sync on for development.
+                    single<SyncAvailability> { SyncAvailability { false } }
+                },
+            )
+        }.koin
+    }
+
+    private suspend fun seed(koin: Koin, c: StoreShotCatalog, today: Long) {
+        val collection = koin.get<CollectionApi>()
+        val progress = koin.get<ProgressApi>()
+        for (title in c.library) collection.add(c.details(title.id))
+
+        fun seasons(title: StoreShotCatalog.Title) = c.details(title.id).seasons
+
+        // Watching: complete seasons, then part of the current one.
+        suspend fun watchUpTo(title: StoreShotCatalog.Title, fullSeasons: Int, episodesIntoNext: Int) {
+            val all = seasons(title)
+            all.take(fullSeasons).forEach { progress.markSeasonAiredSeen(it, today) }
+            all.getOrNull(fullSeasons)?.episodes?.take(episodesIntoNext)?.forEach { progress.setEpisodeSeen(it.id, true) }
+        }
+        watchUpTo(c.lighthouse, fullSeasons = 1, episodesIntoNext = 4)
+        watchUpTo(c.northbound, fullSeasons = 2, episodesIntoNext = 2)
+        watchUpTo(c.orchard, fullSeasons = 0, episodesIntoNext = 5)
+        progress.markShowAiredSeen(seasons(c.paperMoons), today)
+        progress.markShowAiredSeen(seasons(c.glassHarbor), today)
+        listOf(c.copperSky, c.smallHours, c.winterSignal).forEach { progress.setMovieWatched(it.id, true) }
+
+        // A few rewatches, so "Most rewatched" and the plays have something to show.
+        seasons(c.glassHarbor).first().episodes.take(3).forEach { progress.recordPlay(it.id) }
+        progress.recordPlay(EpisodeId(c.paperMoons.id, 1, 1))
+
+        koin.get<ProfileRepository>().setDisplayName("Alex")
+        collection.setFavorite(c.lighthouse.id, true)
+        collection.setFavorite(c.glassHarbor.id, true)
+        mapOf(c.glassHarbor to 9, c.paperMoons to 9, c.copperSky to 8, c.smallHours to 7, c.lighthouse to 8)
+            .forEach { (title, rating) -> collection.setRating(title.id, rating) }
+    }
+
+    private fun shoot(catalog: StoreShotCatalog, locale: String, dark: Boolean) = runSkikoComposeUiTest(
+        size = Size(WIDTH_PX.toFloat(), HEIGHT_PX.toFloat()),
+        density = Density(DENSITY),
+    ) {
+        val posters = AsyncImagePreviewHandler { request ->
+            val name = request.data.toString().substringAfterLast(StoreShotCatalog.POSTER_PREFIX, "")
+            val titles = catalog.library + catalog.fresh
+            val index = titles.indexOfFirst { name.isNotEmpty() && it.summary.posterUrl?.contains(name) == true }
+            StoreShotPosters.render(titles.getOrNull(index)?.summary?.title ?: "Muviss", index.coerceAtLeast(0)).asImage()
+        }
+        setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true, LocalAsyncImagePreviewHandler provides posters) {
+                MuvissApp()
+            }
+        }
+        val nav = NAV.getValue(locale.substringBefore('-'))
+        val shots = mutableListOf<Pair<String, java.awt.image.BufferedImage>>()
+        fun capture(name: String) {
+            // A dialog or popup is a second root: onRoot() would throw, and a
+            // shot taken around one would be the wrong store image (#231).
+            settle { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
+            // The test pointer stays where it last touched, and whatever is
+            // under it draws a hover layer: a store image showed a nav tab
+            // and an episode row lit up that nobody was pointing at.
+            waitForOneRoot()
+            onRoot().performMouseInput { moveTo(androidx.compose.ui.geometry.Offset(-10f, -10f)) }
+            settle { true }
+            // settle advanced the clock, and a popup can arrive in that time.
+            waitForOneRoot()
+            shots += name to onRoot().captureToImage().toAwtImage()
+        }
+
+        settle { onAllNodes(hasText("Fill your library")).fetchSemanticsNodes().isNotEmpty() }
+        capture("discover")
+
+        tab(nav.library)
+        settle { onAllNodes(hasText("Watching", substring = true) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasText("Watching", substring = true) and hasClickAction())[0].performClick()
+        settle { onAllNodes(hasContentDescription(catalog.lighthouse.summary.title)).fetchSemanticsNodes().isNotEmpty() }
+        capture("library")
+
+        // The card merges its poster and title into one clickable node.
+        val lighthouse = catalog.lighthouse.summary.title
+        onAllNodes(hasClickAction() and (hasContentDescription(lighthouse) or hasText(lighthouse) or hasAnyDescendantDescribed(lighthouse)))[0].performClick()
+        settle { onAllNodes(hasTestTag("detailList")).fetchSemanticsNodes().isNotEmpty() }
+        // Detail is a lazy list (EPIC 28): rows off screen are not composed, so
+        // it is scrolled by item key rather than to a node. Detail opens the
+        // season the user is in the middle of; expand only if it did not.
+        val detailList = onAllNodes(hasTestTag("detailList"))[0]
+        detailList.performScrollToKey("season-2")
+        waitForIdle()
+        if (onAllNodes(hasTestTag("seasonEpisodes2")).fetchSemanticsNodes().isEmpty()) {
+            onAllNodes(hasTestTag("seasonHeader2"))[0].performClick()
+        }
+        settle { onAllNodes(hasTestTag("seasonEpisodes2")).fetchSemanticsNodes().isNotEmpty() }
+        // "Seasons (2)" just under the floating back button, ticks below it.
+        detailList.performScrollToKey("seasonsHeader")
+        waitForIdle()
+        bringToTop("Seasons (2)", marginPx = 150f)
+        capture("detail-seasons")
+
+        tab(nav.progress)
+        settle { onAllNodes(hasText(catalog.lighthouse.summary.title)).fetchSemanticsNodes().isNotEmpty() }
+        capture("watch-next")
+
+        tab(nav.profile)
+        settle { onAllNodes(hasText("Stats")).fetchSemanticsNodes().isNotEmpty() }
+        // The identity block is the top half; the store shot is the numbers and charts.
+        onAllNodes(hasText("Stats"))[0].performScrollTo()
+        bringToTop("Stats", marginPx = 60f)
+        capture("profile-stats")
+
+        tab(nav.search)
+        settle { onAllNodes(hasText("Fill your library")).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasText("Fill your library"))[0].performClick()
+        onAllNodes(hasText("Got it")).fetchSemanticsNodes().firstOrNull()?.let { onAllNodes(hasText("Got it"))[0].performClick() }
+        // The Discover intro, the triage tutorial and the snooze hint each
+        // say "Got it", and they can arrive one after another: dismiss until
+        // none is left, not just until the card is there (#231).
+        // The last match is the topmost root: a dialog over the hint takes
+        // the click, the hint under it would not.
+        settle {
+            val gotIt = onAllNodes(hasText("Got it"))
+            gotIt.fetchSemanticsNodes().size.takeIf { it > 0 }?.let { gotIt[it - 1].performClick() }
+            onAllNodes(hasTestTag("triage-card")).fetchSemanticsNodes().isNotEmpty() &&
+                onAllNodes(hasText("Got it")).fetchSemanticsNodes().isEmpty()
+        }
+        capture("triage")
+
+        write(shots, locale, dark)
+    }
+
+    // Through the click action, not a touch: a touched tab kept its pressed
+    // layer in Skiko, and the triage shot showed Profile lit up under a
+    // screen that no tab owns. A device shows none (checked on an emulator).
+    private fun SkikoComposeUiTest.tab(label: String) {
+        onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().firstOrNull()
+            ?.let { onAllNodes(hasText(label) and hasClickAction())[0].performSemanticsAction(SemanticsActions.OnClick) }
+            ?: onAllNodes(hasClickAction() and hasAnyDescendantText(label))[0].performSemanticsAction(SemanticsActions.OnClick)
+    }
+
+    /**
+     * Scrolls until the node with [text] sits [marginPx] below the top edge.
+     * Through the scroll action of the tallest scrollable, not a drag: a drag
+     * that starts on a row leaves that row's pressed layer in the shot.
+     */
+    private fun SkikoComposeUiTest.bringToTop(text: String, marginPx: Float) {
+        waitForIdle()
+        val topPx = onAllNodes(hasText(text))[0].getUnclippedBoundsInRoot().top.value * DENSITY
+        val distance = topPx - marginPx
+        if (kotlin.math.abs(distance) < 4f) return
+        val scrollables = onAllNodes(hasScrollAction())
+        val tallest = scrollables.fetchSemanticsNodes().withIndex().maxBy { it.value.size.height }.index
+        scrollables[tallest].performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, distance) }
+        waitForIdle()
+    }
+
+    /** Waits without advancing the clock (unlike [settle]) until no popup is up. */
+    private fun SkikoComposeUiTest.waitForOneRoot() {
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
+    }
+
+    private fun SkikoComposeUiTest.settle(condition: () -> Boolean) {
+        try {
+            waitUntil(timeoutMillis = 20_000) { condition() }
+        } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+            // What the screen showed instead, to diagnose a step that never settled.
+            val debug = File(System.getProperty("java.io.tmpdir"), "muviss-storeshot-timeout.png")
+            // With a popup up there is more than one root; the first is the app.
+            // Before the first composition there is none, and the timeout is
+            // still the error worth reporting.
+            val saved = onAllNodes(isRoot()).fetchSemanticsNodes().isNotEmpty()
+            if (saved) ImageIO.write(onAllNodes(isRoot())[0].captureToImage().toAwtImage(), "png", debug)
+            throw AssertionError("StoreShot step did not settle; ${if (saved) "screen saved to $debug" else "nothing was composed"}", timeout)
+        }
+        // Let images and the last recomposition land before capturing.
+        mainClock.advanceTimeBy(500)
+        waitForIdle()
+    }
+
+    private fun write(shots: List<Pair<String, java.awt.image.BufferedImage>>, locale: String, dark: Boolean) {
+        val root = repoRoot()
+        if (!dark) {
+            val play = File(root, "fastlane/metadata/android/$locale/images/phoneScreenshots").apply {
+                deleteRecursively()
+                mkdirs()
+            }
+            PLAY_ORDER.forEachIndexed { i, name ->
+                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second, "png", File(play, "${i + 1}_$name.png")) }
+            }
+        }
+        if (locale == "en-US") {
+            val site = File(root, "website/public/screenshots").apply { mkdirs() }
+            val theme = if (dark) "dark" else "light"
+            for ((name, image) in shots) if (name in SITE_NAMES) ImageIO.write(image, "png", File(site, "$name-$theme.png"))
+        }
+    }
+
+    private class Nav(val search: String, val library: String, val progress: String, val profile: String)
+
+    private companion object {
+        const val WIDTH_PX = 1080
+        const val HEIGHT_PX = 1920
+        const val DENSITY = 2.625f
+        const val DAY_MS = 86_400_000L
+        val NAV = mapOf(
+            "en" to Nav("Search", "Library", "Progress", "Profile"),
+            "es" to Nav("Buscar", "Biblioteca", "Progreso", "Perfil"),
+        )
+        val PLAY_ORDER = listOf("library", "detail-seasons", "watch-next", "triage", "profile-stats", "discover")
+        val SITE_NAMES = setOf("detail-seasons", "library", "watch-next", "triage", "profile-stats")
+    }
+}
+
+private fun hasAnyDescendantDescribed(description: String) = androidx.compose.ui.test.hasAnyDescendant(hasContentDescription(description))
+
+private fun hasAnyDescendantText(text: String) = androidx.compose.ui.test.hasAnyDescendant(hasText(text))

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_title">Biblioteca</string>
+    <string name="segment_library">Biblioteca</string>
+    <string name="segment_lists">Listas</string>
+    <string name="filter_by_type">Filtrar por tipo (%1$s)</string>
+    <string name="sort_by">Ordenar (%1$s)</string>
+
+    <string name="empty_movies_title">No hay películas aquí</string>
+    <string name="empty_tv_title">No hay series aquí</string>
+    <string name="empty_type_body">Nada en esta pestaña coincide con el filtro de tipo.</string>
+    <string name="empty_favorites_title">Aún no tienes favoritos</string>
+    <string name="empty_favorites_body">Toca el corazón de un título guardado para añadirlo.</string>
+    <string name="empty_library_title">Aún no hay nada</string>
+    <string name="empty_library_body">Busca una película o serie y añádela a tu biblioteca.</string>
+    <string name="find_something">Buscar algo que ver</string>
+
+    <string name="filter_with_count">%1$s %2$d</string>
+    <string name="filter_not_started">Sin empezar</string>
+    <string name="filter_watching">Viendo</string>
+    <string name="filter_watched">Vistas</string>
+    <string name="filter_finished">Terminadas</string>
+    <string name="filter_favorites">★ Favoritos</string>
+    <string name="type_all">Todo</string>
+    <string name="type_movies">Películas</string>
+    <string name="type_tv">Series</string>
+    <string name="sort_recently_added">Añadidos recientemente</string>
+    <string name="sort_rating">Valoración</string>
+    <string name="sort_title">Título</string>
+
+    <string name="error_generic">Algo ha fallado</string>
+    <string name="refresh_failed">No se pudo actualizar tu biblioteca</string>
+
+    <string name="action_back">Atrás</string>
+    <string name="action_undo">Deshacer</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_create">Crear</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_rename">Renombrar</string>
+    <string name="action_remove">Quitar</string>
+
+    <string name="list_contents_empty_title">Esta lista aún está vacía</string>
+    <string name="list_contents_empty_body">Añade un título desde su pantalla de detalle.</string>
+    <string name="list_deleted">Se eliminó «%1$s»</string>
+    <string name="new_list">Nueva lista</string>
+    <string name="rename_list">Renombrar lista</string>
+    <string name="lists_empty_title">Aún no tienes listas</string>
+    <string name="lists_empty_body">Toca «Nueva lista» para crear una, como «Maratón 2026».</string>
+    <plurals name="list_titles">
+        <item quantity="one">%1$d título</item>
+        <item quantity="other">%1$d títulos</item>
+    </plurals>
+    <string name="delete_list">Eliminar %1$s</string>
+    <string name="list_name_placeholder">Nombre de la lista</string>
+    <string name="list_create_failed">No se pudo crear la lista.</string>
+    <string name="list_rename_failed">No se pudo renombrar la lista.</string>
+    <string name="list_delete_failed">No se pudo eliminar la lista.</string>
+    <string name="list_restore_failed">No se pudo recuperar la lista.</string>
+</resources>

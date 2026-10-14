@@ -2,7 +2,9 @@ package com.codingpit.muviss.feature.settings.domain
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ImportFormatDetectorTest {
 
@@ -39,5 +41,23 @@ class ImportFormatDetectorTest {
     @Test
     fun blank_content_is_null() {
         assertNull(ImportFormatDetector.detect(""))
+    }
+
+    @Test
+    fun a_muviss_backup_is_recognised_and_not_read_as_trakt() {
+        val backup = """{ "formatVersion": 2, "exportedAtEpochMs": 1, "collection": [] }"""
+        assertTrue(ImportFormatDetector.isMuvissBackup(backup))
+        assertEquals(null, ImportFormatDetector.detect(backup))
+    }
+
+    @Test
+    fun a_v1_backup_with_no_version_is_recognised_too() {
+        assertTrue(ImportFormatDetector.isMuvissBackup("""{"exportedAtEpochMs":1,"collection":[],"progress":[]}"""))
+    }
+
+    @Test
+    fun a_trakt_export_is_not_a_backup() {
+        assertFalse(ImportFormatDetector.isMuvissBackup("""[ { "type": "movie" } ]"""))
+        assertFalse(ImportFormatDetector.isMuvissBackup("""{"history": []}"""))
     }
 }

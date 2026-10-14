@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
@@ -10,11 +11,15 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
-import com.codingpit.muviss.models.toUserMessage
+import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
+import com.codingpit.muviss.feature.settings.ui.generated.resources.error_generic
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,11 +31,17 @@ import kotlinx.coroutines.flow.update
 data class SettingsUiState(
     val loading: Boolean = true,
     val settings: AppSettings = AppSettings(),
-    val error: String? = null,
+    val error: UiText? = null,
     val appVersion: AppVersion = AppVersion(versionName = "", versionCode = 0),
     /** One-shot: non-null while an export is ready for the platform sharer to hand off; cleared by [SettingsViewModel.exportHandled]. */
     val exportJson: String? = null,
-    val exportError: String? = null,
+    /** The name the export is offered under, dated so successive backups do not overwrite each other (EPIC 29, #72). */
+    val exportFileName: String = "",
+    val exportError: UiText? = null,
+    /** The Delete all data confirmation is open. One tap opens it; only its own button deletes. */
+    val confirmingDeleteAll: Boolean = false,
+    /** Everything was just deleted on this screen; it says so under the row until the screen goes. */
+    val deletedAll: Boolean = false,
     /** Which drag scheme the triage deck uses (ADR 0010) — a per-device input preference, not a library setting. */
     val triageControlScheme: TriageControlScheme = TriageControlScheme.DEFAULT,
     val snoozePeriod: SnoozePeriod = SnoozePeriod.DEFAULT,
@@ -52,6 +63,8 @@ class SettingsViewModel(
     private val actions: SettingsActions,
     appVersion: AppVersion,
     private val featureFlags: FeatureFlags,
+    private val deleteAllData: DeleteAllDataUseCase,
+    private val clock: AppClock,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState(appVersion = appVersion))
@@ -96,7 +109,7 @@ class SettingsViewModel(
     private fun observeAppSettings() {
         settingsObservation?.cancel()
         settingsObservation = observeSettings()
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
             .launchInReporting(viewModelScope)
     }
@@ -144,8 +157,10 @@ class SettingsViewModel(
     fun exportData() {
         viewModelScope.launchReporting {
             runCatching { actions.exportData() }.reportFailure().fold(
-                onSuccess = { json -> _state.update { it.copy(exportJson = json, exportError = null) } },
-                onFailure = { e -> _state.update { it.copy(exportError = e.toUserMessage(DEFAULT_ERROR)) } },
+                onSuccess = { json ->
+                    _state.update { it.copy(exportJson = json, exportFileName = backupFileName(clock.nowEpochMs()), exportError = null) }
+                },
+                onFailure = { e -> _state.update { it.copy(exportError = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )
         }
     }
@@ -155,7 +170,20 @@ class SettingsViewModel(
         _state.update { it.copy(exportJson = null) }
     }
 
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
+    fun onDeleteAllRequested() {
+        _state.update { it.copy(confirmingDeleteAll = true) }
+    }
+
+    fun onDeleteAllDismissed() {
+        _state.update { it.copy(confirmingDeleteAll = false) }
+    }
+
+    /** The confirmation's own button. Every screen observes its tables, so the app empties itself as this commits. */
+    fun onDeleteAllConfirmed() {
+        _state.update { it.copy(confirmingDeleteAll = false) }
+        viewModelScope.launchReporting {
+            deleteAllData()
+            _state.update { it.copy(deletedAll = true) }
+        }
     }
 }

@@ -4,9 +4,10 @@ package com.codingpit.muviss.feature.collection.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.domain.CollectionRefreshThrottle
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
@@ -61,10 +62,29 @@ class CollectionScreenErrorCopyTest {
         onNodeWithText("SECRET", substring = true).assertDoesNotExist()
         onNodeWithText("themoviedb", substring = true).assertDoesNotExist()
     }
-}
 
-private class NoopClock : AppClock {
-    override fun nowEpochMs(): Long = 0L
+    @Test
+    fun an_empty_library_offers_a_way_to_search() = runComposeUiTest {
+        // EPIC 30 (#73): the first screen a new user opens used to say "search
+        // for a title" with nothing to tap.
+        var opened = 0
+        val repository = FakeCollectionRepository(emptyList())
+        val viewModel = CollectionViewModel(
+            ObserveCollectionUseCase(repository),
+            ToggleFavoriteUseCase(repository),
+            RefreshCollectionSnapshotsUseCase(repository, NoopSnapshotSource()),
+            CollectionRefreshThrottle(FakeClock(0L)).apply { recordRefresh() },
+        )
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                CollectionScreen(viewModel, ListsViewModel(ListsUseCases(FakeListsRepository())), onOpenDetail = {}, onOpenList = {}, onOpenSearch = { opened++ })
+            }
+        }
+        waitForIdle()
+
+        onNodeWithText("Find something to watch").performClick()
+        kotlin.test.assertEquals(1, opened)
+    }
 }
 
 @Composable
@@ -74,7 +94,7 @@ private fun CollectionWithFailure(failure: Throwable) {
     // fires it: that refresh reads the same failing repository.observeAll()
     // and would surface the identical mapped copy a second time, as a
     // snackbar message rather than the ErrorState this test targets.
-    val throttle = CollectionRefreshThrottle(NoopClock()).apply { recordRefresh() }
+    val throttle = CollectionRefreshThrottle(FakeClock(0L)).apply { recordRefresh() }
     val viewModel = CollectionViewModel(
         ObserveCollectionUseCase(repository),
         ToggleFavoriteUseCase(repository),

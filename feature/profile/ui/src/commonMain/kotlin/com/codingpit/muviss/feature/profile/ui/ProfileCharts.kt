@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +54,16 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.profile.domain.GenreCount
 import com.codingpit.muviss.feature.profile.domain.MonthlyRewatches
 import com.codingpit.muviss.feature.profile.domain.StatusBreakdown
+import com.codingpit.muviss.feature.profile.ui.generated.resources.Res
+import com.codingpit.muviss.feature.profile.ui.generated.resources.a11y_genre_summary
+import com.codingpit.muviss.feature.profile.ui.generated.resources.genre_other
+import com.codingpit.muviss.feature.profile.ui.generated.resources.genre_tags
+import com.codingpit.muviss.feature.profile.ui.generated.resources.month_initials
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_finished
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_not_started
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_watched
+import com.codingpit.muviss.feature.profile.ui.generated.resources.status_watching
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -99,10 +111,10 @@ fun StatusBarChart(breakdown: StatusBreakdown, modifier: Modifier = Modifier) {
     val palette = MuvissChartPalette.categorical()
     val growth by rememberChartGrowth()
     val entries = listOf(
-        "Not started" to breakdown.notStarted,
-        "Watching" to breakdown.watching,
-        "Watched" to breakdown.watched,
-        "Finished" to breakdown.finished,
+        stringResource(Res.string.status_not_started) to breakdown.notStarted,
+        stringResource(Res.string.status_watching) to breakdown.watching,
+        stringResource(Res.string.status_watched) to breakdown.watched,
+        stringResource(Res.string.status_finished) to breakdown.finished,
     )
     val maxCount = entries.maxOf { it.second }.coerceAtLeast(1)
 
@@ -138,7 +150,7 @@ fun foldGenresIntoOther(genres: List<GenreCount>, maxSlots: Int = MAX_GENRE_SLOT
     if (genres.size <= maxSlots) return genres
     val kept = genres.take(maxSlots - 1)
     val otherCount = genres.drop(maxSlots - 1).sumOf { it.count }
-    return kept + GenreCount(genre = "Other", count = otherCount)
+    return kept + GenreCount(genre = OTHER_GENRE, count = otherCount)
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +164,15 @@ const val GENRE_DONUT_CENTER_TAG = "genre_donut_center"
 fun genreLegendTag(genre: String): String = "genre_legend_$genre"
 
 private val DONUT_SIZE = 160.dp
+
+/**
+ * The wide layout's legend stops growing here (#64). Its two columns used to
+ * share whatever the row had left, so on a tablet each row, and a selected
+ * row's highlight, stretched ~500dp past a label like "Comedy (7)". Two
+ * ~200dp columns hold the longest genre names; the rows keep their height,
+ * which is what makes a thin slice selectable at all.
+ */
+private val WIDE_LEGEND_MAX_WIDTH = 420.dp
 
 /**
  * Ring thickness as a fraction of the donut's width. Thinner than the 0.24
@@ -290,7 +311,7 @@ fun GenreDonutChart(
     if (wide) {
         Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl)) {
             GenreDonut(genres, sweeps, selectedIndex, onSelect, palette, growth, total)
-            GenreLegend(genres, selectedIndex, onSelect, palette, Modifier.weight(1f))
+            GenreLegend(genres, selectedIndex, onSelect, palette, Modifier.weight(1f, fill = false).widthIn(max = WIDE_LEGEND_MAX_WIDTH))
         }
     } else {
         Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -310,6 +331,10 @@ private fun GenreDonut(
     growth: Float,
     total: Int,
 ) {
+    // What the ring shows, said in one line (EPIC 31b, #164). The legend rows
+    // stay the selectable nodes; this is the overview a sighted user gets at a glance.
+    val parts = genres.map { "${it.displayName()} ${sharePercentLabel(it.count, total)}" }
+    val summary = stringResource(Res.string.a11y_genre_summary, parts.joinToString(", "))
     Box(Modifier.size(DONUT_SIZE), contentAlignment = Alignment.Center) {
         Canvas(
             Modifier
@@ -324,9 +349,10 @@ private fun GenreDonut(
                         onSelect(if (hit != null && hit != selectedIndex) hit else null)
                     }
                 }
-                // The ring itself is decorative to a screen reader; the legend
-                // rows below carry the real, selectable semantics.
-                .clearAndSetSemantics { testTag = GENRE_DONUT_TAG },
+                .clearAndSetSemantics {
+                    testTag = GENRE_DONUT_TAG
+                    contentDescription = summary
+                },
         ) {
             val base = size.minDimension * DONUT_STROKE_FRACTION
             val maxStroke = base + SELECTED_STROKE_BONUS.toPx()
@@ -373,14 +399,14 @@ private fun DonutCenterLabel(selected: GenreCount?, total: Int) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = selected?.genre ?: total.toString(),
+            text = selected?.displayName() ?: total.toString(),
             style = if (selected == null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelLarge,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = selected?.let { "${it.count} · ${sharePercentLabel(it.count, total)}" } ?: "genre tags",
+            text = selected?.let { "${it.count} · ${sharePercentLabel(it.count, total)}" } ?: stringResource(Res.string.genre_tags),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -447,7 +473,7 @@ private fun GenreLegendRow(
     ) {
         Box(Modifier.size(LEGEND_SWATCH).background(color, CircleShape))
         Text(
-            "${genre.genre} (${genre.count})",
+            "${genre.displayName()} (${genre.count})",
             style = MaterialTheme.typography.labelSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -455,7 +481,7 @@ private fun GenreLegendRow(
     }
 }
 
-private fun GenreCount.colorFor(index: Int, palette: List<Color>): Color = if (genre == "Other") OtherGenreColor else palette[index % palette.size]
+private fun GenreCount.colorFor(index: Int, palette: List<Color>): Color = if (genre == OTHER_GENRE) OtherGenreColor else palette[index % palette.size]
 
 const val REWATCH_TREND_TAG = "rewatch_trend"
 
@@ -474,11 +500,12 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
     val barColor = MuvissChartPalette.categorical().first()
     val growth by rememberChartGrowth()
     val maxCount = months.maxOf { it.rewatches }.coerceAtLeast(1)
+    val monthInitials = stringResource(Res.string.month_initials).split(',')
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         Row(
             Modifier.fillMaxWidth().height(TREND_HEIGHT).testTag(REWATCH_TREND_TAG),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
             verticalAlignment = Alignment.Bottom,
         ) {
             months.forEach { month ->
@@ -498,10 +525,10 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
             months.forEach { month ->
                 Text(
-                    text = MONTH_INITIALS[month.month - 1],
+                    text = monthInitials[month.month - 1],
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -514,4 +541,10 @@ fun RewatchTrendChart(months: List<MonthlyRewatches>, modifier: Modifier = Modif
 }
 
 private val TREND_HEIGHT = 96.dp
-private val MONTH_INITIALS = listOf("J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D")
+
+/** The sentinel [foldGenresIntoOther] names its bucket with; rendered through [displayName], never shown as is. */
+const val OTHER_GENRE = "Other"
+
+/** A genre as the user reads it: TMDB names pass through, the folded bucket is translated. */
+@Composable
+private fun GenreCount.displayName(): String = if (genre == OTHER_GENRE) stringResource(Res.string.genre_other) else genre

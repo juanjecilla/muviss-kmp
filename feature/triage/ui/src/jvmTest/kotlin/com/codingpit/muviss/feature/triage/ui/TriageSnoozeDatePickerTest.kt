@@ -13,6 +13,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -38,7 +39,7 @@ class TriageSnoozeDatePickerTest {
 
     private val filmA = movie("1")
     private val filmB = movie("2")
-    private val today = FakeClock().todayEpochDay()
+    private val today = FakeClock(NOW_EPOCH_MS).todayEpochDay()
 
     private fun ComposeUiTest.openDatePicker(harness: TriageHarness): TriageViewModel {
         harness.flags.snoozePeriod.value = SnoozePeriod.ASK_EACH_TIME
@@ -66,7 +67,7 @@ class TriageSnoozeDatePickerTest {
         onNodeWithTag(TRIAGE_DATE_PICKER_TAG).assertIsDisplayed()
         // The presets are gone, not stacked underneath — Cancel here must not
         // fall back to the sheet it replaced.
-        assertEquals(0, onAllNodesWithTextCount(SnoozePeriod.ONE_WEEK.label))
+        assertEquals(0, onAllNodesWithTextCount("1 week"))
     }
 
     @Test

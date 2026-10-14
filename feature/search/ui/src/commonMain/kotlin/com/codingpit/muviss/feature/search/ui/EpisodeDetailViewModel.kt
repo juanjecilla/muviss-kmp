@@ -4,12 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.error_generic
 import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +22,7 @@ import kotlinx.coroutines.flow.update
 data class EpisodeDetailUiState(
     val loading: Boolean = true,
     val details: EpisodeDetails? = null,
-    val error: String? = null,
+    val error: UiText? = null,
     /** Every recorded viewing, newest first (ADR 0011). Empty means never watched. */
     val plays: List<EpisodePlay> = emptyList(),
 ) {
@@ -57,7 +60,7 @@ class EpisodeDetailViewModel(
             _state.update { it.copy(loading = true, error = null) }
             loadEpisode(episodeId).fold(
                 onSuccess = { d -> _state.update { it.copy(loading = false, details = d) } },
-                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUserMessage("Something went wrong")) } },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )
         }
     }

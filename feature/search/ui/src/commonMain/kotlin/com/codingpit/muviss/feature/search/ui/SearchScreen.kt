@@ -38,6 +38,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
@@ -46,17 +50,41 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterSkeleton
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.back_to_discover
+import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_for_you
+import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_popular_movies
+import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_popular_tv
+import com.codingpit.muviss.feature.search.ui.generated.resources.genre_empty_body
+import com.codingpit.muviss.feature.search.ui.generated.resources.genre_empty_title
+import com.codingpit.muviss.feature.search.ui.generated.resources.genres_movies
+import com.codingpit.muviss.feature.search.ui.generated.resources.genres_tv
+import com.codingpit.muviss.feature.search.ui.generated.resources.intro_dismiss
+import com.codingpit.muviss.feature.search.ui.generated.resources.intro_find
+import com.codingpit.muviss.feature.search.ui.generated.resources.intro_tick
+import com.codingpit.muviss.feature.search.ui.generated.resources.intro_title
+import com.codingpit.muviss.feature.search.ui.generated.resources.intro_triage
+import com.codingpit.muviss.feature.search.ui.generated.resources.search_clear
+import com.codingpit.muviss.feature.search.ui.generated.resources.search_empty_body
+import com.codingpit.muviss.feature.search.ui.generated.resources.search_empty_title
+import com.codingpit.muviss.feature.search.ui.generated.resources.search_placeholder
+import com.codingpit.muviss.feature.search.ui.generated.resources.triage_entry_body
+import com.codingpit.muviss.feature.search.ui.generated.resources.triage_entry_title
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenTriage: () -> Unit,
+    introVisible: Boolean = false,
+    onIntroDismissed: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -71,11 +99,11 @@ fun SearchScreen(
             state.loading -> LoadingSkeletonGrid()
 
             state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                ErrorState(state.error!!, viewModel::retry)
+                ErrorState(state.error!!.resolve(), viewModel::retry)
             }
 
             else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage)
+                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage, intro = DiscoverIntro(introVisible, onIntroDismissed))
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -118,12 +146,15 @@ private fun SearchPill(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )
+            val placeholder = stringResource(Res.string.search_placeholder)
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) {
+                    // Drawn only; the field below carries it as its label.
                     Text(
-                        "Search movies & TV",
+                        placeholder,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clearAndSetSemantics {},
                     )
                 }
                 BasicTextField(
@@ -132,14 +163,16 @@ private fun SearchPill(
                     singleLine = true,
                     textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onSurface),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth(),
+                    // A bare BasicTextField has no label: TalkBack announced
+                    // only "Edit box" (EPIC 31b, #164).
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder },
                 )
             }
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }, modifier = Modifier.size(24.dp)) {
                     Icon(
                         MuvissIcons.Close,
-                        contentDescription = "Clear search",
+                        contentDescription = stringResource(Res.string.search_clear),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp),
                     )
@@ -168,6 +201,7 @@ private fun DiscoverBrowse(
     onSelectGenre: (Genre, MediaType) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
     onOpenTriage: () -> Unit,
+    intro: DiscoverIntro = DiscoverIntro(),
 ) {
     Column(
         Modifier
@@ -176,19 +210,58 @@ private fun DiscoverBrowse(
             .padding(bottom = MuvissSpacing.bottomContent),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
     ) {
+        // First run only (EPIC 30, #73): what the app is for, before anything else.
+        if (intro.visible) DiscoverIntroCard(onDismiss = intro.onDismiss)
         // Triage's main entry point (ADR 0010). It leads the browse because
         // an empty or thin library is exactly the state it exists to fix.
         TriageEntryCard(onOpenTriage)
         // "For you" (EPIC 16) leads the browse when it has anything to show;
         // MediaCarousel itself renders nothing while state.forYou is empty
         // (no library signal yet), so no separate visibility check is needed.
-        MediaCarousel("For you", state.forYou, onOpenDetail)
-        GenreChipRow("Movie genres", state.movieGenres) { onSelectGenre(it, MediaType.MOVIE) }
-        GenreChipRow("TV genres", state.tvGenres) { onSelectGenre(it, MediaType.TV) }
-        MediaCarousel("Popular movies", state.popularMovies, onOpenDetail)
-        MediaCarousel("Popular TV", state.popularTv, onOpenDetail)
+        MediaCarousel(stringResource(Res.string.carousel_for_you), state.forYou, onOpenDetail)
+        GenreChipRow(stringResource(Res.string.genres_movies), state.movieGenres) { onSelectGenre(it, MediaType.MOVIE) }
+        GenreChipRow(stringResource(Res.string.genres_tv), state.tvGenres) { onSelectGenre(it, MediaType.TV) }
+        MediaCarousel(stringResource(Res.string.carousel_popular_movies), state.popularMovies, onOpenDetail)
+        MediaCarousel(stringResource(Res.string.carousel_popular_tv), state.popularTv, onOpenDetail)
     }
 }
+
+/** Whether the first-run intro shows, and what dismissing it does. Bundled so DiscoverBrowse stays under detekt's parameter budget. */
+private class DiscoverIntro(val visible: Boolean = false, val onDismiss: () -> Unit = {})
+
+/**
+ * The one-time Discover intro (EPIC 30, #73): the app's three moves, once, on
+ * a fresh install. Three lines rather than a pager — the tabs are right
+ * there, and a carousel is one more thing to swipe past.
+ */
+@Composable
+private fun DiscoverIntroCard(onDismiss: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth().testTag(DISCOVER_INTRO_TAG),
+    ) {
+        Column(Modifier.padding(MuvissSpacing.l), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+            Text(stringResource(Res.string.intro_title), style = MaterialTheme.typography.titleMedium)
+            IntroLine(MuvissIcons.Search, stringResource(Res.string.intro_find))
+            IntroLine(MuvissIcons.WatchNext, stringResource(Res.string.intro_tick))
+            IntroLine(MuvissIcons.CaughtUp, stringResource(Res.string.intro_triage))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text(stringResource(Res.string.intro_dismiss)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntroLine(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = MuvissSpacing.m))
+    }
+}
+
+internal const val DISCOVER_INTRO_TAG = "discover-intro"
 
 /** The way into the triage deck. Not a bottom-bar tab — five is the ceiling. */
 @Composable
@@ -206,12 +279,12 @@ private fun TriageEntryCard(onOpenTriage: () -> Unit) {
             Icon(MuvissIcons.CaughtUp, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
             Column(Modifier.weight(1f).padding(horizontal = MuvissSpacing.m)) {
                 Text(
-                    "Fill your library",
+                    stringResource(Res.string.triage_entry_title),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
                 Text(
-                    "Sort through titles one at a time — skip, save for later, or mark yourself caught up.",
+                    stringResource(Res.string.triage_entry_body),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
@@ -278,13 +351,13 @@ private fun GenreResults(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(state.selectedGenre?.name.orEmpty(), style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = onClear) { Text("Back to discover") }
+            TextButton(onClick = onClear) { Text(stringResource(Res.string.back_to_discover)) }
         }
         if (state.genreResults.isEmpty()) {
             EmptyState(
                 icon = MuvissIcons.SearchOff,
-                title = "No titles found",
-                body = "Try another genre.",
+                title = stringResource(Res.string.genre_empty_title),
+                body = stringResource(Res.string.genre_empty_body),
             )
         } else {
             PagedResultsGrid(state.genreResults, state.loadingMore, onLoadMore, onOpenDetail)
@@ -301,8 +374,8 @@ private fun SearchResults(
     if (state.results.isEmpty()) {
         EmptyState(
             icon = MuvissIcons.SearchOff,
-            title = "No results",
-            body = "Check the spelling or try a different title.",
+            title = stringResource(Res.string.search_empty_title),
+            body = stringResource(Res.string.search_empty_body),
         )
     } else {
         PagedResultsGrid(state.results, state.loadingMore, onLoadMore, onOpenDetail)

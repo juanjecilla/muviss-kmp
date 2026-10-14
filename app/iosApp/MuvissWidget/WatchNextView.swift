@@ -45,8 +45,8 @@ struct WatchNextView: View {
 /// `message` rather than `body`: a stored `body` property would collide with
 /// SwiftUI's own `var body: some View`.
 private struct EmptyStateView: View {
-    let title: String
-    let message: String
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 4) {
@@ -94,8 +94,8 @@ private struct WatchNextRowView: View {
     }
 
     private var subtitle: String {
-        if isJustTicked { return "Marked seen" }
-        guard let label = row.episodeLabel else { return "Open to load episodes" }
+        if isJustTicked { return String(localized: "Marked seen") }
+        guard let label = row.episodeLabel else { return String(localized: "Open to load episodes") }
         guard let name = row.episodeName else { return label }
         return "\(label) · \(name)"
     }
@@ -111,7 +111,7 @@ private struct WatchNextRowView: View {
         }
     }
 
-    private func pill(_ label: String) -> some View {
+    private func pill(_ label: LocalizedStringKey) -> some View {
         Text(label)
             .font(.caption.weight(.medium))
             .foregroundStyle(MuvissWidgetColors.onPrimary)

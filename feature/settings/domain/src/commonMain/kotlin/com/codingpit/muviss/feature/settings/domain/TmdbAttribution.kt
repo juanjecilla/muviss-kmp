@@ -6,8 +6,9 @@ package com.codingpit.muviss.feature.settings.domain
  * https://www.themoviedb.org/documentation/api/terms-of-use — not rendered
  * yet: no TMDB logo asset ships with the app today).
  *
- * Surfaced on the Settings "About" screen (see `SettingsScreen`'s About
- * section). Also tracked in docs/store/DATA_SAFETY.md and docs/PRIVACY.md —
+ * The English wording of record. The Settings "About" screen renders the
+ * translated `tmdb_attribution` string from `:feature:settings:ui`'s resources
+ * (EPIC 31), which must say the same thing. Also tracked in docs/store/DATA_SAFETY.md and docs/PRIVACY.md —
  * do not remove this constant without moving the text there first.
  */
 const val TMDB_ATTRIBUTION_TEXT: String =

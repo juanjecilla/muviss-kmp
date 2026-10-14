@@ -10,15 +10,20 @@ import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
 import com.codingpit.muviss.feature.settings.data.ExportQueries
 import com.codingpit.muviss.feature.settings.data.RegistryImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
+import com.codingpit.muviss.feature.settings.data.SqlDelightBackupRestorer
+import com.codingpit.muviss.feature.settings.data.SqlDelightLocalDataEraser
 import com.codingpit.muviss.feature.settings.data.SqlDelightSettingsRepository
 import com.codingpit.muviss.feature.settings.data.TmdbExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.ApplyImportUseCase
+import com.codingpit.muviss.feature.settings.domain.BackupRestorer
+import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExternalIdResolver
 import com.codingpit.muviss.feature.settings.domain.GenericCsvImportParser
 import com.codingpit.muviss.feature.settings.domain.ImportActions
 import com.codingpit.muviss.feature.settings.domain.ImportMediaDetailsSource
 import com.codingpit.muviss.feature.settings.domain.ImportParser
+import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
@@ -53,17 +58,16 @@ val settingsDataModule: Module = module {
     single<SettingsRepository> {
         SqlDelightSettingsRepository(
             get(),
-            ExportQueries(
-                collection = get<MuvissDatabase>().collectionEntryQueries,
-                progress = get<MuvissDatabase>().episodeProgressQueries,
-                plays = get<MuvissDatabase>().episodePlayQueries,
-                triage = get<MuvissDatabase>().triageDecisionQueries,
-            ),
+            ExportQueries(get<MuvissDatabase>()),
+            get(),
             get(),
             get(),
         )
     }
     single<SettingsApi> { DefaultSettingsApi(get()) }
+    single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
+    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get()) }
+    factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
@@ -83,5 +87,5 @@ val settingsDataModule: Module = module {
     factory { listOf<ImportParser>(TraktImportParser(), TvTimeImportParser(), GenericCsvImportParser()) }
     factory { PreviewImportUseCase(get(), get()) }
     factory { ApplyImportUseCase(get(), get(), get()) }
-    factory { ImportActions(get(), get()) }
+    factory { ImportActions(get(), get(), get()) }
 }

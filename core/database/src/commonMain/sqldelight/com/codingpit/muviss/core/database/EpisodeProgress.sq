@@ -11,6 +11,8 @@ CREATE TABLE episodeProgress (
 );
 
 CREATE INDEX episodeProgress_mediaId ON episodeProgress(mediaId);
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX episodeProgress_dirty ON episodeProgress(isDirty) WHERE isDirty = 1;
 
 selectForMedia:
 SELECT *

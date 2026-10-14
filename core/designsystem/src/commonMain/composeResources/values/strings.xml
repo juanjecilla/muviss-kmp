@@ -3,4 +3,43 @@
 <resources>
     <string name="action_retry">Retry</string>
     <string name="carousel_see_all">See all ›</string>
+
+    <!-- MetadataError copy (EPIC 31): the same text MetadataError.userMessage carries, translatable. -->
+    <string name="error_rate_limited">Too many requests right now. Try again in a moment.</string>
+    <string name="error_unauthorized">Muviss can't access the movie database. Updating the app may fix this.</string>
+    <string name="error_not_found">We couldn't find that title.</string>
+    <string name="error_offline">You appear to be offline. Check your connection and try again.</string>
+    <string name="error_unknown">Something went wrong. Please try again.</string>
+
+    <!-- A calendar date (DateText.kt). %1$d day, %2$s short month, %3$d year. -->
+    <string name="date_month_1">Jan</string>
+    <string name="date_month_2">Feb</string>
+    <string name="date_month_3">Mar</string>
+    <string name="date_month_4">Apr</string>
+    <string name="date_month_5">May</string>
+    <string name="date_month_6">Jun</string>
+    <string name="date_month_7">Jul</string>
+    <string name="date_month_8">Aug</string>
+    <string name="date_month_9">Sep</string>
+    <string name="date_month_10">Oct</string>
+    <string name="date_month_11">Nov</string>
+    <string name="date_month_12">Dec</string>
+    <string name="date_day_month_year">%1$d %2$s %3$d</string>
+
+    <!-- Snooze settings (SnoozeText.kt), shared by Settings and the triage deck. -->
+    <string name="snooze_period_one_week">1 week</string>
+    <string name="snooze_period_one_month">1 month</string>
+    <string name="snooze_period_three_months">3 months</string>
+    <string name="snooze_period_ask">Ask each time</string>
+    <string name="snooze_placement_mixed_in">Mixed in</string>
+    <string name="snooze_placement_first">First</string>
+    <string name="snooze_placement_last">Last</string>
+
+    <!-- Screen-reader text for the rating row and an episode's tick. -->
+    <!-- %1$s the rating, e.g. "3.5", %2$d the number of stars. -->
+    <string name="a11y_rating_set">Your rating, %1$s of %2$d, adjustable</string>
+    <string name="a11y_rating_unset">Your rating, not set, adjustable</string>
+    <!-- %1$s identifies the episode, e.g. "S1 · E3". -->
+    <string name="a11y_mark_unwatched">Mark %1$s unwatched</string>
+    <string name="a11y_mark_watched">Mark %1$s watched</string>
 </resources>

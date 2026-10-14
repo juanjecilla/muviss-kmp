@@ -3,33 +3,52 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.reconnections
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.todayEpochDay
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
 import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.search.ui.generated.resources.refresh_failed
+import com.codingpit.muviss.feature.search.ui.generated.resources.undo_season_seen
+import com.codingpit.muviss.feature.search.ui.generated.resources.undo_show_seen
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProviders
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
 data class DetailUiState(
     val loading: Boolean = true,
     val details: MediaDetails? = null,
-    val error: String? = null,
+    val error: UiText? = null,
+    /**
+     * Set when [details] is the saved copy and the refresh from TMDB failed —
+     * e.g. offline. The screen keeps showing the saved title with a banner and
+     * Retry, instead of an error page for something already on the device
+     * (EPIC 30, #73).
+     */
+    val staleNotice: UiText? = null,
     val saved: Boolean = false,
     val favorite: Boolean = false,
     /** Per-show new-episode notification opt-out (EPIC 5); only meaningful while [saved] is true. */
@@ -84,7 +103,7 @@ data class DetailUiState(
  */
 data class BulkMarkUndo(
     val episodeIds: List<EpisodeId>,
-    val message: String,
+    val message: UiText,
 )
 
 /**
@@ -94,6 +113,7 @@ data class BulkMarkUndo(
  * feature can offer add/remove, favorite, and episode-tracking controls
  * without depending on how either is implemented.
  */
+@Suppress("LongParameterList") // the seventh is the connectivity signal (#249), defaulted so tests can leave it out
 class DetailViewModel(
     private val mediaId: MediaId,
     private val loadDetail: MediaDetailUseCase,
@@ -101,6 +121,7 @@ class DetailViewModel(
     private val loadWatchProviders: WatchProvidersUseCase,
     private val loadMoreLikeThis: MoreLikeThisUseCase,
     private val clock: AppClock,
+    connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
 ) : ViewModel() {
 
     private val collectionApi: CollectionApi get() = peers.collection
@@ -109,6 +130,9 @@ class DetailViewModel(
 
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state.asStateFlow()
+
+    /** A reconnection came while nothing was failing yet; see the init block. */
+    private var reconnectedBeforeFailure = false
 
     /** "Today" for aired-vs-unaired decisions in the season list. */
     val todayEpochDay: Long get() = clock.todayEpochDay()
@@ -143,18 +167,58 @@ class DetailViewModel(
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
             .launchInReporting(viewModelScope)
+        // Back online with an error page or a stale notice up: fetch again (#249).
+        connectivity.reconnections()
+            .onEach { if (_state.value.error != null || _state.value.staleNotice != null) load() else reconnectedBeforeFailure = true }
+            .launchInReporting(viewModelScope)
+        // A reconnection can land while a request is still in flight and fail
+        // after it: remembered, it buys that failure one retry, no more (#249).
+        _state.map { it.error != null || it.staleNotice != null }
+            .distinctUntilChanged()
+            .filter { showing -> showing && reconnectedBeforeFailure }
+            .onEach {
+                reconnectedBeforeFailure = false
+                load()
+            }
+            .launchInReporting(viewModelScope)
     }
 
+    /**
+     * Offline-first (EPIC 30, #73): a saved title renders from the library
+     * snapshot and the stored episode catalog at once, then the network answer
+     * replaces it. A failed refresh over saved data is a [DetailUiState.staleNotice],
+     * not an error — only a title with nothing on the device shows the error page.
+     */
     fun load() {
         viewModelScope.launchReporting {
-            _state.update { it.copy(loading = true, error = null) }
+            if (_state.value.details == null) {
+                val local = savedCopy()
+                _state.update { it.copy(loading = local == null, details = local, error = null, staleNotice = null) }
+            } else {
+                _state.update { it.copy(error = null, staleNotice = null) }
+            }
             loadDetail(mediaId).fold(
-                onSuccess = { d -> _state.update { it.copy(loading = false, details = d) } },
-                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUserMessage("Something went wrong")) } },
+                onSuccess = { d -> _state.update { it.copy(loading = false, details = d, staleNotice = null) } },
+                onFailure = { e ->
+                    _state.update {
+                        if (it.details != null) {
+                            it.copy(loading = false, staleNotice = e.toUiText(UiText.Resource(Res.string.refresh_failed)))
+                        } else {
+                            it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic)))
+                        }
+                    }
+                },
             )
         }
         loadWhereToWatch()
         loadMoreLikeThisRow()
+    }
+
+    /** The library snapshot plus the stored episode catalog, or null for a title that is not saved. */
+    private suspend fun savedCopy(): MediaDetails? {
+        val saved = runCatching { collectionApi.savedDetails(mediaId) }.getOrNull() ?: return null
+        val seasons = if (mediaId.type == MediaType.TV) runCatching { progressApi.storedSeasons(mediaId) }.getOrNull().orEmpty() else emptyList()
+        return saved.copy(seasons = seasons)
     }
 
     /**
@@ -255,7 +319,7 @@ class DetailViewModel(
     fun markSeasonSeen(season: Season) {
         viewModelScope.launchReporting {
             val written = progressApi.markSeasonAiredSeen(season, clock.todayEpochDay())
-            offerUndo(written, "${season.name} marked seen")
+            offerUndo(written, UiText.Resource(Res.string.undo_season_seen, season.name))
         }
     }
 
@@ -272,7 +336,7 @@ class DetailViewModel(
         val seasons = _state.value.details?.seasons ?: return
         viewModelScope.launchReporting {
             val written = progressApi.markShowAiredSeen(seasons, clock.todayEpochDay())
-            offerUndo(written, "Marked every aired episode seen")
+            offerUndo(written, UiText.Resource(Res.string.undo_show_seen))
         }
     }
 
@@ -315,7 +379,7 @@ class DetailViewModel(
     }
 
     /** A bulk mark that ticked nothing (already caught up) has nothing to undo, so it offers none. */
-    private fun offerUndo(written: List<EpisodeId>, message: String) {
+    private fun offerUndo(written: List<EpisodeId>, message: UiText) {
         if (written.isEmpty()) return
         _state.update { it.copy(pendingUndo = BulkMarkUndo(written, message)) }
     }

@@ -16,7 +16,17 @@ import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
+import com.codingpit.muviss.feature.triage.ui.generated.resources.got_it
+import com.codingpit.muviss.feature.triage.ui.generated.resources.snooze
+import com.codingpit.muviss.feature.triage.ui.generated.resources.tutorial_intro
+import com.codingpit.muviss.feature.triage.ui.generated.resources.tutorial_line
+import com.codingpit.muviss.feature.triage.ui.generated.resources.tutorial_snooze_body
+import com.codingpit.muviss.feature.triage.ui.generated.resources.tutorial_snooze_how
+import com.codingpit.muviss.feature.triage.ui.generated.resources.tutorial_title
+import com.codingpit.muviss.feature.triage.ui.generated.resources.tutorial_watching_tv
 import com.codingpit.muviss.models.MediaType
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * First-run coaching. Four directions are more than anyone guesses, so the
@@ -31,12 +41,12 @@ fun TriageTutorial(scheme: TriageControlScheme, onDismiss: () -> Unit) {
     val fourWay = scheme == TriageControlScheme.FOUR_WAY
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Got it") } },
-        title = { Text("How triage works") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.got_it)) } },
+        title = { Text(stringResource(Res.string.tutorial_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
                 Text(
-                    text = "Swipe the card, tap a button, or use the arrow keys. Z undoes, S snoozes. Tap a card to see its details.",
+                    text = stringResource(Res.string.tutorial_intro),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TriageVerdict.entries.forEach { verdict ->
@@ -47,10 +57,10 @@ fun TriageTutorial(scheme: TriageControlScheme, onDismiss: () -> Unit) {
                         Icon(style.icon, contentDescription = null, tint = style.color)
                         Column(Modifier.padding(start = MuvissSpacing.m)) {
                             Text(
-                                text = "${tutorialLabelFor(verdict, style)} · ${style.hint}",
+                                text = stringResource(Res.string.tutorial_line, tutorialLabelFor(verdict, style), style.hint),
                                 style = MaterialTheme.typography.titleSmall,
                             )
-                            Text(explanationForTutorial(verdict), style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(explanationForTutorial(verdict)), style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -61,17 +71,17 @@ fun TriageTutorial(scheme: TriageControlScheme, onDismiss: () -> Unit) {
                     Icon(MuvissIcons.Snooze, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Column(Modifier.padding(start = MuvissSpacing.m)) {
                         Text(
-                            text = "$SNOOZE_LABEL · Button on the card, long press, or S",
+                            text = stringResource(Res.string.tutorial_line, stringResource(Res.string.snooze), stringResource(Res.string.tutorial_snooze_how)),
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Text(
-                            text = "Not a decision at all — nothing is saved and we ask again later.",
+                            text = stringResource(Res.string.tutorial_snooze_body),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                 }
                 Text(
-                    text = "Watching only applies to TV — a film is never partway through.",
+                    text = stringResource(Res.string.tutorial_watching_tv),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

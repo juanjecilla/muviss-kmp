@@ -6,9 +6,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
@@ -119,5 +123,23 @@ class RatingRowTest {
 
         onNodeWithTag(starTag(4), useUnmergedTree = true).assertExists()
         onNodeWithTag(starTag(5), useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    /** EPIC 31b (#164): "adjustable" has to mean the screen reader can adjust it. */
+    @Test
+    fun a_screen_reader_can_set_the_rating_half_a_star_at_a_time() = runComposeUiTest {
+        var rated: Int? = null
+        var cleared = false
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                RatingRow(rating = 6, onRate = { rated = it }, onClear = { cleared = true }, modifier = Modifier.testTag("row"))
+            }
+        }
+
+        onNodeWithTag("row").performSemanticsAction(SemanticsActions.SetProgress) { it(3.5f) }
+        assertEquals(7, rated)
+
+        onNodeWithTag("row").performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        assertTrue(cleared)
     }
 }

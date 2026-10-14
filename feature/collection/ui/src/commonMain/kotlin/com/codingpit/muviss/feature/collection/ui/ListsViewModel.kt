@@ -5,9 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportFailure
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.domain.ListsUseCases
 import com.codingpit.muviss.feature.collection.domain.MediaList
-import com.codingpit.muviss.models.toUserMessage
+import com.codingpit.muviss.feature.collection.ui.generated.resources.Res
+import com.codingpit.muviss.feature.collection.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_create_failed
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_delete_failed
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_rename_failed
+import com.codingpit.muviss.feature.collection.ui.generated.resources.list_restore_failed
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,13 +26,13 @@ import kotlinx.coroutines.flow.update
 data class ListsUiState(
     val loading: Boolean = true,
     val lists: List<MediaList> = emptyList(),
-    val error: String? = null,
+    val error: UiText? = null,
     /** Non-null while the create-list dialog is open. */
     val creating: Boolean = false,
     /** The list currently being renamed, or null while no rename dialog is open. */
     val editing: MediaList? = null,
     /** Why the open create/rename dialog's last save failed; the dialog stays open until it works (#73). */
-    val dialogError: String? = null,
+    val dialogError: UiText? = null,
     /**
      * The list just deleted, for as long as its Undo snackbar is up. The delete
      * is already on disk — a delete held back until the snackbar went would be
@@ -33,7 +40,7 @@ data class ListsUiState(
      */
     val lastDeleted: DeletedList? = null,
     /** One-shot snackbar text, e.g. a delete or restore that failed; cleared by [ListsViewModel.consumeMessage]. */
-    val message: String? = null,
+    val message: UiText? = null,
 )
 
 /** A deleted list and the stamp its delete wrote, which the restore needs. */
@@ -64,7 +71,7 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
     private fun observe() {
         observation?.cancel()
         observation = listsUseCases.observeLists()
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { lists -> _state.update { it.copy(loading = false, lists = lists, error = null) } }
             .launchInReporting(viewModelScope)
     }
@@ -78,7 +85,7 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
         viewModelScope.launchReporting {
             runCatching { listsUseCases.create(name) }.reportFailure()
                 .onSuccess { _state.update { it.copy(creating = false, dialogError = null) } }
-                .onFailure { e -> _state.update { it.copy(dialogError = e.toUserMessage(CREATE_FAILED)) } }
+                .onFailure { e -> _state.update { it.copy(dialogError = e.toUiText(UiText.Resource(Res.string.list_create_failed))) } }
         }
     }
 
@@ -91,7 +98,7 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
         viewModelScope.launchReporting {
             runCatching { listsUseCases.rename(listId, name) }.reportFailure()
                 .onSuccess { _state.update { it.copy(editing = null, dialogError = null) } }
-                .onFailure { e -> _state.update { it.copy(dialogError = e.toUserMessage(RENAME_FAILED)) } }
+                .onFailure { e -> _state.update { it.copy(dialogError = e.toUiText(UiText.Resource(Res.string.list_rename_failed))) } }
         }
     }
 
@@ -100,7 +107,7 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
         viewModelScope.launchReporting {
             runCatching { listsUseCases.delete(list.id) }.reportFailure()
                 .onSuccess { stamp -> _state.update { it.copy(lastDeleted = DeletedList(list, stamp)) } }
-                .onFailure { e -> _state.update { it.copy(message = e.toUserMessage(DELETE_FAILED)) } }
+                .onFailure { e -> _state.update { it.copy(message = e.toUiText(UiText.Resource(Res.string.list_delete_failed))) } }
         }
     }
 
@@ -109,7 +116,7 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
         _state.update { if (it.lastDeleted == deleted) it.copy(lastDeleted = null) else it }
         viewModelScope.launchReporting {
             runCatching { listsUseCases.restore(deleted.list.id, deleted.deletedAtEpochMs) }.reportFailure()
-                .onFailure { e -> _state.update { it.copy(message = e.toUserMessage(RESTORE_FAILED)) } }
+                .onFailure { e -> _state.update { it.copy(message = e.toUiText(UiText.Resource(Res.string.list_restore_failed))) } }
         }
     }
 
@@ -117,12 +124,4 @@ class ListsViewModel(private val listsUseCases: ListsUseCases) : ViewModel() {
     fun deleteUndoDismissed(deleted: DeletedList) = _state.update { if (it.lastDeleted == deleted) it.copy(lastDeleted = null) else it }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
-
-    private companion object {
-        const val DEFAULT_ERROR = "Something went wrong"
-        const val CREATE_FAILED = "Couldn't create the list."
-        const val RENAME_FAILED = "Couldn't rename the list."
-        const val DELETE_FAILED = "Couldn't delete the list."
-        const val RESTORE_FAILED = "Couldn't bring the list back."
-    }
 }

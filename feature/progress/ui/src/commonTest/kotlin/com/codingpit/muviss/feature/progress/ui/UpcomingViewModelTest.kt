@@ -2,7 +2,9 @@
 
 package com.codingpit.muviss.feature.progress.ui
 
-import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -57,10 +59,6 @@ internal class FakeUpcomingCatalogSource(private val bySeasons: Map<MediaId, Lis
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = failure?.let { Result.failure(it) } ?: Result.success(bySeasons[mediaId].orEmpty())
 }
 
-internal class FakeUpcomingClock(private val millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-}
-
 class UpcomingViewModelTest {
 
     @BeforeTest
@@ -89,7 +87,7 @@ class UpcomingViewModelTest {
     ) = UpcomingViewModel(
         collectionApi,
         EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore()),
-        FakeUpcomingClock(today),
+        FakeClock(today),
     )
 
     @Test
@@ -100,7 +98,7 @@ class UpcomingViewModelTest {
         )
         advanceUntilIdle()
 
-        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.RateLimited().userMessage, vm.state.value.error.text())
     }
 
     @Test
@@ -109,7 +107,7 @@ class UpcomingViewModelTest {
         val vm = viewModel(FakeUpcomingCollectionApi(emptyList(), failure = leaky), FakeUpcomingCatalogSource(emptyMap()))
         advanceUntilIdle()
 
-        assertEquals("Something went wrong", vm.state.value.error)
+        assertEquals("Something went wrong", vm.state.value.error.text())
     }
 
     @Test
@@ -120,7 +118,7 @@ class UpcomingViewModelTest {
 
         val buckets = vm.state.value.groups.map { it.bucket }
         assertEquals(listOf(UpcomingBucket.TODAY, UpcomingBucket.LATER), buckets)
-        assertEquals("Today", vm.state.value.groups.first { it.bucket == UpcomingBucket.TODAY }.rows.single().dateLabel)
+        assertEquals(com.codingpit.muviss.feature.progress.domain.UpcomingDate.Today, vm.state.value.groups.first { it.bucket == UpcomingBucket.TODAY }.rows.single().date)
     }
 
     @Test
@@ -172,7 +170,7 @@ class UpcomingViewModelTest {
         val vmWithUpdatedSource = UpcomingViewModel(
             FakeUpcomingCollectionApi(listOf(summary(tvShow))),
             EpisodeCatalogCache(FetchEpisodeCatalogUseCase(updatedSource), InMemoryEpisodeCatalogStore()),
-            FakeUpcomingClock(today),
+            FakeClock(today),
         )
         vmWithUpdatedSource.refresh()
         advanceUntilIdle()
@@ -191,9 +189,9 @@ class UpcomingViewModelTest {
         advanceUntilIdle()
 
         assertEquals(false, vm.state.value.refreshing)
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.message)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.message.text())
         vm.consumeMessage()
-        assertEquals(null, vm.state.value.message)
+        assertEquals(null, vm.state.value.message.text())
     }
 
     @Test
@@ -201,12 +199,15 @@ class UpcomingViewModelTest {
         val api = FakeUpcomingCollectionApi(listOf(summary(tvShow)), failure = MetadataError.Offline())
         val vm = viewModel(api, FakeUpcomingCatalogSource(mapOf(tvShow to emptyList())))
         advanceUntilIdle()
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error.text())
 
         api.failure = null
         vm.retry()
         advanceUntilIdle()
 
-        assertEquals(null, vm.state.value.error)
+        assertEquals(null, vm.state.value.error.text())
     }
 }
+
+/** What the user would read, in the test JVM's pinned en-US. */
+private suspend fun UiText?.text(): String? = this?.resolveAsync()

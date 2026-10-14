@@ -5,10 +5,12 @@ package com.codingpit.muviss.feature.profile.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -187,6 +189,15 @@ class GenreDonutChartTest {
         onNodeWithText("genre tags").assertIsDisplayed()
         onNodeWithTag(genreLegendTag("Drama")).assertIsNotSelected()
         onNodeWithTag(genreLegendTag("Horror")).assertIsNotSelected()
+    }
+
+    /** EPIC 31b (#164): the ring used to clear its semantics and announce nothing. */
+    @Test
+    fun the_ring_says_what_it_shows() = runComposeUiTest {
+        setContent { DonutUnderTest() }
+        waitForIdle()
+
+        onNodeWithTag(GENRE_DONUT_TAG).assert(hasContentDescription("Genres: Drama 13%", substring = true))
     }
 }
 

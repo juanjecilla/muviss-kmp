@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.licensee)
     alias(libs.plugins.sentry)
     alias(libs.plugins.baselineprofile)
+    id("muviss.version")
 }
 
 kotlin {
@@ -118,32 +119,10 @@ val hasReleaseSigningConfig =
         rootProject.file(releaseStoreFile).exists()
 
 // -----------------------------------------------------------------------
-// Versioning derived from git, so nobody has to remember to bump a constant
-// by hand. versionCode = total commit count on HEAD: it only ever goes up,
-// which is all Play Store requires, and works even before the first tag
-// exists (the repo currently has none). versionName mirrors the latest
-// tag when one is reachable, otherwise falls back to a readable dev label.
+// Versioning derived from git (MuvissVersion in build-logic, shared with
+// :core:common and :app:desktopApp): versionCode is the commit count on HEAD,
+// versionName the latest reachable tag or a dev label.
 // -----------------------------------------------------------------------
-// Uses ProviderFactory.exec (not java.lang.ProcessBuilder) because running an
-// external process directly at configuration time is incompatible with the
-// configuration cache this project enables (see gradle.properties); exec()
-// is the supported, cacheable equivalent.
-fun gitOutput(vararg args: String): String? = try {
-    val result =
-        providers.exec {
-            commandLine(*args)
-            workingDir = rootDir
-            isIgnoreExitValue = true
-        }
-    if (result.result.get().exitValue != 0) {
-        null
-    } else {
-        result.standardOutput.asText.get().trim().ifEmpty { null }
-    }
-} catch (_: Exception) {
-    null // git not installed / not a git checkout (e.g. a source-only archive)
-}
-
 // A release build without git would ship versionCode 1, which Play rejects as a
 // downgrade after the first upload (#77) — fail instead. Debug and test builds
 // keep the fallback so a source-only archive still compiles.
@@ -154,36 +133,19 @@ val isReleaseInvocation =
 
 // A shallow clone counts only the commits it fetched (often 1), which is the
 // same downgrade with extra steps.
-val isShallowCheckout = gitOutput("git", "rev-parse", "--is-shallow-repository") == "true"
-
-if (isReleaseInvocation && isShallowCheckout) {
+if (isReleaseInvocation && muvissVersion.isShallowCheckout) {
     error("versionCode comes from `git rev-list --count HEAD`, which is wrong in a shallow clone. Use fetch-depth: 0.")
 }
 
 val gitVersionCode: Int =
-    gitOutput("git", "rev-list", "--count", "HEAD")?.toIntOrNull()
+    muvissVersion.codeOrNull
         ?: if (isReleaseInvocation) {
             error("versionCode comes from `git rev-list --count HEAD`, and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
         } else {
             1
         }
 
-val gitVersionName: String = run {
-    val describe = gitOutput("git", "describe", "--tags", "--always", "--dirty")
-    // `-rcN` is dropped on purpose: production gets the RC binary itself
-    // (ADR 0025), so an RC has to carry the final versionName already.
-    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-rc\d+)?(-\d+-g[0-9a-f]+)?(-dirty)?$""")
-    val tagVersion = describe?.let { tagPattern.matchEntire(it)?.groupValues?.get(1) }
-    when {
-        tagVersion != null -> tagVersion
-
-        // reachable, but no tags yet
-        describe != null -> "0.1.0-dev.$gitVersionCode+$describe"
-
-        // git unavailable
-        else -> "0.1.0-dev.$gitVersionCode"
-    }
-}
+val gitVersionName: String = muvissVersion.name
 
 // -----------------------------------------------------------------------
 // Compose Resources must reach the package (#165). They ride on Android
@@ -252,6 +214,45 @@ registerComposeResourcesCheck(
     extension = "aab",
     entryPrefix = "base/assets/composeResources/",
 )
+
+// R8 must not merge the app's exceptions into other classes (#199): a merged
+// exception reaches Sentry under the survivor's name. proguard-rules.pro keeps
+// every `com.codingpit.muviss.**` Throwable; this canary reads the mapping and
+// fails if any of a known set no longer has a class of its own. The list is
+// the exceptions every Android build ships, not all of them.
+// -----------------------------------------------------------------------
+val exceptionCanaries = listOf(
+    "com.codingpit.muviss.models.MetadataError\$NotFound",
+    "com.codingpit.muviss.models.MetadataError\$Offline",
+    "com.codingpit.muviss.models.MetadataError\$RateLimited",
+    "com.codingpit.muviss.models.MetadataError\$Unauthorized",
+    "com.codingpit.muviss.models.MetadataError\$Unknown",
+    "com.codingpit.muviss.feature.settings.domain.ImportFileException",
+    "com.codingpit.muviss.feature.settings.ui.MuvissTestCrash",
+)
+
+tasks.register("verifyReleaseExceptionClasses") {
+    group = "verification"
+    description = "Fails if R8 merged one of the app's exceptions into another class (#199)."
+    dependsOn("minifyReleaseWithR8")
+    // AGP 9.1+ rewrites mapping.txt after R8, merging the Compose mapping into it
+    // (`mergeReleaseComposeMapping`). Reading it without that dependency is an
+    // undeclared overlap Gradle refuses, and it failed the 1.1.0 RC build.
+    dependsOn(tasks.matching { it.name == "mergeReleaseComposeMapping" })
+    val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
+    // A local copy: the action must not capture the build script (configuration cache).
+    val canaries = exceptionCanaries
+    inputs.file(mapping)
+    inputs.property("canaries", canaries)
+    doLast {
+        val classes = mapping.get().asFile.useLines { lines ->
+            lines.filter { !it.startsWith(" ") && it.contains(" -> ") }.map { it.substringBefore(" -> ") }.toSet()
+        }
+        val merged = canaries.filterNot { it in classes }
+        check(merged.isEmpty()) { "R8 merged these exceptions away; Sentry would name them after another class: ${merged.joinToString()}" }
+        logger.lifecycle("R8 kept all ${canaries.size} exception canaries as classes of their own")
+    }
+}
 
 // -----------------------------------------------------------------------
 // Sentry Gradle plugin (EPIC 26). Release builds are minified, so without the R8
@@ -350,5 +351,26 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    // Android Lint (EPIC 31b #164, EPIC 25 #67). Runs over the app and every
+    // module it depends on. Accessibility findings are errors and never go
+    // into the baseline; lint-baseline.xml holds only what existed when lint
+    // was switched on, so anything new fails the build.
+    lint {
+        checkDependencies = true
+        abortOnError = true
+        warningsAsErrors = false
+        baseline = file("lint-baseline.xml")
+        error +=
+            setOf(
+                "ClickableViewAccessibility",
+                "ContentDescription",
+                "GetContentDescriptionOverride",
+                "KeyboardInaccessibleWidget",
+                "LabelFor",
+            )
+        htmlReport = true
+        sarifReport = true
     }
 }

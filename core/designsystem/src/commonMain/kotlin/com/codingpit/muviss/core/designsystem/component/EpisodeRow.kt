@@ -34,7 +34,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.generated.resources.Res
+import com.codingpit.muviss.core.designsystem.generated.resources.a11y_mark_unwatched
+import com.codingpit.muviss.core.designsystem.generated.resources.a11y_mark_watched
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Episode list row: 16:9 still thumb, title + "S2 · E1" subtitle, trailing
@@ -138,10 +142,11 @@ private fun SeenToggle(
             )
         }
     }
+    val description = stringResource(if (seen) Res.string.a11y_mark_unwatched else Res.string.a11y_mark_watched, label)
     IconButton(
         onClick = onToggle,
         modifier = modifier.semantics {
-            contentDescription = if (seen) "Mark $label unwatched" else "Mark $label watched"
+            contentDescription = description
         },
     ) {
         if (seen) {

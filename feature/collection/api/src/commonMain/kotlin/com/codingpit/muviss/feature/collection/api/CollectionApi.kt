@@ -25,6 +25,14 @@ interface CollectionApi {
     /** Saves [details] to the library, or refreshes its snapshot if already saved. */
     suspend fun add(details: MediaDetails)
 
+    /**
+     * The saved library snapshot of [mediaId] as [MediaDetails], or null when it
+     * is not in the library. Offline-first Detail (EPIC 30, #73) renders this
+     * before the network answers. It carries no overview and no seasons: the
+     * snapshot does not store them (seasons come from `ProgressApi.storedSeasons`).
+     */
+    suspend fun savedDetails(mediaId: MediaId): MediaDetails? = null
+
     /** Soft-deletes the entry; a no-op if it was never saved. */
     suspend fun remove(mediaId: MediaId)
 

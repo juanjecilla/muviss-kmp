@@ -12,5 +12,6 @@ import com.codingpit.muviss.models.MediaType
  * interface exists so [PreviewImportUseCase] stays free of `:core:network`.
  */
 interface ExternalIdResolver {
+    /** Null when the title cannot be placed; throws when the lookup itself failed. */
     suspend fun resolve(ref: ExternalTitleRef, type: MediaType?): MediaId?
 }

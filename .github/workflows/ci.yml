@@ -105,7 +105,11 @@ jobs:
     # rather than fails burns all of it.
     timeout-minutes: 45
     steps:
+      # Full history: the release build below takes its versionCode from
+      # `git rev-list --count HEAD` and refuses a shallow clone.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -144,15 +148,39 @@ jobs:
       # sets a bundled font on every text style, so a screenshot matches a
       # developer's machine bar antialiasing, which the tolerance absorbs.
       #
-      # :server:test is named separately — the server is a plain JVM module and
-      # has no jvmTest task to match.
+      # :app:androidApp's testDebugUnitTest is named separately: an Android
+      # application module has no jvmTest task to match, and its tests
+      # (widget mapper, notification worker) ran nowhere (#67).
       - name: Unit tests (JVM)
         run: >
           ./gradlew
           jvmTest
-          :server:test
+          :app:androidApp:testDebugUnitTest
           --continue
           --stacktrace
+
+      # Coverage of the run above (EPIC 38, #71). Kover instruments the test
+      # tasks it already ran, so this only merges and renders. Reported, not
+      # gated: no threshold until someone has decided what the number means.
+      - name: Coverage report (Kover)
+        run: |
+          ./gradlew :koverXmlReport :koverHtmlReport --stacktrace
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          root = ET.parse("build/reports/kover/report.xml").getroot()
+          print("### Coverage (JVM tests, all modules)\n")
+          print("| | covered | total | % |\n|---|---:|---:|---:|")
+          for c in root.findall("counter"):
+              covered, missed = int(c.get("covered")), int(c.get("missed"))
+              total = covered + missed
+              print(f"| {c.get('type').lower()} | {covered} | {total} | {100 * covered / total:.1f} |")
+          EOF
+
+      - name: Upload the coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: build/reports/kover/
 
       # Golden-image failures are only readable as pictures: the harness writes
       # the actual capture and a magenta-marked diff next to each other, and
@@ -176,8 +204,38 @@ jobs:
       - name: Assemble Android debug APK
         run: ./gradlew :app:androidApp:assembleDebug :app:androidApp:verifyDebugApkComposeResources --stacktrace
 
+      # Lint covers the app and, through checkDependencies, every module it
+      # ships that has an Android target (muviss.kmp.library applies
+      # com.android.lint). JVM-only test helpers such as :core:testing are not
+      # linted. Accessibility issues are errors; the
+      # baseline holds only what predates lint being switched on (#164).
+      - name: Android Lint
+        run: ./gradlew :app:androidApp:lintDebug --stacktrace
+
+      - name: Upload the lint report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          if-no-files-found: ignore
+          path: app/androidApp/build/reports/lint-results-debug.*
+
       - name: Compile web targets (JS + Wasm)
         run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
+
+      # kotlin-js-store/ pins every npm package the JS and Wasm builds resolve.
+      # Kotlin's own store task does not fail on a stale lock — it rewrites the
+      # file with whatever yarn just resolved — so the check is ours: resolve,
+      # store, and fail if that changed anything the PR did not commit (#67).
+      - name: npm lockfiles are committed and current
+        run: |
+          ./gradlew kotlinNpmInstall kotlinStoreYarnLock kotlinWasmNpmInstall kotlinWasmStoreYarnLock --stacktrace
+          if [ -n "$(git status --porcelain -- kotlin-js-store/)" ]; then
+            git status --short -- kotlin-js-store/
+            git diff -- kotlin-js-store/ | head -100
+            echo "::error::kotlin-js-store/ is stale. Run ./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock and commit the result."
+            exit 1
+          fi
 
       # The per-target compiles above never touch the *intermediate* source
       # sets' own compilations (`webMain`, `appleMain`, `iosMain`,
@@ -189,6 +247,22 @@ jobs:
       # klibs come from the JVM compiler), so it runs here like anywhere else.
       - name: Compile shared source sets (metadata klibs)
         run: ./gradlew allMetadataJar --stacktrace
+
+      # R8 used to run only when a release was cut, so a missing keep rule
+      # surfaced as a crash in an RC (#199). This shrinks the release build on
+      # every PR (debug-signed without the keystore, which is fine here) and
+      # fails if R8 wrote no mapping or reported missing classes. The licence
+      # allow-list (licensee) is part of `check`, which nothing ran either.
+      - name: Release build with R8, and the licence allow-list
+        run: ./gradlew :app:androidApp:assembleRelease :app:androidApp:licenseeAndroidRelease --stacktrace
+
+      - name: R8 left a mapping and no missing rules
+        run: |
+          test -s app/androidApp/build/outputs/mapping/release/mapping.txt
+          if [ -e app/androidApp/build/outputs/mapping/release/missing_rules.txt ]; then
+            cat app/androidApp/build/outputs/mapping/release/missing_rules.txt
+            exit 1
+          fi
 
 
   # JS and Wasm tests live in their own job for the same reason desktop does
@@ -330,6 +404,11 @@ jobs:
       - name: Compile desktop app
         run: ./gradlew :app:desktopApp:compileKotlin --stacktrace
 
+      # A plain kotlinJvm module: no jvmTest, so the build job's sweep misses
+      # it. Its tests include the OAuth loopback server (#67).
+      - name: Desktop unit tests
+        run: ./gradlew :app:desktopApp:test --stacktrace
+
       # Two tasks, because on Linux they produce different things and only one
       # of them is the artifact users install. `packageDistributionForCurrentOS`
       # gives the .deb; `runDistributable` builds the jlink *app image* and
@@ -435,14 +514,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
-    # The only job in this file where the timeout is a spending control rather
-    # than a tidiness one. macOS bills at 10x, so the default 360-minute ceiling
-    # is 3,600 billed minutes from a single hung run — more than an entire
-    # month's free-tier allowance, gone in one afternoon. A successful run here
-    # is ~11 minutes end to end.
-    timeout-minutes: 45
+    # Written when the repo was private and macOS billed at 10x, so the
+    # default 360-minute ceiling was a month's allowance in one hung run. The
+    # repo is public now and standard runners are free, so the ceiling is back
+    # to being about a hang holding the PR. Raised from 45 when the
+    # Kotlin/Native tests and the release link joined the job (#67, #50).
+    timeout-minutes: 75
     steps:
+      # Full history, like `build`: the release framework link below is a
+      # "Release" invocation, and :app:androidApp's guard (which is configured
+      # in the same build) refuses a shallow clone for one, since versionCode
+      # is `git rev-list --count HEAD`. An iOS release needs it too — its
+      # CFBundleVersion is the same commit count.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -481,6 +567,46 @@ jobs:
 
       - name: Link Kotlin/Native framework (iOS simulator)
         run: ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
+      # Every module's tests on Kotlin/Native (#67). The JVM runs commonTest
+      # everywhere else; this is what catches what only K/N rejects — a comma
+      # in a backticked test name, a JVM-only API in commonMain — which used to
+      # surface only in a local `./gradlew build`. Its first local run also
+      # found 43 tests that passed on CI's English runner and failed on a
+      # Spanish Mac, now pinned in muviss.kmp.compose.
+      #
+      # The heap: the K/N compiler runs inside the Gradle daemon and OOMs at
+      # the 4 GiB gradle.properties sets for ~16 GB Linux runners (#49). This
+      # runner has 7 GB, so 5 GiB with two workers, raised here rather than
+      # in gradle.properties.
+      - name: Kotlin/Native tests (iOS simulator)
+        run: >
+          ./gradlew iosSimulatorArm64Test
+          -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+          --max-workers=2
+          --continue
+          --stacktrace
+
+      - name: Upload Kotlin/Native test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-reports
+          if-no-files-found: ignore
+          path: |
+            **/build/reports/tests/iosSimulatorArm64Test/**
+            **/build/test-results/iosSimulatorArm64Test/**
+
+      # The configuration TestFlight and the App Store use, which nothing
+      # linked before (#50). It runs optimisation passes the debug link never
+      # reaches — devirtualisation is where it OOMed in #50 — so a release-only
+      # failure would otherwise first appear while shipping.
+      - name: Link the release framework (iOS simulator)
+        run: >
+          ./gradlew :app:shared:linkReleaseFrameworkIosSimulatorArm64
+          -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+          --max-workers=2
+          --stacktrace
 
       - name: Build the Xcode project
         run: >

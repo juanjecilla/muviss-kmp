@@ -2,13 +2,11 @@
 
 package com.codingpit.muviss.feature.progress.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CoroutineDispatcher
@@ -25,13 +23,6 @@ private class PlayDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val io = d
 }
 
-private class MovableClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun advanceTo(newMillis: Long) {
-        millis = newMillis
-    }
-}
-
 /**
  * Rewatch history (ADR 0011). The invariant under test throughout is that
  * `episodeProgress.seen` and `episodePlay` never disagree: `seen` stays the
@@ -41,7 +32,7 @@ private class MovableClock(private var millis: Long) : AppClock {
 class ProgressPlayHistoryTest {
 
     private lateinit var repository: SqlDelightProgressRepository
-    private lateinit var clock: MovableClock
+    private lateinit var clock: FakeClock
 
     private val show = MediaId.tmdbTv("1399")
     private val ep1 = EpisodeId(show, 1, 1)
@@ -50,10 +41,8 @@ class ProgressPlayHistoryTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
-        clock = MovableClock(1_000L)
+        val database = inMemoryDatabase()
+        clock = FakeClock(1_000L)
         repository = SqlDelightProgressRepository(
             database.episodeProgressQueries,
             database.episodePlayQueries,

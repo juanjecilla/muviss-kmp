@@ -4,8 +4,12 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.reconnections
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
@@ -13,12 +17,13 @@ import com.codingpit.muviss.feature.search.domain.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
+import com.codingpit.muviss.feature.search.ui.generated.resources.Res
+import com.codingpit.muviss.feature.search.ui.generated.resources.error_generic
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -26,8 +31,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
@@ -48,7 +56,7 @@ data class SearchUiState(
     val mode: SearchMode = SearchMode.DISCOVER,
     val loading: Boolean = false,
     val loadingMore: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     // SEARCH_RESULTS
     val results: List<MediaSummary> = emptyList(),
     val resultsPage: Int = 1,
@@ -78,6 +86,7 @@ data class SearchUiState(
  * drill-down when a chip is tapped. Progress is not touched here — this
  * feature is read-only discovery.
  */
+@Suppress("LongParameterList") // the seventh is the connectivity signal (#249), defaulted so tests can leave it out
 class SearchViewModel(
     private val searchMedia: SearchMediaUseCase,
     private val discoverMedia: DiscoverMediaUseCase,
@@ -85,12 +94,16 @@ class SearchViewModel(
     private val recommendationsUseCase: RecommendationsUseCase,
     private val collectionApi: CollectionApi,
     private val triageApi: TriageApi,
+    connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+
+    /** A reconnection came while nothing was failing yet; see the init block. */
+    private var reconnectedBeforeFailure = false
 
     init {
         loadDiscover()
@@ -110,6 +123,21 @@ class SearchViewModel(
         ) { library, decided, snoozed -> library to (decided + snoozed) }
             .flatMapLatest { (library, decided) -> forYouFlow(library, decided) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
+            .launchInReporting(viewModelScope)
+        // A failure shown while offline retries itself when the connection
+        // comes back, rather than waiting for a tap on Retry (#249).
+        connectivity.reconnections()
+            .onEach { if (_state.value.error != null) retry() else reconnectedBeforeFailure = true }
+            .launchInReporting(viewModelScope)
+        // A reconnection can land while a request is still in flight and fail
+        // after it: remembered, it buys that failure one retry, no more (#249).
+        _state.map { it.error != null }
+            .distinctUntilChanged()
+            .filter { showing -> showing && reconnectedBeforeFailure }
+            .onEach {
+                reconnectedBeforeFailure = false
+                retry()
+            }
             .launchInReporting(viewModelScope)
     }
 
@@ -145,7 +173,7 @@ class SearchViewModel(
                         it.copy(loading = false, genreResults = page.items, genrePage = page.page, genreTotalPages = page.totalPages)
                     }
                 },
-                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )
         }
     }
@@ -227,7 +255,7 @@ class SearchViewModel(
                         )
                     }
                 },
-                onFailure = { e -> _state.update { it.copy(loadingMore = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
+                onFailure = { e -> _state.update { it.copy(loadingMore = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )
         }
     }
@@ -252,12 +280,12 @@ class SearchViewModel(
                     )
                 }
             },
-            onFailure = { e -> _state.update { it.copy(loading = false, loadingMore = false, error = e.toUserMessage(DEFAULT_ERROR)) } },
+            onFailure = { e -> _state.update { it.copy(loading = false, loadingMore = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
         )
     }
 
     private fun fail(e: Throwable) {
-        _state.update { it.copy(loading = false, error = e.toUserMessage(DEFAULT_ERROR)) }
+        _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) }
     }
 
     /**
@@ -281,6 +309,5 @@ class SearchViewModel(
 
     private companion object {
         const val DEBOUNCE_MS = 300L
-        const val DEFAULT_ERROR = "Something went wrong"
     }
 }

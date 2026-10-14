@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.triage.ui
 
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.models.Genre
@@ -94,7 +95,7 @@ class TriageViewModelTest {
 
         val failed = assertNotNull(vm.state.value.failedCommit)
         assertEquals(filmA.id, failed.summary.id)
-        assertEquals(MetadataError.Offline().userMessage, failed.message)
+        assertEquals(MetadataError.Offline().userMessage, failed.message.resolveAsync())
         assertFalse(harness.repository.decisions.value.getValue(filmA.id).resolved)
     }
 
@@ -399,7 +400,7 @@ class TriageViewModelTest {
         advanceUntilIdle()
 
         // The raw text is discarded; a screen only ever gets fixed copy.
-        assertEquals("Couldn't load more titles.", vm.state.value.error)
+        assertEquals("Couldn't load more titles.", vm.state.value.error?.resolveAsync())
 
         harness.source.failure = null
         vm.retry()

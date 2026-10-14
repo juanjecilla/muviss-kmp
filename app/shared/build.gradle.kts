@@ -132,6 +132,9 @@ kotlin {
             implementation(projects.core.testing)
             implementation(projects.feature.collection.api)
             implementation(projects.feature.progress.api)
+            // StoreShot sets the theme through the repository (see StoreShotTest).
+            implementation(projects.feature.settings.domain)
+            implementation(projects.feature.profile.domain)
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
             implementation(libs.ktor.clientCore)
@@ -141,4 +144,14 @@ kotlin {
             implementation(libs.kotlinx.serializationJson)
         }
     }
+}
+
+// StoreShot (EPIC 33, #76): `-Pstoreshot` renders the Play and landing
+// screenshots into the repository instead of skipping (see StoreShotTest).
+val storeShot: Boolean = providers.gradleProperty("storeshot").isPresent
+val repoRootPath: String = rootDir.absolutePath
+tasks.withType<Test>().configureEach {
+    systemProperty("muviss.storeshot", storeShot.toString())
+    systemProperty("muviss.repo.root", repoRootPath)
+    if (storeShot) outputs.upToDateWhen { false }
 }

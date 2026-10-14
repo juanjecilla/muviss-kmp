@@ -3,7 +3,7 @@
 // listing goes live, nothing else on the page changes (#170).
 export const links = {
   github: "https://github.com/juanjecilla/muviss-kmp",
-  playStore: null as string | null,
+  playStore: "https://play.google.com/store/apps/details?id=com.codingpit.muviss" as string | null,
   appStore: null as string | null,
   // Signed DMG / MSI / DEB are attached to GitHub Releases by release.yml.
   desktop: null as string | null,

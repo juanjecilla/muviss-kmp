@@ -51,14 +51,6 @@ fun epochDayOfCivil(year: Int, month: Int, day: Int): Long {
     return era * DAYS_PER_ERA + dayOfEra - DAYS_FROM_ERA_ZERO_TO_UNIX_EPOCH
 }
 
-/** A date as `12 Mar 2024` — short, unambiguous, and not locale-dependent. */
-fun formatEpochDay(epochDay: Long): String {
-    val date = civilDateOf(epochDay)
-    return "${date.day} ${MONTH_NAMES[date.month - 1]} ${date.year}"
-}
-
-private val MONTH_NAMES = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
 private const val DAYS_PER_ERA = 146_097L
 private const val DAYS_PER_ERA_YEARS = 400L
 private const val MONTH_TO_DAYS_NUMERATOR = 153L

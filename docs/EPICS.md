@@ -261,7 +261,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 
 **Git flow, a weekly release train, and production gets the tested RC (2026-10-07, ADR 0025).** Supersedes ADR 0024's "one tag triggers everything" mechanism. `develop` is the default branch; `main` takes only `release/*` and `hotfix/*` merges. Every push to a release branch is an RC (`vX.Y.Z-rcN` → Play internal + GitHub pre-release); merging it into `main` tags `vX.Y.Z`, promotes **that RC** to production at 20% behind the `production` environment, and a daily job ramps it 50% (day 2) → 100% (day 4) unless halted. A nightly cron on `RELEASE_TRAIN_DAY` (Monday) cuts the next release from `develop` when there is anything new, versioned from conventional commits. Rulesets need one approval — CodeRabbit's — with admin bypass. Owner setup is `scripts/release/owner-setup.sh` (#66). **Every free feature reaches the landing in the PR that ships it** (`landing-guard`, `AGENTS.md`).
 
-**Order of work from 2026-10-07** (one PR at a time, each green before the next; sync, co-watch, web and iOS store work wait): git flow + train (this) → Play-readiness (material3/lifecycle stable, baseline profile, R8 keep rule and dark window theme pulled from EPIC 30) → `release/1.0.0` RC to **internal only**, then deleted → error bugs #183 #159 #177 #165 → EPIC 30 (#73) → EPIC 31 (#74) → StoreShot screenshots for Play and the landing (#76, #168) → re-cut `release/1.0.0` → **production** → EPIC 29 (#72), EPIC 28 (#70, `14.sqm`), EPIC 31b (#164) on the weekly trains.
+**Order of work from 2026-10-07** (one PR at a time, each green before the next; sync, co-watch, web and iOS store work wait): git flow + train (this) → Play-readiness (material3/lifecycle stable, baseline profile, R8 keep rule and dark window theme pulled from EPIC 30) → `release/1.0.0` RC to **internal only**, then deleted → error bugs #183 #159 #177 #165 → EPIC 30 (#73) → EPIC 31 (#74) → StoreShot screenshots for Play and the landing (#76, #168) → re-cut `release/1.0.0` → **production** → EPIC 29 (#72), EPIC 28 (#70, `15.sqm`), EPIC 31b (#164) on the weekly trains. `14.sqm` (schema v15) went to EPIC 30's Discover intro; `15.sqm` (schema v16) to EPIC 28's indexes.
 
 **Schema numbers, as they actually landed** (`AGENTS.md`). The claims made here on 2026-09-19 were overtaken by the order things merged, so this records the outcome rather than the plan: **`9.sqm` (schema v10) is EPIC 39's** — it merged first (#95) and carries `syncCursor`, `syncState` and EPIC 40's `appSettings.syncAutomatically` switch column; `10.sqm` (schema v11) is EPIC 26's (#103); `11.sqm` (schema v12) is EPIC 28's. **EPIC 40 needs no migration of its own** — its column came with EPIC 39's. ADR **0019** is EPIC 32's, **0020** is EPIC 39's, **0021** is EPIC 40's, **0022** is EPIC 41's. EPIC 41 takes **`11.sqm` (schema v12)** — one column on `collectionEntry` plus the co-watch tables. **It collides with EPIC 28 (#70), which claimed `11.sqm` first and has not merged**; the chain must stay contiguous, so whichever of the two merges second renumbers to `12.sqm` and regenerates its fixture. This is the collision the paragraph below describes, caught by rebasing rather than by a tool. **Outcome: EPIC 41 merged first (#134) and kept `11.sqm` (schema v12); EPIC 42 then took `12.sqm` (schema v13); #122's watch-provider cache took `13.sqm` (schema v14), so EPIC 28 takes `14.sqm`.** ADR **0023** is EPIC 42's, **0024** is the local-only fastlane release, **0025** is git flow and the release train.
 
@@ -270,16 +270,16 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | Wave | Epic | Issue |
 |---|---|---|
 | 0 | Manual actions only the owner can take (billing, accounts, certs, artwork) | #66 |
-| 10 | EPIC 25 CI that gates again | #67 |
+| 10 | EPIC 25 CI that gates again — 2026-10-08: Android Lint on every module (#245), app/desktop unit tests and R8 + licensee on every PR (#248); left: iOS tests and release framework (#49, #50), lockfiles, signed-AAB check | #67 |
 | 10 | EPIC 26 Crash reporting that reports | #68 |
 | 10 | EPIC 27 Network hardening — **merged 2026-09-20** (#96); follow-ups #89-#94 | #69 |
-| 10 | EPIC 28 Data-layer performance | #70 |
+| 10 | EPIC 28 Data-layer performance — **merged 2026-10-07** (#228 one-query Library, #229 indexes `15.sqm`, #232 lazy Detail) | #70 |
 | 10 | EPIC 38 Repo hygiene and shared test infrastructure | #71 |
-| 11 | EPIC 29 A backup you can restore | #72 |
-| 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes | #73 |
-| 11 | EPIC 31 Localization (Spanish + app-language selector) | #74 |
-| 11 | EPIC 31b Accessibility | #164 |
-| 11 | EPIC 32 Sync goes live, paid via RevenueCat (start in wave 10; needs ADR 0019) | #75 |
+| 11 | EPIC 29 A backup you can restore — **merged 2026-10-07** (#224, #225, #226, #227, #230); iOS device check #240 | #72 |
+| 11 | EPIC 30 Error, empty, offline and first-run UX; Android host fixes — **merged 2026-10-07** (#202, #203, #208, #209, #212, #213) | #73 |
+| 11 | EPIC 31 Localization (Spanish + app-language selector) — **merged 2026-10-07** (#214-#223, #239); #219 merged 2026-10-08 (#243), iOS widget in #253; left: #217 (sync copy, before sync launches) and #222's desktop loopback messages | #74 |
+| 11 | EPIC 31b Accessibility — in progress (#233, #238); Lint with a11y as errors and the search-field / settings-switch labels in #245; left: a spoken TalkBack/VoiceOver pass | #164 |
+| 11 | EPIC 32 Sync goes live, paid via RevenueCat — ADR 0019 written 2026-10-10 (subscription, RevenueCat → Edge Function mirror, `sync_until` JWT claim, Android + iOS launch together); needs EPIC 43 first | #75 |
 | 11 | EPIC 39 Sync correctness: server sequence cursor, paged pull, null clearing, races. **Prerequisite for EPIC 40** — client and schema **merged 2026-09-20** (#95); #85 stays open for the live-project checks (#88, #100); follow-ups #97-#102 | #85 |
 | 11 | EPIC 40 Opt-in automatic sync: build flag `SYNC_BACKGROUND_ENABLED`, per-device switch (default off), background triggers per platform | #86 |
 | 11 | EPIC 41 Co-watch: a Shortlist of what two Companions can watch together (**blocked on EPIC 32**; needs ADR 0022, `11.sqm` — collides with EPIC 28, see the claims note) | #118 |
@@ -385,6 +385,24 @@ runs standing in where they could. What that did and did not buy:
   Supabase project. The first real signal arrives when #66 is done.
 
 ## Cross-cutting / backlog
+
+### 2026-10-10
+
+- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 45 (#257). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
+- #197 verified on an emulator against the v1.0.0 AAB and closed; its misleading copy is #258 (#266). #34, #40 closed — #163 had already shipped the icons. #222 folded into EPIC 32.
+- EPIC 25: npm lockfiles tracked and gated (#259), debug-signed AAB refused (#260), Kotlin/Native tests and the release framework on the iOS lane (#262 — it found 43 iOS tests that failed on a Spanish-language Mac).
+- EPIC 38: repo files + Dependabot (#261), `:server` removed (#263), `MuvissVersion` + catalog SDK levels (#264), generated CHANGELOG (#265), Kover (#268), shared fakes (#269), goldens in both themes 41 → 76 (#278).
+- EPIC 32 in flight, all dark: account-switch dialog (#276), server entitlement + claim + deletion on the local stack only (#283; hosted rollout order is #282), client half (#279).
+- Found: #267, #271, #273, #274, #275, #277, #280, #281.
+
+### 2026-10-08
+
+- Android 1.0.0 is live on Google Play; the landing's Play badge links to it (#247). Desktop stays "Coming soon" until EPIC 36's notarised DMG.
+- **#251 — iOS aborted on 5 of 8 fresh installs** (also v1.0.0): two drivers created the schema at once at startup (`CrashReportsConsent` and the graph). Fixed by serializing iOS `DatabaseDriverFactory.create()` and opening the first connection inside the lock (#252). Android's v1.0.0 → `develop` upgrade (which runs `14.sqm` + `15.sqm`) was checked on an emulator: clean, library kept.
+- #249 — an "offline" screen now reloads when the connection returns (`ConnectivityMonitor`, #250); desktop has no signal and keeps a manual Retry.
+- #193 — the Play ramp holds while Sentry shows a new unhandled issue in the release, fail-closed (#255); needs `event:read` on `SENTRY_AUTH_TOKEN`.
+- Play release notes for 1.1.0 are written ahead of the train (#254).
+- Closed as already done or not reproducible: #98 (fixed in #140), #115 (ADR 0021), #176 (no idle churn on current code). #162 and #231 fixed (#246, #244).
 
 **Everything here has an issue.** The tracker is the source of truth for undone
 work; this list is the map. Nothing should appear below without a number beside

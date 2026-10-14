@@ -2,10 +2,18 @@
 
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -49,6 +57,22 @@ class SeasonSectionTest {
 
     private fun stateWith(vararg seen: EpisodeId) = DetailUiState(loading = false, seenEpisodes = seen.toSet())
 
+    /** One season the way Detail lays it out: header and episodes as items of a lazy list (EPIC 28). */
+    @Composable
+    @Suppress("TestFunctionName") // reads like the composable it stands in for
+    private fun SeasonSection(
+        season: Season,
+        state: DetailUiState,
+        todayEpochDay: Long,
+        expanded: Boolean,
+        onExpandedChange: (Boolean) -> Unit,
+        actions: SeasonActions,
+    ) {
+        LazyColumn {
+            seasonSection(season, summarizeSeason(season, state, todayEpochDay), state, todayEpochDay, expanded, onExpandedChange, actions)
+        }
+    }
+
     @Test
     fun a_collapsed_season_shows_its_header_but_none_of_its_episodes() = runComposeUiTest {
         setContent {
@@ -58,7 +82,7 @@ class SeasonSectionTest {
         }
 
         onNodeWithTag("${SEASON_HEADER_TAG_PREFIX}1").assertIsDisplayed()
-        onNodeWithTag("${SEASON_EPISODES_TAG_PREFIX}1").assertDoesNotExist()
+        onAllNodesWithTag("${SEASON_EPISODES_TAG_PREFIX}1").assertCountEquals(0)
     }
 
     @Test
@@ -69,7 +93,7 @@ class SeasonSectionTest {
             }
         }
 
-        onNodeWithTag("${SEASON_EPISODES_TAG_PREFIX}1").assertIsDisplayed()
+        onAllNodesWithTag("${SEASON_EPISODES_TAG_PREFIX}1").assertCountEquals(2)
     }
 
     @Test
@@ -203,5 +227,32 @@ class SeasonSectionTest {
         }
 
         onNodeWithText("S1 · E1 · watched 3×").assertIsDisplayed()
+    }
+
+    /** EPIC 31b (#164): a season header is a button that says whether it is open. */
+    @Test
+    fun the_header_says_whether_the_season_is_open() = runComposeUiTest {
+        setContent {
+            MuvissTheme(darkTheme = true) {
+                SeasonSection(airedSeason, stateWith(), today, expanded = false, onExpandedChange = {}, actions = noActions())
+            }
+        }
+
+        onNodeWithTag("${SEASON_HEADER_TAG_PREFIX}1").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+        onNodeWithTag("${SEASON_HEADER_TAG_PREFIX}1").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+    }
+
+    /** EPIC 28 (#70): a long expanded season composes the rows on screen, not all of them. */
+    @Test
+    fun a_200_episode_season_composes_only_what_is_visible() = runComposeUiTest {
+        val long = Season(1, "Season 1", (1..200).map { episode(it) })
+        setContent {
+            MuvissTheme(darkTheme = true) {
+                SeasonSection(long, stateWith(), today, expanded = true, onExpandedChange = {}, actions = noActions())
+            }
+        }
+
+        val composed = onAllNodesWithTag("${SEASON_EPISODES_TAG_PREFIX}1").fetchSemanticsNodes().size
+        assertTrue(composed in 1..40, "composed $composed of 200 episode rows")
     }
 }

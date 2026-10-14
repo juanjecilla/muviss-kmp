@@ -232,10 +232,11 @@ private fun FrameWindowScope.MuvissMenuBar(
     onQuit: () -> Unit,
 ) {
     MenuBar {
-        Menu("File", mnemonic = 'F') {
-            Item("Quit Muviss", shortcut = quitShortcut, onClick = onQuit)
+        // Mnemonics stay F and V: they are keyboard positions, not words.
+        Menu(HostText.menuFile(), mnemonic = 'F') {
+            Item(HostText.menuQuit(), shortcut = quitShortcut, onClick = onQuit)
         }
-        Menu("View", mnemonic = 'V') {
+        Menu(HostText.menuView(), mnemonic = 'V') {
             controller.destinations.forEach { destination ->
                 RadioButtonItem(
                     text = destination.label,

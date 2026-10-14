@@ -79,6 +79,13 @@ interface ProgressApi {
     suspend fun refreshWatchNextCatalogs()
 
     /**
+     * [mediaId]'s stored episode catalog (the `episode` cache, ADR 0015), or
+     * null when nothing is stored — what offline-first Detail renders before
+     * the network answers (EPIC 30, #73). Never fetches.
+     */
+    suspend fun storedSeasons(mediaId: MediaId): List<Season>? = null
+
+    /**
      * Every distinct epoch-day (UTC, [com.codingpit.muviss.core.common.todayEpochDay]'s
      * convention) carrying at least one recorded viewing, across every title —
      * the raw calendar the profile feature derives its watch-streak stat from.

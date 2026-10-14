@@ -3,7 +3,9 @@
 package com.codingpit.muviss.feature.progress.ui
 
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -126,10 +128,6 @@ internal class FakeEpisodeCatalogSource(private val bySeasons: Map<MediaId, List
     }
 }
 
-internal class FakeClock(private val millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-}
-
 /**
  * What is left of this suite after EPIC 22 moved the collection x catalog x
  * ticks join into `WatchNextUseCase`: the ViewModel's own behaviour — its
@@ -182,7 +180,7 @@ class ProgressViewModelTest {
         )
         advanceUntilIdle()
 
-        assertEquals("Something went wrong", vm.state.value.error)
+        assertEquals("Something went wrong", vm.state.value.error.text())
     }
 
     @Test
@@ -190,7 +188,7 @@ class ProgressViewModelTest {
         val (vm, _) = viewModel(FakeCollectionApi(emptyList(), failure = MetadataError.Offline()), FakeProgressRepository())
         advanceUntilIdle()
 
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error.text())
     }
 
     @Test
@@ -279,10 +277,10 @@ class ProgressViewModelTest {
         advanceUntilIdle()
 
         assertEquals(false, vm.state.value.refreshing)
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.message)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.message.text())
 
         vm.consumeMessage()
-        assertEquals(null, vm.state.value.message)
+        assertEquals(null, vm.state.value.message.text())
     }
 
     @Test
@@ -290,12 +288,15 @@ class ProgressViewModelTest {
         val api = FakeCollectionApi(listOf(summary(show)), failure = MetadataError.Offline())
         val (vm, _) = viewModel(api, FakeProgressRepository())
         advanceUntilIdle()
-        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error)
+        assertEquals(MetadataError.Offline().userMessage, vm.state.value.error.text())
 
         api.failure = null
         vm.retry()
         advanceUntilIdle()
 
-        assertEquals(null, vm.state.value.error)
+        assertEquals(null, vm.state.value.error.text())
     }
 }
+
+/** What the user would read, in the test JVM's pinned en-US. */
+private suspend fun UiText?.text(): String? = this?.resolveAsync()

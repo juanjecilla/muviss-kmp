@@ -3,12 +3,17 @@ package com.codingpit.muviss
 import android.app.Application
 import android.content.pm.ApplicationInfo
 import android.util.Log
+import com.codingpit.muviss.core.common.connectivity.AndroidConnectivityMonitor
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.network.tmdb.TmdbFailureTrace
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.di.appModules
+import com.codingpit.muviss.notifications.AndroidNotificationSettings
+import com.codingpit.muviss.notifications.NewEpisodesNotifier
 import com.codingpit.muviss.notifications.NewEpisodesScheduler
 import com.codingpit.muviss.sync.SyncScheduleController
 import com.codingpit.muviss.sync.WorkManagerSyncScheduler
@@ -62,6 +67,10 @@ class MuvissApplication : Application() {
                     appModules +
                         module {
                             single { DatabaseDriverFactory(this@MuvissApplication) }
+                            // Settings explains a blocked notification switch (EPIC 30, #73).
+                            single<SystemNotificationSettings> { AndroidNotificationSettings(this@MuvissApplication) }
+                            // An offline error retries itself on reconnect (#249).
+                            single<ConnectivityMonitor> { AndroidConnectivityMonitor(this@MuvissApplication) }
                             // Debug builds only: the class-name chain of a swallowed
                             // TMDB failure, in logcat (#177). Loaded after
                             // networkModule's no-op, so this binding wins.
@@ -74,6 +83,7 @@ class MuvissApplication : Application() {
         }
         MuvissCrashReporting.followSettings()
         AppWidgets.install(GlanceWidgetRefresher(this))
+        NewEpisodesNotifier.ensureChannel(this)
         NewEpisodesScheduler.schedule(this)
         WidgetMidnightRefresh.schedule(this)
         startAutomaticSync()

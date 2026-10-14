@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.share.TextSharer
 import com.codingpit.muviss.core.designsystem.share.rememberTextSharer
@@ -153,7 +155,15 @@ fun CompanionsScreen(
 
             // The label takes what the switch leaves, with a gap: a fixed
             // fraction let a long (or translated) subtitle run under it.
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            // The row is the switch, so a screen reader names it (EPIC 31b, #164).
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().toggleable(
+                    value = state.settings.includeSeenByDefault,
+                    role = Role.Switch,
+                    onValueChange = viewModel::setIncludeSeenByDefault,
+                ),
+            ) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(Res.string.include_seen_title), style = MaterialTheme.typography.titleMedium)
                     Text(
@@ -163,10 +173,7 @@ fun CompanionsScreen(
                     )
                 }
                 Spacer(Modifier.width(MuvissSpacing.m))
-                Switch(
-                    checked = state.settings.includeSeenByDefault,
-                    onCheckedChange = viewModel::setIncludeSeenByDefault,
-                )
+                Switch(checked = state.settings.includeSeenByDefault, onCheckedChange = null)
             }
         }
     }

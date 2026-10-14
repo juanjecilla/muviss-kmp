@@ -22,18 +22,6 @@ class CivilDateTest {
     }
 
     @Test
-    fun it_formats_a_date_readably() {
-        assertEquals("29 Feb 2024", formatEpochDay(19_782L))
-        assertEquals("1 Jan 1970", formatEpochDay(0L))
-    }
-
-    @Test
-    fun december_maps_to_the_last_month_name() {
-        // 2023-12-25 is epoch day 19716.
-        assertEquals("25 Dec 2023", formatEpochDay(19_716L))
-    }
-
-    @Test
     fun a_civil_date_converts_back_to_its_epoch_day() {
         assertEquals(0L, epochDayOfCivil(1970, 1, 1))
         assertEquals(19_782L, epochDayOfCivil(2024, 2, 29))

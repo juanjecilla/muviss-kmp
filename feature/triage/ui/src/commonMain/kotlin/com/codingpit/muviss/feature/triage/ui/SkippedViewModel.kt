@@ -4,11 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.domain.ObserveSkippedUseCase
 import com.codingpit.muviss.feature.triage.domain.RestoreDecisionUseCase
+import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
+import com.codingpit.muviss.feature.triage.ui.generated.resources.error_load_skipped
 import com.codingpit.muviss.models.MediaId
-import com.codingpit.muviss.models.toUserMessage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +23,7 @@ import kotlinx.coroutines.flow.update
 data class SkippedUiState(
     val loading: Boolean = true,
     val titles: List<SkippedTitle> = emptyList(),
-    val error: String? = null,
+    val error: UiText? = null,
 )
 
 /**
@@ -56,12 +59,8 @@ class SkippedViewModel(
         observation?.cancel()
         observation = observeSkipped()
             .onEach { titles -> _state.update { it.copy(loading = false, titles = titles, error = null) } }
-            .catch { e -> _state.update { it.copy(loading = false, error = e.toUserMessage(LOAD_FAILED)) } }
+            .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_load_skipped))) } }
             .launchInReporting(viewModelScope)
-    }
-
-    private companion object {
-        const val LOAD_FAILED = "Couldn't load skipped titles."
     }
 
     fun onRestore(mediaId: MediaId) {

@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the default locale: every key lives here first. values-es mirrors it. -->
+<resources>
+    <string name="action_back">Back</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_close">Close</string>
+    <string name="error_generic">Something went wrong</string>
+    <string name="error_rewatches">Could not load rewatches</string>
+    <string name="edit_name">Edit name</string>
+    <string name="avatar">Avatar</string>
+    <string name="your_name">Your name</string>
+    <string name="no_stats_title">No stats yet</string>
+    <string name="no_stats_body">Save titles to your library and tick episodes to see your stats here.</string>
+    <string name="stats">Stats</string>
+    <string name="stat_movies_watched">movies watched</string>
+    <string name="stat_episodes_seen">episodes seen</string>
+    <string name="stat_hours_watched">hours watched</string>
+    <!-- %1$s is hours with one decimal. -->
+    <string name="hours_short">%1$sh</string>
+    <!-- %1$d days. -->
+    <string name="days_short">%1$dd</string>
+    <!-- %1$d is the longest streak in days. -->
+    <string name="stat_streak">streak (best %1$dd)</string>
+    <string name="by_status">By status</string>
+    <string name="by_genre">By genre</string>
+    <string name="status_not_started">Not started</string>
+    <string name="status_watching">Watching</string>
+    <string name="status_watched">Watched</string>
+    <string name="status_finished">Finished</string>
+    <string name="genre_other">Other</string>
+    <string name="genre_tags">genre tags</string>
+    <!-- One letter per month, comma-separated, January first. -->
+    <string name="month_initials">J,F,M,A,M,J,J,A,S,O,N,D</string>
+    <string name="most_rewatched">Most rewatched</string>
+    <string name="see_all">See all</string>
+    <!-- %1$s is rewatch_how_to. -->
+    <string name="nothing_rewatched_card">Nothing rewatched yet. %1$s</string>
+    <!-- Names the gesture, because nothing else in the app does: every install upgraded with zero rewatches (ADR 0011). -->
+    <string name="rewatch_how_to">Tap an episode you've already seen and choose “Watched again”.</string>
+    <string name="nothing_rewatched_year">Nothing rewatched this year</string>
+    <string name="nothing_rewatched">Nothing rewatched yet</string>
+    <string name="rewatch_trend">Rewatches · last 12 months</string>
+    <string name="ranking_shows">Shows</string>
+    <string name="ranking_movies">Movies</string>
+    <string name="window_all_time">All time</string>
+    <string name="window_this_year">This year</string>
+    <!-- %1$d position, %2$s title, %3$s the rewatch count. -->
+    <string name="rewatch_row_description">%1$d. %2$s, %3$s</string>
+    <string name="watch_together">Watch together</string>
+    <string name="watch_together_body">Link with someone and see what you could watch together.</string>
+    <string name="sync_title">Sync across devices</string>
+    <string name="sync_pitch">Keep your library, progress and rewatch history on every device.</string>
+    <string name="paywall_body">Your library, watch progress and rewatch history, kept in step on every device you sign in on.</string>
+    <string name="paywall_unavailable">Purchases aren't available in this build yet.</string>
+    <string name="sync_unlock">Unlock sync</string>
+    <string name="sign_out">Sign out</string>
+    <string name="account">Account</string>
+    <string name="sync_local_only">Everything stays on this device today.</string>
+    <!-- %1$s is the provider, e.g. GitHub. -->
+    <string name="sign_in_with">Sign in with %1$s</string>
+    <string name="signed_in">Signed in</string>
+    <string name="syncing">Syncing…</string>
+    <string name="sync_now">Sync now</string>
+    <string name="sync_automatically">Sync automatically</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
+    <string name="resync_everything">Resync everything</string>
+    <string name="resync_question">Resync everything?</string>
+    <string name="resync_body">This sends your whole library to your account again and downloads everything in it. It can take a while and use data. Nothing is deleted.</string>
+    <string name="resync">Resync</string>
+    <string name="sync_not_configured">Sync isn't set up for this build</string>
+    <string name="sign_in_failed">Couldn't start sign-in</string>
+    <string name="resynced">Everything resynced</string>
+    <string name="synced">Synced</string>
+    <string name="sync_paid">Sync is a paid feature</string>
+    <!-- %1$s is why it failed. -->
+    <string name="sync_failed">Sync failed: %1$s</string>
+    <string name="sync_account_changed">This device's library belongs to a different account, so nothing was synced.</string>
+    <!-- The blocking dialog shown when a different account signs in than the one this device's library belongs to (#148). -->
+    <string name="account_change_title">Which library should this device keep?</string>
+    <!-- %1$s is the signed-in account's email. -->
+    <string name="account_change_body">You signed in as %1$s, but the library on this device belongs to a different account. Nothing syncs until you choose.</string>
+    <string name="account_change_body_no_email">You signed in with a different account than the one the library on this device belongs to. Nothing syncs until you choose.</string>
+    <string name="account_change_consequences">Replacing deletes this device's library and downloads the account's. Adding sends this device's library to the account, alongside what it already has.</string>
+    <!-- %1$s is the signed-in account's email; the _no_email variants cover a provider that withholds it. -->
+    <string name="account_change_replace">Replace with %1$s's library</string>
+    <!-- %1$s is the signed-in account's email; the _no_email variants cover a provider that withholds it. -->
+    <string name="account_change_merge">Add this device's library to %1$s</string>
+    <string name="account_change_replace_no_email">Replace with this account's library</string>
+    <string name="account_change_merge_no_email">Add this device's library to this account</string>
+    <string name="account_change_later">Decide later</string>
+    <!-- On the status line, reopens the dialog after "Decide later". -->
+    <string name="account_change_choose">Choose</string>
+    <string name="account_library_replaced">Library replaced with your account's</string>
+    <string name="account_library_added">This device's library was added to your account</string>
+    <plurals name="rewatches_episodes">
+        <item quantity="one">%1$d episode rewatch</item>
+        <item quantity="other">%1$d episode rewatches</item>
+    </plurals>
+    <plurals name="rewatches">
+        <item quantity="one">%1$d rewatch</item>
+        <item quantity="other">%1$d rewatches</item>
+    </plurals>
+    <!-- Screen-reader summary of the genre donut; %1$s lists "Drama 40%, Comedy 20%" (EPIC 31b, #164). -->
+    <string name="a11y_genre_summary">Genres: %1$s</string>
+    <!-- Sync status copy, moved out of :feature:profile:domain (#217). -->
+    <string name="sync_session_expired">Session expired, sign in again.</string>
+    <!-- The reason after "Sync failed: " / "Last sync failed: ", so lower case and no full stop. -->
+    <string name="sync_failure_offline">you seem to be offline</string>
+    <string name="sync_failure_unauthorised">your session was refused, sign in again</string>
+    <string name="sync_failure_server">the sync service had a problem, try again later</string>
+    <string name="sync_failure_unknown">something went wrong</string>
+    <!-- %1$s is why it failed (one of the sync_failure_* lines). -->
+    <string name="sync_detail_failed">Last sync failed: %1$s</string>
+    <string name="sync_detail_account_changed">This device's library belongs to a different account, so nothing is syncing.</string>
+    <plurals name="sync_changes_waiting">
+        <item quantity="one">%1$d change waiting</item>
+        <item quantity="other">%1$d changes waiting</item>
+    </plurals>
+    <string name="sync_automatic_in_background">Keep this device in sync in the background, even when Muviss is closed.</string>
+    <string name="sync_automatic_when_system_allows">Sync when the system allows it. iOS decides when, so it can be hours between runs.</string>
+    <string name="sync_automatic_while_open">Sync while Muviss is open. Nothing runs once you close it.</string>
+    <string name="sync_last_never">Never synced</string>
+    <string name="sync_last_just_now">Synced just now</string>
+    <!-- Abbreviated units, so no plural: "Synced 3m ago", "Synced 2h ago", "Synced 4d ago". -->
+    <string name="sync_last_minutes_ago">Synced %1$dm ago</string>
+    <string name="sync_last_hours_ago">Synced %1$dh ago</string>
+    <string name="sync_last_days_ago">Synced %1$dd ago</string>
+    <!-- Why a sign-in did not finish; shown once in a snackbar. -->
+    <string name="sign_in_failure_generic">Couldn't finish signing in</string>
+    <string name="sign_in_failure_no_code">The sign-in redirect carried no authorization code.</string>
+    <plurals name="sign_in_failure_timed_out">
+        <item quantity="one">Sign-in timed out after %1$d minute. Try again.</item>
+        <item quantity="other">Sign-in timed out after %1$d minutes. Try again.</item>
+    </plurals>
+</resources>

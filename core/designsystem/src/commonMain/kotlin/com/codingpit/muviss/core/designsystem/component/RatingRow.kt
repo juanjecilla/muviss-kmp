@@ -23,20 +23,26 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.generated.resources.Res
+import com.codingpit.muviss.core.designsystem.generated.resources.a11y_rating_set
+import com.codingpit.muviss.core.designsystem.generated.resources.a11y_rating_unset
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.stringResource
+import kotlin.math.roundToInt
 
 /** Test tag prefix; the star at index `i` is tagged `"ratingStar$i"`. */
 const val RATING_STAR_TAG_PREFIX = "ratingStar"
 
 private const val STAGGER_MS = 20L
-private val STAR_TOUCH_TARGET = 44.dp
+private val STAR_TOUCH_TARGET = 48.dp
 private val STAR_GLYPH = 24.dp
 
 /**
- * The five-star rating row. Each star has a 44dp touch target (glyph is 24dp)
+ * The five-star rating row. Each star has a 48dp touch target (glyph is 24dp)
  * split down the middle: the left half is the half-star value, the right half
  * the whole one. Tapping the half already selected clears the rating.
  *
@@ -47,7 +53,9 @@ private val STAR_GLYPH = 24.dp
  *
  * Accessibility-wise this is one adjustable node ("Your rating, 3.5 of 5"),
  * not five buttons: each star clears its own semantics, keeping only a test
- * tag.
+ * tag. The node really is adjustable (EPIC 31b, #164): it carries a
+ * `setProgress` action, so TalkBack's adjust gestures move it half a star at a
+ * time and zero clears it. It used to say "adjustable" and offer no way to.
  */
 @Composable
 fun RatingRow(
@@ -56,18 +64,24 @@ fun RatingRow(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val description = if (rating != null) {
+        stringResource(Res.string.a11y_rating_set, RatingScale.label(rating), RatingScale.STAR_COUNT)
+    } else {
+        stringResource(Res.string.a11y_rating_unset)
+    }
     Row(
         modifier = modifier.semantics {
-            contentDescription = if (rating != null) {
-                "Your rating, ${RatingScale.label(rating)} of ${RatingScale.STAR_COUNT}, adjustable"
-            } else {
-                "Your rating, not set, adjustable"
-            }
+            contentDescription = description
             progressBarRangeInfo = ProgressBarRangeInfo(
                 current = rating?.let { RatingScale.starsOf(it) } ?: 0f,
                 range = 0f..RatingScale.STAR_COUNT.toFloat(),
                 steps = RatingScale.MAX_STORED - 1,
             )
+            setProgress { stars ->
+                val stored = (stars * 2).roundToInt().coerceIn(0, RatingScale.MAX_STORED)
+                if (stored == 0) onClear() else onRate(stored)
+                true
+            }
         },
     ) {
         repeat(RatingScale.STAR_COUNT) { index ->

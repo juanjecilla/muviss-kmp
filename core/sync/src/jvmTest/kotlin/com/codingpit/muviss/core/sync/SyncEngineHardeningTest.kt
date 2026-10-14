@@ -3,9 +3,9 @@
 package com.codingpit.muviss.core.sync
 
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -30,11 +30,7 @@ class SyncEngineHardeningTest {
     private lateinit var clock: FakeClock
     private lateinit var backend: FakeSyncBackend
 
-    private fun newDatabase(): MuvissDatabase {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        return MuvissDatabase(driver)
-    }
+    private fun newDatabase(): MuvissDatabase = inMemoryDatabase()
 
     private fun engine(gate: EntitlementGate = EntitlementGate.AlwaysEntitled) = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, gate)
 
