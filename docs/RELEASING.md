@@ -234,14 +234,18 @@ Business plan; this runs on any plan, with the token the Play ramp's crash gate
 - **Closing a `from-sentry` issue** resolves the Sentry issue *in the next release*
   (`PUT /organizations/{org}/issues/?id=…`, the id from `/shortids/{short_id}/`). Reopening
   does not unresolve it.
-- **Token scope: `event:write` is new.** The gate only reads (`event:read`, `org:read`);
-  resolving needs `event:write` on the same `SENTRY_AUTH_TOKEN`. Without it the hourly run
-  still works and only the close-to-resolve step fails (HTTP 403 in the run log).
-- **Secrets**: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, optionally `SENTRY_PROJECT` (all already
-  set for the mapping upload and the gate). With no token the workflow does nothing.
+- **Two tokens (#361).** `SENTRY_READ_TOKEN` (`event:read`, `event:write`, `org:read`) is
+  what reads crashes: this connector, the ramp's crash gate and the Sunday step's gate.
+  `SENTRY_AUTH_TOKEN` is the build's, for the mapping upload (`project:releases`, `org:read`).
+  The readers fall back to `SENTRY_AUTH_TOKEN` when `SENTRY_READ_TOKEN` is unset, which only
+  works if that one has the event scopes too: without `event:read` every reader answers
+  HTTP 403 and the gates hold, and without `event:write` only close-to-resolve fails.
+- **Secrets**: `SENTRY_READ_TOKEN` (or the fallback), `SENTRY_ORG`, optionally
+  `SENTRY_PROJECT`. With no token the workflow does nothing.
 - **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
   what it would open). Tests: `ruby fastlane/test/sentry_connector_test.rb` and `ops_bridge_test.rb`, run by `pr-guards`.
-  Nothing here has been run against a live Sentry project (#328).
+  Checked against the live project on 2026-10-14 with the reading token: a dry run lists
+  the existing issues, and the gate answers for a release (#328).
 
 #### Play reviews to issue (EPIC 48, connector #2)
 

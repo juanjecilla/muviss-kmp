@@ -42,9 +42,10 @@ jobs:
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           # The crash gate (#193): a raise waits while Sentry shows a new
-          # unhandled issue in this release, or cannot be asked. The token
-          # needs event:read (org:read) on top of what mapping uploads use.
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          # unhandled issue in this release, or cannot be asked. The reading
+          # token (SENTRY_READ_TOKEN: event:read, event:write, org:read) when it
+          # is set, else the build's upload token (#361).
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_READ_TOKEN || secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           # The ramp writes this file when it reaches 100% (the Fastfile's ramp lane).
           RAMP_RESULT_FILE: ${{ runner.temp }}/ramp-result.txt
