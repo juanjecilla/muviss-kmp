@@ -9,8 +9,13 @@ name: Forward a fix
 # The App, not GITHUB_TOKEN: it pushes the forward branches, and the PRs it opens
 # need CI runs and must start release-milestone.yml. A forward PR is not
 # forwarded again: its original already went to every line.
+#
+# pull_request_target, so a fix merged from a fork is forwarded too (a fork's
+# pull_request run gets no secrets, so no App token). It runs only on a merge,
+# and what it checks out is the merge commit: code already accepted into the
+# release branch, never an unmerged PR head.
 on:
-  pull_request:
+  pull_request_target:
     branches: [ 'release/**', 'hotfix/**' ]
     types: [ closed ]
 

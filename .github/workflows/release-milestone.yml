@@ -6,8 +6,12 @@ name: Release milestone
 # (scripts/release/milestone.sh). Forward PRs from release-forward.yml get it too.
 #
 # GITHUB_TOKEN is enough: this only sets metadata, and pushes and opens nothing.
+# pull_request_target, so a PR from a fork gets the milestone too (its
+# pull_request token is read-only). That runs with a write token, so the
+# workflow and the script always come from the base branch, never the PR:
+# the checkout below is the base commit, and nothing from the head is run.
 on:
-  pull_request:
+  pull_request_target:
     branches: [ 'release/**', 'hotfix/**' ]
     types: [ opened, reopened ]
 
@@ -27,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
 
       - name: Put the PR under the version's milestone
