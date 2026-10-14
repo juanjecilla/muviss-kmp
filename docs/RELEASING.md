@@ -108,8 +108,10 @@ otherwise.
 
 - `versionCode` = `major·1 000 000 + minor·10 000 + patch·100 + rcN` on an
   exact release tag, `vX.Y.Z` or `vX.Y.Z-rcN` (so 1.1.0-rc4 is 1010004). A
-  release code is unique per candidate, rises with every version and RC, and
-  starts above every count-based code already uploaded (ADR 0030). Any other
+  release code is unique per candidate and rises with every version and RC. From
+  1.0.0 on (major ≥ 1, so ≥ 1 000 000) it sits above every count-based code
+  already uploaded (the highest was under 200, ADR 0030); a 0.x tag would land in
+  that old range and can collide, so never tag one. Any other
   build (untagged, ahead of a tag, dirty) keeps `git rev-list --count HEAD`, so
   local builds still install over each other. minor, patch and rcN are capped at
   99 and refused above it, rather than wrapped into a code that is already taken.
@@ -326,7 +328,9 @@ the schedule, the gates and where a fix goes.
   the ramp stand in for it). A manual merge into `main` still asks for it.
 - **Production leaves beta before the next version arrives.** The Sunday step
   runs production before beta and promotes production itself, so a newer RC
-  never takes the beta track while an older one is still being read from it.
+  never takes the beta track while an older one is still being read from it,
+  for every version the release issues track (a build put on beta by hand in
+  Play Console is invisible to it; see the gates below).
   If Play refuses the promotion after the merge, the version stays on beta
   with `merged_on` in its marker, and the next run (or a dispatch) retries
   only the promotion, never the merge; the newer beta waits for it.
@@ -342,7 +346,10 @@ the schedule, the gates and where a fix goes.
     step too, since testers see them;
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
-  - another version is still on the beta track (one per stage);
+  - another version is still on the beta track (one per stage). This is read from
+    the release issues' markers, not from Play: a version promoted to beta by hand,
+    or whose marker is missing or stale, is not seen here. Production also checks
+    Play itself before merging, that beta's newest build is the RC (#349);
   - for production: the version has not had its full week on beta. A held beta
     step pushes production back with it.
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
