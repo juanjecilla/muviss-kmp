@@ -28,13 +28,7 @@ permissions:
 
 jobs:
   forward:
-    # A forward PR is one the release App opened from a forward/ branch of this
-    # repository; a fork's branch of the same name is an ordinary fix.
-    if: >-
-      github.event.pull_request.merged == true &&
-      !(startsWith(github.event.pull_request.head.ref, 'forward/') &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.user.type == 'Bot')
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -45,14 +39,36 @@ jobs:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
+      # A forward PR is one this release App opened from a forward/ branch of this
+      # repository: its original already went to every line. Anything else, a
+      # fork's or another bot's branch of the same name included, is a fix. The
+      # App's login is only known once its token is minted, so this is a step.
+      - name: Is this the App's own forward PR
+        id: own
+        env:
+          SLUG: ${{ steps.app.outputs.app-slug }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ "$HEAD_REF" == forward/* && "$HEAD_REPO" == "$REPO" && "$AUTHOR" == "${SLUG}[bot]" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "A forward PR from ${SLUG}[bot]; its original was already forwarded." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Keeps the App's credentials, which the forward branches are pushed with.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
           token: ${{ steps.app.outputs.token }}
+        if: steps.own.outputs.skip != 'true'
 
       - name: Commit as the release App
+        if: steps.own.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           SLUG: ${{ steps.app.outputs.app-slug }}
@@ -62,6 +78,7 @@ jobs:
           git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
 
       - name: Forward the fix to the newer lines and develop
+        if: steps.own.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           GH_REPO: ${{ github.repository }}
