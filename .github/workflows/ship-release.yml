@@ -1,11 +1,13 @@
 name: Ship release
 
-# The owner's one click from a tested release candidate to production
-# (ADR 0025): open the PR `release/X.Y.Z → main` (or `hotfix/X.Y.Z`), wait for
-# its approval and checks, and merge it with a merge commit. That merge is what
-# release.yml acts on — tag vX.Y.Z, then promote the newest RC to Play
-# production behind the `production` environment, which still asks the owner
-# to approve. Nothing here bypasses that gate or the main ruleset.
+# The manual path to production (ADR 0025, ADR 0030): open the PR
+# `release/X.Y.Z → main` (or `hotfix/X.Y.Z`), wait for its approval and checks,
+# and merge it with a merge commit. On the scheduled path the Sunday step
+# (release-promote.yml) does this itself; use this to ship ahead of it or for a
+# hotfix. The merge is what release.yml acts on — tag vX.Y.Z, then promote the
+# RC (from beta, or from internal if it never went to beta) to Play production
+# behind the `production` environment, which still asks the owner to approve.
+# Nothing here bypasses that gate or the main ruleset.
 #
 #   ship        open the PR if needed, wait up to `wait_minutes`, merge
 #   open        only open (or find) the PR
@@ -13,7 +15,7 @@ name: Ship release
 #   back-merge  after the release: merge release.yml's `back-merge/vX.Y.Z → develop`
 #               PR (merge commit) once approved and green, waiting like ship
 #
-# Test the RC from Play's internal track before running this.
+# Test the RC from Play's internal or beta track before running this.
 on:
   workflow_dispatch:
     inputs:
@@ -103,7 +105,7 @@ jobs:
           N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[]|select(.isCrossRepository|not)][0].number // empty')"
           if [ -z "$N" ]; then
             RC="$(gh release list -R "$REPO" --limit 50 --json tagName --jq "[.[].tagName|select(startswith(\"v$VERSION-rc\"))][0]")"
-            URL="$(gh pr create -R "$REPO" --base main --head "$BRANCH" --title "release: $VERSION" --body "Ships **$VERSION** to production: merging tags \`v$VERSION\` and promotes ${RC:-the newest RC} from Play internal to production at 20%, behind the \`production\` environment approval (release.yml). Opened by the Ship release workflow; merge with a merge commit.")"
+            URL="$(gh pr create -R "$REPO" --base main --head "$BRANCH" --title "release: $VERSION" --body "Ships **$VERSION** to production: merging tags \`v$VERSION\` and promotes ${RC:-the newest RC} from Play beta (or internal) to production at 20%, behind the \`production\` environment approval (release.yml). Opened by the Ship release workflow; merge with a merge commit.")"
             N="${URL##*/}"
             echo "Opened #$N" >> "$GITHUB_STEP_SUMMARY"
           else
