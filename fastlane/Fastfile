@@ -278,8 +278,9 @@ platform :android do
     client.begin_edit(package_name: Supply.config[:package_name])
     track = client.get_edit_track("production")
     client.abort_current_edit
-    release = track&.releases&.find { |r| r.status == PlayRollout::COMPLETED }
-    release&.version_codes&.map(&:to_i)&.max
+    # The track's releases come in no guaranteed order: the newest completed one.
+    Array(track&.releases).select { |r| r.status == PlayRollout::COMPLETED }
+                          .flat_map { |r| Array(r.version_codes).map(&:to_i) }.max
   rescue StandardError => e
     UI.message("Could not read the completed production release (#{e.class})")
     nil

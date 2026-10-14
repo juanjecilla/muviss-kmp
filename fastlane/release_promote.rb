@@ -346,7 +346,11 @@ module ReleasePromotionAdapters
     end
 
     def release_issues
-      JSON.parse(gh("issue", "list", "--repo", @repo, "--label", "release", "--state", "all", "--limit", "200", "--json", "number,title,body,state"))
+      # Every page: `gh issue list --limit` is a maximum, and a live issue
+      # missed here would let a newer RC past the beta gate.
+      out = gh("api", "--paginate", "repos/#{@repo}/issues?labels=release&state=all&per_page=100",
+               "--jq", ".[] | select(.pull_request | not) | {number, title, body, state}")
+      out.lines.map(&:strip).reject(&:empty?).map { |line| JSON.parse(line) }
     end
 
     def blockers(version)
