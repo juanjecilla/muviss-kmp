@@ -24,11 +24,30 @@ def uses_in(node, path, out)
   out
 end
 
+# Local references (`./path`) are followed into that directory's action.yml,
+# wherever it lives: GitHub allows a composite action anywhere in the repo, and
+# its own `uses` must be pinned too. A local reusable workflow is a file in
+# .github/workflows, which is scanned anyway.
 def unpinned(root)
-  files = Dir[File.join(root, ".github/workflows/*.{yml,yaml}")] +
+  queue = Dir[File.join(root, ".github/workflows/*.{yml,yaml}")] +
           Dir[File.join(root, ".github/actions/**/action.{yml,yaml}")]
-  files.sort.flat_map { |file| uses_in(YAML.load_file(file), file.delete_prefix("#{root}/"), []) }
-       .reject { |_, ref| ref.start_with?("./") || ref.start_with?("docker://") || ref.match?(PINNED) }
+  seen = {}
+  bad = []
+  until queue.empty?
+    file = File.expand_path(queue.shift)
+    next if seen[file]
+
+    seen[file] = true
+    uses_in(YAML.load_file(file), file.delete_prefix("#{File.expand_path(root)}/"), []).each do |path, ref|
+      if ref.start_with?("./")
+        dir = File.join(root, ref.delete_prefix("./").split("@").first)
+        queue.concat(Dir[File.join(dir, "action.{yml,yaml}")]) if File.directory?(dir)
+      elsif !(ref.start_with?("docker://") || ref.match?(PINNED))
+        bad << [path, ref]
+      end
+    end
+  end
+  bad.sort
 end
 
 if $PROGRAM_NAME == __FILE__

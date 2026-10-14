@@ -46,6 +46,17 @@ class CheckActionPinsTest < Minitest::Test
     YAML
   end
 
+  def test_a_local_composite_action_anywhere_is_followed
+    Dir.mktmpdir do |root|
+      FileUtils.mkdir_p(File.join(root, ".github/workflows"))
+      FileUtils.mkdir_p(File.join(root, "tools/setup"))
+      File.write(File.join(root, ".github/workflows/x.yml"), "jobs:\n  a:\n    steps:\n      - uses: ./tools/setup\n")
+      File.write(File.join(root, "tools/setup/action.yml"),
+                 "runs:\n  using: composite\n  steps:\n    - uses: owner/nested@v3\n    - uses: ./tools/setup\n")
+      assert_equal [["tools/setup/action.yml", "owner/nested@v3"]], unpinned(root)
+    end
+  end
+
   def test_the_repository_itself_is_pinned
     assert_equal [], unpinned(File.expand_path("../../..", __dir__))
   end
