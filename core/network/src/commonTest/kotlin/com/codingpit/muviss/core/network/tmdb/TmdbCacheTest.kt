@@ -1,13 +1,16 @@
 package com.codingpit.muviss.core.network.tmdb
 
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.cache.InvalidCacheStateException
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class TmdbCacheTest {
 
@@ -111,6 +114,40 @@ class TmdbCacheTest {
         assertEquals(listOf("Action"), genres.map { it.name })
         assertEquals(2, fixture.requests.size)
         assertEquals(emptyList(), fixture.delays)
+    }
+
+    // The fallback's real regression guard (#335). Ktor 3.6 no longer throws
+    // InvalidCacheStateException for a Vary mismatch, and `HttpCache` offers no
+    // seam to make it lose a stored entry, so the engine throws it instead: it
+    // is the same exception on the same call, raised under the cached client.
+    // The uncached client has no cache and so cannot raise it. Without the
+    // retry in `TmdbProvider.request` this is the Search screen saying
+    // "offline" on an online phone, until the process dies.
+    @Test
+    fun an_invalid_cache_state_is_answered_by_one_uncached_retry() = runTest {
+        var thrown = false
+        val fixture = ProviderFixture { request ->
+            if (!thrown) {
+                thrown = true
+                throw InvalidCacheStateException(request.url)
+            }
+            respondJson(GENRES)
+        }
+
+        val genres = fixture.provider.genres(MediaType.MOVIE)
+
+        assertEquals(listOf("Action"), genres.map { it.name })
+        assertEquals(2, fixture.requests.size)
+        assertEquals(emptyList(), fixture.delays)
+    }
+
+    @Test
+    fun an_invalid_cache_state_that_the_uncached_retry_also_hits_is_unknown_not_offline() = runTest {
+        val fixture = ProviderFixture { request -> throw InvalidCacheStateException(request.url) }
+
+        assertFailsWith<MetadataError.Unknown> { fixture.provider.genres(MediaType.MOVIE) }
+
+        assertEquals(2, fixture.requests.size)
     }
 }
 
