@@ -50,7 +50,6 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterSkeleton
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.back_to_discover
@@ -99,7 +98,7 @@ fun SearchScreen(
             state.loading -> LoadingSkeletonGrid()
 
             state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                ErrorState(state.error!!.resolve(), viewModel::retry)
+                ErrorState(state.error!!, viewModel::retry)
             }
 
             else -> when (state.mode) {

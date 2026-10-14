@@ -69,7 +69,6 @@ import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.label
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
@@ -240,7 +239,7 @@ fun TriageScreen(
 
                         state.loading || (state.refilling && state.topCard == null) -> CircularProgressIndicator()
 
-                        state.error != null -> ErrorState(state.error?.resolve().orEmpty(), viewModel::retry)
+                        state.error != null -> ErrorState(state.error!!, viewModel::retry)
 
                         state.topCard == null && state.keepLookingAvailable -> KeepLooking(viewModel::onKeepLooking)
 

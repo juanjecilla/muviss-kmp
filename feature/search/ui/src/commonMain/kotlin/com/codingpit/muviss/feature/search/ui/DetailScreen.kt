@@ -185,7 +185,7 @@ fun DetailScreen(
             )
 
             state.error != null -> ErrorState(
-                message = state.error!!.resolve(),
+                message = state.error!!,
                 onRetry = viewModel::load,
                 modifier = Modifier.align(Alignment.Center),
             )
