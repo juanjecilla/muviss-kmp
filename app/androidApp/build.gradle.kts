@@ -136,9 +136,17 @@ val hasReleaseSigningConfig =
 // A release build without git would ship versionCode 1, which Play rejects as a
 // downgrade after the first upload (#77) — fail instead. Debug and test builds
 // keep the fallback so a source-only archive still compiles.
+// Only this project's release outputs count (#271). A qualified name (`:app:
+// shared:linkReleaseFramework...`, `:app:desktopApp:packageReleaseDmg`) runs in
+// its own project and says nothing about this one, so a shallow clone can run
+// it; an unqualified one (`bundleRelease`) runs in every project that has it,
+// this one included.
 val isReleaseInvocation =
     gradle.startParameter.taskNames.any { name ->
-        name.contains("Release", ignoreCase = true) || name.substringAfterLast(':').startsWith("bundle")
+        val qualified = name.contains(':')
+        val ownTask = !qualified || name.removePrefix(":").startsWith(project.path.removePrefix(":") + ":")
+        val local = name.substringAfterLast(':')
+        ownTask && (local.contains("Release", ignoreCase = true) || local.startsWith("bundle"))
     }
 
 // A shallow clone counts only the commits it fetched (often 1), which is the
