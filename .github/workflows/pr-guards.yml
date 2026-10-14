@@ -90,3 +90,5 @@ jobs:
         run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb && for t in ops_bridge sentry_connector play_reviews; do ruby fastlane/test/${t}_test.rb || exit 1; done
       - name: Staged release schedule and train plan (ADR 0030)
         run: ruby fastlane/test/release_stages_test.rb
+      - name: Sunday promotion gates (ADR 0030)
+        run: ruby fastlane/test/release_promote_test.rb
