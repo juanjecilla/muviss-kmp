@@ -258,8 +258,18 @@ jobs:
       # every PR (debug-signed without the keystore, which is fine here) and
       # fails if R8 wrote no mapping or reported missing classes. The licence
       # allow-list (licensee) is part of `check`, which nothing ran either.
-      - name: Release build with R8, and the licence allow-list
-        run: ./gradlew :app:androidApp:assembleRelease :app:androidApp:licenseeAndroidRelease --stacktrace
+      #
+      # The bundle and its two verify tasks are the RC's own command
+      # (android-release-build.yml). They are here because the 1.1.0 RC failed
+      # on a task-ordering error that exists only on that path (`bundleRelease`
+      # + `verifyReleaseExceptionClasses` after AGP 9.1's
+      # `mergeReleaseComposeMapping`) and `assembleRelease` never touches it
+      # (#340). R8 already ran above, so they add packaging, not a second shrink.
+      - name: Release build with R8, the release bundle, and the licence allow-list
+        run: >
+          ./gradlew :app:androidApp:assembleRelease :app:androidApp:licenseeAndroidRelease
+          :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources
+          :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
       - name: R8 left a mapping and no missing rules
         run: |
