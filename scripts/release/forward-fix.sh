@@ -18,6 +18,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
+# Run from a copy: forward() switches the worktree to each target branch, and
+# bash reads a script as it goes, so the file on disk must not change under it
+# (an older target has an older forward-fix.sh, or none).
+if [ -z "${FORWARD_FIX_RUNNING_COPY:-}" ]; then
+  copy="$(mktemp)"
+  cp "$0" "$copy"
+  FORWARD_FIX_RUNNING_COPY="$copy" FORWARD_FIX_REPO="$PWD" exec bash "$copy" "$@"
+fi
+cd "$FORWARD_FIX_REPO" || exit 1
+trap 'rm -f "$FORWARD_FIX_RUNNING_COPY"' EXIT
+
 # The newer open release/* branches for a source branch, then develop. "Newer"
 # is by version (sort -V), so a hotfix/1.0.1 forwards to release/1.1.0 but not
 # to release/1.0.0.
@@ -59,11 +70,22 @@ forward() {
   # shellcheck disable=SC2086
   if git cherry-pick $flags "$sha" >/dev/null 2>&1; then
     :
+  elif [ -z "$(git ls-files -u)" ] && git diff --cached --quiet && git diff --quiet; then
+    # Nothing conflicts and nothing changed: the target already has the fix
+    # (it also landed there some other way). A PR would be empty, and on a
+    # release branch it would hold the promotion for nothing.
+    git cherry-pick --abort >/dev/null 2>&1 || git cherry-pick --skip >/dev/null 2>&1 || true
+    echo "forward #$pr to $target: already there, skipped"
+    return 0
   else
     git cherry-pick --abort >/dev/null 2>&1 || true
     git commit -q --allow-empty -m "chore(release): forward #$pr to $target needs a person" \
       -m "The cherry-pick of $sha does not apply cleanly to $target. Resolve it on this branch."
     status="conflict"
+  fi
+  if [ "$status" = clean ] && git diff --quiet "origin/$target" HEAD; then
+    echo "forward #$pr to $target: already there, skipped"
+    return 0
   fi
   git push -q --force origin "HEAD:refs/heads/$branch"
 

@@ -211,9 +211,11 @@ git -C "$f" switch -q release/1.1.0; git -C "$f" merge -q --no-ff side -m "Merge
 git -C "$f" switch -q develop
 git -C "$f" switch -q -c release/1.3.0 develop; echo other >"$f/fix.txt"; git -C "$f" add -A; commit "$f" "chore: a conflicting line"
 git -C "$f" push -q origin release/1.3.0; git -C "$f" switch -q develop
+git -C "$f" switch -q -c release/1.4.0 develop; echo fix >"$f/fix.txt"; git -C "$f" add -A; commit "$f" "fix: the old line, landed here too"
+git -C "$f" push -q origin release/1.4.0; git -C "$f" switch -q develop
 ff() { (cd "$f" && PATH="$ffbin:$PATH" "$f/scripts/release/forward-fix.sh" "$@"); }
-expect_eq "a hotfix forwards to every newer release line, then develop" "$(ff targets hotfix/1.0.1 | tr '\n' ' ')" "release/1.1.0 release/1.2.0 release/1.3.0 develop "
-expect_eq "a release forwards only to newer ones and develop" "$(ff targets release/1.2.0 | tr '\n' ' ')" "release/1.3.0 develop "
+expect_eq "a hotfix forwards to every newer release line, then develop" "$(ff targets hotfix/1.0.1 | tr '\n' ' ')" "release/1.1.0 release/1.2.0 release/1.3.0 release/1.4.0 develop "
+expect_eq "a release forwards only to newer ones and develop" "$(ff targets release/1.2.0 | tr '\n' ' ')" "release/1.3.0 release/1.4.0 develop "
 : >"$FAKE_GH_LOG"; expect_eq "a clean cherry-pick opens its PR" "$(ff forward 7 release/1.1.0 "$FIXSHA" release/1.2.0)" "forward #7 to release/1.2.0: opened (clean)"
 expect_eq "the forward branch is on origin" "$(git -C "$fo" rev-parse --verify -q forward/pr-7-to-release-1.2.0 >/dev/null && echo yes)" "yes"
 expect_eq "the PR goes to the target, labelled no-landing" "$(grep -c -- '--base release/1.2.0 --head forward/pr-7-to-release-1.2.0' "$FAKE_GH_LOG")" "1"
@@ -224,6 +226,8 @@ expect_eq "the conflicting branch carries only the marker commit" "$(git -C "$fo
 expect_eq "a merge commit is forwarded as its branch's change (-m 1)" "$(ff forward 8 release/1.1.0 "$MERGESHA" release/1.2.0 >/dev/null && git -C "$fo" show forward/pr-8-to-release-1.2.0:side.txt)" "side"
 : >"$FAKE_GH_LOG"; expect_eq "an open forward PR is not opened twice" "$(FAKE_OPEN_PR=9 ff forward 7 release/1.1.0 "$FIXSHA" release/1.2.0)" "forward #7 to release/1.2.0: already open as #9"
 expect_eq "and no PR is created for it" "$(grep -c 'pr create' "$FAKE_GH_LOG")" "0"
+: >"$FAKE_GH_LOG"; expect_eq "a target that already has the fix is skipped" "$(ff forward 7 release/1.1.0 "$FIXSHA" release/1.4.0)" "forward #7 to release/1.4.0: already there, skipped"
+expect_eq "and gets no PR or branch" "$(grep -c 'pr create' "$FAKE_GH_LOG")$(git -C "$fo" rev-parse --verify -q forward/pr-7-to-release-1.4.0 >/dev/null && echo pushed)" "0"
 ff bogus >/dev/null 2>&1; expect_eq "an unknown command is refused" "$?" "2"
 
 echo "milestone.sh (ADR 0030)"
@@ -232,7 +236,11 @@ cat >"$mbin/gh" <<'FAKEGH'
 #!/bin/bash
 echo "gh $*" >>"$FAKE_GH_LOG"
 case "$*" in
-  "api --paginate"*) printf '%s' "${FAKE_MILESTONE:-}" ;;
+  "api --paginate"*)
+    # A lost race: the milestone exists once the other run's POST landed.
+    if [ -n "${FAKE_RACE:-}" ] && [ -e "$FAKE_RACE" ]; then printf '3'; else printf '%s' "${FAKE_MILESTONE:-}"; fi ;;
+  "api -X POST"*)
+    if [ -n "${FAKE_RACE:-}" ]; then touch "$FAKE_RACE"; echo '{"message":"Validation Failed","code":"already_exists"}' >&2; exit 1; fi ;;
 esac
 exit 0
 FAKEGH
@@ -247,6 +255,9 @@ expect_eq "an existing milestone is reused" "$(grep -c 'api -X POST' "$FAKE_GH_L
 expect_eq "a hotfix gets its own milestone" "$(grep -c -- '--milestone 1.0.1' "$FAKE_GH_LOG")" "1"
 : >"$FAKE_GH_LOG"; ms 12 develop >/dev/null
 expect_eq "a non-release base is left alone" "$(wc -l <"$FAKE_GH_LOG" | tr -d ' ')" "0"
+race="$(mktemp -u)"; : >"$FAKE_GH_LOG"
+out="$(FAKE_RACE="$race" ms 13 release/1.4.0 2>&1)"; expect_eq "a lost creation race still succeeds" "$?" "0"
+expect_eq "and the PR still gets the milestone" "$(grep -c -- 'pr edit 13 --repo muviss/test --milestone 1.4.0' "$FAKE_GH_LOG")" "1"
 
 
 echo

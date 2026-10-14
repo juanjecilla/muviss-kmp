@@ -18,12 +18,23 @@ fi
 VERSION="${BASH_REMATCH[2]}"
 
 # Exact title match: "1.1.0" must not find "1.1.01".
-NUMBER="$(gh api --paginate "repos/$GH_REPO/milestones?state=all&per_page=100" \
-  --jq ".[] | select(.title == \"$VERSION\") | .number")"
-NUMBER="${NUMBER%%$'\n'*}"
+find_milestone() {
+  local found
+  found="$(gh api --paginate "repos/$GH_REPO/milestones?state=all&per_page=100" \
+    --jq ".[] | select(.title == \"$VERSION\") | .number")"
+  echo "${found%%$'\n'*}"
+}
+
+NUMBER="$(find_milestone)"
 if [ -z "$NUMBER" ]; then
-  gh api -X POST "repos/$GH_REPO/milestones" -f title="$VERSION" >/dev/null
-  echo "created milestone $VERSION"
+  # Two PRs opened at once into a new branch can both get here; the loser's
+  # POST is a 422 (already_exists), so look again rather than fail.
+  if gh api -X POST "repos/$GH_REPO/milestones" -f title="$VERSION" >/dev/null 2>&1; then
+    echo "created milestone $VERSION"
+  elif [ -z "$(find_milestone)" ]; then
+    echo "could not create milestone $VERSION" >&2
+    exit 1
+  fi
 fi
 
 gh pr edit "$PR" --repo "$GH_REPO" --milestone "$VERSION" >/dev/null
