@@ -9,7 +9,7 @@ require_relative "../release_promote"
 class FakeGitHub
   attr_reader :calls
   attr_accessor :issues, :blockers_by_version, :fix_prs_by_branch, :conclusions, :green,
-                :release_prs, :merge_error
+                :release_prs, :merge_error, :merged_prs
 
   def initialize(issues: [])
     @issues = issues
@@ -20,6 +20,11 @@ class FakeGitHub
     @green = Hash.new(true)
     @release_prs = {}
     @merge_error = nil
+    @merged_prs = {}
+  end
+
+  def merged_release_pr(version)
+    @merged_prs[version]
   end
 
   def release_issues
@@ -73,7 +78,9 @@ class FakeGitHub
 
   def close_issue(number, body)
     @calls << [:close_issue, number, body]
-    @issues.find { |i| i["number"] == number }["closed"] = true
+    issue = @issues.find { |i| i["number"] == number }
+    issue["closed"] = true
+    issue["state"] = "CLOSED"
   end
 end
 
@@ -467,6 +474,41 @@ class ReleasePromotionTest < Minitest::Test
     promotion.complete("1.0.0")
     assert_includes @out.string, "no readable marker; nothing to close"
     refute broken["closed"]
+  end
+
+  def test_an_unrecorded_merge_retries_only_the_promotion
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-18", "rc_tag" => "v1.1.0-rc3")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+    @git.heads.delete("1.1.0") # release.yml deleted the branch after the merge
+    @github.merged_prs["1.1.0"] = 41
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :done, outcome.status
+    assert_equal :play_retry, outcome.step
+    refute_includes @github.calls.map(&:first), :merge
+    refute_includes @github.calls.map(&:first), :open_release_pr
+    assert_equal [[:production, 1_010_003]], @play.calls
+    state = state_of("1.1.0")
+    assert_equal "production", state["stage"]
+    assert_equal 41, state["release_pr"]
+  end
+
+  def test_an_unreadable_version_code_holds_before_play_is_asked
+    @git.codes.delete("v1.1.0-rc3")
+    outcome = outcome_for(run_on(SUNDAY_BETA), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons, "the versionCode of v1.1.0-rc3 could not be read"
+    assert_equal [], @play.calls
+  end
+
+  def test_complete_twice_closes_once
+    add_version("1.0.0", "production")
+    promotion = ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                                     today: Date.new(2026, 10, 12), apply: true, out: @out)
+    promotion.complete("1.0.0")
+    promotion.complete("1.0.0")
+    assert_equal 1, @github.calls.count { |c| c.first == :close_issue }
+    assert_includes @out.string, "1.0.0 is already done"
   end
 
   def test_the_sentry_release_name_is_the_one_the_app_reports

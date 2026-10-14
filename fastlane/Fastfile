@@ -264,8 +264,25 @@ platform :android do
 
     # release-promote.yml's `complete` closes the release issue on this signal
     # (ADR 0030): the version that reached 100%, written only after the edit
-    # committed.
-    File.write(ENV["RAMP_RESULT_FILE"], "#{tag.delete_prefix('v')}\n") if ramped_to_full && ENV["RAMP_RESULT_FILE"]
+    # committed. With nothing staged, the release already at 100% is written
+    # instead, every day: `complete` is a no-op once its issue is closed, and
+    # this is what retries a close that failed after Play committed.
+    finished = ramped_to_full ? tag : PlayRollout.tag_for(completed_production_code)
+    File.write(ENV["RAMP_RESULT_FILE"], "#{finished.delete_prefix('v')}\n") if finished && ENV["RAMP_RESULT_FILE"]
+  end
+
+  # The versionCode of the completed (100%) production release, or nil.
+  def completed_production_code
+    require "supply"
+    client = Supply::Client.make_from_config
+    client.begin_edit(package_name: Supply.config[:package_name])
+    track = client.get_edit_track("production")
+    client.abort_current_edit
+    release = track&.releases&.find { |r| r.status == PlayRollout::COMPLETED }
+    release&.version_codes&.map(&:to_i)&.max
+  rescue StandardError => e
+    UI.message("Could not read the completed production release (#{e.class})")
+    nil
   end
 
   desc "Halt the staged production rollout (the ramp leaves halted releases alone)"

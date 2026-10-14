@@ -58,6 +58,8 @@ module ReleaseGates
     reasons << rc_reason(facts) unless facts[:rc_built] == true
     reasons << ci_reason(facts) unless facts[:ci_green] == true
     reasons << notes_reason(facts) unless facts[:draft_locales] == []
+    # Play is asked for exactly this versionCode, and the Sentry gate needs it.
+    reasons << "the versionCode of #{facts[:rc_tag]} could not be read" if facts[:rc_code].nil?
     reasons << "Sentry: #{facts[:sentry]}" if facts[:sentry]
     Array(facts[:others_in_beta]).each do |other|
       reasons << "#{other} is still on the beta track; it moves to production first"
@@ -112,6 +114,20 @@ class ReleasePromotion
       step = ReleaseGates.due_step(state, @today)
       next Outcome.new(state["version"], nil, :not_due, []) unless step
 
+      # A merge that happened but was never recorded (the issue update failed
+      # after it): the branch is gone by now, so the gates could only hold.
+      # Record it and retry the promotion alone.
+      if step == :production
+        merged = safe("merged release PR") { @github.merged_release_pr(state["version"]) }
+        if merged
+          state = state.merge("merged_on" => @today.iso8601, "release_pr" => merged, "rc_tag" => state["rc_tag"] || safe("latest RC") { @git.latest_rc(state["version"]) })
+          if @apply
+            persist(issue, state, "release/#{state['version']} was already merged into main (PR ##{merged}); retrying only the promotion to production.")
+          end
+          step = :play_retry
+        end
+      end
+
       # The merge already passed every gate; what is left is Play alone.
       facts = step == :play_retry ? retry_facts(state) : gather(state)
       reasons = step == :play_retry ? retry_holds(facts) : ReleaseGates.holds(facts: facts)
@@ -137,6 +153,7 @@ class ReleasePromotion
     issue, state = find(version)
     return @out.puts("no release issue for #{version}; nothing to close") unless issue
     return @out.puts("the release issue for #{version} has no readable marker; nothing to close") unless state
+    return @out.puts("#{version} is already done; nothing to close") if state["stage"] == ReleaseStages::DONE && issue["state"].to_s.casecmp?("closed")
 
     state = state.merge("stage" => ReleaseStages::DONE, "completed_on" => @today.iso8601, "holds" => [])
     @github.update_issue(issue["number"], ReleaseStages.render(state))
@@ -329,7 +346,7 @@ module ReleasePromotionAdapters
     end
 
     def release_issues
-      JSON.parse(gh("issue", "list", "--repo", @repo, "--label", "release", "--state", "all", "--limit", "200", "--json", "number,title,body"))
+      JSON.parse(gh("issue", "list", "--repo", @repo, "--label", "release", "--state", "all", "--limit", "200", "--json", "number,title,body,state"))
     end
 
     def blockers(version)
@@ -356,13 +373,24 @@ module ReleasePromotionAdapters
     end
 
     def release_pr(version)
-      number = gh("pr", "list", "--repo", @repo, "--base", "main", "--head", "release/#{version}", "--state", "open", "--json", "number", "--jq", ".[0].number // \"\"")
+      pr_number(version, "open")
+    end
+
+    def merged_release_pr(version)
+      pr_number(version, "merged")
+    end
+
+    # Only PRs whose head is this repository: a fork can open one from a branch
+    # with the same name.
+    def pr_number(version, state)
+      number = gh("pr", "list", "--repo", @repo, "--base", "main", "--head", "release/#{version}", "--state", state,
+                  "--json", "number,isCrossRepository", "--jq", "[.[]|select(.isCrossRepository|not)][0].number // \"\"")
       number.empty? ? nil : Integer(number)
     end
 
     def open_release_pr(version)
-      body = "Ships **#{version}** to production (ADR 0030). Opened by the Sunday promotion (release-promote.yml). Merged with a merge commit by the release App; merging tags v#{version} and release.yml promotes the newest beta build."
-      gh("label", "create", "auto-release", "--repo", @repo, "--color", "1D76DB", "--description", "Merged by the Sunday promotion, so release.yml promotes without the production approval (ADR 0030)", "--force")
+      body = "Ships **#{version}** to production (ADR 0030). Opened by the Sunday promotion (release-promote.yml). Merged with a merge commit by the release App; release.yml tags v#{version}, and the Sunday step promotes the beta build to production."
+      gh("label", "create", "auto-release", "--repo", @repo, "--color", "1D76DB", "--description", "Merged by the Sunday promotion, which promotes it itself; release.yml does not (ADR 0030)", "--force")
       url = gh("pr", "create", "--repo", @repo, "--base", "main", "--head", "release/#{version}", "--title", "release: #{version}", "--label", "auto-release", "--body", body)
       Integer(url.split("/").last)
     end
