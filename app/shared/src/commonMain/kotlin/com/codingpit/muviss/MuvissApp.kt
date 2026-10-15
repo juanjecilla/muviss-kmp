@@ -46,6 +46,7 @@ import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceState
 import com.codingpit.muviss.core.database.PersistenceStatus
+import com.codingpit.muviss.core.designsystem.component.LocalOpenTmdbKeySettings
 import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
@@ -71,6 +72,7 @@ import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.settings.ui.ImportRoute
 import com.codingpit.muviss.feature.settings.ui.LocalSystemNotificationSettings
+import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
@@ -140,7 +142,11 @@ fun MuvissApp(
         RefreshRemoteConfigOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
-            CompositionLocalProvider(LocalSystemNotificationSettings provides koinInject<SystemNotificationSettings>()) {
+            CompositionLocalProvider(
+                LocalSystemNotificationSettings provides koinInject<SystemNotificationSettings>(),
+                // "TMDB rejected your key" offers a way to Settings, where the key lives (#321).
+                LocalOpenTmdbKeySettings provides { controller.destinations.firstOrNull { it.route == SettingsRoute }?.let(controller::navigateTo) },
+            ) {
                 val startRoute = rememberStartRoute(deepLinkMediaId)
                 if (startRoute == null) {
                     // The decision is one local read; drawing nothing meanwhile beats flashing
