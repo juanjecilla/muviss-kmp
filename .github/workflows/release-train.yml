@@ -14,9 +14,11 @@ name: Release train
 #     does not stop the cut. That case also comments on a "Release train
 #     blocked" issue so it is seen.
 #
-# A release branch with no release issue (cut before this rule) is adopted: its
-# issue is created with the cut date taken from its first commit, and it counts
-# as internal until its issue says otherwise.
+# A release branch with no release issue is adopted: its issue is created with
+# the cut date taken from its first commit, and it counts as internal until its
+# issue says otherwise. A branch cut before staged releases existed (no
+# scripts/release/version-code.sh in it) is not: it holds the train until it is
+# shipped by hand with the Ship release workflow.
 #
 # The cron fires every night; the job runs on the day in the repo variable
 # RELEASE_TRAIN_DAY (ISO weekday, 1 = Monday, the default), so the day can move
@@ -89,14 +91,27 @@ jobs:
           set -euo pipefail
           scripts/release/release-issue.sh labels
 
-          # Adopt an open release branch that has no release issue yet.
+          # Adopt an open release branch that has no release issue yet, unless it
+          # was cut before staged releases: its RCs carry commit-count
+          # versionCodes and its own release.yml promotes internal → production
+          # behind the approval, so the Sunday step cannot walk it. It ships by
+          # hand (Ship release), and the train waits for it.
           PLAN="$(scripts/release/release-issue.sh plan)"
+          LEGACY=""
           for v in $(jq -r '.adopt[]' <<<"$PLAN"); do
+            git fetch --quiet origin "release/$v"
+            if ! git cat-file -e "FETCH_HEAD:scripts/release/version-code.sh" 2>/dev/null; then
+              LEGACY="$LEGACY $v"
+              continue
+            fi
             scripts/release/release-issue.sh ensure "$v" "$(scripts/release/release-issue.sh cut-date "$v")"
           done
 
           # The stagger rule (ADR 0030): a version still in internal holds the cut.
           HOLD="$(jq -r '.hold // empty' <<<"$PLAN")"
+          for v in $LEGACY; do
+            HOLD="${HOLD:+$HOLD; }release/$v predates staged releases: ship it with the Ship release workflow (or close the branch), and the train cuts after it"
+          done
           if [ -n "$HOLD" ]; then
             MSG="Release train $(date -u +%F): skipped — $HOLD."
             echo "$MSG" >> "$GITHUB_STEP_SUMMARY"

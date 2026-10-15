@@ -10,7 +10,7 @@ ADR 0025 gave each release a Monday cut, an internal RC, and a hand-merged PR in
 |---|---|---|
 | Monday 23:00 UTC (week 0) | internal | The train cuts `release/X.Y.Z` and the RC goes to the internal track, as before. |
 | Sunday (week 0, six days later) | open beta | The same RC binary is promoted from internal to the beta (open testing) track. |
-| Sunday (week 1) | production | `release/X.Y.Z` is merged into `main`; `release.yml` tags `vX.Y.Z` and promotes the beta release to production at 20%. The daily ramp takes it to 100%. |
+| Sunday (week 1) | production | `release/X.Y.Z` is merged into `main` (`release.yml` tags `vX.Y.Z`), and the same run promotes the beta release to production at 20%. The daily ramp takes it to 100%. |
 
 - **Up to three versions are in flight**, at most one per stage: on a Monday, one version is ramping in production, one is in beta, and the train cuts a new one for internal. The train no longer skips because a `release/*` branch exists; it skips only when `develop` has nothing new, or when a version is still sitting in internal (it was held, so the new cut would collide on that track).
 - **The production step is fully automatic.** The `production` environment approval is dropped from the scheduled path; the gates below and the crash-gated ramp are what stop a bad version. The manual brakes stay: `play-promote.yml` halts and resumes, and a `release-blocker` issue stops the next step.
@@ -42,8 +42,9 @@ A held version is retried every Sunday, and by hand (`release-promote.yml`, disp
 ## Consequences
 
 - `release-train.yml` stops skipping on an open `release/*` branch (only on one still in internal), and creates the milestone, the release issue and the `release-blocker` label.
-- A new `release-promote.yml` runs every Sunday (and on dispatch) and does the beta and production steps; the production step merges `release/X.Y.Z` into `main` with a merge commit, as the release App, so `release.yml` starts.
-- `release.yml` promotes from the **beta** track instead of internal, and its production job loses the `production` environment on this path. The back-merge into `develop` is now mostly empty, because fixes were already forwarded; it stays as the safety net and carries the tag.
+- A new `release-promote.yml` runs every Sunday (and on dispatch) and does the beta and production steps; the production step merges `release/X.Y.Z` into `main` with a merge commit, as the release App, so `release.yml` tags it, and then promotes beta → production itself. Production runs before beta in the same run, so a newer RC never takes the beta track while the older one is still read from it. A promotion that fails after the merge is retried alone, without merging again.
+- `release.yml` promotes only on a manual merge, behind the `production` environment, from the **beta** track (or internal, for an RC that never went to beta).
+- The daily ramp times and closes the release Play has in production, read from its versionCode, not the newest tag: with several versions in flight those can differ. The back-merge into `develop` is now mostly empty, because fixes were already forwarded; it stays as the safety net and carries the tag.
 - The fastlane `promote` lane gains internal → beta. `app/androidApp/build.gradle.kts` derives `versionCode` from the version, and the RC workflow passes `rcN`.
 - `docs/RELEASING.md`, `AGENTS.md` and `CLAUDE.md` describe the stages, the gates and where to point a fix.
 - iOS (TestFlight internal → external → App Store) and desktop can follow the same three stages when they join the train (#78, #79); this ADR does not cover them.
