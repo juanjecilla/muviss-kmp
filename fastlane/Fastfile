@@ -92,6 +92,16 @@ platform :android do
     )
   end
 
+  # The newest versionCode on a track, written to TRACK_RESULT_FILE ("" when the
+  # track is empty): the Sunday step checks beta carries the RC before merging
+  # a release into main (#349).
+  desc "Write a track's newest versionCode to TRACK_RESULT_FILE"
+  lane :track_latest do |options|
+    track = options[:track] || UI.user_error!("pass track:<internal|beta|production>")
+    codes = google_play_track_version_codes(track: track, json_key_data: json_key_data)
+    File.write(ENV.fetch("TRACK_RESULT_FILE") { UI.user_error!("TRACK_RESULT_FILE is not set") }, codes.map(&:to_i).max.to_s)
+  end
+
   # The Sunday step (ADR 0030) puts the RC on open beta a week before production.
   # Play's open testing track is called "beta" in its API.
   desc "Promote the internal release to open beta (the beta track)"
