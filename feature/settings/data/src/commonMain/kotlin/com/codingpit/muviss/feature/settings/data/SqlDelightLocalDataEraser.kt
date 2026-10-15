@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.secrets.SecretStore
+import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
@@ -18,12 +19,16 @@ import kotlinx.coroutines.withContext
  *
  * Every screen observes its tables, so nothing needs restarting: the Library
  * empties, Settings shows the defaults and Discover shows its first-run intro.
+ * The home-screen widgets observe nothing (they render outside the app), so
+ * they are told explicitly once everything is gone (#317), the same push
+ * `SqlDelightProgressRepository` makes after every progress write.
  */
 class SqlDelightLocalDataEraser(
     private val database: MuvissDatabase,
     private val dispatchers: AppDispatchers,
     private val ownTmdbKey: OwnTmdbKey,
     private val secrets: SecretStore,
+    private val widgetRefresher: WidgetRefresher,
 ) : LocalDataEraser {
 
     override suspend fun deleteAllData() = withContext(dispatchers.io) {
@@ -56,5 +61,6 @@ class SqlDelightLocalDataEraser(
         // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
         ownTmdbKey.clear()
         secrets.clearAll()
+        widgetRefresher.refresh()
     }
 }

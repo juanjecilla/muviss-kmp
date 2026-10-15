@@ -403,6 +403,12 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-14
+
+- v1.1.0 shipped. #363/#364 (the owner's Settings > About test crashes, a pre-1.0 dev build) closed as completed, #71 (EPIC 38) closed: every item merged. #151 (EPIC 43) stays open for the live re-run of #88/#100/#129 against dev.
+- #198 is owner-only now: the Sentry scrubbing rule for `$user.geo.**`, then the docs revert (see the issue).
+- #340 → #368 (the release bundle and its verify tasks run in PR CI's `build` job); #335 → the HttpCache fallback has a regression guard again (the engine throws `InvalidCacheStateException`, since Ktor 3.6 offers no way to make `HttpCache` lose an entry).
+
 ### 2026-10-12
 
 - **#300 built** (`.github/workflows/sentry-issues.yml`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it as completed resolves the crash in the next release (a close as "not planned" or duplicate does not). Needs `event:write` on `SENTRY_AUTH_TOKEN`.
