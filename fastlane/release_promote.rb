@@ -14,6 +14,7 @@ require "date"
 require "json"
 require "open3"
 require "stringio"
+require "tmpdir"
 require_relative "release_stages"
 require_relative "sentry_gate"
 
@@ -60,6 +61,13 @@ module ReleaseGates
     reasons << notes_reason(facts) unless facts[:draft_locales] == []
     # Play is asked for exactly this versionCode, and the Sentry gate needs it.
     reasons << "the versionCode of #{facts[:rc_tag]} could not be read" if facts[:rc_code].nil?
+    if facts[:expect_beta] && facts[:rc_code]
+      if facts[:beta_has_rc].nil?
+        reasons << "the beta track could not be read"
+      elsif facts[:beta_has_rc] == false
+        reasons << "the beta track's newest build is not #{facts[:rc_tag]} (versionCode #{facts[:rc_code]}): production promotes from beta"
+      end
+    end
     reasons << "Sentry: #{facts[:sentry]}" if facts[:sentry]
     Array(facts[:others_in_beta]).each do |other|
       reasons << "#{other} is still on the beta track; it moves to production first"
@@ -129,7 +137,7 @@ class ReleasePromotion
       end
 
       # The merge already passed every gate; what is left is Play alone.
-      facts = step == :play_retry ? retry_facts(state) : gather(state)
+      facts = step == :play_retry ? retry_facts(state) : gather(state, step)
       reasons = step == :play_retry ? retry_holds(facts) : ReleaseGates.holds(facts: facts)
       unless reasons.empty?
         hold!(issue, state, reasons)
@@ -197,7 +205,7 @@ class ReleasePromotion
   end
 
   # Every fact the gates need. A read that fails becomes nil (holds), not a crash.
-  def gather(state)
+  def gather(state, step = nil)
     version = state["version"]
     branch = "#{ReleaseGates::BRANCH_PREFIX}#{version}"
     rc = safe("latest RC") { @git.latest_rc(version) }
@@ -218,6 +226,13 @@ class ReleasePromotion
     facts[:draft_locales] = safe("notes") { @git.draft_locales(version) }
     facts[:rc_code] = safe("version code") { @git.version_code(rc) }
     facts[:sentry] = facts[:rc_code] ? sentry_hold(version, facts[:rc_code]) : nil
+    # Production promotes from the beta track, so it must carry this RC before
+    # anything is merged (#349): checked after the merge, a mismatch would
+    # leave main released and Play not.
+    if step == :production
+      facts[:expect_beta] = true
+      facts[:beta_has_rc] = facts[:rc_code] ? safe("beta track") { @play.carries?("beta", facts[:rc_code]) } : nil
+    end
     facts
   end
 
@@ -457,6 +472,16 @@ module ReleasePromotionAdapters
     # Internal → open beta, for the RC with this versionCode.
     def promote_to_beta(version_code)
       Shell.capture("bundle", "exec", "fastlane", "android", "beta", "version_code:#{version_code}", env: @env)
+    end
+
+    # Whether the track's newest release is this versionCode.
+    def carries?(track, version_code)
+      Dir.mktmpdir do |dir|
+        file = File.join(dir, "latest")
+        Shell.capture("bundle", "exec", "fastlane", "android", "track_latest", "track:#{track}",
+                      env: @env.merge("TRACK_RESULT_FILE" => file))
+        File.read(file).strip == version_code.to_s
+      end
     end
 
     # Open beta → production at 20%, for the RC with this versionCode.
