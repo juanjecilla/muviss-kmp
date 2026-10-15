@@ -3,11 +3,15 @@ name: CI
 # Git flow (ADR 0025): day-to-day PRs target `develop`; only `release/*` and
 # `hotfix/*` PRs target `main`. Pushes to the long-lived branches run too: they
 # are what every release is cut from.
+#
+# A PR runs CI whatever its base (#318): a stacked PR into a feature branch, or
+# a fix into `release/X.Y.Z` (ADR 0030), was otherwise never built, tested or
+# linted, and could look green with only CodeRabbit's check. Which base may be
+# merged into stays with the rulesets, not with this trigger.
 on:
   push:
     branches: [ main, develop, 'release/**', 'hotfix/**' ]
   pull_request:
-    branches: [ main, develop ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,6 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # The three-dot diff below needs the merge base, so the default
           # single-commit checkout is not enough.
           fetch-depth: 0
@@ -109,6 +114,7 @@ jobs:
       # `git rev-list --count HEAD` and refuses a shallow clone.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
@@ -316,6 +322,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -387,6 +395,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -533,6 +543,7 @@ jobs:
       # CFBundleVersion is the same commit count.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
