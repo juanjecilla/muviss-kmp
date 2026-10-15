@@ -36,7 +36,6 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.progress.domain.UpcomingBucket
@@ -104,7 +103,7 @@ fun UpcomingScreen(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 when {
                     state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                    state.error != null -> ErrorState(state.error!!.resolve(), onRetry = viewModel::retry)
+                    state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
                     state.groups.isEmpty() -> UpcomingEmptyState(hasLibraryEntries = state.hasLibraryEntries)
                     else -> UpcomingList(state.groups, onOpenDetail)
                 }

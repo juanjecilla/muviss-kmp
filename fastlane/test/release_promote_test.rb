@@ -137,6 +137,16 @@ class FakePlay
 
     @calls << [:production, code]
   end
+
+  # Unset tracks carry whatever is asked, so only the tests about #349 set one.
+  attr_accessor :beta_latest, :track_error
+
+  def carries?(track, code)
+    raise @track_error if @track_error
+    return true if track != "beta" || @beta_latest.nil?
+
+    @beta_latest == code
+  end
 end
 
 class FakeSentry
@@ -509,6 +519,34 @@ class ReleasePromotionTest < Minitest::Test
     promotion.complete("1.0.0")
     assert_equal 1, @github.calls.count { |c| c.first == :close_issue }
     assert_includes @out.string, "1.0.0 is already done"
+  end
+
+  def test_production_waits_while_the_beta_track_carries_another_build
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-18")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+    @play.beta_latest = 1_010_002 # an older candidate is still the beta build
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons, "the beta track's newest build is not v1.1.0-rc3 (versionCode 1010003): production promotes from beta"
+    refute_includes @github.calls.map(&:first), :merge, "nothing is merged into main while Play could not follow (#349)"
+    assert_equal "beta", state_of("1.1.0")["stage"]
+  end
+
+  def test_production_waits_when_the_beta_track_cannot_be_read
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-18")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+    @play.track_error = RuntimeError.new("Play is down")
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons, "the beta track could not be read"
+    refute_includes @github.calls.map(&:first), :merge
+  end
+
+  def test_the_beta_step_does_not_ask_the_beta_track
+    @play.track_error = RuntimeError.new("not asked")
+    assert_equal :done, outcome_for(run_on(SUNDAY_BETA), "1.1.0").status
   end
 
   def test_the_sentry_release_name_is_the_one_the_app_reports
