@@ -1,12 +1,16 @@
 # Every `uses:` in the workflows (and any composite action) names a local path
-# or a third-party action pinned to a full commit SHA (#311). It reads the
+# or a third-party action pinned to a full commit SHA, or a docker:// image
+# pinned to its sha256 digest (#311). It reads the
 # parsed YAML, so a comment can never make a moving tag pass: only the value of
 # the `uses` key is looked at.
 #
 #   ruby scripts/ci/check-action-pins.rb [ROOT]    exit 1 and list offenders
 require "yaml"
+require "date"
 
 PINNED = /\A[^@\s]+@[0-9a-f]{40}\z/
+# A container image is pinned only by its digest: a tag can be re-pushed.
+DOCKER_PINNED = %r{\Adocker://[^@\s]+@sha256:[0-9a-f]{64}\z}
 
 def uses_in(node, path, out)
   case node
@@ -38,16 +42,16 @@ def unpinned(root)
     next if seen[file]
 
     seen[file] = true
-    uses_in(YAML.load_file(file), file.delete_prefix("#{File.expand_path(root)}/"), []).each do |path, ref|
+    uses_in(YAML.safe_load(File.read(file), permitted_classes: [Symbol, Date, Time], aliases: true), file.delete_prefix("#{File.expand_path(root)}/"), []).each do |path, ref|
       if ref.start_with?("./")
         dir = File.join(root, ref.delete_prefix("./").split("@").first)
         queue.concat(Dir[File.join(dir, "action.{yml,yaml}")]) if File.directory?(dir)
-      elsif !(ref.start_with?("docker://") || ref.match?(PINNED))
+      elsif !(ref.match?(DOCKER_PINNED) || ref.match?(PINNED))
         bad << [path, ref]
       end
     end
   end
-  bad.sort
+  bad.uniq.sort
 end
 
 if $PROGRAM_NAME == __FILE__

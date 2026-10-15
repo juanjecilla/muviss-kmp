@@ -23,14 +23,47 @@ class CheckActionPinsTest < Minitest::Test
     YAML
   end
 
-  def test_pinned_local_and_docker_pass
+  DIGEST = "sha256:#{'a' * 64}".freeze
+
+  def test_pinned_local_and_digest_pinned_docker_pass
     with_workflow(<<~YAML) { |bad| assert_equal [], bad }
       jobs:
         a:
           steps:
             - uses: owner/ok@#{SHA} # v1
             - uses: ./local
+            - uses: docker://alpine@#{DIGEST}
+    YAML
+  end
+
+  def test_a_docker_tag_is_not_a_pin
+    with_workflow(<<~YAML) { |bad| assert_equal ["docker://alpine:3", "docker://ghcr.io/o/i:latest"], bad }
+      jobs:
+        a:
+          steps:
             - uses: docker://alpine:3
+            - uses: docker://ghcr.io/o/i:latest
+    YAML
+  end
+
+  def test_aliases_are_read_not_rejected
+    with_workflow(<<~YAML) { |bad| assert_equal ["owner/moving@main"], bad }
+      x-step: &step
+        uses: owner/moving@main
+      jobs:
+        a:
+          steps:
+            - *step
+            - uses: owner/ok@#{SHA}
+    YAML
+  end
+
+  def test_an_unknown_local_prefix_is_not_trusted
+    with_workflow(<<~YAML) { |bad| assert_equal ["$/tools/setup"], bad }
+      jobs:
+        a:
+          steps:
+            - uses: $/tools/setup
     YAML
   end
 
