@@ -49,6 +49,8 @@ jobs:
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check fastlane/release-notes for this version
         env:
           HEAD_REF: ${{ github.head_ref }}
@@ -67,6 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Check the PR touches website/ when it ships a feature
         env:
@@ -84,6 +87,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every third-party action is pinned to a full commit SHA, tag in a
+      # comment (#311): a moving tag can change what runs next to the signing
+      # keys and the Play credentials. The YAML is parsed, so a comment cannot
+      # fake a pin. Dependabot keeps the pins current.
+      - name: Actions are pinned to commit SHAs
+        run: ruby scripts/ci/test/check_action_pins_test.rb && ruby scripts/ci/check-action-pins.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
       - name: Rollout ramp policy
