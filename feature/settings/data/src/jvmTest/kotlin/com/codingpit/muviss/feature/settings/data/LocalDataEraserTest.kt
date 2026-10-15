@@ -52,7 +52,8 @@ class LocalDataEraserTest {
         secrets.put(OwnTmdbKey.STORE_NAME, "c".repeat(32))
         secrets.put("something-else", "x")
 
-        SqlDelightLocalDataEraser(database, dispatchers, ownKey, secrets).deleteAllData()
+        var widgetRefreshes = 0
+        SqlDelightLocalDataEraser(database, dispatchers, ownKey, secrets) { widgetRefreshes++ }.deleteAllData()
 
         val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
         assertTrue(export.collection.isEmpty() && export.progress.isEmpty() && export.plays.isEmpty())
@@ -62,6 +63,7 @@ class LocalDataEraserTest {
         assertEquals(null, database.remoteConfigCacheQueries.selectByKey("config").awaitAsOneOrNull(), "the cached remote config is a cache of this install")
         assertEquals(null, secrets.get(OwnTmdbKey.STORE_NAME), "the Own TMDB Key goes with everything else")
         assertEquals(null, secrets.get("something-else"), "and so does any other secret: the store is wiped, not one entry")
+        assertEquals(1, widgetRefreshes, "the home-screen widgets are told, or they keep showing the old library (#317)")
         database.appSettingsQueries.ensureRow()
         assertEquals("SYSTEM", database.appSettingsQueries.selectSettings().awaitAsOne().theme)
     }
