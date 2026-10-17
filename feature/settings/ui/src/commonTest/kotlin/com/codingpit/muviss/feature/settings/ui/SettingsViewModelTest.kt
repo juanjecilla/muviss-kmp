@@ -221,6 +221,18 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun onTickAnimationsToggled_persists_without_touching_the_master() = runTest {
+        val vm = viewModel(FakeSettingsRepository())
+        advanceUntilIdle()
+
+        vm.onTickAnimationsToggled(false)
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.tickAnimations)
+        assertEquals(true, vm.state.value.animationsEnabled)
+    }
+
+    @Test
     fun onTriageDeckAnimationsToggled_persists_without_touching_the_master() = runTest {
         val vm = viewModel(FakeSettingsRepository())
         advanceUntilIdle()
@@ -321,10 +333,12 @@ private class FakeFeatureFlags : FeatureFlags {
     private val scheme = MutableStateFlow(TriageControlScheme.DEFAULT)
     val animations = MutableStateFlow(true)
     val deckAnimations = MutableStateFlow(true)
+    val tickAnims = MutableStateFlow(true)
 
     override val triageControlScheme: Flow<TriageControlScheme> = scheme
     override val animationsEnabled: Flow<Boolean> = animations
     override val triageDeckAnimations: Flow<Boolean> = deckAnimations
+    override val tickAnimations: Flow<Boolean> = tickAnims
     val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
     override val byokEnabled: Flow<Boolean> = MutableStateFlow(false)
@@ -355,5 +369,9 @@ private class FakeFeatureFlags : FeatureFlags {
 
     override suspend fun setTriageDeckAnimations(enabled: Boolean) {
         deckAnimations.value = enabled
+    }
+
+    override suspend fun setTickAnimations(enabled: Boolean) {
+        tickAnims.value = enabled
     }
 }

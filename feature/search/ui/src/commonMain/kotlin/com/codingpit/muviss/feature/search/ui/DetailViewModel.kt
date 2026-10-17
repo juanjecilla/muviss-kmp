@@ -18,6 +18,7 @@ import com.codingpit.muviss.feature.search.domain.WatchProvidersUseCase
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.error_generic
 import com.codingpit.muviss.feature.search.ui.generated.resources.refresh_failed
+import com.codingpit.muviss.feature.search.ui.generated.resources.tick_caught_up
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_season_seen
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_show_seen
 import com.codingpit.muviss.feature.triage.api.TriageApi
@@ -29,11 +30,13 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProviders
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -77,6 +80,10 @@ data class DetailUiState(
     val playCounts: Map<EpisodeId, Int> = emptyMap(),
     /** Set right after a bulk mark, so its snackbar can take back exactly those ticks. */
     val pendingUndo: BulkMarkUndo? = null,
+    /** Whether a tick plays its motion: the master switch AND the tick switch (EPIC 51). Haptics ignore it. */
+    val animateTicks: Boolean = true,
+    /** Set by the tick that leaves nothing aired unseen, so the screen can burst once; cleared by `consumeCelebration()`. */
+    val celebration: UiText? = null,
 ) {
     fun isSeen(episodeId: EpisodeId): Boolean = episodeId in seenEpisodes
 
@@ -122,6 +129,7 @@ class DetailViewModel(
     private val loadMoreLikeThis: MoreLikeThisUseCase,
     private val clock: AppClock,
     connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
+    animateTicks: Flow<Boolean> = flowOf(true),
 ) : ViewModel() {
 
     private val collectionApi: CollectionApi get() = peers.collection
@@ -139,6 +147,9 @@ class DetailViewModel(
 
     init {
         load()
+        animateTicks
+            .onEach { animate -> _state.update { it.copy(animateTicks = animate) } }
+            .launchInReporting(viewModelScope)
         triageApi.observeDecision(mediaId)
             .onEach { decision -> _state.update { it.copy(skipped = decision?.verdict == TriageVerdict.SKIP) } }
             .launchInReporting(viewModelScope)
@@ -304,10 +315,22 @@ class DetailViewModel(
         viewModelScope.launchReporting { collectionApi.setRevisitWillingness(mediaId, next) }
     }
 
-    /** Ticks a single episode's checkmark. */
+    /**
+     * Ticks a single episode's checkmark. The tick that leaves nothing aired
+     * unseen also raises [DetailUiState.celebration] (when tick motion is on),
+     * decided here, before the write, from what was on screen at the tap.
+     */
     fun toggleEpisodeSeen(episodeId: EpisodeId) {
-        viewModelScope.launchReporting { progressApi.setEpisodeSeen(episodeId, !_state.value.isSeen(episodeId)) }
+        val current = _state.value
+        val details = current.details
+        if (current.animateTicks && details != null && details.completesAiredWith(episodeId, current.seenEpisodes, clock.todayEpochDay())) {
+            _state.update { it.copy(celebration = UiText.Resource(Res.string.tick_caught_up, details.summary.title)) }
+        }
+        viewModelScope.launchReporting { progressApi.setEpisodeSeen(episodeId, !current.isSeen(episodeId)) }
     }
+
+    /** Acknowledges [DetailUiState.celebration] once its burst has played. */
+    fun consumeCelebration() = _state.update { it.copy(celebration = null) }
 
     /**
      * Marks every *aired* episode of [season] as seen and parks an undo.
@@ -407,3 +430,14 @@ class DetailPeers(
     val progress: ProgressApi,
     val triage: TriageApi,
 )
+
+/**
+ * Whether ticking [episodeId] would leave every aired episode of this show
+ * seen: it is unseen, it has aired, and it is the only aired one still unseen.
+ * Unaired and undated episodes never count, the same rule the bulk marks use.
+ */
+internal fun MediaDetails.completesAiredWith(episodeId: EpisodeId, seen: Set<EpisodeId>, todayEpochDay: Long): Boolean {
+    val aired = seasons.flatMap { it.episodes }.filter { episode -> episode.airDateEpochDay?.let { it <= todayEpochDay } == true }
+    val unseen = aired.filter { it.id !in seen }
+    return unseen.size == 1 && unseen.single().id == episodeId
+}

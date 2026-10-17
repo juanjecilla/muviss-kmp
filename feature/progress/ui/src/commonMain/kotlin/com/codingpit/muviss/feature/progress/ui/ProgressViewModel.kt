@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportFailure
+import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.flags.tickAnimationsActive
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
@@ -20,8 +22,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class ProgressUiState(
     val loading: Boolean = true,
@@ -30,7 +34,20 @@ data class ProgressUiState(
     val message: UiText? = null,
     val items: List<WatchNextItem> = emptyList(),
     val error: UiText? = null,
+    /** Whether a tick plays its motion: the master switch AND the tick switch (EPIC 51). The haptic ignores it. */
+    val animateTicks: Boolean = true,
 )
+
+/** What a tick amounted to, once the list has settled: the screen celebrates the last two. */
+sealed interface TickOutcome {
+    data object Plain : TickOutcome
+
+    /** The tick finished [season]; there is more to watch in a later one. */
+    data class SeasonFinished(val season: Int) : TickOutcome
+
+    /** Nothing aired is left unseen: the show leaves Watch Next until a new episode airs. */
+    data object CaughtUp : TickOutcome
+}
 
 /**
  * Drives the Progress tab's Watch Next segment.
@@ -46,6 +63,7 @@ class ProgressViewModel(
     private val watchNext: WatchNextUseCase,
     private val toggleEpisodeSeen: ToggleEpisodeSeenUseCase,
     private val catalogCache: EpisodeCatalogCache,
+    featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProgressUiState())
@@ -55,6 +73,9 @@ class ProgressViewModel(
 
     init {
         observe()
+        featureFlags.tickAnimationsActive
+            .onEach { animate -> _state.update { it.copy(animateTicks = animate) } }
+            .launchInReporting(viewModelScope)
     }
 
     private fun observe() {
@@ -67,8 +88,36 @@ class ProgressViewModel(
 
     /** Ticks [item]'s next episode seen, advancing the item to the following one. */
     fun tickNext(item: WatchNextItem) {
-        val next = item.nextEpisode ?: return
-        viewModelScope.launchReporting { toggleEpisodeSeen(next.id, true) }
+        tickJob(item)
+    }
+
+    /**
+     * [tickNext], then waits for the list to move on and says what the tick
+     * amounted to. The write runs in [viewModelScope] so leaving the screen
+     * mid-wait cannot cancel it; only the wait is the caller's.
+     *
+     * A tick that makes `seen + 1 >= aired` is [TickOutcome.CaughtUp] without
+     * waiting, because that row is about to be filtered out of the list. A
+     * season is finished when the next episode is in a later season than the
+     * one just ticked: [WatchNextItem.nextEpisode] is the first unseen aired
+     * episode, so nothing earlier remains. Null when there was nothing to tick.
+     */
+    suspend fun tick(item: WatchNextItem): TickOutcome? {
+        val ticked = item.nextEpisode ?: return null
+        tickJob(item)?.join()
+        if (item.airedCount > 0 && item.seenCount + 1 >= item.airedCount) return TickOutcome.CaughtUp
+        // Timed out: the list never moved on (the write failed, or is slow). Nothing to celebrate.
+        val settled = withTimeoutOrNull(SETTLE_MILLIS) {
+            _state.first { current -> current.items.find { it.mediaId == item.mediaId }?.nextEpisode?.id != ticked.id }
+        } ?: return TickOutcome.Plain
+        // Gone from the list, or nothing left to watch: either way it is caught up.
+        val following = settled.items.find { it.mediaId == item.mediaId }?.nextEpisode ?: return TickOutcome.CaughtUp
+        return if (following.seasonNumber > ticked.seasonNumber) TickOutcome.SeasonFinished(ticked.seasonNumber) else TickOutcome.Plain
+    }
+
+    private fun tickJob(item: WatchNextItem): Job? {
+        val next = item.nextEpisode ?: return null
+        return viewModelScope.launchReporting { toggleEpisodeSeen(next.id, true) }
     }
 
     /** Reverts a tick — the undo-snackbar action; the reactive pipeline re-surfaces the episode. */
@@ -108,3 +157,6 @@ class ProgressViewModel(
         refresh()
     }
 }
+
+/** How long [ProgressViewModel.tick] waits for the list to move on before calling a tick plain. */
+private const val SETTLE_MILLIS = 1_500L

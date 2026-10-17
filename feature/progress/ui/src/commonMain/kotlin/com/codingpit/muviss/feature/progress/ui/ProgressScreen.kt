@@ -1,11 +1,24 @@
 package com.codingpit.muviss.feature.progress.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,6 +48,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,14 +56,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.designsystem.component.CelebrationBurst
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
@@ -67,12 +86,17 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.next_episode
 import com.codingpit.muviss.feature.progress.ui.generated.resources.progress_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_upcoming
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_watch_next
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_row_confirmation
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_snackbar
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_snackbar_caught_up
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_snackbar_season_done
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_caught_up
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_empty_body
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_empty_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_episode
+import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
@@ -144,16 +168,27 @@ private fun WatchNextScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // What to celebrate on screen, and when: a new token restarts the burst.
+    var celebration by remember { mutableStateOf<Celebration?>(null) }
+    var tokens by remember { mutableStateOf(0) }
+
     // One-tap tick with undo (design doc, Motion + Progress screen): tick
-    // persists immediately; the snackbar's Undo reverts it via the VM.
+    // persists immediately; the snackbar's Undo reverts it via the VM. The
+    // snackbar waits for the outcome (a few ms) so one message says it all,
+    // and a milestone says so there too: with motion off it is all there is.
     val onTick: (WatchNextItem) -> Unit = tick@{ item ->
         val episode = item.nextEpisode ?: return@tick
-        viewModel.tickNext(item)
         scope.launch {
-            val result = snackbarHostState.showSnackbar(
-                message = getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber),
-                actionLabel = getString(Res.string.action_undo),
-            )
+            val outcome = viewModel.tick(item) ?: return@launch
+            val message = when (outcome) {
+                is TickOutcome.CaughtUp -> getString(Res.string.tick_snackbar_caught_up, item.title)
+                is TickOutcome.SeasonFinished -> getString(Res.string.tick_snackbar_season_done, outcome.season)
+                is TickOutcome.Plain -> getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
+            }
+            if (state.animateTicks && outcome !is TickOutcome.Plain) {
+                celebration = Celebration(outcome, item.title, ++tokens)
+            }
+            val result = snackbarHostState.showSnackbar(message = message, actionLabel = getString(Res.string.action_undo))
             if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
         }
     }
@@ -182,16 +217,33 @@ private fun WatchNextScreen(
                         body = stringResource(Res.string.watch_next_empty_body),
                     )
 
-                    else -> WatchNextList(state.items, onTick = onTick, onOpenDetail = onOpenDetail)
+                    else -> WatchNextList(state.items, animate = state.animateTicks, onTick = onTick, onOpenDetail = onOpenDetail)
+                }
+                // Over the list, not in a row: a show that is caught up leaves the list,
+                // and its row with it.
+                celebration?.let { current ->
+                    key(current.token) {
+                        CelebrationBurst(label = current.label(), onFinished = { celebration = null })
+                    }
                 }
             }
         }
     }
 }
 
+/** A milestone being celebrated; [token] is new for each so a second one restarts the burst. */
+private data class Celebration(val outcome: TickOutcome, val title: String, val token: Int)
+
+@Composable
+private fun Celebration.label(): String = when (outcome) {
+    is TickOutcome.SeasonFinished -> stringResource(Res.string.tick_snackbar_season_done, outcome.season)
+    else -> stringResource(Res.string.tick_snackbar_caught_up, title)
+}
+
 @Composable
 private fun WatchNextList(
     items: List<WatchNextItem>,
+    animate: Boolean,
     onTick: (WatchNextItem) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
 ) {
@@ -206,67 +258,178 @@ private fun WatchNextList(
         ),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
-            WatchNextRow(item, onTick = { onTick(item) }, onClick = { onOpenDetail(item.mediaId) })
+            WatchNextRow(
+                item,
+                animate = animate,
+                onTick = { onTick(item) },
+                onClick = { onOpenDetail(item.mediaId) },
+                // A row that leaves (caught up) fades out and the rest close the gap, unless
+                // motion is off, when both are instant.
+                modifier = if (animate) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null),
+            )
         }
     }
 }
+
+/** Tags the "S1E3 seen" sweep across a row for a moment after its tick (EPIC 51). */
+const val TICK_CONFIRMATION_TAG = "tickConfirmation"
+
+private const val SWEEP_MILLIS = 350
+private const val CONFIRMATION_HOLD_MILLIS = 250L
+private const val CONFIRMATION_FADE_MILLIS = 400
 
 @Composable
 private fun WatchNextRow(
     item: WatchNextItem,
+    animate: Boolean,
     onTick: () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    // The episode this row was just ticked on, for the confirmation that sweeps over it.
+    var confirmed by remember { mutableStateOf<Episode?>(null) }
+    // What the row showed at the tap. The list moves on within milliseconds, so without this the
+    // slide and the bar's fill would play behind the sweep: it is kept on screen under the sweep
+    // and released as the sweep fades, so the change is what the confirmation dissolves into.
+    var held by remember { mutableStateOf<HeldRow?>(null) }
+    val sweep = remember { Animatable(0f) }
+    val fade = remember { Animatable(1f) }
+    LaunchedEffect(confirmed) {
+        if (confirmed == null) return@LaunchedEffect
+        sweep.snapTo(0f)
+        fade.snapTo(1f)
+        sweep.animateTo(1f, tween(SWEEP_MILLIS))
+        delay(CONFIRMATION_HOLD_MILLIS)
+        held = null
+        fade.animateTo(0f, tween(CONFIRMATION_FADE_MILLIS))
+        confirmed = null
+    }
+    val shownEpisode = held?.episode ?: item.nextEpisode
+    val shownProgress = if (held != null) held?.progress else item.progress
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier.clickable(onClick = onClick).padding(9.dp),
-            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PosterImage(
-                url = item.posterUrl,
-                title = item.title,
-                modifier = Modifier.width(44.dp).height(66.dp).clip(MaterialTheme.shapes.small),
-                size = PosterSize.Thumbnail,
-            )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
-                Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val episode = item.nextEpisode
-                Text(
-                    text = if (episode != null) {
-                        stringResource(Res.string.watch_next_episode, episode.seasonNumber, episode.episodeNumber, episode.name)
-                    } else {
-                        stringResource(Res.string.watch_next_caught_up)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        Box {
+            Row(
+                Modifier.clickable(onClick = onClick).padding(9.dp),
+                horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PosterImage(
+                    url = item.posterUrl,
+                    title = item.title,
+                    modifier = Modifier.width(44.dp).height(66.dp).clip(MaterialTheme.shapes.small),
+                    size = PosterSize.Thumbnail,
                 )
-                item.progress?.let { progress ->
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        color = MaterialTheme.colorScheme.tertiary,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        drawStopIndicator = {},
-                        modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
+                    Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    NextEpisodeLine(shownEpisode, animate)
+                    shownProgress?.let { progress ->
+                        // Fills to its new length instead of jumping there.
+                        val shown by animateFloatAsState(progress, if (animate) tween(PROGRESS_MILLIS) else snap(), label = "watchNextProgress")
+                        LinearProgressIndicator(
+                            progress = { shown },
+                            color = MaterialTheme.colorScheme.tertiary,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            drawStopIndicator = {},
+                            modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
+                        )
+                    }
+                }
+                if (item.nextEpisode != null) {
+                    TickButton(
+                        onTick = {
+                            if (animate) {
+                                held = HeldRow(item.nextEpisode, item.progress)
+                                confirmed = item.nextEpisode
+                            }
+                            onTick()
+                        },
+                        animate = animate,
+                        label = stringResource(Res.string.next_episode_of, item.title),
                     )
                 }
             }
-            if (item.nextEpisode != null) {
-                TickButton(onTick, label = stringResource(Res.string.next_episode_of, item.title))
+            confirmed?.let { episode ->
+                TickConfirmation(episode, sweep, fade)
             }
         }
     }
 }
 
-/** 44dp amber filled tick: scale pop (0.6→1.15→1.0) + haptic on tap; the row then advances reactively. */
+private const val PROGRESS_MILLIS = 400
+
+/** A row as it was when its tick was tapped; see `held` in [WatchNextRow]. */
+private data class HeldRow(val episode: Episode?, val progress: Float?)
+
+/** The "S1 E3 · Name" line; when the episode changes the old one leaves upward and the next comes up from below. */
 @Composable
-private fun TickButton(onTick: () -> Unit, label: String) {
+private fun NextEpisodeLine(episode: Episode?, animate: Boolean) {
+    AnimatedContent(
+        targetState = episode,
+        transitionSpec = {
+            if (animate) {
+                (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) using SizeTransform(clip = true)
+            } else {
+                EnterTransition.None togetherWith ExitTransition.None
+            }
+        },
+        label = "nextEpisode",
+    ) { shown ->
+        Text(
+            text = if (shown != null) {
+                stringResource(Res.string.watch_next_episode, shown.seasonNumber, shown.episodeNumber, shown.name)
+            } else {
+                stringResource(Res.string.watch_next_caught_up)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * A wash of the primary container sweeping left to right across the row and
+ * saying which episode was just marked seen, then fading to reveal the row
+ * already on its next episode. Said aloud by the snackbar, so it is hidden
+ * from the accessibility tree.
+ */
+@Composable
+private fun BoxScope.TickConfirmation(episode: Episode, sweep: Animatable<Float, *>, fade: Animatable<Float, *>) {
+    Box(
+        Modifier
+            .matchParentSize()
+            .graphicsLayer { alpha = fade.value }
+            .drawWithContent {
+                clipRect(right = size.width * sweep.value) { this@drawWithContent.drawContent() }
+            }
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .clearAndSetSemantics { testTag = TICK_CONFIRMATION_TAG },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            // Gone by the time the wash is half faded, so it does not sit over the episode line coming in.
+            modifier = Modifier.graphicsLayer { alpha = ((fade.value - 0.5f) * 2f).coerceIn(0f, 1f) },
+        ) {
+            Icon(MuvissIcons.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+            Text(
+                stringResource(Res.string.tick_row_confirmation, episode.seasonNumber, episode.episodeNumber),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+    }
+}
+
+/** 44dp amber filled tick: scale pop (0.6→1.15→1.0) + haptic on tap; the row then advances reactively. The pop is skipped when [animate] is false; the haptic is not. */
+@Composable
+private fun TickButton(onTick: () -> Unit, animate: Boolean, label: String) {
     val haptics = LocalHapticFeedback.current
     val description = stringResource(Res.string.mark_watched_description, label)
     val scope = rememberCoroutineScope()
@@ -274,16 +437,18 @@ private fun TickButton(onTick: () -> Unit, label: String) {
     IconButton(
         onClick = {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            scope.launch {
-                scale.snapTo(0.6f)
-                scale.animateTo(
-                    targetValue = 1f,
-                    animationSpec = keyframes {
-                        durationMillis = 200
-                        1.15f at 120
-                        1f at 200
-                    },
-                )
+            if (animate) {
+                scope.launch {
+                    scale.snapTo(0.6f)
+                    scale.animateTo(
+                        targetValue = 1f,
+                        animationSpec = keyframes {
+                            durationMillis = 200
+                            1.15f at 120
+                            1f at 200
+                        },
+                    )
+                }
             }
             onTick()
         },

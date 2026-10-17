@@ -1,0 +1,15 @@
+-- EPIC 51 (tick animations). The filename is the version this migrates FROM:
+-- 18.sqm takes a v18 database to v19, after EPIC 47's `17.sqm`.
+--
+-- The open Muted Genres PR (#389) also takes `18.sqm`: whichever merges second
+-- renumbers to `19.sqm` and regenerates its fixture (the chain cannot have a gap).
+--
+-- NUMBERING: the number a branch takes is whatever is free when it merges
+-- (`verifyMigrations` cannot see a collision); renumber and regenerate the
+-- fixture if another migration landed first.
+--
+-- One per-device motion preference, appended last. It narrows
+-- `animationsEnabled` (5.sqm): readers take the AND of the two. Defaults to 1,
+-- which is how an existing install behaved already (it popped the tick button),
+-- so upgrading changes nothing until the user asks. Not synced.
+ALTER TABLE appSettings ADD COLUMN tickAnimations INTEGER NOT NULL DEFAULT 1;
