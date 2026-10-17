@@ -21,6 +21,7 @@
     <string name="notifications_note">Reminders for new episodes</string>
     <string name="notifications_note_desktop">Reminders for new episodes, while Muviss is open</string>
     <string name="notifications_note_web">Reminders for new episodes (not available in the browser)</string>
+    <string name="notifications_note_ios">Reminders for new episodes. iOS runs them when it allows: late, or not at all in Low Power Mode or with Background App Refresh off for Muviss.</string>
     <string name="notifications_blocked">Notifications are turned off for Muviss in your device settings, so none will arrive.</string>
     <string name="open_settings">Open settings</string>
     <string name="animations">Animations</string>

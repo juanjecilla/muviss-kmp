@@ -127,6 +127,11 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
         }
+        // Native tests for the iOS glue: deep-link parsing, the background-refresh
+        // decision, the Undo marker and the widget palette (run on the simulator).
+        iosTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
         // The one place the whole Koin graph exists, so the one place it can
         // be assembled and checked (see `AppGraphTest`).
         jvmTest.dependencies {
