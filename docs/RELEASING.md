@@ -934,15 +934,9 @@ Automatic` (project.pbxproj) plus a blank `TEAM_ID` xcconfig variable means:
 (`app-icon-1024.png`, correctly 1024×1024) plus two *declared-but-empty*
 slots for iOS 18's dark/tinted Home Screen icon appearances (no file
 assigned — falls back to the default icon on iOS 18+, a cosmetic gap
-only). The blocking one: **`app-icon-1024.png` has an alpha channel**
-(`sips -g hasAlpha` → `yes`). App Store Connect rejects an App Store/
-marketing icon with transparency (`Invalid Large App Icon` at Archive
-validation or upload). Fix before the first real submission by
-flattening it onto an opaque background (e.g.
-`sips -s format png --setProperty hasAlpha no ...` after compositing
-onto white/black, or re-export from the source design tool without
-alpha) — not attempted here since there's no real Muviss brand artwork to
-re-derive it from yet (same caveat item 7 gives the desktop icons).
+only). The alpha channel that App Store Connect rejects (`Invalid Large App
+Icon`) is gone: `app-icon-1024.png` is opaque RGB (`sips -g hasAlpha` → `no`).
+Re-check that line before a submission if the icon is ever re-exported.
 
 ### Sentry test crash
 
@@ -1255,9 +1249,9 @@ entitlement files, `MUVISS_APP_GROUP` in
 
 ### iOS: what to check in Xcode
 
-The `MuvissWidget` target was added to `project.pbxproj` by hand — the
-project opens and its target graph parses, but **it has never been built**,
-because building it needs Xcode and a team. Expect to adjust:
+The `MuvissWidget` target is built by CI's `ios` job, as a dependency of
+`iosApp` under `CODE_SIGNING_ALLOWED=NO`, so it compiles and links on every
+PR. What CI cannot show is behaviour on a signed device, so expect to adjust:
 
 - **Framework linking.** The target links the static `Shared` framework via
   `OTHER_LDFLAGS = -framework Shared` and a `FRAMEWORK_SEARCH_PATHS` entry
