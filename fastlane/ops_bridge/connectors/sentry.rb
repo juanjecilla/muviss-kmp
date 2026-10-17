@@ -22,7 +22,27 @@ module OpsBridge
 
       def self.to_item(issue)
         short_id = issue.fetch("shortId")
-        Item.new(short_id, OpsBridge.title("[#{short_id}]", issue["title"]), render_body(issue), LABELS, issue["permalink"])
+        reopen_after = regressed_at(issue)
+        Item.new(short_id, OpsBridge.title("[#{short_id}]", issue["title"]), render_body(issue), LABELS, issue["permalink"],
+                 reopen_after, reopen_after && reopen_note(issue))
+      end
+
+      # When Sentry marks an issue `regressed` (resolved, then seen again), the time it was last
+      # seen: the bridge reopens its GitHub issue if that was closed before then (#327). Nil for
+      # anything else, or when Sentry gives no usable lastSeen.
+      def self.regressed_at(issue)
+        return nil unless issue["substatus"] == "regressed" && issue["lastSeen"]
+
+        Time.parse(issue["lastSeen"])
+      rescue ArgumentError
+        nil
+      end
+
+      def self.reopen_note(issue)
+        release = release_of(issue["lastRelease"])
+        seen_in = release.to_s.empty? ? "" : " in #{code(release)}"
+        "Sentry reports this crash as **regressed**: seen again#{seen_in} at #{issue['lastSeen']}, after this issue " \
+          "was closed. Reopened by the Ops Bridge. Closing it again resolves it in Sentry for the next release."
       end
 
       def self.render_body(issue)

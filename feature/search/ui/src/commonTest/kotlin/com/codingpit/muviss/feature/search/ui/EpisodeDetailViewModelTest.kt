@@ -31,7 +31,7 @@ internal class FakeEpisodeRepo(private val result: Result<EpisodeDetails>) : Sea
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), page, page))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = Result.success(MediaDetails(MediaSummary(id, "t")))
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?) = Result.success(PagedResult(emptyList<MediaSummary>(), page, page))
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = Result.success(PagedResult(emptyList<MediaSummary>(), page, page))
     override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
     override suspend fun watchProviders(id: MediaId) = Result.success(WatchProviders())
     override suspend fun recommendations(id: MediaId, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))

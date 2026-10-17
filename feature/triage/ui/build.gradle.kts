@@ -7,6 +7,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(projects.feature.triage.domain)
+            implementation(projects.feature.settings.api)
             implementation(projects.core.common)
             implementation(projects.core.designsystem)
             implementation(projects.models)

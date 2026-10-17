@@ -14,6 +14,8 @@ import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
+import com.codingpit.muviss.models.GenreKey
+import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +24,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
 /** The pages, in order. Two are conditional; see [pagesFor]. */
-enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, NOTIFICATIONS, TMDB_KEY, DONE }
+enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, NOTIFICATIONS, TMDB_KEY, MUTED_GENRES, DONE }
 
 /**
  * The pages this device shows: the alerts page needs a platform that notifies (not web), and the
@@ -36,6 +38,20 @@ fun pagesFor(canNotify: Boolean, byokOffered: Boolean): List<OnboardingPage> = O
     }
 }
 
+/**
+ * The genres the Muted Genres page offers (ADR 0031): TMDB's TV Talk, News, Reality and Soap. The name
+ * is what Settings will list offline; the page's own copy is localized separately.
+ */
+enum class MutedGenreChoice(val genreId: String, val tmdbName: String) {
+    TALK("10767", "Talk"),
+    NEWS("10763", "News"),
+    REALITY("10764", "Reality"),
+    SOAP("10766", "Soap"),
+    ;
+
+    val key: GenreKey get() = GenreKey(MediaType.TV, genreId)
+}
+
 data class OnboardingUiState(
     /** Empty until the flags that decide it have been read; the screen draws nothing meanwhile. */
     val pages: List<OnboardingPage> = emptyList(),
@@ -46,6 +62,10 @@ data class OnboardingUiState(
     val keySource: TmdbDataSource = TmdbDataSource.MUVISS,
     val keyChecking: Boolean = false,
     val keyProblem: TmdbKeyProblem? = null,
+    /** What is muted right now; the page's switches read it. Starts as the shipped default (ADR 0031). */
+    val mutedGenres: Set<MutedGenreChoice> = emptySet(),
+    /** Poster urls per genre, best-effort: absent offline, and the page shows its text examples alone. */
+    val genrePosters: Map<MutedGenreChoice, List<String>> = emptyMap(),
 ) {
     val page: OnboardingPage? get() = pages.getOrNull(index)
     val isFirst: Boolean get() = index == 0
@@ -80,6 +100,30 @@ class OnboardingViewModel(
         tmdbKey.observeSource()
             .onEach { source -> _state.update { it.copy(keySource = source) } }
             .launchInReporting(viewModelScope)
+        settings.observeMuting()
+            .onEach { muting ->
+                val muted = MutedGenreChoice.entries.filterTo(linkedSetOf()) { it.key in muting.configured.keys }
+                _state.update { it.copy(mutedGenres = muted) }
+            }
+            .launchInReporting(viewModelScope)
+        loadGenrePosters()
+    }
+
+    /**
+     * Fetched once, in the background, and never allowed to matter: the page already reads fine from
+     * its text examples, so a failure (offline, no key) just leaves the strip out.
+     */
+    private fun loadGenrePosters() {
+        viewModelScope.launchReporting {
+            MutedGenreChoice.entries.forEach { choice ->
+                val posters = settings.examplesFor(choice.key).mapNotNull { it.posterUrl }
+                if (posters.isNotEmpty()) _state.update { it.copy(genrePosters = it.genrePosters + (choice to posters)) }
+            }
+        }
+    }
+
+    fun onGenreMutedToggled(choice: MutedGenreChoice, muted: Boolean) {
+        viewModelScope.launchReporting { settings.setGenreMuted(choice.key, choice.tmdbName, muted) }
     }
 
     fun next() = _state.update { if (it.isLast) it else it.copy(index = it.index + 1) }

@@ -20,6 +20,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.error_generic
 import com.codingpit.muviss.feature.search.ui.generated.resources.refresh_failed
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_season_seen
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_show_seen
+import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -242,7 +244,10 @@ class DetailViewModel(
      */
     private fun loadMoreLikeThisRow() {
         viewModelScope.launchReporting {
-            val items = loadMoreLikeThis(mediaId).getOrNull()?.items.orEmpty()
+            // Suggestions follow Muted Genres like the other suggestion surfaces (ADR 0031), the session
+            // chip included. The title being viewed was opened on purpose and is never filtered.
+            val muted = peers.settings.observeMuting().first().effective
+            val items = loadMoreLikeThis(mediaId).getOrNull()?.items.orEmpty().filterNot(muted::hides)
             _state.update { it.copy(moreLikeThis = items) }
         }
     }
@@ -406,4 +411,5 @@ class DetailPeers(
     val collection: CollectionApi,
     val progress: ProgressApi,
     val triage: TriageApi,
+    val settings: SettingsApi,
 )

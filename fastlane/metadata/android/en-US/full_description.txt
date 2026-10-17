@@ -17,6 +17,7 @@ FILL YOUR LIBRARY FAST
 • Go through titles one at a time and decide in a tap — not for me, later, watching, or caught up. Not sure yet? Snooze it and it comes back when you choose.
 • Import your history from Trakt, TV Time or a CSV file.
 • Discover by genre, see what's popular, and get suggestions based on what you love.
+• Mute the genres you never watch. Talk shows, news and reality TV stay out of suggestions by default; change that in a short first-run step or in Settings.
 
 SEE YOUR HABITS
 • Hours watched, episodes seen, favorite genres and watch streaks.
