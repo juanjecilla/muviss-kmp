@@ -12,9 +12,9 @@ import Shared
 ///
 /// The view is hand-written SwiftUI rather than shared Compose because
 /// WidgetKit renders static SwiftUI views through its own archiving pipeline —
-/// a `ComposeUIViewController` cannot be drawn in a widget at all. The
-/// colours below are the same hexes as `MuvissPalette`, so the two platforms'
-/// widgets match each other and both match the app.
+/// a `ComposeUIViewController` cannot be drawn in a widget at all. Its colours
+/// come from `MuvissPalette` through `IosWidgetPalette` (see `WatchNextView.swift`),
+/// so the two platforms' widgets match each other and both match the app.
 
 struct WatchNextEntry: TimelineEntry {
     let date: Date
