@@ -47,4 +47,4 @@ A held version is retried every Sunday, and by hand (`release-promote.yml`, disp
 - The daily ramp times and closes the release Play has in production, read from its versionCode, not the newest tag: with several versions in flight those can differ. The back-merge into `develop` is now mostly empty, because fixes were already forwarded; it stays as the safety net and carries the tag.
 - The fastlane `promote` lane gains internal → beta. `app/androidApp/build.gradle.kts` derives `versionCode` from the version, and the RC workflow passes `rcN`.
 - `docs/RELEASING.md`, `AGENTS.md` and `CLAUDE.md` describe the stages, the gates and where to point a fix.
-- iOS (TestFlight internal → external → App Store) and desktop can follow the same three stages when they join the train (#78, #79); this ADR does not cover them.
+- iOS (TestFlight internal → external → App Store) walks the same three stages, independently, as ADR 0033 records; desktop can follow when it joins the train (#79).

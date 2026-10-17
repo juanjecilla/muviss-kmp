@@ -367,6 +367,11 @@ From one grilling session. The details, testing and parity sections are in each 
 
 Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key is used, so EPIC 32 (#75) also needs a TMDB commercial licence (#302).
 
+## iOS joins the staged train — issue #411 (added 2026-10-17)
+
+- **#411 — iOS on the staged train.** iOS walks the same three weeks as Play (TestFlight internal → external public-link beta → App Store with a seven-day phased release), with each platform's stage and gates recorded separately. Decision and Apple's rules, with their open assumptions: ADR 0033.
+  - Status (WS5, `feat/ios-staged-train`, PR stacked on #427): the per-platform stage marker (`release_stages.rb`, old Play-only markers still parse), the iOS decider (`ios_train.rb`), the App Store Connect client (`app_store_connect.rb`), the runner (`ios_promote.rb`), the Sunday step inside `release-promote.yml`, `app-store-phased-ramp.yml`, `app-store-brake.yml`, and the per-platform Sentry namespace (#422). Unverified against a live account; see RELEASING.md "iOS in the train (WS5)" for the first-live-run checklist. Owner runbook: WS7.
+
 ## Sequencing
 
 Wave 0 first (nothing else runs without CI; EPIC 43 belongs here too — every live-project verification task depends on it existing before it can run safely). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
