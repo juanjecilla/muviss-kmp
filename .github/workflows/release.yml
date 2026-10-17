@@ -268,7 +268,7 @@ jobs:
             echo "  All three are **unsigned and un-notarized** (#39): macOS Gatekeeper"
             echo "  will refuse the DMG until it is opened via right-click > Open, and"
             echo "  Windows SmartScreen will warn (#179)."
-            echo "- No iOS build — TestFlight is not wired into CI yet (#78)."
+            echo "- **iOS** — on TestFlight (internal) as the same candidate, uploaded by the release-candidate workflow's iOS job. Nothing is rebuilt here, and App Store submission is a separate step (ADR 0033)."
             echo
             echo "### Not in this build"
             echo
