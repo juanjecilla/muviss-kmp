@@ -25,10 +25,15 @@ connector.items  ->  OpsBridge::Item  ->  GithubSink#create
 - **Reverse mapping** is optional: if the connector responds to `resolve(id)`,
   closing its issue on GitHub calls it. Sentry does (resolve in the next release);
   Play reviews do not (there is nothing to resolve).
+- **Reopen on regression** is optional too: an item with `reopen_after` (a time)
+  says it came back at the source. If its issue was closed *as completed* before
+  that time, the sync comments `reopen_note` and reopens it instead of opening a
+  duplicate. Sentry sets it for a `regressed` issue (#327); a close as "not
+  planned" or "duplicate" is never reopened.
 
 | Connector | Source | Runs | Reverse |
 |---|---|---|---|
-| `sentry` (`connectors/sentry.rb`, #300) | new unhandled production crashes | hourly | closing the issue resolves it in the next release |
+| `sentry` (`connectors/sentry.rb`, #300) | new unhandled production crashes | hourly | closing the issue resolves it in the next release; a regression reopens it |
 | `play-reviews` (`connectors/play_reviews.rb`) | Play reviews of 3 stars or fewer | daily | none |
 
 ```sh
