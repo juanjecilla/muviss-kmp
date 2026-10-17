@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.settings.domain.LoadGenresUseCase
+import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.models.Genre
@@ -45,11 +46,22 @@ class MutedGenresViewModel(
 
     private var catalog: List<Genre> = emptyList()
 
+    /** What Settings stored, with the name each genre had when it was muted. */
+    private var stored: List<MutedGenreEntry> = emptyList()
+
+    /**
+     * Names from the genre catalogue, in the current TMDB language, for every type loaded so far (#387).
+     * The stored name is only a fallback for what the catalogue has not told us (offline, or a type not
+     * browsed yet): it keeps the language the genre was muted in.
+     */
+    private val catalogNames = mutableMapOf<GenreKey, String>()
+
     init {
         observeSettings()
             .onEach { settings ->
-                val muted = settings.mutedGenres.map { GenreOption(it.key, it.name, muted = true) }
-                _state.update { it.copy(loading = false, muted = muted, inSearch = settings.mutedGenresInSearch, available = optionsFor(it.browsing, muted)) }
+                stored = settings.mutedGenres
+                _state.update { it.copy(loading = false, inSearch = settings.mutedGenresInSearch) }
+                publish()
             }
             .catch { _state.update { it.copy(loading = false) } }
             .launchInReporting(viewModelScope)
@@ -61,7 +73,9 @@ class MutedGenresViewModel(
         viewModelScope.launchReporting {
             val result = loadGenres(type)
             catalog = result.getOrDefault(emptyList())
-            _state.update { it.copy(loadingAvailable = false, availableFailed = result.isFailure, available = optionsFor(type, it.muted)) }
+            catalog.forEach { catalogNames[GenreKey(type, it.id)] = it.name }
+            _state.update { it.copy(loadingAvailable = false, availableFailed = result.isFailure) }
+            publish()
         }
     }
 
@@ -75,8 +89,13 @@ class MutedGenresViewModel(
         viewModelScope.launchReporting { actions.setMutedGenresInSearch(enabled) }
     }
 
-    private fun optionsFor(type: MediaType, muted: List<GenreOption>): List<GenreOption> {
+    /** Recomputes both lists from [stored], [catalog] and [catalogNames]. */
+    private fun publish() {
+        val muted = stored.map { GenreOption(it.key, catalogNames[it.key] ?: it.name, muted = true) }
         val mutedKeys = muted.map { it.key }.toSet()
-        return catalog.map { GenreOption(GenreKey(type, it.id), it.name, GenreKey(type, it.id) in mutedKeys) }
+        _state.update { current ->
+            val available = if (current.loadingAvailable) emptyList() else catalog.map { GenreOption(GenreKey(current.browsing, it.id), it.name, GenreKey(current.browsing, it.id) in mutedKeys) }
+            current.copy(muted = muted, available = available)
+        }
     }
 }

@@ -124,6 +124,35 @@ class MutedGenresScreenTest {
     }
 
     @Test
+    fun a_muted_genre_is_listed_under_the_catalogues_current_language_name() = runTest {
+        // The default is stored as "Talk"; the catalogue speaks Spanish today (#387).
+        val vm = viewModel(genres = FakeGenres(tv = listOf(Genre("10767", "Entrevistas"), Genre("10763", "Noticias"), Genre("10764", "Telerrealidad"))))
+
+        assertEquals(setOf("Entrevistas", "Noticias", "Telerrealidad"), vm.state.value.muted.map { it.name }.toSet())
+    }
+
+    @Test
+    fun offline_a_muted_genre_falls_back_to_the_name_it_was_stored_with() = runTest {
+        val vm = viewModel(genres = FakeGenres(failure = MetadataError.Offline()))
+
+        assertEquals(setOf("Talk", "News", "Reality"), vm.state.value.muted.map { it.name }.toSet())
+    }
+
+    @Test
+    fun a_type_not_browsed_yet_keeps_its_stored_name_until_its_catalogue_loads() = runTest {
+        val repository = FakeRepository()
+        val vm = viewModel(repository, FakeGenres(movies = listOf(Genre("99", "Documental"))))
+        repository.settings.value = repository.settings.value.copy(
+            mutedGenres = repository.settings.value.mutedGenres + com.codingpit.muviss.feature.settings.domain.MutedGenreEntry(GenreKey(MediaType.MOVIE, "99"), "Documentary"),
+        )
+        assertEquals("Documentary", vm.state.value.muted.first { it.key.type == MediaType.MOVIE }.name)
+
+        vm.browse(MediaType.MOVIE)
+
+        assertEquals("Documental", vm.state.value.muted.first { it.key.type == MediaType.MOVIE }.name)
+    }
+
+    @Test
     fun the_search_switch_is_stored() = runComposeUiTest {
         val repository = FakeRepository()
         val vm = viewModel(repository)
