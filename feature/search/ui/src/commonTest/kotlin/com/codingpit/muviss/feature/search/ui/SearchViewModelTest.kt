@@ -15,11 +15,13 @@ import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.domain.SearchRepository
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
+import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
@@ -53,6 +55,7 @@ class SearchViewModelTest {
         repo: FakeRepo,
         collectionApi: FakeSearchCollectionApi = FakeSearchCollectionApi(),
         triageApi: FakeTriageApi = FakeTriageApi(),
+        settings: FakeMutingApi = FakeMutingApi(),
         connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
     ) = SearchViewModel(
         SearchMediaUseCase(repo),
@@ -61,6 +64,7 @@ class SearchViewModelTest {
         RecommendationsUseCase(repo),
         collectionApi,
         triageApi,
+        settings,
         connectivity,
     )
 
@@ -435,5 +439,112 @@ class SearchViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(recommended), vm.state.value.forYou)
+    }
+
+    private val talk = GenreKey(MediaType.TV, "10767")
+    private val talkShow = MediaSummary(MediaId.tmdbTv("20"), "Late show", genreIds = listOf("35", "10767"))
+    private val drama = MediaSummary(MediaId.tmdbTv("21"), "Drama", genreIds = listOf("18"))
+
+    private fun tvOnlyRepo(vararg shows: MediaSummary, searchItems: List<MediaSummary> = emptyList()) = FakeRepo(
+        searchResult = { page -> Result.success(PagedResult(searchItems, page, page)) },
+        discoverResult = { type, page, _ ->
+            Result.success(PagedResult(if (type == MediaType.TV) shows.toList() else emptyList(), page, page))
+        },
+    )
+
+    @Test
+    fun discover_asks_for_each_types_muted_genres_and_drops_a_muted_row_that_slips_through() = runTest {
+        val repo = tvOnlyRepo(talkShow, drama)
+        val vm = viewModel(repo, settings = FakeMutingApi(MutedGenres(setOf(talk, GenreKey(MediaType.MOVIE, "99")))))
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama), vm.state.value.popularTv)
+        assertTrue(MediaType.TV to setOf("10767") in repo.discoverExcluded)
+        assertTrue(MediaType.MOVIE to setOf("99") in repo.discoverExcluded)
+    }
+
+    @Test
+    fun discover_is_never_loaded_unmuted_first() = runTest {
+        val repo = tvOnlyRepo(drama)
+        viewModel(repo, settings = FakeMutingApi(MutedGenres(setOf(talk))))
+        advanceUntilIdle()
+
+        assertTrue(repo.discoverExcluded.filter { it.first == MediaType.TV }.all { it.second == setOf("10767") })
+    }
+
+    @Test
+    fun browsing_a_muted_genre_shows_it_but_still_drops_other_muted_genres() = runTest {
+        val reality = MutedGenres(setOf(talk, GenreKey(MediaType.TV, "10764")))
+        val realityTalk = MediaSummary(MediaId.tmdbTv("22"), "Reality talk", genreIds = listOf("10764", "10767"))
+        val repo = tvOnlyRepo(talkShow, realityTalk)
+        val vm = viewModel(repo, settings = FakeMutingApi(reality))
+        advanceUntilIdle()
+
+        vm.selectGenre(Genre("10767", "Talk"), MediaType.TV)
+        advanceUntilIdle()
+
+        assertEquals(listOf(talkShow), vm.state.value.genreResults)
+        assertEquals(MediaType.TV to setOf("10764"), repo.discoverExcluded.last())
+    }
+
+    @Test
+    fun typed_search_is_not_muted_by_default() = runTest {
+        val vm = viewModel(tvOnlyRepo(searchItems = listOf(talkShow, drama)), settings = FakeMutingApi(MutedGenres(setOf(talk))))
+        advanceUntilIdle()
+
+        vm.onQueryChange("late")
+        advanceTimeBy(500)
+        advanceUntilIdle()
+
+        assertEquals(listOf(talkShow, drama), vm.state.value.results)
+    }
+
+    @Test
+    fun typed_search_hides_muted_genres_once_the_user_opts_in() = runTest {
+        val vm = viewModel(tvOnlyRepo(searchItems = listOf(talkShow, drama)), settings = FakeMutingApi(MutedGenres(setOf(talk)), inSearch = true))
+        advanceUntilIdle()
+
+        vm.onQueryChange("late")
+        advanceTimeBy(500)
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama), vm.state.value.results)
+    }
+
+    @Test
+    fun the_show_muted_chip_reloads_discover_without_exclusions_and_back() = runTest {
+        val repo = tvOnlyRepo(talkShow, drama)
+        val vm = viewModel(repo, settings = FakeMutingApi(MutedGenres(setOf(talk))))
+        advanceUntilIdle()
+        assertEquals(listOf(drama), vm.state.value.popularTv)
+
+        vm.onShowMutedToggled()
+        advanceUntilIdle()
+        assertEquals(listOf(talkShow, drama), vm.state.value.popularTv)
+        assertTrue(vm.state.value.showMuted)
+
+        vm.onShowMutedToggled()
+        advanceUntilIdle()
+        assertEquals(listOf(drama), vm.state.value.popularTv)
+    }
+
+    @Test
+    fun for_you_leaves_out_muted_genres() = runTest {
+        val seed = CollectionSummary(MediaId.tmdbTv("1"), "Seed", posterUrl = null, status = WatchStatus.WATCHING, favorite = true)
+        val repo = FakeRepo(recommendationsResult = { Result.success(PagedResult(listOf(talkShow, drama), 1, 1)) })
+        val vm = viewModel(repo, collectionApi = FakeSearchCollectionApi(listOf(seed)), settings = FakeMutingApi(MutedGenres(setOf(talk))))
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama), vm.state.value.forYou)
+    }
+
+    @Test
+    fun the_chip_is_only_offered_when_something_is_muted() = runTest {
+        val none = viewModel(tvOnlyRepo(drama))
+        val some = viewModel(tvOnlyRepo(drama), settings = FakeMutingApi(MutedGenres(setOf(talk))))
+        advanceUntilIdle()
+
+        assertFalse(none.state.value.hasMuted)
+        assertTrue(some.state.value.hasMuted)
     }
 }

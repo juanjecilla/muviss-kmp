@@ -61,6 +61,18 @@ class OnboardingGoldenTest {
 
     @Test fun key_dark() = runComposeUiTest { golden("onboarding-key-dark", state(OnboardingPage.TMDB_KEY, TmdbDataSource.YOURS), true) }
 
+    private val defaultsMuted = setOf(MutedGenreChoice.TALK, MutedGenreChoice.NEWS, MutedGenreChoice.REALITY)
+
+    @Test fun muted_genres() = runComposeUiTest { golden("onboarding-muted-genres", state(OnboardingPage.MUTED_GENRES).copy(mutedGenres = defaultsMuted), false) }
+
+    @Test fun muted_genres_dark() = runComposeUiTest { golden("onboarding-muted-genres-dark", state(OnboardingPage.MUTED_GENRES).copy(mutedGenres = defaultsMuted), true) }
+
+    @Test
+    fun muted_genres_in_spanish() = runComposeUiTest {
+        Locale.setDefault(Locale.forLanguageTag("es-ES"))
+        golden("onboarding-muted-genres-es", state(OnboardingPage.MUTED_GENRES).copy(mutedGenres = defaultsMuted), false)
+    }
+
     @Test fun done() = runComposeUiTest { golden("onboarding-done", state(OnboardingPage.DONE), false) }
 
     @Test fun done_dark() = runComposeUiTest { golden("onboarding-done-dark", state(OnboardingPage.DONE), true) }

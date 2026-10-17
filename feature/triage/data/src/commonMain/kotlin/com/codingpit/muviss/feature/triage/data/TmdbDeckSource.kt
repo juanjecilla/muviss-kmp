@@ -28,9 +28,9 @@ class TmdbDeckSource(
     private val registry: MetadataProviderRegistry,
     private val dispatchers: AppDispatchers,
 ) : DeckSource {
-    override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> = withContext(dispatchers.io) {
+    override suspend fun page(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = withContext(dispatchers.io) {
         runCatching {
-            val result = registry.require(SourceId.TMDB).discover(type, page, genreId)
+            val result = registry.require(SourceId.TMDB).discover(type, page, genreId, excludedGenreIds)
             result.copy(totalPages = minOf(result.totalPages, MAX_DISCOVER_PAGE))
         }
     }

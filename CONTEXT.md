@@ -94,6 +94,10 @@ _Avoid_: skip (that is the "not for me" verdict), later (that is a CollectionEnt
 A MediaItem with a Snooze not yet due. Carries the date it comes back and a snapshot of how it looked when snoozed, so it can be shown again without asking the provider. It becomes deck-eligible on its due date, and a Snooze is never the reason a MediaItem is kept out of the deck twice.
 _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user owns); postponed item.
 
+**Muted Genre**:
+A genre the user has chosen to leave out of what Muviss suggests. A title is hidden from a suggestion when *any* of its genres is muted; a title that carries no genres is never hidden, because nothing says what it is. Muted by default: Talk, News and Reality, for every install. A genre is identified by its type as well as its id — a movie genre and a TV genre can share a number. Muting only ever narrows suggestions: it never touches the collection, progress, Watch Next, notifications or a Snoozed Title, and a title the user opens, searches for by name (unless they opted in) or picks a genre for is shown regardless. The "Show muted" chip lifts it for one session.
+_Avoid_: blocked, blacklisted, filtered out (a filter is something the user narrows by in the moment; muting is a standing preference); hidden (that suggests the title is gone from the collection).
+
 ### First run and data source
 
 **Onboarding**:

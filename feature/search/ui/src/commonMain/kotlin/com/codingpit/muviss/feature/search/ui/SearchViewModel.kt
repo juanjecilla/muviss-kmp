@@ -19,11 +19,14 @@ import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.error_generic
+import com.codingpit.muviss.feature.settings.api.GenreMuting
+import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -74,6 +77,10 @@ data class SearchUiState(
     val genreResults: List<MediaSummary> = emptyList(),
     val genrePage: Int = 1,
     val genreTotalPages: Int = 1,
+    /** The "show muted" chip is on: muted genres are back in Discover for this session (ADR 0031). */
+    val showMuted: Boolean = false,
+    /** Something is muted in Settings, so the chip has something to toggle. */
+    val hasMuted: Boolean = false,
 ) {
     val canLoadMoreResults: Boolean get() = resultsPage < resultsTotalPages
     val canLoadMoreGenreResults: Boolean get() = genrePage < genreTotalPages
@@ -94,6 +101,7 @@ class SearchViewModel(
     private val recommendationsUseCase: RecommendationsUseCase,
     private val collectionApi: CollectionApi,
     private val triageApi: TriageApi,
+    private val settings: SettingsApi,
     connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
 ) : ViewModel() {
 
@@ -105,8 +113,26 @@ class SearchViewModel(
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
+    /** What Settings and the session chip say right now. Read by every load below. */
+    private var muting = GenreMuting()
+
     init {
-        loadDiscover()
+        // The first Discover waits for the first muting, so it is never loaded unmuted and then replaced.
+        // A later change reloads whichever mode is showing.
+        var firstMuting = true
+        settings.observeMuting()
+            .onEach { next ->
+                val changed = muting.effective != next.effective || muting.forSearch != next.forSearch
+                muting = next
+                _state.update { it.copy(showMuted = next.showMuted, hasMuted = next.hasMuted) }
+                if (firstMuting) {
+                    loadDiscover()
+                } else if (changed) {
+                    retry()
+                }
+                firstMuting = false
+            }
+            .launchInReporting(viewModelScope)
         // Independent of loadDiscover's one-shot load: the library can change
         // any time (a favorite toggled, a new top-rated title added), so this
         // stays subscribed and re-derives "For you" reactively, same pattern
@@ -120,8 +146,9 @@ class SearchViewModel(
             collectionApi.observeSummaries(),
             triageApi.observeDecidedIds(),
             triageApi.observeSnoozedIds(),
-        ) { library, decided, snoozed -> library to (decided + snoozed) }
-            .flatMapLatest { (library, decided) -> forYouFlow(library, decided) }
+            settings.observeMuting().map { it.effective }.distinctUntilChanged(),
+        ) { library, decided, snoozed, muted -> Triple(library, decided + snoozed, muted) }
+            .flatMapLatest { (library, decided, muted) -> forYouFlow(library, decided, muted) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
             .launchInReporting(viewModelScope)
         // A failure shown while offline retries itself when the connection
@@ -154,6 +181,12 @@ class SearchViewModel(
         }
     }
 
+    /** The chip: lifts muting for this session, or puts it back. Reloads through [SettingsApi.observeMuting]. */
+    fun onShowMutedToggled() = settings.setShowMutedThisSession(!_state.value.showMuted)
+
+    /** What a [type] browse leaves out: every muted genre except the one the user picked. */
+    private fun mutedFor(type: MediaType, genreId: String?): MutedGenres = muting.effective.without(type, genreId)
+
     /** Switches to [SearchMode.GENRE_BROWSE] and loads its first page. */
     fun selectGenre(genre: Genre, type: MediaType) {
         loadJob?.cancel()
@@ -167,10 +200,11 @@ class SearchViewModel(
                     error = null,
                 )
             }
-            discoverMedia(type, page = 1, genreId = genre.id).fold(
+            val muted = mutedFor(type, genre.id)
+            discoverMedia(type, page = 1, genreId = genre.id, excludedGenreIds = muted.forType(type)).fold(
                 onSuccess = { page ->
                     _state.update {
-                        it.copy(loading = false, genreResults = page.items, genrePage = page.page, genreTotalPages = page.totalPages)
+                        it.copy(loading = false, genreResults = page.items.filterNot(muted::hides), genrePage = page.page, genreTotalPages = page.totalPages)
                     }
                 },
                 onFailure = { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
@@ -225,15 +259,17 @@ class SearchViewModel(
             _state.update { it.copy(loading = true, error = null) }
             val movieGenres = genresUseCase(MediaType.MOVIE).getOrElse { return@launchReporting fail(it) }
             val tvGenres = genresUseCase(MediaType.TV).getOrElse { return@launchReporting fail(it) }
-            val popularMovies = discoverMedia(MediaType.MOVIE).getOrElse { return@launchReporting fail(it) }
-            val popularTv = discoverMedia(MediaType.TV).getOrElse { return@launchReporting fail(it) }
+            val mutedMovies = mutedFor(MediaType.MOVIE, null)
+            val mutedTv = mutedFor(MediaType.TV, null)
+            val popularMovies = discoverMedia(MediaType.MOVIE, excludedGenreIds = mutedMovies.forType(MediaType.MOVIE)).getOrElse { return@launchReporting fail(it) }
+            val popularTv = discoverMedia(MediaType.TV, excludedGenreIds = mutedTv.forType(MediaType.TV)).getOrElse { return@launchReporting fail(it) }
             _state.update {
                 it.copy(
                     loading = false,
                     movieGenres = movieGenres,
                     tvGenres = tvGenres,
-                    popularMovies = popularMovies.items,
-                    popularTv = popularTv.items,
+                    popularMovies = popularMovies.items.filterNot(mutedMovies::hides),
+                    popularTv = popularTv.items.filterNot(mutedTv::hides),
                 )
             }
         }
@@ -244,12 +280,13 @@ class SearchViewModel(
         val type = current.selectedGenreType ?: return
         viewModelScope.launchReporting {
             _state.update { it.copy(loadingMore = true) }
-            discoverMedia(type, current.genrePage + 1, genre.id).fold(
+            val muted = mutedFor(type, genre.id)
+            discoverMedia(type, current.genrePage + 1, genre.id, muted.forType(type)).fold(
                 onSuccess = { page ->
                     _state.update {
                         it.copy(
                             loadingMore = false,
-                            genreResults = it.genreResults + page.items,
+                            genreResults = it.genreResults + page.items.filterNot(muted::hides),
                             genrePage = page.page,
                             genreTotalPages = page.totalPages,
                         )
@@ -269,7 +306,10 @@ class SearchViewModel(
         searchMedia(query, page).fold(
             onSuccess = { result ->
                 _state.update {
-                    val items = if (page == 1) result.items else it.results + result.items
+                    // Typed search is only muted when the user opted in (ADR 0031): looking a show up by name is
+                    // an explicit act, unlike a feed that picked it for them.
+                    val found = result.items.filterNot(muting.forSearch::hides)
+                    val items = if (page == 1) found else it.results + found
                     it.copy(
                         loading = false,
                         loadingMore = false,
@@ -296,7 +336,7 @@ class SearchViewModel(
      * "no error, just hidden" treatment as [DetailViewModel]'s watch-providers
      * and more-like-this rows.
      */
-    private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>): Flow<List<MediaSummary>> = flow {
+    private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>, muted: MutedGenres): Flow<List<MediaSummary>> = flow {
         val seeds = ForYouSeeding.selectSeeds(library)
         if (seeds.isEmpty()) {
             emit(emptyList())
@@ -304,7 +344,7 @@ class SearchViewModel(
         }
         val excluded = library.mapTo(mutableSetOf()) { it.mediaId } + decidedIds
         val recommendationsBySeed = seeds.map { seed -> recommendationsUseCase(seed).getOrNull()?.items.orEmpty() }
-        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, excluded))
+        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, excluded).filterNot(muted::hides))
     }
 
     private companion object {
