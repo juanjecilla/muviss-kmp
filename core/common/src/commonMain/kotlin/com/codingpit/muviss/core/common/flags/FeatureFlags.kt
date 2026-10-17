@@ -1,6 +1,8 @@
 package com.codingpit.muviss.core.common.flags
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * Which drag scheme the triage deck uses (ADR 0010).
@@ -120,6 +122,17 @@ interface FeatureFlags {
     val triageDeckAnimations: Flow<Boolean>
 
     /**
+     * The feedback a tick plays — the row highlight and slide on Progress, the
+     * row flash and season pulse on Detail, and the milestone burst (EPIC 51).
+     *
+     * Narrows [animationsEnabled] like [triageDeckAnimations] does: readers
+     * take the AND of the two, which is [tickAnimationsActive]. The haptic is
+     * not governed by either; it is direct feedback, not an animation. Per
+     * device and never synced.
+     */
+    val tickAnimations: Flow<Boolean>
+
+    /**
      * Whether this device may sync without being asked (EPIC 40, ADR 0021).
      * Off by default. Per device and never synced: it is a statement about
      * *this* device's battery and data plan, not about the library.
@@ -154,9 +167,15 @@ interface FeatureFlags {
 
     suspend fun setTriageDeckAnimations(enabled: Boolean)
 
+    suspend fun setTickAnimations(enabled: Boolean)
+
     suspend fun setSyncAutomatically(enabled: Boolean)
 
     suspend fun setTriageSnoozePeriod(period: SnoozePeriod)
 
     suspend fun setTriageSnoozePlacement(placement: SnoozePlacement)
 }
+
+/** [FeatureFlags.tickAnimations] narrowed by the master [FeatureFlags.animationsEnabled]: the value readers act on. */
+val FeatureFlags.tickAnimationsActive: Flow<Boolean>
+    get() = combine(animationsEnabled, tickAnimations) { app, tick -> app && tick }.distinctUntilChanged()

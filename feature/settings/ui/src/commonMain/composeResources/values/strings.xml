@@ -35,6 +35,8 @@
     <string name="scheme_three_way">Three directions + button</string>
     <string name="snooze_period">Ask me again after</string>
     <string name="snooze_placement">Snoozed titles come back</string>
+    <string name="tick_animations">Animate episode ticks</string>
+    <string name="tick_animations_body">Highlight an episode when you mark it seen</string>
     <string name="swipe_animations">Swipe animations</string>
     <string name="swipe_animations_body">Cards fly out when decided, and undo brings them back</string>
     <string name="import">Import</string>

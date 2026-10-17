@@ -84,6 +84,8 @@
     <string name="already_watched_times">Watched %1$d× so far. Did you watch it again, or was the last tick a mistake?</string>
     <string name="already_watched_once">Did you watch it again, or was that tick a mistake?</string>
     <!-- %1$s is the season's name. -->
+    <!-- %1$s show title. Shown with a burst when a tick leaves nothing aired unseen. -->
+    <string name="tick_caught_up">Caught up on %1$s</string>
     <string name="undo_season_seen">%1$s marked seen</string>
     <string name="undo_show_seen">Marked every aired episode seen</string>
 

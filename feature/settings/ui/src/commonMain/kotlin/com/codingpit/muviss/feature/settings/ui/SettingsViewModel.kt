@@ -50,6 +50,8 @@ data class SettingsUiState(
     /** The app-wide motion switch. While it is off every per-feature motion row below is inert. */
     val animationsEnabled: Boolean = true,
     val triageDeckAnimations: Boolean = true,
+    /** Tick feedback on Progress and Detail (EPIC 51). Narrows [animationsEnabled] like the deck switch. */
+    val tickAnimations: Boolean = true,
     /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
     val notificationsDenied: Boolean = false,
 )
@@ -98,6 +100,10 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(triageDeckAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
+        featureFlags.tickAnimations
+            .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
+            .launchInReporting(viewModelScope)
+
         observeAppSettings()
     }
 
@@ -135,6 +141,10 @@ class SettingsViewModel(
 
     fun onTriageDeckAnimationsToggled(enabled: Boolean) {
         viewModelScope.launchReporting { featureFlags.setTriageDeckAnimations(enabled) }
+    }
+
+    fun onTickAnimationsToggled(enabled: Boolean) {
+        viewModelScope.launchReporting { featureFlags.setTickAnimations(enabled) }
     }
 
     fun onThemeSelected(theme: AppTheme) {

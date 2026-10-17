@@ -50,6 +50,14 @@ _Avoid_: history, visibility.
 A value derived from WatchProgress (never stored independently): NotStarted → Watching → Watched → Finished for TV; NotStarted → Watched for movies. Manual status actions mutate progress to keep the two consistent.
 _Avoid_: state, phase.
 
+**Tick**:
+The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
+_Avoid_: check, mark (as a noun); watch (that is the viewing, a Play).
+
+**Milestone**:
+A tick that finishes a season (a later one has aired) or leaves nothing aired unseen for the show (it is caught up). Derived from the tick and WatchNext, never stored. The only ticks that get more than the row's own feedback.
+_Avoid_: achievement, streak (that is a count of days, a different thing).
+
 **Favorite**:
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 

@@ -296,6 +296,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
 | — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
 | — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0030) | #342 |
+| — | EPIC 51 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`18.sqm`) | #391 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
@@ -366,6 +367,18 @@ From one grilling session. The details, testing and parity sections are in each 
 - **EPIC 48 (#301) — Ops Bridge.** Source → item → sink connectors as scheduled GitHub Actions (ADR 0028), never called "sync". Connector #1, Sentry crash → GitHub issue with close-resolves, is the standalone task #300; a hosted service and n8n/Zapier are recorded as future options.
 
 Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key is used, so EPIC 32 (#75) also needs a TMDB commercial licence (#302).
+
+## EPIC 51 — Tick animations — issue #391
+
+**`18.sqm`.** A tick on the Progress tab played a button pop and a snackbar, then the row snapped to the next episode, so it was easy to miss. Now the row confirms it (a sweep with "S1E3 seen", the episode line slides, the bar fills, a caught-up row fades out), a Milestone (a season finished, or nothing aired left unseen) adds a hand-drawn burst over the list, and Detail gets a lighter version (row wash, count and bar animate, the season checkbox pulses once, a burst only when a single tick catches the show up — bulk marks never burst).
+
+Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tickAnimations`, default on, per device, not synced). It narrows `animationsEnabled` the way `triageDeckAnimations` does: `FeatureFlags.tickAnimationsActive` is the AND, and the haptic is never gated. The milestone also changes the snackbar copy, so with motion off it is still said. Both pre-existing tick pops used to ignore the master switch; they honour it now. Outcome is decided in `ProgressViewModel.tick` (Progress, after the list settles) and `DetailViewModel.toggleEpisodeSeen` (Detail, at the tap).
+
+**Not done, deliberately:** the widgets (#393), the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
+
+**Not verified by any test:** the haptic, and how the sweep and burst feel on a device. Tests assert presence and absence under a hand-driven clock (`ProgressTickFeedbackTest`), not the look.
+
+---
 
 ## Sequencing
 

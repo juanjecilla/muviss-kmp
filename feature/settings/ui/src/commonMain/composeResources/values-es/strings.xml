@@ -35,6 +35,8 @@
     <string name="scheme_three_way">Tres direcciones + botón</string>
     <string name="snooze_period">Volver a preguntar tras</string>
     <string name="snooze_placement">Los títulos pospuestos vuelven</string>
+    <string name="tick_animations">Animar episodios vistos</string>
+    <string name="tick_animations_body">Resalta el episodio al marcarlo como visto</string>
     <string name="swipe_animations">Animaciones al deslizar</string>
     <string name="swipe_animations_body">Las tarjetas salen volando al decidir, y deshacer las trae de vuelta</string>
     <string name="import">Importar</string>

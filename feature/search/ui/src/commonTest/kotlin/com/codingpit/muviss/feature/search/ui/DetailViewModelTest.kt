@@ -258,12 +258,14 @@ class DetailViewModelTest {
         seasons = listOf(Season(1, "Season 1", listOf(episode1, episode2))),
     )
 
+    @Suppress("LongParameterList") // each is one thing a test varies; defaults cover the rest
     private fun viewModel(
         collectionApi: FakeCollectionApi = FakeCollectionApi(),
         progressApi: FakeProgressApi = FakeProgressApi(),
         detailsToLoad: MediaDetails = details,
         id: MediaId = mediaId,
         repoFakes: DetailRepoFakes = DetailRepoFakes(),
+        animateTicks: Boolean = true,
     ): DetailViewModel {
         val repo = FakeDetailRepo(detailsToLoad, repoFakes.watchProviders, repoFakes.recommendations, repoFakes.similar, repoFakes.detailsFailure)
             .also(repoFakes.onRepo)
@@ -276,6 +278,7 @@ class DetailViewModelTest {
             // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
             FakeClock(20L * 86_400_000L),
             repoFakes.connectivity,
+            flowOf(animateTicks),
         )
     }
 
@@ -508,6 +511,51 @@ class DetailViewModelTest {
 
         assertTrue(vm.state.value.isSeen(episode1.id))
         assertFalse(vm.state.value.isSeen(episode2.id))
+    }
+
+    @Test
+    fun the_tick_that_leaves_nothing_aired_unseen_raises_a_celebration_once() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+        assertNull(vm.state.value.celebration, "an episode is still left")
+
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+        assertEquals("Caught up on Game of Thrones", vm.state.value.celebration.text())
+
+        vm.consumeCelebration()
+        assertNull(vm.state.value.celebration)
+    }
+
+    @Test
+    fun unaired_and_undated_episodes_do_not_stop_a_show_being_caught_up() = runTest {
+        val season = Season(1, "Season 1", listOf(episode1, episode2, unairedEpisode, undatedSpecial))
+        val vm = viewModel(detailsToLoad = MediaDetails(MediaSummary(show, "Game of Thrones"), seasons = listOf(season)), id = show)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.celebration)
+    }
+
+    @Test
+    fun with_tick_motion_off_the_last_tick_raises_no_celebration() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show, animateTicks = false)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.celebration)
+        assertEquals(false, vm.state.value.animateTicks)
     }
 
     @Test

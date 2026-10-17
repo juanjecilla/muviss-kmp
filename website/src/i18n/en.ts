@@ -61,7 +61,7 @@ export const en = {
       { icon: "grid", title: "Your library", body: "Filter by status or favourites, sort by date added, rating or title." },
       { icon: "heart", title: "Favourites", body: "Mark the ones you love, independently of how far you've watched." },
       { icon: "list", title: "Custom lists", body: "“Marathon 2026”, “For a rainy day” — make as many lists as you like." },
-      { icon: "check", title: "Episode tracking", body: "Per-episode ticks, season progress, and bulk marks that only tick what has actually aired." },
+      { icon: "check", title: "Episode tracking", body: "Per-episode ticks that clearly confirm themselves, season progress, and bulk marks that only tick what has actually aired. Motion is yours to turn off." },
       { icon: "repeat", title: "Rewatch history", body: "Watched it three times? Muviss remembers every viewing and when it happened." },
       { icon: "star", title: "Ratings & notes", body: "Rate titles and keep a private note on each one." },
       { icon: "bell", title: "New-episode alerts", body: "Get notified when a new episode of a show you follow is out — only if you turn it on. Off until you do.", platforms: "Android · iOS" },
