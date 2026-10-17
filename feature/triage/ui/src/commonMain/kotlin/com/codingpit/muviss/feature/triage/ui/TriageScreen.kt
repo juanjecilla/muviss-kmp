@@ -445,8 +445,12 @@ private fun DeckFilterBar(
             FilterChip(selected = selectedType == null, onClick = { onTypeChange(null) }, label = { Text(stringResource(Res.string.filter_all)) })
             FilterChip(selected = selectedType == MediaType.MOVIE, onClick = { onTypeChange(MediaType.MOVIE) }, label = { Text(stringResource(Res.string.filter_movies)) })
             FilterChip(selected = selectedType == MediaType.TV, onClick = { onTypeChange(MediaType.TV) }, label = { Text(stringResource(Res.string.filter_tv)) })
-            // Selected = muted genres are shown again, so the chip reads as "this filter is lifted".
-            if (mutedAvailable) {
+        }
+        // Its own row: with "Ver silenciados" a fourth chip does not fit beside All, Movies and TV on a
+        // 360dp phone, and a row that scrolls would hide the one chip that is new.
+        // Selected = muted genres are shown again, so the chip reads as "this filter is lifted".
+        if (mutedAvailable) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.l)) {
                 FilterChip(selected = showMuted, onClick = onShowMutedToggled, label = { Text(stringResource(Res.string.filter_show_muted)) }, modifier = Modifier.testTag(SHOW_MUTED_CHIP_TAG))
             }
         }

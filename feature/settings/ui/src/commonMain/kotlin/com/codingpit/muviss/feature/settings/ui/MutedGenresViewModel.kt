@@ -11,6 +11,7 @@ import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,10 +69,16 @@ class MutedGenresViewModel(
         browse(MediaType.TV)
     }
 
+    private var browseJob: Job? = null
+
     fun browse(type: MediaType) {
         _state.update { it.copy(browsing = type, loadingAvailable = true, availableFailed = false, available = emptyList()) }
-        viewModelScope.launchReporting {
+        // Only the latest tap may fill the list: a slow TV request finishing after a Movies one would put
+        // TV genres under movie keys, and a tap on one would mute a genre no movie has.
+        browseJob?.cancel()
+        browseJob = viewModelScope.launchReporting {
             val result = loadGenres(type)
+            if (_state.value.browsing != type) return@launchReporting
             catalog = result.getOrDefault(emptyList())
             catalog.forEach { catalogNames[GenreKey(type, it.id)] = it.name }
             _state.update { it.copy(loadingAvailable = false, availableFailed = result.isFailure) }

@@ -116,6 +116,12 @@ class SearchViewModel(
     /** What Settings and the session chip say right now. Read by every load below. */
     private var muting = GenreMuting()
 
+    /**
+     * Muting changed while Discover was not on screen, so its carousels still carry the old exclusions.
+     * They reload when the user comes back to it, instead of showing the wrong titles until the next retry.
+     */
+    private var discoverStale = false
+
     init {
         // The first Discover waits for the first muting, so it is never loaded unmuted and then replaced.
         // A later change reloads whichever mode is showing.
@@ -128,6 +134,7 @@ class SearchViewModel(
                 if (firstMuting) {
                     loadDiscover()
                 } else if (changed) {
+                    if (_state.value.mode != SearchMode.DISCOVER) discoverStale = true
                     retry()
                 }
                 firstMuting = false
@@ -173,6 +180,7 @@ class SearchViewModel(
         loadJob?.cancel()
         if (query.isBlank()) {
             _state.update { it.copy(mode = SearchMode.DISCOVER, error = null, selectedGenre = null, selectedGenreType = null) }
+            reloadDiscoverIfStale()
             return
         }
         loadJob = viewModelScope.launchReporting {
@@ -226,6 +234,7 @@ class SearchViewModel(
                 error = null,
             )
         }
+        reloadDiscoverIfStale()
     }
 
     /** Loads the next page for whichever paged mode is active; a no-op in [SearchMode.DISCOVER]. */
@@ -244,7 +253,10 @@ class SearchViewModel(
         when (s.mode) {
             SearchMode.DISCOVER -> loadDiscover()
 
-            SearchMode.SEARCH_RESULTS -> loadJob = viewModelScope.launchReporting { runSearch(s.query, page = 1) }
+            SearchMode.SEARCH_RESULTS -> {
+                loadJob?.cancel()
+                loadJob = viewModelScope.launchReporting { runSearch(s.query, page = 1) }
+            }
 
             SearchMode.GENRE_BROWSE -> {
                 val genre = s.selectedGenre
@@ -254,7 +266,15 @@ class SearchViewModel(
         }
     }
 
+    private fun reloadDiscoverIfStale() {
+        if (discoverStale) loadDiscover()
+    }
+
     private fun loadDiscover() {
+        // A second load must not race the first: both read `muting` mid-flight, and whichever finishes
+        // last wins, which could be the one that saw the older muting.
+        loadJob?.cancel()
+        discoverStale = false
         loadJob = viewModelScope.launchReporting {
             _state.update { it.copy(loading = true, error = null) }
             val movieGenres = genresUseCase(MediaType.MOVIE).getOrElse { return@launchReporting fail(it) }

@@ -153,6 +153,31 @@ class MutedGenresScreenTest {
     }
 
     @Test
+    fun a_slow_tv_catalogue_cannot_land_under_the_movies_tab() = runTest {
+        val tvGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val genres = object : GenreCatalog {
+            override suspend fun genres(type: MediaType): Result<List<Genre>> = when (type) {
+                MediaType.TV -> {
+                    tvGate.await()
+                    Result.success(listOf(Genre("10767", "Talk")))
+                }
+
+                MediaType.MOVIE -> Result.success(listOf(Genre("99", "Documentary")))
+            }
+
+            override suspend fun examples(type: MediaType, genreId: String, limit: Int) = Result.success(emptyList<MediaSummary>())
+        }
+        val vm = MutedGenresViewModel(ObserveSettingsUseCase(FakeRepository()), settingsActions(FakeRepository()), LoadGenresUseCase(genres))
+
+        vm.browse(MediaType.MOVIE)
+        tvGate.complete(Unit) // the first (TV) request finishes last
+
+        assertEquals(MediaType.MOVIE, vm.state.value.browsing)
+        assertEquals(listOf(GenreKey(MediaType.MOVIE, "99")), vm.state.value.available.map { it.key })
+        assertFalse(vm.state.value.loadingAvailable)
+    }
+
+    @Test
     fun the_search_switch_is_stored() = runComposeUiTest {
         val repository = FakeRepository()
         val vm = viewModel(repository)

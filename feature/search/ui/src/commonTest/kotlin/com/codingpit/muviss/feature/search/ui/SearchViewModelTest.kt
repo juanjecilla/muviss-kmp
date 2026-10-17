@@ -547,4 +547,42 @@ class SearchViewModelTest {
         assertFalse(none.state.value.hasMuted)
         assertTrue(some.state.value.hasMuted)
     }
+
+    @Test
+    fun a_muting_change_during_search_reloads_discover_when_the_query_is_cleared() = runTest {
+        val repo = tvOnlyRepo(talkShow, drama, searchItems = listOf(drama))
+        val settings = FakeMutingApi()
+        val vm = viewModel(repo, settings = settings)
+        advanceUntilIdle()
+        assertEquals(listOf(talkShow, drama), vm.state.value.popularTv)
+
+        vm.onQueryChange("dr")
+        advanceTimeBy(500)
+        advanceUntilIdle()
+        settings.configured.value = MutedGenres(setOf(talk))
+        advanceUntilIdle()
+
+        vm.onQueryChange("")
+        advanceUntilIdle()
+
+        // Back on Discover, the carousels reflect the muting set while a search was open.
+        assertEquals(listOf(drama), vm.state.value.popularTv)
+    }
+
+    @Test
+    fun a_muting_change_during_genre_browse_reloads_discover_when_leaving_it() = runTest {
+        val repo = tvOnlyRepo(talkShow, drama)
+        val settings = FakeMutingApi()
+        val vm = viewModel(repo, settings = settings)
+        advanceUntilIdle()
+
+        vm.selectGenre(Genre("18", "Drama"), MediaType.TV)
+        advanceUntilIdle()
+        settings.configured.value = MutedGenres(setOf(talk))
+        advanceUntilIdle()
+        vm.clearGenre()
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama), vm.state.value.popularTv)
+    }
 }
