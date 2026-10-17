@@ -9,8 +9,13 @@ import com.codingpit.muviss.core.common.widget.WidgetRefresher
  *
  * The clear is part of a refresh for the same reason it is on Android. A refresh
  * means something changed that the widget did not do itself (a tick in the app,
- * the daily reload, a new episode), so an Undo button left from an earlier
- * interaction would offer to take back a write the person has moved past.
+ * a new episode), so an Undo button left from an earlier interaction would offer
+ * to take back a write the person has moved past.
+ *
+ * Known gap: the midnight rebuild on iOS is `getTimeline` inside the extension,
+ * where no refresher is installed, so it does not clear the marker. A tick from
+ * the widget therefore keeps its Undo button until the next write in the app
+ * (issue #414). Android's midnight job runs in the app and does clear it.
  *
  * The reload cannot be made from Kotlin: `WidgetCenter` is Swift-only, WidgetKit
  * has no Objective-C surface, so [reloadTimelines] is supplied by the Swift

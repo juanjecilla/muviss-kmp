@@ -40,7 +40,7 @@ object IosWidgetPalette {
         }
     }
 
-    /** The widget's surface is the `surfaceContainer` tone, not `surface`, in both schemes. */
+    /** `surface` is the row card: `surfaceVariant` in both schemes, the role Android's widget row uses (`MuvissWidget.kt`). */
     private class Roles(
         val background: Color,
         val surface: Color,
@@ -52,7 +52,7 @@ object IosWidgetPalette {
 
     private val darkRoles = Roles(
         background = MuvissPalette.Dark.background,
-        surface = MuvissPalette.Dark.surfaceContainer,
+        surface = MuvissPalette.Dark.surfaceVariant,
         onSurface = MuvissPalette.Dark.onSurface,
         onSurfaceVariant = MuvissPalette.Dark.onSurfaceVariant,
         primary = MuvissPalette.Dark.primary,
@@ -61,7 +61,7 @@ object IosWidgetPalette {
 
     private val lightRoles = Roles(
         background = MuvissPalette.Light.background,
-        surface = MuvissPalette.Light.surfaceContainer,
+        surface = MuvissPalette.Light.surfaceVariant,
         onSurface = MuvissPalette.Light.onSurface,
         onSurfaceVariant = MuvissPalette.Light.onSurfaceVariant,
         primary = MuvissPalette.Light.primary,

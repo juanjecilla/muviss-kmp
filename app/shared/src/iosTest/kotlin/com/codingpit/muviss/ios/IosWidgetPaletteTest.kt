@@ -14,13 +14,13 @@ class IosWidgetPaletteTest {
     }
 
     @Test
-    fun light_surface_is_the_light_surface_container_tone() {
-        assertEquals(0xFFF2ECDE.toInt(), IosWidgetPalette.argb(IosWidgetPalette.SURFACE, dark = false))
+    fun light_surface_is_the_row_card_tone_android_uses() {
+        assertEquals(0xFFECE1CC.toInt(), IosWidgetPalette.argb(IosWidgetPalette.SURFACE, dark = false))
     }
 
     @Test
-    fun dark_surface_is_the_dark_surface_container_tone_not_surface() {
-        assertEquals(0xFF211E18.toInt(), IosWidgetPalette.argb(IosWidgetPalette.SURFACE, dark = true))
+    fun dark_surface_is_the_row_card_tone_android_uses() {
+        assertEquals(0xFF4C463A.toInt(), IosWidgetPalette.argb(IosWidgetPalette.SURFACE, dark = true))
     }
 
     @Test
