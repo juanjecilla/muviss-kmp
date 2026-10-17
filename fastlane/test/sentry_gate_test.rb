@@ -46,4 +46,30 @@ class SentryGateTest < Minitest::Test
     reason = SentryGate.check(org: "codingpit", token: "", release: "x")
     assert_includes reason, "SENTRY_AUTH_TOKEN"
   end
+
+  # #422: iOS reports its own namespace, so each store's gate reads its own builds.
+  def test_ios_names_its_own_release_namespace
+    assert_equal "com.codingpit.muviss.ios@1.1.0+1001000",
+                 SentryGate.release_name(version_name: "1.1.0", version_code: 1_001_000, platform: :ios)
+  end
+
+  def test_android_keeps_the_string_the_gradle_plugin_stamps
+    assert_equal "com.codingpit.muviss@1.1.0+1001000",
+                 SentryGate.release_name(version_name: "1.1.0", version_code: 1_001_000, platform: :android)
+  end
+
+  def test_the_two_platforms_never_share_a_release
+    refute_equal SentryGate.release_name(version_name: "1.1.0", version_code: 1, platform: :ios),
+                 SentryGate.release_name(version_name: "1.1.0", version_code: 1, platform: :android)
+  end
+
+  def test_an_outage_is_told_apart_from_a_crash
+    assert SentryGate.unreadable?(SentryGate.hold_reason(issues: [], error: "timeout"))
+    refute SentryGate.unreadable?(SentryGate.hold_reason(issues: [{ "shortId" => "APP-1" }]))
+    refute SentryGate.unreadable?(nil)
+  end
+
+  def test_an_unknown_platform_is_refused_rather_than_guessed
+    assert_raises(ArgumentError) { SentryGate.release_name(version_name: "1.1.0", version_code: 1, platform: :web) }
+  end
 end
