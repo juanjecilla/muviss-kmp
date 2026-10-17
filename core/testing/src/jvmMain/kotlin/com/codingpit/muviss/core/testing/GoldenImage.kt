@@ -89,18 +89,84 @@ fun SemanticsNodeInteraction.assertMatchesGolden(name: String, tolerance: Double
         )
     }
 
-    val (differing, diff) = compare(expected, actual)
-    val fraction = differing.toDouble() / (actual.width * actual.height)
-    if (fraction > tolerance) {
-        writeFailureArtifacts(name, actual, diff)
+    val failure = goldenMismatch(expected, actual, tolerance, name)
+    if (failure != null) {
+        writeFailureArtifacts(name, actual, compare(expected, actual).second)
         fail(
-            "Golden '$name' differs: %.3f%% of pixels moved by more than $TOLERATED_CHANNEL_DELTA/255 "
-                .format(fraction * 100) +
-                "(tolerance %.3f%%).\n".format(tolerance * 100) +
-                "Actual and diff written to ${failureDir(name).path}\n" +
+            failure + "\nActual and diff written to ${failureDir(name).path}\n" +
                 "If the change is intended, re-record with:  ./gradlew <module>:jvmTest -Precord",
         )
     }
+}
+
+/**
+ * Why [actual] does not match [expected] at [tolerance], or null when it does:
+ * the whole judgement of [assertMatchesGolden] without the files, so the
+ * harness itself can be tested (#277).
+ *
+ * Two checks, because the area [tolerance] alone cannot see a colour change on
+ * text: text is exactly the share of the frame that tolerance exists to ignore.
+ * #277 measured it — GoldenSurface's text going from black to `onBackground`
+ * moved 0.1-1.7% of every affected golden, and every one of them passed at
+ * 3.5%. So the palette is checked first ([missingColours]).
+ */
+internal fun goldenMismatch(expected: BufferedImage, actual: BufferedImage, tolerance: Double = TOLERATED_FRACTION, name: String = "image"): String? {
+    val pixels = actual.width * actual.height
+    val fraction = compare(expected, actual).first.toDouble() / pixels
+    val lost = missingColours(expected, actual)
+    val gained = missingColours(actual, expected)
+    val changed = fraction > 0 || lost.isNotEmpty() || gained.isNotEmpty()
+    if (changed && System.getProperty("muviss.golden.report") == "true") {
+        val kept = minOf(worstKeptShare(expected, actual), worstKeptShare(actual, expected))
+        println("GOLDEN-REPORT %s moved=%.4f%% worstKept=%.3f lost=%s gained=%s".format(name, fraction * 100, kept, lost, gained))
+    }
+    if (lost.isNotEmpty() || gained.isNotEmpty()) {
+        return "Golden '$name' changed colour: " +
+            (if (lost.isNotEmpty()) "no longer drawn ${lost.joinToString()}; " else "") +
+            (if (gained.isNotEmpty()) "newly drawn ${gained.joinToString()}; " else "") +
+            "whatever the area tolerance (%.3f%% moved).".format(fraction * 100)
+    }
+    if (fraction > tolerance) {
+        return "Golden '$name' differs: %.3f%% of pixels moved by more than $TOLERATED_CHANNEL_DELTA/255 "
+            .format(fraction * 100) +
+            "(tolerance %.3f%%).".format(tolerance * 100)
+    }
+    return null
+}
+
+/**
+ * The colours [from] draws on at least [PALETTE_MIN_PIXELS] pixels that [to]
+ * has all but lost: fewer than [PALETTE_KEPT_SHARE] as many pixels within
+ * [TOLERATED_CHANNEL_DELTA] of them. Formatted `#RRGGBB (n px)`.
+ *
+ * Why this tells a recolour from Linux drift (#277): drawing a glyph heavier
+ * changes how many pixels each anti-aliasing tone covers, but the ink and the
+ * background are still the same colours, so every common colour keeps a
+ * counterpart. A colour token change replaces one: the old ink is gone.
+ */
+private fun missingColours(from: BufferedImage, to: BufferedImage): List<String> {
+    val source = histogram(from)
+    val target = histogram(to)
+    return source.filter { (_, count) -> count >= PALETTE_MIN_PIXELS }
+        .mapNotNull { (colour, count) ->
+            val near = target.entries.sumOf { (other, n) -> if (movedTooFar(colour, other)) 0 else n }
+            if (near < count * PALETTE_KEPT_SHARE) "#%06X (%d px)".format(colour and 0xFFFFFF, count) else null
+        }
+        .take(MAX_REPORTED_COLOURS)
+}
+
+/** For the report only: the smallest share of a palette colour's pixels that kept a counterpart. */
+private fun worstKeptShare(from: BufferedImage, to: BufferedImage): Double {
+    val target = histogram(to)
+    return histogram(from).filter { it.value >= PALETTE_MIN_PIXELS }
+        .minOfOrNull { (colour, count) -> target.entries.sumOf { (other, n) -> if (movedTooFar(colour, other)) 0 else n }.toDouble() / count }
+        ?: 1.0
+}
+
+private fun histogram(image: BufferedImage): Map<Int, Int> {
+    val counts = HashMap<Int, Int>()
+    for (y in 0 until image.height) for (x in 0 until image.width) counts.merge(image.getRGB(x, y), 1, Int::plus)
+    return counts
 }
 
 /**
@@ -186,6 +252,24 @@ private val recording: Boolean
 
 /** Fail once more than this fraction of pixels has moved, unless a caller says otherwise. */
 const val TOLERATED_FRACTION = 0.005
+
+/**
+ * A colour counts as part of the palette once it covers this many pixels: the
+ * full-coverage ink of a few words, never a lone anti-aliasing tone.
+ *
+ * Measured 2026-10-17 (#277) by rendering all 92 macOS-recorded goldens on
+ * Linux (FreeType, Ubuntu 24.04 container, `-PgoldenReport`): area drift up to
+ * 3.17% (persistence banner), and **no** palette colour lost or gained on any
+ * of them — the worst kept 68% of its pixels' counterparts (settings screen)
+ * against the 25% [PALETTE_KEPT_SHARE] floor. The black → `onBackground` text
+ * change #277 found keeps 0%.
+ */
+const val PALETTE_MIN_PIXELS = 24
+
+/** A palette colour is lost when the other image keeps less than this share of its pixels (within the channel delta). */
+const val PALETTE_KEPT_SHARE = 0.25
+
+private const val MAX_REPORTED_COLOURS = 5
 
 /** How far one channel may drift before a pixel counts as changed. */
 private const val TOLERATED_CHANNEL_DELTA = 8
