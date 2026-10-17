@@ -14,6 +14,7 @@
     <string name="search_placeholder">Search movies &amp; TV</string>
     <string name="search_clear">Clear search</string>
     <string name="carousel_for_you">For you</string>
+    <string name="show_muted">Show muted genres</string>
     <string name="genres_movies">Movie genres</string>
     <string name="genres_tv">TV genres</string>
     <string name="carousel_popular_movies">Popular movies</string>
