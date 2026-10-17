@@ -134,8 +134,7 @@ class SearchViewModel(
                 if (firstMuting) {
                     loadDiscover()
                 } else if (changed) {
-                    if (_state.value.mode != SearchMode.DISCOVER) discoverStale = true
-                    retry()
+                    onMutingChanged()
                 }
                 firstMuting = false
             }
@@ -264,6 +263,19 @@ class SearchViewModel(
                 if (genre != null && type != null) selectGenre(genre, type)
             }
         }
+    }
+
+    /**
+     * A muting change reloads whatever is showing. The one exception is a typed query still inside its
+     * debounce: [mode] is still DISCOVER, but [retry] would cancel that pending search and nothing would
+     * ever run it. Left alone it reads the new muting when it fires; Discover is marked stale for when
+     * the query is cleared.
+     */
+    private fun onMutingChanged() {
+        val s = _state.value
+        val searchPending = s.mode == SearchMode.DISCOVER && s.query.isNotBlank()
+        if (s.mode != SearchMode.DISCOVER || searchPending) discoverStale = true
+        if (!searchPending) retry()
     }
 
     private fun reloadDiscoverIfStale() {

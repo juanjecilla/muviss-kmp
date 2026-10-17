@@ -585,4 +585,21 @@ class SearchViewModelTest {
 
         assertEquals(listOf(drama), vm.state.value.popularTv)
     }
+
+    @Test
+    fun a_muting_change_inside_the_debounce_does_not_cancel_the_pending_search() = runTest {
+        val repo = tvOnlyRepo(talkShow, drama, searchItems = listOf(talkShow, drama))
+        val settings = FakeMutingApi(inSearch = true)
+        val vm = viewModel(repo, settings = settings)
+        advanceUntilIdle()
+
+        vm.onQueryChange("late") // the search is now waiting out its debounce
+        settings.configured.value = MutedGenres(setOf(talk))
+        advanceTimeBy(500)
+        advanceUntilIdle()
+
+        // It still ran, and it ran with the muting that arrived while it waited.
+        assertEquals(SearchMode.SEARCH_RESULTS, vm.state.value.mode)
+        assertEquals(listOf(drama), vm.state.value.results)
+    }
 }
