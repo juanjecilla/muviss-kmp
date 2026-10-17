@@ -367,10 +367,30 @@ From one grilling session. The details, testing and parity sections are in each 
 
 Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key is used, so EPIC 32 (#75) also needs a TMDB commercial licence (#302).
 
+## EPIC 35 — iOS to TestFlight and the App Store — issue #78 (status 2026-10-17)
+
+- **Status.** The repo side is done and stacked: #426 (`chore/ios-store-readiness`: privacy manifests, version stamping, App Store metadata), #427 (`ci/ios-testflight`: the Fastfile lanes and the release-rc iOS job), #432 (`feat/ios-staged-train`: ADR 0033's train, #411), and this branch (`docs/ios-owner-runbook`: the owner runbook and `apple-setup.sh --verify`). Nothing has run against a live Apple account: the owner enrols as an Individual on 2026-10-18. Every Apple-facing step is unverified until the first live run (RELEASING.md section 9.6).
+- **Ordered next steps for the owner** (each step, with its exact clicks and where its value goes, is RELEASING.md section 9.2):
+  1. Enrol in the Apple Developer Program as an **Individual** (ID check, 24 to 48 hours, 99 USD a year). Copy the Team ID; the wizard stores it as `APPLE_TEAM_ID`.
+  2. Register the App Group `group.com.codingpit.muviss` and both App IDs (`com.codingpit.muviss`, `com.codingpit.muviss.MuvissWidget`), App Groups only: no Sign in with Apple in v1.
+  3. Set `TEAM_ID` in `app/iosApp/Configuration/Config.xcconfig` on your Mac (never commit it), run a signed build on your own iPhone, and do the airplane-mode widget test.
+  4. Create the App Store Connect app record: name Muviss, bundle `com.codingpit.muviss`, SKU `muviss`, English (U.S.), Full Access.
+  5. Create an App Store Connect API key with the **Admin** role; the wizard stores `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID` and `APP_STORE_CONNECT_KEY_P8`.
+  6. Store the Sentry secrets `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`.
+  7. Create the TestFlight internal and external groups and the external public link; store `TESTFLIGHT_EXTERNAL_GROUPS` (required) and `TESTFLIGHT_GROUPS` (optional) as variables. Fill in the Beta App Review information.
+  8. Answer App Privacy (Crash Data, not linked, no tracking), the age rating (expect 4+), price (free), the EU DSA trader declaration, and export compliance (already declared `NO` in both Info.plists).
+  9. Replace the four review-contact placeholders (see the decision below) and confirm the support URL (#423).
+  10. Run `scripts/release/apple-setup.sh --verify`; it lists every name CI reads and, with the key, reads the app record. It uploads nothing.
+  11. Cut the first release candidate. Expect the iOS job to build and upload to TestFlight internal; then the Sunday beta step; then the first-live-run checklist (RELEASING.md 9.6, #429), with each answer on the release issue.
+  12. Work through the device checklist (RELEASING.md 9.8): #240, #186/#415, #324, #322, #388, #114, #92, #23, #414, #417, the Sentry symbolicated test crash, and the Device Backup restore once #409 lands.
+- **Owner decisions** (the agent cannot make these): the DSA trader answer (a legal statement about your own status); whether the review-contact details live in git (the repo goes public at #81) or in App Store Connect's own box (a small code change); the support URL until #423 lands; the store name if `Muviss` is taken; and whether to accept the Admin-key requirement given the cloud-signing 403 reports.
+- **Tracked follow-ups, all open:** #412 (parity leftovers from the 2026-10-17 audit); #414 to #417 (widget, iPad share sheet, `keyWindow`, background refresh, verify on device); #422 (shared Sentry release string, now split); #423 (support page); #424 (privacy manifests against Xcode's report); #425 (device-class screenshots); #428 (dSYM line tables); #429 (ADR 0033's Apple assumptions on the first live run); #430 (Play's Sunday complete closes the release issue while iOS ramps); #431 (iosTest coverage for the iOS namespace). Device verification from earlier epics: #23, #186, #240, #322, #324, #388, #114, #92. Deferred by design: #33 (ASWebAuthenticationSession), #34 (icon dark and tinted slots), #35 (arm64-only).
+- **Related epics, for the record:** #409 Device Backup has its own entry on its branch (`feat/device-backup`), and its restore test is in the device checklist. #410 In-app review is post-v1 and not started.
+
 ## iOS joins the staged train — issue #411 (added 2026-10-17)
 
-- **#411 — iOS on the staged train.** iOS walks the same three weeks as Play (TestFlight internal → external public-link beta → App Store with a seven-day phased release), with each platform's stage and gates recorded separately. Decision and Apple's rules, with their open assumptions: ADR 0033.
-  - Status (WS5, `feat/ios-staged-train`, PR stacked on #427): the per-platform stage marker (`release_stages.rb`, old Play-only markers still parse), the iOS decider (`ios_train.rb`), the App Store Connect client (`app_store_connect.rb`), the runner (`ios_promote.rb`), the Sunday step inside `release-promote.yml`, `app-store-phased-ramp.yml`, `app-store-brake.yml`, and the per-platform Sentry namespace (#422). Unverified against a live account; see RELEASING.md "iOS in the train (WS5)" for the first-live-run checklist. Owner runbook: WS7.
+- **#411 — iOS on the staged train.** iOS walks the same three weeks as Play (TestFlight internal, then external public-link beta, then App Store with a seven-day phased release), with each platform's stage and gates recorded separately. Decision and Apple's rules, with their open assumptions: ADR 0033.
+  - Status: the per-platform stage marker (`release_stages.rb`, old Play-only markers still parse), the iOS decider (`ios_train.rb`), the App Store Connect client (`app_store_connect.rb`), the runner (`ios_promote.rb`), the Sunday step in `release-promote.yml`, `app-store-phased-ramp.yml`, `app-store-brake.yml`, and the per-platform Sentry namespace (#422) all live in PR #432. Unverified against a live account. The train's behaviour, its holds and the first-live-run checklist are RELEASING.md section 9.4 and 9.6; the owner runbook is section 9.2.
 
 ## Sequencing
 
@@ -409,6 +429,8 @@ runs standing in where they could. What that did and did not buy:
 ## Cross-cutting / backlog
 
 ### 2026-10-17
+
+- **iOS, EPIC 35 and #411 (the owner runbook).** The owner runbook is RELEASING.md section 9; `scripts/release/apple-setup.sh --verify` checks the names CI reads. Raised by the iOS work and not done in it, each with its issue: #412 (parity leftovers from the audit), #414 (widget Undo, colours and crash reporting on a device), #415 (iPad share sheet and file picker, #186), #416 (`topViewController` uses the deprecated `keyWindow`, which can be nil on multi-scene iPad), #417 (background refresh KEEP and pending list on a device), #422 (the shared Sentry release string, now split per platform), #423 (the App Store support URL has no page), #424 (verify `PrivacyInfo.xcprivacy` against Xcode's report), #425 (StoreShot device-class screenshots), #428 (the release dSYM's Kotlin line tables and the Sentry framework dSYM), #429 (ADR 0033's Apple assumptions on the first live run), #430 (Play's Sunday complete closes the release issue while iOS is still ramping), #431 (no iosTest coverage for the iOS Sentry namespace). Not verified on a device: #240, #186, #324, #322, #388, #114, #92, #23. Nothing here was run against a live Apple account.
 
 - **Muted Genres built** (ADR 0031, glossary: Muted Genre): talk, news and reality TV are left out of the triage deck, Discover, For you and More like this by default; any TMDB genre can be muted in Settings, Onboarding offers four, and a "Show muted" chip lifts it per session. `18.sqm`, `19.db`. Raised and not done: #385 (sync it across devices), #386 (titles with no genres, e.g. award shows: closed as a documented limit, `type` does not catch them either), #387 (stored genre names keep the language they were muted in: fixed here, names resolve from the catalogue), #388 (verify on a device, per target; nothing was run on one).
 
@@ -461,7 +483,7 @@ it — see `AGENTS.md` for why.
 
 ### Raised by EPIC 22, deliberately not done
 
-- **The iOS widget extension has never been built** — #23. The Xcode target is checked in and its graph parses, but building it needs Xcode, a real `TEAM_ID` and a registered App Group. The App Group database relocation (ADR 0016) is unverified with it.
+- **The iOS widget extension has never run on a device** — #23. CI builds and links the Xcode target on every PR, but a signed build needs a real `TEAM_ID` and a registered App Group, and the App Group database relocation (ADR 0016) is unverified until it runs (RELEASING.md section 9.8).
 - **Android widget polish** — #27. The widget picker preview is still the KMP template's green robot (the app icon was never replaced), a tall widget with one show leaves empty space, and `WidgetMidnightRefresh` has never been observed firing.
 
 ### Raised by getting iOS running on the simulator (2026-09-02)
