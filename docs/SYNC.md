@@ -120,6 +120,62 @@ row and a paywall. Those are deliberately opposite, see ADR 0018.
    `MuvissBuildConfig`, never committed. CI and any clone without these two
    properties builds and runs exactly as before, with sync hidden.
 
+## Dev and prod projects (EPIC 43)
+
+Two Supabase projects, and nothing a person types by hand ever changes either
+one's schema:
+
+| | Dev | Prod |
+|---|---|---|
+| Ref | `mnleklzanxxpvmakrbxv` ("Muviss dev") | `sodjedenvnvsuktbxevt` ("Muviss app") |
+| Data | test accounts and rows only | real users' libraries |
+| Gets `supabase/` | `.github/workflows/supabase-dev.yml`, on every push to `develop` touching `supabase/`: migrations, Edge Functions, `config push`, then pgTAP against it | the Supabase GitHub integration, when a `release/*` merges into `main` |
+| Credentials | `supabase-dev` environment (deployable from `develop` only); a PAT that gets 403 on prod | the integration; no CI secret |
+| `scripts/sync/` | the default | `MUVISS_SUPABASE_TARGET=prod MUVISS_I_MEAN_PROD=yes` only |
+
+**How a migration is promoted.** Every step is a merge, never a command:
+
+1. A PR adds `supabase/migrations/<timestamp>_<name>.sql` (plus pgTAP in
+   `supabase/tests/database/`). CI's `supabase` lane applies the whole chain to
+   an empty local database and runs pgTAP and the Edge Functions' Deno tests
+   (#280). No project is touched.
+2. The PR merges into `develop` → `supabase-dev.yml` pushes it to **dev** and
+   runs pgTAP there. Exercise it on dev: a debug build pointed at dev's
+   `SUPABASE_URL`, and `scripts/sync/verify-*.sh` (dev by default).
+3. The release train cuts `release/X.Y.Z` from `develop`; when it merges into
+   `main` (ADR 0025/0030) the integration applies it to **prod**. A migration
+   that must not reach prod yet stays off `develop` (the #283 hold is the
+   example: its policies would refuse every sync until the auth hook is on).
+
+**Working by hand.** Reads and experiments are fine; schema changes are not.
+
+- `supabase link` is **per checkout** (it writes `supabase/.temp/project-ref`)
+  and every `--linked` command — `db query --linked`, `db push`, `config push`
+  — goes wherever it points. Check before any of them:
+
+  ```bash
+  cat supabase/.temp/project-ref    # mnleklzanxxpvmakrbxv = dev
+  ```
+
+  Keep checkouts linked to **dev** (`supabase link --project-ref
+  mnleklzanxxpvmakrbxv`). A checkout linked to prod turns a habitual
+  `supabase db push` into a production migration outside the release train.
+- Prefer naming the target over trusting the link: `--project-ref <ref>` or
+  `--db-url`, which is what `supabase-dev.yml` and `scripts/sync/lib.sh` do.
+- Anything that creates accounts or throwaway rows — RLS checks with several
+  users, `verify-pagination.sh` — runs against the **local** stack
+  (`supabase start`) or dev, never prod. Prod has no safe way to make test
+  accounts, by design.
+- Never `supabase db push` / `config push` against prod. If prod and the repo
+  have drifted, fix it with a migration through the steps above.
+
+**Why a second free project and not Supabase branching.** Branching (a
+preview database per PR) needs a paid plan and bills each branch's compute;
+the second project is free and, with CI's local stack covering per-PR
+checks, branching would add only a hosted copy per PR. Revisit if per-PR
+checks ever need hosted-only features (the auth hook end to end, Edge
+Functions behind the real gateway).
+
 ## Schema
 
 > Reference copy of the **original** schema. The executable ones are
