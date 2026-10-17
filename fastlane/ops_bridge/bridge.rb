@@ -1,5 +1,6 @@
 require "json"
 require "net/http"
+require "time"
 require "uri"
 
 # The Ops Bridge (EPIC 48, ADR 0028): connect the tools the project runs on so a
@@ -13,13 +14,22 @@ require "uri"
 #   connector.items            polls its source, returns normalised OpsBridge::Items
 #   GithubSink                 creates a GitHub issue per item, finds what it already made
 #   connector.resolve(id)      optional reverse mapping: sink closed -> source resolved
+#   item.reopen_after          optional: the source says it came back; a closed issue reopens
 #
 # Idempotent by construction: each item's body ends in a marker
 # (`<!-- <kind>:<id> -->`) and the sink looks the marker up in the issues it already
 # made, so every run is safe to repeat. How to add a connector: fastlane/ops_bridge/README.md.
 module OpsBridge
   # The normalised thing a connector produces and the sink consumes.
-  Item = Struct.new(:id, :title, :body, :labels, :link)
+  #
+  # `reopen_after` (a Time) and `reopen_note` are optional and only mean something to a
+  # connector with a reverse mapping: they say the item came back at the source after being
+  # resolved there. The sink reopens the item's issue if it was closed as completed *before*
+  # that time, with the note as a comment (#327). Nil means "not a regression".
+  Item = Struct.new(:id, :title, :body, :labels, :link, :reopen_after, :reopen_note)
+
+  # An issue the sink already made for an item: enough to decide whether to reopen it.
+  KnownIssue = Struct.new(:id, :number, :state, :state_reason, :closed_at)
 
   class ApiError < StandardError; end
 
@@ -45,13 +55,29 @@ module OpsBridge
     items.reject { |item| known_ids.include?(item.id) }
   end
 
+  # Items whose issue was closed as completed and that the source says came back since:
+  # [[item, known_issue], ...]. A close as "not planned" or "duplicate" stays closed — nobody
+  # claimed a fix, so its coming back is not news — and so does an issue closed *after* the
+  # source last saw the item, which is a close that already knew about it.
+  def regressions(items, known_issues)
+    by_id = known_issues.to_h { |issue| [issue.id, issue] }
+    items.map do |item|
+      issue = by_id[item.id]
+      next unless issue && item.reopen_after && issue.state == "closed"
+      next unless issue.state_reason.nil? || issue.state_reason == "completed"
+      next if issue.closed_at && issue.closed_at >= item.reopen_after
+
+      [item, issue]
+    end.compact
+  end
+
   # The one place a request leaves the process. `request` returns [status, body, headers].
   # A String body is sent as is (the OAuth token exchange is a form); anything else is JSON.
   # Never logs a header, so a token cannot reach a log.
   class Http
     def request(method, url, headers: {}, body: nil)
       uri = URI(url)
-      klass = { get: Net::HTTP::Get, post: Net::HTTP::Post, put: Net::HTTP::Put }.fetch(method)
+      klass = { get: Net::HTTP::Get, post: Net::HTTP::Post, put: Net::HTTP::Put, patch: Net::HTTP::Patch }.fetch(method)
       req = klass.new(uri)
       headers.each { |name, value| req[name] = value }
       req.body = body.is_a?(String) ? body : JSON.generate(body) if body
@@ -74,16 +100,34 @@ module OpsBridge
     # themselves rather than the search index, which lags by minutes and would let a repeat run
     # open a duplicate.
     def known_ids(connector)
-      ids = []
+      known_issues(connector).map(&:id)
+    end
+
+    # The same issues as KnownIssues, with what a reopen decision needs.
+    def known_issues(connector)
+      known = []
       each_page("https://api.github.com/repos/#{@repo}/issues?labels=#{URI.encode_www_form_component(connector.source_label)}&state=all&per_page=100") do |issues|
         issues.each do |issue|
           next if issue.key?("pull_request")
 
           id = OpsBridge.marker_in(connector.kind, issue["body"])
-          ids << id if id
+          next unless id
+
+          closed_at = issue["closed_at"] ? Time.parse(issue["closed_at"]) : nil
+          known << KnownIssue.new(id, issue["number"], issue["state"], issue["state_reason"], closed_at)
         end
       end
-      ids
+      known
+    end
+
+    # Comments first, so whoever is notified of the reopen sees why in the same email.
+    def reopen(number, note)
+      base = "https://api.github.com/repos/#{@repo}/issues/#{number}"
+      status, = @http.request(:post, "#{base}/comments", headers: headers, body: { body: note.to_s })
+      raise ApiError, "GitHub answered HTTP #{status} commenting on ##{number}" unless status == 201
+
+      status, = @http.request(:patch, base, headers: headers, body: { state: "open", state_reason: "reopened" })
+      raise ApiError, "GitHub answered HTTP #{status} reopening ##{number}" unless (200..299).cover?(status)
     end
 
     # Idempotent: a label that exists already answers 422, which is fine.
@@ -132,11 +176,24 @@ module OpsBridge
     end
   end
 
-  # The scheduled run: open one issue per new item. Returns the items it opened (or would have).
+  # The scheduled run: open one issue per new item, and reopen the closed issue of any item the
+  # source says came back. Returns the items it opened (or would have).
   def sync(connector:, sink:, dry_run: false, log: ->(_line) {})
     all = connector.items
-    items = new_items(all, sink.known_ids(connector))
-    log.call("#{connector.name}: #{all.size} item(s) at the source, #{items.size} without a GitHub issue")
+    known = sink.known_issues(connector)
+    items = new_items(all, known.map(&:id))
+    came_back = regressions(all, known)
+    log.call("#{connector.name}: #{all.size} item(s) at the source, #{items.size} without a GitHub issue, " \
+             "#{came_back.size} back after a close")
+
+    came_back.each do |item, issue|
+      if dry_run
+        log.call("would reopen ##{issue.number}: #{item.title}")
+      else
+        sink.reopen(issue.number, item.reopen_note)
+        log.call("reopened ##{issue.number}: #{item.title}")
+      end
+    end
     return items if items.empty?
 
     if dry_run
