@@ -260,5 +260,35 @@ out="$(FAKE_RACE="$race" ms 13 release/1.4.0 2>&1)"; expect_eq "a lost creation 
 expect_eq "and the PR still gets the milestone" "$(grep -c -- 'pr edit 13 --repo muviss/test --milestone 1.4.0' "$FAKE_GH_LOG")" "1"
 
 
+echo "apple-setup.sh --verify (docs/RELEASING.md section 9)"
+abin="$(mktemp -d)"
+cat >"$abin/gh" <<'FAKEGH'
+#!/bin/bash
+echo "gh $*" >>"$FAKE_GH_LOG"
+case "$*" in
+  "auth status"*) exit "${FAKE_AUTH:-0}" ;;
+  "secret list"*) printf '%b' "${FAKE_SECRETS:-}" | awk 'NF{print $1"\tupdated"}' ;;
+  "variable list"*) printf '%b' "${FAKE_VARS:-}" | awk 'NF{print $1"\tupdated"}' ;;
+esac
+exit 0
+FAKEGH
+chmod +x "$abin/gh"
+export FAKE_GH_LOG="$(mktemp)"
+av="$(mktemp -d)"; mkdir -p "$av/scripts/release"; cp "$SCRIPTS/apple-setup.sh" "$av/scripts/release/"
+ALL_SECRETS='APP_STORE_CONNECT_KEY_ID\nAPP_STORE_CONNECT_ISSUER_ID\nAPP_STORE_CONNECT_KEY_P8\nSENTRY_AUTH_TOKEN\nSENTRY_ORG\nSENTRY_PROJECT\n'
+ALL_VARS='APPLE_TEAM_ID\nTESTFLIGHT_EXTERNAL_GROUPS\n'
+verify() { (cd "$av" && PATH="$abin:$PATH" env -u APPLE_ASC_P8_PATH FAKE_SECRETS="$1" FAKE_VARS="$2" "$av/scripts/release/apple-setup.sh" --verify </dev/null >/dev/null 2>&1); echo $?; }
+expect_eq "verify passes when every name CI reads is set" "$(verify "$ALL_SECRETS" "$ALL_VARS")" "0"
+expect_eq "verify fails when the Sentry org is missing" "$(verify "$(printf '%b' "$ALL_SECRETS" | grep -v SENTRY_ORG)" "$ALL_VARS")" "1"
+expect_eq "verify fails when the external groups variable is missing" "$(verify "$ALL_SECRETS" 'APPLE_TEAM_ID\n')" "1"
+expect_eq "the optional internal groups variable may be unset" "$(verify "$ALL_SECRETS" "$ALL_VARS")" "0"
+expect_eq "verify refuses when gh is not signed in" "$(FAKE_AUTH=1 verify "$ALL_SECRETS" "$ALL_VARS")" "1"
+: >"$FAKE_GH_LOG"; verify "" "" >/dev/null
+expect_eq "verify reads names only: no set, no value" "$(grep -c -E 'secret set|variable set' "$FAKE_GH_LOG")" "0"
+expect_eq "the wizard asks for the Admin role and keeps Sign in with Apple out" "$(grep -c 'Access: Admin' "$SCRIPTS/apple-setup.sh")$(grep -c 'Do NOT tick Sign in with Apple' "$SCRIPTS/apple-setup.sh")" "11"
+if command -v shellcheck >/dev/null 2>&1; then
+  shellcheck "$SCRIPTS/apple-setup.sh" >/dev/null 2>&1 && pass "apple-setup.sh passes shellcheck" || fail "apple-setup.sh passes shellcheck"
+fi
+
 echo
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
