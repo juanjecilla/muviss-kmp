@@ -12,6 +12,7 @@ import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncFailureReason
 import com.codingpit.muviss.core.sync.SyncOutcome
+import com.codingpit.muviss.core.sync.belongsToAnotherAccountThan
 import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
 import com.codingpit.muviss.feature.profile.domain.SignInFailure
@@ -103,7 +104,7 @@ class CoreSyncRepository(
             lastSyncedAtEpochMs = snapshot.lastSyncedAtEpochMs,
             pendingChanges = snapshot.pendingChanges,
             lastFailure = snapshot.lastFailure?.toDomain(),
-            accountChanged = snapshot.ownerAccountId != null && session != null && snapshot.ownerAccountId != session.userId,
+            accountChanged = snapshot.belongsToAnotherAccountThan(session),
         )
     }.distinctUntilChanged()
 
