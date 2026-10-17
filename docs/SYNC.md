@@ -561,6 +561,15 @@ home:
   within reach of even the local default of 1000 rows today, so this isn't
   currently biting anyone in practice.
 
+Since 2026-10-17 (#129) the RLS claims above are also a **pgTAP suite**,
+`supabase/tests/database/sync_rls.test.sql`, run by CI on every change to
+`supabase/` against the migrations from empty: RLS and a policy on every
+public table, three accounts (two Companions and a stranger) on the co-watch
+tables, forged writes, anonymous reads and writes. Its first run found that
+the co-watch addressee could hard-delete the author's rows (`using` governs
+DELETE, `with check` does not); `20261017000000_cowatch_addressee_reads_only.sql`
+splits the policy per command.
+
 **Still not run**: the Android `9.sqm` upgrade and first-sync-after-upgrade
 reconcile against a real seeded device (#100 items 5-6) — needs a deliberate
 device pass, not attempted this round.

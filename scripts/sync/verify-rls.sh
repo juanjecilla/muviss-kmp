@@ -23,7 +23,12 @@ ANON=$(anon_key)
 fail=0
 
 echo "=== unauthenticated reads (expect: 200 with []) ==="
-for t in collection_entry episode_progress media_list list_entry triage_decision episode_play; do
+# Every table the app syncs. The pgTAP suite (supabase/tests/database/
+# sync_rls.test.sql) checks the same policies from inside, with several real
+# accounts, on every PR; this is the check that the *hosted* project matches.
+TABLES="collection_entry episode_progress media_list list_entry triage_decision episode_play
+triage_snooze cowatch_link cowatch_pool_entry"
+for t in $TABLES; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "$REST/$t?select=*" -H "apikey: $ANON")
   body=$(curl -s "$REST/$t?select=*" -H "apikey: $ANON" | head -c 80)
   printf '%-18s HTTP %s  %s' "$t" "$code" "$body"
@@ -36,6 +41,11 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST/collection_entry" \
   -H "apikey: $ANON" -H "Content-Type: application/json" \
   -d '{"media_id":"rls-probe","media_type":"MOVIE","title":"probe","production_status":"RELEASED","added_at_epoch_ms":1,"updated_at_epoch_ms":1}')
 printf 'POST collection_entry -> HTTP %s' "$code"
+if [ "$code" -ge 400 ]; then echo "  OK"; else echo "  <-- ACCEPTED, policy is wrong"; fail=1; fi
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST/cowatch_pool_entry" \
+  -H "apikey: $ANON" -H "Content-Type: application/json" \
+  -d '{"user_id":"00000000-0000-0000-0000-000000000000","recipient_id":"00000000-0000-0000-0000-000000000000","media_id":"rls-probe","media_type":"MOVIE","title":"probe","updated_at_epoch_ms":1}')
+printf 'POST cowatch_pool_entry -> HTTP %s' "$code"
 if [ "$code" -ge 400 ]; then echo "  OK"; else echo "  <-- ACCEPTED, policy is wrong"; fail=1; fi
 
 echo
