@@ -149,3 +149,22 @@ _Avoid_: rewatch flag (Rewatch is the derived record, not an intention); seen-ag
 **Shortlist**:
 The ranked answer to what Companions could watch together, derived from their Watch Pools and never stored. A different question from WatchNext, which answers what one person is part-way through.
 _Avoid_: recommendation (nothing enters a Shortlist that a Companion did not already put in a Pool); shared list; queue.
+
+### Release train
+
+**Stage**:
+Where one platform's build of a version stands on the weekly train: internal, then open beta, then production. Each platform has its own Stage for the same version (ADR 0033), so Play can be in production while iOS is still on beta.
+_Avoid_: track (Play's word for a channel), phase (see Phased Release).
+
+**Phased Release**:
+Apple's seven-day rollout of an App Store version to a growing share of devices with automatic updates on (1%, 2%, 5%, 10%, 20%, 50%, then 100%). It can be paused, and a paused release resumes where it stopped. Play's equivalent is the staged-rollout ramp.
+_Avoid_: ramp (Play's word), staged rollout.
+
+### Release train
+
+**Stage**:
+Where one platform's build of a version stands on the weekly train: internal, then open beta, then production. Each platform has its own Stage for the same version (ADR 0033), so Play can be in production while iOS is still on beta.
+_Avoid_: track (Play's word for a channel), phase (see Phased Release).
+
+**Phased Release**:
+Apple's seven-day rollout of an App Store version to a growing share of devices with automatic updates on (1
