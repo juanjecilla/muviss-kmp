@@ -132,6 +132,7 @@
 				A1B2C3D400000000000000E5 /* Sources */,
 				A1B2C3D400000000000000E6 /* Frameworks */,
 				A1B2C3D400000000000000E7 /* Resources */,
+				A1B2C3D400000000000000F1 /* Set version from git */,
 			);
 			buildRules = (
 			);
@@ -269,7 +270,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "cd \"$SRCROOT/../..\"\nVERSION_CODE=$(git rev-list --count HEAD 2>/dev/null)\nif [ -z \"$VERSION_CODE\" ]; then\n  echo \"warning: git unavailable, keeping CURRENT_PROJECT_VERSION/MARKETING_VERSION from Config.xcconfig\"\n  exit 0\nfi\nDESCRIBE=$(git describe --tags --always --dirty 2>/dev/null)\nif [[ \"$DESCRIBE\" =~ ^v?([0-9]+\\.[0-9]+\\.[0-9]+) ]]; then\n  VERSION_NAME=\"${BASH_REMATCH[1]}\"\nelse\n  VERSION_NAME=\"0.1.0-dev.$VERSION_CODE\"\nfi\nPLIST=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nif [ -f \"$PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString $VERSION_NAME\" \"$PLIST\"\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $VERSION_CODE\" \"$PLIST\"\nfi\n";
+			shellScript = "\"$SRCROOT/../../scripts/ios/set-version.sh\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n";
 		};
 		A1B2C3D400000000000000E8 /* Compile Kotlin Framework */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -289,6 +290,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/../..\"\n./gradlew :app:shared:embedAndSignAppleFrameworkForXcode\n";
+		};
+		A1B2C3D400000000000000F1 /* Set version from git */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Set version from git";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"$SRCROOT/../../scripts/ios/set-version.sh\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

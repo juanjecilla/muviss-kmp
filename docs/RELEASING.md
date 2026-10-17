@@ -885,18 +885,17 @@ always available on `NSObject`) instead of `content.title = ...`.
 
 ### Versioning
 
-Mirrors item 3's scheme (git-derived, no hardcoded version) via a **Run
-Script build phase** named "Set version from git" (`project.pbxproj`,
-after the Resources phase): it computes the same `versionCode`
-(`git rev-list --count HEAD`) and a `versionName` (latest exact
-`vMAJOR.MINOR.PATCH` tag, else `0.1.0-dev.<count>` — no `+sha` suffix
-unlike Android's, since `CFBundleShortVersionString` is conventionally
-kept to dotted numbers/simple dev suffixes) and overwrites
-`CFBundleVersion`/`CFBundleShortVersionString` in the **built** Info.plist
-via `/usr/libexec/PlistBuddy`. `Configuration/Config.xcconfig`'s
-`CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` are only the static fallback
-used when git is unavailable (e.g. a source-only archive) — the script
-no-ops (keeping them) if `git rev-list` fails.
+Mirrors item 3's scheme (git-derived, no hardcoded version). Both the `iosApp`
+and `MuvissWidget` targets run the same **Run Script phase** "Set version from
+git", which calls `scripts/ios/set-version.sh` (so the app and its extension
+always match, ITMS-90473). It overwrites `CFBundleVersion` and
+`CFBundleShortVersionString` in the **built** Info.plist: `CFBundleVersion` is
+the Android `versionCode` (`scripts/release/version-code.sh` on an exact
+`vX.Y.Z[-rcN]` tag, else the commit count), and `CFBundleShortVersionString` is
+the numeric `X.Y.Z` of the latest tag, with any `-rcN` dropped, or `0.1.0` when
+untagged. `Configuration/Config.xcconfig`'s `CURRENT_PROJECT_VERSION`/
+`MARKETING_VERSION` are only the static fallback used when git is unavailable;
+the script keeps them in that case. Details in `app/iosApp/README.md`.
 
 ### Bundle id / signing (manual — no CI signing path yet)
 
