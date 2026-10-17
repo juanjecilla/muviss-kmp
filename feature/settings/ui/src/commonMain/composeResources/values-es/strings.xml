@@ -21,6 +21,7 @@
     <string name="notifications_note">Avisos de episodios nuevos</string>
     <string name="notifications_note_desktop">Avisos de episodios nuevos, mientras Muviss esté abierta</string>
     <string name="notifications_note_web">Avisos de episodios nuevos (no disponible en el navegador)</string>
+    <string name="notifications_note_ios">Avisos de episodios nuevos. iOS los ejecuta cuando lo permite: con retraso, o no los ejecuta con el modo de bajo consumo o con la Actualización en segundo plano desactivada para Muviss.</string>
     <string name="notifications_blocked">Las notificaciones de Muviss están desactivadas en los ajustes del dispositivo, así que no llegará ninguna.</string>
     <string name="open_settings">Abrir ajustes</string>
     <string name="animations">Animaciones</string>
