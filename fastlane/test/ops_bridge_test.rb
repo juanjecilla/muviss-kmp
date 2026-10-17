@@ -99,6 +99,101 @@ class OpsBridgeTest < Minitest::Test
     assert(lines.any? { |line| line.include?("would open: T") })
   end
 
+  # --- reopen on regression (#327) ---------------------------------------------
+
+  CLOSED_AT = Time.utc(2026, 10, 1, 12)
+
+  def closed(id, number: 7, reason: "completed", at: CLOSED_AT)
+    OpsBridge::KnownIssue.new(id, number, "closed", reason, at)
+  end
+
+  def came_back(id, at: CLOSED_AT + 3600)
+    OpsBridge::Item.new(id, "T #{id}", "body", ["from-stub"], nil, at, "it is back")
+  end
+
+  def test_an_item_back_after_its_issue_was_closed_as_completed_reopens_it_with_the_note
+    sink = StubSink.new([closed("a")])
+    opened = OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+    assert_equal [[7, "it is back"]], sink.reopened
+    assert_empty opened, "a regression reopens; it never opens a second issue"
+    assert_empty sink.created
+  end
+
+  def test_a_close_after_the_source_last_saw_it_is_not_reopened
+    sink = StubSink.new([closed("a", at: CLOSED_AT + 7200)])
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+    assert_empty sink.reopened, "closed with the regression already known: leave it closed"
+  end
+
+  def test_a_close_as_not_planned_or_duplicate_is_not_reopened
+    %w[not_planned duplicate].each do |reason|
+      sink = StubSink.new([closed("a", reason: reason)])
+      OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+      assert_empty sink.reopened, reason
+    end
+  end
+
+  def test_an_open_issue_or_an_item_that_is_not_a_regression_is_left_alone
+    open_issue = StubSink.new([OpsBridge::KnownIssue.new("a", 7, "open", nil, nil)])
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: open_issue)
+    assert_empty open_issue.reopened
+
+    plain = StubSink.new([closed("a")])
+    OpsBridge.sync(connector: StubConnector.new([item("a")]), sink: plain)
+    assert_empty plain.reopened, "no reopen_after: the source did not say it came back"
+  end
+
+  def test_a_reopened_issue_is_not_reopened_again
+    sink = StubSink.new([OpsBridge::KnownIssue.new("a", 7, "open", "reopened", nil)])
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+    assert_empty sink.reopened
+  end
+
+  def test_an_ineligible_copy_of_the_marker_does_not_hide_an_eligible_issue
+    sink = StubSink.new([closed("a", number: 7), closed("a", number: 9, reason: "duplicate")])
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+    assert_equal [[7, "it is back"]], sink.reopened
+    assert_empty sink.created
+  end
+
+  def test_an_open_copy_of_the_marker_means_nothing_is_reopened
+    open_copy = OpsBridge::KnownIssue.new("a", 9, "open", nil, nil)
+    sink = StubSink.new([closed("a", number: 7), open_copy])
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+    assert_empty sink.reopened, "an open issue already tracks the item"
+  end
+
+  def test_a_dry_run_says_it_would_reopen_and_does_not
+    sink = StubSink.new([closed("a")])
+    lines = []
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink, dry_run: true, log: ->(line) { lines << line })
+    assert_empty sink.reopened
+    assert(lines.any? { |line| line.include?("would reopen #7") })
+  end
+
+  def test_the_sink_reads_state_and_close_time_and_reopens_with_a_comment_first
+    issues = [{ "number" => 7, "state" => "closed", "state_reason" => "completed", "closed_at" => "2026-10-01T12:00:00Z",
+                "body" => OpsBridge.marker("stub", "a") }]
+    sink, http = github(
+      [:get, "https://api.github.com/repos/o/r/issues?labels=from-stub"] => [200, issues, {}],
+      [:post, "https://api.github.com/repos/o/r/issues/7/comments"] => [201, {}],
+      [:patch, "https://api.github.com/repos/o/r/issues/7"] => [200, {}],
+    )
+    assert_equal [closed("a")], sink.known_issues(StubConnector.new([]))
+
+    sink.reopen(7, "it is back")
+    comment, patch = http.requests.last(2)
+    assert_equal({ body: "it is back" }, comment[:body])
+    assert_equal :patch, patch[:method]
+    assert_equal({ state: "open", state_reason: "reopened" }, patch[:body])
+  end
+
+  def test_a_failed_reopen_raises_without_the_token
+    sink, = github([:post, "https://api.github.com/repos/o/r/issues/7/comments"] => [403, {}])
+    error = assert_raises(OpsBridge::ApiError) { sink.reopen(7, "n") }
+    refute_includes error.message, "ghs_secret"
+  end
+
   # --- resolve -----------------------------------------------------------------
 
   def test_closing_one_of_ours_resolves_its_source
