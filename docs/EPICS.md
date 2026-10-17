@@ -370,6 +370,7 @@ Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key 
 ## iOS joins the staged train — issue #411 (added 2026-10-17)
 
 - **#411 — iOS on the staged train.** iOS walks the same three weeks as Play (TestFlight internal → external public-link beta → App Store with a seven-day phased release), with each platform's stage and gates recorded separately. Decision and Apple's rules, with their open assumptions: ADR 0033.
+  - Status (WS5, `feat/ios-staged-train`, PR stacked on #427): the per-platform stage marker (`release_stages.rb`, old Play-only markers still parse), the iOS decider (`ios_train.rb`), the App Store Connect client (`app_store_connect.rb`), the runner (`ios_promote.rb`), the Sunday step inside `release-promote.yml`, `app-store-phased-ramp.yml`, `app-store-brake.yml`, and the per-platform Sentry namespace (#422). Unverified against a live account; see RELEASING.md "iOS in the train (WS5)" for the first-live-run checklist. Owner runbook: WS7.
 
 ## Sequencing
 
