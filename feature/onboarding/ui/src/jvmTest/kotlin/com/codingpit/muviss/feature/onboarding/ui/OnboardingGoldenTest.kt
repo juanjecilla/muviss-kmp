@@ -27,10 +27,10 @@ class OnboardingGoldenTest {
 
     private fun state(page: OnboardingPage, source: TmdbDataSource = TmdbDataSource.MUVISS) = OnboardingUiState(pages = all, index = all.indexOf(page), keySource = source)
 
-    private fun androidx.compose.ui.test.ComposeUiTest.golden(name: String, state: OnboardingUiState, darkTheme: Boolean) {
+    private fun androidx.compose.ui.test.ComposeUiTest.golden(name: String, state: OnboardingUiState, darkTheme: Boolean, tolerance: Double = TOLERANCE) {
         setContent { Frame(state, darkTheme) }
         waitForIdle()
-        assertMatchesGolden(name, tolerance = TOLERANCE)
+        assertMatchesGolden(name, tolerance = tolerance)
     }
 
     @Test fun welcome() = runComposeUiTest { golden("onboarding-welcome", state(OnboardingPage.WELCOME), false) }
@@ -70,7 +70,7 @@ class OnboardingGoldenTest {
     @Test
     fun muted_genres_in_spanish() = runComposeUiTest {
         Locale.setDefault(Locale.forLanguageTag("es-ES"))
-        golden("onboarding-muted-genres-es", state(OnboardingPage.MUTED_GENRES).copy(mutedGenres = defaultsMuted), false)
+        golden("onboarding-muted-genres-es", state(OnboardingPage.MUTED_GENRES).copy(mutedGenres = defaultsMuted), false, MUTED_GENRES_ES_TOLERANCE)
     }
 
     @Test fun done() = runComposeUiTest { golden("onboarding-done", state(OnboardingPage.DONE), false) }
@@ -113,3 +113,10 @@ private fun Frame(state: OnboardingUiState, darkTheme: Boolean) {
 // Centred text blocks on a plain surface: glyph edges are all that can differ between macOS and
 // Linux. Not measured on CI yet; widen to the measured share (with headroom) if it fails there.
 private const val TOLERANCE = 0.03
+
+/**
+ * The Spanish Muted Genres page is the densest frame here: four two-line rows under a paragraph, so
+ * Linux's heavier glyphs move more pixels than on any other page. Measured on `ubuntu-latest` against
+ * the macOS recording (#389): 3.504%. About 1.4x that, still far below what a moved or missing row costs.
+ */
+private const val MUTED_GENRES_ES_TOLERANCE = 0.05
