@@ -58,17 +58,27 @@ module OpsBridge
   # Items whose issue was closed as completed and that the source says came back since:
   # [[item, known_issue], ...]. A close as "not planned" or "duplicate" stays closed — nobody
   # claimed a fix, so its coming back is not news — and so does an issue closed *after* the
-  # source last saw the item, which is a close that already knew about it.
+  # source last saw the item, which is a close that already knew about it. One marker can be
+  # on several issues (a hand-made copy, a reopen that was closed as a duplicate): any open one
+  # already tracks the item, and otherwise the first that qualifies is reopened, so an
+  # ineligible copy never hides an eligible one.
   def regressions(items, known_issues)
-    by_id = known_issues.to_h { |issue| [issue.id, issue] }
+    by_id = known_issues.group_by(&:id)
     items.map do |item|
-      issue = by_id[item.id]
-      next unless issue && item.reopen_after && issue.state == "closed"
-      next unless issue.state_reason.nil? || issue.state_reason == "completed"
-      next if issue.closed_at && issue.closed_at >= item.reopen_after
+      next unless item.reopen_after
 
-      [item, issue]
+      issues = by_id.fetch(item.id, [])
+      next if issues.any? { |issue| issue.state != "closed" }
+
+      issue = issues.find { |candidate| reopenable?(candidate, item.reopen_after) }
+      issue && [item, issue]
     end.compact
+  end
+
+  def reopenable?(issue, reopen_after)
+    return false unless issue.state_reason.nil? || issue.state_reason == "completed"
+
+    issue.closed_at.nil? || issue.closed_at < reopen_after
   end
 
   # The one place a request leaves the process. `request` returns [status, body, headers].
