@@ -118,6 +118,7 @@ private fun SearchUnderTest(insets: WindowInsets, darkTheme: Boolean = false) {
         RecommendationsUseCase(repo),
         FakeSearchCollectionApi(),
         FakeTriageApi(),
+        FakeMutingApi(),
     )
     // Pinned, never left to default: `MuvissTheme`'s `darkTheme` reads
     // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded

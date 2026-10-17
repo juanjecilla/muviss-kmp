@@ -7,8 +7,12 @@ import com.codingpit.muviss.core.designsystem.component.TmdbKeyProblem
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
+import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MetadataError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -43,7 +47,7 @@ class OnboardingViewModelTest {
         assertFalse(OnboardingPage.NOTIFICATIONS in pagesFor(canNotify = false, byokOffered = true))
         assertFalse(OnboardingPage.TMDB_KEY in pagesFor(canNotify = true, byokOffered = false))
         assertEquals(
-            listOf(OnboardingPage.WELCOME, OnboardingPage.LIBRARY, OnboardingPage.WATCH_NEXT, OnboardingPage.DISCOVER, OnboardingPage.IMPORT, OnboardingPage.DONE),
+            listOf(OnboardingPage.WELCOME, OnboardingPage.LIBRARY, OnboardingPage.WATCH_NEXT, OnboardingPage.DISCOVER, OnboardingPage.IMPORT, OnboardingPage.MUTED_GENRES, OnboardingPage.DONE),
             pagesFor(canNotify = false, byokOffered = false),
         )
     }
@@ -163,5 +167,61 @@ class OnboardingViewModelTest {
     @Test
     fun the_platform_decides_whether_the_alerts_page_exists() = runTest {
         assertEquals(platformCanNotify, OnboardingPage.NOTIFICATIONS in viewModel().state.value.pages)
+    }
+
+    @Test
+    fun the_genre_page_opens_on_the_shipped_defaults() = runTest {
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(setOf(MutedGenreChoice.TALK, MutedGenreChoice.NEWS, MutedGenreChoice.REALITY), vm.state.value.mutedGenres)
+    }
+
+    @Test
+    fun a_genre_switch_writes_through_settings_as_it_is_flipped() = runTest {
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        vm.onGenreMutedToggled(MutedGenreChoice.TALK, muted = false)
+        vm.onGenreMutedToggled(MutedGenreChoice.SOAP, muted = true)
+        advanceUntilIdle()
+
+        assertEquals(setOf(MutedGenreChoice.NEWS, MutedGenreChoice.REALITY, MutedGenreChoice.SOAP), vm.state.value.mutedGenres)
+    }
+
+    @Test
+    fun posters_fill_in_when_the_network_supplies_them() = runTest {
+        settings.examples["10767"] = listOf(MediaSummary(MediaId.tmdbTv("1"), "Kimmel", posterUrl = "https://image/1.jpg"), MediaSummary(MediaId.tmdbTv("2"), "No poster"))
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(listOf("https://image/1.jpg"), vm.state.value.genrePosters[MutedGenreChoice.TALK])
+        assertEquals(null, vm.state.value.genrePosters[MutedGenreChoice.NEWS])
+    }
+
+    @Test
+    fun a_failed_poster_lookup_leaves_the_page_working_on_its_text_examples() = runTest {
+        // Offline or no key: this is expected, and it must neither crash the flow nor surface an error.
+        settings.examplesFailure = MetadataError.Offline()
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertEquals(emptyMap(), vm.state.value.genrePosters)
+        assertEquals(OnboardingPage.WELCOME, vm.state.value.page)
+    }
+
+    @Test
+    fun skipping_from_the_genre_page_keeps_what_was_switched() = runTest {
+        val vm = viewModel()
+        advanceUntilIdle()
+        vm.onGenreMutedToggled(MutedGenreChoice.REALITY, muted = false)
+        advanceUntilIdle()
+
+        var finished = false
+        vm.finish { finished = true }
+        advanceUntilIdle()
+
+        assertTrue(finished)
+        assertEquals(setOf(MutedGenreChoice.TALK, MutedGenreChoice.NEWS), vm.state.value.mutedGenres)
     }
 }

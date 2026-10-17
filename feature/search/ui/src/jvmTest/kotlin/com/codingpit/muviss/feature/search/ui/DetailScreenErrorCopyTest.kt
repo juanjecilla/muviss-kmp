@@ -91,7 +91,7 @@ private fun DetailWithFailure(failure: Throwable, saved: Boolean = false) {
     val viewModel = DetailViewModel(
         mediaId,
         MediaDetailUseCase(repo),
-        DetailPeers(collection, FakeProgressApi(), FakeTriageApi()),
+        DetailPeers(collection, FakeProgressApi(), FakeTriageApi(), FakeMutingApi()),
         WatchProvidersUseCase(repo),
         MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
         FakeClock(0L),

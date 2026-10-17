@@ -57,6 +57,7 @@ export const en = {
     lede: "Everything here is free — no paywall on the basics.",
     items: [
       { icon: "search", title: "Search & discover", body: "Any movie or show from TMDB, plus For you, Popular now and browsing by genre." },
+      { icon: "search", title: "Mute what you don't watch", body: "Talk shows, news and reality TV are left out of Discover and your triage deck by default. Pick any genres to mute in Settings, or show them again with one tap." },
       { icon: "tv", title: "Where to watch", body: "See which streaming, rental and purchase services carry a title in your region." },
       { icon: "grid", title: "Your library", body: "Filter by status or favourites, sort by date added, rating or title." },
       { icon: "heart", title: "Favourites", body: "Mark the ones you love, independently of how far you've watched." },

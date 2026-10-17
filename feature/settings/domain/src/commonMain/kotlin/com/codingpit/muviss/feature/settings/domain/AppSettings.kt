@@ -8,4 +8,8 @@ data class AppSettings(
     val notificationsEnabled: Boolean = false,
     /** "Send crash reports". On by default; a per-device preference, never synced. */
     val crashReportsEnabled: Boolean = true,
+    /** Genres left out of suggestions (Muted Genres, ADR 0031). Talk, News and Reality until the user says otherwise. */
+    val mutedGenres: List<MutedGenreEntry> = MutedGenresCodec.DEFAULTS,
+    /** Extends muting to typed search. Off: a search for a muted show still finds it. */
+    val mutedGenresInSearch: Boolean = false,
 )

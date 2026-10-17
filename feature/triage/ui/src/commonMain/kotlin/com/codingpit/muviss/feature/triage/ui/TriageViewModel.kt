@@ -13,6 +13,7 @@ import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
+import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckCursor
 import com.codingpit.muviss.feature.triage.domain.DeckFilter
@@ -86,6 +87,10 @@ data class TriageUiState(
     val refilling: Boolean = false,
     val cards: List<MediaSummary> = emptyList(),
     val filter: DeckFilter = DeckFilter(),
+    /** The "show muted" chip is on: muted genres are back in the deck for this session (ADR 0031). */
+    val showMuted: Boolean = false,
+    /** Something is muted in Settings, so the chip has something to toggle. */
+    val hasMuted: Boolean = false,
     val movieGenres: List<Genre> = emptyList(),
     val tvGenres: List<Genre> = emptyList(),
     val controlScheme: TriageControlScheme = TriageControlScheme.DEFAULT,
@@ -165,6 +170,7 @@ data class TriageUiState(
  * `RecordDecisionUseCase` before any of that, so dedupe holds even when the
  * network work fails — the failure surfaces as a retryable banner instead.
  */
+@Suppress("LongParameterList") // the seventh is Settings, for Muted Genres (ADR 0031); each is a distinct peer seam
 class TriageViewModel(
     private val loadDeck: LoadDeckUseCase,
     private val loadGenres: LoadDeckGenresUseCase,
@@ -172,6 +178,7 @@ class TriageViewModel(
     onboarding: TriageOnboarding,
     featureFlags: FeatureFlags,
     private val analytics: AnalyticsTracker,
+    private val settings: SettingsApi,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TriageUiState())
@@ -223,14 +230,24 @@ class TriageViewModel(
 
         analytics.track(TriageEvent.DeckOpened)
         viewModelScope.launchReporting { loadGenreChips() }
-        refill(reset = true)
+        // The first deck waits for the first muting: filling it unmuted and then reloading would flash
+        // exactly the shows the user muted. A later change (Settings, the chip) reloads from page 1.
+        var firstMuting = true
+        settings.observeMuting()
+            .onEach { muting ->
+                val changed = _state.value.filter.muted != muting.effective
+                _state.update { it.copy(filter = it.filter.copy(muted = muting.effective), showMuted = muting.showMuted, hasMuted = muting.hasMuted) }
+                if (firstMuting || changed) refill(reset = true)
+                firstMuting = false
+            }
+            .launchInReporting(viewModelScope)
         viewModelScope.launchReporting { actions.retryUnresolved() }
     }
 
     fun onTypeFilterChange(type: MediaType?) {
         if (_state.value.filter.type == type) return
         // Genre ids are per-catalogue, so switching type drops the genre.
-        _state.update { it.copy(filter = DeckFilter(type = type, genreId = null)) }
+        _state.update { it.copy(filter = it.filter.copy(type = type, genreId = null)) }
         refill(reset = true)
     }
 
@@ -241,10 +258,13 @@ class TriageViewModel(
     }
 
     fun onClearFilters() {
-        if (_state.value.filter == DeckFilter()) return
-        _state.update { it.copy(filter = DeckFilter()) }
+        if (!_state.value.filter.isNarrowed) return
+        _state.update { it.copy(filter = it.filter.copy(type = null, genreId = null)) }
         refill(reset = true)
     }
+
+    /** The chip: lifts muting for this session, or puts it back. Reloads through [SettingsApi.observeMuting]. */
+    fun onShowMutedToggled() = settings.setShowMutedThisSession(!_state.value.showMuted)
 
     fun onDecide(verdict: TriageVerdict, viaGesture: Boolean) {
         val summary = _state.value.topCard ?: return
