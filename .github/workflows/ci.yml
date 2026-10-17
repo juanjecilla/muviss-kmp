@@ -91,7 +91,7 @@ jobs:
           # see. `core`, `feature` and `models` are in here because :app:shared
           # depends on them, so a change there does reach the iOS link. This
           # file is in here too: a PR that edits CI must run the CI it edits.
-          IOS_PATHS='^(app/shared/|app/iosApp/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$'
+          IOS_PATHS='^(app/shared/|app/iosApp/|scripts/ios/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$'
           # Everything above, plus the platforms iOS cannot see but `build`,
           # `desktop` and `web-tests` can.
           CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/|supabase/|scripts/)'
@@ -708,6 +708,23 @@ jobs:
           -sdk iphonesimulator
           CODE_SIGNING_ALLOWED=NO
           build
+
+      # The version stamping both targets' Run Script phases call (ITMS-90473
+      # is an app/extension mismatch). Needs PlistBuddy, so it runs here and
+      # not on the Linux guards.
+      - name: iOS version script tests
+        run: scripts/ios/test/set-version-test.sh
+
+      # The XCUITest smoke path: launch, get past onboarding, reach Search and
+      # open Settings. Offline-safe, English-only (see MuvissSmokeUITests).
+      # Runs the iosAppUITests target through the shared iosApp scheme.
+      - name: Run the iOS UI smoke tests (simulator)
+        run: >
+          xcodebuild test
+          -project app/iosApp/iosApp.xcodeproj
+          -scheme iosApp
+          -destination 'platform=iOS Simulator,name=iPhone 16'
+          CODE_SIGNING_ALLOWED=NO
 
       # packageDmg used to run here, riding the macOS runner this job already
       # pays for. It was costing 2m30s — 25 billed minutes at the 10x macOS

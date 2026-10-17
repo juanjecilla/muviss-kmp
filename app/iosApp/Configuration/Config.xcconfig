@@ -10,12 +10,12 @@ PRODUCT_NAME=Muviss
 // — one stable identifier across platforms, not a per-developer suffix.
 PRODUCT_BUNDLE_IDENTIFIER=com.codingpit.muviss
 
-// Static fallback only. The "Set version from git" Run Script build phase
-// (project.pbxproj) overwrites CFBundleShortVersionString/CFBundleVersion in
-// the *built* Info.plist with values derived from git — the same scheme
-// :app:androidApp's versionName/versionCode and :app:desktopApp's
-// packageVersion use (see docs/RELEASING.md item 3) — so these two values
-// only matter for a non-git checkout (e.g. a source-only archive) where that
-// script's git commands no-op.
+// Static fallback only. The "Set version from git" Run Script phase in both
+// app and widget targets runs scripts/ios/set-version.sh, which overwrites
+// CFBundleShortVersionString/CFBundleVersion in the *built* Info.plist with
+// values derived from git: the numeric tag version, and the Android versionCode
+// (ADR 0030; see app/iosApp/README.md). So these two values only matter for a
+// non-git checkout (e.g. a source-only archive) where that script's git
+// commands no-op.
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
