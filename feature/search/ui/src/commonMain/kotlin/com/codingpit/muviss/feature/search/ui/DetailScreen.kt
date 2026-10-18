@@ -1,6 +1,20 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +67,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -64,6 +79,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -76,6 +92,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
+import com.codingpit.muviss.core.designsystem.component.CelebrationBurst
 import com.codingpit.muviss.core.designsystem.component.EpisodeRow
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
@@ -209,6 +226,14 @@ fun DetailScreen(
 
         // Floating back button over the hero, per the mockups.
         BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
+
+        // The tick that catches the user up on the whole show. A season only gets the
+        // checkbox pulse: ticks that finish one are visible in the list they are made in.
+        state.celebration?.let { celebration ->
+            key(celebration.token) {
+                CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
+            }
+        }
 
         // Detail is a scrolling Box rather than a Scaffold, so it hosts its
         // own snackbar for the bulk-mark undo.
@@ -924,6 +949,7 @@ internal fun LazyListScope.seasonSection(
             onExpandedChange,
             actions,
             inset.padding(top = MuvissSpacing.m + SEASON_PADDING, bottom = if (expanded) 0.dp else SEASON_PADDING),
+            animate = state.animateTicks,
         )
     }
     if (expanded) {
@@ -939,6 +965,8 @@ internal fun LazyListScope.seasonSection(
 
 private val SEASON_PADDING = 6.dp
 
+private const val PROGRESS_MILLIS = 400
+
 @Composable
 private fun SeasonHeader(
     season: Season,
@@ -947,8 +975,26 @@ private fun SeasonHeader(
     onExpandedChange: (Boolean) -> Unit,
     actions: SeasonActions,
     modifier: Modifier,
+    animate: Boolean,
 ) {
     val expandedState = stringResource(if (expanded) Res.string.a11y_expanded else Res.string.a11y_collapsed)
+    // The checkbox pulses once when this tick completes the season, not when a finished
+    // season scrolls into view.
+    val pulse = remember { Animatable(1f) }
+    var wasComplete by remember { mutableStateOf(summary.allAiredSeen) }
+    LaunchedEffect(summary.allAiredSeen) {
+        if (summary.allAiredSeen && !wasComplete && animate) {
+            pulse.animateTo(
+                targetValue = 1f,
+                animationSpec = keyframes {
+                    durationMillis = 300
+                    1.35f at 120
+                    1f at 300
+                },
+            )
+        }
+        wasComplete = summary.allAiredSeen
+    }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
         Row(
             Modifier
@@ -974,22 +1020,45 @@ private fun SeasonHeader(
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
             )
-            Text(
-                stringResource(Res.string.season_aired_progress, summary.seenAired, summary.aired),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.tertiary,
-            )
+            // The count rolls up when a tick changes it.
+            AnimatedContent(
+                targetState = summary.seenAired,
+                transitionSpec = {
+                    if (animate) {
+                        (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) using SizeTransform(clip = true)
+                    } else {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    }
+                },
+                label = "seasonSeenCount",
+            ) { seenAired ->
+                Text(
+                    stringResource(Res.string.season_aired_progress, seenAired, summary.aired),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
             // A season with nothing aired has nothing to mark, so the toggle
             // would be a control that silently does nothing.
             Checkbox(
                 checked = summary.allAiredSeen,
                 enabled = summary.aired > 0,
                 onCheckedChange = { checked -> if (checked) actions.onMarkSeasonSeen() else actions.onUnmarkSeason() },
-                modifier = Modifier.testTag("$SEASON_TOGGLE_TAG_PREFIX${season.number}"),
+                modifier = Modifier
+                    .testTag("$SEASON_TOGGLE_TAG_PREFIX${season.number}")
+                    .graphicsLayer {
+                        scaleX = pulse.value
+                        scaleY = pulse.value
+                    },
             )
         }
+        val shown by animateFloatAsState(
+            if (summary.aired == 0) 0f else summary.seenAired / summary.aired.toFloat(),
+            if (animate) tween(PROGRESS_MILLIS) else snap(),
+            label = "seasonProgress",
+        )
         LinearProgressIndicator(
-            progress = { if (summary.aired == 0) 0f else summary.seenAired / summary.aired.toFloat() },
+            progress = { shown },
             color = MaterialTheme.colorScheme.tertiary,
             trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
@@ -1032,6 +1101,7 @@ private fun SeasonEpisodeRow(
             null
         },
         modifier = Modifier.fillMaxWidth(),
+        animate = state.animateTicks,
     )
 }
 

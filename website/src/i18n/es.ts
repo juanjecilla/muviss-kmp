@@ -59,7 +59,7 @@ export const es: Dictionary = {
       { icon: "grid", title: "Tu biblioteca", body: "Filtra por estado o favoritos y ordena por fecha, nota o título." },
       { icon: "heart", title: "Favoritos", body: "Marca lo que te encanta, sin importar cuánto llevas visto." },
       { icon: "list", title: "Listas propias", body: "«Maratón 2026», «Para un día de lluvia» — crea todas las que quieras." },
-      { icon: "check", title: "Episodio a episodio", body: "Marcas por episodio, progreso por temporada y marcado en bloque que solo incluye lo ya emitido." },
+      { icon: "check", title: "Episodio a episodio", body: "Marcas por episodio que se notan, progreso por temporada y marcado en bloque que solo incluye lo ya emitido. Las animaciones las controlas tú." },
       { icon: "repeat", title: "Historial de revisionados", body: "¿La has visto tres veces? Muviss recuerda cada visionado y cuándo fue." },
       { icon: "star", title: "Puntuaciones y notas", body: "Puntúa títulos y guarda una nota privada en cada uno." },
       { icon: "bell", title: "Avisos de nuevos episodios", body: "Te avisa cuando sale un episodio nuevo de una serie que sigues, solo si lo activas. Desactivado hasta que lo hagas.", platforms: "Android · iOS" },

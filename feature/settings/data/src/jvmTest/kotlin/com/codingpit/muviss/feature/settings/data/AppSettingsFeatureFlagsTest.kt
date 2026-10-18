@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.settings.data
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.flags.tickAnimationsActive
 import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.testing.inMemoryDatabase
@@ -48,6 +49,26 @@ class AppSettingsFeatureFlagsTest {
         }
         flags.triageDeckAnimations.test {
             assertEquals(true, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+        flags.tickAnimations.test {
+            assertEquals(true, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun setTickAnimations_persists_and_the_active_value_is_the_AND_with_the_master() = runTest {
+        flags.setTickAnimations(false)
+
+        flags.tickAnimations.test {
+            assertEquals(false, awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+        flags.setTickAnimations(true)
+        flags.setAnimationsEnabled(false)
+        flags.tickAnimationsActive.test {
+            assertEquals(false, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
     }
