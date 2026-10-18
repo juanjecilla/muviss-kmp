@@ -1,8 +1,10 @@
 package com.codingpit.muviss.feature.triage.domain
 
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -231,5 +233,71 @@ class DeckLoaderSnoozeTest {
 
         // Nothing new to mix them into is not a reason to show nothing.
         assertEquals(listOf("s0", "s1"), batch.cards.map { it.id.external })
+    }
+
+    private fun tv(id: String, vararg genres: String) = show(id).copy(genreIds = genres.toList())
+
+    private val tvMuted = MutedGenres(setOf(GenreKey(MediaType.TV, "10767"), GenreKey(MediaType.MOVIE, "99")))
+
+    @Test
+    fun asks_the_source_to_leave_out_only_the_requested_types_muted_genres() = runTest {
+        val source = FakeDeckSource(tvPages = listOf(listOf(show("1"))), moviePages = listOf(listOf(movie("2"))))
+
+        DeckLoader(source).load(DeckFilter(muted = tvMuted), DeckCursor(), emptySet(), wanted = 2).getOrThrow()
+
+        // One request per type, each carrying that type's ids and not the other's.
+        assertEquals(setOf(setOf("10767"), setOf("99")), source.excludedRequests.toSet())
+    }
+
+    @Test
+    fun a_genre_the_user_picked_is_not_excluded_even_when_muted() = runTest {
+        val source = FakeDeckSource(tvPages = listOf(listOf(tv("1", "10767", "35"))))
+
+        val batch = DeckLoader(source)
+            .load(DeckFilter(type = MediaType.TV, genreId = "10767", muted = tvMuted), DeckCursor(), emptySet())
+            .getOrThrow()
+
+        assertEquals(listOf(emptySet<String>()), source.excludedRequests)
+        assertEquals(listOf("1"), batch.cards.map { it.id.external })
+    }
+
+    @Test
+    fun a_picked_genre_still_drops_titles_in_another_muted_genre() = runTest {
+        val muted = MutedGenres(setOf(GenreKey(MediaType.TV, "10767"), GenreKey(MediaType.TV, "10764")))
+        val source = FakeDeckSource(tvPages = listOf(listOf(tv("1", "10767", "35"), tv("2", "10764", "10767"))))
+
+        val batch = DeckLoader(source)
+            .load(DeckFilter(type = MediaType.TV, genreId = "10767", muted = muted), DeckCursor(), emptySet())
+            .getOrThrow()
+
+        assertEquals(listOf("1"), batch.cards.map { it.id.external })
+        assertEquals(listOf(setOf("10764")), source.excludedRequests)
+    }
+
+    @Test
+    fun drops_a_muted_title_a_source_let_through() = runTest {
+        val source = FakeDeckSource(tvPages = listOf(listOf(tv("1", "35", "10767"), tv("2", "18"), tv("3"))))
+
+        val batch = DeckLoader(source).load(DeckFilter(type = MediaType.TV, muted = tvMuted), DeckCursor(), emptySet()).getOrThrow()
+
+        // "3" has no genre ids, so nothing says it is muted.
+        assertEquals(listOf("2", "3"), batch.cards.map { it.id.external })
+    }
+
+    @Test
+    fun a_title_the_deck_hid_stays_available_when_muting_is_lifted() = runTest {
+        val page = listOf(tv("1", "10767"))
+
+        val hidden = DeckLoader(FakeDeckSource(tvPages = listOf(page))).load(DeckFilter(type = MediaType.TV, muted = tvMuted), DeckCursor(), emptySet()).getOrThrow()
+        val shown = DeckLoader(FakeDeckSource(tvPages = listOf(page))).load(DeckFilter(type = MediaType.TV), DeckCursor(), emptySet()).getOrThrow()
+
+        assertEquals(emptyList(), hidden.cards)
+        assertEquals(listOf("1"), shown.cards.map { it.id.external })
+    }
+
+    @Test
+    fun muting_alone_is_not_a_narrowed_deck() {
+        assertEquals(false, DeckFilter(muted = tvMuted).isNarrowed)
+        assertEquals(true, DeckFilter(type = MediaType.TV).isNarrowed)
     }
 }
