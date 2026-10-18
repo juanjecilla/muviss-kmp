@@ -15,6 +15,13 @@ limit() {
 }
 
 status=0
+# The locales the listing ships in; one going missing is not "nothing to check".
+for locale in en-US es-ES; do
+  if [ ! -d "fastlane/metadata/android/$locale" ]; then
+    echo "missing listing locale: $locale" >&2
+    status=1
+  fi
+done
 for dir in fastlane/metadata/android/*/; do
   locale="$(basename "$dir")"
   for field in title.txt short_description.txt full_description.txt; do
@@ -28,7 +35,10 @@ for dir in fastlane/metadata/android/*/; do
     # is not part of the field.
     count="$(LC_ALL=en_US.UTF-8 tr -d '\n' < "$file" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')"
     max="$(limit "$field")"
-    if [ "$count" -gt "$max" ]; then
+    if [ "$count" -eq 0 ]; then
+      echo "missing or empty: $file" >&2
+      status=1
+    elif [ "$count" -gt "$max" ]; then
       echo "$locale/$field is $count characters; Play allows $max" >&2
       status=1
     fi
