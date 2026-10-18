@@ -6,6 +6,9 @@
     <string name="cowatch_entry">Ver juntos con alguien</string>
     <string name="action_undo">Deshacer</string>
 
+    <string name="tick_snackbar_season_done">Temporada %1$d terminada</string>
+    <string name="tick_snackbar_caught_up">Al día con %1$s</string>
+    <string name="tick_row_confirmation">T%1$dE%2$d visto</string>
     <string name="tick_snackbar">T%1$dE%2$d marcado como visto</string>
     <string name="watch_next_empty_title">Nada por ver</string>
     <string name="watch_next_empty_body">Añade una serie a tu biblioteca y empieza a verla para que aparezca aquí.</string>

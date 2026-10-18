@@ -107,6 +107,7 @@ internal class FakeFeatureFlags(
     override val triageControlScheme: Flow<TriageControlScheme> = state
     override val animationsEnabled: Flow<Boolean> = appAnimations
     override val triageDeckAnimations: Flow<Boolean> = deck
+    override val tickAnimations: Flow<Boolean> = MutableStateFlow(true)
     private val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
     override val byokEnabled: Flow<Boolean> = MutableStateFlow(false)
@@ -140,6 +141,8 @@ internal class FakeFeatureFlags(
     override suspend fun setTriageDeckAnimations(enabled: Boolean) {
         deck.value = enabled
     }
+
+    override suspend fun setTickAnimations(enabled: Boolean) = Unit
 }
 
 internal class FakeTriagePreferences(seen: Boolean = true, snoozeHintSeen: Boolean = true) : TriagePreferences {

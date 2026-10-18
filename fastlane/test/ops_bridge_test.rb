@@ -149,6 +149,20 @@ class OpsBridgeTest < Minitest::Test
     assert_empty sink.reopened
   end
 
+  def test_an_ineligible_copy_of_the_marker_does_not_hide_an_eligible_issue
+    sink = StubSink.new([closed("a", number: 7), closed("a", number: 9, reason: "duplicate")])
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+    assert_equal [[7, "it is back"]], sink.reopened
+    assert_empty sink.created
+  end
+
+  def test_an_open_copy_of_the_marker_means_nothing_is_reopened
+    open_copy = OpsBridge::KnownIssue.new("a", 9, "open", nil, nil)
+    sink = StubSink.new([closed("a", number: 7), open_copy])
+    OpsBridge.sync(connector: StubConnector.new([came_back("a")]), sink: sink)
+    assert_empty sink.reopened, "an open issue already tracks the item"
+  end
+
   def test_a_dry_run_says_it_would_reopen_and_does_not
     sink = StubSink.new([closed("a")])
     lines = []

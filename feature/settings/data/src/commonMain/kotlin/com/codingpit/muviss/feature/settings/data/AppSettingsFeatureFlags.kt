@@ -43,6 +43,8 @@ class AppSettingsFeatureFlags(
 
     override val triageDeckAnimations: Flow<Boolean> = settings().map { row -> row?.triageDeckAnimations ?: true }
 
+    override val tickAnimations: Flow<Boolean> = settings().map { row -> row?.tickAnimations ?: true }
+
     // Off when the row is missing: a read that loses a race with `ensureRow`
     // must not look like the person asked for background sync.
     override val syncAutomatically: Flow<Boolean> = settings().map { row -> row?.syncAutomatically ?: false }
@@ -77,6 +79,12 @@ class AppSettingsFeatureFlags(
         Unit
     }
 
+    override suspend fun setTickAnimations(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateTickAnimations(enabled)
+        Unit
+    }
+
     override suspend fun setSyncAutomatically(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateSyncAutomatically(enabled)
@@ -95,7 +103,7 @@ class AppSettingsFeatureFlags(
         Unit
     }
 
-    // Both motion flags default to true when the row is somehow missing: the
+    // The motion flags default to true when the row is somehow missing: the
     // app has always animated, and a read that loses a race with `ensureRow`
     // must not look like the user asked for motion to stop.
     private fun settings(): Flow<AppSettingsRow?> = queries.selectSettings()

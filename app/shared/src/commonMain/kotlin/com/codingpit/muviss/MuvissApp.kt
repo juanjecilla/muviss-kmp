@@ -10,7 +10,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRailItemDefaults
@@ -332,6 +331,8 @@ private fun MuvissScaffold(
         }
     }
 
+    val accountChangePending = rememberAccountChangePending()
+
     // Window-size-class-driven navigation: bottom bar on compact (<600dp),
     // nav rail on medium and expanded — a rail keeps posters full-width and
     // five destinations never warrant a drawer (design doc §06).
@@ -376,7 +377,7 @@ private fun MuvissScaffold(
                 item(
                     selected = selected,
                     onClick = { controller.navigateTo(dest) },
-                    icon = { Icon(dest.icon, contentDescription = dest.label) },
+                    icon = { NavItemIcon(dest, needsAttention = accountChangePending && dest.key == ACCOUNT_CHANGE_DESTINATION_KEY) },
                     label = { Text(dest.label) },
                     colors = itemColors,
                 )

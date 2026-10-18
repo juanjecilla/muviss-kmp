@@ -50,6 +50,14 @@ _Avoid_: history, visibility.
 A value derived from WatchProgress (never stored independently): NotStarted → Watching → Watched → Finished for TV; NotStarted → Watched for movies. Manual status actions mutate progress to keep the two consistent.
 _Avoid_: state, phase.
 
+**Tick**:
+The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
+_Avoid_: check, mark (as a noun); watch (that is the viewing, a Play).
+
+**Milestone**:
+A tick that finishes a season (a later one has aired) or leaves nothing aired unseen for the show (it is caught up). Derived from the tick and WatchNext, never stored. The only ticks that get more than the row's own feedback.
+_Avoid_: achievement, streak (that is a count of days, a different thing).
+
 **Favorite**:
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
 
@@ -150,6 +158,24 @@ _Avoid_: rewatch flag (Rewatch is the derived record, not an intention); seen-ag
 The ranked answer to what Companions could watch together, derived from their Watch Pools and never stored. A different question from WatchNext, which answers what one person is part-way through.
 _Avoid_: recommendation (nothing enters a Shortlist that a Companion did not already put in a Pool); shared list; queue.
 
+### What's next?
+
+**Completion**:
+The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
+_Avoid_: finished (that is one WatchStatus, and Completion includes Watched); done, completed.
+
+**Pick Session**:
+The short, adaptive run of questions that follows a Completion or is opened on purpose from Discover, Progress, Library or Detail, shown to the user as "What's next?". Every question can be skipped, the user chooses how long it may be, and its answers are used once and not stored. Ends in a Next Pick.
+_Avoid_: quiz, survey, wizard (nothing in it is required); recommendation flow; What's next (unquoted, it reads as WatchNext).
+
+**Next Pick**:
+A MediaItem Muviss offers at the end of a Pick Session, always with the reason it was chosen. Drawn from the user's own backlog, from the catalogue, or both, as the user said; it never repeats a title the user has ruled on, never includes a Muted Genre unless the user picked it in the session, and is derived, never stored. Accepting adds a CollectionEntry; refusing writes a Skip (TriageDecision) or a Snooze, nothing of its own. Shown as one pick, as Top Picks (three to five), or as a Triage deck.
+_Avoid_: recommendation (it implies a model that learned the user; this is the user's own answers over their own history), suggestion (Muted Genre uses it for the broader class), WatchNext (that is what the user is part-way through), Shortlist (that is what Companions could watch together).
+
+**Taste Profile**:
+What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre. Belongs to the account like the rest of the user's data (synced and exported).
+_Avoid_: preferences, settings (those are per-device switches); taste, interests; algorithm; disliked genres (that is a Muted Genre).
+
 ### Release train
 
 **Stage**:
@@ -159,12 +185,3 @@ _Avoid_: track (Play's word for a channel), phase (see Phased Release).
 **Phased Release**:
 Apple's seven-day rollout of an App Store version to a growing share of devices with automatic updates on (1%, 2%, 5%, 10%, 20%, 50%, then 100%). It can be paused, and a paused release resumes where it stopped. Play's equivalent is the staged-rollout ramp.
 _Avoid_: ramp (Play's word), staged rollout.
-
-### Release train
-
-**Stage**:
-Where one platform's build of a version stands on the weekly train: internal, then open beta, then production. Each platform has its own Stage for the same version (ADR 0033), so Play can be in production while iOS is still on beta.
-_Avoid_: track (Play's word for a channel), phase (see Phased Release).
-
-**Phased Release**:
-Apple's seven-day rollout of an App Store version to a growing share of devices with automatic updates on (1
