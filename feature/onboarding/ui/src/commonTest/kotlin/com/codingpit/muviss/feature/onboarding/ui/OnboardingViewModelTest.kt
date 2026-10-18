@@ -43,12 +43,13 @@ class OnboardingViewModelTest {
     @Test
     fun the_alerts_page_needs_a_platform_that_notifies_and_the_key_page_needs_the_offer() {
         val everything = OnboardingPage.entries
-        assertEquals(everything, pagesFor(canNotify = true, byokOffered = true))
-        assertFalse(OnboardingPage.NOTIFICATIONS in pagesFor(canNotify = false, byokOffered = true))
-        assertFalse(OnboardingPage.TMDB_KEY in pagesFor(canNotify = true, byokOffered = false))
+        assertEquals(everything, pagesFor(canNotify = true, byokOffered = true, canBackUp = true))
+        assertFalse(OnboardingPage.NOTIFICATIONS in pagesFor(canNotify = false, byokOffered = true, canBackUp = true))
+        assertFalse(OnboardingPage.TMDB_KEY in pagesFor(canNotify = true, byokOffered = false, canBackUp = true))
+        assertFalse(OnboardingPage.DEVICE_BACKUP in pagesFor(canNotify = true, byokOffered = true, canBackUp = false))
         assertEquals(
-            listOf(OnboardingPage.WELCOME, OnboardingPage.LIBRARY, OnboardingPage.WATCH_NEXT, OnboardingPage.DISCOVER, OnboardingPage.IMPORT, OnboardingPage.MUTED_GENRES, OnboardingPage.DONE),
-            pagesFor(canNotify = false, byokOffered = false),
+            listOf(OnboardingPage.WELCOME, OnboardingPage.LIBRARY, OnboardingPage.WATCH_NEXT, OnboardingPage.DISCOVER, OnboardingPage.IMPORT, OnboardingPage.DEVICE_BACKUP, OnboardingPage.MUTED_GENRES, OnboardingPage.DONE),
+            pagesFor(canNotify = false, byokOffered = false, canBackUp = true),
         )
     }
 
@@ -223,5 +224,19 @@ class OnboardingViewModelTest {
 
         assertTrue(finished)
         assertEquals(setOf(MutedGenreChoice.TALK, MutedGenreChoice.NEWS), vm.state.value.mutedGenres)
+    }
+
+    @Test
+    fun the_backup_switch_writes_the_setting_and_reads_it_back_off_by_default() {
+        // Given a fresh introduction, the backup switch starts off: the OS backs nothing up until the person asks
+        val viewModel = viewModel()
+        assertFalse(viewModel.state.value.deviceBackupEnabled)
+
+        // When the person turns it on on the backup page
+        viewModel.onDeviceBackupToggled(true)
+
+        // Then the setting is written and the page reflects it
+        assertTrue(settings.deviceBackup.value)
+        assertTrue(viewModel.state.value.deviceBackupEnabled)
     }
 }

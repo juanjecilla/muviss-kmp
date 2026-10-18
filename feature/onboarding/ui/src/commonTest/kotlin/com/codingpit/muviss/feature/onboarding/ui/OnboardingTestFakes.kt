@@ -41,6 +41,7 @@ internal class FakeOnboardingApi : OnboardingApi {
 
 internal class FakeSettingsApi : SettingsApi {
     val notifications = MutableStateFlow(false)
+    val deviceBackup = MutableStateFlow(false)
     var osAnswer = true
 
     override fun observeThemeMode(): Flow<ThemeMode> = flowOf(ThemeMode.SYSTEM)
@@ -48,6 +49,11 @@ internal class FakeSettingsApi : SettingsApi {
     override fun observeNotificationsEnabled(): Flow<Boolean> = notifications
 
     override fun observeCrashReportsEnabled(): Flow<Boolean> = flowOf(true)
+    override fun observeDeviceBackupEnabled(): Flow<Boolean> = deviceBackup
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        deviceBackup.value = enabled
+    }
 
     /** What Onboarding's genre page toggles; starts as the shipped default. */
     val muted = MutableStateFlow(MutedGenres(setOf("10767", "10763", "10764").mapTo(linkedSetOf()) { GenreKey(MediaType.TV, it) }))

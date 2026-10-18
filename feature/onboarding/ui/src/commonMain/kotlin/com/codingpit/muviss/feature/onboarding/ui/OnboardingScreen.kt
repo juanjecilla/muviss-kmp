@@ -45,6 +45,9 @@ import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.Res
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_back
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_backup_body
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_backup_switch
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_backup_title
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_discover_body
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_discover_title
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_done_body
@@ -92,6 +95,7 @@ const val ONBOARDING_NEXT_TAG = "onboardingNext"
 const val ONBOARDING_BACK_TAG = "onboardingBack"
 const val ONBOARDING_START_TAG = "onboardingStart"
 const val ONBOARDING_NOTIFICATIONS_SWITCH_TAG = "onboardingNotificationsSwitch"
+const val ONBOARDING_DEVICE_BACKUP_SWITCH_TAG = "onboardingDeviceBackupSwitch"
 const val ONBOARDING_KEY_BUTTON_TAG = "onboardingKeyButton"
 
 /** Test tag of a page's content, suffixed with the page's name: `onboardingPage-WELCOME`. */
@@ -111,6 +115,7 @@ fun OnboardingScreen(
         onFinish = { viewModel.finish(onFinished) },
         onOpenImport = onOpenImport,
         onNotificationsToggled = viewModel::onNotificationsToggled,
+        onDeviceBackupToggled = viewModel::onDeviceBackupToggled,
         onOpenSystemNotificationSettings = viewModel::openSystemNotificationSettings,
         onSaveKey = viewModel::saveKey,
         onUseMuvissKey = viewModel::useMuvissKey,
@@ -131,6 +136,7 @@ internal fun OnboardingContent(
     onFinish: () -> Unit,
     onOpenImport: () -> Unit,
     onNotificationsToggled: (Boolean) -> Unit,
+    onDeviceBackupToggled: (Boolean) -> Unit,
     onOpenSystemNotificationSettings: () -> Unit,
     onSaveKey: (String, () -> Unit) -> Unit,
     onUseMuvissKey: (() -> Unit) -> Unit,
@@ -159,6 +165,7 @@ internal fun OnboardingContent(
                 state = state,
                 onOpenImport = onOpenImport,
                 onNotificationsToggled = onNotificationsToggled,
+                onDeviceBackupToggled = onDeviceBackupToggled,
                 onOpenSystemNotificationSettings = onOpenSystemNotificationSettings,
                 onSaveKey = onSaveKey,
                 onUseMuvissKey = onUseMuvissKey,
@@ -189,6 +196,7 @@ private fun PageContent(
     state: OnboardingUiState,
     onOpenImport: () -> Unit,
     onNotificationsToggled: (Boolean) -> Unit,
+    onDeviceBackupToggled: (Boolean) -> Unit,
     onOpenSystemNotificationSettings: () -> Unit,
     onSaveKey: (String, () -> Unit) -> Unit,
     onUseMuvissKey: (() -> Unit) -> Unit,
@@ -209,6 +217,21 @@ private fun PageContent(
 
         OnboardingPage.IMPORT -> Plain(MuvissIcons.AddToList, Res.string.onboarding_import_title, Res.string.onboarding_import_body) {
             OutlinedButton(onClick = onOpenImport) { Text(stringResource(Res.string.onboarding_import_action)) }
+        }
+
+        OnboardingPage.DEVICE_BACKUP -> Plain(MuvissIcons.Library, Res.string.onboarding_backup_title, Res.string.onboarding_backup_body) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(Res.string.onboarding_backup_switch), style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = state.deviceBackupEnabled,
+                    onCheckedChange = onDeviceBackupToggled,
+                    modifier = Modifier.testTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG),
+                )
+            }
         }
 
         OnboardingPage.NOTIFICATIONS -> Plain(MuvissIcons.Bell, Res.string.onboarding_notifications_title, Res.string.onboarding_notifications_body) {
