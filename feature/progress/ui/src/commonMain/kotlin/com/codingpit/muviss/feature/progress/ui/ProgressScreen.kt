@@ -95,6 +95,7 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_e
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_empty_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_episode
 import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -293,6 +294,9 @@ private fun WatchNextRow(
     // slide and the bar's fill would play behind the sweep: it is kept on screen under the sweep
     // and released as the sweep fades, so the change is what the confirmation dissolves into.
     var held by remember { mutableStateOf<HeldRow?>(null) }
+    // The episode a tick is in flight for. A second tap on it before the row moves on would
+    // write it twice (and on the last one say "caught up" twice), so the button waits.
+    var pending by remember { mutableStateOf<EpisodeId?>(null) }
     val sweep = remember { Animatable(0f) }
     val fade = remember { Animatable(1f) }
     LaunchedEffect(confirmed) {
@@ -341,7 +345,9 @@ private fun WatchNextRow(
                 }
                 if (item.nextEpisode != null) {
                     TickButton(
+                        enabled = pending != item.nextEpisode?.id,
                         onTick = {
+                            pending = item.nextEpisode?.id
                             if (animate) {
                                 held = HeldRow(item.nextEpisode, item.progress)
                                 confirmed = item.nextEpisode
@@ -350,6 +356,7 @@ private fun WatchNextRow(
                             onTick {
                                 held = null
                                 confirmed = null
+                                pending = null
                             }
                         },
                         animate = animate,
@@ -434,12 +441,13 @@ private fun BoxScope.TickConfirmation(episode: Episode, sweep: Animatable<Float,
 
 /** 44dp amber filled tick: scale pop (0.6→1.15→1.0) + haptic on tap; the row then advances reactively. The pop is skipped when [animate] is false; the haptic is not. */
 @Composable
-private fun TickButton(onTick: () -> Unit, animate: Boolean, label: String) {
+private fun TickButton(onTick: () -> Unit, animate: Boolean, label: String, enabled: Boolean = true) {
     val haptics = LocalHapticFeedback.current
     val description = stringResource(Res.string.mark_watched_description, label)
     val scope = rememberCoroutineScope()
     val scale = remember { Animatable(1f) }
     IconButton(
+        enabled = enabled,
         onClick = {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             if (animate) {
