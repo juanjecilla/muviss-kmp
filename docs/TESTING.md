@@ -30,7 +30,8 @@ before the merge, and CI's clean checkout will not.
 | Migration | `core/database/src/jvmTest/.../*MigrationTest.kt` | Open the previous schema's fixture (`databases/<n>.db`), migrate, assert data survived. `verifyMigrations` checks the schema shape; these check the data. |
 | Repository / integration | `:data` modules' `jvmTest` | Real SQLDelight over `JdbcSqliteDriver.IN_MEMORY` + `Schema.create`, never a mocked query. |
 | Sync | `core/sync/src/jvmTest`, `app/shared/src/jvmTest/.../sync` | Against `FakeSupabaseServer` (`:core:testing`), which models PostgREST and the server triggers by hand. Keep it in step with `supabase/migrations`. |
-| Server (live) | `scripts/sync/verify-*.sh`, `supabase/tests/database` (pgTAP) | Run against a Supabase project, never in CI yet — see [SYNC.md](SYNC.md). They are the only check on `FakeSupabaseServer`'s assumptions. |
+| Server | `supabase/tests/database` (pgTAP), `supabase/functions/**/*_test.ts` (Deno) | CI's `supabase` lane runs both on any PR touching `supabase/`, against a local database-only stack (#280). |
+| Server (live) | `scripts/sync/verify-*.sh` | Run against a Supabase project, never in CI — see [SYNC.md](SYNC.md). They are the only check on `FakeSupabaseServer`'s assumptions. |
 | Performance | `*PerformanceBudgetTest`, `*QueryBudgetTest`, `SyncIdleBudgetTest` | Budgets are **operation counts** (queries via `CountingDriver`, requests), not wall-clock times, so they are stable on any machine. |
 | UI | `:ui` modules' `jvmTest`, `runComposeUiTest` | Compose tests only execute on the JVM (Skiko ships with the desktop artifact). Test JVMs are pinned to `en-US`. |
 | Screenshot | `src/jvmTest/resources/screenshots/` per module | `assertMatchesGolden(name)` inside `GoldenSurface`. Always pass `darkTheme` explicitly. Tolerance and the macOS/Linux font drift are in CLAUDE.md. |

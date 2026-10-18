@@ -94,6 +94,10 @@ _Avoid_: skip (that is the "not for me" verdict), later (that is a CollectionEnt
 A MediaItem with a Snooze not yet due. Carries the date it comes back and a snapshot of how it looked when snoozed, so it can be shown again without asking the provider. It becomes deck-eligible on its due date, and a Snooze is never the reason a MediaItem is kept out of the deck twice.
 _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user owns); postponed item.
 
+**Muted Genre**:
+A genre the user has chosen to leave out of what Muviss suggests. A title is hidden from a suggestion when *any* of its genres is muted; a title that carries no genres is never hidden, because nothing says what it is. Muted by default: Talk, News and Reality, for every install. A genre is identified by its type as well as its id — a movie genre and a TV genre can share a number. Muting only ever narrows suggestions: it never touches the collection, progress, Watch Next, notifications or a Snoozed Title, and a title the user opens, searches for by name (unless they opted in) or picks a genre for is shown regardless. The "Show muted" chip lifts it for one session.
+_Avoid_: blocked, blacklisted, filtered out (a filter is something the user narrows by in the moment; muting is a standing preference); hidden (that suggests the title is gone from the collection).
+
 ### First run and data source
 
 **Onboarding**:
@@ -145,3 +149,21 @@ _Avoid_: rewatch flag (Rewatch is the derived record, not an intention); seen-ag
 **Shortlist**:
 The ranked answer to what Companions could watch together, derived from their Watch Pools and never stored. A different question from WatchNext, which answers what one person is part-way through.
 _Avoid_: recommendation (nothing enters a Shortlist that a Companion did not already put in a Pool); shared list; queue.
+
+### What's next?
+
+**Completion**:
+The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
+_Avoid_: finished (that is one WatchStatus, and Completion includes Watched); done, completed.
+
+**Pick Session**:
+The short, adaptive run of questions that follows a Completion or is opened on purpose from Discover, Progress, Library or Detail, shown to the user as "What's next?". Every question can be skipped, the user chooses how long it may be, and its answers are used once and not stored. Ends in a Next Pick.
+_Avoid_: quiz, survey, wizard (nothing in it is required); recommendation flow; What's next (unquoted, it reads as WatchNext).
+
+**Next Pick**:
+A MediaItem Muviss offers at the end of a Pick Session, always with the reason it was chosen. Drawn from the user's own backlog, from the catalogue, or both, as the user said; it never repeats a title the user has ruled on, never includes a Muted Genre unless the user picked it in the session, and is derived, never stored. Accepting adds a CollectionEntry; refusing writes a Skip (TriageDecision) or a Snooze, nothing of its own. Shown as one pick, as Top Picks (three to five), or as a Triage deck.
+_Avoid_: recommendation (it implies a model that learned the user; this is the user's own answers over their own history), suggestion (Muted Genre uses it for the broader class), WatchNext (that is what the user is part-way through), Shortlist (that is what Companions could watch together).
+
+**Taste Profile**:
+What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre. Belongs to the account like the rest of the user's data (synced and exported).
+_Avoid_: preferences, settings (those are per-device switches); taste, interests; algorithm; disliked genres (that is a Muted Genre).

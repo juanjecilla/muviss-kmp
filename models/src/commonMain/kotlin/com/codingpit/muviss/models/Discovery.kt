@@ -44,3 +44,26 @@ data class WatchProviders(
 ) {
     val isEmpty: Boolean get() = flatrate.isEmpty() && rent.isEmpty() && buy.isEmpty()
 }
+
+/** A genre id within one [MediaType]: TMDB numbers movie and TV genres separately, so an id alone is ambiguous. */
+@Serializable
+data class GenreKey(val type: MediaType, val id: String)
+
+/**
+ * Genres the user has muted (CONTEXT.md "Muted Genre"). A title is hidden when **any** of its genres
+ * is muted; one with no genre ids is never hidden, because nothing says what it is.
+ */
+@Serializable
+data class MutedGenres(val keys: Set<GenreKey> = emptySet()) {
+    fun hides(summary: MediaSummary): Boolean = summary.genreIds.any { GenreKey(summary.type, it) in keys }
+
+    /** The muted ids of [type], for `without_genres`. */
+    fun forType(type: MediaType): Set<String> = keys.filter { it.type == type }.mapTo(linkedSetOf()) { it.id }
+
+    /** These, minus an explicitly picked genre: browsing G shows G. */
+    fun without(type: MediaType, id: String?): MutedGenres = if (id == null) this else MutedGenres(keys - GenreKey(type, id))
+
+    companion object {
+        val NONE = MutedGenres()
+    }
+}

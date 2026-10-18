@@ -59,6 +59,24 @@ class SentryConnectorTest < Minitest::Test
     assert_includes body, "<!-- sentry:MUVISS-9 -->"
   end
 
+  def test_a_regressed_issue_carries_when_it_came_back_and_a_note_naming_the_release
+    item = Sentry.to_item(ISSUE.merge("substatus" => "regressed", "lastSeen" => "2026-10-12T08:30:00Z"))
+    assert_equal Time.utc(2026, 10, 12, 8, 30), item.reopen_after
+    assert_includes item.reopen_note, "regressed"
+    assert_includes item.reopen_note, "`com.codingpit.muviss@1.1.1+170`"
+    assert_includes item.reopen_note, "2026-10-12T08:30:00Z"
+  end
+
+  def test_anything_but_a_regression_never_asks_for_a_reopen
+    %w[new ongoing escalating].each do |substatus|
+      item = Sentry.to_item(ISSUE.merge("substatus" => substatus, "lastSeen" => "2026-10-12T08:30:00Z"))
+      assert_nil item.reopen_after, substatus
+      assert_nil item.reopen_note, substatus
+    end
+    assert_nil Sentry.to_item(ISSUE.merge("substatus" => "regressed")).reopen_after, "no lastSeen, no reopen"
+    assert_nil Sentry.to_item(ISSUE.merge("substatus" => "regressed", "lastSeen" => "not a time")).reopen_after
+  end
+
   def test_the_connector_needs_a_token_and_an_org
     assert_raises(OpsBridge::ApiError) { Sentry.new(org: "", token: "t") }
     assert_raises(OpsBridge::ApiError) { Sentry.new(org: "o", token: nil) }

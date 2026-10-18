@@ -17,6 +17,7 @@ LLENA TU BIBLIOTECA EN UN MOMENTO
 • Repasa títulos de uno en uno y decide con un toque — no es para mí, más tarde, viéndola o al día. ¿Aún no lo sabes? Pospónlo y volverá cuando tú digas.
 • Importa tu historial desde Trakt, TV Time o un archivo CSV.
 • Descubre por género, mira lo más popular y recibe sugerencias según lo que te gusta.
+• Silencia los géneros que nunca ves. Los programas de entrevistas, las noticias y la telerrealidad no salen en las sugerencias por defecto; cámbialo en un paso breve al empezar o en Ajustes.
 
 CONOCE TUS HÁBITOS
 • Horas vistas, episodios vistos, géneros favoritos y rachas.
