@@ -134,9 +134,11 @@ class CoreSyncRepository(
     }
 
     override suspend fun signOut() {
-        backend.signOut()
-        // Leaving on purpose must not read as "session expired" afterwards.
+        // Leaving on purpose must not read as "session expired" afterwards —
+        // nor for a moment during: forgotten first, or the account flow sees
+        // the session gone while the Unauthorised failure is still stored.
         engine.forgetLastFailure()
+        backend.signOut()
     }
 
     override suspend fun syncNow(): SyncOutcomeSummary = if (isAvailable) summarise(engine.syncNow()) else SyncOutcomeSummary.Unavailable
