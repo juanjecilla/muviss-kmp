@@ -55,12 +55,17 @@ internal class FakeDeckSource(
     var pageCalls = 0
         private set
 
+    /** What the loader asked the source to leave out, per request. */
+    val excludedRequests = mutableListOf<Set<String>>()
+
     override suspend fun page(
         type: com.codingpit.muviss.models.MediaType,
         page: Int,
         genreId: String?,
+        excludedGenreIds: Set<String>,
     ): Result<PagedResult<MediaSummary>> {
         pageCalls++
+        excludedRequests += excludedGenreIds
         failure?.let { return Result.failure(it) }
         val pages = if (type == com.codingpit.muviss.models.MediaType.MOVIE) moviePages else tvPages
         val items = pages.getOrNull(page - 1).orEmpty()

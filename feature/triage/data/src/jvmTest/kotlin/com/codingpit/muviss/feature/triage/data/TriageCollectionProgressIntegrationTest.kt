@@ -211,7 +211,7 @@ class TriageCollectionProgressIntegrationTest {
 
 /** Hands back one page of whatever it was given, for both media types. */
 private class FixedDeckSource(private val items: List<MediaSummary>) : DeckSource {
-    override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> = Result.success(PagedResult(items.filter { it.type == type }, page = 1, totalPages = 1))
+    override suspend fun page(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = Result.success(PagedResult(items.filter { it.type == type }, page = 1, totalPages = 1))
 
     override suspend fun genres(type: MediaType): Result<List<Genre>> = Result.success(emptyList())
 }

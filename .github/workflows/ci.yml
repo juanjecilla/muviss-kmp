@@ -44,6 +44,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       ios: ${{ steps.filter.outputs.ios }}
+      supabase: ${{ steps.filter.outputs.supabase }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -63,6 +64,7 @@ jobs:
           run_everything() {
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "ios=true" >> "$GITHUB_OUTPUT"
+            echo "supabase=true" >> "$GITHUB_OUTPUT"
             exit 0
           }
 
@@ -96,10 +98,73 @@ jobs:
 
           if echo "$changed" | grep -qE "$IOS_PATHS"; then ios=true; else ios=false; fi
           if echo "$changed" | grep -qE "$CODE_PATHS"; then code=true; else code=false; fi
+          # The server: migrations, pgTAP tests, Edge Functions (#280).
+          SUPABASE_PATHS='^supabase/|^\.github/workflows/ci\.yml$'
+          if echo "$changed" | grep -qE "$SUPABASE_PATHS"; then supabase=true; else supabase=false; fi
 
           echo "ios=$ios" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "Lanes -> code=$code ios=$ios"
+          echo "supabase=$supabase" >> "$GITHUB_OUTPUT"
+          echo "Lanes -> code=$code ios=$ios supabase=$supabase"
+
+  # The server's own tests (#280): the pgTAP suite in supabase/tests/database
+  # and the Edge Functions' Deno tests. supabase-dev.yml runs pgTAP too, but
+  # only after a merge to develop has already deployed to the dev project — so
+  # a PR that broke a policy or a trigger stayed green. This runs them against
+  # a throwaway local stack: no project ref, no secrets.
+  #
+  # Only the database container starts. pgTAP talks to Postgres directly, and
+  # the auth schema it needs ships in the Postgres image, so GoTrue, PostgREST,
+  # Kong and the rest would be minutes of image pulls for nothing.
+  supabase:
+    needs: changes
+    if: needs.changes.outputs.supabase == 'true'
+    name: Supabase (pgTAP, Edge Functions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        with:
+          version: latest
+
+      # A fresh start applies supabase/migrations in order, so this is also
+      # the check that the migration chain runs on an empty database.
+      - name: Start the local database
+        run: supabase start -x gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: pgTAP
+        run: supabase test db
+
+      # Deno 2.1, the runtime edge-runtime 1.74 ships, so a test that passes
+      # here also runs where the function is deployed. Skipped while the branch
+      # carries no functions (they arrive with the entitlement server, #283).
+      - name: Any Edge Functions?
+        id: functions
+        run: |
+          if ls supabase/functions/*/index.ts >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Edge Functions on this branch."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: steps.functions.outputs.present == 'true'
+        with:
+          deno-version: v2.1.x
+
+      - name: Edge Functions (fmt, lint, check, test)
+        if: steps.functions.outputs.present == 'true'
+        working-directory: supabase/functions
+        run: |
+          deno fmt --check
+          deno lint
+          deno check */index.ts
+          deno test --allow-net=jsr.io
 
   build:
     needs: changes

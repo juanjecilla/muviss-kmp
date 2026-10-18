@@ -36,4 +36,15 @@
 
     <string name="onboarding_done_title">Todo listo</string>
     <string name="onboarding_done_body">Busca un título para empezar tu biblioteca.</string>
+    <string name="onboarding_muted_title">¿Sin programas de entrevistas?</string>
+    <string name="onboarding_muted_body">Las listas más populares están llenas de late shows y programas de entrevistas. Elige qué dejar fuera de Descubrir y Llena tu biblioteca. Se pueden seguir buscando y puedes cambiarlo cuando quieras en Ajustes.</string>
+    <string name="onboarding_muted_talk">Programas de entrevistas</string>
+    <string name="onboarding_muted_talk_examples">The Tonight Show, Jimmy Kimmel Live!, El Hormiguero</string>
+    <string name="onboarding_muted_news">Noticias y sátira</string>
+    <string name="onboarding_muted_news_examples">Saturday Night Live, The Daily Show</string>
+    <string name="onboarding_muted_reality">Telerrealidad</string>
+    <string name="onboarding_muted_reality_examples">Love Island, Supervivientes, El Bachelor</string>
+    <string name="onboarding_muted_soap">Telenovelas</string>
+    <string name="onboarding_muted_soap_examples">Days of Our Lives, Los ricos también lloran</string>
+    <string name="onboarding_muted_more">Hay más géneros para elegir en Ajustes, en Géneros silenciados.</string>
 </resources>
