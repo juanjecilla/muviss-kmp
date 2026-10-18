@@ -115,8 +115,9 @@ internal fun goldenMismatch(expected: BufferedImage, actual: BufferedImage, tole
     val fraction = compare(expected, actual).first.toDouble() / pixels
     val lost = missingColours(expected, actual)
     val gained = missingColours(actual, expected)
-    val changed = fraction > 0 || lost.isNotEmpty() || gained.isNotEmpty()
-    if (changed && System.getProperty("muviss.golden.report") == "true") {
+    // Every golden, unchanged ones included: the report is how a tolerance or
+    // the palette thresholds get chosen, and an identical render is a data point.
+    if (System.getProperty("muviss.golden.report") == "true") {
         val kept = minOf(worstKeptShare(expected, actual), worstKeptShare(actual, expected))
         println("GOLDEN-REPORT %s moved=%.4f%% worstKept=%.3f lost=%s gained=%s".format(name, fraction * 100, kept, lost, gained))
     }
