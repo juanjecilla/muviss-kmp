@@ -98,6 +98,10 @@ _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user own
 A genre the user has chosen to leave out of what Muviss suggests. A title is hidden from a suggestion when *any* of its genres is muted; a title that carries no genres is never hidden, because nothing says what it is. Muted by default: Talk, News and Reality, for every install. A genre is identified by its type as well as its id — a movie genre and a TV genre can share a number. Muting only ever narrows suggestions: it never touches the collection, progress, Watch Next, notifications or a Snoozed Title, and a title the user opens, searches for by name (unless they opted in) or picks a genre for is shown regardless. The "Show muted" chip lifts it for one session.
 _Avoid_: blocked, blacklisted, filtered out (a filter is something the user narrows by in the moment; muting is a standing preference); hidden (that suggests the title is gone from the collection).
 
+**Device Backup**:
+A per-device switch that lets the OS's own backup (iCloud or a device backup on iOS; Google's backup and device-to-device transfer on Android) include this device's library. Off by default: the library is left out of OS backups until the person turns it on, in the first-run introduction or in Settings. Muviss copies nothing itself, and the copy the OS makes is held under the person's own account, not Muviss's. KSafe's secrets, including the Own TMDB Key, are never part of it. Per-device, never synced, never in the data export (ADR 0034).
+_Avoid_: cloud backup, sync (sync is the paid, Muviss-hosted copy), export (a file the person makes and keeps).
+
 ### First run and data source
 
 **Onboarding**:

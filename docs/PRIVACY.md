@@ -1,6 +1,6 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-10-12._
+_Last updated: 2026-10-17._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
@@ -13,9 +13,17 @@ Everything you track — your collection, favorites, and per-episode watch
 progress — is stored **only on your device**, in a local SQLite database (see
 ADR 0002, "offline-first, local source of truth"). Muviss has no backend of
 its own and no account system; nobody but you (and whoever has your device)
-can see this data. It is not included in Android's automatic backup either
-(`allowBackup="false"` — see the comment in `AndroidManifest.xml`), so it
-never leaves the device even incidentally.
+can see this data.
+
+**Device Backup (optional, off by default).** Your phone's own backup can
+include the library, so a new phone picks up where you left off: iCloud or a
+device backup on iOS, and Google's backup or a device-to-device transfer on
+Android. It is off until you turn it on — in the first-run introduction or in
+Settings → Data — and it is not shown on platforms where the OS has no such
+backup to offer. When it is on, the copy is held by Apple or Google under your
+own account, as every other app's data is in that backup. Muviss has no server
+to receive it and never sees it. When it is off, the library is left out of
+those backups. Either way the copy stays under your own account, not Muviss's.
 
 ## Network calls Muviss makes
 
@@ -36,8 +44,8 @@ never leaves the device even incidentally.
    iOS Keychain, the desktop's OS secret store, or the browser's WebCrypto),
    and is sent only to TMDB. It is never synced, never included in a data
    export, and removed by **Delete all data**. It is also excluded from
-   Android's backups (Muviss turns them off entirely) and scrubbed from crash
-   reports.
+   Android's backups and device transfers, whatever the Device Backup switch
+   says, and scrubbed from crash reports.
 
 2. **Sentry (crash reporting)** — optional, and you can turn it off. It is on
    by default in release builds, and off in developer builds (which have no
@@ -114,7 +122,9 @@ telemetry, no third-party trackers.
 
 **Settings → Data → Delete all data** deletes everything Muviss keeps on the
 device — your library, watch history, lists, triage decisions, profile and
-settings — without uninstalling. Uninstalling does the same. Either way there
+settings, Device Backup included (it goes back to off) — without uninstalling.
+A copy your phone's own backup already holds is outside Muviss and is not
+touched by this; delete it in the system's backup settings. Uninstalling does the same. Either way there
 is nothing left on any server, because nothing you enter is ever sent to one.
 Settings → Data → Export saves a copy first if you might want it back.
 

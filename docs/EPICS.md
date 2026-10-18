@@ -425,6 +425,8 @@ runs standing in where they could. What that did and did not buy:
 ## Cross-cutting / backlog
 
 ### 2026-10-17
+- **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `19.sqm` (schema v20, fixture `20.db`) because Muted Genres took `18.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
+
 
 - **Muted Genres built** (ADR 0031, glossary: Muted Genre): talk, news and reality TV are left out of the triage deck, Discover, For you and More like this by default; any TMDB genre can be muted in Settings, Onboarding offers four, and a "Show muted" chip lifts it per session. `18.sqm`, `19.db`. Raised and not done: #385 (sync it across devices), #386 (titles with no genres, e.g. award shows: closed as a documented limit, `type` does not catch them either), #387 (stored genre names keep the language they were muted in: fixed here, names resolve from the catalogue), #388 (verify on a device, per target; nothing was run on one).
 
