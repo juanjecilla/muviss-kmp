@@ -9,6 +9,7 @@ kotlin {
             implementation(projects.feature.search.domain)
             implementation(projects.feature.collection.api)
             implementation(projects.feature.progress.api)
+            implementation(projects.feature.settings.api)
             implementation(projects.feature.triage.api)
             // The Notification Nudge on Detail (EPIC 47); contract only (ADR 0004).
             implementation(projects.feature.onboarding.api)

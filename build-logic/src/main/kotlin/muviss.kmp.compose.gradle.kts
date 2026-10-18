@@ -38,7 +38,7 @@ kotlin {
     // and pass regardless; Android throws `MissingResourceException` the first
     // time a string is looked up, and `Font(...)` fell back to the system font
     // without a word. Only a launch on a device shows it (EPIC 31).
-    androidLibrary {
+    android {
         androidResources.enable = true
     }
 

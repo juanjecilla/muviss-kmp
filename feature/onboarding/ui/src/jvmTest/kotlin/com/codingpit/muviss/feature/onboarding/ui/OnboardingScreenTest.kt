@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.onboarding.ui
 
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -108,5 +109,35 @@ class OnboardingScreenTest {
         onNodeWithTag(ONBOARDING_NOTIFICATIONS_SWITCH_TAG).performClick()
         onNodeWithText("Notifications are blocked for Muviss in the system settings, so they cannot be turned on from here.").assertExists()
         assertEquals(false, settings.notifications.value)
+    }
+
+    @Test
+    fun the_genre_page_shows_the_defaults_and_a_tap_flips_a_switch_through_settings() = runComposeUiTest {
+        screen()
+        val pages = pagesFor(canNotify = true, byokOffered = true)
+        repeat(pages.indexOf(OnboardingPage.MUTED_GENRES)) { onNodeWithTag(ONBOARDING_NEXT_TAG).performClick() }
+
+        onNodeWithTag(onboardingPageTag(OnboardingPage.MUTED_GENRES)).assertExists()
+        onNodeWithTag(mutedGenreSwitchTag(MutedGenreChoice.TALK)).assertIsOn()
+        onNodeWithTag(mutedGenreSwitchTag(MutedGenreChoice.SOAP)).assertIsOff()
+
+        onNodeWithTag(mutedGenreSwitchTag(MutedGenreChoice.TALK)).performClick()
+        onNodeWithTag(mutedGenreSwitchTag(MutedGenreChoice.SOAP)).performClick()
+
+        onNodeWithTag(mutedGenreSwitchTag(MutedGenreChoice.TALK)).assertIsOff()
+        onNodeWithTag(mutedGenreSwitchTag(MutedGenreChoice.SOAP)).assertIsOn()
+    }
+
+    @Test
+    fun skip_on_the_genre_page_ends_the_introduction_and_keeps_the_defaults() = runComposeUiTest {
+        var finished = 0
+        screen(onFinished = { finished++ })
+        val pages = pagesFor(canNotify = true, byokOffered = true)
+        repeat(pages.indexOf(OnboardingPage.MUTED_GENRES)) { onNodeWithTag(ONBOARDING_NEXT_TAG).performClick() }
+
+        onNodeWithTag(ONBOARDING_SKIP_TAG).performClick()
+
+        assertEquals(1, finished)
+        assertEquals(setOf("10767", "10763", "10764"), settings.muted.value.forType(com.codingpit.muviss.models.MediaType.TV))
     }
 }

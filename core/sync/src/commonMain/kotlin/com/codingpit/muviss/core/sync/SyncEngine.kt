@@ -372,6 +372,14 @@ data class SyncStatusSnapshot(
 )
 
 /**
+ * True while this device's library belongs to an account other than [session]'s:
+ * every sync answers [SyncOutcome.AccountChanged] and nothing moves until
+ * [SyncEngine.resolveAccountChange] gets an explicit choice. The one definition
+ * the Profile dialog and the app-level nav badge (#274) both read.
+ */
+fun SyncStatusSnapshot.belongsToAnotherAccountThan(session: SyncSession?): Boolean = ownerAccountId != null && session != null && ownerAccountId != session.userId
+
+/**
  * The two inputs to [AutoSyncPolicy] that are not the session or the
  * entitlement: whether the build ships background sync, and the per-device
  * switch. Defaults to "no", so an engine built without them can only ever run

@@ -3,29 +3,40 @@ package com.codingpit.muviss.ios
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 
 /**
- * The iOS half of the [WidgetRefresher] seam: asks WidgetKit to rebuild every
- * placed widget's timeline.
+ * The iOS half of the [WidgetRefresher] seam, and the counterpart of Android's
+ * `GlanceWidgetRefresher`: a refresh clears the widget's Undo marker, then asks
+ * WidgetKit to rebuild every placed widget's timeline.
  *
- * Unlike Android's `GlanceWidgetRefresher`, this cannot make the call itself.
- * `WidgetCenter` is Swift-only — WidgetKit has no Objective-C surface at all,
- * so there is nothing for Kotlin/Native's cinterop to bind to, and no amount
- * of `.def` file makes it reachable. The reload is therefore supplied as
- * [reloadTimelines] by the Swift `AppDelegate`, which is where WidgetKit
- * lives anyway; Kotlin keeps the seam and the decision of *when* to reload.
+ * The clear is part of a refresh for the same reason it is on Android. A refresh
+ * means something changed that the widget did not do itself (a tick in the app,
+ * a new episode), so an Undo button left from an earlier interaction would offer
+ * to take back a write the person has moved past.
  *
- * Thinner than the Android side by nature: WidgetKit owns when a widget is
- * actually redrawn — a reload is a request the system may coalesce or defer
- * under its own budget — so there is nothing here to clear or to await. The
- * Undo affordance the Android widget keeps in widget state is, on this side,
- * whatever the timeline entry says, and every reload rebuilds those from
- * scratch.
+ * Known gap: the midnight rebuild on iOS is `getTimeline` inside the extension,
+ * where no refresher is installed, so it does not clear the marker. A tick from
+ * the widget therefore keeps its Undo button until the next write in the app
+ * (issue #414). Android's midnight job runs in the app and does clear it.
+ *
+ * The reload cannot be made from Kotlin: `WidgetCenter` is Swift-only, WidgetKit
+ * has no Objective-C surface, so [reloadTimelines] is supplied by the Swift
+ * `AppDelegate`. Kotlin keeps the seam and the decision of *when* to reload.
  *
  * Installed by [IosAppStartup.start], and deliberately not inside the widget
- * extension: a widget asking WidgetKit to reload the widget it is drawing
- * would be a loop.
+ * extension. The extension writes through the same repositories, but nothing
+ * is installed there, so a widget tick never clears its own marker, and the
+ * extension never asks WidgetKit to reload the widget it is drawing.
+ *
+ * Failures are swallowed for the reason `GlanceWidgetRefresher` gives: this runs
+ * inside a write's caller, and a home screen that failed to redraw must never
+ * turn a saved tick into an error.
  */
-class IosWidgetRefresher(private val reloadTimelines: () -> Unit) : WidgetRefresher {
+class IosWidgetRefresher(
+    private val undoMarker: WidgetUndoMarker = WidgetUndoMarker.appGroup(),
+    private val reloadTimelines: () -> Unit,
+) : WidgetRefresher {
+
     override suspend fun refresh() {
-        reloadTimelines()
+        runCatching { undoMarker.clear() }
+        runCatching { reloadTimelines() }
     }
 }

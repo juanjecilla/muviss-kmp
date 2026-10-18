@@ -5,7 +5,8 @@ name: Sentry issues
 # issues automatically only on its Business plan; this does the same on any plan
 # and shares its token with the Play ramp's crash gate (fastlane/sentry_gate.rb).
 #
-#   hourly / by hand : open one issue per new unhandled production crash
+#   hourly / by hand : open one issue per new unhandled production crash, and reopen
+#                      the closed issue of a crash Sentry reports as regressed (#327)
 #   issue closed     : resolve the Sentry issue it was opened for, in the next release
 #                      (closed as completed only; not planned / duplicate leave it open)
 #

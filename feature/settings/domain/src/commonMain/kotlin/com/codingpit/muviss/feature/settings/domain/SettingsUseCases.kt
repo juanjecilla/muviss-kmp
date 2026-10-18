@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.domain
 
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.feature.settings.api.NotificationsChange
+import com.codingpit.muviss.models.GenreKey
 import kotlinx.coroutines.flow.Flow
 
 /** Observes the current app settings; the source the theme, locale, and notification UI reads from. */
@@ -47,6 +48,15 @@ class SetCrashReportsEnabledUseCase(private val repository: SettingsRepository) 
     suspend operator fun invoke(enabled: Boolean) = repository.setCrashReportsEnabled(enabled)
 }
 
+/** The two Muted Genres writes (ADR 0031), grouped so [SettingsActions] stays inside detekt's parameter budget. */
+class MutedGenresActions(private val repository: SettingsRepository) {
+    /** Mutes or unmutes one genre. */
+    suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = repository.setGenreMuted(key, name, muted)
+
+    /** Whether typed search also hides muted genres. */
+    suspend fun setInSearch(enabled: Boolean) = repository.setMutedGenresInSearch(enabled)
+}
+
 /** Dumps the saved library + watch progress as a single JSON document, for the About screen's export action. */
 class ExportDataUseCase(private val repository: SettingsRepository) {
     suspend operator fun invoke(): String = repository.exportData()
@@ -59,12 +69,14 @@ class ExportDataUseCase(private val repository: SettingsRepository) {
  * keeps each use case its own testable class while avoiding a long
  * parameter list at the composition edge.
  */
+@Suppress("LongParameterList") // the seventh groups Muted Genres (ADR 0031); this class exists to hold the list
 class SettingsActions(
     private val setThemeUseCase: SetThemeUseCase,
     private val setLanguageUseCase: SetLanguageUseCase,
     private val setRegionUseCase: SetRegionUseCase,
     private val setNotificationsEnabledUseCase: SetNotificationsEnabledUseCase,
     private val setCrashReportsEnabledUseCase: SetCrashReportsEnabledUseCase,
+    private val mutedGenres: MutedGenresActions,
     private val exportDataUseCase: ExportDataUseCase,
 ) {
     suspend fun setTheme(theme: AppTheme) = setThemeUseCase(theme)
@@ -72,5 +84,7 @@ class SettingsActions(
     suspend fun setRegion(region: String) = setRegionUseCase(region)
     suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = setNotificationsEnabledUseCase(enabled)
     suspend fun setCrashReportsEnabled(enabled: Boolean) = setCrashReportsEnabledUseCase(enabled)
+    suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = mutedGenres.setGenreMuted(key, name, muted)
+    suspend fun setMutedGenresInSearch(enabled: Boolean) = mutedGenres.setInSearch(enabled)
     suspend fun exportData(): String = exportDataUseCase()
 }

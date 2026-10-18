@@ -1,5 +1,8 @@
 package com.codingpit.muviss.feature.settings.api
 
+import com.codingpit.muviss.models.GenreKey
+import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -20,6 +23,25 @@ interface SettingsApi {
      * value is read *before* Koin exists at startup, straight from `appSettings`.
      */
     fun observeCrashReportsEnabled(): Flow<Boolean>
+
+    /**
+     * What suggestion surfaces (triage deck, Discover, For you, More like this, and search when opted in)
+     * leave out. Emits again whenever the setting or the session's "show muted" chip changes.
+     */
+    fun observeMuting(): Flow<GenreMuting>
+
+    /** The chip on Triage and Discover: shows muted titles for this session only. Resets on relaunch. */
+    fun setShowMutedThisSession(show: Boolean)
+
+    /** Mutes or unmutes one genre, remembering [name] for the Settings list. The Onboarding page's door. */
+    suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean)
+
+    /**
+     * Up to [limit] popular posters for [key]'s genre, for Onboarding's "what would this hide" strip.
+     * Best-effort: empty offline or when the lookup fails, and callers must read empty as "no examples",
+     * never as an error.
+     */
+    suspend fun examplesFor(key: GenreKey, limit: Int = 3): List<MediaSummary>
 
     /**
      * Turns new-episode notifications on or off. Turning them **on** asks the OS first
@@ -48,4 +70,26 @@ enum class ThemeMode {
     LIGHT,
     DARK,
     SYSTEM,
+}
+
+/**
+ * The muting a surface should apply right now (Muted Genres, ADR 0031).
+ *
+ * @property configured what Settings says is muted, whatever this session is showing.
+ * @property showMuted the session chip: true lifts muting on suggestion surfaces until relaunch.
+ * @property inSearch whether typed search is muted too.
+ */
+data class GenreMuting(
+    val configured: MutedGenres = MutedGenres.NONE,
+    val showMuted: Boolean = false,
+    val inSearch: Boolean = false,
+) {
+    /** What suggestion surfaces apply. */
+    val effective: MutedGenres get() = if (showMuted) MutedGenres.NONE else configured
+
+    /** What typed search applies: nothing unless the user opted in. */
+    val forSearch: MutedGenres get() = if (inSearch) effective else MutedGenres.NONE
+
+    /** Whether the chip has anything to toggle. */
+    val hasMuted: Boolean get() = configured.keys.isNotEmpty()
 }
