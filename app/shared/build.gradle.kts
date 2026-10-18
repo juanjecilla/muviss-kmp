@@ -165,4 +165,9 @@ tasks.withType<Test>().configureEach {
     systemProperty("muviss.storeshot", storeShot.toString())
     systemProperty("muviss.repo.root", repoRootPath)
     if (storeShot) outputs.upToDateWhen { false }
+    // PlayListingLimitsTest reads the Play listing; without this a listing edit
+    // alone would leave jvmTest up to date and the limits unchecked.
+    inputs.dir(rootDir.resolve("fastlane/metadata/android"))
+        .withPropertyName("playListing")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
