@@ -15,7 +15,7 @@ xcodebuild -project app/iosApp/iosApp.xcodeproj -scheme iosApp \
   -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build
 
 xcodebuild test -project app/iosApp/iosApp.xcodeproj -scheme iosApp \
-  -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
+  -destination "platform=iOS Simulator,id=$(scripts/ios/simulator-udid.sh)" CODE_SIGNING_ALLOWED=NO
 ```
 
 Signing, the Team ID and the App Group are covered in `docs/RELEASING.md`
