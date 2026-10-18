@@ -36,17 +36,30 @@ for t in $TABLES; do
 done
 
 echo
-echo "=== unauthenticated write (expect: refused) ==="
-code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST/collection_entry" \
-  -H "apikey: $ANON" -H "Content-Type: application/json" \
-  -d '{"media_id":"rls-probe","media_type":"MOVIE","title":"probe","production_status":"RELEASED","added_at_epoch_ms":1,"updated_at_epoch_ms":1}')
-printf 'POST collection_entry -> HTTP %s' "$code"
-if [ "$code" -ge 400 ]; then echo "  OK"; else echo "  <-- ACCEPTED, policy is wrong"; fail=1; fi
-code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST/cowatch_pool_entry" \
-  -H "apikey: $ANON" -H "Content-Type: application/json" \
-  -d '{"user_id":"00000000-0000-0000-0000-000000000000","recipient_id":"00000000-0000-0000-0000-000000000000","media_id":"rls-probe","media_type":"MOVIE","title":"probe","updated_at_epoch_ms":1}')
-printf 'POST cowatch_pool_entry -> HTTP %s' "$code"
-if [ "$code" -ge 400 ]; then echo "  OK"; else echo "  <-- ACCEPTED, policy is wrong"; fail=1; fi
+echo "=== unauthenticated writes (expect: refused by RLS, SQLSTATE 42501) ==="
+# Any 4xx is not proof: a NOT NULL, check or foreign-key violation is a 4xx too,
+# and would hide a policy that let the row through. Postgres checks privileges
+# and RLS before constraints (and foreign keys run later still, as triggers),
+# so a refusal for the right reason always carries 42501, whatever the ids in
+# the payload. An anonymous caller has no real account ids to send anyway.
+probe_write() {
+  local table=$1 json=$2 out code
+  out=$(curl -s -w '\n%{http_code}' -X POST "$REST/$table" \
+    -H "apikey: $ANON" -H "Content-Type: application/json" -d "$json")
+  code=${out##*$'\n'}
+  printf 'POST %-18s -> HTTP %s' "$table" "$code"
+  if [ "$code" -ge 400 ] && printf '%s' "$out" | grep -q '"42501"'; then
+    echo "  OK"
+  elif [ "$code" -ge 400 ]; then
+    echo "  <-- refused, but not by RLS: $(printf '%s' "${out%$'\n'*}" | head -c 120)"; fail=1
+  else
+    echo "  <-- ACCEPTED, policy is wrong"; fail=1
+  fi
+}
+probe_write collection_entry \
+  '{"media_id":"rls-probe","media_type":"MOVIE","title":"probe","production_status":"RELEASED","added_at_epoch_ms":1,"updated_at_epoch_ms":1}'
+probe_write cowatch_pool_entry \
+  '{"user_id":"00000000-0000-0000-0000-000000000000","recipient_id":"00000000-0000-0000-0000-000000000000","media_id":"rls-probe","media_type":"MOVIE","title":"probe","updated_at_epoch_ms":1}'
 
 echo
 [ "$fail" -eq 0 ] && echo "RLS looks correct." || echo "RLS FAILED — do not ship this."
