@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.settings.data
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
+import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
@@ -61,6 +62,9 @@ class SqlDelightLocalDataEraser(
         // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
         ownTmdbKey.clear()
         secrets.clearAll()
+        // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
+        // exclusion follows it: an iOS directory left un-excluded would back a deleted library up.
+        DeviceBackupExclusion.apply(enabled = false)
         widgetRefresher.refresh()
     }
 }

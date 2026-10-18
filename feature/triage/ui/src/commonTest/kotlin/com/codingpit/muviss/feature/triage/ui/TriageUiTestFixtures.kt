@@ -353,6 +353,9 @@ internal class FakeMutingApi(configured: MutedGenres = MutedGenres.NONE) : Setti
     override fun observeNotificationsEnabled(): Flow<Boolean> = flowOf(false)
 
     override fun observeCrashReportsEnabled(): Flow<Boolean> = flowOf(false)
+    override fun observeDeviceBackupEnabled(): Flow<Boolean> = flowOf(false)
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = Unit
 
     override suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = NotificationsChange.DISABLED
 }

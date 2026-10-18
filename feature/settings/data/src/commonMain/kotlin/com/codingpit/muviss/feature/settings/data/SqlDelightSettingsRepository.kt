@@ -10,6 +10,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.core.database.CollectionEntryQueries
+import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.core.database.MediaListQueries
@@ -103,6 +104,14 @@ class SqlDelightSettingsRepository(
         Unit
     }
 
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        settingsQueries.updateDeviceBackupEnabled(enabled)
+        // The column and the OS exclusion move together (ADR 0034): the exclusion is the part a restart
+        // would otherwise have to re-derive, so it is applied here rather than only at the next open.
+        DeviceBackupExclusion.apply(enabled)
+    }
+
     override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = withContext(dispatchers.io) {
         // Read-modify-write on one column: serialized so two quick taps cannot drop one of them.
         mutedGenresLock.withLock {
@@ -147,6 +156,7 @@ class SqlDelightSettingsRepository(
         crashReportsEnabled = crashReportsEnabled,
         mutedGenres = MutedGenresCodec.decode(mutedGenres),
         mutedGenresInSearch = mutedGenresInSearch,
+        deviceBackupEnabled = deviceBackupEnabled,
     )
 
     private fun CollectionEntryRow.toExport(): CollectionEntryExport = CollectionEntryExport(

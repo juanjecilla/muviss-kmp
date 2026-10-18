@@ -16,7 +16,7 @@ import platform.Foundation.NSUserDomainMask
 /** The App Group the app and its widget extension share. Must match the entitlement on both targets. */
 const val MUVISS_APP_GROUP: String = "group.com.codingpit.muviss"
 
-private const val DATABASE_FILE_NAME = "muviss.db"
+internal const val DATABASE_FILE_NAME = "muviss.db"
 
 /**
  * See `DatabaseFactory.android.kt`'s KDoc on [synchronous] — same bridge,
@@ -48,7 +48,7 @@ actual class DatabaseDriverFactory {
      * and does nothing; the JVM factory does the same for the same reason.
      */
     actual fun create(): SqlDriver = withCreateLock {
-        val directory = sharedContainerPath() ?: documentsPath()
+        val directory = databaseDirectory()
         migrateOutOfDocumentsIfNeeded(directory)
         NativeSqliteDriver(
             schema = MuvissDatabase.Schema.synchronous(),
@@ -62,6 +62,9 @@ actual class DatabaseDriverFactory {
             runCatching { driver.executeQuery(null, "SELECT 1", { QueryResult.Value(Unit) }, 0) }
                 .onFailure { runCatching { driver.close() } }
                 .getOrThrow()
+            // ADR 0034: the OS exclusion is re-established on every open, from the stored choice. The
+            // directory's flag covers -wal/-shm files SQLite recreates while the app runs.
+            DeviceBackupExclusion.apply(storedDeviceBackupEnabled(driver))
         }
     }
 
@@ -108,6 +111,9 @@ private inline fun <T> withCreateLock(block: () -> T): T {
         createLock.unlock()
     }
 }
+
+/** The directory the database lives in: the App Group container, or Documents without the entitlement (ADR 0016). */
+internal fun databaseDirectory(): String = sharedContainerPath() ?: documentsPath()
 
 /** The App Group container's path, or null when the entitlement is missing. */
 private fun sharedContainerPath(): String? {

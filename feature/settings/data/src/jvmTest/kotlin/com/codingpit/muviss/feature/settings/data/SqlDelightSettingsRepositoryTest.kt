@@ -112,6 +112,21 @@ class SqlDelightSettingsRepositoryTest {
     }
 
     @Test
+    fun device_backup_defaults_to_off_and_persists() = runTest {
+        repository.observeSettings().test {
+            assertEquals(false, awaitItem().deviceBackupEnabled)
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        repository.setDeviceBackupEnabled(true)
+        DefaultSettingsApi(repository, SetNotificationsEnabledUseCase(repository, NotificationPermissionRequester.Granted), MutedGenresSession(), NoGenres)
+            .observeDeviceBackupEnabled().test {
+                assertEquals(true, awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+    }
+
+    @Test
     fun setCrashReportsEnabled_persists_and_reaches_the_api() = runTest {
         repository.setCrashReportsEnabled(false)
 

@@ -161,6 +161,11 @@ class SettingsViewModel(
         viewModelScope.launchReporting { actions.setCrashReportsEnabled(enabled) }
     }
 
+    /** Device Backup (ADR 0034). Nothing is copied now: the OS includes or excludes the library at its next backup. */
+    fun onDeviceBackupToggled(enabled: Boolean) {
+        viewModelScope.launchReporting { actions.setDeviceBackupEnabled(enabled) }
+    }
+
     fun exportData() {
         viewModelScope.launchReporting {
             runCatching { actions.exportData() }.reportFailure().fold(

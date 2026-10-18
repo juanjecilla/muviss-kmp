@@ -37,6 +37,7 @@ import com.codingpit.muviss.feature.settings.domain.ObserveTmdbDataSourceUseCase
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
 import com.codingpit.muviss.feature.settings.domain.SaveTmdbKeyUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
+import com.codingpit.muviss.feature.settings.domain.SetDeviceBackupEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
@@ -93,12 +94,13 @@ val settingsDataModule: Module = module {
     factory { SetRegionUseCase(get()) }
     factory { SetNotificationsEnabledUseCase(get(), get()) }
     factory { SetCrashReportsEnabledUseCase(get()) }
+    factory { SetDeviceBackupEnabledUseCase(get()) }
     factory { MutedGenresActions(get()) }
     factory { ExportDataUseCase(get()) }
     factory { ObserveTmdbDataSourceUseCase(get()) }
     factory { SaveTmdbKeyUseCase(get()) }
     factory { ClearTmdbKeyUseCase(get()) }
-    factory { SettingsActions(get(), get(), get(), get(), get(), get(), get()) }
+    factory { SettingsActions(get(), get(), get(), get(), get(), get(), get(), get()) }
 
     single<ExternalIdResolver> { TmdbExternalIdResolver(get(), get()) }
     single<ImportMediaDetailsSource> { RegistryImportMediaDetailsSource(get(), get()) }
