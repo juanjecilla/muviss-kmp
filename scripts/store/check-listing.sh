@@ -31,9 +31,10 @@ for dir in fastlane/metadata/android/*/; do
       status=1
       continue
     fi
-    # Characters, not bytes (Spanish copy is multibyte); the trailing newline
-    # is not part of the field.
-    count="$(LC_ALL=en_US.UTF-8 tr -d '\n' < "$file" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')"
+    # Characters, not bytes (Spanish copy is multibyte); newlines are not part
+    # of the field. Decoded explicitly: `wc -m` counts bytes when the host has
+    # no UTF-8 locale, and PlayListingLimitsTest counts code points.
+    count="$(python3 -c 'import sys; print(len(sys.stdin.buffer.read().decode("utf-8").replace("\n", "")))' < "$file")"
     max="$(limit "$field")"
     if [ "$count" -eq 0 ]; then
       echo "missing or empty: $file" >&2
