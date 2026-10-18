@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older (API 30 and below): the rules the framework applies to a full backup (ADR 0034).
+     Muviss's own agent (MuvissBackupAgent) decides what is offered, and offers only the library database when
+     Device Backup is on; these rules are the second line of defence for everything else. Nothing secret may
+     ever ride along: KSafe's DataStore (the Own TMDB Key) lives under files/ and is excluded here. -->
+<full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
+    <exclude domain="device_root" path="." />
+</full-backup-content>
