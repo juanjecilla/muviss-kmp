@@ -21,6 +21,7 @@ fun NavGraphBuilder.settingsSection(
             // Triage's route belongs to a peer feature's :ui, which settings
             // must not depend on (ADR 0004) — the app shell owns both graphs
             // and hands the navigation down, same as progressSection does.
+            onOpenMutedGenres = { navController.navigate(MutedGenresRoute) },
             onOpenTriage = onOpenTriage,
             onReplayIntroduction = onReplayIntroduction,
             tmdbKey = koinViewModel<TmdbKeyViewModel>(),
@@ -28,6 +29,9 @@ fun NavGraphBuilder.settingsSection(
     }
     composable<LicensesRoute> {
         LicensesScreen()
+    }
+    composable<MutedGenresRoute> {
+        MutedGenresScreen(koinViewModel<MutedGenresViewModel>())
     }
     composable<ImportRoute> {
         val viewModel = koinViewModel<ImportViewModel>()

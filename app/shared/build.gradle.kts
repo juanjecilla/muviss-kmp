@@ -127,6 +127,11 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
         }
+        // Native tests for the iOS glue: deep-link parsing, the background-refresh
+        // decision, the Undo marker and the widget palette (run on the simulator).
+        iosTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
         // The one place the whole Koin graph exists, so the one place it can
         // be assembled and checked (see `AppGraphTest`).
         jvmTest.dependencies {
@@ -160,4 +165,9 @@ tasks.withType<Test>().configureEach {
     systemProperty("muviss.storeshot", storeShot.toString())
     systemProperty("muviss.repo.root", repoRootPath)
     if (storeShot) outputs.upToDateWhen { false }
+    // PlayListingLimitsTest reads the Play listing; without this a listing edit
+    // alone would leave jvmTest up to date and the limits unchecked.
+    inputs.dir(rootDir.resolve("fastlane/metadata/android"))
+        .withPropertyName("playListing")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }

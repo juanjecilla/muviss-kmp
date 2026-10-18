@@ -5,6 +5,7 @@ import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 
 /** Which slice of the catalogue the deck is drawing from. */
@@ -12,7 +13,15 @@ data class DeckFilter(
     /** null = both, interleaved. */
     val type: MediaType? = null,
     val genreId: String? = null,
-)
+    /**
+     * Genres left out of the deck (Muted Genres, ADR 0031), already resolved against the "show muted"
+     * chip. Not a *selection* like [type] and [genreId]: it never counts as a filter the user applied.
+     */
+    val muted: MutedGenres = MutedGenres.NONE,
+) {
+    /** The user narrowed the deck by type or genre. Muting alone does not count. */
+    val isNarrowed: Boolean get() = type != null || genreId != null
+}
 
 /** How far into each catalogue the deck has read. Opaque to the UI; just pass it back. */
 data class DeckCursor(
@@ -54,7 +63,8 @@ data class DeckBatch(
  * swapped in without [DeckLoader] or the UI changing.
  */
 interface DeckSource {
-    suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>>
+    /** [excludedGenreIds] are this [type]'s muted genre ids, sent to the source so a page is not thinned afterwards. */
+    suspend fun page(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String> = emptySet()): Result<PagedResult<MediaSummary>>
 
     /** Genres to narrow the deck by. Failure is not fatal — the deck just offers no genre chips. */
     suspend fun genres(type: MediaType): Result<List<Genre>>
@@ -106,11 +116,17 @@ class DeckLoader(private val source: DeckSource) {
             val type = current.nextType(filter) ?: return@repeat
             val pageNumber = current.pageFor(type)
 
-            val page = source.page(type, pageNumber, filter.genreId)
+            // Browsing a genre shows it even when it is muted (ADR 0031), so the explicit pick is lifted
+            // from the muted set; every other muted genre still applies inside it.
+            val muted = filter.muted.without(type, filter.genreId)
+            val page = source.page(type, pageNumber, filter.genreId, muted.forType(type))
                 .getOrElse { return Result.failure(it) }
 
+            // The source already excluded them; this is for a source that cannot (and for a row whose
+            // genres TMDB filled in after the query). Only fresh candidates are filtered: due Snoozes
+            // above are the user's own postponement and carry no genres.
             page.items
-                .filter { seen.add(it.id) }
+                .filter { !muted.hides(it) && seen.add(it.id) }
                 .forEach { collected += it }
 
             current = current.advance(type, lastPage = page.page >= page.totalPages)

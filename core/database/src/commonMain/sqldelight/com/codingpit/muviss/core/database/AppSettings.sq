@@ -80,6 +80,16 @@
 -- (so an upgraded install never sees it). `notificationNudgeDismissed` is the
 -- once-ever mark for the Notification Nudge.
 --
+-- `mutedGenres` and `mutedGenresInSearch` were added in `18.sqm` (Muted Genres,
+-- ADR 0031). Per-device and NOT synced. `mutedGenres` is a `;`-joined list of
+-- `<movie|tv>:<tmdb genre id>:<name>` (the name is kept so Settings can list what is muted
+-- offline); the column DEFAULT is what mutes Talk, News and Reality on a fresh
+-- install, and `ALTER TABLE ADD COLUMN ... DEFAULT` is what gives an upgraded
+-- install's existing row the same value with no `UPDATE`. An empty string is a
+-- real choice ("mute nothing"), distinct from the default. `MutedGenresCodec`
+-- (feature/settings/domain) reads and writes it, and its test pins that its
+-- defaults equal this literal. `mutedGenresInSearch` extends muting to typed search.
+--
 -- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
 -- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
 -- is already true on every install that exists — folding the snooze hint into
@@ -105,7 +115,9 @@ CREATE TABLE appSettings (
     triageSnoozeHintSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     discoverIntroSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     onboardingCompleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
-    notificationNudgeDismissed INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    notificationNudgeDismissed INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality',
+    mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -191,6 +203,12 @@ UPDATE appSettings SET triageSnoozeHintSeen = :triageSnoozeHintSeen WHERE id = 0
 -- onboarding fact like `triageTutorialSeen`, so it is not synced.
 updateDiscoverIntroSeen:
 UPDATE appSettings SET discoverIntroSeen = :discoverIntroSeen WHERE id = 0;
+
+updateMutedGenres:
+UPDATE appSettings SET mutedGenres = :mutedGenres WHERE id = 0;
+
+updateMutedGenresInSearch:
+UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch WHERE id = 0;
 
 -- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
 deleteRow:

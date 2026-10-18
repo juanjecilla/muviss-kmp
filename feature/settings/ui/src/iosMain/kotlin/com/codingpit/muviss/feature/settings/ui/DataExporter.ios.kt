@@ -2,9 +2,8 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.codingpit.muviss.core.designsystem.share.presentShareSheet
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.useContents
-import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSString
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
@@ -12,7 +11,6 @@ import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.stringByAppendingPathComponent
 import platform.Foundation.writeToFile
 import platform.UIKit.UIActivityViewController
-import platform.UIKit.popoverPresentationController
 
 /**
  * Writes the export to a temp file and hands it to the system share sheet
@@ -42,21 +40,8 @@ private class IosDataExporter : DataExporter {
         if (!written) return
 
         val fileUrl = NSURL.fileURLWithPath(filePath)
-        val activityController = UIActivityViewController(
-            activityItems = listOf(fileUrl),
-            applicationActivities = null,
-        )
-
-        // On iPad the share sheet is a popover, and UIKit throws at present
-        // time unless it is anchored. Centred over the presenting view with no
-        // arrow, the way an iPad shows a sheet with no button to point at.
-        val presenter = topViewController() ?: return
-        activityController.popoverPresentationController?.let { popover ->
-            popover.sourceView = presenter.view
-            popover.sourceRect = presenter.view.bounds.useContents { CGRectMake(size.width / 2, size.height / 2, 0.0, 0.0) }
-            popover.permittedArrowDirections = 0u
-        }
-        presenter.presentViewController(activityController, animated = true, completion = null)
+        // Anchored for iPad and presented from the top controller by the shared presenter.
+        presentShareSheet(UIActivityViewController(activityItems = listOf(fileUrl), applicationActivities = null))
     }
 }
 

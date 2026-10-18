@@ -115,12 +115,14 @@ class TmdbProvider internal constructor(
         MediaType.TV -> tvDetails(id.external)
     }
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?): PagedResult<MediaSummary> {
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> {
         val dto: TmdbPageDto = get("discover/${type.tmdbPath}") {
             parameter("language", locale.language)
             parameter("sort_by", "popularity.desc")
             parameter("page", page)
             genreId?.let { parameter("with_genres", it) }
+            // `|` is "any of these" in TMDB's filter syntax. An explicit pick is never also excluded.
+            (excludedGenreIds - genreId).takeIf { it.isNotEmpty() }?.let { parameter("without_genres", it.joinToString("|")) }
         }
         return TmdbMapper.discoverPageToPagedResult(type, dto)
     }

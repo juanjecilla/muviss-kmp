@@ -23,8 +23,12 @@ interface SearchRepository {
 
     suspend fun details(id: MediaId): Result<MediaDetails>
 
-    /** Popularity-sorted browse for [type], optionally narrowed to one of [genres]' ids. */
-    suspend fun discover(type: MediaType, page: Int = 1, genreId: String? = null): Result<PagedResult<MediaSummary>>
+    /**
+     * Popularity-sorted browse for [type], optionally narrowed to one of [genres]' ids.
+     * [excludedGenreIds] are [type]'s muted genre ids (ADR 0031), left out server-side; one equal to
+     * [genreId] is ignored, because browsing a genre shows it.
+     */
+    suspend fun discover(type: MediaType, page: Int = 1, genreId: String? = null, excludedGenreIds: Set<String> = emptySet()): Result<PagedResult<MediaSummary>>
 
     /** Localized genre list for [type], used to populate the discover chip rows. */
     suspend fun genres(type: MediaType): Result<List<Genre>>
