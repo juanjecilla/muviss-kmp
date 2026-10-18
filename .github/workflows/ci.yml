@@ -718,13 +718,16 @@ jobs:
       # The XCUITest smoke path: launch, get past onboarding, reach Search and
       # open Settings. Offline-safe, English-only (see MuvissSmokeUITests).
       # Runs the iosAppUITests target through the shared iosApp scheme.
+      # The simulator is looked up, not named: the image's device list changes
+      # under us (a pinned "iPhone 16" stopped existing).
       - name: Run the iOS UI smoke tests (simulator)
-        run: >
-          xcodebuild test
-          -project app/iosApp/iosApp.xcodeproj
-          -scheme iosApp
-          -destination 'platform=iOS Simulator,name=iPhone 16'
-          CODE_SIGNING_ALLOWED=NO
+        run: |
+          udid=$(scripts/ios/simulator-udid.sh)
+          xcodebuild test \
+            -project app/iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -destination "platform=iOS Simulator,id=$udid" \
+            CODE_SIGNING_ALLOWED=NO
 
       # packageDmg used to run here, riding the macOS runner this job already
       # pays for. It was costing 2m30s — 25 billed minutes at the 10x macOS
