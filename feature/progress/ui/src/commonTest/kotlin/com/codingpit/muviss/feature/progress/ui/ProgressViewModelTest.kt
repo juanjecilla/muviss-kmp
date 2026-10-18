@@ -65,6 +65,7 @@ internal class FakeCollectionApi(summaries: List<CollectionSummary>, var failure
 internal class FakeProgressRepository : ProgressRepository {
     private val seenByMedia = mutableMapOf<MediaId, MutableStateFlow<Set<EpisodeId>>>()
     val tickedEpisodes = mutableListOf<Pair<EpisodeId, Boolean>>()
+    var writeFailure: Exception? = null
 
     private fun flowFor(mediaId: MediaId) = seenByMedia.getOrPut(mediaId) { MutableStateFlow(emptySet()) }
 
@@ -76,6 +77,7 @@ internal class FakeProgressRepository : ProgressRepository {
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = error("not used")
 
     override suspend fun setSeen(episodeId: EpisodeId, seen: Boolean) {
+        writeFailure?.let { throw it }
         tickedEpisodes += episodeId to seen
         val flow = flowFor(episodeId.show)
         flow.value = if (seen) flow.value + episodeId else flow.value - episodeId
@@ -250,6 +252,18 @@ class ProgressViewModelTest {
         advanceUntilIdle()
 
         assertEquals(TickOutcome.Plain, vm.tick(vm.state.value.items.single()))
+    }
+
+    @Test
+    fun a_last_tick_that_fails_to_save_is_failed_not_caught_up() = runTest {
+        val progress = FakeProgressRepository()
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), progress)
+        advanceUntilIdle()
+        vm.tick(vm.state.value.items.single())
+
+        progress.writeFailure = IllegalStateException("disk full")
+
+        assertEquals(TickOutcome.Failed, vm.tick(vm.state.value.items.single()))
     }
 
     @Test

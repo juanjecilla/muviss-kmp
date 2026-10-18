@@ -176,11 +176,12 @@ private fun WatchNextScreen(
     // persists immediately; the snackbar's Undo reverts it via the VM. The
     // snackbar waits for the outcome (a few ms) so one message says it all,
     // and a milestone says so there too: with motion off it is all there is.
-    val onTick: (WatchNextItem) -> Unit = tick@{ item ->
+    val onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit = tick@{ item, onFailed ->
         val episode = item.nextEpisode ?: return@tick
         scope.launch {
             val outcome = viewModel.tick(item) ?: return@launch
             val message = when (outcome) {
+                is TickOutcome.Failed -> return@launch onFailed()
                 is TickOutcome.CaughtUp -> getString(Res.string.tick_snackbar_caught_up, item.title)
                 is TickOutcome.SeasonFinished -> getString(Res.string.tick_snackbar_season_done, outcome.season)
                 is TickOutcome.Plain -> getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
@@ -244,7 +245,7 @@ private fun Celebration.label(): String = when (outcome) {
 private fun WatchNextList(
     items: List<WatchNextItem>,
     animate: Boolean,
-    onTick: (WatchNextItem) -> Unit,
+    onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyColumn(
@@ -261,7 +262,7 @@ private fun WatchNextList(
             WatchNextRow(
                 item,
                 animate = animate,
-                onTick = { onTick(item) },
+                onTick = { onFailed -> onTick(item, onFailed) },
                 onClick = { onOpenDetail(item.mediaId) },
                 // A row that leaves (caught up) fades out and the rest close the gap, unless
                 // motion is off, when both are instant.
@@ -282,7 +283,7 @@ private const val CONFIRMATION_FADE_MILLIS = 400
 private fun WatchNextRow(
     item: WatchNextItem,
     animate: Boolean,
-    onTick: () -> Unit,
+    onTick: (onFailed: () -> Unit) -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -345,7 +346,11 @@ private fun WatchNextRow(
                                 held = HeldRow(item.nextEpisode, item.progress)
                                 confirmed = item.nextEpisode
                             }
-                            onTick()
+                            // The sweep starts at the tap; a write that then fails takes it back.
+                            onTick {
+                                held = null
+                                confirmed = null
+                            }
                         },
                         animate = animate,
                         label = stringResource(Res.string.next_episode_of, item.title),

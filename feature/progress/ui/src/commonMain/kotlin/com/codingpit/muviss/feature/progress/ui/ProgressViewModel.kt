@@ -38,7 +38,7 @@ data class ProgressUiState(
     val animateTicks: Boolean = true,
 )
 
-/** What a tick amounted to, once the list has settled: the screen celebrates the last two. */
+/** What a tick amounted to, once the list has settled: the screen celebrates the middle two. */
 sealed interface TickOutcome {
     data object Plain : TickOutcome
 
@@ -47,6 +47,9 @@ sealed interface TickOutcome {
 
     /** Nothing aired is left unseen: the show leaves Watch Next until a new episode airs. */
     data object CaughtUp : TickOutcome
+
+    /** The write failed (it is reported): nothing to confirm, say or celebrate. */
+    data object Failed : TickOutcome
 }
 
 /**
@@ -96,17 +99,23 @@ class ProgressViewModel(
      * amounted to. The write runs in [viewModelScope] so leaving the screen
      * mid-wait cannot cancel it; only the wait is the caller's.
      *
-     * A tick that makes `seen + 1 >= aired` is [TickOutcome.CaughtUp] without
-     * waiting, because that row is about to be filtered out of the list. A
+     * A write that fails is [TickOutcome.Failed]; everything below assumes it
+     * succeeded. A tick that makes `seen + 1 >= aired` is [TickOutcome.CaughtUp]
+     * without waiting, because that row is about to be filtered out of the list. A
      * season is finished when the next episode is in a later season than the
      * one just ticked: [WatchNextItem.nextEpisode] is the first unseen aired
      * episode, so nothing earlier remains. Null when there was nothing to tick.
      */
     suspend fun tick(item: WatchNextItem): TickOutcome? {
         val ticked = item.nextEpisode ?: return null
-        tickJob(item)?.join()
+        var saved = false
+        viewModelScope.launchReporting {
+            toggleEpisodeSeen(ticked.id, true)
+            saved = true
+        }.join()
+        if (!saved) return TickOutcome.Failed
         if (item.airedCount > 0 && item.seenCount + 1 >= item.airedCount) return TickOutcome.CaughtUp
-        // Timed out: the list never moved on (the write failed, or is slow). Nothing to celebrate.
+        // Timed out: the list never moved on (it is slow). Nothing to celebrate.
         val settled = withTimeoutOrNull(SETTLE_MILLIS) {
             _state.first { current -> current.items.find { it.mediaId == item.mediaId }?.nextEpisode?.id != ticked.id }
         } ?: return TickOutcome.Plain
