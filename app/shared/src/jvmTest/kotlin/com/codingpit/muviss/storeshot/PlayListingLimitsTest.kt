@@ -24,7 +24,8 @@ class PlayListingLimitsTest {
     fun every_listing_locale_fits_plays_limits() {
         val root = System.getProperty("muviss.repo.root") ?: fail("muviss.repo.root is not set")
         val locales = File(root, "fastlane/metadata/android").listFiles { file -> file.isDirectory }.orEmpty()
-        assertTrue(locales.size >= 2, "expected the en-US and es-ES listings, found ${locales.map { it.name }}")
+        val names = locales.map { it.name }
+        assertTrue(names.containsAll(REQUIRED_LOCALES), "expected the $REQUIRED_LOCALES listings, found $names")
 
         val problems = locales.sortedBy { it.name }.flatMap { locale ->
             limits.mapNotNull { (field, max) ->
@@ -39,5 +40,9 @@ class PlayListingLimitsTest {
             }
         }
         assertTrue(problems.isEmpty(), problems.joinToString("\n"))
+    }
+
+    private companion object {
+        val REQUIRED_LOCALES = listOf("en-US", "es-ES")
     }
 }
