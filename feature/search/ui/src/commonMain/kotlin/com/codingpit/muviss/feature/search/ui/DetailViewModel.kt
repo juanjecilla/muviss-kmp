@@ -21,6 +21,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.refresh_failed
 import com.codingpit.muviss.feature.search.ui.generated.resources.tick_caught_up
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_season_seen
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_show_seen
+import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -80,10 +82,10 @@ data class DetailUiState(
     val playCounts: Map<EpisodeId, Int> = emptyMap(),
     /** Set right after a bulk mark, so its snackbar can take back exactly those ticks. */
     val pendingUndo: BulkMarkUndo? = null,
-    /** Whether a tick plays its motion: the master switch AND the tick switch (EPIC 51). Haptics ignore it. */
+    /** Whether a tick plays its motion: the master switch AND the tick switch (EPIC 52). Haptics ignore it. */
     val animateTicks: Boolean = true,
     /** Set by the tick that leaves nothing aired unseen, so the screen can burst once; cleared by `consumeCelebration()`. */
-    val celebration: UiText? = null,
+    val celebration: Celebration? = null,
 ) {
     fun isSeen(episodeId: EpisodeId): Boolean = episodeId in seenEpisodes
 
@@ -253,7 +255,10 @@ class DetailViewModel(
      */
     private fun loadMoreLikeThisRow() {
         viewModelScope.launchReporting {
-            val items = loadMoreLikeThis(mediaId).getOrNull()?.items.orEmpty()
+            // Suggestions follow Muted Genres like the other suggestion surfaces (ADR 0031), the session
+            // chip included. The title being viewed was opened on purpose and is never filtered.
+            val muted = peers.settings.observeMuting().first().effective
+            val items = loadMoreLikeThis(mediaId).getOrNull()?.items.orEmpty().filterNot(muted::hides)
             _state.update { it.copy(moreLikeThis = items) }
         }
     }
@@ -315,18 +320,25 @@ class DetailViewModel(
         viewModelScope.launchReporting { collectionApi.setRevisitWillingness(mediaId, next) }
     }
 
+    /** Numbers each [Celebration], so a second one with the same label still restarts the burst. */
+    private var celebrations = 0
+
     /**
      * Ticks a single episode's checkmark. The tick that leaves nothing aired
      * unseen also raises [DetailUiState.celebration] (when tick motion is on),
-     * decided here, before the write, from what was on screen at the tap.
+     * decided before the write from what was on screen at the tap, and raised
+     * only once the write has succeeded.
      */
     fun toggleEpisodeSeen(episodeId: EpisodeId) {
         val current = _state.value
         val details = current.details
-        if (current.animateTicks && details != null && details.completesAiredWith(episodeId, current.seenEpisodes, clock.todayEpochDay())) {
-            _state.update { it.copy(celebration = UiText.Resource(Res.string.tick_caught_up, details.summary.title)) }
+        val caughtUp = details
+            ?.takeIf { current.animateTicks && it.completesAiredWith(episodeId, current.seenEpisodes, clock.todayEpochDay()) }
+            ?.let { UiText.Resource(Res.string.tick_caught_up, it.summary.title) }
+        viewModelScope.launchReporting {
+            progressApi.setEpisodeSeen(episodeId, !current.isSeen(episodeId))
+            if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
         }
-        viewModelScope.launchReporting { progressApi.setEpisodeSeen(episodeId, !current.isSeen(episodeId)) }
     }
 
     /** Acknowledges [DetailUiState.celebration] once its burst has played. */
@@ -429,6 +441,7 @@ class DetailPeers(
     val collection: CollectionApi,
     val progress: ProgressApi,
     val triage: TriageApi,
+    val settings: SettingsApi,
 )
 
 /**
@@ -441,3 +454,6 @@ internal fun MediaDetails.completesAiredWith(episodeId: EpisodeId, seen: Set<Epi
     val unseen = aired.filter { it.id !in seen }
     return unseen.size == 1 && unseen.single().id == episodeId
 }
+
+/** One burst for a tick that caught the user up; [token] is unique per tick, so the screen keys the burst by it. */
+data class Celebration(val label: UiText, val token: Int)

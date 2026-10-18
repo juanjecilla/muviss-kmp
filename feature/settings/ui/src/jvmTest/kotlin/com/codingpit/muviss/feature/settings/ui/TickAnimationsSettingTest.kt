@@ -19,7 +19,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** EPIC 51: "Animate episode ticks" narrows the master Animations switch, so it is greyed — not hidden — while that is off. */
+/** EPIC 52: "Animate episode ticks" narrows the master Animations switch, so it is greyed — not hidden — while that is off. */
 class TickAnimationsSettingTest {
 
     @BeforeTest

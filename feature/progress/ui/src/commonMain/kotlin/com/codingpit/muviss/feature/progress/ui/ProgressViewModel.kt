@@ -34,7 +34,7 @@ data class ProgressUiState(
     val message: UiText? = null,
     val items: List<WatchNextItem> = emptyList(),
     val error: UiText? = null,
-    /** Whether a tick plays its motion: the master switch AND the tick switch (EPIC 51). The haptic ignores it. */
+    /** Whether a tick plays its motion: the master switch AND the tick switch (EPIC 52). The haptic ignores it. */
     val animateTicks: Boolean = true,
 )
 

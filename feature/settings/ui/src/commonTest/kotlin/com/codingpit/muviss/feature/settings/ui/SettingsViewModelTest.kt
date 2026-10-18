@@ -15,6 +15,8 @@ import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
+import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
+import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
@@ -23,6 +25,7 @@ import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
 import com.codingpit.muviss.feature.settings.domain.SetThemeUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
+import com.codingpit.muviss.models.GenreKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +66,15 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
 
     override suspend fun setCrashReportsEnabled(enabled: Boolean) {
         flow.value = flow.value.copy(crashReportsEnabled = enabled)
+    }
+
+    override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) {
+        val kept = flow.value.mutedGenres.filterNot { it.key == key }
+        flow.value = flow.value.copy(mutedGenres = if (muted) kept + MutedGenreEntry(key, name) else kept)
+    }
+
+    override suspend fun setMutedGenresInSearch(enabled: Boolean) {
+        flow.value = flow.value.copy(mutedGenresInSearch = enabled)
     }
 
     override suspend fun exportData(): String = exportResult.getOrThrow()
@@ -106,6 +118,7 @@ class SettingsViewModelTest {
             SetRegionUseCase(repository),
             SetNotificationsEnabledUseCase(repository, permission),
             SetCrashReportsEnabledUseCase(repository),
+            MutedGenresActions(repository),
             ExportDataUseCase(repository),
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),

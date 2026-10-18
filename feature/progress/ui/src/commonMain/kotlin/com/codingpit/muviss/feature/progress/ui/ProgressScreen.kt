@@ -271,7 +271,7 @@ private fun WatchNextList(
     }
 }
 
-/** Tags the "S1E3 seen" sweep across a row for a moment after its tick (EPIC 51). */
+/** Tags the "S1E3 seen" sweep across a row for a moment after its tick (EPIC 52). */
 const val TICK_CONFIRMATION_TAG = "tickConfirmation"
 
 private const val SWEEP_MILLIS = 350

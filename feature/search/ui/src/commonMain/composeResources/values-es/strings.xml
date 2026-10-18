@@ -11,6 +11,7 @@
 
     <string name="search_placeholder">Busca películas y series</string>
     <string name="search_clear">Borrar búsqueda</string>
+    <string name="show_muted">Ver géneros silenciados</string>
     <string name="carousel_for_you">Para ti</string>
     <string name="genres_movies">Géneros de películas</string>
     <string name="genres_tv">Géneros de series</string>

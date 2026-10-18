@@ -50,7 +50,7 @@ data class SettingsUiState(
     /** The app-wide motion switch. While it is off every per-feature motion row below is inert. */
     val animationsEnabled: Boolean = true,
     val triageDeckAnimations: Boolean = true,
-    /** Tick feedback on Progress and Detail (EPIC 51). Narrows [animationsEnabled] like the deck switch. */
+    /** Tick feedback on Progress and Detail (EPIC 52). Narrows [animationsEnabled] like the deck switch. */
     val tickAnimations: Boolean = true,
     /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
     val notificationsDenied: Boolean = false,

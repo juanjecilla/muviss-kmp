@@ -35,7 +35,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * What a tick looks like on Watch Next (EPIC 51): the row confirms it, a
+ * What a tick looks like on Watch Next (EPIC 52): the row confirms it, a
  * milestone adds the burst, and with motion off only the text remains. The
  * clock is driven by hand because the whole point is what is on screen *during*
  * the animation, which `waitForIdle` would run to its end.

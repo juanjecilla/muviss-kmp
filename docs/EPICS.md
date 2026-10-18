@@ -296,7 +296,8 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
 | — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
 | — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0030) | #342 |
-| — | EPIC 51 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`18.sqm`) | #391 |
+| — | EPIC 51 What's next?: a Pick Session after a Completion (and from Discover, Progress, Library, Detail) that ends in a Next Pick; Taste Profile; rules over the user's own history behind a ranker seam (ADR 0032) | #396 |
+| — | EPIC 52 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`19.sqm`) | #391 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
@@ -368,9 +369,29 @@ From one grilling session. The details, testing and parity sections are in each 
 
 Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key is used, so EPIC 32 (#75) also needs a TMDB commercial licence (#302).
 
-## EPIC 51 — Tick animations — issue #391
+## EPIC 51 — What's next? — issue #396
 
-**`18.sqm`.** A tick on the Progress tab played a button pop and a snackbar, then the row snapped to the next episode, so it was easy to miss. Now the row confirms it (a sweep with "S1E3 seen", the episode line slides, the bar fills, a caught-up row fades out), a Milestone (a season finished, or nothing aired left unseen) adds a hand-drawn burst over the list, and Detail gets a lighter version (row wash, count and bar animate, the season checkbox pulses once, a burst only when a single tick catches the show up — bulk marks never burst).
+Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.md` (Completion, Pick Session, Next Pick, Taste Profile). Free, so the landing and the Play listing change in the PR that ships it.
+
+**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+
+**Decisions.**
+- Rules + TMDB + local history; no model in v1. A ranker seam keeps an AI option open (`docs/research/next-pick-ai.md`, spike #404).
+- Questions: source (my list / something new / either), format + time, mood to genre sets, anchor, era + services, company, commitment, rewatch OK. All skippable; Quick (up to 2) / Standard (up to 4) / No questions in Settings; a filled Taste Profile shortens it.
+- Result modes: **One Pick** (default, with "another"), **Top Picks** (3-5), **Deck** (Triage through a session-seeded `DeckSource`). Pluggable so other formats can be tried; the default can come from Remote Config. Not called "Shortlist", which is co-watch's.
+- Actions reuse existing writes: Add = CollectionEntry, Not for me = TriageDecision Skip, Not now = Snooze. No pick log. Session answers are not stored.
+- **Completion is a user tick only** — never import, sync pull, restore or bulk mark. At most one prompt a day, Settings switch.
+- **Taste Profile** is explicit, synced and exported: liked genres, formats, services, languages, usual company. Dislikes are **Muted Genres** (ADR 0031), not a second list.
+- **Muted Genres apply**; an explicit in-session choice beats a standing mute.
+- Offline: backlog only, and the screen says so. No implicit learning in v1.
+
+**Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage.
+
+**Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
+
+## EPIC 52 — Tick animations — issue #391
+
+**`19.sqm`.** A tick on the Progress tab played a button pop and a snackbar, then the row snapped to the next episode, so it was easy to miss. Now the row confirms it (a sweep with "S1E3 seen", the episode line slides, the bar fills, a caught-up row fades out), a Milestone (a season finished, or nothing aired left unseen) adds a hand-drawn burst over the list, and Detail gets a lighter version (row wash, count and bar animate, the season checkbox pulses once, a burst only when a single tick catches the show up — bulk marks never burst).
 
 Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tickAnimations`, default on, per device, not synced). It narrows `animationsEnabled` the way `triageDeckAnimations` does: `FeatureFlags.tickAnimationsActive` is the AND, and the haptic is never gated. The milestone also changes the snackbar copy, so with motion off it is still said. Both pre-existing tick pops used to ignore the master switch; they honour it now. Outcome is decided in `ProgressViewModel.tick` (Progress, after the list settles) and `DetailViewModel.toggleEpisodeSeen` (Detail, at the tap).
 
@@ -415,6 +436,10 @@ runs standing in where they could. What that did and did not buy:
   Supabase project. The first real signal arrives when #66 is done.
 
 ## Cross-cutting / backlog
+
+### 2026-10-17
+
+- **Muted Genres built** (ADR 0031, glossary: Muted Genre): talk, news and reality TV are left out of the triage deck, Discover, For you and More like this by default; any TMDB genre can be muted in Settings, Onboarding offers four, and a "Show muted" chip lifts it per session. `18.sqm`, `19.db`. Raised and not done: #385 (sync it across devices), #386 (titles with no genres, e.g. award shows: closed as a documented limit, `type` does not catch them either), #387 (stored genre names keep the language they were muted in: fixed here, names resolve from the catalogue), #388 (verify on a device, per target; nothing was run on one).
 
 ### 2026-10-14
 

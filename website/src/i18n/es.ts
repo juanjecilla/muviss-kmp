@@ -53,6 +53,7 @@ export const es: Dictionary = {
     title: "Todo lo que necesitas para llevar la cuenta",
     lede: "Todo esto es gratis — lo básico no se paga.",
     items: [
+      { icon: "search", title: "Silencia lo que no ves", body: "Los programas de entrevistas, las noticias y la telerrealidad no aparecen por defecto en Descubrir ni en tu mazo de triaje. Elige en Ajustes qué géneros silenciar, o vuelve a verlos con un toque." },
       { icon: "search", title: "Busca y descubre", body: "Cualquier película o serie de TMDB, además de Para ti, Populares y géneros." },
       { icon: "tv", title: "Dónde verla", body: "Qué plataformas, alquileres y tiendas tienen cada título en tu país." },
       { icon: "grid", title: "Tu biblioteca", body: "Filtra por estado o favoritos y ordena por fecha, nota o título." },

@@ -123,7 +123,7 @@ interface FeatureFlags {
 
     /**
      * The feedback a tick plays — the row highlight and slide on Progress, the
-     * row flash and season pulse on Detail, and the milestone burst (EPIC 51).
+     * row flash and season pulse on Detail, and the milestone burst (EPIC 52).
      *
      * Narrows [animationsEnabled] like [triageDeckAnimations] does: readers
      * take the AND of the two, which is [tickAnimationsActive]. The haptic is

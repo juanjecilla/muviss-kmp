@@ -229,9 +229,9 @@ fun DetailScreen(
 
         // The tick that catches the user up on the whole show. A season only gets the
         // checkbox pulse: ticks that finish one are visible in the list they are made in.
-        state.celebration?.let { label ->
-            key(label) {
-                CelebrationBurst(label = label.resolve(), onFinished = viewModel::consumeCelebration)
+        state.celebration?.let { celebration ->
+            key(celebration.token) {
+                CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
             }
         }
 

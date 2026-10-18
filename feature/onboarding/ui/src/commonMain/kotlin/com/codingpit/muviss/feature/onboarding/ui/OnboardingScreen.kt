@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -31,10 +33,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.common.notifications.platformHasHomeWidgets
+import com.codingpit.muviss.core.designsystem.component.PosterImage
+import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.TmdbKeyDialog
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -55,6 +60,17 @@ import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_key_yours
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_library_body
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_library_title
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_body
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_more
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_news
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_news_examples
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_reality
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_reality_examples
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_soap
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_soap_examples
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_talk
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_talk_examples
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_muted_title
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_next
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_notifications_blocked
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_notifications_body
@@ -99,6 +115,7 @@ fun OnboardingScreen(
         onSaveKey = viewModel::saveKey,
         onUseMuvissKey = viewModel::useMuvissKey,
         onDismissKeyProblem = viewModel::dismissKeyProblem,
+        onGenreMutedToggled = viewModel::onGenreMutedToggled,
     )
 }
 
@@ -118,6 +135,7 @@ internal fun OnboardingContent(
     onSaveKey: (String, () -> Unit) -> Unit,
     onUseMuvissKey: (() -> Unit) -> Unit,
     onDismissKeyProblem: () -> Unit,
+    onGenreMutedToggled: (MutedGenreChoice, Boolean) -> Unit = { _, _ -> },
 ) {
     val page = state.page ?: return
     Column(
@@ -145,6 +163,7 @@ internal fun OnboardingContent(
                 onSaveKey = onSaveKey,
                 onUseMuvissKey = onUseMuvissKey,
                 onDismissKeyProblem = onDismissKeyProblem,
+                onGenreMutedToggled = onGenreMutedToggled,
             )
         }
         Dots(count = state.pages.size, current = state.index)
@@ -174,6 +193,7 @@ private fun PageContent(
     onSaveKey: (String, () -> Unit) -> Unit,
     onUseMuvissKey: (() -> Unit) -> Unit,
     onDismissKeyProblem: () -> Unit,
+    onGenreMutedToggled: (MutedGenreChoice, Boolean) -> Unit,
 ) {
     when (page) {
         OnboardingPage.WELCOME -> Plain(MuvissIcons.Library, Res.string.onboarding_welcome_title, Res.string.onboarding_welcome_body)
@@ -235,6 +255,14 @@ private fun PageContent(
             }
         }
 
+        OnboardingPage.MUTED_GENRES -> Plain(MuvissIcons.SearchOff, Res.string.onboarding_muted_title, Res.string.onboarding_muted_body) {
+            MutedGenreChoice.entries.forEach { choice ->
+                MutedGenreRow(choice, muted = choice in state.mutedGenres, posters = state.genrePosters[choice].orEmpty(), onToggle = { onGenreMutedToggled(choice, it) })
+            }
+            Spacer(Modifier.height(MuvissSpacing.s))
+            PageText(stringResource(Res.string.onboarding_muted_more))
+        }
+
         OnboardingPage.DONE -> Plain(MuvissIcons.CheckCircle, Res.string.onboarding_done_title, Res.string.onboarding_done_body)
     }
 }
@@ -279,4 +307,55 @@ private fun Dots(count: Int, current: Int) {
             )
         }
     }
+}
+
+/** Test tag of one genre's switch on the Muted Genres page, suffixed with the choice's name. */
+fun mutedGenreSwitchTag(choice: MutedGenreChoice): String = "onboardingMuted-${choice.name}"
+
+/**
+ * One genre: a switch, a plain-words name, the shows it would hide (always, from the string table),
+ * and a strip of real posters when the network supplied them. The whole row is the switch, so it is
+ * announced with its name.
+ */
+@Composable
+private fun MutedGenreRow(choice: MutedGenreChoice, muted: Boolean, posters: List<String>, onToggle: (Boolean) -> Unit) {
+    val name = stringResource(choice.nameRes())
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = muted, role = Role.Switch, onValueChange = onToggle)
+            .padding(vertical = MuvissSpacing.s)
+            .testTag(mutedGenreSwitchTag(choice)),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = MuvissSpacing.s)) {
+                Text(name, style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(choice.examplesRes()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = muted, onCheckedChange = null)
+        }
+        if (posters.isNotEmpty()) {
+            Row(Modifier.padding(top = MuvissSpacing.xs), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
+                posters.take(POSTERS_PER_GENRE).forEach { url ->
+                    PosterImage(url = url, title = name, size = PosterSize.Thumbnail, modifier = Modifier.height(64.dp).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small))
+                }
+            }
+        }
+    }
+}
+
+private const val POSTERS_PER_GENRE = 3
+
+private fun MutedGenreChoice.nameRes(): org.jetbrains.compose.resources.StringResource = when (this) {
+    MutedGenreChoice.TALK -> Res.string.onboarding_muted_talk
+    MutedGenreChoice.NEWS -> Res.string.onboarding_muted_news
+    MutedGenreChoice.REALITY -> Res.string.onboarding_muted_reality
+    MutedGenreChoice.SOAP -> Res.string.onboarding_muted_soap
+}
+
+private fun MutedGenreChoice.examplesRes(): org.jetbrains.compose.resources.StringResource = when (this) {
+    MutedGenreChoice.TALK -> Res.string.onboarding_muted_talk_examples
+    MutedGenreChoice.NEWS -> Res.string.onboarding_muted_news_examples
+    MutedGenreChoice.REALITY -> Res.string.onboarding_muted_reality_examples
+    MutedGenreChoice.SOAP -> Res.string.onboarding_muted_soap_examples
 }

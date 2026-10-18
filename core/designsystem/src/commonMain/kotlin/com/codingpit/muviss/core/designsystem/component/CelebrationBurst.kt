@@ -27,7 +27,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** Tags the burst overlay so a test can tell whether it is on screen (EPIC 51). */
+/** Tags the burst overlay so a test can tell whether it is on screen (EPIC 52). */
 const val CELEBRATION_BURST_TAG = "celebrationBurst"
 
 private const val PARTICLE_COUNT = 32

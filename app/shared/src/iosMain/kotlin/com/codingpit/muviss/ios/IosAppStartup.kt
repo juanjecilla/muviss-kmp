@@ -60,7 +60,7 @@ object IosAppStartup {
             }
         }
         MuvissCrashReporting.followSettings()
-        AppWidgets.install(IosWidgetRefresher(reloadWidgetTimelines))
+        AppWidgets.install(IosWidgetRefresher(reloadTimelines = reloadWidgetTimelines))
         IosBackgroundRefresh.register()
         IosBackgroundRefresh.scheduleNext()
         IosNotificationCenter.configure()

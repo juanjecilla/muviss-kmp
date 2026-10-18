@@ -21,6 +21,7 @@
     <string name="notifications_note">Reminders for new episodes</string>
     <string name="notifications_note_desktop">Reminders for new episodes, while Muviss is open</string>
     <string name="notifications_note_web">Reminders for new episodes (not available in the browser)</string>
+    <string name="notifications_note_ios">Reminders for new episodes. iOS runs them when it allows: late, or not at all in Low Power Mode or with Background App Refresh off for Muviss.</string>
     <string name="notifications_blocked">Notifications are turned off for Muviss in your device settings, so none will arrive.</string>
     <string name="open_settings">Open settings</string>
     <string name="animations">Animations</string>
@@ -141,4 +142,19 @@
     <string name="tmdb_source_muviss">Muviss key</string>
     <string name="tmdb_source_yours">Your key</string>
     <string name="show_introduction">Show introduction again</string>
+    <string name="muted_genres_title">Muted genres</string>
+    <plurals name="muted_genres_count">
+        <item quantity="one">%1$d muted</item>
+        <item quantity="other">%1$d muted</item>
+    </plurals>
+    <string name="muted_genres_body">Titles in these genres are left out of Discover, Fill your library, For you and More like this. They stay in your library, and you can still search for them.</string>
+    <string name="muted_genres_in_search">Also hide in search</string>
+    <string name="muted_genres_in_search_body">Typed searches skip muted genres too</string>
+    <string name="muted_genres_your">Muted</string>
+    <string name="muted_genres_none">Nothing is muted</string>
+    <string name="muted_genres_available">All genres</string>
+    <string name="muted_genres_tv">TV shows</string>
+    <string name="muted_genres_movies">Movies</string>
+    <string name="muted_genres_offline">Couldn\'t load the genre list. Your muted genres above still work.</string>
+    <string name="muted_genres_retry">Retry</string>
 </resources>

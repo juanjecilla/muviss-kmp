@@ -51,7 +51,7 @@ private const val FLASH_MILLIS = 600
  * seen-toggle. States per the design doc — unseen (outline circle), seen
  * (sage check circle), next-up (2dp amber left rule + raised background).
  * Toggling to seen plays the tick animation (scale 0.6→1.15→1.0) with a
- * haptic tick, and the row washes with a brief tint that fades (EPIC 51);
+ * haptic tick, and the row washes with a brief tint that fades (EPIC 52);
  * undo/snackbar behavior belongs to the caller. [animate] false skips both the
  * pop and the tint but never the haptic.
  *
@@ -78,8 +78,11 @@ fun EpisodeRow(
     // first composition, so a seen row scrolling in does not flash.
     val flash = remember { Animatable(0f) }
     var wasSeen by remember { mutableStateOf(seen) }
-    LaunchedEffect(seen) {
-        if (seen && !wasSeen && animate) {
+    LaunchedEffect(seen, animate) {
+        if (!seen || !animate) {
+            // An undo mid-fade cancels the animation; without this the row kept its tint.
+            flash.snapTo(0f)
+        } else if (!wasSeen) {
             flash.snapTo(1f)
             flash.animateTo(0f, tween(FLASH_MILLIS))
         }
@@ -89,7 +92,6 @@ fun EpisodeRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .clip(MaterialTheme.shapes.small)
-            .drawBehind { if (flash.value > 0f) drawRect(flashColor.copy(alpha = flash.value)) }
             .then(
                 if (nextUp) {
                     Modifier
@@ -99,6 +101,8 @@ fun EpisodeRow(
                     Modifier
                 },
             )
+            // After the next-up background, which is opaque and would otherwise hide the wash.
+            .drawBehind { if (flash.value > 0f) drawRect(flashColor.copy(alpha = flash.value)) }
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(8.dp),
     ) {

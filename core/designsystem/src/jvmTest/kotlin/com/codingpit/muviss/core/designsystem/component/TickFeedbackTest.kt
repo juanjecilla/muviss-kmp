@@ -16,7 +16,7 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The tick feedback the design system owns (EPIC 51): the burst's lifetime, and a row that still works with motion off. */
+/** The tick feedback the design system owns (EPIC 52): the burst's lifetime, and a row that still works with motion off. */
 class TickFeedbackTest {
 
     @Test

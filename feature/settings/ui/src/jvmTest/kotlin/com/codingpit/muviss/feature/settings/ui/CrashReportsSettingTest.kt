@@ -27,6 +27,8 @@ import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
+import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
+import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
@@ -37,6 +39,7 @@ import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
 import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports_body
+import com.codingpit.muviss.models.GenreKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -206,6 +209,11 @@ internal class FakeRepository(initial: AppSettings = AppSettings()) : SettingsRe
     override suspend fun setRegion(region: String) = settings.update { it.copy(region = region) }
     override suspend fun setNotificationsEnabled(enabled: Boolean) = settings.update { it.copy(notificationsEnabled = enabled) }
     override suspend fun setCrashReportsEnabled(enabled: Boolean) = settings.update { it.copy(crashReportsEnabled = enabled) }
+    override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = settings.update { current ->
+        val kept = current.mutedGenres.filterNot { it.key == key }
+        current.copy(mutedGenres = if (muted) kept + MutedGenreEntry(key, name) else kept)
+    }
+    override suspend fun setMutedGenresInSearch(enabled: Boolean) = settings.update { it.copy(mutedGenresInSearch = enabled) }
     override suspend fun exportData(): String = "{}"
 }
 
@@ -227,6 +235,17 @@ internal object NoFlags : FeatureFlags {
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
 }
 
+/** The actions [settingsViewModel] builds, for tests of the screens that share them. */
+internal fun settingsActions(repository: FakeRepository, permission: NotificationPermissionRequester = NotificationPermissionRequester.Granted) = SettingsActions(
+    SetThemeUseCase(repository),
+    SetLanguageUseCase(repository),
+    SetRegionUseCase(repository),
+    SetNotificationsEnabledUseCase(repository, permission),
+    SetCrashReportsEnabledUseCase(repository),
+    MutedGenresActions(repository),
+    ExportDataUseCase(repository),
+)
+
 /** A [SettingsViewModel] over [repository], [NoFlags] and a fixed clock; [onDeleteAll] observes the eraser. */
 internal fun settingsViewModel(
     repository: FakeRepository,
@@ -241,6 +260,7 @@ internal fun settingsViewModel(
         SetRegionUseCase(repository),
         SetNotificationsEnabledUseCase(repository, permission),
         SetCrashReportsEnabledUseCase(repository),
+        MutedGenresActions(repository),
         ExportDataUseCase(repository),
     ),
     AppVersion(versionName = "1.0.0", versionCode = 1),
