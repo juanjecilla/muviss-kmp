@@ -66,17 +66,27 @@ class StubConnector
   end
 end
 
+# Takes ids (open issues) or OpsBridge::KnownIssues, records what it was asked to do.
 class StubSink
-  attr_reader :created, :labelled
+  attr_reader :created, :labelled, :reopened
 
   def initialize(known)
-    @known = known
+    @known = known.map { |k| k.is_a?(OpsBridge::KnownIssue) ? k : OpsBridge::KnownIssue.new(k, nil, "open", nil, nil) }
     @created = []
     @labelled = []
+    @reopened = []
   end
 
   def known_ids(_connector)
+    @known.map(&:id)
+  end
+
+  def known_issues(_connector)
     @known
+  end
+
+  def reopen(number, note)
+    @reopened << [number, note]
   end
 
   def ensure_labels(labels)

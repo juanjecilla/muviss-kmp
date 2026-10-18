@@ -10,8 +10,15 @@ import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.GenreCatalog
+import com.codingpit.muviss.feature.settings.domain.MutedGenresCodec
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
+import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.GenreKey
+import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -108,7 +115,7 @@ class SqlDelightSettingsRepositoryTest {
     fun setCrashReportsEnabled_persists_and_reaches_the_api() = runTest {
         repository.setCrashReportsEnabled(false)
 
-        DefaultSettingsApi(repository, SetNotificationsEnabledUseCase(repository, NotificationPermissionRequester.Granted)).observeCrashReportsEnabled().test {
+        DefaultSettingsApi(repository, SetNotificationsEnabledUseCase(repository, NotificationPermissionRequester.Granted), MutedGenresSession(), NoGenres).observeCrashReportsEnabled().test {
             assertEquals(false, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
@@ -288,5 +295,91 @@ class SqlDelightSettingsRepositoryTest {
         assertEquals(1, export.formatVersion)
         assertEquals(null, export.collection.single().rating)
         assertTrue(export.lists.isEmpty())
+    }
+}
+
+/** A catalogue with nothing in it: these tests are about what the api does with settings. */
+private object NoGenres : GenreCatalog {
+    override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
+    override suspend fun examples(type: MediaType, genreId: String, limit: Int) = Result.success(emptyList<MediaSummary>())
+}
+
+class MutedGenresSettingsTest {
+    private val database = inMemoryDatabase()
+    private val repository = SqlDelightSettingsRepository(
+        database.appSettingsQueries,
+        ExportQueries(database),
+        ImmediateDispatchers(UnconfinedTestDispatcher()),
+        FakeClock(1_000L),
+        AppVersion("1.2.3", 42L),
+    )
+    private val talk = GenreKey(MediaType.TV, "10767")
+
+    @Test
+    fun a_fresh_install_mutes_talk_news_and_reality_exactly_as_the_codec_defaults_say() = runTest {
+        // The column DEFAULT in AppSettings.sq is a literal; this is what keeps it equal to MutedGenresCodec.DEFAULTS.
+        val settings = repository.observeSettings().first()
+
+        assertEquals(MutedGenresCodec.DEFAULTS, settings.mutedGenres)
+        assertFalse(settings.mutedGenresInSearch)
+    }
+
+    @Test
+    fun unmuting_removes_only_that_genre() = runTest {
+        repository.setGenreMuted(talk, "Talk", muted = false)
+
+        assertEquals(setOf("10763", "10764"), repository.observeSettings().first().mutedGenres.map { it.key.id }.toSet())
+    }
+
+    @Test
+    fun muting_a_movie_genre_is_stored_next_to_the_tv_ones() = runTest {
+        repository.setGenreMuted(GenreKey(MediaType.MOVIE, "99"), "Documentary", muted = true)
+
+        assertTrue(GenreKey(MediaType.MOVIE, "99") in repository.observeSettings().first().mutedGenres.map { it.key })
+    }
+
+    @Test
+    fun muting_twice_keeps_one_entry() = runTest {
+        repository.setGenreMuted(talk, "Talk", muted = true)
+
+        assertEquals(1, repository.observeSettings().first().mutedGenres.count { it.key == talk })
+    }
+
+    @Test
+    fun unmuting_everything_stays_empty_and_does_not_fall_back_to_the_defaults() = runTest {
+        MutedGenresCodec.DEFAULTS.forEach { repository.setGenreMuted(it.key, it.name, muted = false) }
+
+        assertEquals(emptyList(), repository.observeSettings().first().mutedGenres)
+    }
+
+    @Test
+    fun the_search_switch_is_stored() = runTest {
+        repository.setMutedGenresInSearch(true)
+
+        assertTrue(repository.observeSettings().first().mutedGenresInSearch)
+    }
+
+    @Test
+    fun the_api_lifts_muting_while_the_session_chip_shows_muted_and_puts_it_back() = runTest {
+        val session = MutedGenresSession()
+        val api = DefaultSettingsApi(repository, SetNotificationsEnabledUseCase(repository, NotificationPermissionRequester.Granted), session, NoGenres)
+
+        val before = api.observeMuting().first()
+        session.set(true)
+        val during = api.observeMuting().first()
+
+        assertEquals(setOf("10767", "10763", "10764"), before.effective.forType(MediaType.TV))
+        assertTrue(before.hasMuted)
+        assertEquals(emptySet(), during.effective.forType(MediaType.TV))
+        assertTrue(during.hasMuted) // the chip stays visible so it can be turned back off
+    }
+
+    @Test
+    fun search_is_unmuted_unless_the_user_opted_in() = runTest {
+        val api = DefaultSettingsApi(repository, SetNotificationsEnabledUseCase(repository, NotificationPermissionRequester.Granted), MutedGenresSession(), NoGenres)
+
+        assertEquals(emptySet(), api.observeMuting().first().forSearch.forType(MediaType.TV))
+        repository.setMutedGenresInSearch(true)
+        assertEquals(setOf("10767", "10763", "10764"), api.observeMuting().first().forSearch.forType(MediaType.TV))
     }
 }

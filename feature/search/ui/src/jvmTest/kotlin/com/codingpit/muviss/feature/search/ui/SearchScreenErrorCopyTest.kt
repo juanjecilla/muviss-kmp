@@ -97,6 +97,7 @@ private fun SearchWithFailure(failure: Throwable?, introVisible: Boolean = false
         RecommendationsUseCase(repo),
         FakeSearchCollectionApi(),
         FakeTriageApi(),
+        FakeMutingApi(),
     )
     MuvissTheme(darkTheme = false) {
         SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {}, introVisible = introVisible, onIntroDismissed = onIntroDismissed)

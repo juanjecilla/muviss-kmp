@@ -121,7 +121,7 @@ internal class StoreShotCatalog(private val today: Long) {
         override suspend fun search(query: String, page: Int) = PagedResult(all.values.filter { it.summary.title.contains(query, ignoreCase = true) }.map { it.summary }, page = 1, totalPages = 1)
         override suspend fun trending(): List<MediaSummary> = (fresh + library.take(3)).map { it.summary }
         override suspend fun details(id: MediaId): MediaDetails = this@StoreShotCatalog.details(id)
-        override suspend fun discover(type: MediaType, page: Int, genreId: String?) = PagedResult(if (page == 1) fresh.filter { it.summary.type == type }.map { it.summary } else emptyList(), page = page, totalPages = 1)
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = PagedResult(if (page == 1) fresh.filter { it.summary.type == type }.map { it.summary } else emptyList(), page = page, totalPages = 1)
         override suspend fun genres(type: MediaType): List<Genre> = genres
         override suspend fun recommendations(id: MediaId, page: Int) = PagedResult(fresh.take(4).map { it.summary }, page = 1, totalPages = 1)
         override suspend fun similar(id: MediaId, page: Int) = PagedResult(fresh.drop(3).map { it.summary }, page = 1, totalPages = 1)

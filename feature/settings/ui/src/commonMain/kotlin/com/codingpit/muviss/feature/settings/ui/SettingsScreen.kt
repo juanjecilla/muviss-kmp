@@ -73,6 +73,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
 import com.codingpit.muviss.feature.settings.ui.generated.resources.import
 import com.codingpit.muviss.feature.settings.ui.generated.resources.licenses
+import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_count
+import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_title
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications_blocked
 import com.codingpit.muviss.feature.settings.ui.generated.resources.open_settings
@@ -101,6 +103,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_attribu
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_language
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -109,6 +112,7 @@ fun SettingsScreen(
     onOpenLicenses: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenTriage: () -> Unit,
+    onOpenMutedGenres: () -> Unit = {},
     onReplayIntroduction: () -> Unit = {},
     // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
     // the screen works without it, so the many tests of everything else do not need a Koin graph.
@@ -185,6 +189,13 @@ fun SettingsScreen(
             options = SupportedLocales.regions.map { it.code to it.displayName },
             selectedCode = state.settings.region,
             onSelect = viewModel::onRegionSelected,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        ActionRow(
+            icon = MuvissIcons.SearchOff,
+            label = stringResource(Res.string.muted_genres_title),
+            value = pluralStringResource(Res.plurals.muted_genres_count, state.settings.mutedGenres.size, state.settings.mutedGenres.size),
+            onClick = onOpenMutedGenres,
         )
         if (tmdbKey != null) {
             val keyState by tmdbKey.state.collectAsStateWithLifecycle()
@@ -376,7 +387,7 @@ internal const val NOTIFICATIONS_BLOCKED_TAG = "settings-notifications-blocked"
  * switch.
  */
 @Composable
-private fun SwitchRow(
+internal fun SwitchRow(
     label: String,
     description: String,
     checked: Boolean,

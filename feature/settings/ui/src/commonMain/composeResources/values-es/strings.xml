@@ -21,6 +21,7 @@
     <string name="notifications_note">Avisos de episodios nuevos</string>
     <string name="notifications_note_desktop">Avisos de episodios nuevos, mientras Muviss esté abierta</string>
     <string name="notifications_note_web">Avisos de episodios nuevos (no disponible en el navegador)</string>
+    <string name="notifications_note_ios">Avisos de episodios nuevos. iOS los ejecuta cuando lo permite: con retraso, o no los ejecuta con el modo de bajo consumo o con la Actualización en segundo plano desactivada para Muviss.</string>
     <string name="notifications_blocked">Las notificaciones de Muviss están desactivadas en los ajustes del dispositivo, así que no llegará ninguna.</string>
     <string name="open_settings">Abrir ajustes</string>
     <string name="animations">Animaciones</string>
@@ -139,4 +140,19 @@
     <string name="tmdb_source_muviss">Clave de Muviss</string>
     <string name="tmdb_source_yours">Tu clave</string>
     <string name="show_introduction">Mostrar la introducción otra vez</string>
+    <string name="muted_genres_title">Géneros silenciados</string>
+    <plurals name="muted_genres_count">
+        <item quantity="one">%1$d silenciado</item>
+        <item quantity="other">%1$d silenciados</item>
+    </plurals>
+    <string name="muted_genres_body">Los títulos de estos géneros no aparecen en Descubrir, Llena tu biblioteca, Para ti ni Más como este. Siguen en tu biblioteca y aún puedes buscarlos.</string>
+    <string name="muted_genres_in_search">Ocultar también en la búsqueda</string>
+    <string name="muted_genres_in_search_body">Las búsquedas escritas también omiten los géneros silenciados</string>
+    <string name="muted_genres_your">Silenciados</string>
+    <string name="muted_genres_none">No hay nada silenciado</string>
+    <string name="muted_genres_available">Todos los géneros</string>
+    <string name="muted_genres_tv">Series</string>
+    <string name="muted_genres_movies">Películas</string>
+    <string name="muted_genres_offline">No se pudo cargar la lista de géneros. Tus géneros silenciados de arriba siguen funcionando.</string>
+    <string name="muted_genres_retry">Reintentar</string>
 </resources>

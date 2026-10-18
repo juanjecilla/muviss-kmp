@@ -70,6 +70,12 @@ cannot perform is a dead end; hiding a feature that could be bought makes it
 undiscoverable. `Locked` carries the signed-in email so a lapsed subscriber
 can still reach sign-out rather than being trapped behind the paywall.
 
+**Amended 2026-10-17 (#286):** `Locked` is only ever a *signed-in* account.
+Since the entitlement is read from the account (ADR 0019), a signed-out user
+always looked unentitled and landed on a paywall with no sign-in — fatal on
+desktop, which sells nothing and exists to find a grant bought on a phone.
+Signed out now renders `SignedOut`; the paywall appears after sign-in.
+
 ## Fail closed when no store is configured
 
 `:core:billing` is a new core module (infra, like `:core:sync` — no screen of
