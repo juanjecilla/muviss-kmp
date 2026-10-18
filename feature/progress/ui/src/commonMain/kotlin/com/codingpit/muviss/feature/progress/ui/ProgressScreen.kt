@@ -295,8 +295,10 @@ private fun WatchNextRow(
     // and released as the sweep fades, so the change is what the confirmation dissolves into.
     var held by remember { mutableStateOf<HeldRow?>(null) }
     // The episode a tick is in flight for. A second tap on it before the row moves on would
-    // write it twice (and on the last one say "caught up" twice), so the button waits.
-    var pending by remember { mutableStateOf<EpisodeId?>(null) }
+    // write it twice (and on the last one say "caught up" twice), so the button waits. Keyed on
+    // the episode shown, so it clears when the row moves on and stays clear when an undo brings
+    // the episode back.
+    var pending by remember(item.nextEpisode?.id) { mutableStateOf<EpisodeId?>(null) }
     val sweep = remember { Animatable(0f) }
     val fade = remember { Animatable(1f) }
     LaunchedEffect(confirmed) {

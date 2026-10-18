@@ -125,6 +125,20 @@ class ProgressTickFeedbackTest {
         assertEquals(listOf(EpisodeId(mini, 1, 1) to true, EpisodeId(mini, 1, 1) to false), repository.tickedEpisodes)
     }
 
+    @Test
+    fun an_undone_tick_can_be_ticked_again() = runComposeUiTest {
+        val repository = FakeProgressRepository()
+        setContent { WatchNext(seasons = listOf(season(1, 3)), alreadySeen = 0, repository = repository) }
+        tapTick()
+        onNodeWithText("Undo").performClick()
+        mainClock.advanceTimeBy(100)
+
+        tapTick()
+
+        assertEquals(EpisodeId(mini, 1, 1) to true, repository.tickedEpisodes.last())
+        assertEquals(3, repository.tickedEpisodes.size)
+    }
+
     private fun ComposeUiTest.tapTick() {
         mainClock.autoAdvance = false
         onNodeWithContentDescription("Mark", substring = true).performClick()
