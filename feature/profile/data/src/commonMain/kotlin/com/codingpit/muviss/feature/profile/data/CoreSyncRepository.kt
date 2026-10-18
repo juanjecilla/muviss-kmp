@@ -56,10 +56,11 @@ class CoreSyncRepository(
      * app is open — a purchase completes, a subscription lapses, a refund
      * lands — and the sync section has to follow it without a restart.
      *
-     * Locked outranks the session states on purpose: a paywall is what an
-     * unentitled user needs to see whether or not they happen to be signed in,
-     * and [SyncAccountState.Locked] carries the email so signing out stays
-     * reachable from behind it.
+     * The session states outrank Locked (#286): an entitlement is learned
+     * *through* an account — a desktop user who paid on a phone is entitled
+     * only once signed in (ADR 0019) — so a signed-out user is shown sign-in,
+     * never a paywall with no way past it. Locked is for a signed-in account
+     * without a grant, and carries its email so signing out stays reachable.
      */
     override fun observeAccount(): Flow<SyncAccountState> = combine(
         backend.session,
@@ -69,13 +70,13 @@ class CoreSyncRepository(
         when {
             !isAvailable -> SyncAccountState.Unavailable
 
-            !entitlement.isEntitled -> SyncAccountState.Locked(session?.email)
-
             // A dead session is a sign-out nobody chose. The failure it left
             // behind is what tells the two apart; an explicit sign-out clears it.
             session == null && status.lastFailure == SyncFailureReason.Unauthorised -> SyncAccountState.SessionExpired
 
             session == null -> SyncAccountState.SignedOut
+
+            !entitlement.isEntitled -> SyncAccountState.Locked(session.email)
 
             else -> SyncAccountState.SignedIn(session.email)
         }
@@ -133,9 +134,11 @@ class CoreSyncRepository(
     }
 
     override suspend fun signOut() {
-        backend.signOut()
-        // Leaving on purpose must not read as "session expired" afterwards.
+        // Leaving on purpose must not read as "session expired" afterwards —
+        // nor for a moment during: forgotten first, or the account flow sees
+        // the session gone while the Unauthorised failure is still stored.
         engine.forgetLastFailure()
+        backend.signOut()
     }
 
     override suspend fun syncNow(): SyncOutcomeSummary = if (isAvailable) summarise(engine.syncNow()) else SyncOutcomeSummary.Unavailable
