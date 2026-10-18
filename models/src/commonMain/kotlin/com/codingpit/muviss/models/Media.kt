@@ -11,6 +11,8 @@ data class MediaSummary(
     val posterUrl: String? = null,
     val overview: String? = null,
     val rating: Double? = null,
+    /** The source's genre ids (TMDB's, as strings); empty when the source did not say. Keyed by [type]. */
+    val genreIds: List<String> = emptyList(),
 ) {
     val type: MediaType get() = id.type
 }

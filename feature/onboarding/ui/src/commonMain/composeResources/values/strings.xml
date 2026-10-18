@@ -36,4 +36,15 @@
 
     <string name="onboarding_done_title">You are all set</string>
     <string name="onboarding_done_body">Search for a title to start your library.</string>
+    <string name="onboarding_muted_title">Skip the talk shows?</string>
+    <string name="onboarding_muted_body">The most popular lists are full of late-night and talk shows. Choose what to leave out of Discover and Fill your library. They stay searchable, and you can change this any time in Settings.</string>
+    <string name="onboarding_muted_talk">Talk shows</string>
+    <string name="onboarding_muted_talk_examples">The Tonight Show, Jimmy Kimmel Live!, The View</string>
+    <string name="onboarding_muted_news">News and satire</string>
+    <string name="onboarding_muted_news_examples">Saturday Night Live, The Daily Show</string>
+    <string name="onboarding_muted_reality">Reality TV</string>
+    <string name="onboarding_muted_reality_examples">Love Island, Survivor, The Bachelor</string>
+    <string name="onboarding_muted_soap">Soap operas</string>
+    <string name="onboarding_muted_soap_examples">Days of Our Lives, The Bold and the Beautiful</string>
+    <string name="onboarding_muted_more">There are more genres to choose from in Settings, under Muted genres.</string>
 </resources>

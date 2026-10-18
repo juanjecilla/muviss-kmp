@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.settings.ui.di
 
 import com.codingpit.muviss.feature.settings.ui.ImportViewModel
+import com.codingpit.muviss.feature.settings.ui.MutedGenresViewModel
 import com.codingpit.muviss.feature.settings.ui.SettingsViewModel
 import com.codingpit.muviss.feature.settings.ui.TmdbKeyViewModel
 import org.koin.core.module.Module
@@ -10,5 +11,6 @@ import org.koin.dsl.module
 val settingsUiModule: Module = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ImportViewModel)
+    viewModelOf(::MutedGenresViewModel)
     viewModelOf(::TmdbKeyViewModel)
 }
