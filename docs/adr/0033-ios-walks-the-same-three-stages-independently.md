@@ -12,7 +12,7 @@ Apple's rules below were checked against Apple's own pages on 2026-10-17. Where 
 |---|---|---|
 | Monday 23:00 UTC (week 0) | internal | `release-rc.yml`'s `ios-rc` job uploads the RC to TestFlight and distributes it to the internal group. This is automatic. |
 | Sunday (week 0) | open beta | The same RC goes to a TestFlight **external** group that has a public link, and is submitted to Beta App Review. |
-| Sunday (week 1) | production | The App Store version is submitted with *automatic release on approval* and a *7-day phased release*. The submitted build is the RC from week 0. |
+| Sunday (week 1) | production | The App Store version is submitted with *automatic release on approval* and a *7-day phased release*; the first version goes out without one, since Apple offers phased release for updates only. The submitted build is the RC from week 0. |
 
 - **The RC is never rebuilt for iOS either.** The App Store build is the RC uploaded on Monday. Apple's TestFlight builds are held for 90 days, which covers the thirteen days between cut and submit (an assumption: see below).
 - **Each platform has its own Stage** in the release issue's marker. A version can be on beta for iOS and on production for Play on the same Sunday, and the train records each separately.
@@ -74,7 +74,7 @@ Apple gives no latency. Third-party guides say about 24 hours, sometimes up to 4
 These are the points Apple did not answer, or answered only in a forum. Each one is a live check before the first iOS production step, and the answer goes on the release issue.
 
 1. **A newer release ends the previous phased rollout** (owner's premise; Apple silent). Verify by reading `phasedReleaseState` of N-1 after N is released.
-2. **The phased-release enum spelling.** `PAUSED` or `PAUSE`. Verify with a live `GET` on the resource before the brake ships.
+2. **The phased-release states** are Apple's documented `PhasedReleaseState`: `INACTIVE`, `ACTIVE`, `PAUSED`, `COMPLETE` ([reference](https://developer.apple.com/documentation/appstoreconnectapi/phasedreleasestate)). A pause writes `PAUSED`; a live `GET` before the brake ships confirms it.
 3. **`PATCH` to `ACTIVE`/`COMPLETE` in *Pending Developer Release* returns `409`** (forum report, no Apple answer). The design avoids that state; confirm it does not occur for an automatic release.
 4. **One unreleased version at a time per platform** (owner's premise). Apple's FAQ covers review, not an unreleased version; confirm that App Store Connect refuses a new version while one is *Pending Developer Release*.
 5. **Beta App Review latency** is unknown (third-party: about 24 to 48 hours). The beta step counts as done on submission, so the latency does not move the schedule; record the observed time on the release issue.
