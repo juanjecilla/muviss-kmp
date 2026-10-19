@@ -26,8 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -71,7 +69,6 @@ fun PosterCard(
             }
             // The whole card is the control (poster + caption): one announcement, "Title, button",
             // and the caption is part of the target. Merged by `clickable`.
-            .semantics { this.selected = selected }
             .clickable(interactionSource = interactionSource, indication = null, role = Role.Button, onClick = onClick),
     ) {
         Surface(
