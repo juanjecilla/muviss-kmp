@@ -106,19 +106,29 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
-        observations.featureRequestLink()
-            .onEach { url -> _state.update { it.copy(featureRequestUrl = url) } }
-            .launchInReporting(viewModelScope)
-
         observeAppSettings()
+        observeFeatureRequestLink()
     }
 
     private var settingsObservation: Job? = null
+    private var featureRequestObservation: Job? = null
 
     /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
     fun retry() {
         _state.update { it.copy(loading = true, error = null) }
         observeAppSettings()
+        observeFeatureRequestLink()
+    }
+
+    /**
+     * The link is combined with [SettingsObservations.settings], so a settings failure ends it too:
+     * it restarts with the settings on [retry], or the row would stay hidden until the view model is recreated.
+     */
+    private fun observeFeatureRequestLink() {
+        featureRequestObservation?.cancel()
+        featureRequestObservation = observations.featureRequestLink()
+            .onEach { url -> _state.update { it.copy(featureRequestUrl = url) } }
+            .launchInReporting(viewModelScope)
     }
 
     private fun observeAppSettings() {

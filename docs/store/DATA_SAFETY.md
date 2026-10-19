@@ -64,6 +64,15 @@ uninstalling. This is stated in `docs/PRIVACY.md`.
   collected" in Play's sense (nothing is sent *from* the app about the user),
   but record it here so the answer stays consistent with `docs/PRIVACY.md`.
 
+- **Tally** (tally.so, or Typeform if the provider is switched in Remote Config)
+  — only when the user opens **Settings → About → Request a feature**. Muviss
+  hands the system browser a link; nothing is posted from the app. The link
+  carries the app version, platform, OS version and app language (no
+  identifier, nothing from the library), and the provider's server sees it when
+  the page loads, as it would any URL. What the user then types is theirs to
+  submit. Not "data collected" by the app in Play's sense, but recorded so the
+  answer stays consistent with `docs/PRIVACY.md`.
+
 ## Target audience / content rating
 
 Not determined by this document — set from the Play Console's content rating

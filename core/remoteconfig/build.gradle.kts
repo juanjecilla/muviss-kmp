@@ -42,6 +42,10 @@ val generateBuildConfig by tasks.registering {
     inputs.property("featureRequestProvider", requestProvider)
     outputs.dir(outDir)
     doLast {
+        // A value ends up inside a Kotlin string literal, so a quote, a backslash or a `$` in it (a URL
+        // with a `$` in its query, say) would otherwise break the generated file and with it the build.
+        // Local to the task: a script-level function would not serialise into the configuration cache.
+        fun literal(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
         val target = outDir.get()
             .file("com/codingpit/muviss/core/remoteconfig/MuvissBuildConfig.kt").asFile
         target.parentFile.mkdirs()
@@ -50,10 +54,10 @@ val generateBuildConfig by tasks.registering {
             package com.codingpit.muviss.core.remoteconfig
 
             internal object MuvissBuildConfig {
-                const val CONFIGCAT_SDK_KEY: String = "$sdkKey"
+                const val CONFIGCAT_SDK_KEY: String = "${literal(sdkKey)}"
                 const val BYOK_ENABLED: Boolean = $byok
-                const val FEATURE_REQUEST_URL: String = "$requestUrl"
-                const val FEATURE_REQUEST_PROVIDER: String = "$requestProvider"
+                const val FEATURE_REQUEST_URL: String = "${literal(requestUrl)}"
+                const val FEATURE_REQUEST_PROVIDER: String = "${literal(requestProvider)}"
             }
             """.trimIndent() + "\n",
         )
