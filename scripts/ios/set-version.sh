@@ -37,9 +37,16 @@ if [ -z "$PLIST" ]; then
   exit 2
 fi
 
-COUNT="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || true)"
+# Only ROOT's own history counts: a source-only copy unpacked inside some other
+# repository must keep the fallback, not stamp that repository's count or tag.
+TOP="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$TOP" ] && [ "$(cd "$TOP" && pwd -P)" = "$(cd "$ROOT" && pwd -P)" ]; then
+  COUNT="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null || true)"
+else
+  COUNT=""
+fi
 if [ -z "$COUNT" ]; then
-  echo "warning: git unavailable, keeping CURRENT_PROJECT_VERSION/MARKETING_VERSION from Config.xcconfig"
+  echo "warning: no git history for $ROOT, keeping CURRENT_PROJECT_VERSION/MARKETING_VERSION from Config.xcconfig"
   exit 0
 fi
 

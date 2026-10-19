@@ -81,6 +81,12 @@ commit "$r" "feat: c"
 git -C "$r" tag v1.3.0
 expect_eq "exact lightweight tag: resolved like an annotated one" "$(stamp "$r")" "1.3.0 1030000"
 
+nested="$r/source-only"
+mkdir -p "$nested/scripts/ios" "$nested/scripts/release"
+cp "$SCRIPTS/set-version.sh" "$nested/scripts/ios/"
+cp "$REPO_ROOT/scripts/release/version-code.sh" "$nested/scripts/release/"
+expect_eq "inside another repository: keeps the plist, never the parent's history" "$(stamp "$nested")" "1.0 1"
+
 r2="$(mktemp -d "$WORK/nogit.XXXXXX")"
 mkdir -p "$r2/scripts/ios" && cp "$SCRIPTS/set-version.sh" "$r2/scripts/ios/"
 expect_eq "no git: keeps the xcconfig values and succeeds" "$(MUVISS_REPO_ROOT="$r2" "$r2/scripts/ios/set-version.sh" "$r2/missing.plist" >/dev/null 2>&1; echo $?)" "0"
