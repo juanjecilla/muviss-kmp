@@ -107,6 +107,17 @@ never leaves the device even incidentally.
    offline; **Delete all data** removes it. See
    [ConfigCat's privacy policy](https://configcat.com/privacy/).
 
+**Feature requests.** Settings → About → **Request a feature** opens a form in
+your browser, hosted by [Tally](https://tally.so/help/privacy-policy). Muviss
+itself sends nothing: you type into Tally's page, and what you write (and the
+email address, if you choose to give one so we can reply) goes to Tally and to
+us, never through the app. The link carries four values so a request can be
+understood: the **app version**, the **platform** (Android, iOS, desktop or
+web), the **operating system version** and the **app language**. It carries no
+identifier, nothing about your library and nothing about your settings. You can
+close the page at any point and nothing is sent. The row appears only when a
+form has been set up.
+
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.
 
@@ -115,7 +126,10 @@ telemetry, no third-party trackers.
 **Settings → Data → Delete all data** deletes everything Muviss keeps on the
 device — your library, watch history, lists, triage decisions, profile and
 settings — without uninstalling. Uninstalling does the same. Either way there
-is nothing left on any server, because nothing you enter is ever sent to one.
+is nothing left on any server, because nothing you enter in Muviss is ever sent
+to one. (A feature request you submit through the form is the exception: it
+lives with Tally, outside the app, so deleting data in Muviss cannot remove it;
+ask us through the contact below and we will delete it.)
 Settings → Data → Export saves a copy first if you might want it back.
 
 ## Contact

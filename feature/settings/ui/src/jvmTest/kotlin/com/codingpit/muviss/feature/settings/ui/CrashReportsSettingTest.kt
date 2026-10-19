@@ -253,7 +253,7 @@ internal fun settingsViewModel(
     permission: NotificationPermissionRequester = NotificationPermissionRequester.Granted,
     flags: FeatureFlags = NoFlags,
 ) = SettingsViewModel(
-    ObserveSettingsUseCase(repository),
+    settingsObservations(ObserveSettingsUseCase(repository)),
     SettingsActions(
         SetThemeUseCase(repository),
         SetLanguageUseCase(repository),

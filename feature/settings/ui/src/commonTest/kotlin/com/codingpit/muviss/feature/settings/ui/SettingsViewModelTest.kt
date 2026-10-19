@@ -111,7 +111,7 @@ class SettingsViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     private fun viewModel(repository: FakeSettingsRepository) = SettingsViewModel(
-        ObserveSettingsUseCase(repository),
+        settingsObservations(ObserveSettingsUseCase(repository)),
         SettingsActions(
             SetThemeUseCase(repository),
             SetLanguageUseCase(repository),

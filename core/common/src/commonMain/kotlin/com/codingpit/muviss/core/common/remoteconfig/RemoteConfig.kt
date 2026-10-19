@@ -13,11 +13,31 @@ import kotlinx.coroutines.flow.StateFlow
  * @property tmdbFallbackReadToken a TMDB v4 read token served in place of the
  *   one built into the binary, or null to use the built-in one. The point is
  *   rotation, not secrecy: it is no more secret than the value in the APK.
+ * @property featureRequestProvider which hosted form service [featureRequestUrl] points at,
+ *   or [FeatureRequestProvider.Off] to hide the Feature Request row. It decides how the
+ *   link carries its hidden fields, because Tally and Typeform read them differently.
+ * @property featureRequestUrl the public URL of the Feature Request form, or null when
+ *   there is none yet. A null or blank URL hides the row whatever the provider says.
  */
 data class RemoteValues(
     val byokEnabled: Boolean,
     val tmdbFallbackReadToken: String? = null,
+    val featureRequestProvider: FeatureRequestProvider = FeatureRequestProvider.Tally,
+    val featureRequestUrl: String? = null,
 )
+
+/** The hosted form service behind the Feature Request row. Stored by [key]. */
+enum class FeatureRequestProvider(val key: String) {
+    Tally("tally"),
+    Typeform("typeform"),
+    Off("off"),
+    ;
+
+    companion object {
+        /** An unknown or blank served value reads as [Tally], the compiled default, never as [Off]. */
+        fun fromStored(value: String?): FeatureRequestProvider = entries.firstOrNull { it.key.equals(value?.trim(), ignoreCase = true) } ?: Tally
+    }
+}
 
 /**
  * Seam for values the app must be able to change without a release. Read-only,

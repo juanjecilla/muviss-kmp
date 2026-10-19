@@ -17,8 +17,8 @@ import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
-import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
+import com.codingpit.muviss.feature.settings.domain.SettingsObservations
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
 import com.codingpit.muviss.feature.settings.ui.generated.resources.error_generic
 import kotlinx.coroutines.Job
@@ -54,6 +54,8 @@ data class SettingsUiState(
     val tickAnimations: Boolean = true,
     /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
     val notificationsDenied: Boolean = false,
+    /** Where the Feature Request row opens (ADR 0034), hidden fields included; null hides the row. */
+    val featureRequestUrl: String? = null,
 )
 
 /**
@@ -64,7 +66,7 @@ data class SettingsUiState(
  * ([rememberDataExporter]).
  */
 class SettingsViewModel(
-    private val observeSettings: ObserveSettingsUseCase,
+    private val observations: SettingsObservations,
     private val actions: SettingsActions,
     appVersion: AppVersion,
     private val featureFlags: FeatureFlags,
@@ -104,6 +106,10 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
+        observations.featureRequestLink()
+            .onEach { url -> _state.update { it.copy(featureRequestUrl = url) } }
+            .launchInReporting(viewModelScope)
+
         observeAppSettings()
     }
 
@@ -117,7 +123,7 @@ class SettingsViewModel(
 
     private fun observeAppSettings() {
         settingsObservation?.cancel()
-        settingsObservation = observeSettings()
+        settingsObservation = observations.settings()
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
             .launchInReporting(viewModelScope)
