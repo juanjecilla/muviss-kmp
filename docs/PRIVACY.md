@@ -107,8 +107,8 @@ never leaves the device even incidentally.
    offline; **Delete all data** removes it. See
    [ConfigCat's privacy policy](https://configcat.com/privacy/).
 
-**Feature requests.** Settings → About → **Request a feature** opens a form in
-your browser, hosted by [Tally](https://tally.so/help/privacy-policy) (or by
+**Feature requests and bug reports.** Settings → About → **Request a feature**
+and **Report a problem** each open a form in your browser, hosted by [Tally](https://tally.so/help/privacy-policy) (or by
 [Typeform](https://www.typeform.com/privacy-policy/) if we ever switch
 provider; the row opens whichever one is set up). Muviss itself sends nothing:
 the link is opened by your browser, and what you write (and the email address,
@@ -120,7 +120,7 @@ identifier, nothing about your library and nothing about your settings. Opening
 the page is an ordinary web request, so the provider's server receives that
 link, with those four values in it, as soon as the page loads, whether or not
 you go on to submit anything; closing the page without submitting means no
-response is sent. The row appears only when a form has been set up. The text
+response is sent. The rows appear only when a form has been set up. The text
 of a request may be copied into the project's public issue tracker so it can
 be planned, **never with your email address**; leave anything private out of
 it.

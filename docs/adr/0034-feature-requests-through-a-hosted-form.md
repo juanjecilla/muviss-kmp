@@ -24,4 +24,4 @@ The form is defined in `scripts/feedback/tally-form.json` and created and update
 - The row exists on every target, web included, since opening a URL needs nothing platform specific.
 - Moving or switching the form needs no release (ConfigCat), but the first value has to be set by the owner (`docs/RELEASING.md` section 13).
 - Each response becomes a public GitHub issue through a polled Ops Bridge connector (#448): the text is copied, the email never is, and the form and the privacy policy say so. A webhook was rejected because Tally cannot call GitHub's dispatch API and a receiver means hosting (ADR 0028).
-- A bug report form is a follow-up (#449).
+- A second form, **Report a problem** (#449), uses the same machinery: its own URL (`bugReportUrl`), the same provider switch, the same four hidden fields, its own Ops Bridge connector and labels (`from-bug-report`, `bug`). Nothing it carries is new, so the privacy policy needed only to name it.

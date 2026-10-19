@@ -1,6 +1,7 @@
-name: Feature requests
+name: Feature requests and bug reports
 
-# Tally "Request a feature" form -> GitHub issues (#448, Ops Bridge connector #3, ADR 0028, ADR 0034).
+# Tally "Request a feature" and "Report a problem" forms -> GitHub issues (#448, #449, Ops Bridge
+# connectors #3 and #4, ADR 0028, ADR 0034).
 # Each completed submission becomes one issue labelled `from-feature-request` + `user-feedback`,
 # deduped on its submission id, so a request lands where work is planned and not only in the
 # owner's inbox. Polling, not a webhook: Tally cannot call GitHub's dispatch API directly, and a
@@ -8,6 +9,7 @@ name: Feature requests
 #
 # The respondent's email is never copied (the repository is public); one run opens at most 10
 # issues, and an empty submission is skipped.
+# Bug reports are labelled `from-bug-report` + `bug` + `user-feedback`.
 # The logic is fastlane/ops_bridge/connectors/tally_feature_requests.rb; tests are fastlane/test/tally_feature_requests_test.rb.
 
 on:
@@ -25,7 +27,7 @@ permissions:
 
 jobs:
   sync:
-    name: Open issues for new feature requests
+    name: Open issues for new feature requests and bug reports
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -54,3 +56,15 @@ jobs:
             exit 0
           fi
           ruby fastlane/ops_bridge.rb sync tally-feature-requests
+      - name: Sync bug reports
+        env:
+          TALLY_API_KEY: ${{ secrets.TALLY_API_KEY }}
+          TALLY_BUG_REPORT_FORM_ID: ${{ secrets.TALLY_BUG_REPORT_FORM_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+        run: |
+          if [ -z "$TALLY_API_KEY" ] || [ -z "$TALLY_BUG_REPORT_FORM_ID" ]; then
+            echo "TALLY_API_KEY or TALLY_BUG_REPORT_FORM_ID is not set; nothing to do (docs/RELEASING.md, 'Feature requests to GitHub')."
+            exit 0
+          fi
+          ruby fastlane/ops_bridge.rb sync tally-bug-reports

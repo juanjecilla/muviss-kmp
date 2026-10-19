@@ -5,7 +5,7 @@ import com.codingpit.muviss.core.common.locale.SystemLocale
 import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
-import com.codingpit.muviss.feature.settings.domain.ObserveFeatureRequestLinkUseCase
+import com.codingpit.muviss.feature.settings.domain.ObserveFeedbackLinksUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsObservations
 
@@ -15,7 +15,7 @@ internal fun settingsObservations(
     remote: RemoteConfig = DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
 ) = SettingsObservations(
     settings = observeSettings,
-    featureRequestLink = ObserveFeatureRequestLinkUseCase(
+    feedbackLinks = ObserveFeedbackLinksUseCase(
         remoteConfig = remote,
         observeSettings = observeSettings,
         systemLocale = object : SystemLocale {

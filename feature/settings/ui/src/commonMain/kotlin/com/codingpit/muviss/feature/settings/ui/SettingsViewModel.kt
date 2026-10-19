@@ -56,6 +56,8 @@ data class SettingsUiState(
     val notificationsDenied: Boolean = false,
     /** Where the Feature Request row opens (ADR 0034), hidden fields included; null hides the row. */
     val featureRequestUrl: String? = null,
+    /** Where the Bug Report row opens (ADR 0034, #449); null hides the row. */
+    val bugReportUrl: String? = null,
 )
 
 /**
@@ -107,27 +109,27 @@ class SettingsViewModel(
             .launchInReporting(viewModelScope)
 
         observeAppSettings()
-        observeFeatureRequestLink()
+        observeFeedbackLinks()
     }
 
     private var settingsObservation: Job? = null
-    private var featureRequestObservation: Job? = null
+    private var feedbackObservation: Job? = null
 
     /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
     fun retry() {
         _state.update { it.copy(loading = true, error = null) }
         observeAppSettings()
-        observeFeatureRequestLink()
+        observeFeedbackLinks()
     }
 
     /**
-     * The link is combined with [SettingsObservations.settings], so a settings failure ends it too:
-     * it restarts with the settings on [retry], or the row would stay hidden until the view model is recreated.
+     * The links are combined with [SettingsObservations.settings], so a settings failure ends them too:
+     * they restart with the settings on [retry], or the rows would stay hidden until the view model is recreated.
      */
-    private fun observeFeatureRequestLink() {
-        featureRequestObservation?.cancel()
-        featureRequestObservation = observations.featureRequestLink()
-            .onEach { url -> _state.update { it.copy(featureRequestUrl = url) } }
+    private fun observeFeedbackLinks() {
+        feedbackObservation?.cancel()
+        feedbackObservation = observations.feedbackLinks()
+            .onEach { links -> _state.update { it.copy(featureRequestUrl = links.featureRequest, bugReportUrl = links.bugReport) } }
             .launchInReporting(viewModelScope)
     }
 

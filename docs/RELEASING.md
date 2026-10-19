@@ -276,10 +276,11 @@ fewer**, labelled `from-play-review` + `user-feedback`.
   no gems. Try it: Actions > "Play reviews" > Run workflow (dry run is on by default).
   Tests: `ruby fastlane/test/play_reviews_test.rb`. Never run against the live API.
 
-#### Feature requests to issue (#448, connector #3)
+#### Feature requests and bug reports to issue (#448, #449, connectors #3 and #4)
 
 `.github/workflows/feature-requests.yml` opens one issue per completed submission of the in-app
-**Request a feature** form (section 13), labelled `from-feature-request` + `user-feedback`.
+**Request a feature** form (section 13), labelled `from-feature-request` + `user-feedback`, and of
+the **Report a problem** form, labelled `from-bug-report` + `bug` + `user-feedback`.
 
 - **Hourly** (and by hand, dry by default). Polling rather than a Tally webhook: Tally's webhook
   sends its own fixed JSON and cannot call GitHub's dispatch API, so it would need a hosted
@@ -292,8 +293,8 @@ fewer**, labelled `from-play-review` + `user-feedback`.
   flood of junk costs an hour at a time. One issue per submission id; re-running opens nothing.
 - **No reverse mapping.** Closing the issue changes nothing in Tally.
 - **Secrets**: `TALLY_API_KEY` (Tally > Settings > API keys) and `TALLY_FEATURE_REQUEST_FORM_ID`
-  (the id `scripts/feedback/tally-form.sh create` printed). With either unset the workflow does
-  nothing. `scripts/release/owner-setup.sh` asks for both. Scheduled workflows only run from the
+  (the id `scripts/feedback/tally-form.sh create` printed); `TALLY_BUG_REPORT_FORM_ID` for the Bug
+  Report form. With the key or a form's id unset, that form's step does nothing. `scripts/release/owner-setup.sh` asks for both. Scheduled workflows only run from the
   default branch, so nothing happens until this reaches `main`.
 - **Try it**: `DRY_RUN=1 TALLY_API_KEY=… TALLY_FEATURE_REQUEST_FORM_ID=… GITHUB_REPOSITORY=… GITHUB_TOKEN=… ruby fastlane/ops_bridge.rb sync tally-feature-requests`,
   or Actions > "Feature requests" > Run workflow (dry run is on by default). Tests:
@@ -1362,4 +1363,12 @@ The **Request a feature** row in Settings > About is built in but **dark**: it o
 
 **Switching to Typeform** (the fallback, if Tally ever fails us): create the form by hand in Typeform with the same four **hidden fields** (`version`, `platform`, `os`, `locale`), then set ConfigCat `featureRequestProvider` = `typeform` and `featureRequestUrl` = its public URL. Typeform reads hidden fields from the URL fragment, so the provider key must change with the URL. Its free plan stops collecting after about 10 responses a month, so treat it as a stop-gap. `featureRequestProvider` = `off` hides the row whatever the URL is.
 
-Each response reaches you by email, and (once `TALLY_API_KEY` and `TALLY_FEATURE_REQUEST_FORM_ID` are Actions secrets) as a GitHub issue within the hour: see 'Feature requests to issue' under the Ops Bridge.
+Each response (of either form) reaches you by email, and (once `TALLY_API_KEY` and `TALLY_FEATURE_REQUEST_FORM_ID` are Actions secrets) as a GitHub issue within the hour: see 'Feature requests to issue' under the Ops Bridge.
+
+### Bug Report form (#449)
+
+A second row, **Report a problem**, sits under **Request a feature** in Settings > About and opens a second Tally form (`scripts/feedback/tally-bug-report.json`: what happened, what was expected, an optional email, the same four hidden fields). It follows the same rules: dark until its URL is set, the same provider switch (`featureRequestProvider`, which governs both rows; `off` hides both), no new data in the link.
+
+1. `TALLY_FORM_DEFINITION=scripts/feedback/tally-bug-report.json scripts/feedback/tally-form.sh create`, then `publish <id>` with the same variable set (publish re-sends the definition).
+2. `BUG_REPORT_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets, or the ConfigCat text setting **`bugReportUrl`**.
+3. Add the Actions secret `TALLY_BUG_REPORT_FORM_ID` so the Ops Bridge turns each report into an issue.

@@ -6,5 +6,5 @@ package com.codingpit.muviss.feature.settings.domain
  */
 class SettingsObservations(
     val settings: ObserveSettingsUseCase,
-    val featureRequestLink: ObserveFeatureRequestLinkUseCase,
+    val feedbackLinks: ObserveFeedbackLinksUseCase,
 )

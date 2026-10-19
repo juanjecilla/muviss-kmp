@@ -18,10 +18,28 @@ module OpsBridge
     #     it cannot rewrite the issue; a fence inside the text is defused.
     #   * An empty submission (a click on Submit) is skipped, and one run opens at most
     #     MAX_PER_RUN issues, so a flood costs the owner an hour at a time, not a page of spam.
+    #
+    # The same code serves the Bug Report form (#449): a subclass only says what its issues are
+    # called and which labels they carry; the privacy rules above hold for both.
     class TallyFeatureRequests
-      KIND = "tally-feature-request".freeze
-      SOURCE_LABEL = "from-feature-request".freeze
-      LABELS = [SOURCE_LABEL, "user-feedback"].freeze
+      # What differs between the forms: the marker kind, labels, title prefix, connector name and
+      # the wording of the issue body.
+      Profile = Struct.new(:name, :kind, :source_label, :labels, :title_prefix, :intro, :request_heading, :why_heading, :form_id_env)
+
+      PROFILE = Profile.new(
+        "tally-feature-requests",
+        "tally-feature-request",
+        "from-feature-request",
+        ["from-feature-request", "user-feedback"].freeze,
+        "[Feature request]",
+        "A feature request from the in-app form, opened by the Ops Bridge. The respondent's email, if they left one, is deliberately not copied.",
+        "What should Muviss do?",
+        "Why would it help?",
+        "TALLY_FEATURE_REQUEST_FORM_ID",
+      ).freeze
+      KIND = PROFILE.kind
+      SOURCE_LABEL = PROFILE.source_label
+      LABELS = PROFILE.labels
       API = "https://api.tally.so".freeze
 
       SNIPPET = 70
@@ -41,7 +59,8 @@ module OpsBridge
         return nil if request.empty?
 
         id = submission.fetch("id")
-        Item.new(id, OpsBridge.title("[Feature request]", headline(request)), render_body(id, submission, answers, request), LABELS, nil)
+        profile = self::PROFILE
+        Item.new(id, OpsBridge.title(profile.title_prefix, headline(request)), render_body(id, submission, answers, request), profile.labels, nil)
       end
 
       def self.answers_by_type(submission, questions)
@@ -65,15 +84,16 @@ module OpsBridge
       end
 
       def self.render_body(id, submission, answers, request)
+        profile = self::PROFILE
         why = answers[:text][1].to_s.strip
         rows = CONTEXT_FIELDS.map { |field| [field, answers[:context][field]] }.reject { |_, value| value.to_s.strip.empty? }
-        lines = ["A feature request from the in-app form, opened by the Ops Bridge. The respondent's email, if they left one, is deliberately not copied.", ""]
+        lines = [profile.intro, ""]
         lines += rows.map { |field, value| "- **#{field}:** `#{sanitize(value)}`" }
         lines << "- **Submitted:** #{submission['submittedAt'].to_s[0, 10]}" unless submission["submittedAt"].to_s.empty?
         lines << "- **Can be replied to:** #{answers[:email].to_s.strip.empty? ? 'no' : 'yes, from the Tally dashboard'}"
-        lines += ["", "**What should Muviss do?**", "", fence(request)]
-        lines += ["", "**Why would it help?**", "", fence(why)] unless why.empty?
-        lines += ["", OpsBridge.marker(KIND, id)]
+        lines += ["", "**#{profile.request_heading}**", "", fence(request)]
+        lines += ["", "**#{profile.why_heading}**", "", fence(why)] unless why.empty?
+        lines += ["", OpsBridge.marker(profile.kind, id)]
         lines.join("\n")
       end
 
@@ -88,7 +108,8 @@ module OpsBridge
       end
 
       def initialize(form_id:, token:, http: Http.new)
-        raise ApiError, "TALLY_FEATURE_REQUEST_FORM_ID or TALLY_API_KEY is not set" if form_id.to_s.strip.empty? || token.to_s.strip.empty?
+        env_name = self.class::PROFILE.form_id_env
+        raise ApiError, "#{env_name} or TALLY_API_KEY is not set" if form_id.to_s.strip.empty? || token.to_s.strip.empty?
 
         @form_id = form_id.to_s.strip
         @token = token
@@ -96,19 +117,19 @@ module OpsBridge
       end
 
       def name
-        "tally-feature-requests"
+        self.class::PROFILE.name
       end
 
       def kind
-        KIND
+        self.class::PROFILE.kind
       end
 
       def source_label
-        SOURCE_LABEL
+        self.class::PROFILE.source_label
       end
 
       def labels
-        LABELS
+        self.class::PROFILE.labels
       end
 
       # How many issues one run may open (the bridge applies it after it drops what already has one).
@@ -145,6 +166,23 @@ module OpsBridge
       rescue JSON::ParserError
         raise ApiError, "Tally answered something that is not JSON"
       end
+    end
+
+    # Tally Bug Report form -> GitHub issue (#449): the same polling, the same privacy rules
+    # (email never copied, text fenced, hidden fields sanitised, capped per run), different
+    # labels so the owner can triage a problem apart from a wish.
+    class TallyBugReports < TallyFeatureRequests
+      PROFILE = Profile.new(
+        "tally-bug-reports",
+        "tally-bug-report",
+        "from-bug-report",
+        ["from-bug-report", "bug", "user-feedback"].freeze,
+        "[Bug report]",
+        "A bug report from the in-app form, opened by the Ops Bridge. The respondent's email, if they left one, is deliberately not copied.",
+        "What happened?",
+        "What did you expect?",
+        "TALLY_BUG_REPORT_FORM_ID",
+      ).freeze
     end
   end
 end

@@ -28,6 +28,7 @@ val remoteConfigModule: Module = module {
             byokEnabled = MuvissBuildConfig.BYOK_ENABLED,
             featureRequestProvider = FeatureRequestProvider.fromStored(MuvissBuildConfig.FEATURE_REQUEST_PROVIDER),
             featureRequestUrl = MuvissBuildConfig.FEATURE_REQUEST_URL.takeIf { it.isNotBlank() },
+            bugReportUrl = MuvissBuildConfig.BUG_REPORT_URL.takeIf { it.isNotBlank() },
         )
         if (MuvissBuildConfig.CONFIGCAT_SDK_KEY.isBlank()) {
             DefaultsRemoteConfig(defaults)
