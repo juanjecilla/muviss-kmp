@@ -39,6 +39,9 @@ done
 
 : > "$log"; "$SCRIPT" update wA1b2C >/dev/null
 grep -q '^PATCH https://stub.test/forms/wA1b2C ' "$log" && pass "update PATCHes the form" || fail "update PATCHes the form"
+grep -q '"status": "DRAFT"' "$log" && pass "update of a draft stays a draft" || fail "update of a draft stays a draft"
+: > "$log"; CURL_BODY='{"id":"wA1b2C","status":"PUBLISHED"}' "$SCRIPT" update wA1b2C >/dev/null
+grep -q '^PATCH ' "$log" && grep -q '"status": "PUBLISHED"' "$log" && pass "update of a published form does not unpublish it" || fail "update of a published form does not unpublish it"
 
 : > "$log"; "$SCRIPT" publish wA1b2C >/dev/null
 grep -q '^PATCH https://stub.test/forms/wA1b2C ' "$log" && grep -q '"status": "PUBLISHED"' "$log" && pass "publish PATCHes status PUBLISHED" || fail "publish PATCHes status"

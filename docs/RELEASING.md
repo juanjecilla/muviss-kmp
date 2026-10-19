@@ -276,6 +276,29 @@ fewer**, labelled `from-play-review` + `user-feedback`.
   no gems. Try it: Actions > "Play reviews" > Run workflow (dry run is on by default).
   Tests: `ruby fastlane/test/play_reviews_test.rb`. Never run against the live API.
 
+#### Feature requests to issue (#448, connector #3)
+
+`.github/workflows/feature-requests.yml` opens one issue per completed submission of the in-app
+**Request a feature** form (section 13), labelled `from-feature-request` + `user-feedback`.
+
+- **Hourly** (and by hand, dry by default). Polling rather than a Tally webhook: Tally's webhook
+  sends its own fixed JSON and cannot call GitHub's dispatch API, so it would need a hosted
+  receiver, which ADR 0028 rules out. Tally keeps every submission, so nothing is lost between runs.
+- **The respondent's email is never copied** (the repository goes public); the issue only says
+  whether one was left, and the owner replies from the Tally dashboard. The text goes in a code
+  fence, so an `@name` cannot ping anyone. The hidden fields (`version`, `platform`, `os`,
+  `locale`) are shown, sanitised, since a query parameter is anything someone types.
+- **Capped**: an empty submission is skipped and one run opens at most 10 issues, oldest first, so a
+  flood of junk costs an hour at a time. One issue per submission id; re-running opens nothing.
+- **No reverse mapping.** Closing the issue changes nothing in Tally.
+- **Secrets**: `TALLY_API_KEY` (Tally > Settings > API keys) and `TALLY_FEATURE_REQUEST_FORM_ID`
+  (the id `scripts/feedback/tally-form.sh create` printed). With either unset the workflow does
+  nothing. `scripts/release/owner-setup.sh` asks for both. Scheduled workflows only run from the
+  default branch, so nothing happens until this reaches `main`.
+- **Try it**: `DRY_RUN=1 TALLY_API_KEY=… TALLY_FEATURE_REQUEST_FORM_ID=… GITHUB_REPOSITORY=… GITHUB_TOKEN=… ruby fastlane/ops_bridge.rb sync tally-feature-requests`,
+  or Actions > "Feature requests" > Run workflow (dry run is on by default). Tests:
+  `ruby fastlane/test/tally_feature_requests_test.rb`, run by `pr-guards`.
+
 ## 5. Branches, the release train and CI (ADR 0025)
 
 ### The flow
@@ -1339,4 +1362,4 @@ The **Request a feature** row in Settings > About is built in but **dark**: it o
 
 **Switching to Typeform** (the fallback, if Tally ever fails us): create the form by hand in Typeform with the same four **hidden fields** (`version`, `platform`, `os`, `locale`), then set ConfigCat `featureRequestProvider` = `typeform` and `featureRequestUrl` = its public URL. Typeform reads hidden fields from the URL fragment, so the provider key must change with the URL. Its free plan stops collecting after about 10 responses a month, so treat it as a stop-gap. `featureRequestProvider` = `off` hides the row whatever the URL is.
 
-Each response reaches you by email for now; making it a GitHub issue is #448.
+Each response reaches you by email, and (once `TALLY_API_KEY` and `TALLY_FEATURE_REQUEST_FORM_ID` are Actions secrets) as a GitHub issue within the hour: see 'Feature requests to issue' under the Ops Bridge.

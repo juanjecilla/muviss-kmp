@@ -2,13 +2,14 @@ require "json"
 require_relative "ops_bridge/bridge"
 require_relative "ops_bridge/connectors/sentry"
 require_relative "ops_bridge/connectors/play_reviews"
+require_relative "ops_bridge/connectors/tally_feature_requests"
 
 # Entry point for the Ops Bridge (EPIC 48, ADR 0028). See fastlane/ops_bridge/README.md.
 #
 #   ruby fastlane/ops_bridge.rb sync    <connector>    open an issue per new item
 #   ruby fastlane/ops_bridge.rb resolve <connector>    a GitHub issue was closed: resolve its source
 #
-# Connectors: sentry, play-reviews. DRY_RUN=1 says what would happen and writes nothing.
+# Connectors: sentry, play-reviews, tally-feature-requests. DRY_RUN=1 says what would happen and writes nothing.
 module OpsBridge
   module_function
 
@@ -18,8 +19,10 @@ module OpsBridge
       Connectors::Sentry.new(org: env["SENTRY_ORG"], token: env["SENTRY_AUTH_TOKEN"], project: env["SENTRY_PROJECT"])
     when "play-reviews"
       Connectors::PlayReviews.new(service_account_json: env["PLAY_SERVICE_ACCOUNT_JSON"])
+    when "tally-feature-requests"
+      Connectors::TallyFeatureRequests.new(form_id: env["TALLY_FEATURE_REQUEST_FORM_ID"], token: env["TALLY_API_KEY"])
     else
-      raise ArgumentError, "unknown connector #{name.inspect} (sentry, play-reviews)"
+      raise ArgumentError, "unknown connector #{name.inspect} (sentry, play-reviews, tally-feature-requests)"
     end
   end
 
@@ -27,7 +30,7 @@ module OpsBridge
     command, name = argv
     dry_run = %w[1 true].include?(env["DRY_RUN"].to_s)
     log = ->(line) { out.puts(line) }
-    raise ArgumentError, "usage: ops_bridge.rb sync|resolve <sentry|play-reviews>" unless %w[sync resolve].include?(command) && name
+    raise ArgumentError, "usage: ops_bridge.rb sync|resolve <sentry|play-reviews|tally-feature-requests>" unless %w[sync resolve].include?(command) && name
 
     connector = connector_for(name, env)
     if command == "sync"

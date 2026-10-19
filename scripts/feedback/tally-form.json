@@ -17,7 +17,7 @@
       "groupUuid": "00000000-0000-4000-8000-000000000002",
       "groupType": "TEXT",
       "payload": {
-        "html": "<p>Tell us what Muviss should do that it doesn't yet. Every request is read.</p>"
+        "html": "<p>Tell us what Muviss should do that it doesn't yet. Every request is read. Requests may be copied into our public issue tracker, without your email address.</p>"
       }
     },
     {
