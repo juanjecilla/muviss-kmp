@@ -197,6 +197,7 @@ class ProgressTickFeedbackTest {
 
         onAllNodesWithContentDescription("Mark", substring = true)[0].performClick()
         mainClock.advanceTimeBy(100)
+        onNodeWithText("Caught up on $LONG_TITLE").assertExists()
         onNodeWithTag(WATCH_NEXT_LIST_TAG).performScrollToIndex(11)
         mainClock.advanceTimeBy(500)
 

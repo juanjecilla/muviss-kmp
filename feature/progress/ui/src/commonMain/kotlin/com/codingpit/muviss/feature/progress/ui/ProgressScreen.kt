@@ -176,10 +176,12 @@ private fun WatchNextScreen(
     // What to celebrate on screen, and when: a new token restarts the burst.
     var celebration by remember { mutableStateOf<Celebration?>(null) }
     var tokens by remember { mutableStateOf(0) }
-    // The latest tap. A tick's outcome can arrive after a later tap's (a caught-up one
-    // returns at once, a plain one waits for the list to move on), and only the latest
-    // tap may take the snackbar: an older one would show stale Undo for another episode.
-    var latestTap by remember { mutableStateOf(0) }
+    // Taps are numbered, and the snackbar remembers the newest one it has shown. A tick's
+    // outcome can arrive after a later tap's (a caught-up one returns at once, a plain one
+    // waits for the list to move on), and an older saved tick must not replace a newer one's
+    // Undo. A failed tick shows nothing, so it never hides an older saved tick's Undo.
+    var taps by remember { mutableStateOf(0) }
+    var shownTap by remember { mutableStateOf(0) }
     // The snackbar's measured height, so the list's end clears a wrapped message too.
     var snackbarHeight by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
@@ -190,11 +192,12 @@ private fun WatchNextScreen(
     // and a milestone says so there too: with motion off it is all there is.
     val onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit = tick@{ item, onFailed ->
         val episode = item.nextEpisode ?: return@tick
-        val tap = ++latestTap
+        val tap = ++taps
         scope.launch {
             val outcome = viewModel.tick(item) ?: return@launch
             if (outcome is TickOutcome.Failed) return@launch onFailed()
-            if (tap != latestTap) return@launch
+            if (tap < shownTap) return@launch
+            shownTap = tap
             val message = when (outcome) {
                 is TickOutcome.Failed -> return@launch
                 is TickOutcome.CaughtUp -> getString(Res.string.tick_snackbar_caught_up, item.title)
