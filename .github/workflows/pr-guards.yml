@@ -108,3 +108,6 @@ jobs:
         run: ruby fastlane/test/release_stages_test.rb
       - name: Sunday promotion gates (ADR 0030)
         run: ruby fastlane/test/release_promote_test.rb
+      # The App Store listing's field limits and locale parity (fastlane/metadata/ios).
+      - name: iOS App Store metadata
+        run: ruby fastlane/test/ios_metadata_test.rb

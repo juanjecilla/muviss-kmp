@@ -1,0 +1,1 @@
+Muviss has no account and no sign-in, so there is no demo login. Search for any movie or TV show (search needs an internet connection; the library works offline once titles are added). Settings > Privacy holds the optional crash-report switch.
