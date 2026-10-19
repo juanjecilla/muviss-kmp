@@ -6,6 +6,7 @@ import app.cash.turbine.test
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -64,6 +65,7 @@ internal class FakeCollectionApi(summaries: List<CollectionSummary>, var failure
 internal class FakeProgressRepository : ProgressRepository {
     private val seenByMedia = mutableMapOf<MediaId, MutableStateFlow<Set<EpisodeId>>>()
     val tickedEpisodes = mutableListOf<Pair<EpisodeId, Boolean>>()
+    var writeFailure: Exception? = null
 
     private fun flowFor(mediaId: MediaId) = seenByMedia.getOrPut(mediaId) { MutableStateFlow(emptySet()) }
 
@@ -75,6 +77,7 @@ internal class FakeProgressRepository : ProgressRepository {
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = error("not used")
 
     override suspend fun setSeen(episodeId: EpisodeId, seen: Boolean) {
+        writeFailure?.let { throw it }
         tickedEpisodes += episodeId to seen
         val flow = flowFor(episodeId.show)
         flow.value = if (seen) flow.value + episodeId else flow.value - episodeId
@@ -162,12 +165,14 @@ class ProgressViewModelTest {
         collectionApi: FakeCollectionApi,
         progressRepository: FakeProgressRepository,
         catalogSource: FakeEpisodeCatalogSource = FakeEpisodeCatalogSource(mapOf(show to seasons)),
+        flags: FakeFeatureFlags = FakeFeatureFlags(),
     ): Pair<ProgressViewModel, EpisodeCatalogCache> {
         val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore())
         val vm = ProgressViewModel(
             WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), cache, FakeClock(today)),
             ToggleEpisodeSeenUseCase(progressRepository),
             cache,
+            flags,
         )
         return vm to cache
     }
@@ -239,6 +244,81 @@ class ProgressViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(ep1 to true, ep1 to false), repository.tickedEpisodes)
+    }
+
+    @Test
+    fun a_tick_that_leaves_more_of_the_season_is_plain() = runTest {
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), FakeProgressRepository())
+        advanceUntilIdle()
+
+        assertEquals(TickOutcome.Plain, vm.tick(vm.state.value.items.single()))
+    }
+
+    @Test
+    fun a_last_tick_that_fails_to_save_is_failed_not_caught_up() = runTest {
+        val progress = FakeProgressRepository()
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), progress)
+        advanceUntilIdle()
+        vm.tick(vm.state.value.items.single())
+
+        progress.writeFailure = IllegalStateException("disk full")
+
+        assertEquals(TickOutcome.Failed, vm.tick(vm.state.value.items.single()))
+    }
+
+    @Test
+    fun the_tick_that_sees_the_last_aired_episode_is_caught_up() = runTest {
+        val (vm, _) = viewModel(FakeCollectionApi(listOf(summary(show))), FakeProgressRepository())
+        advanceUntilIdle()
+        vm.tick(vm.state.value.items.single())
+
+        assertEquals(TickOutcome.CaughtUp, vm.tick(vm.state.value.items.single()))
+    }
+
+    @Test
+    fun a_tick_that_finishes_a_season_with_a_later_one_aired_says_which() = runTest {
+        val twoSeasons = listOf(
+            Season(1, "Season 1", listOf(episode(1, 1, 50), episode(1, 2, 60))),
+            Season(2, "Season 2", listOf(episode(2, 1, 70))),
+        )
+        val (vm, _) = viewModel(
+            FakeCollectionApi(listOf(summary(show))),
+            FakeProgressRepository(),
+            FakeEpisodeCatalogSource(mapOf(show to twoSeasons)),
+        )
+        advanceUntilIdle()
+        vm.tick(vm.state.value.items.single())
+
+        assertEquals(TickOutcome.SeasonFinished(1), vm.tick(vm.state.value.items.single()))
+    }
+
+    @Test
+    fun a_row_with_no_next_episode_has_nothing_to_tick() = runTest {
+        val (vm, _) = viewModel(
+            FakeCollectionApi(listOf(summary(show))),
+            FakeProgressRepository(),
+            FakeEpisodeCatalogSource(emptyMap()),
+        )
+        advanceUntilIdle()
+
+        assertEquals(null, vm.tick(vm.state.value.items.single()))
+    }
+
+    @Test
+    fun animateTicks_is_the_master_switch_and_the_tick_switch_together() = runTest {
+        val flags = FakeFeatureFlags()
+        val (vm, _) = viewModel(FakeCollectionApi(emptyList()), FakeProgressRepository(), flags = flags)
+        advanceUntilIdle()
+        assertEquals(true, vm.state.value.animateTicks)
+
+        flags.setTickAnimations(false)
+        advanceUntilIdle()
+        assertEquals(false, vm.state.value.animateTicks)
+
+        flags.setTickAnimations(true)
+        flags.setAnimationsEnabled(false)
+        advanceUntilIdle()
+        assertEquals(false, vm.state.value.animateTicks)
     }
 
     @Test

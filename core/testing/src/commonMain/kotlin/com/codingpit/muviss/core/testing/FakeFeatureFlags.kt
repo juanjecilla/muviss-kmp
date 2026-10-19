@@ -17,6 +17,7 @@ class FakeFeatureFlags(byokEnabled: Boolean = false) : FeatureFlags {
     override val triageControlScheme = MutableStateFlow(TriageControlScheme.DEFAULT)
     override val animationsEnabled = MutableStateFlow(true)
     override val triageDeckAnimations = MutableStateFlow(true)
+    override val tickAnimations = MutableStateFlow(true)
     override val syncAutomatically = MutableStateFlow(false)
     override val byokEnabled = MutableStateFlow(byokEnabled)
     override val triageSnoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
@@ -32,6 +33,10 @@ class FakeFeatureFlags(byokEnabled: Boolean = false) : FeatureFlags {
 
     override suspend fun setTriageDeckAnimations(enabled: Boolean) {
         triageDeckAnimations.value = enabled
+    }
+
+    override suspend fun setTickAnimations(enabled: Boolean) {
+        tickAnimations.value = enabled
     }
 
     override suspend fun setSyncAutomatically(enabled: Boolean) {

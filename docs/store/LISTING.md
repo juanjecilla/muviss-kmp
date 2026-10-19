@@ -4,8 +4,8 @@
 `short_description.txt`, `full_description.txt`) and is uploaded by fastlane
 with every release candidate (ADR 0024, ADR 0025). This file explains it; it does not duplicate it, so
 the two cannot drift. `scripts/store/check-listing.sh` enforces Play's limits
-(title 30, short 80, full 4000 characters) and runs before every upload and in
-`start-release.sh`.
+(title 30, short 80, full 4000 characters); it runs on every PR (`pr-guards.yml`),
+in `start-release.sh` and before every upload.
 
 Release notes are per version: `fastlane/release-notes/vX.Y.Z/<locale>.txt`, max
 500 characters, one per listing locale (see `docs/RELEASING.md` §5).
@@ -20,9 +20,8 @@ is narrower than what the code can do:
   and are what `docs/store/DATA_SAFETY.md` and `docs/PRIVACY.md` declare;
   EPIC 32 (#75) must rewrite all four together when sync ships, and EPIC 41
   (co-watch) must revisit the "no social" line (ADR 0022).
-- **No language claim.** Only the navigation is translated so far (EPIC 31,
-  #74); the Spanish listing exists, but saying "available in Spanish" waits
-  until the app is.
+- **English and Spanish** may be claimed: the whole UI is localized since
+  EPIC 31 (#74).
 - **No "cast" claim.** Only episodes show guest cast and crew; titles do not.
 - **The TMDB attribution line stays** in every locale (TMDB's terms).
 - New-episode notifications are claimed: they exist on Android, which is the
@@ -32,11 +31,10 @@ is narrower than what the code can do:
 
 Generated, not captured: a `StoreShot` mode of the golden harness renders
 seeded screens into `fastlane/metadata/android/<locale>/images/` (EPIC 33,
-#76). Seed data uses public-domain films with public-domain poster scans and
-fictional shows with generated art — no real TMDB posters in marketing
-material. Planned set, in display order: Library (mixed statuses), title
-detail with episode ticks, Progress (watch next), Triage, Search/Discover,
-Profile stats; light and dark; plus the 1024×500 feature graphic.
+#76). Seed data is an invented catalogue with generated art — no real TMDB
+posters in marketing material. The set, in display order: Library (mixed
+statuses), title detail with episode ticks, Progress (watch next), Triage,
+Profile stats, Search/Discover. See "Listing images" below.
 
 ## App Store (iOS) — EPIC 11 / issue #13
 
@@ -105,4 +103,4 @@ screenshots — only the eventual public App Store listing does).
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-en.svg -o fastlane/metadata/android/en-US/images/featureGraphic.png
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-es.svg -o fastlane/metadata/android/es-ES/images/featureGraphic.png
   ```
-- `phoneScreenshots/` — six 1080×1920 shots from StoreShot (`./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot`): the real app over an invented catalogue with generated posters, so no third-party artwork appears. en-US only until EPIC 31 (#74) translates the feature screens; Play shows them for es-ES too.
+- `phoneScreenshots/` — six 1080×1920 shots from StoreShot (`./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot`): the real app over an invented catalogue with generated posters, so no third-party artwork appears. One light set per listing locale (en-US, es-ES); the catalogue's titles and overviews are invented English in both, as a real TMDB title's would be untranslated if TMDB has no Spanish text. The dark English set goes to the landing.
