@@ -100,12 +100,10 @@ private val catalog = mapOf(
     ),
 )
 
-/** What the user has already ticked: one show barely started, one mid-season, one into its second season. */
-private val ticked = listOf(
-    EpisodeId(severance, 1, 1),
-    EpisodeId(severance, 1, 2),
-    EpisodeId(shogun, 1, 1),
-) + (1..4).map { EpisodeId(theBear, 1, it) } + EpisodeId(theBear, 2, 1)
+/** What the user has already ticked: one show barely started, one mid-season, one into its second season. Watch Next lists the last one ticked first, so they are ticked in the order the golden shows them, last to first. */
+private val ticked = listOf(EpisodeId(shogun, 1, 1)) +
+    (1..4).map { EpisodeId(theBear, 1, it) } + EpisodeId(theBear, 2, 1) +
+    listOf(EpisodeId(severance, 1, 1), EpisodeId(severance, 1, 2))
 
 @Composable
 private fun WatchNextUnderTest(darkTheme: Boolean) {
