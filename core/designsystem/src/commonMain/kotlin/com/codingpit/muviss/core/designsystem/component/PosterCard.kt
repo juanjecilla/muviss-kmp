@@ -24,8 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -92,7 +93,6 @@ fun PosterCard(
                     title = title,
                     modifier = Modifier.fillMaxSize(),
                     size = PosterSize.Grid,
-                    contentDescription = if (showTitle) null else title,
                 )
                 if (rating != null) {
                     RatingBadge(
@@ -125,7 +125,9 @@ fun PosterCard(
                 maxLines = TITLE_LINES,
                 minLines = TITLE_LINES,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp).testTag(POSTER_TITLE_TAG),
+                // Visual only: the poster already carries the title (its description, or its no-artwork text), and
+                // a caption that is cut off by the viewport drops out of the merged label, leaving the card unlabelled.
+                modifier = Modifier.padding(top = 6.dp).clearAndSetSemantics { testTag = POSTER_TITLE_TAG },
             )
         }
     }
