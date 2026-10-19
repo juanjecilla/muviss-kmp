@@ -29,6 +29,8 @@ PRIVATE BY DESIGN
 • No ads and no analytics. Only optional, anonymous crash reports, which you can turn off in Settings.
 • Your library lives on your device and works offline. Back it up to a file and restore it on any device.
 
+Missing something? Request a feature from Settings: it opens a short form in your browser, and nothing is sent unless you submit it.
+
 In English and Spanish, with light and dark themes, on phones and tablets.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB.
