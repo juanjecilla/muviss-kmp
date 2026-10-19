@@ -20,6 +20,11 @@
 -- deliberately NOT synced: motion tolerance belongs to a device and the person
 -- holding it, not to a library.
 --
+-- `tickAnimations` was added in `19.sqm` (EPIC 52). It narrows `animationsEnabled`
+-- the way `triageDeckAnimations` does: readers take the AND of the two. It
+-- covers the feedback a tick plays on the Progress and Detail screens. Per
+-- device and NOT synced, like every motion preference above.
+--
 -- `syncCursorEpochMs` was added in `7.sqm`. It is NOT a second copy of
 -- `lastSyncedAtEpochMs`: that one answers "when did this device last complete
 -- a cycle" and is stamped from the local clock for the profile screen's label,
@@ -117,7 +122,8 @@ CREATE TABLE appSettings (
     onboardingCompleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     notificationNudgeDismissed INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality',
-    mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
 );
 
 selectSettings:
@@ -177,6 +183,9 @@ UPDATE appSettings SET animationsEnabled = :animationsEnabled WHERE id = 0;
 
 updateTriageDeckAnimations:
 UPDATE appSettings SET triageDeckAnimations = :triageDeckAnimations WHERE id = 0;
+
+updateTickAnimations:
+UPDATE appSettings SET tickAnimations = :tickAnimations WHERE id = 0;
 
 updateCrashReportsEnabled:
 UPDATE appSettings SET crashReportsEnabled = :crashReportsEnabled WHERE id = 0;

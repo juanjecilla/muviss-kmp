@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -121,6 +122,7 @@ private fun WatchNextUnderTest(darkTheme: Boolean) {
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), watchNextCache, clock),
         ToggleEpisodeSeenUseCase(progressRepository),
         watchNextCache,
+        FakeFeatureFlags(),
     )
     val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
     val upcomingViewModel = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))
