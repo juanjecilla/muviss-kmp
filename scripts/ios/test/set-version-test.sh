@@ -39,7 +39,7 @@ new_repo() {
 }
 commit() { git -C "$1" commit -q --allow-empty -m "$2"; }
 
-# Runs the phase against a plist that starts out as the Xcode default, and
+# Runs the phase against a plist that starts out with Config.xcconfig's values, and
 # prints "<short> <build>".
 stamp() {
   local dir="$1" plist
@@ -48,7 +48,7 @@ stamp() {
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
 <key>CFBundleVersion</key><string>1</string>
 </dict></plist>
 PLIST
@@ -85,11 +85,12 @@ nested="$r/source-only"
 mkdir -p "$nested/scripts/ios" "$nested/scripts/release"
 cp "$SCRIPTS/set-version.sh" "$nested/scripts/ios/"
 cp "$REPO_ROOT/scripts/release/version-code.sh" "$nested/scripts/release/"
-expect_eq "inside another repository: keeps the plist, never the parent's history" "$(stamp "$nested")" "1.0 1"
+expect_eq "inside another repository: keeps the plist, never the parent's history" "$(stamp "$nested")" "1.0.0 1"
 
 r2="$(mktemp -d "$WORK/nogit.XXXXXX")"
 mkdir -p "$r2/scripts/ios" && cp "$SCRIPTS/set-version.sh" "$r2/scripts/ios/"
-expect_eq "no git: keeps the xcconfig values and succeeds" "$(MUVISS_REPO_ROOT="$r2" "$r2/scripts/ios/set-version.sh" "$r2/missing.plist" >/dev/null 2>&1; echo $?)" "0"
+expect_eq "no git: keeps the xcconfig values in the plist" "$(stamp "$r2")" "1.0.0 1"
+expect_eq "no git, plist not built yet: still succeeds" "$(MUVISS_REPO_ROOT="$r2" "$r2/scripts/ios/set-version.sh" "$r2/missing.plist" >/dev/null 2>&1; echo $?)" "0"
 
 echo
 if [ "$failures" -gt 0 ]; then echo "$failures failure(s)"; exit 1; fi
