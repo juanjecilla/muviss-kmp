@@ -401,6 +401,10 @@ Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tick
 
 ---
 
+## iOS joins the staged train — issue #411 (added 2026-10-17)
+
+- **#411 — iOS on the staged train.** iOS walks the same three weeks as Play (TestFlight internal → external public-link beta → App Store with a seven-day phased release), with each platform's stage and gates recorded separately. Decision and Apple's rules, with their open assumptions: ADR 0033.
+
 ## Sequencing
 
 Wave 0 first (nothing else runs without CI; EPIC 43 belongs here too — every live-project verification task depends on it existing before it can run safely). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
