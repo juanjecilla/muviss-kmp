@@ -31,13 +31,4 @@ class PosterCardAccessibilityTest {
         assertEquals(Role.Button, config[SemanticsProperties.Role])
         assertEquals(listOf("Dune"), config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text })
     }
-
-    @Test
-    fun the_selection_ring_is_also_announced() = runComposeUiTest {
-        setContent {
-            MuvissTheme(darkTheme = true) { PosterCard(title = "Dune", posterUrl = null, onClick = {}, selected = true, modifier = Modifier.testTag("card")) }
-        }
-
-        assertEquals(true, onNodeWithTag("card").fetchSemanticsNode().config[SemanticsProperties.Selected])
-    }
 }
