@@ -332,6 +332,11 @@ android {
     }
 
     buildTypes {
+        // Talk branches only: installs next to the real app, so a demo never overwrites (or downgrades) a dev build.
+        getByName("debug") {
+            applicationIdSuffix = ".a11ytalk"
+            versionNameSuffix = "-a11ytalk"
+        }
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
