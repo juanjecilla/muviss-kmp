@@ -25,6 +25,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -61,10 +64,15 @@ fun PosterCard(
     val scale by animateFloatAsState(if (pressed) 0.97f else 1f, label = "posterPress")
 
     Column(
-        modifier = modifier.graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        },
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            // The whole card is the control (poster + caption): one announcement, "Title, button",
+            // and the caption is part of the target. Merged by `clickable`.
+            .semantics { this.selected = selected }
+            .clickable(interactionSource = interactionSource, indication = null, role = Role.Button, onClick = onClick),
     ) {
         Surface(
             shape = MaterialTheme.shapes.medium,
@@ -79,11 +87,16 @@ fun PosterCard(
                         Modifier
                     },
                 )
-                .clip(MaterialTheme.shapes.medium)
-                .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
+                .clip(MaterialTheme.shapes.medium),
         ) {
             Box(Modifier.fillMaxSize()) {
-                PosterImage(url = posterUrl, title = title, modifier = Modifier.fillMaxSize(), size = PosterSize.Grid)
+                PosterImage(
+                    url = posterUrl,
+                    title = title,
+                    modifier = Modifier.fillMaxSize(),
+                    size = PosterSize.Grid,
+                    contentDescription = if (showTitle) null else title,
+                )
                 if (rating != null) {
                     RatingBadge(
                         rating = rating,

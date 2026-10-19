@@ -126,7 +126,7 @@ fun SearchScreen(
  * doesn't want (results render inline below the pill instead).
  */
 @Composable
-private fun SearchPill(
+internal fun SearchPill(
     query: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
