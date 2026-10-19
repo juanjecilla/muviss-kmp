@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import coil3.compose.AsyncImage
 
@@ -31,11 +32,17 @@ fun PosterImage(
     title: String,
     modifier: Modifier = Modifier,
     size: PosterSize = PosterSize.Detail,
+    // Null when a caption beside the image already says the title: announced twice otherwise.
+    contentDescription: String? = title,
 ) {
     val requested = remember(url, size) { url?.takeIf { it.isNotBlank() }?.let { sizedImageUrl(it, size) } }
     var failed by remember(requested) { mutableStateOf(false) }
     if (requested == null || failed) {
-        Box(modifier, contentAlignment = Alignment.Center) {
+        // With a caption beside the poster, this drawn-only title is a duplicate: hide it from the semantics tree.
+        Box(
+            if (contentDescription == null) modifier.clearAndSetSemantics {} else modifier,
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelSmall,
@@ -46,7 +53,7 @@ fun PosterImage(
         val placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceContainerHigh)
         AsyncImage(
             model = requested,
-            contentDescription = title,
+            contentDescription = contentDescription,
             modifier = modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
             placeholder = placeholder,
