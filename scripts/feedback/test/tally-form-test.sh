@@ -41,7 +41,8 @@ done
 grep -q '^PATCH https://stub.test/forms/wA1b2C ' "$log" && pass "update PATCHes the form" || fail "update PATCHes the form"
 
 : > "$log"; "$SCRIPT" publish wA1b2C >/dev/null
-grep -q '^PATCH https://stub.test/forms/wA1b2C {"status":"PUBLISHED"}' "$log" && pass "publish PATCHes status PUBLISHED" || fail "publish PATCHes status"
+grep -q '^PATCH https://stub.test/forms/wA1b2C ' "$log" && grep -q '"status": "PUBLISHED"' "$log" && pass "publish PATCHes status PUBLISHED" || fail "publish PATCHes status"
+grep -q '"HIDDEN_FIELDS"' "$log" && pass "publish sends the blocks too, not just the status" || fail "publish sends the blocks"
 
 CURL_STATUS=401 CURL_BODY='{"message":"nope"}' "$SCRIPT" create >/dev/null 2>&1; expect_eq "a 401 fails" "$?" "1"
 (unset TALLY_API_KEY; "$SCRIPT" create >/dev/null 2>&1); expect_eq "no key fails" "$?" "1"

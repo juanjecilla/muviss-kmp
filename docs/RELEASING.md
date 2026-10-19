@@ -1333,7 +1333,7 @@ The **Request a feature** row in Settings > About is built in but **dark**: it o
 
 1. In Tally, create an API key (Settings > API keys) and `export TALLY_API_KEY=…`. It stays with you; it never goes in the app or in CI.
 2. `scripts/feedback/tally-form.sh create` makes a **draft** from `scripts/feedback/tally-form.json` and prints the form id and `https://tally.so/r/<id>`. **First run, check the draft in the dashboard** (issue #450): the four hidden fields (`version`, `platform`, `os`, `locale`), the optional email, and that "Email me on each submission" is on. The script's block shapes were not verified against the live API, and the create response has no URL field, so the script derives it from the id.
-3. `scripts/feedback/tally-form.sh publish <id>` publishes it. `update <id>` re-applies the checked-in definition after you edit the JSON.
+3. `scripts/feedback/tally-form.sh publish <id>` publishes it, sending the blocks along with the status (a status-only PATCH leaves the public page with no fields, only a Submit button). `update <id>` re-applies the checked-in definition as a draft after you edit the JSON, so run `publish` again afterwards.
 4. Turn it on: `FEATURE_REQUEST_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets (the compiled default), or the ConfigCat text setting **`featureRequestUrl`** (no release needed). Blank means no row.
 5. Verify end to end: open the app, tap the row, and submit a test response; confirm the email arrives and the four hidden fields are filled.
 
