@@ -61,12 +61,15 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CelebrationBurst
@@ -173,6 +176,13 @@ private fun WatchNextScreen(
     // What to celebrate on screen, and when: a new token restarts the burst.
     var celebration by remember { mutableStateOf<Celebration?>(null) }
     var tokens by remember { mutableStateOf(0) }
+    // The latest tap. A tick's outcome can arrive after a later tap's (a caught-up one
+    // returns at once, a plain one waits for the list to move on), and only the latest
+    // tap may take the snackbar: an older one would show stale Undo for another episode.
+    var latestTap by remember { mutableStateOf(0) }
+    // The snackbar's measured height, so the list's end clears a wrapped message too.
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
 
     // One-tap tick with undo (design doc, Motion + Progress screen): tick
     // persists immediately; the snackbar's Undo reverts it via the VM. The
@@ -180,10 +190,13 @@ private fun WatchNextScreen(
     // and a milestone says so there too: with motion off it is all there is.
     val onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit = tick@{ item, onFailed ->
         val episode = item.nextEpisode ?: return@tick
+        val tap = ++latestTap
         scope.launch {
             val outcome = viewModel.tick(item) ?: return@launch
+            if (outcome is TickOutcome.Failed) return@launch onFailed()
+            if (tap != latestTap) return@launch
             val message = when (outcome) {
-                is TickOutcome.Failed -> return@launch onFailed()
+                is TickOutcome.Failed -> return@launch
                 is TickOutcome.CaughtUp -> getString(Res.string.tick_snackbar_caught_up, item.title)
                 is TickOutcome.SeasonFinished -> getString(Res.string.tick_snackbar_season_done, outcome.season)
                 is TickOutcome.Plain -> getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
@@ -210,7 +223,14 @@ private fun WatchNextScreen(
         viewModel.consumeMessage()
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState, Modifier.semantics { testTag = WATCH_NEXT_SNACKBAR_TAG }) }) { padding ->
+    Scaffold(snackbarHost = {
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .semantics { testTag = WATCH_NEXT_SNACKBAR_TAG },
+        )
+    }) { padding ->
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = viewModel::refresh,
@@ -228,7 +248,15 @@ private fun WatchNextScreen(
                         body = stringResource(Res.string.watch_next_empty_body),
                     )
 
-                    else -> WatchNextList(state.items, animate = state.animateTicks, onTick = onTick, onOpenDetail = onOpenDetail)
+                    else -> WatchNextList(
+                        state.items,
+                        animate = state.animateTicks,
+                        // At least the usual allowance, so the end does not jump when a one-line
+                        // snackbar appears; more when a long title or a large font wraps it.
+                        bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight),
+                        onTick = onTick,
+                        onOpenDetail = onOpenDetail,
+                    )
                 }
                 // Over the list, not in a row: a show that is caught up leaves the list,
                 // and its row with it.
@@ -255,6 +283,7 @@ private fun Celebration.label(): String = when (outcome) {
 private fun WatchNextList(
     items: List<WatchNextItem>,
     animate: Boolean,
+    bottomPadding: Dp,
     onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
 ) {
@@ -266,7 +295,7 @@ private fun WatchNextList(
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
             // Room for the undo snackbar, which overlays the end of this list.
-            bottom = MuvissSpacing.bottomContentWithSnackbar,
+            bottom = bottomPadding,
         ),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->

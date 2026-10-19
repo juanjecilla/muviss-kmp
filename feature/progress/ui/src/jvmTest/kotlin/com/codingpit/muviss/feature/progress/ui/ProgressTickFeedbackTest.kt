@@ -3,6 +3,8 @@
 package com.codingpit.muviss.feature.progress.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.Density
 import com.codingpit.muviss.core.designsystem.component.CELEBRATION_BURST_TAG
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
@@ -183,6 +186,25 @@ class ProgressTickFeedbackTest {
         assertTrue(lastRowBottom <= snackbarTop, "last row ends at $lastRowBottom, snackbar starts at $snackbarTop")
     }
 
+    @Test
+    fun a_snackbar_wrapped_by_a_long_title_and_a_large_font_still_clears_the_last_row() = runComposeUiTest {
+        setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
+                WatchNext(seasons = listOf(season(1, 1)), alreadySeen = 0, extraShows = 12, title = LONG_TITLE)
+            }
+        }
+        mainClock.autoAdvance = false
+
+        onAllNodesWithContentDescription("Mark", substring = true)[0].performClick()
+        mainClock.advanceTimeBy(100)
+        onNodeWithTag(WATCH_NEXT_LIST_TAG).performScrollToIndex(11)
+        mainClock.advanceTimeBy(500)
+
+        val snackbarTop = onNodeWithTag(WATCH_NEXT_SNACKBAR_TAG).fetchSemanticsNode().boundsInRoot.top
+        val lastRowBottom = onAllNodesWithTag(WATCH_NEXT_ROW_TAG).fetchSemanticsNodes().maxOf { it.boundsInRoot.bottom }
+        assertTrue(lastRowBottom <= snackbarTop, "last row ends at $lastRowBottom, snackbar starts at $snackbarTop")
+    }
+
     private fun ComposeUiTest.tapTick() {
         mainClock.autoAdvance = false
         onNodeWithContentDescription("Mark", substring = true).performClick()
@@ -193,6 +215,8 @@ class ProgressTickFeedbackTest {
 private val mini = MediaId.tmdbTv("4242")
 
 /** [count] aired episodes in season [number]. */
+private const val LONG_TITLE = "The Remarkably Long and Winding Chronicles of a Show With an Unreasonably Long Name"
+
 private fun season(number: Int, count: Int) = Season(
     number = number,
     name = "Season $number",
@@ -213,10 +237,11 @@ private fun WatchNext(
     animations: Boolean = true,
     repository: FakeProgressRepository = FakeProgressRepository(),
     extraShows: Int = 0,
+    title: String = "Mini",
 ) {
     val extras = (1..extraShows).associate { MediaId.tmdbTv("9$it") to "Extra $it" }
     val collectionApi = FakeCollectionApi(
-        listOf(CollectionSummary(mini, "Mini", posterUrl = null, status = WatchStatus.WATCHING)) +
+        listOf(CollectionSummary(mini, title, posterUrl = null, status = WatchStatus.WATCHING)) +
             extras.map { (id, title) -> CollectionSummary(id, title, posterUrl = null, status = WatchStatus.WATCHING) },
     )
     runBlocking { repository.setSeenBulk(seasons.flatMap { it.episodes }.take(alreadySeen).map { it.id }, seen = true) }
