@@ -17,6 +17,11 @@
 # commit count. So an RC's build number carries its rc, and the same tagged
 # commit gives the same number on both platforms.
 #
+# A final tag's number (rc 0) is below its RCs', and a commit after it falls
+# back to the commit count. Neither is ever uploaded: only RCs go to
+# TestFlight, and production promotes the RC binary without rebuilding
+# (ADR 0030, ADR 0033), so within one version the uploads only ever rise.
+#
 # Without git it keeps the Config.xcconfig values and succeeds: a source-only
 # archive must still build.
 #

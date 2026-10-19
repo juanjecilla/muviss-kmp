@@ -90,8 +90,9 @@ jobs:
           # Anything the shared Kotlin/Native framework or the Xcode project can
           # see. `core`, `feature` and `models` are in here because :app:shared
           # depends on them, so a change there does reach the iOS link. This
-          # file is in here too: a PR that edits CI must run the CI it edits.
-          IOS_PATHS='^(app/shared/|app/iosApp/|scripts/ios/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$'
+          # file is in here too: a PR that edits CI must run the CI it edits. So is
+          # version-code.sh, which scripts/ios/set-version.sh calls for tagged builds.
+          IOS_PATHS='^(app/shared/|app/iosApp/|scripts/ios/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$|^scripts/release/version-code\.sh$'
           # Everything above, plus the platforms iOS cannot see but `build`,
           # `desktop` and `web-tests` can.
           CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/|supabase/|scripts/)'
