@@ -16,11 +16,15 @@ if [ ! -x /usr/libexec/PlistBuddy ]; then
   exit 0
 fi
 
+# Every throwaway directory lives under one parent the trap removes.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
 # A throwaway repo carrying the two scripts the phase calls, so the test runs
 # the real thing against a real git history.
 new_repo() {
   local dir
-  dir="$(mktemp -d)"
+  dir="$(mktemp -d "$WORK/repo.XXXXXX")"
   mkdir -p "$dir/scripts/ios" "$dir/scripts/release"
   cp "$SCRIPTS/set-version.sh" "$dir/scripts/ios/"
   cp "$REPO_ROOT/scripts/release/version-code.sh" "$dir/scripts/release/"
@@ -39,7 +43,7 @@ commit() { git -C "$1" commit -q --allow-empty -m "$2"; }
 # prints "<short> <build>".
 stamp() {
   local dir="$1" plist
-  plist="$(mktemp -d)/Info.plist"
+  plist="$(mktemp -d "$WORK/plist.XXXXXX")/Info.plist"
   cat >"$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -73,7 +77,11 @@ echo "# dirty" >>"$r/scripts/ios/set-version.sh"
 expect_eq "dirty tree on a tag: not a release tag, build is the count" "$(stamp "$r")" "1.2.0 4"
 git -C "$r" checkout -q -- scripts/ios/set-version.sh
 
-r2="$(mktemp -d)"
+commit "$r" "feat: c"
+git -C "$r" tag v1.3.0
+expect_eq "exact lightweight tag: resolved like an annotated one" "$(stamp "$r")" "1.3.0 1030000"
+
+r2="$(mktemp -d "$WORK/nogit.XXXXXX")"
 mkdir -p "$r2/scripts/ios" && cp "$SCRIPTS/set-version.sh" "$r2/scripts/ios/"
 expect_eq "no git: keeps the xcconfig values and succeeds" "$(MUVISS_REPO_ROOT="$r2" "$r2/scripts/ios/set-version.sh" "$r2/missing.plist" >/dev/null 2>&1; echo $?)" "0"
 
