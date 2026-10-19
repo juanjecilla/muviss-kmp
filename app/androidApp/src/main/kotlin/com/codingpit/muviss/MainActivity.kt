@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,6 +21,8 @@ import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.codingpit.muviss.ai.MlKitOnDeviceAi
+import com.codingpit.muviss.core.designsystem.ai.LocalOnDeviceAi
 import com.codingpit.muviss.core.sync.OAUTH_CODE_PARAM
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.models.MediaType
@@ -61,13 +64,17 @@ class MainActivity : ComponentActivity() {
         oauthCode = intent.oauthCode()
         askForNotificationsOnceAShowIsSaved()
 
+        // Talk branch: models that run on the phone (ML Kit GenAI). Screens read it and degrade to nothing.
+        val onDeviceAi = MlKitOnDeviceAi(this)
         setContent {
-            MuvissApp(
-                deepLinkMediaId = deepLinkMediaId,
-                onDeepLinkConsumed = { deepLinkMediaId = null },
-                oauthCode = oauthCode,
-                onOAuthCodeConsumed = { oauthCode = null },
-            )
+            CompositionLocalProvider(LocalOnDeviceAi provides onDeviceAi) {
+                MuvissApp(
+                    deepLinkMediaId = deepLinkMediaId,
+                    onDeepLinkConsumed = { deepLinkMediaId = null },
+                    oauthCode = oauthCode,
+                    onOAuthCodeConsumed = { oauthCode = null },
+                )
+            }
         }
     }
 

@@ -93,4 +93,10 @@
     <!-- Screen-reader state of a season header (EPIC 31b, #164). -->
     <string name="a11y_expanded">Desplegada</string>
     <string name="a11y_collapsed">Plegada</string>
+    <string name="detail_ai_shorten">Corto y sencillo</string>
+    <string name="detail_ai_describe">Describir imagen</string>
+    <string name="detail_ai_working">Trabajando en tu dispositivo…</string>
+    <string name="detail_ai_shortened_label">Acortado en tu dispositivo</string>
+    <string name="detail_ai_described_label">Descrito en tu dispositivo, en inglés. Puede contener errores.</string>
+    <string name="detail_ai_failed">Este dispositivo no pudo hacerlo.</string>
 </resources>

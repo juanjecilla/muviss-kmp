@@ -110,4 +110,10 @@
     <!-- Screen-reader state of a season header (EPIC 31b, #164). -->
     <string name="a11y_expanded">Expanded</string>
     <string name="a11y_collapsed">Collapsed</string>
+    <string name="detail_ai_shorten">Short &amp; simple</string>
+    <string name="detail_ai_describe">Describe image</string>
+    <string name="detail_ai_working">Working on your device…</string>
+    <string name="detail_ai_shortened_label">Shortened on your device</string>
+    <string name="detail_ai_described_label">Described on your device, in English. It can be wrong.</string>
+    <string name="detail_ai_failed">This device could not do that.</string>
 </resources>

@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ML Kit GenAI (on-device Gemini Nano, beta) needs API 26; Muviss still runs on 24. MlKitOnDeviceAi checks
+         SDK_INT before touching these libraries, so older devices simply never see the buttons that use them. -->
+    <uses-sdk tools:overrideLibrary="com.google.mlkit.genai.imagedescription,com.google.mlkit.genai.rewriting,com.google.mlkit.genai.common" />
+
 
     <!-- Only network use: TMDB metadata lookups and optional Sentry crash
          reports. Declared explicitly instead of relying on it arriving via

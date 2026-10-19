@@ -1,4 +1,6 @@
 [versions]
+# On-device GenAI (Gemini Nano via AICore): beta, API 26+. Talk branch only.
+mlkitGenai = "1.0.0-beta1"
 agp = "9.2.1"
 android-compileSdk = "37"
 android-minSdk = "24"
@@ -55,6 +57,8 @@ kover = "0.9.11"
 androidxWork = "2.10.0"
 
 [libraries]
+mlkit-genai-imageDescription = { module = "com.google.mlkit:genai-image-description", version.ref = "mlkitGenai" }
+mlkit-genai-rewriting = { module = "com.google.mlkit:genai-rewriting", version.ref = "mlkitGenai" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }

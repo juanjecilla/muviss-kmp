@@ -65,6 +65,10 @@ dependencies {
     implementation(libs.koin.core)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.work.runtimeKtx)
+    // On-device GenAI for the talk (beta): describe images, shorten text. No network, no account.
+    implementation(libs.mlkit.genai.imageDescription)
+    implementation(libs.coil.compose) // bitmap of the backdrop for Image Description
+    implementation(libs.mlkit.genai.rewriting)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
 

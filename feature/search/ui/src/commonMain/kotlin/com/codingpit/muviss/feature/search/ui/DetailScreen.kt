@@ -394,6 +394,11 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
         }
     }
 
+    // On-device helpers (ML Kit GenAI on Android): they draw nothing unless the device can do them.
+    item(key = "onDeviceAi", contentType = "onDeviceAi") {
+        OnDeviceAiTools(overview = details.summary.overview, backdropUrl = details.backdropUrl, modifier = section)
+    }
+
     when (details.type) {
         MediaType.MOVIE -> item(key = "movieWatched", contentType = "movieWatched") {
             Box(section) {
