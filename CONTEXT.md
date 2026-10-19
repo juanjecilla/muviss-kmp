@@ -175,3 +175,13 @@ _Avoid_: recommendation (it implies a model that learned the user; this is the u
 **Taste Profile**:
 What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre. Belongs to the account like the rest of the user's data (synced and exported).
 _Avoid_: preferences, settings (those are per-device switches); taste, interests; algorithm; disliked genres (that is a Muted Genre).
+
+### Release train
+
+**Stage**:
+Where one platform's build of a version stands on the weekly train: internal, then open beta, then production. Each platform has its own Stage for the same version (ADR 0033), so Play can be in production while iOS is still on beta.
+_Avoid_: track (Play's word for a channel), phase (see Phased Release).
+
+**Phased Release**:
+Apple's seven-day rollout of an App Store version to a growing share of devices with automatic updates on (1%, 2%, 5%, 10%, 20%, 50%, then 100%). It can be paused, and a paused release resumes where it stopped. Play's equivalent is the staged-rollout ramp.
+_Avoid_: ramp (Play's word), staged rollout.

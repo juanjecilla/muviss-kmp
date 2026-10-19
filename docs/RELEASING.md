@@ -885,18 +885,17 @@ always available on `NSObject`) instead of `content.title = ...`.
 
 ### Versioning
 
-Mirrors item 3's scheme (git-derived, no hardcoded version) via a **Run
-Script build phase** named "Set version from git" (`project.pbxproj`,
-after the Resources phase): it computes the same `versionCode`
-(`git rev-list --count HEAD`) and a `versionName` (latest exact
-`vMAJOR.MINOR.PATCH` tag, else `0.1.0-dev.<count>` — no `+sha` suffix
-unlike Android's, since `CFBundleShortVersionString` is conventionally
-kept to dotted numbers/simple dev suffixes) and overwrites
-`CFBundleVersion`/`CFBundleShortVersionString` in the **built** Info.plist
-via `/usr/libexec/PlistBuddy`. `Configuration/Config.xcconfig`'s
-`CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` are only the static fallback
-used when git is unavailable (e.g. a source-only archive) — the script
-no-ops (keeping them) if `git rev-list` fails.
+Mirrors item 3's scheme (git-derived, no hardcoded version). Both the `iosApp`
+and `MuvissWidget` targets run the same **Run Script phase** "Set version from
+git", which calls `scripts/ios/set-version.sh` (so the app and its extension
+always match, ITMS-90473). It overwrites `CFBundleVersion` and
+`CFBundleShortVersionString` in the **built** Info.plist: `CFBundleVersion` is
+the Android `versionCode` (`scripts/release/version-code.sh` on an exact
+`vX.Y.Z[-rcN]` tag, else the commit count), and `CFBundleShortVersionString` is
+the numeric `X.Y.Z` of the latest tag, with any `-rcN` dropped, or `0.1.0` when
+untagged. `Configuration/Config.xcconfig`'s `CURRENT_PROJECT_VERSION`/
+`MARKETING_VERSION` are only the static fallback used when git is unavailable;
+the script keeps them in that case. Details in `app/iosApp/README.md`.
 
 ### Bundle id / signing (manual — no CI signing path yet)
 
@@ -935,15 +934,9 @@ Automatic` (project.pbxproj) plus a blank `TEAM_ID` xcconfig variable means:
 (`app-icon-1024.png`, correctly 1024×1024) plus two *declared-but-empty*
 slots for iOS 18's dark/tinted Home Screen icon appearances (no file
 assigned — falls back to the default icon on iOS 18+, a cosmetic gap
-only). The blocking one: **`app-icon-1024.png` has an alpha channel**
-(`sips -g hasAlpha` → `yes`). App Store Connect rejects an App Store/
-marketing icon with transparency (`Invalid Large App Icon` at Archive
-validation or upload). Fix before the first real submission by
-flattening it onto an opaque background (e.g.
-`sips -s format png --setProperty hasAlpha no ...` after compositing
-onto white/black, or re-export from the source design tool without
-alpha) — not attempted here since there's no real Muviss brand artwork to
-re-derive it from yet (same caveat item 7 gives the desktop icons).
+only). The alpha channel that App Store Connect rejects (`Invalid Large App
+Icon`) is gone: `app-icon-1024.png` is opaque RGB (`sips -g hasAlpha` → `no`).
+Re-check that line before a submission if the icon is ever re-exported.
 
 ### Sentry test crash
 
@@ -1256,9 +1249,9 @@ entitlement files, `MUVISS_APP_GROUP` in
 
 ### iOS: what to check in Xcode
 
-The `MuvissWidget` target was added to `project.pbxproj` by hand — the
-project opens and its target graph parses, but **it has never been built**,
-because building it needs Xcode and a team. Expect to adjust:
+The `MuvissWidget` target is built by CI's `ios` job, as a dependency of
+`iosApp` under `CODE_SIGNING_ALLOWED=NO`, so it compiles and links on every
+PR. What CI cannot show is behaviour on a signed device, so expect to adjust:
 
 - **Framework linking.** The target links the static `Shared` framework via
   `OTHER_LDFLAGS = -framework Shared` and a `FRAMEWORK_SEARCH_PATHS` entry
