@@ -38,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -190,7 +191,15 @@ private fun WatchNextScreen(
             if (state.animateTicks && outcome !is TickOutcome.Plain) {
                 celebration = Celebration(outcome, item.title, ++tokens)
             }
-            val result = snackbarHostState.showSnackbar(message = message, actionLabel = getString(Res.string.action_undo))
+            // The newest tick takes the slot: showSnackbar queues, so N quick ticks would
+            // otherwise keep one on screen for N times its timeout.
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = getString(Res.string.action_undo),
+                // Material3 defaults to Indefinite whenever an action label is given.
+                duration = SnackbarDuration.Short,
+            )
             if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
         }
     }
@@ -201,7 +210,7 @@ private fun WatchNextScreen(
         viewModel.consumeMessage()
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState, Modifier.semantics { testTag = WATCH_NEXT_SNACKBAR_TAG }) }) { padding ->
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = viewModel::refresh,
@@ -250,13 +259,14 @@ private fun WatchNextList(
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().semantics { testTag = WATCH_NEXT_LIST_TAG },
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
-            bottom = MuvissSpacing.bottomContent,
+            // Room for the undo snackbar, which overlays the end of this list.
+            bottom = MuvissSpacing.bottomContentWithSnackbar,
         ),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
@@ -267,7 +277,8 @@ private fun WatchNextList(
                 onClick = { onOpenDetail(item.mediaId) },
                 // A row that leaves (caught up) fades out and the rest close the gap, unless
                 // motion is off, when both are instant.
-                modifier = if (animate) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null),
+                modifier = (if (animate) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null))
+                    .semantics { testTag = WATCH_NEXT_ROW_TAG },
             )
         }
     }
@@ -275,6 +286,11 @@ private fun WatchNextList(
 
 /** Tags the "S1E3 seen" sweep across a row for a moment after its tick (EPIC 52). */
 const val TICK_CONFIRMATION_TAG = "tickConfirmation"
+
+/** One Watch Next row, the list it scrolls in, and the undo snackbar that overlays its end. */
+const val WATCH_NEXT_ROW_TAG = "watchNextRow"
+const val WATCH_NEXT_SNACKBAR_TAG = "watchNextSnackbar"
+const val WATCH_NEXT_LIST_TAG = "watchNextList"
 
 private const val SWEEP_MILLIS = 350
 private const val CONFIRMATION_HOLD_MILLIS = 250L
