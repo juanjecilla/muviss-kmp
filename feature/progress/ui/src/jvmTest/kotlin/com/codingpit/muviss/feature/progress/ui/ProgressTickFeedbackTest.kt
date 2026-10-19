@@ -16,6 +16,7 @@ import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
@@ -171,7 +172,7 @@ private fun WatchNext(
         animationsEnabled.value = animations
     }
     val watchNext = ProgressViewModel(
-        WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(repository), cache, FakeClock(1_000L * 86_400_000L)),
+        WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(repository), ObserveLastWatchedAtUseCase(repository), cache, FakeClock(1_000L * 86_400_000L)),
         ToggleEpisodeSeenUseCase(repository),
         cache,
         flags,

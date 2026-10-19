@@ -16,6 +16,7 @@ import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.EpisodeProgress
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
@@ -99,6 +100,8 @@ internal class FakeProgressRepository : ProgressRepository {
 
     override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
 
+    override fun observeLastWatchedAt(): Flow<Map<MediaId, Long>> = flowOf(emptyMap())
+
     override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
 
     override suspend fun recordPlay(episodeId: EpisodeId) = setSeen(episodeId, true)
@@ -169,7 +172,7 @@ class ProgressViewModelTest {
     ): Pair<ProgressViewModel, EpisodeCatalogCache> {
         val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore())
         val vm = ProgressViewModel(
-            WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), cache, FakeClock(today)),
+            WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), cache, FakeClock(today)),
             ToggleEpisodeSeenUseCase(progressRepository),
             cache,
             flags,
