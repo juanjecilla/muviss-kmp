@@ -29,7 +29,7 @@ PRIVATE BY DESIGN
 • No ads and no analytics. Only optional, anonymous crash reports, which you can turn off in Settings.
 • Your library lives on your device and works offline. Back it up to a file and restore it on any device.
 
-Missing something? Request a feature from Settings: it opens a short form in your browser, and nothing is sent unless you submit it.
+Missing something, or something broken? Request a feature or report a problem from Settings: each opens a short form in your browser, and you decide what to write.
 
 In English and Spanish, with light and dark themes, on phones and tablets.
 
