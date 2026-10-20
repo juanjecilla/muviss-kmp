@@ -225,7 +225,7 @@ jobs:
     needs: [tag, desktop-release]
     if: needs.tag.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40 # up to ~25 waiting for a still-running RC workflow
     permissions:
       contents: write
       actions: read # which RC run uploaded to TestFlight
@@ -259,11 +259,27 @@ jobs:
           [ "$PREV" = "$TAG" ] && PREV=""
           # The RC's iOS job skips without the Apple setup and can fail on its own, so
           # say TestFlight only when its upload step succeeded for this RC's commit.
+          # IOS_UPLOAD: success | none (every run finished without an upload) |
+          # unknown (a lookup failed, or a run was still going after ~25 minutes).
           RC_SHA="$(git rev-list -n 1 "$RC_TAG")"
-          IOS_UPLOAD=""
-          for RUN in $(gh run list --workflow release-rc.yml --commit "$RC_SHA" --json databaseId --jq '.[].databaseId'); do
-            IOS_UPLOAD="$(gh run view "$RUN" --json jobs --jq '.jobs[] | select(.name == "ios") | .steps[] | select(.name == "Archive and upload to TestFlight (internal)") | .conclusion' || true)"
-            [ "$IOS_UPLOAD" = "success" ] && break
+          IOS_UPLOAD=none
+          if ! RUNS="$(gh run list --workflow release-rc.yml --commit "$RC_SHA" --json databaseId --jq '.[].databaseId')"; then
+            IOS_UPLOAD=unknown
+            RUNS=""
+          fi
+          for RUN in $RUNS; do
+            STATUS=""
+            for _ in $(seq 1 50); do
+              STATUS="$(gh run view "$RUN" --json status --jq .status)" || { STATUS=""; break; }
+              [ "$STATUS" = "completed" ] && break
+              sleep 30
+            done
+            if [ "$STATUS" != "completed" ]; then IOS_UPLOAD=unknown; continue; fi
+            if ! STEP="$(gh run view "$RUN" --json jobs --jq '.jobs[] | select(.name == "ios") | .steps[] | select(.name == "Archive and upload to TestFlight (internal)") | .conclusion')"; then
+              IOS_UPLOAD=unknown
+              continue
+            fi
+            if [ "$STEP" = "success" ]; then IOS_UPLOAD=success; break; fi
           done
           {
             echo "Muviss ${TAG}."
@@ -277,11 +293,11 @@ jobs:
             echo "  All three are **unsigned and un-notarized** (#39): macOS Gatekeeper"
             echo "  will refuse the DMG until it is opened via right-click > Open, and"
             echo "  Windows SmartScreen will warn (#179)."
-            if [ "$IOS_UPLOAD" = "success" ]; then
-              echo "- **iOS** — on TestFlight (internal) as the same candidate, uploaded by the release-candidate workflow's iOS job. Nothing is rebuilt here, and App Store submission is a separate step (ADR 0033)."
-            else
-              echo "- **iOS** — no build for this version: the release-candidate workflow did not upload $RC_TAG to TestFlight."
-            fi
+            case "$IOS_UPLOAD" in
+              success) echo "- **iOS** — on TestFlight (internal) as the same candidate, uploaded by the release-candidate workflow's iOS job. Nothing is rebuilt here, and App Store submission is a separate step (ADR 0033)." ;;
+              none) echo "- **iOS** — no build for this version: the release-candidate workflow did not upload $RC_TAG to TestFlight." ;;
+              *) echo "- **iOS** — whether $RC_TAG reached TestFlight could not be verified when these notes were written; see the release-candidate workflow's iOS job." ;;
+            esac
             echo
             echo "### Not in this build"
             echo

@@ -415,6 +415,7 @@ platform :ios do
         ipa: ipa,
         distribute_external: false,
         groups: groups,
+        submit_beta_review: false, # internal groups only: never start a beta review
         skip_submission: groups.nil?,
         skip_waiting_for_build_processing: groups.nil?,
       )
