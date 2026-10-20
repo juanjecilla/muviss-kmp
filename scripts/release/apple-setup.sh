@@ -225,12 +225,19 @@ require() {
   fi
 }
 
+# fastlane_ready: bundle, the Gemfile and the installed gems are all here. A
+# fresh checkout often has the first two but not the third (no bundle install
+# yet); the checks below then report "skipped", never a false failure.
+fastlane_ready() {
+  command -v bundle >/dev/null 2>&1 && [ -f Gemfile ] && bundle check >/dev/null 2>&1
+}
+
 # live_asc_check: one read-only call to the App Store Connect API that proves
 # the key's credentials work and that the app record exists. Uploads nothing.
 # Needs APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID and APPLE_ASC_P8_PATH. It does
 # not prove the key's ROLE (Admin): only a cloud-managed signing run does.
 live_asc_check() {
-  if ! command -v bundle >/dev/null 2>&1 || [ ! -f Gemfile ]; then return 2; fi
+  fastlane_ready || return 2
   APP_ID="$APP_ID" bundle exec ruby -Ifastlane -e '
     require "app_store_connect"
     client = AppStoreConnect::Client.new(
@@ -246,7 +253,7 @@ live_asc_check() {
 
 # lanes_check: the iOS lanes exist in this checkout. Loads fastlane, uploads nothing.
 lanes_check() {
-  if ! command -v bundle >/dev/null 2>&1 || [ ! -f Gemfile ]; then return 2; fi
+  fastlane_ready || return 2
   bundle exec fastlane lanes 2>/dev/null | grep -q 'beta_external'
 }
 
@@ -274,12 +281,12 @@ verify_stage() {
     if grep -qx "$name" <<<"$vars"; then printf '  %s✓%s variable  %s\n' "$GREEN" "$RESET" "$name"
     else printf '  %s-%s variable  %s (optional, unset)\n' "$DIM" "$RESET" "$name"; fi
   done
-  if [[ -n "${APPLE_ASC_P8_PATH:-}" ]]; then
+  if [[ -n "${APPLE_ASC_KEY_ID:-}" && -n "${APPLE_ASC_ISSUER_ID:-}" && -n "${APPLE_ASC_P8_PATH:-}" ]]; then
     local asc=0
     live_asc_check || asc=$?
     case "$asc" in
       0) printf '  %s✓%s App Store Connect: key works and the app record exists\n' "$GREEN" "$RESET" ;;
-      2) note "App Store Connect read skipped here (needs bundle and the Gemfile)." ;;
+      2) note "App Store Connect read skipped here (needs bundle, the Gemfile and bundle install)." ;;
       *) printf '  %s✗%s App Store Connect: the read failed (wrong key, issuer, or no app record)\n' "$RED" "$RESET"; missing=$((missing + 1)) ;;
     esac
   else
@@ -289,7 +296,7 @@ verify_stage() {
   lanes_check || lanes=$?
   case "$lanes" in
     0) printf '  %s✓%s fastlane lists the iOS lanes (nothing was uploaded)\n' "$GREEN" "$RESET" ;;
-    2) note "fastlane lanes check not run here (needs bundle and the Gemfile)." ;;
+    2) note "fastlane lanes check not run here (needs bundle, the Gemfile and bundle install)." ;;
     *) printf '  %s✗%s fastlane does not list the iOS lanes (beta_external missing)\n' "$RED" "$RESET"; missing=$((missing + 1)) ;;
   esac
   (( missing == 0 ))
