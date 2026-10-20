@@ -422,6 +422,37 @@ platform :ios do
     end
   end
 
+  desc "Send the RC's TestFlight build to the external group (public link) and submit it to Beta App Review (ADR 0033)"
+  lane :beta_external do
+    tag = ios_release_tag
+    code = ios_version_code
+    groups = IosRelease.testflight_groups(ENV["TESTFLIGHT_EXTERNAL_GROUPS"])
+    UI.user_error!("TESTFLIGHT_EXTERNAL_GROUPS is not set (the external group with the public link)") unless groups
+
+    # External testing needs "What to Test": the version's English release notes,
+    # the same file Play's changelog comes from (the DRAFT gate has already passed).
+    notes_file = File.join(REPO_ROOT, "fastlane/release-notes", "v#{IosRelease.version_name(tag)}", "en-US.txt")
+    UI.user_error!("No release notes at #{notes_file}; external testing needs them as What to Test") unless File.exist?(notes_file)
+
+    with_app_store_connect_key do |api_key, _key_path|
+      # The build is the one `beta` uploaded on Monday: pilot's distribute-only
+      # mode selects it by version and build number (never an .ipa on disk) and
+      # never rebuilds or uploads it again (ADR 0033: one RC binary).
+      upload_to_testflight(
+        api_key: api_key,
+        app_identifier: IOS_BUNDLE_ID,
+        app_version: IosRelease.version_name(tag),
+        build_number: code.to_s,
+        distribute_only: true,
+        distribute_external: true,
+        groups: groups,
+        changelog: File.read(notes_file).strip,
+        submit_beta_review: true, # the open beta is the external group: Beta App Review is the step
+        skip_waiting_for_build_processing: true,
+      )
+    end
+  end
+
   desc "Upload the release candidate's dSYMs to Sentry (skipped without the SENTRY_* variables)"
   lane :upload_dsyms do
     settings = IosRelease.sentry_settings(ENV)

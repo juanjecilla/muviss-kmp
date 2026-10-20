@@ -202,10 +202,14 @@ alternative would be to initialise first and gate afterwards, at the cost of an
 opted-out person's crash in that first window being sent.
 
 **`release`, `dist`, `environment`.** `release` is
-`com.codingpit.muviss@<versionName>+<versionCode>` and `dist` the versionCode —
-exactly what the Sentry Gradle plugin stamps on the mapping it uploads. They
-must stay identical or a trace cannot find its mapping (`MuvissCrashReporting.releaseOf`
-and `app/androidApp/build.gradle.kts`). `environment` is `SENTRY_ENVIRONMENT`
+`<namespace>@<versionName>+<versionCode>` and `dist` the versionCode. The
+namespace is per platform (`crashReleaseNamespace`, ADR 0033): Android, desktop
+and web report `com.codingpit.muviss`, exactly what the Sentry Gradle plugin
+stamps on the R8 mapping it uploads, and they must stay identical or a trace
+cannot find its mapping (`MuvissCrashReporting.releaseOf` and
+`app/androidApp/build.gradle.kts`); iOS reports `com.codingpit.muviss.ios`, so
+its crash gate never reads Play's crashes. `fastlane/sentry_gate.rb`'s
+`NAMESPACES` names the same two strings, and a change to either side changes both. `environment` is `SENTRY_ENVIRONMENT`
 (env or `local.properties`) if set, otherwise `production` when a release
 artefact was requested and `development` otherwise.
 
@@ -370,6 +374,80 @@ the schedule, the gates and where a fix goes.
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
   refused (the step then holds, with that reason).
+
+### iOS in the train (WS5, ADR 0033)
+
+iOS walks the same three stages as Play, one week apart, on the same RC binary.
+Each platform has its own stage in the release issue's marker, and each gate
+holds only the platform it reads, except the shared gates (release-blocker, a fix
+PR into the branch, CI, DRAFT notes), which hold both. The iOS steps are skipped
+with a notice while `APP_STORE_CONNECT_KEY_ID` is unset, and Play runs as before.
+
+| When | iOS step | What happens | Where |
+|---|---|---|---|
+| Monday 23:00 UTC | internal | `ios beta` uploads the RC to TestFlight internal testers | `release-rc.yml` `ios` job |
+| Sunday, week 0 | external (Beta App Review) | `ios beta_external` sends the RC's build to the external group (public link) and submits it to Beta App Review | `release-promote.yml`, step "iOS track" |
+| Sunday, week 1 | App Store | Once `release/X.Y.Z` is in `main` and Beta App Review approved the build: `ios release submit_for_review:true` (automatic release, 7-day phased) | `release-promote.yml`, step "iOS track" |
+| Daily | phased ramp | Pauses the live phased release while the iOS crash gate fails; resumes only its own pause once the gate passes | `app-store-phased-ramp.yml` |
+| Any time | brake | `pause` / `resume` a version, or `ios-only-override` (below) | `app-store-brake.yml` (manual) |
+
+- **App Store needs the merge.** The App Store step runs only after `release/X.Y.Z`
+  is merged into `main`, which Play's production step does. A Play hold therefore
+  holds iOS production. An iOS hold never holds Play.
+- **`ios-only-override`** (`app-store-brake.yml`, `action: ios-only-override`, with
+  `version`) is the one way past a Play hold. It merges the release PR itself,
+  submits iOS, and records on the issue that Play is **not** promoted. The Sunday
+  Play step will not touch that version (`ios_override_on`); promote Play by hand
+  (`play-promote.yml`) once its gates pass.
+- **Supersede (ADR 0033 rule (a)).** When version N is due and N-1 is in review,
+  N-1 is removed from review (`AppStoreConnect#remove_from_review`) and marked
+  superseded. A rejected N-1 is marked superseded and its reason stays on N's
+  issue. A N-1 in *Pending Developer Release* is never superseded: N waits.
+- **Crash gate, per platform.** iOS builds report release
+  `com.codingpit.muviss.ios@<name>+<code>` (`crashReleaseNamespace` in
+  `app/shared`, #422). Android keeps `com.codingpit.muviss@…`. `sentry_gate.rb`
+  asks for the platform's own namespace, so an iOS crash never holds Play, and the
+  reverse. A Sentry outage pauses nothing: the iOS ramp reads it as "could not
+  look" and leaves the rollout alone.
+- **The pause budget.** Apple allows 30 paused days per version, cumulative across
+  pauses. A version that has used them is left for an owner decision, and its
+  issue says so.
+
+**Owner runbook names** (the secrets and variables CI reads):
+
+| Kind | Name | Used by |
+|---|---|---|
+| Secret | `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY_P8` | every iOS leg (`scripts/release/apple-setup.sh` writes them) |
+| Secret | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | dSYM upload; the iOS crash gate reads `SENTRY_AUTH_TOKEN` and `SENTRY_ORG` |
+| Variable | `APPLE_TEAM_ID` | `ios beta` (signing) |
+| Variable | `TESTFLIGHT_GROUPS` | `ios beta` (internal group, optional) |
+| Variable | `TESTFLIGHT_EXTERNAL_GROUPS` | `ios beta_external` (the external group with the public link). Required for the Sunday beta step |
+| Secret | `RELEASE_APP_ID`, `RELEASE_APP_PRIVATE_KEY` | the release App token for the merge (`release-promote.yml`, `app-store-brake.yml`) |
+
+Lanes: `ios beta`, `ios beta_external`, `ios release`, `ios upload_dsyms`.
+Scripts: `ruby fastlane/ios_promote.rb run | ramp | brake pause|resume X.Y.Z | override X.Y.Z`.
+The App Store Connect API key needs a role that can change a phased release and
+submit a version (App Manager or Admin; the phased-release page names Account
+Holder, Admin or App Manager, not fetched in this change).
+
+**The first live run checklist.** This change was written without a live App
+Store Connect account; each item is a check the owner (or the first live run)
+makes, and its answer goes on the release issue. The code states the same
+assumption where it relies on it (ADR 0033, "Assumptions the implementer must
+verify"):
+
+1. A newer release ends the previous phased rollout (owner's premise). Read N-1's `phasedReleaseState` after N is released.
+2. The phased-release states are Apple's documented `PhasedReleaseState` (`INACTIVE`, `ACTIVE`, `PAUSED`, `COMPLETE`); only `PAUSED` reads as paused. A `GET /v1/appStoreVersions/{id}/appStoreVersionPhasedRelease` after the first pause confirms it (`AppStoreConnect#phased_release`).
+3. A `PATCH` to `ACTIVE` in Pending Developer Release answers 409 (forum report). The train only pauses a live rollout; confirm it never sees that state.
+4. App Store Connect refuses a new version while one is Pending Developer Release, and the cancel call for review (`PATCH /v1/reviewSubmissions/{id}`, `canceled: true`, `AppStoreConnect#remove_from_review`) has the shape used here.
+5. Beta App Review latency: record the time from submit to approval on the release issue.
+6. Beta App Review reviews the first build of a version; a second RC may need a full review. The Sunday step records which RC it submitted.
+7. No per-build export-compliance answer once `ITSAppUsesNonExemptEncryption = NO` is in both Info.plists. Confirm on the first external upload.
+8. TestFlight builds expire after 90 days; the cut-to-submit gap is thirteen days.
+9. `ios beta_external` uses `pilot`'s distribute-only mode (`distribute_only: true`, the build picked by version and build number, nothing uploaded) with `submit_beta_review: true` and the version's `release-notes/vX.Y.Z/en-US.txt` as *What to Test*, which external testing requires. Confirm on the first external run that the build reaches the group and Beta App Review.
+10. Resume after a Sentry pause: the gate resumes only its own pause, after it passes on a daily run. The brake's pauses are the owner's to resume.
+11. The 30-day budget is cumulative per version: at 25 paused days, decide before it runs out.
+12. Spaceship is not used: the phased-release and review calls are the REST resources above. `build_id` and `beta_review_state` (`/v1/builds`, `/v1/builds/{id}/betaAppReviewSubmission`) are unverified in shape.
 
 ### Cutting a release
 
