@@ -1,0 +1,88 @@
+name: App Store brake
+
+# The owner's hand on iOS's phased rollout and its override (ADR 0033). Manual only.
+#   pause                 pause the version's live phased release (never Remove from sale, never Release to All Users)
+#   resume                resume any pause, the gate's or the owner's
+#   ios-only-override     merge release/X.Y.Z into main and submit iOS to the App Store
+#                         past a Play hold. Play is NOT promoted by it; the Sunday step
+#                         stays away from that version, and Play is promoted by hand.
+#
+# The override needs the release App's token: it merges a PR, which GITHUB_TOKEN
+# cannot do without starting no release.yml run. It is refused unless the iOS beta
+# was submitted and Beta App Review approved the build, and every iOS gate passes.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What to do'
+        type: choice
+        options: [pause, resume, ios-only-override]
+        required: true
+      version:
+        description: 'The version, X.Y.Z'
+        type: string
+        required: true
+
+# Shared with the Play ramp, the Sunday promotion and the daily iOS ramp.
+concurrency:
+  group: play-promote
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  brake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must be X.Y.Z, not '$VERSION'"; exit 1; }
+
+      # The merge in ios-only-override needs the App's token; the other actions use
+      # it too, so the release issue's comment carries the same author throughout.
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Fetch the release branches and tags
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: git fetch --prune --tags --force origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1.328.0
+        with:
+          bundler-cache: true
+
+      - name: Pause, resume, or override the iOS release
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          TESTFLIGHT_EXTERNAL_GROUPS: ${{ vars.TESTFLIGHT_EXTERNAL_GROUPS }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          # A manual dispatch is itself the decision: it always acts.
+          DRY_RUN: 'false'
+          ACTION: ${{ inputs.action }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$ACTION" in
+            pause|resume) ruby fastlane/ios_promote.rb brake "$ACTION" "$VERSION" ;;
+            ios-only-override) ruby fastlane/ios_promote.rb override "$VERSION" ;;
+            *) echo "::error::unknown action '$ACTION'"; exit 1 ;;
+          esac

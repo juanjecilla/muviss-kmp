@@ -266,7 +266,7 @@ say "One key lets CI upload to TestFlight and notarise the macOS DMG, with no Ap
 open_url "https://appstoreconnect.apple.com/access/integrations/api"
 step "A new team first has to ask for API access: if the page shows Request Access,"
 step "the Account Holder clicks it and accepts the terms. Wait for it to be granted."
-step "Team Keys → + (Generate API Key). Name: Muviss CI. Access: App Manager. Generate."
+step "Team Keys → + (Generate API Key). Name: Muviss CI. Access: Admin. Generate. (App Manager cannot create the cloud-managed signing certificates CI needs.)"
 step "Copy the Issuer ID shown above the table, and the new key's Key ID."
 warn "Download the .p8 now: Apple only lets you download it once."
 ask APP_STORE_CONNECT_ISSUER_ID "Paste the Issuer ID:"
