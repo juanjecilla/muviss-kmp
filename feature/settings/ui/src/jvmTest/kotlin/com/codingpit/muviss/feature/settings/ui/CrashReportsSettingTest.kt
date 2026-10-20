@@ -221,6 +221,7 @@ internal object NoFlags : FeatureFlags {
     override val triageControlScheme = MutableStateFlow(TriageControlScheme.DEFAULT)
     override val animationsEnabled = MutableStateFlow(true)
     override val triageDeckAnimations = MutableStateFlow(true)
+    override val tickAnimations = MutableStateFlow(true)
     override val syncAutomatically = MutableStateFlow(false)
     override val byokEnabled = MutableStateFlow(false)
     override val triageSnoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
@@ -228,6 +229,7 @@ internal object NoFlags : FeatureFlags {
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
     override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit
+    override suspend fun setTickAnimations(enabled: Boolean) = Unit
     override suspend fun setSyncAutomatically(enabled: Boolean) = Unit
     override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = Unit
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
@@ -249,6 +251,7 @@ internal fun settingsViewModel(
     repository: FakeRepository,
     onDeleteAll: () -> Unit = {},
     permission: NotificationPermissionRequester = NotificationPermissionRequester.Granted,
+    flags: FeatureFlags = NoFlags,
 ) = SettingsViewModel(
     ObserveSettingsUseCase(repository),
     SettingsActions(
@@ -261,7 +264,7 @@ internal fun settingsViewModel(
         ExportDataUseCase(repository),
     ),
     AppVersion(versionName = "1.0.0", versionCode = 1),
-    NoFlags,
+    flags,
     DeleteAllDataUseCase(object : LocalDataEraser {
         override suspend fun deleteAllData() = onDeleteAll()
     }),

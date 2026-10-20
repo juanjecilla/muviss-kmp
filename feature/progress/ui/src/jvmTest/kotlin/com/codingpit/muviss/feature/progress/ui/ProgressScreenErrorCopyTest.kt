@@ -7,8 +7,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
@@ -69,9 +71,10 @@ private fun ProgressWithFailure(failure: Throwable) {
     val progressRepository = FakeProgressRepository()
     val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
     val watchNextViewModel = ProgressViewModel(
-        WatchNextUseCase({ failingCollectionApi }, ObserveSeenEpisodesUseCase(progressRepository), watchNextCache, FakeClock(0L)),
+        WatchNextUseCase({ failingCollectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), watchNextCache, FakeClock(0L)),
         ToggleEpisodeSeenUseCase(progressRepository),
         watchNextCache,
+        FakeFeatureFlags(),
     )
 
     val okCollectionApi = FakeUpcomingCollectionApi(emptyList())

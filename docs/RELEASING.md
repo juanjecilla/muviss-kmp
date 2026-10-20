@@ -202,10 +202,14 @@ alternative would be to initialise first and gate afterwards, at the cost of an
 opted-out person's crash in that first window being sent.
 
 **`release`, `dist`, `environment`.** `release` is
-`com.codingpit.muviss@<versionName>+<versionCode>` and `dist` the versionCode —
-exactly what the Sentry Gradle plugin stamps on the mapping it uploads. They
-must stay identical or a trace cannot find its mapping (`MuvissCrashReporting.releaseOf`
-and `app/androidApp/build.gradle.kts`). `environment` is `SENTRY_ENVIRONMENT`
+`<namespace>@<versionName>+<versionCode>` and `dist` the versionCode. The
+namespace is per platform (`crashReleaseNamespace`, ADR 0033): Android, desktop
+and web report `com.codingpit.muviss`, exactly what the Sentry Gradle plugin
+stamps on the R8 mapping it uploads, and they must stay identical or a trace
+cannot find its mapping (`MuvissCrashReporting.releaseOf` and
+`app/androidApp/build.gradle.kts`); iOS reports `com.codingpit.muviss.ios`, so
+its crash gate never reads Play's crashes. `fastlane/sentry_gate.rb`'s
+`NAMESPACES` names the same two strings, and a change to either side changes both. `environment` is `SENTRY_ENVIRONMENT`
 (env or `local.properties`) if set, otherwise `production` when a release
 artefact was requested and `development` otherwise.
 
@@ -1013,10 +1017,10 @@ Rules the train enforces:
 
 `fastlane/Fastfile`, `platform :ios` (helpers in `fastlane/ios_release.rb`, tests in `fastlane/test/`):
 
-- `ios beta`: archives the RC (`iosApp`, Release, App Store export, cloud-managed signing), refuses a build whose `CFBundleVersion` is not the RC's version code, and uploads to internal testers without submitting.
-- `ios beta_external`: sends the RC's build to the external group (public link) and submits it to Beta App Review. It selects the build by version and build number and never re-uploads (`skip_upload: true`; #429 item 9).
+- `ios beta`: archives the RC (`iosApp`, Release, App Store export, cloud-managed signing), refuses a build whose `CFBundleVersion` is not the RC's version code, and uploads it. With `TESTFLIGHT_GROUPS` set it waits for Apple's processing and distributes the build to those internal groups (never a beta review); without it, it only uploads.
+- `ios beta_external`: sends the RC's build to the external group (public link) and submits it to Beta App Review. It uses `pilot`'s distribute-only mode (`distribute_only: true`): the build is picked by version and build number and never re-uploaded. The version's `fastlane/release-notes/vX.Y.Z/en-US.txt` is its *What to Test*, which external testing requires (#429 item 9).
 - `ios upload_dsyms`: sends the archive's dSYMs to Sentry. Skips with a notice unless `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and `SENTRY_PROJECT` are all set.
-- `ios release`: sends the TestFlight build to the App Store listing. Submits only with `submit_for_review:true`. Refuses while `fastlane/metadata/ios` still holds `REPLACE_BEFORE_SUBMIT`.
+- `ios release`: sends the TestFlight build to the App Store listing. It takes the **RC** tag (`tag:vX.Y.Z-rcN`, or `RELEASE_TAG`) and refuses any other: the build was uploaded under the RC's version code, and the final tag's matches no TestFlight build. Submits only with `submit_for_review:true`. Refuses while `fastlane/metadata/ios` still holds `REPLACE_BEFORE_SUBMIT`.
 
 Scripts: `ruby fastlane/ios_promote.rb run | ramp | brake pause|resume X.Y.Z | override X.Y.Z` (dry run unless `DRY_RUN=false`), and `scripts/release/apple-setup.sh --verify`.
 
@@ -1027,16 +1031,16 @@ The Kotlin/Native release framework has line tables only because `app/shared/bui
 Each item is an Apple behaviour that ADR 0033 assumes. Record the answer on the release issue. Nothing here is verified yet.
 
 1. A newer release ends the previous phased rollout. Read N-1's `phasedReleaseState` after N is released.
-2. The paused enum: `PAUSED` is written, `PAUSE` is also read. `GET /v1/appStoreVersions/{id}/appStoreVersionPhasedRelease` once before the brake relies on it.
+2. The phased-release states are Apple's documented `PhasedReleaseState` (`INACTIVE`, `ACTIVE`, `PAUSED`, `COMPLETE`); only `PAUSED` reads as paused. Confirm with `GET /v1/appStoreVersions/{id}/appStoreVersionPhasedRelease` after the first pause.
 3. A `PATCH` to `ACTIVE` in Pending Developer Release answers 409 (a forum report). The train only pauses a live rollout; confirm it never reaches that state.
 4. Cancelling a review uses `PATCH /v1/reviewSubmissions/{id}` with `canceled: true`, found through `GET /v1/reviewSubmissions` and its `items`.
 5. Beta App Review latency: record submit to approval.
 6. Beta App Review on a second RC of the same version: does it need a full review?
 7. No per-build export-compliance question once `ITSAppUsesNonExemptEncryption = NO` is in both Info.plists.
 8. TestFlight builds expire after 90 days; the cut-to-submit gap is about thirteen days.
-9. `pilot`'s distribute-only mode (`skip_upload: true`) in `ios beta_external`.
+9. `pilot`'s distribute-only mode in `ios beta_external` (`distribute_only: true`, `submit_beta_review: true`, the release notes as *What to Test*): the build reaches the external group and Beta App Review.
 10. Resume after a Sentry pause: the gate resumes only its own pause, after it passes on a daily run.
-11. The 30-day pause budget is cumulative per version. At 25 paused days, decide before it runs out.
+11. The 30-day pause budget is cumulative per version, gate and brake pauses alike. A gate pause still holding at 30 days is handed to the owner. At 25 paused days, decide before it runs out.
 12. `GET /v1/builds` (`filter[version]`, `filter[preReleaseVersion.version]`) and `GET /v1/builds/{id}/betaAppReviewSubmission` have the shapes the code assumes.
 13. The iOS crash release string `com.codingpit.muviss.ios@…` appears on a real iOS build in Sentry (#422).
 

@@ -51,10 +51,18 @@ class FakeIosGit
   def draft_locales(_version) = []
 end
 
+# After the merge into main: release.yml deleted the branch, and a later RC
+# tag must not replace the one that was merged.
+class FakeMergedIosGit < FakeIosGit
+  def latest_rc(_version) = "v1.1.0-rc9"
+  def branch_head(_version) = raise("no such branch")
+  def draft_locales(_version) = raise("no such branch")
+end
+
 # App Store Connect as the runner reads it. `status` is the 1.0.0 version's state;
 # `phased` is its phased release's state.
 class FakeAsc
-  attr_accessor :versions, :phased, :build_listed, :beta_review
+  attr_accessor :versions, :phased, :build_listed, :beta_review, :removable
   attr_reader :calls
 
   def initialize
@@ -62,6 +70,7 @@ class FakeAsc
     @phased = {}
     @build_listed = true
     @beta_review = "APPROVED"
+    @removable = true
     @calls = []
   end
 
@@ -86,7 +95,7 @@ class FakeAsc
 
   def remove_from_review(_app, version_id)
     @calls << [:remove_from_review, version_id]
-    true
+    @removable
   end
 end
 
@@ -215,6 +224,52 @@ class IosPromoteTest < Minitest::Test
     assert_equal :done, outcome.status
     assert_includes asc.calls.map(&:first), :remove_from_review
     assert_equal [[:submit, "v1.1.0-rc1"]], lanes.calls
+  end
+
+  def test_a_merged_release_submits_its_merged_rc_without_the_deleted_branch
+    state = beta_state(merged: true)
+    state["rc_tag"] = "v1.1.0-rc1"
+    promotion, _gh, _asc, lanes, _sentry, _out = build(issues: [issue_for(state)], git: FakeMergedIosGit.new, today: SUNDAY + 7)
+    outcome = promotion.run.first
+    assert_equal :done, outcome.status, outcome.reasons.join("; ")
+    assert_equal [[:submit, "v1.1.0-rc1"]], lanes.calls
+  end
+
+  def test_the_superseded_version_ends_its_own_track_not_the_new_one
+    asc = FakeAsc.new
+    asc.versions = { "1.0.0" => "IN_REVIEW" }
+    issues = [issue_for(beta_state(merged: true)), issue_for(production_state_for("1.0.0"), number: 4)]
+    promotion, gh, _asc2, _lanes, _sentry, _out = build(issues: issues, asc: asc, today: SUNDAY + 7)
+    promotion.run
+    old_track = ReleaseStages.ios_of(ReleaseStages.parse(gh.issues.find { |i| i["number"] == 4 }["body"]))
+    new_track = ReleaseStages.ios_of(ReleaseStages.parse(gh.issues.find { |i| i["number"] == 5 }["body"]))
+    assert_equal "done", old_track["stage"]
+    assert_equal (SUNDAY + 7).iso8601, old_track["superseded_on"]
+    assert_nil new_track["superseded_on"]
+    assert_includes gh.comments.select { |n, _| n == 5 }.map(&:last).join, "1.0.0 was superseded (removed from review)"
+  end
+
+  def test_a_rejected_previous_version_is_not_described_as_removed_from_review
+    asc = FakeAsc.new
+    asc.versions = { "1.0.0" => "REJECTED" }
+    issues = [issue_for(beta_state(merged: true)), issue_for(production_state_for("1.0.0"), number: 4)]
+    promotion, gh, _asc2, _lanes, _sentry, _out = build(issues: issues, asc: asc, today: SUNDAY + 7)
+    promotion.run
+    note = gh.comments.select { |n, _| n == 5 }.map(&:last).join
+    assert_includes note, "1.0.0 was superseded (rejected, not resubmitted)"
+    refute_includes asc.calls.map(&:first), :remove_from_review
+  end
+
+  def test_a_removal_that_finds_no_submission_holds_the_submit
+    asc = FakeAsc.new
+    asc.versions = { "1.0.0" => "IN_REVIEW" }
+    asc.removable = false
+    issues = [issue_for(beta_state(merged: true)), issue_for(production_state_for("1.0.0"), number: 4)]
+    promotion, _gh, _asc2, lanes, _sentry, _out = build(issues: issues, asc: asc, today: SUNDAY + 7)
+    outcome = promotion.run.find { |o| o.version == "1.1.0" }
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons.join, "not removed from review"
+    assert_empty lanes.calls
   end
 
   def test_a_pending_release_previous_version_holds_the_submit

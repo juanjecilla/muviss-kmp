@@ -21,8 +21,8 @@ import androidx.compose.ui.graphics.Color
  * `ColorProviders`. The choice was one source of colour or two, and the amber
  * identity is the point of the widget looking like Muviss rather than like a
  * system list — so the schemes below are assembled from here, and Glance
- * builds its providers from the same values. The iOS widget's asset catalog
- * carries the same hexes.
+ * builds its providers from the same values. The iOS widget reads them through
+ * `IosWidgetPalette` (app/shared), so it carries no literals of its own.
  *
  * Consumers inside a Compose tree should still read `MaterialTheme.colorScheme`
  * rather than reaching in here — the theme resolves light and dark for them.

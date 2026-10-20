@@ -18,4 +18,4 @@ PRODUCT_BUNDLE_IDENTIFIER=com.codingpit.muviss
 // non-git checkout (e.g. a source-only archive) where that script's git
 // commands no-op.
 CURRENT_PROJECT_VERSION=1
-MARKETING_VERSION=1.0
+MARKETING_VERSION=1.0.0

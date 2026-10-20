@@ -109,10 +109,20 @@ class CoreSyncRepositoryGatingTest {
     }
 
     @Test
-    fun an_unentitled_user_sees_a_locked_row_not_a_hidden_one() = runTest {
+    fun an_unentitled_signed_in_user_sees_a_locked_row_not_a_hidden_one() = runTest {
+        val state = repository(entitlement = Entitlement.Inactive, session = signedIn).observeAccount().first()
+
+        assertEquals(SyncAccountState.Locked(email = "person@example.com"), state)
+    }
+
+    @Test
+    fun a_signed_out_user_is_offered_sign_in_not_a_paywall() = runTest {
         val state = repository(entitlement = Entitlement.Inactive, session = null).observeAccount().first()
 
-        assertEquals(SyncAccountState.Locked(email = null), state)
+        // The entitlement is learned through an account: a desktop user who paid
+        // on a phone has no store here and could never get past a paywall that
+        // offered no sign-in (#286, ADR 0019).
+        assertEquals(SyncAccountState.SignedOut, state)
     }
 
     @Test
