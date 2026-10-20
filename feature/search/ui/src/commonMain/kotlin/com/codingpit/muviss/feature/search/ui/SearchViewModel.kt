@@ -313,7 +313,8 @@ class SearchViewModel(
         viewModelScope.launchReporting {
             _state.update { it.copy(loadingMore = true) }
             val muted = mutedFor(type, genre.id)
-            discoverMedia(type, current.genrePage + 1, genre.id, muted.forType(type)).fold(
+            val shown = current.genreResults.idSet()
+            discoverMedia(type, current.genrePage + 1, genre.id, muted.forType(type), shown = shown).fold(
                 onSuccess = { page ->
                     _state.update {
                         it.copy(
@@ -335,9 +336,13 @@ class SearchViewModel(
         } else {
             _state.update { it.copy(loadingMore = true) }
         }
-        searchMedia(query, page).fold(
+        val shown = if (page == 1) emptySet() else _state.value.results.idSet()
+        searchMedia(query, page, shown = shown).fold(
             onSuccess = { result ->
                 _state.update {
+                    // A later page for a query the user has since replaced is stale: appending it would mix two
+                    // searches, and could repeat a title the new results already show.
+                    if (page > 1 && it.query != query) return@update it.copy(loadingMore = false)
                     // Typed search is only muted when the user opted in (ADR 0031): looking a show up by name is
                     // an explicit act, unlike a feed that picked it for them.
                     val found = result.items.filterNot(muting.forSearch::hides)
@@ -359,6 +364,9 @@ class SearchViewModel(
     private fun fail(e: Throwable) {
         _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) }
     }
+
+    /** The ids on screen, handed to the paged use cases so a repeated title is dropped before it reaches the list. */
+    private fun List<MediaSummary>.idSet(): Set<MediaId> = mapTo(mutableSetOf()) { it.id }
 
     /**
      * Seeds recommendations from [library]'s favorites/top-rated titles via
