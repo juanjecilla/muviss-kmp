@@ -3,6 +3,8 @@
 package com.codingpit.muviss.core.database
 
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSFilePosixPermissions
+import platform.Foundation.NSNumber
 import platform.Foundation.NSString
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUTF8StringEncoding
@@ -38,7 +40,12 @@ class RelocateDatabaseIosTest {
 
     @AfterTest
     fun removeDirectories() {
+        setPermissions(destination, 0x1ED) // 0755, in case a test left it read-only
         manager.removeItemAtPath(root, error = null)
+    }
+
+    private fun setPermissions(path: String, mode: Int) {
+        manager.setAttributes(mapOf(NSFilePosixPermissions to NSNumber(int = mode)), ofItemAtPath = path, error = null)
     }
 
     private fun write(path: String, text: String) {
@@ -91,5 +98,52 @@ class RelocateDatabaseIosTest {
 
         assertEquals("current", read("$destination/muviss.db"))
         assertEquals("stale", read("$container/muviss.db"))
+    }
+
+    @Test
+    fun a_database_in_documents_own_directory_moves_into_the_app_group() {
+        // A build without the entitlement kept it in Documents/Database; a later build has the App Group.
+        val fallback = databaseDirectoryIn(documents)
+        manager.createDirectoryAtPath(fallback, withIntermediateDirectories = true, attributes = null, error = null)
+        write("$fallback/muviss.db", "fallback")
+        write("$fallback/muviss.db-wal", "fallback-wal")
+
+        assertTrue(relocateDatabase(listOf(container, fallback, documents), destination))
+
+        assertEquals("fallback", read("$destination/muviss.db"))
+        assertEquals("fallback-wal", read("$destination/muviss.db-wal"))
+    }
+
+    @Test
+    fun an_interrupted_move_finishes_on_the_next_open() {
+        // Killed after the sidecars moved (they go first) and before the main file did.
+        write("$destination/muviss.db-wal", "root-wal")
+        write("$container/muviss.db", "root")
+
+        assertTrue(relocateDatabase(listOf(container, documents), destination))
+
+        assertEquals("root", read("$destination/muviss.db"))
+        assertEquals("root-wal", read("$destination/muviss.db-wal"))
+    }
+
+    @Test
+    fun a_failed_move_leaves_the_files_together_at_the_source_and_opens_there() {
+        write("$container/muviss.db", "root")
+        write("$container/muviss.db-wal", "root-wal")
+        setPermissions(destination, 0x16D) // 0555: nothing can be moved in
+
+        assertFalse(relocateDatabase(listOf(container, documents), destination))
+
+        assertEquals("root", read("$container/muviss.db"))
+        assertEquals("root-wal", read("$container/muviss.db-wal"))
+        assertEquals(container, resolveDatabaseDirectory(destination, listOf(container, documents)))
+    }
+
+    @Test
+    fun the_database_opens_in_its_own_directory_once_it_is_there() {
+        write("$destination/muviss.db", "current")
+        write("$container/muviss.db", "stale")
+
+        assertEquals(destination, resolveDatabaseDirectory(destination, listOf(container, documents)))
     }
 }

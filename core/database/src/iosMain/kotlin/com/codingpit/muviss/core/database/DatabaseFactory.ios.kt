@@ -53,10 +53,11 @@ actual class DatabaseDriverFactory {
      * and does nothing; the JVM factory does the same for the same reason.
      */
     actual fun create(): SqlDriver = withCreateLock {
-        val base = sharedContainerPath() ?: documentsPath()
-        val directory = databaseDirectoryIn(base)
-        NSFileManager.defaultManager.createDirectoryAtPath(directory, withIntermediateDirectories = true, attributes = null, error = null)
-        relocateDatabase(sources = listOf(base, documentsPath()).distinct(), destination = directory)
+        val destination = preferredDatabaseDirectory()
+        NSFileManager.defaultManager.createDirectoryAtPath(destination, withIntermediateDirectories = true, attributes = null, error = null)
+        relocateDatabase(sources = legacyDatabaseDirectories(), destination = destination)
+        // Where the database is now: the destination, unless a move failed and was put back.
+        val directory = databaseDirectory()
         NativeSqliteDriver(
             schema = MuvissDatabase.Schema.synchronous(),
             name = DATABASE_FILE_NAME,
@@ -81,9 +82,8 @@ actual class DatabaseDriverFactory {
 
 /**
  * Moves an older install's database into [destination], once: the first of
- * [sources] that holds `muviss.db` wins. The sources are where earlier builds
- * kept it: the App Group container's root (before ADR 0034) and Documents
- * (before ADR 0016, or any build without the entitlement).
+ * [sources] that holds `muviss.db` wins. Returns whether [destination] now
+ * holds the database (or there was nothing to move).
  *
  * A copy would be worse than a move: two files would exist, the app would
  * read the new one and any code still resolving the old path would read a
@@ -91,22 +91,31 @@ actual class DatabaseDriverFactory {
  * database — a half-finished move must never overwrite the database the app
  * has been writing to since.
  *
- * SQLite's `-wal` and `-shm` sidecars are moved with it, from the same
- * source. Leaving them behind would strand the most recent transactions in a
- * WAL file the relocated database no longer sees, which reads to a person as
- * "the last few episodes I ticked are gone".
+ * SQLite's `-wal` and `-shm` sidecars move with it, from the same source, and
+ * **before** it. Leaving them behind would strand the most recent
+ * transactions in a WAL file the relocated database no longer sees, which
+ * reads to a person as "the last few episodes I ticked are gone". Moving them
+ * first makes an interrupted run recoverable: the main file is still at the
+ * source, so the next open finds it there, moves it, and finds its sidecars
+ * already waiting. A move that fails is undone, so the files stay together
+ * at the source and [databaseDirectory] keeps opening them there.
  */
-internal fun relocateDatabase(sources: List<String>, destination: String) {
+internal fun relocateDatabase(sources: List<String>, destination: String): Boolean {
     val manager = NSFileManager.defaultManager
-    if (manager.fileExistsAtPath("$destination/$DATABASE_FILE_NAME")) return
-    val source = sources.firstOrNull { it != destination && manager.fileExistsAtPath("$it/$DATABASE_FILE_NAME") } ?: return
-    listOf("", "-wal", "-shm").forEach { suffix ->
+    if (manager.fileExistsAtPath("$destination/$DATABASE_FILE_NAME")) return true
+    val source = sources.firstOrNull { it != destination && manager.fileExistsAtPath("$it/$DATABASE_FILE_NAME") } ?: return true
+    val moved = mutableListOf<Pair<String, String>>()
+    for (suffix in listOf("-wal", "-shm", "")) {
         val from = "$source/$DATABASE_FILE_NAME$suffix"
         val to = "$destination/$DATABASE_FILE_NAME$suffix"
-        if (manager.fileExistsAtPath(from) && !manager.fileExistsAtPath(to)) {
-            manager.moveItemAtPath(from, toPath = to, error = null)
+        if (!manager.fileExistsAtPath(from)) continue
+        if (manager.fileExistsAtPath(to) || !manager.moveItemAtPath(from, toPath = to, error = null)) {
+            moved.asReversed().forEach { (back, here) -> manager.moveItemAtPath(here, toPath = back, error = null) }
+            return false
         }
+        moved += from to to
     }
+    return true
 }
 
 private val createLock = NSLock()
@@ -123,8 +132,28 @@ private inline fun <T> withCreateLock(block: () -> T): T {
 /**
  * The directory the database lives in: a `Database` subdirectory of the App Group container, or of Documents
  * without the entitlement (ADR 0016). Its own directory, so the backup exclusion on it covers nothing else (ADR 0034).
+ * While an older install's database has not been moved there (a failed [relocateDatabase]), it is wherever that
+ * database still is, so the app and the exclusion keep pointing at the real library.
  */
-internal fun databaseDirectory(): String = databaseDirectoryIn(sharedContainerPath() ?: documentsPath())
+internal fun databaseDirectory(): String = resolveDatabaseDirectory(preferredDatabaseDirectory(), legacyDatabaseDirectories())
+
+internal fun resolveDatabaseDirectory(destination: String, sources: List<String>): String {
+    val manager = NSFileManager.defaultManager
+    if (manager.fileExistsAtPath("$destination/$DATABASE_FILE_NAME")) return destination
+    return sources.firstOrNull { it != destination && manager.fileExistsAtPath("$it/$DATABASE_FILE_NAME") } ?: destination
+}
+
+private fun preferredDatabaseDirectory(): String = databaseDirectoryIn(sharedContainerPath() ?: documentsPath())
+
+/**
+ * Where earlier builds kept the database, newest first: the App Group container's root (before ADR 0034),
+ * Documents' `Database` directory (a build without the entitlement, since ADR 0034), and Documents itself
+ * (before ADR 0016, or a build without the entitlement before ADR 0034).
+ */
+private fun legacyDatabaseDirectories(): List<String> {
+    val documents = documentsPath()
+    return listOfNotNull(sharedContainerPath(), databaseDirectoryIn(documents), documents).distinct()
+}
 
 internal fun databaseDirectoryIn(base: String): String = "$base/$DATABASE_DIRECTORY_NAME"
 
