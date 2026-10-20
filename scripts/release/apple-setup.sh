@@ -180,19 +180,23 @@ finish() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# STAGES: Apple setup for Muviss (EPIC 35 #78, EPIC 36 #79, ADR 0016, ADR 0019).
+# STAGES: Apple setup for Muviss (EPIC 35 #78, ADR 0016, ADR 0024, ADR 0033).
 #
-#   scripts/release/apple-setup.sh        (from the repo root)
+#   scripts/release/apple-setup.sh            the wizard (from the repo root)
+#   scripts/release/apple-setup.sh --verify   checks only: no prompts, no writes
 #
-# Owner-only, run once after joining the Apple Developer Program. Produces:
-#   local.properties   APPLE_TEAM_ID (not secret; for local builds)
-#   GitHub variable    APPLE_TEAM_ID
-#   GitHub secrets     APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID,
-#                      APP_STORE_CONNECT_KEY_P8      (fastlane TestFlight/App
-#                                                      Store, and notarytool)
-#                      MACOS_DEVELOPER_ID_P12_BASE64,
-#                      MACOS_DEVELOPER_ID_P12_PASSWORD (signs the DMG)
-# No workflow reads these yet: EPIC 35/36 add the jobs, under these names.
+# Owner-only, for an INDIVIDUAL Apple Developer Program membership. v1 is
+# local-only (ADR 0024), so the App IDs carry no Sign in with Apple capability.
+# Writes:
+#   local.properties (gitignored)   APPLE_TEAM_ID
+#   GitHub variables                APPLE_TEAM_ID, TESTFLIGHT_EXTERNAL_GROUPS (required
+#                                   by the Sunday beta step), TESTFLIGHT_GROUPS (optional)
+#   GitHub secrets                  APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID,
+#                                   APP_STORE_CONNECT_KEY_P8, SENTRY_AUTH_TOKEN,
+#                                   SENTRY_ORG, SENTRY_PROJECT
+#   Desktop only (EPIC 36, no workflow reads them yet):
+#                                   MACOS_DEVELOPER_ID_P12_BASE64, MACOS_DEVELOPER_ID_P12_PASSWORD
+# docs/RELEASING.md section 9 is the runbook these stages come from.
 # ──────────────────────────────────────────────────────────────────────────
 
 cd "$(dirname "$0")/../.." || exit 1
@@ -204,38 +208,139 @@ APP_GROUP="group.com.codingpit.muviss"
 # or an inherited GH_REPO says: a fork would take the secrets and report success.
 export GH_REPO="juanjecilla/muviss-kmp"
 
+# The names CI reads. Keep in step with .github/workflows/release-rc.yml,
+# release-promote.yml, app-store-phased-ramp.yml, app-store-brake.yml and
+# fastlane/Fastfile. verify_stage checks these.
+REQUIRED_SECRETS=(APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_P8
+                  SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT)
+REQUIRED_VARS=(APPLE_TEAM_ID TESTFLIGHT_EXTERNAL_GROUPS)
+OPTIONAL_VARS=(TESTFLIGHT_GROUPS)
+
 # require KEY "Label" stops before anything is saved when a required answer is
 # empty (Enter with no previous value, or stdin at EOF).
 require() {
   if [[ -z "${!1}" ]]; then
-    warn "$2 is required; nothing was saved. Re-run the wizard."
+    warn "$2 is required; this stage saved nothing (earlier stages are kept). Re-run the wizard."
     exit 1
   fi
 }
 
-TOTAL_STAGES=7
+# fastlane_ready: bundle, the Gemfile and the installed gems are all here. A
+# fresh checkout often has the first two but not the third (no bundle install
+# yet); the checks below then report "skipped", never a false failure.
+# Read-only: BUNDLE_FROZEN and --dry-run keep Bundler from rewriting
+# Gemfile.lock, here and in the bundle exec calls that follow; a lockfile that
+# needs an update reads as not ready.
+fastlane_ready() {
+  command -v bundle >/dev/null 2>&1 && [ -f Gemfile ] && BUNDLE_FROZEN=true bundle check --dry-run >/dev/null 2>&1
+}
+
+# live_asc_check: one read-only call to the App Store Connect API that proves
+# the key's credentials work and that the app record exists. Uploads nothing.
+# Needs APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID and APPLE_ASC_P8_PATH. It does
+# not prove the key's ROLE (Admin): only a cloud-managed signing run does.
+live_asc_check() {
+  fastlane_ready || return 2
+  APP_ID="$APP_ID" BUNDLE_FROZEN=true bundle exec ruby -Ifastlane -e '
+    require "app_store_connect"
+    client = AppStoreConnect::Client.new(
+      key_id: ENV.fetch("APPLE_ASC_KEY_ID"),
+      issuer_id: ENV.fetch("APPLE_ASC_ISSUER_ID"),
+      key_pem: File.read(ENV.fetch("APPLE_ASC_P8_PATH")),
+    )
+    id = client.app_id(ENV.fetch("APP_ID"))
+    abort("no App Store Connect app record for #{ENV.fetch("APP_ID")}") unless id
+    puts "app record found (id #{id})"
+  ' >/dev/null 2>&1
+}
+
+# lanes_check: the iOS lanes exist in this checkout. Loads fastlane, uploads nothing.
+lanes_check() {
+  fastlane_ready || return 2
+  BUNDLE_FROZEN=true bundle exec fastlane lanes 2>/dev/null | grep -q 'beta_external'
+}
+
+# verify_stage: reads the repository's secret and variable NAMES (never values)
+# and reports what CI needs. Returns non-zero when a required name is missing or
+# gh cannot read the repository. Changes nothing.
+verify_stage() {
+  local missing=0 secrets vars name
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+    warn "gh is not ready, so the repository's secrets and variables cannot be read"
+    return 1
+  fi
+  secrets="$(gh secret list --repo "$GH_REPO" 2>/dev/null | awk '{print $1}')" || secrets=""
+  vars="$(gh variable list --repo "$GH_REPO" 2>/dev/null | awk '{print $1}')" || vars=""
+  say "Repository $GH_REPO"
+  for name in "${REQUIRED_SECRETS[@]}"; do
+    if grep -qx "$name" <<<"$secrets"; then printf '  %s✓%s secret    %s\n' "$GREEN" "$RESET" "$name"
+    else printf '  %s✗%s secret    %s (missing)\n' "$RED" "$RESET" "$name"; missing=$((missing + 1)); fi
+  done
+  for name in "${REQUIRED_VARS[@]}"; do
+    if grep -qx "$name" <<<"$vars"; then printf '  %s✓%s variable  %s\n' "$GREEN" "$RESET" "$name"
+    else printf '  %s✗%s variable  %s (missing)\n' "$RED" "$RESET" "$name"; missing=$((missing + 1)); fi
+  done
+  for name in "${OPTIONAL_VARS[@]}"; do
+    if grep -qx "$name" <<<"$vars"; then printf '  %s✓%s variable  %s\n' "$GREEN" "$RESET" "$name"
+    else printf '  %s-%s variable  %s (optional, unset)\n' "$DIM" "$RESET" "$name"; fi
+  done
+  if [[ -n "${APPLE_ASC_KEY_ID:-}" && -n "${APPLE_ASC_ISSUER_ID:-}" && -n "${APPLE_ASC_P8_PATH:-}" ]]; then
+    local asc=0
+    live_asc_check || asc=$?
+    case "$asc" in
+      0) printf '  %s✓%s App Store Connect: key works and the app record exists\n' "$GREEN" "$RESET" ;;
+      2) note "App Store Connect read skipped here (needs bundle, the Gemfile and bundle install)." ;;
+      *) printf '  %s✗%s App Store Connect: the read failed (wrong key, issuer, or no app record)\n' "$RED" "$RESET"; missing=$((missing + 1)) ;;
+    esac
+  else
+    note "App Store Connect read not run: set APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID and APPLE_ASC_P8_PATH to run it."
+  fi
+  local lanes=0
+  lanes_check || lanes=$?
+  case "$lanes" in
+    0) printf '  %s✓%s fastlane lists the iOS lanes (nothing was uploaded)\n' "$GREEN" "$RESET" ;;
+    2) note "fastlane lanes check not run here (needs bundle, the Gemfile and bundle install)." ;;
+    *) printf '  %s✗%s fastlane does not list the iOS lanes (beta_external missing)\n' "$RED" "$RESET"; missing=$((missing + 1)) ;;
+  esac
+  (( missing == 0 ))
+}
+
+if [[ "${1:-}" == "--verify" ]]; then
+  _clear
+  printf '\n%s%s  Apple setup: verification%s\n\n' "$BOLD" "$BLUE" "$RESET"
+  if verify_stage; then printf '\n  %s✓ Everything CI needs is in place.%s\n' "$GREEN" "$RESET"; exit 0; fi
+  printf '\n  %s✗ Something CI needs is missing. Re-run the wizard for that stage.%s\n' "$RED" "$RESET"
+  exit 1
+fi
+
+TOTAL_STAGES=9
 
 banner "Apple setup for Muviss"
 say "Secrets and variables go to $GH_REPO."
+say "Read docs/RELEASING.md section 9 first if you have not: it says what each stage"
+say "yields and what the Apple website calls things. Parts marked 'verify in UI' there"
+say "were not confirmed against Apple's live pages."
 confirm "Is that the right repository?" || { warn "Stopped; nothing was saved."; exit 1; }
 
-stage "Join the Apple Developer Program"
-say "Everything else needs a paid membership (99 USD/year)."
+stage "Enrol in the Apple Developer Program as an Individual"
+say "Individual membership is 99 USD a year. Apple checks your identity, usually within 48 hours."
 open_url "https://developer.apple.com/programs/enroll/"
-step "Enrol as an individual or as an organisation (an organisation needs a D-U-N-S number)."
-step "Apple reviews it, usually within 48 hours. You get an email when it is active."
+step "Choose Individual / Sole Proprietor (verify in UI: the wording changes)."
+step "Sign in with an Apple Account that has two-factor authentication on."
+step "Enter your legal name and address. The name must match your government ID."
+note "The name and address you give here are the ones an EU trader declaration may show (stage: DSA)."
 note "Already a member? Just continue."
-pause "Press Enter once the membership is active"
+pause "Press Enter once the membership is active (Apple emails you)"
 
 stage "Team ID"
 open_url "https://developer.apple.com/account"
-step "Scroll to Membership details and copy the Team ID (10 characters)."
+step "Membership details lists the Team ID (10 characters). verify in UI."
 ask APPLE_TEAM_ID "Paste the Team ID:"
 require APPLE_TEAM_ID "The Team ID"
 write_env APPLE_TEAM_ID "$APPLE_TEAM_ID"
 set_var APPLE_TEAM_ID "$APPLE_TEAM_ID"
-note "For local Xcode builds, also put it in app/iosApp/Configuration/Config.xcconfig"
-note "as TEAM_ID=$APPLE_TEAM_ID — but do not commit that line (docs/RELEASING.md §11)."
+note "For local device builds, also put it in app/iosApp/Configuration/Config.xcconfig"
+note "as TEAM_ID=$APPLE_TEAM_ID. Do not commit that line (docs/RELEASING.md section 9)."
 pause
 
 stage "App Group"
@@ -247,28 +352,45 @@ pause "Press Enter once the App Group exists"
 
 stage "App IDs for the app and the widget"
 open_url "https://developer.apple.com/account/resources/identifiers/add/bundleId"
-step "App IDs → App → Continue. Description: Muviss. Bundle ID (Explicit): $APP_ID."
-step "Capabilities: tick App Groups and Sign In with Apple (ADR 0019 needs it for sync)."
-step "Register, then open it again → App Groups → Configure → tick $APP_GROUP → Save."
-step "Repeat for the widget: Bundle ID $WIDGET_ID, capability App Groups only, same group."
-note "If Xcode already created either id under automatic signing, edit it instead of adding."
+step "App IDs, then App, then Continue. Description: Muviss. Bundle ID (Explicit): $APP_ID."
+step "Capabilities: tick App Groups only. Do NOT tick Sign in with Apple (v1 is local-only, ADR 0024)."
+step "Register. Open it again, App Groups, Configure, tick $APP_GROUP, Save."
+step "Repeat for the widget: Bundle ID $WIDGET_ID, App Groups only, the same group."
+note "If Xcode already created either App ID under automatic signing, edit it instead of adding it."
 pause "Press Enter once both App IDs have the App Group"
 
-stage "The app in App Store Connect"
+stage "The app record in App Store Connect"
 open_url "https://appstoreconnect.apple.com/apps"
-step "Click + → New App. Platform iOS. Name: Muviss (if it's taken, note what you used)."
-step "Primary language: English (U.S.). Bundle ID: $APP_ID. SKU: muviss. Full access."
-note "The listing itself comes from fastlane metadata later (EPIC 33/35), not from here."
+step "+ then New App. Platforms: iOS. Name: Muviss (if taken, note the name you used)."
+step "Primary language: English (U.S.). Bundle ID: $APP_ID. SKU: muviss. User Access: Full Access."
+note "The listing text comes from fastlane/metadata/ios, not from here."
 pause "Press Enter once the app record exists"
 
-stage "App Store Connect API key"
-say "One key lets CI upload to TestFlight and notarise the macOS DMG, with no Apple ID password."
+stage "TestFlight groups"
+say "CI sends builds to these groups by name. Create them first, then type the names."
+open_url "https://appstoreconnect.apple.com/apps"
+step "Open Muviss, then the TestFlight tab (verify in UI for the exact labels)."
+step "Internal Testing: create a group (optional name for TESTFLIGHT_GROUPS)."
+step "External Testing: create a group, then Testers, Create Public Link, Open to Anyone."
+step "Name the external group exactly as you will type it below. Required by the Sunday beta step."
+ask TESTFLIGHT_GROUPS "Internal group name(s), comma-separated (blank to skip):"
+ask TESTFLIGHT_EXTERNAL_GROUPS "External group name (the public-link group):"
+require TESTFLIGHT_EXTERNAL_GROUPS "The external group name"
+set_var TESTFLIGHT_EXTERNAL_GROUPS "$TESTFLIGHT_EXTERNAL_GROUPS"
+if [[ -n "$TESTFLIGHT_GROUPS" ]]; then set_var TESTFLIGHT_GROUPS "$TESTFLIGHT_GROUPS"; fi
+note "Beta App Review contact and demo notes: docs/RELEASING.md section 9, 'Before the first"
+note "submission'. The repo's review_information files are placeholders until you fill them."
+pause
+
+stage "App Store Connect API key (role: Admin)"
+say "One key lets CI sign, upload to TestFlight and read the app record. No Apple ID password."
 open_url "https://appstoreconnect.apple.com/access/integrations/api"
-step "A new team first has to ask for API access: if the page shows Request Access,"
-step "the Account Holder clicks it and accepts the terms. Wait for it to be granted."
-step "Team Keys → + (Generate API Key). Name: Muviss CI. Access: Admin. Generate. (App Manager cannot create the cloud-managed signing certificates CI needs.)"
-step "Copy the Issuer ID shown above the table, and the new key's Key ID."
-warn "Download the .p8 now: Apple only lets you download it once."
+step "If the page offers Request Access, the Account Holder must grant it first."
+step "Team Keys, then + (Generate API Key). Name: Muviss CI. Access: Admin. Generate."
+note "Admin, not App Manager: cloud-managed signing needs certificate access that App Manager"
+note "does not get by default (docs/RELEASING.md section 9). verify in UI: the role list."
+step "Copy the Issuer ID above the keys table, and the new key's Key ID."
+warn "Download the .p8 now. Apple only lets you download it once."
 ask APP_STORE_CONNECT_ISSUER_ID "Paste the Issuer ID:"
 ask APP_STORE_CONNECT_KEY_ID "Paste the Key ID:"
 require APP_STORE_CONNECT_ISSUER_ID "The Issuer ID"
@@ -279,37 +401,57 @@ if [[ -f "$P8_PATH" ]]; then
   set_secret APP_STORE_CONNECT_ISSUER_ID "$APP_STORE_CONNECT_ISSUER_ID"
   set_secret APP_STORE_CONNECT_KEY_ID "$APP_STORE_CONNECT_KEY_ID"
   set_secret APP_STORE_CONNECT_KEY_P8 "$(cat "$P8_PATH")"
-  note "Keep the .p8 somewhere safe (a password manager), then delete the loose copy."
+  note "Keep the .p8 in a password manager, then delete the loose copy."
 else
-  SKIPPED+=("App Store Connect API key: $P8_PATH not found — re-run this stage")
+  SKIPPED+=("App Store Connect API key: $P8_PATH not found, so re-run this stage")
   warn "No file at $P8_PATH; nothing was stored."
 fi
 pause
 
-stage "Developer ID certificate for the macOS DMG"
-say "Signing plus notarisation is what stops Gatekeeper refusing the DMG (EPIC 36)."
-step "On this Mac: Keychain Access → Certificate Assistant → Request a Certificate"
-step "From a Certificate Authority. Your email, 'Saved to disk'. Save the .certSigningRequest."
-open_url "https://developer.apple.com/account/resources/certificates/add"
-step "Choose Developer ID Application (G2 Sub-CA), upload the request, download the .cer."
-step "Double-click the .cer to add it to your login keychain."
-step "Keychain Access → My Certificates → right-click 'Developer ID Application: …' →"
-step "Export as .p12, with a password you choose."
-ask P12_PATH "Path to the exported .p12:"
-P12_PATH="${P12_PATH/#\~/$HOME}"
-ask_secret MACOS_DEVELOPER_ID_P12_PASSWORD "The .p12's password:"
-if [[ -f "$P12_PATH" ]]; then
-  require MACOS_DEVELOPER_ID_P12_PASSWORD "The .p12 password"
-  set_secret MACOS_DEVELOPER_ID_P12_BASE64 "$(base64 -i "$P12_PATH" | tr -d '\n')"
-  set_secret MACOS_DEVELOPER_ID_P12_PASSWORD "$MACOS_DEVELOPER_ID_P12_PASSWORD"
-  note "Delete the loose .p12 once it is stored; the keychain keeps the original."
+stage "Sentry (dSYM upload and the iOS crash gate)"
+say "The same Sentry project the Android build uses. Skip if these are already set."
+open_url "https://sentry.io/settings/account/api/auth-tokens/"
+step "Create an auth token with project:releases and org:read (verify in UI for scopes)."
+ask_secret SENTRY_AUTH_TOKEN "Sentry auth token (hidden):"
+ask SENTRY_ORG "Sentry organisation slug:"
+ask SENTRY_PROJECT "Sentry project slug:"
+if [[ -n "$SENTRY_AUTH_TOKEN" && -n "$SENTRY_ORG" && -n "$SENTRY_PROJECT" ]]; then
+  set_secret SENTRY_AUTH_TOKEN "$SENTRY_AUTH_TOKEN"
+  set_secret SENTRY_ORG "$SENTRY_ORG"
+  set_secret SENTRY_PROJECT "$SENTRY_PROJECT"
 else
-  SKIPPED+=("Developer ID certificate: $P12_PATH not found — re-run this stage")
-  warn "No file at $P12_PATH; nothing was stored."
+  SKIPPED+=("Sentry: token, org and project are all needed; dSYMs are skipped until they are set")
+  warn "Sentry values incomplete; nothing stored."
 fi
 pause
 
+stage "Desktop only: Developer ID certificate for the macOS DMG (EPIC 36)"
+say "Not used by the iOS train. Skip unless you are doing the desktop DMG now."
+if confirm "Set up the desktop Developer ID certificate now?"; then
+  step "On this Mac: Keychain Access, Certificate Assistant, Request a Certificate From a"
+  step "Certificate Authority. Your email, Saved to disk. Save the .certSigningRequest."
+  open_url "https://developer.apple.com/account/resources/certificates/add"
+  step "Choose Developer ID Application, upload the request, download the .cer."
+  step "Double-click the .cer. Keychain Access, My Certificates, right-click the certificate,"
+  step "Export as .p12, with a password you choose."
+  ask P12_PATH "Path to the exported .p12:"
+  P12_PATH="${P12_PATH/#\~/$HOME}"
+  ask_secret MACOS_DEVELOPER_ID_P12_PASSWORD "The .p12's password (hidden):"
+  if [[ -f "$P12_PATH" ]]; then
+    require MACOS_DEVELOPER_ID_P12_PASSWORD "The .p12 password"
+    set_secret MACOS_DEVELOPER_ID_P12_BASE64 "$(base64 -i "$P12_PATH" | tr -d '\n')"
+    set_secret MACOS_DEVELOPER_ID_P12_PASSWORD "$MACOS_DEVELOPER_ID_P12_PASSWORD"
+    note "Delete the loose .p12 once stored; the keychain keeps the original."
+  else
+    SKIPPED+=("Developer ID certificate: $P12_PATH not found, so re-run this stage")
+    warn "No file at $P12_PATH; nothing was stored."
+  fi
+fi
+
+stage "Check what CI will find"
+verify_stage || SKIPPED+=("verification: some names above are missing; re-run with --verify")
+pause "Press Enter to see the summary"
+
 finish
-say "Next: tell the agent the Team ID is in, so it can wire EPIC 35/36 (#78, #79)"
-say "and build the widget (#23). Sign in with Apple for sync is configured later,"
-say "in Supabase, as part of EPIC 32 (#75)."
+say "Next, docs/RELEASING.md section 9: the device build, the App Store Connect record,"
+say "the App Privacy questionnaire, the DSA trader answer and the first release candidate."
