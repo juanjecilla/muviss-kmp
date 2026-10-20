@@ -1083,14 +1083,17 @@ tests in `fastlane/test/ios_release_test.rb`):
 - **`ios upload_dsyms`** sends the archive's dSYMs to Sentry. It skips with a
   notice unless `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and `SENTRY_PROJECT` are all set.
 - **`ios release`** sends the TestFlight build to the App Store listing with a
-  seven-day phased release. It submits for review only with
-  `submit_for_review:true`, and it refuses while any file under
-  `fastlane/metadata/ios` still contains `REPLACE_BEFORE_SUBMIT`.
+  seven-day phased release. It takes the **RC** tag, `tag:vX.Y.Z-rcN` (or
+  `RELEASE_TAG`), and refuses any other: the build was uploaded under the RC's
+  versionCode, and the final tag's (rc 0) matches no TestFlight build. It
+  submits for review only with `submit_for_review:true`, and it refuses while
+  any file under `fastlane/metadata/ios` still contains `REPLACE_BEFORE_SUBMIT`.
 
 Environment: `APPLE_TEAM_ID` (repository variable), `APP_STORE_CONNECT_KEY_ID`,
 `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY_P8` (repository secrets,
 set by `scripts/release/apple-setup.sh`), `TESTFLIGHT_GROUPS` (optional
-variable, comma-separated internal groups), and `RELEASE_TAG` (set by CI; without
+variable, comma-separated internal groups; when set, `ios beta` waits for
+processing and distributes to them, otherwise it only uploads), and `RELEASE_TAG` (set by CI; without
 it the exact tag at HEAD is used). The Sentry trio is the same repository secrets
 the Android build uses.
 

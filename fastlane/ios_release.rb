@@ -37,6 +37,12 @@ module IosRelease
     tag.to_s.delete_prefix("v").sub(/-rc\d+\z/, "")
   end
 
+  # Whether `tag` is a release candidate's, vX.Y.Z-rcN: the only kind of tag
+  # with a TestFlight build behind it.
+  def rc_tag?(tag)
+    tag.to_s.match?(/\Av\d+\.\d+\.\d+-rc\d+\z/)
+  end
+
   # Extra xcodebuild arguments that let `-allowProvisioningUpdates` create and
   # fetch cloud-managed signing assets without an Apple ID session.
   def xcode_auth_args(key_id:, issuer_id:, key_path:, team_id: nil)

@@ -228,6 +228,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: read # which RC run uploaded to TestFlight
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -256,6 +257,14 @@ jobs:
         run: |
           PREV="$(git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | grep -B1 -x "$TAG" | head -1)"
           [ "$PREV" = "$TAG" ] && PREV=""
+          # The RC's iOS job skips without the Apple setup and can fail on its own, so
+          # say TestFlight only when its upload step succeeded for this RC's commit.
+          RC_SHA="$(git rev-list -n 1 "$RC_TAG")"
+          IOS_UPLOAD=""
+          for RUN in $(gh run list --workflow release-rc.yml --commit "$RC_SHA" --json databaseId --jq '.[].databaseId'); do
+            IOS_UPLOAD="$(gh run view "$RUN" --json jobs --jq '.jobs[] | select(.name == "ios") | .steps[] | select(.name == "Archive and upload to TestFlight (internal)") | .conclusion' || true)"
+            [ "$IOS_UPLOAD" = "success" ] && break
+          done
           {
             echo "Muviss ${TAG}."
             echo
@@ -268,7 +277,11 @@ jobs:
             echo "  All three are **unsigned and un-notarized** (#39): macOS Gatekeeper"
             echo "  will refuse the DMG until it is opened via right-click > Open, and"
             echo "  Windows SmartScreen will warn (#179)."
-            echo "- **iOS** — on TestFlight (internal) as the same candidate, uploaded by the release-candidate workflow's iOS job. Nothing is rebuilt here, and App Store submission is a separate step (ADR 0033)."
+            if [ "$IOS_UPLOAD" = "success" ]; then
+              echo "- **iOS** — on TestFlight (internal) as the same candidate, uploaded by the release-candidate workflow's iOS job. Nothing is rebuilt here, and App Store submission is a separate step (ADR 0033)."
+            else
+              echo "- **iOS** — no build for this version: the release-candidate workflow did not upload $RC_TAG to TestFlight."
+            fi
             echo
             echo "### Not in this build"
             echo
