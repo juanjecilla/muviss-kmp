@@ -30,13 +30,13 @@
 	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
-		<!-- UserDefaults(suiteName:) in WidgetIntents.swift: the widget's undo marker in the App Group. -->
+		<!-- NSUserDefaults(suiteName:) in WidgetUndoMarker (Shared): the widget's undo marker in the App Group, so 1C8F.1 (App Group), not CA92.1 (this app only). -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
-				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 		<!-- The stat family (fstat, getattrlist...) reached through SQLite's unix VFS and Foundation file

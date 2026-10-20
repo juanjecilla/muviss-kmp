@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.codingpit.muviss.core.designsystem.share.topViewController
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -9,10 +10,8 @@ import platform.Foundation.NSString
 import platform.Foundation.NSURL
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
-import platform.UIKit.UIApplication
 import platform.UIKit.UIDocumentPickerDelegateProtocol
 import platform.UIKit.UIDocumentPickerViewController
-import platform.UIKit.UIViewController
 import platform.UniformTypeIdentifiers.UTTypeCommaSeparatedText
 import platform.UniformTypeIdentifiers.UTTypeJSON
 import platform.UniformTypeIdentifiers.UTTypePlainText
@@ -69,13 +68,6 @@ private class PickerDelegate(private val onResult: (NSURL?) -> Unit) :
     override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
         onResult(null)
     }
-}
-
-/** The controller on top, so the picker presents over a sheet or dialog rather than failing behind it. */
-internal fun topViewController(): UIViewController? {
-    var top = UIApplication.sharedApplication.keyWindow?.rootViewController
-    while (top?.presentedViewController != null) top = top.presentedViewController
-    return top
 }
 
 @Composable

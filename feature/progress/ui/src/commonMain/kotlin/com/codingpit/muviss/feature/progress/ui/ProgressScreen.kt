@@ -1,11 +1,24 @@
 package com.codingpit.muviss.feature.progress.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,7 +29,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -35,6 +51,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,14 +59,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.designsystem.component.CelebrationBurst
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
@@ -67,12 +93,18 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.next_episode
 import com.codingpit.muviss.feature.progress.ui.generated.resources.progress_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_upcoming
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_watch_next
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_row_confirmation
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_snackbar
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_snackbar_caught_up
+import com.codingpit.muviss.feature.progress.ui.generated.resources.tick_snackbar_season_done
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_caught_up
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_empty_body
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_empty_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.watch_next_episode
+import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
@@ -143,19 +175,71 @@ private fun WatchNextScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    // The show whose row a tick sent to the top, until the list shows it there. The effect below
+    // does the scrolling, on the composition's own context rather than wherever `viewModel.tick`
+    // resumed, and only once the row is first: the order comes from the play history, a flow
+    // apart from the one that moved the next episode on, so it can land a frame later.
+    var scrollToTopTarget by remember { mutableStateOf<MediaId?>(null) }
+
+    // What to celebrate on screen, and when: a new token restarts the burst.
+    var celebration by remember { mutableStateOf<Celebration?>(null) }
+    var tokens by remember { mutableStateOf(0) }
+    // Taps are numbered, and the snackbar remembers the newest one it has shown. A tick's
+    // outcome can arrive after a later tap's (a caught-up one returns at once, a plain one
+    // waits for the list to move on), and an older saved tick must not replace a newer one's
+    // Undo. A failed tick shows nothing, so it never hides an older saved tick's Undo.
+    var taps by remember { mutableStateOf(0) }
+    var shownTap by remember { mutableStateOf(0) }
+    // The snackbar's measured height, so the list's end clears a wrapped message too.
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
 
     // One-tap tick with undo (design doc, Motion + Progress screen): tick
-    // persists immediately; the snackbar's Undo reverts it via the VM.
-    val onTick: (WatchNextItem) -> Unit = tick@{ item ->
+    // persists immediately; the snackbar's Undo reverts it via the VM. The
+    // snackbar waits for the outcome (a few ms) so one message says it all,
+    // and a milestone says so there too: with motion off it is all there is.
+    val onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit = tick@{ item, onFailed ->
         val episode = item.nextEpisode ?: return@tick
-        viewModel.tickNext(item)
+        val tap = ++taps
         scope.launch {
+            val outcome = viewModel.tick(item) ?: return@launch
+            if (outcome is TickOutcome.Failed) return@launch onFailed()
+            if (tap < shownTap) return@launch
+            shownTap = tap
+            val message = when (outcome) {
+                is TickOutcome.Failed -> return@launch
+                is TickOutcome.CaughtUp -> getString(Res.string.tick_snackbar_caught_up, item.title)
+                is TickOutcome.SeasonFinished -> getString(Res.string.tick_snackbar_season_done, outcome.season)
+                is TickOutcome.Plain -> getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
+            }
+            // The tick made this the show most recently watched, so the list has put its row
+            // first. Follow it: from further down, the row would otherwise slide off the top of
+            // the screen. A show that is caught up has no row left to follow.
+            if (outcome !is TickOutcome.CaughtUp) {
+                scrollToTopTarget = item.mediaId
+            }
+            if (state.animateTicks && outcome !is TickOutcome.Plain) {
+                celebration = Celebration(outcome, item.title, ++tokens)
+            }
+            // The newest tick takes the slot: showSnackbar queues, so N quick ticks would
+            // otherwise keep one on screen for N times its timeout.
+            snackbarHostState.currentSnackbarData?.dismiss()
             val result = snackbarHostState.showSnackbar(
-                message = getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber),
+                message = message,
                 actionLabel = getString(Res.string.action_undo),
+                // Material3 defaults to Indefinite whenever an action label is given.
+                duration = SnackbarDuration.Short,
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
         }
+    }
+
+    LaunchedEffect(scrollToTopTarget, state.items.firstOrNull()?.mediaId) {
+        val target = scrollToTopTarget ?: return@LaunchedEffect
+        if (state.items.firstOrNull()?.mediaId != target) return@LaunchedEffect
+        if (state.animateTicks) listState.animateScrollToItem(0) else listState.requestScrollToItem(0)
+        scrollToTopTarget = null
     }
 
     LaunchedEffect(state.message) {
@@ -164,7 +248,14 @@ private fun WatchNextScreen(
         viewModel.consumeMessage()
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(snackbarHost = {
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .semantics { testTag = WATCH_NEXT_SNACKBAR_TAG },
+        )
+    }) { padding ->
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = viewModel::refresh,
@@ -182,108 +273,270 @@ private fun WatchNextScreen(
                         body = stringResource(Res.string.watch_next_empty_body),
                     )
 
-                    else -> WatchNextList(state.items, onTick = onTick, onOpenDetail = onOpenDetail)
+                    else -> WatchNextList(
+                        state.items,
+                        listState,
+                        animate = state.animateTicks,
+                        // At least the usual allowance, so the end does not jump when a one-line
+                        // snackbar appears; more when a long title or a large font wraps it.
+                        bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight),
+                        onTick = onTick,
+                        onOpenDetail = onOpenDetail,
+                    )
+                }
+                // Over the list, not in a row: a show that is caught up leaves the list,
+                // and its row with it.
+                celebration?.let { current ->
+                    key(current.token) {
+                        CelebrationBurst(label = current.label(), onFinished = { celebration = null })
+                    }
                 }
             }
         }
     }
+}
+
+/** A milestone being celebrated; [token] is new for each so a second one restarts the burst. */
+private data class Celebration(val outcome: TickOutcome, val title: String, val token: Int)
+
+@Composable
+private fun Celebration.label(): String = when (outcome) {
+    is TickOutcome.SeasonFinished -> stringResource(Res.string.tick_snackbar_season_done, outcome.season)
+    else -> stringResource(Res.string.tick_snackbar_caught_up, title)
 }
 
 @Composable
 private fun WatchNextList(
     items: List<WatchNextItem>,
-    onTick: (WatchNextItem) -> Unit,
+    listState: LazyListState,
+    animate: Boolean,
+    bottomPadding: Dp,
+    onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        state = listState,
+        modifier = Modifier.fillMaxSize().testTag(WATCH_NEXT_LIST_TAG),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
-            bottom = MuvissSpacing.bottomContent,
+            // Room for the undo snackbar, which overlays the end of this list.
+            bottom = bottomPadding,
         ),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
-            WatchNextRow(item, onTick = { onTick(item) }, onClick = { onOpenDetail(item.mediaId) })
+            WatchNextRow(
+                item,
+                animate = animate,
+                onTick = { onFailed -> onTick(item, onFailed) },
+                onClick = { onOpenDetail(item.mediaId) },
+                // A row that leaves (caught up) fades out and the rest close the gap, unless
+                // motion is off, when both are instant.
+                modifier = (if (animate) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null))
+                    .semantics { testTag = WATCH_NEXT_ROW_TAG },
+            )
         }
     }
 }
+
+/** Tags the "S1E3 seen" sweep across a row for a moment after its tick (EPIC 52). */
+const val TICK_CONFIRMATION_TAG = "tickConfirmation"
+
+/** One Watch Next row, the list it scrolls in, and the undo snackbar that overlays its end. */
+const val WATCH_NEXT_ROW_TAG = "watchNextRow"
+const val WATCH_NEXT_SNACKBAR_TAG = "watchNextSnackbar"
+const val WATCH_NEXT_LIST_TAG = "watchNextList"
+
+private const val SWEEP_MILLIS = 350
+private const val CONFIRMATION_HOLD_MILLIS = 250L
+private const val CONFIRMATION_FADE_MILLIS = 400
 
 @Composable
 private fun WatchNextRow(
     item: WatchNextItem,
-    onTick: () -> Unit,
+    animate: Boolean,
+    onTick: (onFailed: () -> Unit) -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    // The episode this row was just ticked on, for the confirmation that sweeps over it.
+    var confirmed by remember { mutableStateOf<Episode?>(null) }
+    // What the row showed at the tap. The list moves on within milliseconds, so without this the
+    // slide and the bar's fill would play behind the sweep: it is kept on screen under the sweep
+    // and released as the sweep fades, so the change is what the confirmation dissolves into.
+    var held by remember { mutableStateOf<HeldRow?>(null) }
+    // The episode a tick is in flight for. A second tap on it before the row moves on would
+    // write it twice (and on the last one say "caught up" twice), so the button waits. Keyed on
+    // the episode shown, so it clears when the row moves on and stays clear when an undo brings
+    // the episode back.
+    var pending by remember(item.nextEpisode?.id) { mutableStateOf<EpisodeId?>(null) }
+    val sweep = remember { Animatable(0f) }
+    val fade = remember { Animatable(1f) }
+    LaunchedEffect(confirmed) {
+        if (confirmed == null) return@LaunchedEffect
+        sweep.snapTo(0f)
+        fade.snapTo(1f)
+        sweep.animateTo(1f, tween(SWEEP_MILLIS))
+        delay(CONFIRMATION_HOLD_MILLIS)
+        held = null
+        fade.animateTo(0f, tween(CONFIRMATION_FADE_MILLIS))
+        confirmed = null
+    }
+    val shownEpisode = held?.episode ?: item.nextEpisode
+    val shownProgress = if (held != null) held?.progress else item.progress
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier.clickable(onClick = onClick).padding(9.dp),
-            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PosterImage(
-                url = item.posterUrl,
-                title = item.title,
-                modifier = Modifier.width(44.dp).height(66.dp).clip(MaterialTheme.shapes.small),
-                size = PosterSize.Thumbnail,
-            )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
-                Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val episode = item.nextEpisode
-                Text(
-                    text = if (episode != null) {
-                        stringResource(Res.string.watch_next_episode, episode.seasonNumber, episode.episodeNumber, episode.name)
-                    } else {
-                        stringResource(Res.string.watch_next_caught_up)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        Box {
+            Row(
+                Modifier.clickable(onClick = onClick).padding(9.dp),
+                horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PosterImage(
+                    url = item.posterUrl,
+                    title = item.title,
+                    modifier = Modifier.width(44.dp).height(66.dp).clip(MaterialTheme.shapes.small),
+                    size = PosterSize.Thumbnail,
                 )
-                item.progress?.let { progress ->
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        color = MaterialTheme.colorScheme.tertiary,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        drawStopIndicator = {},
-                        modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs)) {
+                    Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    NextEpisodeLine(shownEpisode, animate)
+                    shownProgress?.let { progress ->
+                        // Fills to its new length instead of jumping there.
+                        val shown by animateFloatAsState(progress, if (animate) tween(PROGRESS_MILLIS) else snap(), label = "watchNextProgress")
+                        LinearProgressIndicator(
+                            progress = { shown },
+                            color = MaterialTheme.colorScheme.tertiary,
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            drawStopIndicator = {},
+                            modifier = Modifier.fillMaxWidth().height(3.dp).clip(CircleShape),
+                        )
+                    }
+                }
+                if (item.nextEpisode != null) {
+                    TickButton(
+                        enabled = pending != item.nextEpisode?.id,
+                        onTick = {
+                            pending = item.nextEpisode?.id
+                            if (animate) {
+                                held = HeldRow(item.nextEpisode, item.progress)
+                                confirmed = item.nextEpisode
+                            }
+                            // The sweep starts at the tap; a write that then fails takes it back.
+                            onTick {
+                                held = null
+                                confirmed = null
+                                pending = null
+                            }
+                        },
+                        animate = animate,
+                        label = stringResource(Res.string.next_episode_of, item.title),
                     )
                 }
             }
-            if (item.nextEpisode != null) {
-                TickButton(onTick, label = stringResource(Res.string.next_episode_of, item.title))
+            confirmed?.let { episode ->
+                TickConfirmation(episode, sweep, fade)
             }
         }
     }
 }
 
-/** 44dp amber filled tick: scale pop (0.6→1.15→1.0) + haptic on tap; the row then advances reactively. */
+private const val PROGRESS_MILLIS = 400
+
+/** A row as it was when its tick was tapped; see `held` in [WatchNextRow]. */
+private data class HeldRow(val episode: Episode?, val progress: Float?)
+
+/** The "S1 E3 · Name" line; when the episode changes the old one leaves upward and the next comes up from below. */
 @Composable
-private fun TickButton(onTick: () -> Unit, label: String) {
+private fun NextEpisodeLine(episode: Episode?, animate: Boolean) {
+    AnimatedContent(
+        targetState = episode,
+        transitionSpec = {
+            if (animate) {
+                (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) using SizeTransform(clip = true)
+            } else {
+                EnterTransition.None togetherWith ExitTransition.None
+            }
+        },
+        label = "nextEpisode",
+    ) { shown ->
+        Text(
+            text = if (shown != null) {
+                stringResource(Res.string.watch_next_episode, shown.seasonNumber, shown.episodeNumber, shown.name)
+            } else {
+                stringResource(Res.string.watch_next_caught_up)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * A wash of the primary container sweeping left to right across the row and
+ * saying which episode was just marked seen, then fading to reveal the row
+ * already on its next episode. Said aloud by the snackbar, so it is hidden
+ * from the accessibility tree.
+ */
+@Composable
+private fun BoxScope.TickConfirmation(episode: Episode, sweep: Animatable<Float, *>, fade: Animatable<Float, *>) {
+    Box(
+        Modifier
+            .matchParentSize()
+            .graphicsLayer { alpha = fade.value }
+            .drawWithContent {
+                clipRect(right = size.width * sweep.value) { this@drawWithContent.drawContent() }
+            }
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .clearAndSetSemantics { testTag = TICK_CONFIRMATION_TAG },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            // Gone by the time the wash is half faded, so it does not sit over the episode line coming in.
+            modifier = Modifier.graphicsLayer { alpha = ((fade.value - 0.5f) * 2f).coerceIn(0f, 1f) },
+        ) {
+            Icon(MuvissIcons.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+            Text(
+                stringResource(Res.string.tick_row_confirmation, episode.seasonNumber, episode.episodeNumber),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+    }
+}
+
+/** 44dp amber filled tick: scale pop (0.6→1.15→1.0) + haptic on tap; the row then advances reactively. The pop is skipped when [animate] is false; the haptic is not. */
+@Composable
+private fun TickButton(onTick: () -> Unit, animate: Boolean, label: String, enabled: Boolean = true) {
     val haptics = LocalHapticFeedback.current
     val description = stringResource(Res.string.mark_watched_description, label)
     val scope = rememberCoroutineScope()
     val scale = remember { Animatable(1f) }
     IconButton(
+        enabled = enabled,
         onClick = {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            scope.launch {
-                scale.snapTo(0.6f)
-                scale.animateTo(
-                    targetValue = 1f,
-                    animationSpec = keyframes {
-                        durationMillis = 200
-                        1.15f at 120
-                        1f at 200
-                    },
-                )
+            if (animate) {
+                scope.launch {
+                    scale.snapTo(0.6f)
+                    scale.animateTo(
+                        targetValue = 1f,
+                        animationSpec = keyframes {
+                            durationMillis = 200
+                            1.15f at 120
+                            1f at 200
+                        },
+                    )
+                }
             }
             onTick()
         },

@@ -336,8 +336,8 @@ platform :ios do
 
   # CFBundleVersion: the versionCode scripts/ios/set-version.sh stamps on the
   # built app (the same formula as Android's, scripts/release/version-code.sh).
-  def ios_version_code
-    Integer(sh(File.join(REPO_ROOT, "scripts/release/version-code.sh"), ios_release_tag, log: false).strip)
+  def ios_version_code(tag = ios_release_tag)
+    Integer(sh(File.join(REPO_ROOT, "scripts/release/version-code.sh"), tag, log: false).strip)
   end
 
   # Yields the App Store Connect API key (for the actions) and the path of a
@@ -406,13 +406,18 @@ platform :ios do
       built = ipa_build_number(ipa)
       UI.user_error!("#{File.basename(ipa)} has CFBundleVersion #{built}, but #{tag} is #{code}") unless built == code.to_s
 
+      # With internal groups named, wait for processing and hand the build to them;
+      # without, upload only (an internal group set to automatic distribution still
+      # gets it). pilot cannot distribute a build it did not wait for.
+      groups = IosRelease.testflight_groups(ENV["TESTFLIGHT_GROUPS"])
       upload_to_testflight(
         api_key: api_key,
         ipa: ipa,
         distribute_external: false,
-        groups: IosRelease.testflight_groups(ENV["TESTFLIGHT_GROUPS"]),
-        skip_submission: true,
-        skip_waiting_for_build_processing: true,
+        groups: groups,
+        submit_beta_review: false, # internal groups only: never start a beta review
+        skip_submission: groups.nil?,
+        skip_waiting_for_build_processing: groups.nil?,
       )
     end
   end
@@ -453,13 +458,16 @@ platform :ios do
     sh("sentry-cli", "debug-files", "upload", "--org", settings[:org], "--project", settings[:project], "--wait", dsyms)
   end
 
-  desc "Send the TestFlight build of the release candidate to the App Store (submits only with submit_for_review:true)"
+  desc "Send the TestFlight build of an RC (tag:vX.Y.Z-rcN or RELEASE_TAG) to the App Store (submits only with submit_for_review:true)"
   lane :release do |options|
     # Refuse while the review contact or any other store text is still a stub.
     placeholders = IosRelease.placeholder_files(IOS_METADATA)
     UI.user_error!("#{IosRelease::PLACEHOLDER} is still in #{placeholders.join(', ')}; fill those in before submitting") unless placeholders.empty?
 
-    tag = ios_release_tag
+    # The RC tag, never the final one: `ios beta` uploaded the build under the RC's
+    # versionCode, and the final tag's (rc 0) names no TestFlight build at all.
+    tag = (options[:tag] || ios_release_tag).to_s
+    UI.user_error!("ios release needs the RC tag that ios beta uploaded (vX.Y.Z-rcN), got '#{tag}'; pass tag:vX.Y.Z-rcN") unless IosRelease.rc_tag?(tag)
     submit = options[:submit_for_review].to_s == "true"
 
     with_app_store_connect_key do |api_key, _key_path|
@@ -469,7 +477,7 @@ platform :ios do
         app_version: IosRelease.version_name(tag),
         # The build is the TestFlight one already uploaded by `ios beta`: selected
         # by its build number, never uploaded again (ADR 0033: one RC binary).
-        build_number: ios_version_code.to_s,
+        build_number: ios_version_code(tag).to_s,
         skip_binary_upload: true,
         metadata_path: IOS_METADATA,
         screenshots_path: File.join(REPO_ROOT, "fastlane/screenshots/ios"),

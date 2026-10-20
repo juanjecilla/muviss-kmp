@@ -9,7 +9,7 @@ class IosMetadataTest < Minitest::Test
   ANDROID = File.join(ROOT, "fastlane/metadata/android")
   LOCALES = %w[en-US es-ES].freeze
 
-  # App Store Connect's limits, in characters.
+  # App Store Connect's limits: keywords in bytes, the rest in characters.
   LIMITS = { "name.txt" => 30, "subtitle.txt" => 30, "keywords.txt" => 100,
              "promotional_text.txt" => 170, "description.txt" => 4000 }.freeze
 
@@ -36,10 +36,19 @@ class IosMetadataTest < Minitest::Test
   def test_fields_stay_within_app_store_connect_limits
     LOCALES.each do |locale|
       LIMITS.each do |file, limit|
-        length = read(locale, file).length
-        assert_operator length, :<=, limit, "#{locale}/#{file} is #{length} characters, limit #{limit}"
+        # Keywords are limited in bytes (an accented letter counts twice), the rest in characters.
+        text = read(locale, file)
+        length = file == "keywords.txt" ? text.bytesize : text.length
+        unit = file == "keywords.txt" ? "bytes" : "characters"
+        assert_operator length, :<=, limit, "#{locale}/#{file} is #{length} #{unit}, limit #{limit}"
       end
     end
+  end
+
+  # deliver reads the category from the metadata root, not from a locale folder.
+  def test_primary_category_sits_at_the_metadata_root
+    assert_equal "ENTERTAINMENT", read("primary_category.txt")
+    LOCALES.each { |locale| refute File.exist?(File.join(IOS, locale, "primary_category.txt")), "#{locale}/primary_category.txt is ignored by deliver" }
   end
 
   def test_urls_are_https

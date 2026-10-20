@@ -37,6 +37,14 @@ class IosReleaseTest < Minitest::Test
     assert_equal "1.4.0", IosRelease.version_name("v1.4.0")
   end
 
+  def test_rc_tag_accepts_only_a_release_candidate
+    assert IosRelease.rc_tag?("v1.4.0-rc3")
+    refute IosRelease.rc_tag?("v1.4.0")
+    refute IosRelease.rc_tag?("v1.4.0-rc")
+    refute IosRelease.rc_tag?("1.4.0-rc3")
+    refute IosRelease.rc_tag?("")
+  end
+
   def test_xcode_auth_args_carries_the_key_and_the_team
     args = IosRelease.xcode_auth_args(key_id: "KEY", issuer_id: "ISS", key_path: "/tmp/AuthKey_KEY.p8", team_id: "TEAM")
     assert_equal "-allowProvisioningUpdates -authenticationKeyID KEY -authenticationKeyIssuerID ISS " \

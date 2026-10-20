@@ -97,6 +97,11 @@ jobs:
         run: ruby scripts/ci/test/check_action_pins_test.rb && ruby scripts/ci/check-action-pins.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
+      # Play's field limits (title 30, short 80, full 4000 characters) on every
+      # listing locale, on the PR that edits the copy rather than at the next
+      # release cut (#76).
+      - name: Play listing within limits
+        run: scripts/store/check-listing.sh
       - name: Rollout ramp policy
         run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb && for t in ops_bridge sentry_connector play_reviews; do ruby fastlane/test/${t}_test.rb || exit 1; done
       - name: Staged release schedule and train plan (ADR 0030)

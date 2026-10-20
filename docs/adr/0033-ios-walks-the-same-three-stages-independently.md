@@ -12,16 +12,17 @@ Apple's rules below were checked against Apple's own pages on 2026-10-17. Where 
 |---|---|---|
 | Monday 23:00 UTC (week 0) | internal | `release-rc.yml`'s `ios-rc` job uploads the RC to TestFlight and distributes it to the internal group. This is automatic. |
 | Sunday (week 0) | open beta | The same RC goes to a TestFlight **external** group that has a public link, and is submitted to Beta App Review. |
-| Sunday (week 1) | production | The App Store version is submitted with *automatic release on approval* and a *7-day phased release*. The submitted build is the RC from week 0. |
+| Sunday (week 1) | production | The App Store version is submitted with *automatic release on approval* and a *7-day phased release*; the first version goes out without one, since Apple offers phased release for updates only. The submitted build is the RC from week 0. |
 
 - **The RC is never rebuilt for iOS either.** The App Store build is the RC uploaded on Monday. Apple's TestFlight builds are held for 90 days, which covers the thirteen days between cut and submit (an assumption: see below).
 - **Each platform has its own Stage** in the release issue's marker. A version can be on beta for iOS and on production for Play on the same Sunday, and the train records each separately.
 - **Gates are split.** Some gates hold both platforms; others hold one.
   - *Shared* (a hold on both): the `release-blocker` label, an open PR into `release/X.Y.Z`, CI on the branch head not being green, the `DRAFT:` marker in the store notes, and a head that is not the newest RC.
-  - *Per platform*: the Sentry crash gate (each platform reads only its own builds' release identifier, see ADR 0030's `sentry_gate.rb`), the store's own outcome (a Beta App Review rejection, an App Review rejection, a missing secret), and the Apple-specific rules below.
+  - *Per platform*: the Sentry crash gate, the store's own outcome (a Beta App Review rejection, an App Review rejection, a missing secret), and the Apple-specific rules below.
 - **Platforms advance independently.** An iOS hold never blocks Play. A Play hold does block the App Store production step (see the next rule), because the App Store version has to come from a `main` that has the release merged.
 - **The App Store production step needs `release/X.Y.Z` merged into `main`.** The merge is what makes `release.yml` tag the version, so the iOS submit follows the Play production step. If Play is held, the iOS production step waits with it. The only way around that hold is the explicit `workflow_dispatch` the owner runs for iOS, which performs the merge itself and submits. (The hold and the override are decisions of this ADR; the workflow shape is WS5's.)
-- **Phased release is automatic, the stop is manual.** Apple rolls the version out over seven days to a random sample of users with automatic updates on. The daily job (`app-store-phased-ramp.yml`, WS5) reads the Sentry gate and pauses the phased release through the App Store Connect API when the gate fails. A manual `app-store-brake.yml` dispatch does the same pause, for a person. Resume is the owner's decision in both cases (see the assumptions).
+- **Each platform has its own Sentry release name.** Both apps used to report `com.codingpit.muviss@<versionName>+<versionCode>` (`MuvissCrashReporting.releaseOf`), and since ADR 0030 derives `versionCode` from the version, the iOS and Play builds of a version would share it, so each platform's gate would hold on the other's crashes. iOS therefore reports `com.codingpit.muviss.ios@<versionName>+<versionCode>` and Android keeps the existing string, so nothing already in Sentry changes meaning; `sentry_gate.rb` asks for the platform's own name (#422, built in WS5).
+- **Phased release is automatic; so is resuming the gate's own pause.** Apple rolls the version out over seven days to a random sample of users with automatic updates on. The daily job (`app-store-phased-ramp.yml`, WS5) reads the Sentry gate and pauses the phased release through the App Store Connect API when the gate fails, and resumes a pause *it* made once the gate passes again on a later daily run. A manual `app-store-brake.yml` dispatch pauses too, for a person; only the owner resumes a brake pause. The job tells the two apart by recording the pauses it makes on the release issue.
 
 ## Apple's rules, checked
 
@@ -73,7 +74,7 @@ Apple gives no latency. Third-party guides say about 24 hours, sometimes up to 4
 These are the points Apple did not answer, or answered only in a forum. Each one is a live check before the first iOS production step, and the answer goes on the release issue.
 
 1. **A newer release ends the previous phased rollout** (owner's premise; Apple silent). Verify by reading `phasedReleaseState` of N-1 after N is released.
-2. **The phased-release enum spelling.** `PAUSED` or `PAUSE`. Verify with a live `GET` on the resource before the brake ships.
+2. **The phased-release states** are Apple's documented `PhasedReleaseState`: `INACTIVE`, `ACTIVE`, `PAUSED`, `COMPLETE` ([reference](https://developer.apple.com/documentation/appstoreconnectapi/phasedreleasestate)). A pause writes `PAUSED`; a live `GET` before the brake ships confirms it.
 3. **`PATCH` to `ACTIVE`/`COMPLETE` in *Pending Developer Release* returns `409`** (forum report, no Apple answer). The design avoids that state; confirm it does not occur for an automatic release.
 4. **One unreleased version at a time per platform** (owner's premise). Apple's FAQ covers review, not an unreleased version; confirm that App Store Connect refuses a new version while one is *Pending Developer Release*.
 5. **Beta App Review latency** is unknown (third-party: about 24 to 48 hours). The beta step counts as done on submission, so the latency does not move the schedule; record the observed time on the release issue.
@@ -81,6 +82,6 @@ These are the points Apple did not answer, or answered only in a forum. Each one
 7. **No per-build export-compliance answer** once `ITSAppUsesNonExemptEncryption = NO` is in both Info.plists (Apple: the declaration removes the per-submission question; external testing not stated). Confirm on the first external upload.
 8. **TestFlight builds expire after 90 days** (not checked in this session). The thirteen days between cut and submit are well inside it; confirm.
 9. **The owner's `workflow_dispatch` for iOS** is the only override of a Play production hold. This is this ADR's decision; the workflow must make the override explicit in the release issue.
-10. **Resume after a Sentry pause.** The gate pauses automatically; this ADR does not decide whether the gate resumes automatically once it clears, or whether only the owner resumes. WS5 proposes: the gate resumes only a pause it made, and only after the gate passes on the next daily run. The brake's pauses are resumed only by the owner.
+10. **The iOS release name reaches Sentry** as `com.codingpit.muviss.ios@…` with dSYMs matched to it (WS2/WS5). Confirm on the first TestFlight crash before the App Store gate relies on it.
 11. **The 30-day pause budget** is cumulative per version, across gate and brake pauses. A release paused for 25 days needs an owner decision before the budget runs out.
 12. **Spaceship's method names** for phased release were not verified; use the REST resource or check the gem source.

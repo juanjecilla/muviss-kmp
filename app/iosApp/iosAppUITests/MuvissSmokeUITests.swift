@@ -26,7 +26,9 @@ final class MuvissSmokeUITests: XCTestCase {
 
         XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 15), "Search was not reached")
 
-        app.element(labelled: "Settings").tap()
+        let settings = app.element(labelled: "Settings")
+        XCTAssertTrue(settings.waitForExistence(timeout: 10), "Settings tab was not found")
+        settings.tap()
         XCTAssertTrue(
             app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 10),
             "Settings did not open"
