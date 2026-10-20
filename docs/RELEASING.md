@@ -1329,7 +1329,7 @@ setting the secret needs no further copy change.
 
 ## 13. Feature Request form (Tally) — EPIC 53 / issue #447
 
-The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0034. Owner steps, once:
+The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0035. Owner steps, once:
 
 1. In Tally, create an API key (Settings > API keys) and `export TALLY_API_KEY=…`. It stays with you; it never goes in the app or in CI.
 2. `scripts/feedback/tally-form.sh create` makes a **draft** from `scripts/feedback/tally-form.json` and prints the form id and `https://tally.so/r/<id>`. **First run, check the draft in the dashboard** (issue #450): the four hidden fields (`version`, `platform`, `os`, `locale`), the optional email, and that "Email me on each submission" is on. The script's block shapes were not verified against the live API, and the create response has no URL field, so the script derives it from the id.

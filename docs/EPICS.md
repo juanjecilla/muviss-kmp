@@ -297,7 +297,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
 | — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0030) | #342 |
 | — | EPIC 51 What's next?: a Pick Session after a Completion (and from Discover, Progress, Library, Detail) that ends in a Next Pick; Taste Profile; rules over the user's own history behind a ranker seam (ADR 0032) | #396 |
-| — | EPIC 53 Feature Request: a Settings row that opens a hosted Tally form in the browser, Typeform behind a Remote Config switch, dark until the owner sets the URL (ADR 0034) | #447 |
+| — | EPIC 53 Feature Request: a Settings row that opens a hosted Tally form in the browser, Typeform behind a Remote Config switch, dark until the owner sets the URL (ADR 0035) | #447 |
 | — | EPIC 52 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`19.sqm`) | #391 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
@@ -586,7 +586,7 @@ Depends on EPIC 39 (#85, merged). **ADR 0021**; no schema number of its own (the
 
 ## EPIC 53 — Feature Request — issue #447
 
-Added 2026-10-19 from a grilling session. **ADR 0034**; vocabulary in `CONTEXT.md` (Feature Request). Ships as `no-landing`: a support affordance, not something the app does for the user (#451 is the optional landing line). No schema change, so no migration number.
+Added 2026-10-19 from a grilling session. **ADR 0035**; vocabulary in `CONTEXT.md` (Feature Request). Ships as `no-landing`: a support affordance, not something the app does for the user (#451 is the optional landing line). No schema change, so no migration number.
 
 **What.** A **Request a feature** row in Settings > About, on all six targets, that opens a Tally form in the system browser with `version`/`platform`/`os`/`locale` as hidden fields. Remote Config serves `featureRequestProvider` (`tally` | `typeform` | `off`) and `featureRequestUrl`; the compiled defaults are `FEATURE_REQUEST_PROVIDER`/`FEATURE_REQUEST_URL`, blank so it ships dark. `scripts/feedback/tally-form.sh` creates/updates/publishes the form from `scripts/feedback/tally-form.json`; owner steps in `docs/RELEASING.md` §13. Responses arrive by Tally's email notification.
 

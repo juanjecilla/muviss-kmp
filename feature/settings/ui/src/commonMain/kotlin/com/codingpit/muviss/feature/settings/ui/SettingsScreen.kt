@@ -534,7 +534,7 @@ internal fun AboutSection(
     onOpenLicenses: () -> Unit,
     onTestCrash: () -> Unit,
     onReplayIntroduction: () -> Unit = {},
-    /** Opens the Feature Request form (ADR 0034); null while there is none, which hides the row. */
+    /** Opens the Feature Request form (ADR 0035); null while there is none, which hides the row. */
     onRequestFeature: (() -> Unit)? = null,
 ) {
     var versionTaps by remember { mutableIntStateOf(0) }

@@ -136,7 +136,10 @@ settings — without uninstalling. Uninstalling does the same. Either way there
 is nothing left on any server, because nothing you enter in Muviss is ever sent
 to one. (A feature request you submit through the form is the exception: it
 lives with the form provider, outside the app, so deleting data in Muviss
-cannot remove it; ask us through the contact below and we will delete it.)
+cannot remove it; ask us through the contact below and we will delete it. The
+issue tracker is public, so do not put your email address or the text of the
+request in that issue: say only that you want a request deleted, and we will
+reply there with a private way to identify it.)
 Settings → Data → Export saves a copy first if you might want it back.
 
 ## Contact
