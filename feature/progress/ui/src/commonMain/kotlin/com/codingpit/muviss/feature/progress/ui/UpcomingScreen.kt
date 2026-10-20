@@ -27,6 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,6 +77,10 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.weekday_6
 import com.codingpit.muviss.models.MediaId
 import org.jetbrains.compose.resources.stringResource
 
+const val UPCOMING_LIST_TAG = "upcomingList"
+const val UPCOMING_ROW_TAG = "upcomingRow"
+const val UPCOMING_SNACKBAR_TAG = "upcomingSnackbar"
+
 /**
  * The Progress tab's Upcoming segment (EPIC 14): an agenda of future-dated
  * episodes across the library's TV shows, grouped into Today / This week /
@@ -109,7 +116,10 @@ fun UpcomingScreen(
                 }
             }
         }
-        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(
+            snackbarHostState,
+            Modifier.align(Alignment.BottomCenter).semantics { testTag = UPCOMING_SNACKBAR_TAG },
+        )
     }
 }
 
@@ -136,13 +146,14 @@ private fun UpcomingList(
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag(UPCOMING_LIST_TAG),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
-            bottom = MuvissSpacing.bottomContent,
+            // The refresh-failed snackbar floats over the bottom of the list; this lets the last row scroll clear of it.
+            bottom = MuvissSpacing.bottomContentWithSnackbar,
         ),
     ) {
         groups.forEach { group ->
@@ -168,7 +179,7 @@ private fun UpcomingRow(
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClick = onClick).padding(MuvissSpacing.s),
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClick = onClick).padding(MuvissSpacing.s).semantics { testTag = UPCOMING_ROW_TAG },
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
