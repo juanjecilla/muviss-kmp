@@ -111,3 +111,7 @@ jobs:
       # The App Store listing's field limits and locale parity (fastlane/metadata/ios).
       - name: iOS App Store metadata
         run: ruby fastlane/test/ios_metadata_test.rb
+      # The iOS track of the staged train (ADR 0033): gates, supersede, ramp, the
+      # merge requirement, and the App Store Connect client against a fake transport.
+      - name: iOS staged train (ADR 0033)
+        run: ruby fastlane/test/ios_train_test.rb && ruby fastlane/test/ios_promote_test.rb && ruby fastlane/test/app_store_connect_test.rb && ruby fastlane/test/release_stages_test.rb
