@@ -228,8 +228,11 @@ require() {
 # fastlane_ready: bundle, the Gemfile and the installed gems are all here. A
 # fresh checkout often has the first two but not the third (no bundle install
 # yet); the checks below then report "skipped", never a false failure.
+# Read-only: BUNDLE_FROZEN and --dry-run keep Bundler from rewriting
+# Gemfile.lock, here and in the bundle exec calls that follow; a lockfile that
+# needs an update reads as not ready.
 fastlane_ready() {
-  command -v bundle >/dev/null 2>&1 && [ -f Gemfile ] && bundle check >/dev/null 2>&1
+  command -v bundle >/dev/null 2>&1 && [ -f Gemfile ] && BUNDLE_FROZEN=true bundle check --dry-run >/dev/null 2>&1
 }
 
 # live_asc_check: one read-only call to the App Store Connect API that proves
@@ -238,7 +241,7 @@ fastlane_ready() {
 # not prove the key's ROLE (Admin): only a cloud-managed signing run does.
 live_asc_check() {
   fastlane_ready || return 2
-  APP_ID="$APP_ID" bundle exec ruby -Ifastlane -e '
+  APP_ID="$APP_ID" BUNDLE_FROZEN=true bundle exec ruby -Ifastlane -e '
     require "app_store_connect"
     client = AppStoreConnect::Client.new(
       key_id: ENV.fetch("APPLE_ASC_KEY_ID"),
@@ -254,7 +257,7 @@ live_asc_check() {
 # lanes_check: the iOS lanes exist in this checkout. Loads fastlane, uploads nothing.
 lanes_check() {
   fastlane_ready || return 2
-  bundle exec fastlane lanes 2>/dev/null | grep -q 'beta_external'
+  BUNDLE_FROZEN=true bundle exec fastlane lanes 2>/dev/null | grep -q 'beta_external'
 }
 
 # verify_stage: reads the repository's secret and variable NAMES (never values)
