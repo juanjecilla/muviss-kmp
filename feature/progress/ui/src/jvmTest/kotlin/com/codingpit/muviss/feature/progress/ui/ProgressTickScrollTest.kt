@@ -73,8 +73,10 @@ class ProgressTickScrollTest {
         topRowIs("Show 1")
     }
 
+    // Only the scroll: the row leaving is the collection's doing (the show's status turns
+    // Watched), and FakeCollectionApi keeps the status it was given, so the row stays here.
     @Test
-    fun catching_up_removes_the_row_and_leaves_the_scroll_alone() = runComposeUiTest {
+    fun catching_up_leaves_the_scroll_alone() = runComposeUiTest {
         setContent { ManyShows(lastEpisodeOnShow1 = true) }
         onNodeWithTag(WATCH_NEXT_LIST_TAG).performScrollToKey(key(1))
 

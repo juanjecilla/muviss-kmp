@@ -176,9 +176,11 @@ private fun WatchNextScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    // Bumped once per tick that leaves a row to follow; the effect below does the scrolling so it
-    // runs on the composition's own context rather than wherever `viewModel.tick` resumed.
-    var scrollToTopRequests by remember { mutableStateOf(0) }
+    // The show whose row a tick sent to the top, until the list shows it there. The effect below
+    // does the scrolling, on the composition's own context rather than wherever `viewModel.tick`
+    // resumed, and only once the row is first: the order comes from the play history, a flow
+    // apart from the one that moved the next episode on, so it can land a frame later.
+    var scrollToTopTarget by remember { mutableStateOf<MediaId?>(null) }
 
     // What to celebrate on screen, and when: a new token restarts the burst.
     var celebration by remember { mutableStateOf<Celebration?>(null) }
@@ -215,7 +217,7 @@ private fun WatchNextScreen(
             // first. Follow it: from further down, the row would otherwise slide off the top of
             // the screen. A show that is caught up has no row left to follow.
             if (outcome !is TickOutcome.CaughtUp) {
-                scrollToTopRequests++
+                scrollToTopTarget = item.mediaId
             }
             if (state.animateTicks && outcome !is TickOutcome.Plain) {
                 celebration = Celebration(outcome, item.title, ++tokens)
@@ -233,9 +235,11 @@ private fun WatchNextScreen(
         }
     }
 
-    LaunchedEffect(scrollToTopRequests) {
-        if (scrollToTopRequests == 0) return@LaunchedEffect
+    LaunchedEffect(scrollToTopTarget, state.items.firstOrNull()?.mediaId) {
+        val target = scrollToTopTarget ?: return@LaunchedEffect
+        if (state.items.firstOrNull()?.mediaId != target) return@LaunchedEffect
         if (state.animateTicks) listState.animateScrollToItem(0) else listState.requestScrollToItem(0)
+        scrollToTopTarget = null
     }
 
     LaunchedEffect(state.message) {
