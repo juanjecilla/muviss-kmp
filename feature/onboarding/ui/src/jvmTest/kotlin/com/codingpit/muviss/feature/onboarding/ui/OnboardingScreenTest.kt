@@ -4,6 +4,7 @@ package com.codingpit.muviss.feature.onboarding.ui
 
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -155,6 +156,8 @@ class OnboardingScreenTest {
         }
         onNodeWithTag(onboardingPageTag(OnboardingPage.DEVICE_BACKUP)).assertExists()
         onNodeWithTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG).assertIsOff()
+        // One node that is both the switch and its name, so a screen reader announces the label.
+        onNodeWithTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG).assertTextContains("Back up with this device")
 
         onNodeWithTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG).performClick()
 

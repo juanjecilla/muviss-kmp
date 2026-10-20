@@ -29,8 +29,13 @@ internal const val DATABASE_FILE_NAME = "muviss.db"
  * would show an empty library forever. The App Group container is the only
  * path both processes resolve to the same file.
  *
+ * Inside that container (or Documents) it sits in its own `Database`
+ * subdirectory, because Device Backup (ADR 0034) flags the database's
+ * directory, and flagging the container root would keep everything else the
+ * app and widget store there out of the device backup too.
+ *
  * Existing installs are moved once, on first open after upgrading — see
- * [migrateOutOfDocumentsIfNeeded]. If the container is unavailable (an app
+ * [relocateDatabase]. If the container is unavailable (an app
  * built without the entitlement, which is every build until the manual
  * provisioning steps in docs/RELEASING.md are done) this falls back to the
  * old Documents path: no widget, but a working app, rather than a crash on
@@ -48,8 +53,10 @@ actual class DatabaseDriverFactory {
      * and does nothing; the JVM factory does the same for the same reason.
      */
     actual fun create(): SqlDriver = withCreateLock {
-        val directory = databaseDirectory()
-        migrateOutOfDocumentsIfNeeded(directory)
+        val base = sharedContainerPath() ?: documentsPath()
+        val directory = databaseDirectoryIn(base)
+        NSFileManager.defaultManager.createDirectoryAtPath(directory, withIntermediateDirectories = true, attributes = null, error = null)
+        relocateDatabase(sources = listOf(base, documentsPath()).distinct(), destination = directory)
         NativeSqliteDriver(
             schema = MuvissDatabase.Schema.synchronous(),
             name = DATABASE_FILE_NAME,
@@ -73,28 +80,29 @@ actual class DatabaseDriverFactory {
 }
 
 /**
- * Moves a pre-EPIC-22 database out of Documents and into the App Group,
- * once.
+ * Moves an older install's database into [destination], once: the first of
+ * [sources] that holds `muviss.db` wins. The sources are where earlier builds
+ * kept it: the App Group container's root (before ADR 0034) and Documents
+ * (before ADR 0016, or any build without the entitlement).
  *
  * A copy would be worse than a move: two files would exist, the app would
  * read the new one and any code still resolving the old path would read a
- * library frozen at upgrade time. The move is skipped entirely when the
- * destination already exists — a half-finished move must never overwrite the
- * database the app has been writing to since.
+ * library frozen at upgrade time. Nothing moves once the destination holds a
+ * database — a half-finished move must never overwrite the database the app
+ * has been writing to since.
  *
- * SQLite's `-wal` and `-shm` sidecars are moved with it. Leaving them behind
- * would strand the most recent transactions in a WAL file the relocated
- * database no longer sees, which reads to a person as "the last few episodes
- * I ticked are gone".
+ * SQLite's `-wal` and `-shm` sidecars are moved with it, from the same
+ * source. Leaving them behind would strand the most recent transactions in a
+ * WAL file the relocated database no longer sees, which reads to a person as
+ * "the last few episodes I ticked are gone".
  */
-private fun migrateOutOfDocumentsIfNeeded(destinationDirectory: String) {
-    val documents = documentsPath()
-    if (destinationDirectory == documents) return
-
+internal fun relocateDatabase(sources: List<String>, destination: String) {
     val manager = NSFileManager.defaultManager
+    if (manager.fileExistsAtPath("$destination/$DATABASE_FILE_NAME")) return
+    val source = sources.firstOrNull { it != destination && manager.fileExistsAtPath("$it/$DATABASE_FILE_NAME") } ?: return
     listOf("", "-wal", "-shm").forEach { suffix ->
-        val from = "$documents/$DATABASE_FILE_NAME$suffix"
-        val to = "$destinationDirectory/$DATABASE_FILE_NAME$suffix"
+        val from = "$source/$DATABASE_FILE_NAME$suffix"
+        val to = "$destination/$DATABASE_FILE_NAME$suffix"
         if (manager.fileExistsAtPath(from) && !manager.fileExistsAtPath(to)) {
             manager.moveItemAtPath(from, toPath = to, error = null)
         }
@@ -112,8 +120,15 @@ private inline fun <T> withCreateLock(block: () -> T): T {
     }
 }
 
-/** The directory the database lives in: the App Group container, or Documents without the entitlement (ADR 0016). */
-internal fun databaseDirectory(): String = sharedContainerPath() ?: documentsPath()
+/**
+ * The directory the database lives in: a `Database` subdirectory of the App Group container, or of Documents
+ * without the entitlement (ADR 0016). Its own directory, so the backup exclusion on it covers nothing else (ADR 0034).
+ */
+internal fun databaseDirectory(): String = databaseDirectoryIn(sharedContainerPath() ?: documentsPath())
+
+internal fun databaseDirectoryIn(base: String): String = "$base/$DATABASE_DIRECTORY_NAME"
+
+private const val DATABASE_DIRECTORY_NAME = "Database"
 
 /** The App Group container's path, or null when the entitlement is missing. */
 private fun sharedContainerPath(): String? {

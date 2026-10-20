@@ -220,32 +220,32 @@ private fun PageContent(
         }
 
         OnboardingPage.DEVICE_BACKUP -> Plain(MuvissIcons.Library, Res.string.onboarding_backup_title, Res.string.onboarding_backup_body) {
+            // The whole row is the switch, so a screen reader announces its label (#164, as Settings' SwitchRow).
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = state.deviceBackupEnabled, role = Role.Switch, onValueChange = onDeviceBackupToggled)
+                    .testTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(Res.string.onboarding_backup_switch), style = MaterialTheme.typography.bodyLarge)
-                Switch(
-                    checked = state.deviceBackupEnabled,
-                    onCheckedChange = onDeviceBackupToggled,
-                    modifier = Modifier.testTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG),
-                )
+                Switch(checked = state.deviceBackupEnabled, onCheckedChange = null)
             }
         }
 
         OnboardingPage.NOTIFICATIONS -> Plain(MuvissIcons.Bell, Res.string.onboarding_notifications_title, Res.string.onboarding_notifications_body) {
+            // The whole row is the switch, so a screen reader announces its label (#164, as Settings' SwitchRow).
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = state.notificationsEnabled, role = Role.Switch, onValueChange = onNotificationsToggled)
+                    .testTag(ONBOARDING_NOTIFICATIONS_SWITCH_TAG),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(Res.string.onboarding_notifications_switch), style = MaterialTheme.typography.bodyLarge)
-                Switch(
-                    checked = state.notificationsEnabled,
-                    onCheckedChange = onNotificationsToggled,
-                    modifier = Modifier.testTag(ONBOARDING_NOTIFICATIONS_SWITCH_TAG),
-                )
+                Switch(checked = state.notificationsEnabled, onCheckedChange = null)
             }
             if (state.notificationsDenied) {
                 PageText(stringResource(Res.string.onboarding_notifications_blocked), error = true)
