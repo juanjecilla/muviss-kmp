@@ -260,18 +260,20 @@ jobs:
           # The RC's iOS job skips without the Apple setup and can fail on its own, so
           # say TestFlight only when its upload step succeeded for this RC's commit.
           # IOS_UPLOAD: success | none (every run finished without an upload) |
-          # unknown (a lookup failed, or a run was still going after ~25 minutes).
+          # unknown (a lookup failed, or a run was still going ~25 minutes in).
           RC_SHA="$(git rev-list -n 1 "$RC_TAG")"
           IOS_UPLOAD=none
           if ! RUNS="$(gh run list --workflow release-rc.yml --commit "$RC_SHA" --json databaseId --jq '.[].databaseId')"; then
             IOS_UPLOAD=unknown
             RUNS=""
           fi
+          DEADLINE=$((SECONDS + 1500)) # one wait shared by every matching run
           for RUN in $RUNS; do
             STATUS=""
-            for _ in $(seq 1 50); do
+            while :; do
               STATUS="$(gh run view "$RUN" --json status --jq .status)" || { STATUS=""; break; }
               [ "$STATUS" = "completed" ] && break
+              [ "$SECONDS" -ge "$DEADLINE" ] && break
               sleep 30
             done
             if [ "$STATUS" != "completed" ]; then IOS_UPLOAD=unknown; continue; fi
