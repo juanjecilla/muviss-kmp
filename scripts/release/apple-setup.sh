@@ -285,8 +285,13 @@ verify_stage() {
   else
     note "App Store Connect read not run: set APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID and APPLE_ASC_P8_PATH to run it."
   fi
-  if lanes_check; then printf '  %s✓%s fastlane lists the iOS lanes (nothing was uploaded)\n' "$GREEN" "$RESET"
-  else note "fastlane lanes check not run here (needs bundle and the Gemfile)."; fi
+  local lanes=0
+  lanes_check || lanes=$?
+  case "$lanes" in
+    0) printf '  %s✓%s fastlane lists the iOS lanes (nothing was uploaded)\n' "$GREEN" "$RESET" ;;
+    2) note "fastlane lanes check not run here (needs bundle and the Gemfile)." ;;
+    *) printf '  %s✗%s fastlane does not list the iOS lanes (beta_external missing)\n' "$RED" "$RESET"; missing=$((missing + 1)) ;;
+  esac
   (( missing == 0 ))
 }
 
