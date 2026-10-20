@@ -122,6 +122,14 @@ SELECT watchedAtEpochMs
 FROM episodePlay
 WHERE deleted = 0;
 
+-- The newest live viewing per title: what orders Watch Next, most recently
+-- watched first. `deleted = 0` is what lets Undo put a row back where it was.
+lastWatchedAtByMedia:
+SELECT mediaId, MAX(watchedAtEpochMs) AS lastWatchedAt
+FROM episodePlay
+WHERE deleted = 0
+GROUP BY mediaId;
+
 -- Both rewatch queries filter `deleted = 0` in the CTE *and* in the outer
 -- query, and both halves matter. Outer only would still let a deleted first
 -- viewing anchor `firstAt`, so a surviving later play would stop counting as a

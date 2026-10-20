@@ -29,7 +29,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,6 +66,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -172,6 +175,12 @@ private fun WatchNextScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    // The show whose row a tick sent to the top, until the list shows it there. The effect below
+    // does the scrolling, on the composition's own context rather than wherever `viewModel.tick`
+    // resumed, and only once the row is first: the order comes from the play history, a flow
+    // apart from the one that moved the next episode on, so it can land a frame later.
+    var scrollToTopTarget by remember { mutableStateOf<MediaId?>(null) }
 
     // What to celebrate on screen, and when: a new token restarts the burst.
     var celebration by remember { mutableStateOf<Celebration?>(null) }
@@ -204,6 +213,12 @@ private fun WatchNextScreen(
                 is TickOutcome.SeasonFinished -> getString(Res.string.tick_snackbar_season_done, outcome.season)
                 is TickOutcome.Plain -> getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
             }
+            // The tick made this the show most recently watched, so the list has put its row
+            // first. Follow it: from further down, the row would otherwise slide off the top of
+            // the screen. A show that is caught up has no row left to follow.
+            if (outcome !is TickOutcome.CaughtUp) {
+                scrollToTopTarget = item.mediaId
+            }
             if (state.animateTicks && outcome !is TickOutcome.Plain) {
                 celebration = Celebration(outcome, item.title, ++tokens)
             }
@@ -218,6 +233,13 @@ private fun WatchNextScreen(
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
         }
+    }
+
+    LaunchedEffect(scrollToTopTarget, state.items.firstOrNull()?.mediaId) {
+        val target = scrollToTopTarget ?: return@LaunchedEffect
+        if (state.items.firstOrNull()?.mediaId != target) return@LaunchedEffect
+        if (state.animateTicks) listState.animateScrollToItem(0) else listState.requestScrollToItem(0)
+        scrollToTopTarget = null
     }
 
     LaunchedEffect(state.message) {
@@ -253,6 +275,7 @@ private fun WatchNextScreen(
 
                     else -> WatchNextList(
                         state.items,
+                        listState,
                         animate = state.animateTicks,
                         // At least the usual allowance, so the end does not jump when a one-line
                         // snackbar appears; more when a long title or a large font wraps it.
@@ -285,13 +308,15 @@ private fun Celebration.label(): String = when (outcome) {
 @Composable
 private fun WatchNextList(
     items: List<WatchNextItem>,
+    listState: LazyListState,
     animate: Boolean,
     bottomPadding: Dp,
     onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().semantics { testTag = WATCH_NEXT_LIST_TAG },
+        state = listState,
+        modifier = Modifier.fillMaxSize().testTag(WATCH_NEXT_LIST_TAG),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
