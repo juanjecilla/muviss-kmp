@@ -170,9 +170,18 @@ class IosTrainTest < Minitest::Test
     assert_equal 33, IosTrain.paused_days_used(track["ramp"], SUNDAY)
   end
 
-  def test_the_paused_spelling_is_read_either_way
+  def test_only_apples_paused_spelling_reads_as_paused
     track = { "ramp" => { "paused_by" => "gate", "paused_on" => "2026-10-19", "paused_days" => 0 } }
-    assert_equal :resume, IosTrain.ramp_decision(gate_hold: nil, phased: "PAUSE", track: track, today: SUNDAY)[:action]
+    assert_equal :resume, IosTrain.ramp_decision(gate_hold: nil, phased: "PAUSED", track: track, today: SUNDAY)[:action]
+    assert_equal :none, IosTrain.ramp_decision(gate_hold: nil, phased: "PAUSE", track: track, today: SUNDAY)[:action]
+  end
+
+  def test_a_gate_pause_that_still_holds_hands_over_at_the_budget
+    open = { "ramp" => { "paused_by" => "gate", "paused_on" => "2026-09-10", "paused_days" => 0 } }
+    assert_equal :budget, IosTrain.ramp_decision(gate_hold: "crash", phased: "PAUSED", track: open, today: SUNDAY)[:action]
+    recent = { "ramp" => { "paused_by" => "gate", "paused_on" => "2026-10-10", "paused_days" => 0 } }
+    assert_equal :none, IosTrain.ramp_decision(gate_hold: "crash", phased: "PAUSED", track: recent, today: SUNDAY)[:action]
+    assert_equal :resume, IosTrain.ramp_decision(gate_hold: nil, phased: "PAUSED", track: open, today: SUNDAY)[:action]
   end
 
   # Brake

@@ -83,7 +83,7 @@ module AppStoreConnect
 
     # { "id", "state" } of a version's phased release, or nil when it has none.
     # VERIFY (ADR 0033 assumption 1, 2): the state values come back as ACTIVE,
-    # COMPLETE, INACTIVE or PAUSED/PAUSE; the spelling is read live before the brake relies on it.
+    # COMPLETE, INACTIVE or PAUSED (Apple's PhasedReleaseState).
     def phased_release(version_id)
       data = request(:get, "/v1/appStoreVersions/#{version_id}/appStoreVersionPhasedRelease")
       row = data && data["data"]

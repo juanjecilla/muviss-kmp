@@ -202,10 +202,14 @@ alternative would be to initialise first and gate afterwards, at the cost of an
 opted-out person's crash in that first window being sent.
 
 **`release`, `dist`, `environment`.** `release` is
-`com.codingpit.muviss@<versionName>+<versionCode>` and `dist` the versionCode —
-exactly what the Sentry Gradle plugin stamps on the mapping it uploads. They
-must stay identical or a trace cannot find its mapping (`MuvissCrashReporting.releaseOf`
-and `app/androidApp/build.gradle.kts`). `environment` is `SENTRY_ENVIRONMENT`
+`<namespace>@<versionName>+<versionCode>` and `dist` the versionCode. The
+namespace is per platform (`crashReleaseNamespace`, ADR 0033): Android, desktop
+and web report `com.codingpit.muviss`, exactly what the Sentry Gradle plugin
+stamps on the R8 mapping it uploads, and they must stay identical or a trace
+cannot find its mapping (`MuvissCrashReporting.releaseOf` and
+`app/androidApp/build.gradle.kts`); iOS reports `com.codingpit.muviss.ios`, so
+its crash gate never reads Play's crashes. `fastlane/sentry_gate.rb`'s
+`NAMESPACES` names the same two strings, and a change to either side changes both. `environment` is `SENTRY_ENVIRONMENT`
 (env or `local.properties`) if set, otherwise `production` when a release
 artefact was requested and `development` otherwise.
 
@@ -433,14 +437,14 @@ assumption where it relies on it (ADR 0033, "Assumptions the implementer must
 verify"):
 
 1. A newer release ends the previous phased rollout (owner's premise). Read N-1's `phasedReleaseState` after N is released.
-2. The paused enum spelling: `PAUSED` is written, `PAUSE` is also read. `GET /v1/appStoreVersions/{id}/appStoreVersionPhasedRelease` once before the brake relies on it (`AppStoreConnect#phased_release`).
+2. The phased-release states are Apple's documented `PhasedReleaseState` (`INACTIVE`, `ACTIVE`, `PAUSED`, `COMPLETE`); only `PAUSED` reads as paused. A `GET /v1/appStoreVersions/{id}/appStoreVersionPhasedRelease` after the first pause confirms it (`AppStoreConnect#phased_release`).
 3. A `PATCH` to `ACTIVE` in Pending Developer Release answers 409 (forum report). The train only pauses a live rollout; confirm it never sees that state.
 4. App Store Connect refuses a new version while one is Pending Developer Release, and the cancel call for review (`PATCH /v1/reviewSubmissions/{id}`, `canceled: true`, `AppStoreConnect#remove_from_review`) has the shape used here.
 5. Beta App Review latency: record the time from submit to approval on the release issue.
 6. Beta App Review reviews the first build of a version; a second RC may need a full review. The Sunday step records which RC it submitted.
 7. No per-build export-compliance answer once `ITSAppUsesNonExemptEncryption = NO` is in both Info.plists. Confirm on the first external upload.
 8. TestFlight builds expire after 90 days; the cut-to-submit gap is thirteen days.
-9. The `pilot` distribute-only mode used by `ios beta_external` (`skip_upload: true`) sends an existing build to the group without re-uploading. Confirm on the first external run.
+9. `ios beta_external` uses `pilot`'s distribute-only mode (`distribute_only: true`, the build picked by version and build number, nothing uploaded) with `submit_beta_review: true` and the version's `release-notes/vX.Y.Z/en-US.txt` as *What to Test*, which external testing requires. Confirm on the first external run that the build reaches the group and Beta App Review.
 10. Resume after a Sentry pause: the gate resumes only its own pause, after it passes on a daily run. The brake's pauses are the owner's to resume.
 11. The 30-day budget is cumulative per version: at 25 paused days, decide before it runs out.
 12. Spaceship is not used: the phased-release and review calls are the REST resources above. `build_id` and `beta_review_state` (`/v1/builds`, `/v1/builds/{id}/betaAppReviewSubmission`) are unverified in shape.

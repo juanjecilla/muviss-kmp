@@ -218,22 +218,30 @@ class IosPromotion
     version = state["version"]
     track = ReleaseStages.ios_of(state)
     branch = "#{ReleaseGates::BRANCH_PREFIX}#{version}"
-    rc = safe("latest RC") { @git.latest_rc(version) }
+    # Once release/X is merged into main (Play's step, or the override) the
+    # branch is gone: the merge already passed the branch gates, so the RC is
+    # the one that was merged and those gates are not asked again.
+    merged = step == :production && state["merged_on"]
+    rc = (state["rc_tag"] || track["rc_tag"] if merged) || safe("latest RC") { @git.latest_rc(version) }
     facts = {
       version: version,
       rc_tag: rc,
       blockers: safe("blockers") { @github.blockers(version) },
-      fix_prs: safe("PRs into the branch") { @github.open_prs_into(branch) },
+      fix_prs: merged ? [] : safe("PRs into the branch") { @github.open_prs_into(branch) },
     }
     return facts unless rc
 
-    head = safe("branch head") { @git.branch_head(version) }
-    facts[:head] = head
     rc_sha = safe("RC commit") { @git.sha_of(rc) }
-    facts[:head_is_rc] = head && rc_sha ? head == rc_sha : nil
     facts[:rc_built] = safe("RC run") { @github.run_conclusion(rc_sha, "release-rc.yml") == "success" } if rc_sha
-    facts[:ci_green] = safe("CI") { head && @github.checks_green?(head) } if head
-    facts[:draft_locales] = safe("notes") { @git.draft_locales(version) }
+    if merged
+      facts.merge!(head_is_rc: true, ci_green: true, draft_locales: [])
+    else
+      head = safe("branch head") { @git.branch_head(version) }
+      facts[:head] = head
+      facts[:head_is_rc] = head && rc_sha ? head == rc_sha : nil
+      facts[:ci_green] = safe("CI") { head && @github.checks_green?(head) } if head
+      facts[:draft_locales] = safe("notes") { @git.draft_locales(version) }
+    end
     facts[:rc_code] = safe("version code") { @git.version_code(rc) }
     facts[:sentry_ios] = facts[:rc_code] ? sentry_hold(version, facts[:rc_code]) : nil
     facts[:ios_uploaded] = safe("TestFlight build") { build_listed?(version, facts[:rc_code]) } if facts[:rc_code]
@@ -332,29 +340,44 @@ class IosPromotion
     superseded = nil
     if plan && plan[:action] == :remove_from_review
       prev_row = safe("App Store version #{plan[:version]}") { @asc.version(app_id, plan[:version]) }
-      problem = if prev_row
-                  act("remove #{plan[:version]} from review") { @asc.remove_from_review(app_id, prev_row["id"]) }
-                else
-                  "could not find #{plan[:version]} in App Store Connect to remove it from review"
-                end
+      return ["could not find #{plan[:version]} in App Store Connect to remove it from review", state] unless prev_row
+
+      removed = false
+      problem = act("remove #{plan[:version]} from review") { removed = @asc.remove_from_review(app_id, prev_row["id"]) }
+      problem ||= "found no review submission holding #{plan[:version]}, so it was not removed from review" unless removed
       return [problem, state] if problem
 
-      superseded = plan[:version]
+      superseded = plan
     elsif plan && plan[:action] == :record_superseded
-      superseded = plan[:version]
+      superseded = plan
     end
 
     problem = act("submit #{version} for App Store review") { @lanes.submit(facts[:rc_tag]) }
     return [problem, state] if problem
 
     track = ReleaseStages.ios_of(state).merge(
-      "stage" => IosTrain::PRODUCTION, "production_started_on" => @today.iso8601, "rc_tag" => facts[:rc_tag],
-      "holds" => [], "superseded_on" => superseded ? @today.iso8601 : ReleaseStages.ios_of(state)["superseded_on"],
+      "stage" => IosTrain::PRODUCTION, "production_started_on" => @today.iso8601, "rc_tag" => facts[:rc_tag], "holds" => [],
     )
     state = with_track(state, track)
-    note = superseded ? " #{superseded} was superseded (removed from review) to make room." : ""
+    note = ""
+    if superseded
+      how = superseded[:action] == :remove_from_review ? "removed from review" : "rejected, not resubmitted"
+      note = " #{superseded[:version]} was superseded (#{how}) to make room."
+      supersede!(superseded[:version], version, how)
+    end
     persist(issue, state, "Submitted #{facts[:rc_tag]} to the App Store for review: automatic release on approval, 7-day phased rollout.#{note} Apple's supersede and phased-release rules are unverified (ADR 0033): see the first-live-run checklist.")
     [nil, state]
+  end
+
+  # The superseded version's own iOS track ends here; its issue says by what.
+  def supersede!(old_version, new_version, how)
+    issue, old_state = find(old_version)
+    return unless issue && old_state && ReleaseStages.ios_of(old_state)
+
+    track = ReleaseStages.ios_of(old_state).merge("stage" => ReleaseStages::DONE, "superseded_on" => @today.iso8601, "holds" => [])
+    old_state = with_track(old_state, track)
+    persist(issue, old_state, "iOS #{old_version} was superseded by #{new_version} (#{how}); its App Store track ends here.")
+    @github.close_issue(issue["number"], "#{old_version} finished on Play and was superseded on iOS. Closed.") if old_state["stage"] == ReleaseStages::DONE
   end
 
   def complete_ios(issue, state, version)

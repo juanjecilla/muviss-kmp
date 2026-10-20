@@ -28,11 +28,10 @@ module IosTrain
   # still being prepared, or one Developer Rejected. They are nothing to supersede.
   IDLE_STATES = %w[PREPARE_FOR_SUBMISSION DEVELOPER_REJECTED REMOVED_FROM_SALE].freeze
 
-  # Phased release states. ADR 0033 assumption 2: the spelling of the paused
-  # state is verified on the first live run. Both are read; PAUSED is written.
+  # Phased release states: Apple's documented PhasedReleaseState (ADR 0033
+  # assumption 2), INACTIVE, ACTIVE, PAUSED and COMPLETE.
   PHASED_ACTIVE = "ACTIVE".freeze
   PHASED_PAUSED = "PAUSED".freeze
-  PHASED_PAUSED_ALTERNATIVES = [PHASED_PAUSED, "PAUSE"].freeze
   PHASED_COMPLETE = "COMPLETE".freeze
 
   BETA_APPROVED = "APPROVED".freeze
@@ -140,13 +139,16 @@ module IosTrain
     ramp = (track && track["ramp"]) || {}
     return { action: :none, reason: "the phased release state could not be read" } if phased.nil?
 
-    paused = PHASED_PAUSED_ALTERNATIVES.include?(phased)
-    if paused
+    if phased == PHASED_PAUSED
       if ramp["paused_by"] == "gate" && gate_hold.nil?
         return { action: :resume, reason: "the crash gate passed on this run" }
       end
       return { action: :none, reason: "paused by the owner (brake); only the owner resumes it" } if ramp["paused_by"] == "brake"
-      return { action: :none, reason: "paused by the crash gate, which still holds: #{gate_hold}" } if ramp["paused_by"] == "gate"
+      if ramp["paused_by"] == "gate"
+        return budget_spent if paused_days_used(ramp, today) >= PAUSE_BUDGET_DAYS
+
+        return { action: :none, reason: "paused by the crash gate, which still holds: #{gate_hold}" }
+      end
 
       return { action: :none, reason: "paused, and not by the train: nothing to do" }
     end
@@ -154,12 +156,13 @@ module IosTrain
     return { action: :none, reason: "the phased release is #{phased}; nothing to pause" } unless phased == PHASED_ACTIVE
     return { action: :none, reason: "the crash gate passed" } if gate_hold.nil?
 
-    used = paused_days_used(ramp, today)
-    if used >= PAUSE_BUDGET_DAYS
-      return { action: :budget, reason: "the phased release has used its #{PAUSE_BUDGET_DAYS} paused days; an owner decides (ADR 0033)" }
-    end
+    return budget_spent if paused_days_used(ramp, today) >= PAUSE_BUDGET_DAYS
 
     { action: :pause, reason: gate_hold }
+  end
+
+  def budget_spent
+    { action: :budget, reason: "the phased release has used its #{PAUSE_BUDGET_DAYS} paused days; an owner decides (ADR 0033)" }
   end
 
   # Days already paused before today, across every pause of this version.
@@ -173,7 +176,7 @@ module IosTrain
   # is live in its rollout; `resume` clears any pause, the gate's or the brake's.
   def brake_decision(action:, phased:, track:, today:)
     ramp = (track && track["ramp"]) || {}
-    paused = PHASED_PAUSED_ALTERNATIVES.include?(phased.to_s)
+    paused = phased.to_s == PHASED_PAUSED
     case action
     when "pause"
       return { action: :none, reason: "already paused" } if paused
