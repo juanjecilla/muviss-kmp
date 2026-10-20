@@ -79,4 +79,17 @@ class DeviceBackupExclusionIosTest {
 
         assertTrue(isExcludedFromBackup("$directory/muviss.db"))
     }
+
+    @Test
+    fun a_shared_legacy_directory_gets_file_flags_only() {
+        touch("muviss.db")
+        touch("muviss.db-wal")
+        applyTo(directory, enabled = false) // a stale directory flag, as if it had been set before
+
+        applyTo(directory, enabled = false, ownDirectory = false)
+
+        assertFalse(isExcludedFromBackup(directory), "other files in a shared directory stay in the backup")
+        assertTrue(isExcludedFromBackup("$directory/muviss.db"))
+        assertTrue(isExcludedFromBackup("$directory/muviss.db-wal"))
+    }
 }

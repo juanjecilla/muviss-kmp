@@ -17,13 +17,21 @@ import platform.Foundation.NSURLIsExcludedFromBackupKey
  * `muviss.db` without its `-wal` restores a library missing the most recent commits.
  */
 actual object DeviceBackupExclusion {
-    actual fun apply(enabled: Boolean) = applyTo(databaseDirectory(), enabled)
+    actual fun apply(enabled: Boolean) {
+        val directory = databaseDirectory()
+        applyTo(directory, enabled, ownDirectory = directory == preferredDatabaseDirectory())
+    }
 }
 
-/** Sets the exclusion for [directory] and its database files. Internal so the iOS test can aim it at a temp directory. */
-internal fun applyTo(directory: String, enabled: Boolean) {
+/**
+ * Sets the exclusion for [directory] and its database files. Internal so the iOS test can aim it at a temp
+ * directory. The directory flag is set only on the database's [ownDirectory]: while a failed move leaves the
+ * database in an older place (the App Group container's root, or Documents), flagging that directory would
+ * exclude everything else stored there, so it gets the per-file flags and any directory flag is cleared.
+ */
+internal fun applyTo(directory: String, enabled: Boolean, ownDirectory: Boolean = true) {
     val excluded = !enabled
-    setExcluded(directory, excluded)
+    setExcluded(directory, excluded && ownDirectory)
     listOf("", "-wal", "-shm").forEach { suffix ->
         val path = "$directory/$DATABASE_FILE_NAME$suffix"
         if (NSFileManager.defaultManager.fileExistsAtPath(path)) setExcluded(path, excluded)

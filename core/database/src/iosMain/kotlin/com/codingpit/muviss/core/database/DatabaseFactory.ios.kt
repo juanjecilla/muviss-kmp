@@ -143,7 +143,7 @@ internal fun resolveDatabaseDirectory(destination: String, sources: List<String>
     return sources.firstOrNull { it != destination && manager.fileExistsAtPath("$it/$DATABASE_FILE_NAME") } ?: destination
 }
 
-private fun preferredDatabaseDirectory(): String = databaseDirectoryIn(sharedContainerPath() ?: documentsPath())
+internal fun preferredDatabaseDirectory(): String = databaseDirectoryIn(sharedContainerPath() ?: documentsPath())
 
 /**
  * Where earlier builds kept the database, newest first: the App Group container's root (before ADR 0034),
