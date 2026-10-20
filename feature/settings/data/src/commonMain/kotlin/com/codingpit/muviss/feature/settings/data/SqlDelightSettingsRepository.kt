@@ -68,6 +68,9 @@ class SqlDelightSettingsRepository(
     private val json = Json { prettyPrint = true }
     private val mutedGenresLock = Mutex()
 
+    /** The column and the OS exclusion change together, so two overlapping toggles (Settings, onboarding) never interleave. */
+    private val deviceBackupLock = Mutex()
+
     override fun observeSettings(): Flow<AppSettings> = settingsQueries.selectSettings()
         .asFlow()
         .mapToOneOrNull(dispatchers.io)
@@ -105,11 +108,13 @@ class SqlDelightSettingsRepository(
     }
 
     override suspend fun setDeviceBackupEnabled(enabled: Boolean) = withContext(dispatchers.io) {
-        ensureRow()
-        settingsQueries.updateDeviceBackupEnabled(enabled)
-        // The column and the OS exclusion move together (ADR 0034): the exclusion is the part a restart
-        // would otherwise have to re-derive, so it is applied here rather than only at the next open.
-        DeviceBackupExclusion.apply(enabled)
+        deviceBackupLock.withLock {
+            ensureRow()
+            settingsQueries.updateDeviceBackupEnabled(enabled)
+            // The column and the OS exclusion move together (ADR 0034): the exclusion is the part a restart
+            // would otherwise have to re-derive, so it is applied here rather than only at the next open.
+            DeviceBackupExclusion.apply(enabled)
+        }
     }
 
     override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = withContext(dispatchers.io) {

@@ -15,6 +15,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MutedGenres
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -51,7 +52,11 @@ internal class FakeSettingsApi : SettingsApi {
     override fun observeCrashReportsEnabled(): Flow<Boolean> = flowOf(true)
     override fun observeDeviceBackupEnabled(): Flow<Boolean> = deviceBackup
 
+    /** When set, a backup write waits for it, so a test can hold the write in flight. */
+    var deviceBackupGate: CompletableDeferred<Unit>? = null
+
     override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        deviceBackupGate?.await()
         deviceBackup.value = enabled
     }
 

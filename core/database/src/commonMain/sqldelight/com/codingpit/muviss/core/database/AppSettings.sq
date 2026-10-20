@@ -95,7 +95,7 @@
 -- (feature/settings/domain) reads and writes it, and its test pins that its
 -- defaults equal this literal. `mutedGenresInSearch` extends muting to typed search.
 --
--- `deviceBackupEnabled` was added in `19.sqm` (Device Backup, EPIC 51 WS6, ADR 0034).
+-- `deviceBackupEnabled` was added in `20.sqm` (Device Backup, EPIC 51 WS6, ADR 0034).
 -- Per-device and NOT synced. Off by default: when on, the OS may copy this device's
 -- library into its own backup (iCloud / Google backup / device transfer); when off, the
 -- library is excluded from it. Read by `DeviceBackupExclusion` on iOS and by the Android

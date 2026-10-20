@@ -10,6 +10,7 @@ import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MetadataError
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -95,6 +96,22 @@ class OnboardingViewModelTest {
         assertEquals(1, onboarding.completions)
         assertFalse(settings.notifications.value, "skip must not turn anything on")
         assertEquals(TmdbDataSource.MUVISS, key.source.value)
+    }
+
+    @Test
+    fun finishing_waits_for_a_backup_choice_still_being_written() = runTest {
+        val vm = viewModel()
+        val gate = CompletableDeferred<Unit>()
+        settings.deviceBackupGate = gate
+        var finished = false
+
+        vm.onDeviceBackupToggled(true)
+        vm.finish { finished = true }
+
+        assertFalse(finished, "leaving would cancel the write still in flight")
+        gate.complete(Unit)
+        assertTrue(finished)
+        assertTrue(settings.deviceBackup.value)
     }
 
     @Test

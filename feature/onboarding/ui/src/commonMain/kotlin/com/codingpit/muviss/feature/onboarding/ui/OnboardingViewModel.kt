@@ -17,6 +17,7 @@ import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -143,6 +144,9 @@ class OnboardingViewModel(
     /** Start and Skip alike: whatever the pages wrote stays, and the introduction is done. */
     fun finish(onFinished: () -> Unit) {
         viewModelScope.launchReporting {
+            // Leaving clears this view model and cancels its scope, so a backup choice still being
+            // written would be lost; wait for it first.
+            deviceBackupWrite?.join()
             onboarding.markCompleted()
             onFinished()
         }
@@ -156,8 +160,15 @@ class OnboardingViewModel(
     }
 
     /** The backup page's switch (ADR 0034). Nothing is copied now; the OS decides at its next backup. */
+    // The latest backup write, which finish() waits for. Each toggle waits for the one before it, so they land in order.
+    private var deviceBackupWrite: Job? = null
+
     fun onDeviceBackupToggled(enabled: Boolean) {
-        viewModelScope.launchReporting { settings.setDeviceBackupEnabled(enabled) }
+        val previous = deviceBackupWrite
+        deviceBackupWrite = viewModelScope.launchReporting {
+            previous?.join()
+            settings.setDeviceBackupEnabled(enabled)
+        }
     }
 
     fun openSystemNotificationSettings() = systemNotifications.open()
