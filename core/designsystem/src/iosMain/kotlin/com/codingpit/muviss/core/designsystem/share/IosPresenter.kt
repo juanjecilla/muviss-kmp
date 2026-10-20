@@ -5,16 +5,39 @@ import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.UIKit.UISceneActivationStateForegroundActive
 import platform.UIKit.UIViewController
+import platform.UIKit.UIWindow
+import platform.UIKit.UIWindowScene
 import platform.UIKit.popoverPresentationController
 
 /**
- * The view controller the user is looking at: the key window's root, walked down
+ * The window the user is looking at. `UIApplication.keyWindow` is deprecated and can be
+ * nil or belong to a background scene on a multi-scene iPad, so the foreground-active
+ * `UIWindowScene` is asked first; the application-level key window and then any window
+ * are fallbacks for the cases where no scene is foregrounded yet.
+ */
+@Suppress("DEPRECATION")
+private fun currentWindow(): UIWindow? {
+    val app = UIApplication.sharedApplication
+    val scenes = app.connectedScenes.filterIsInstance<UIWindowScene>()
+    val foreground = scenes.firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
+    val fromForeground = foreground?.let { scene ->
+        scene.keyWindow ?: scene.windows.filterIsInstance<UIWindow>().firstOrNull { it.isKeyWindow() }
+    }
+    return fromForeground
+        ?: app.keyWindow
+        ?: foreground?.windows?.filterIsInstance<UIWindow>()?.firstOrNull()
+        ?: scenes.asSequence().flatMap { it.windows.filterIsInstance<UIWindow>() }.firstOrNull()
+}
+
+/**
+ * The view controller the user is looking at: the current window's root, walked down
  * through every modal already presented on top of it. Presenting from the root
  * while a sheet is up fails with "already presenting", which is why the walk exists.
  */
 fun topViewController(): UIViewController? {
-    var top = UIApplication.sharedApplication.keyWindow?.rootViewController
+    var top = currentWindow()?.rootViewController
     while (top?.presentedViewController != null) top = top.presentedViewController
     return top
 }
