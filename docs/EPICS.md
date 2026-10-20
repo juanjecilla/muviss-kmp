@@ -297,6 +297,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
 | — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0030) | #342 |
 | — | EPIC 51 What's next?: a Pick Session after a Completion (and from Discover, Progress, Library, Detail) that ends in a Next Pick; Taste Profile; rules over the user's own history behind a ranker seam (ADR 0032) | #396 |
+| — | EPIC 52 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`19.sqm`) | #391 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
@@ -388,6 +389,23 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 **Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
 
+## EPIC 52 — Tick animations — issue #391
+
+**`19.sqm`.** A tick on the Progress tab played a button pop and a snackbar, then the row snapped to the next episode, so it was easy to miss. Now the row confirms it (a sweep with "S1E3 seen", the episode line slides, the bar fills, a caught-up row fades out), a Milestone (a season finished, or nothing aired left unseen) adds a hand-drawn burst over the list, and Detail gets a lighter version (row wash, count and bar animate, the season checkbox pulses once, a burst only when a single tick catches the show up — bulk marks never burst).
+
+Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tickAnimations`, default on, per device, not synced). It narrows `animationsEnabled` the way `triageDeckAnimations` does: `FeatureFlags.tickAnimationsActive` is the AND, and the haptic is never gated. The milestone also changes the snackbar copy, so with motion off it is still said. Both pre-existing tick pops used to ignore the master switch; they honour it now. Outcome is decided in `ProgressViewModel.tick` (Progress, after the list settles) and `DetailViewModel.toggleEpisodeSeen` (Detail, at the tap).
+
+**Not done, deliberately:** the widgets (#393), the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
+
+**Not verified by any test:** the haptic, and how the sweep and burst feel on a device. Tests assert presence and absence under a hand-driven clock (`ProgressTickFeedbackTest`), not the look.
+
+---
+
+## iOS joins the staged train — issue #411 (added 2026-10-17)
+
+- **#411 — iOS on the staged train.** iOS walks the same three weeks as Play (TestFlight internal → external public-link beta → App Store with a seven-day phased release), with each platform's stage and gates recorded separately. Decision and Apple's rules, with their open assumptions: ADR 0033.
+  - Status (WS5, `feat/ios-staged-train`, PR stacked on #427): the per-platform stage marker (`release_stages.rb`, old Play-only markers still parse), the iOS decider (`ios_train.rb`), the App Store Connect client (`app_store_connect.rb`), the runner (`ios_promote.rb`), the Sunday step inside `release-promote.yml`, `app-store-phased-ramp.yml`, `app-store-brake.yml`, and the per-platform Sentry namespace (#422). Unverified against a live account; see RELEASING.md "iOS in the train (WS5)" for the first-live-run checklist. Owner runbook: WS7.
+
 ## Sequencing
 
 Wave 0 first (nothing else runs without CI; EPIC 43 belongs here too — every live-project verification task depends on it existing before it can run safely). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
@@ -425,7 +443,7 @@ runs standing in where they could. What that did and did not buy:
 ## Cross-cutting / backlog
 
 ### 2026-10-17
-- **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `19.sqm` (schema v20, fixture `20.db`) because Muted Genres took `18.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
+- **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `20.sqm` (schema v21, fixture `21.db`) because Muted Genres took `18.sqm` and tick animations `19.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
 
 
 - **Muted Genres built** (ADR 0031, glossary: Muted Genre): talk, news and reality TV are left out of the triage deck, Discover, For you and More like this by default; any TMDB genre can be muted in Settings, Onboarding offers four, and a "Show muted" chip lifts it per session. `18.sqm`, `19.db`. Raised and not done: #385 (sync it across devices), #386 (titles with no genres, e.g. award shows: closed as a documented limit, `type` does not catch them either), #387 (stored genre names keep the language they were muted in: fixed here, names resolve from the catalogue), #388 (verify on a device, per target; nothing was run on one).

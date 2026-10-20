@@ -10,20 +10,39 @@ require "uri"
 #
 # It fails closed: no token, an HTTP error or an unreadable answer also hold,
 # because "we could not look" is not "nothing crashed".
+#
+# Per platform (#422, ADR 0033): Android and iOS report different release
+# namespaces (`MuvissCrashReporting.releaseOf` / `crashReleaseNamespace`), so a
+# crash on one store never holds the other. Play's ramp asks for ANDROID, the
+# App Store's ramp for IOS.
 module SentryGate
   APPLICATION_ID = "com.codingpit.muviss".freeze
+  # The namespace each platform reports. Keep in step with CrashReleaseNamespace.kt.
+  NAMESPACES = { android: APPLICATION_ID, ios: "#{APPLICATION_ID}.ios".freeze }.freeze
   SHOWN = 3
+  # The start of every "we could not look" reason. The iOS ramp must tell this
+  # apart from a crash: an outage pauses nothing (ADR 0033).
+  UNREADABLE = "Sentry could not be asked".freeze
 
   module_function
 
+  def unreadable_reason(detail)
+    "#{UNREADABLE} (#{detail}); holding until it can"
+  end
+
+  def unreadable?(reason)
+    reason.to_s.start_with?(UNREADABLE)
+  end
+
   # The release name the app reports and the Sentry Gradle plugin stamps on
-  # the mapping (`MuvissCrashReporting.releaseOf`): `<appId>@<name>+<code>`.
+  # the mapping (`MuvissCrashReporting.releaseOf`): `<namespace>@<name>+<code>`.
   # nil when either part is missing: a name ending in "+" matches nothing in
   # Sentry, which would read as "no crashes" and let the ramp through.
-  def release_name(version_name:, version_code:)
+  def release_name(version_name:, version_code:, platform: :android)
     return nil if version_name.to_s.empty? || version_code.to_s.empty?
 
-    "#{APPLICATION_ID}@#{version_name}+#{version_code}"
+    namespace = NAMESPACES.fetch(platform) { raise ArgumentError, "no Sentry namespace for #{platform.inspect}" }
+    "#{namespace}@#{version_name}+#{version_code}"
   end
 
   def query(release)
@@ -32,7 +51,7 @@ module SentryGate
 
   # nil to go ahead; otherwise why the ramp holds.
   def hold_reason(issues:, error: nil)
-    return "Sentry could not be asked (#{error}); holding until it can" if error
+    return unreadable_reason(error) if error
     return nil if issues.empty?
 
     named = issues.first(SHOWN).map { |issue| issue["shortId"] || issue["title"] }.join(", ")

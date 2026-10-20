@@ -202,10 +202,14 @@ alternative would be to initialise first and gate afterwards, at the cost of an
 opted-out person's crash in that first window being sent.
 
 **`release`, `dist`, `environment`.** `release` is
-`com.codingpit.muviss@<versionName>+<versionCode>` and `dist` the versionCode —
-exactly what the Sentry Gradle plugin stamps on the mapping it uploads. They
-must stay identical or a trace cannot find its mapping (`MuvissCrashReporting.releaseOf`
-and `app/androidApp/build.gradle.kts`). `environment` is `SENTRY_ENVIRONMENT`
+`<namespace>@<versionName>+<versionCode>` and `dist` the versionCode. The
+namespace is per platform (`crashReleaseNamespace`, ADR 0033): Android, desktop
+and web report `com.codingpit.muviss`, exactly what the Sentry Gradle plugin
+stamps on the R8 mapping it uploads, and they must stay identical or a trace
+cannot find its mapping (`MuvissCrashReporting.releaseOf` and
+`app/androidApp/build.gradle.kts`); iOS reports `com.codingpit.muviss.ios`, so
+its crash gate never reads Play's crashes. `fastlane/sentry_gate.rb`'s
+`NAMESPACES` names the same two strings, and a change to either side changes both. `environment` is `SENTRY_ENVIRONMENT`
 (env or `local.properties`) if set, otherwise `production` when a release
 artefact was requested and `development` otherwise.
 
@@ -370,6 +374,80 @@ the schedule, the gates and where a fix goes.
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
   refused (the step then holds, with that reason).
+
+### iOS in the train (WS5, ADR 0033)
+
+iOS walks the same three stages as Play, one week apart, on the same RC binary.
+Each platform has its own stage in the release issue's marker, and each gate
+holds only the platform it reads, except the shared gates (release-blocker, a fix
+PR into the branch, CI, DRAFT notes), which hold both. The iOS steps are skipped
+with a notice while `APP_STORE_CONNECT_KEY_ID` is unset, and Play runs as before.
+
+| When | iOS step | What happens | Where |
+|---|---|---|---|
+| Monday 23:00 UTC | internal | `ios beta` uploads the RC to TestFlight internal testers | `release-rc.yml` `ios` job |
+| Sunday, week 0 | external (Beta App Review) | `ios beta_external` sends the RC's build to the external group (public link) and submits it to Beta App Review | `release-promote.yml`, step "iOS track" |
+| Sunday, week 1 | App Store | Once `release/X.Y.Z` is in `main` and Beta App Review approved the build: `ios release submit_for_review:true` (automatic release, 7-day phased) | `release-promote.yml`, step "iOS track" |
+| Daily | phased ramp | Pauses the live phased release while the iOS crash gate fails; resumes only its own pause once the gate passes | `app-store-phased-ramp.yml` |
+| Any time | brake | `pause` / `resume` a version, or `ios-only-override` (below) | `app-store-brake.yml` (manual) |
+
+- **App Store needs the merge.** The App Store step runs only after `release/X.Y.Z`
+  is merged into `main`, which Play's production step does. A Play hold therefore
+  holds iOS production. An iOS hold never holds Play.
+- **`ios-only-override`** (`app-store-brake.yml`, `action: ios-only-override`, with
+  `version`) is the one way past a Play hold. It merges the release PR itself,
+  submits iOS, and records on the issue that Play is **not** promoted. The Sunday
+  Play step will not touch that version (`ios_override_on`); promote Play by hand
+  (`play-promote.yml`) once its gates pass.
+- **Supersede (ADR 0033 rule (a)).** When version N is due and N-1 is in review,
+  N-1 is removed from review (`AppStoreConnect#remove_from_review`) and marked
+  superseded. A rejected N-1 is marked superseded and its reason stays on N's
+  issue. A N-1 in *Pending Developer Release* is never superseded: N waits.
+- **Crash gate, per platform.** iOS builds report release
+  `com.codingpit.muviss.ios@<name>+<code>` (`crashReleaseNamespace` in
+  `app/shared`, #422). Android keeps `com.codingpit.muviss@…`. `sentry_gate.rb`
+  asks for the platform's own namespace, so an iOS crash never holds Play, and the
+  reverse. A Sentry outage pauses nothing: the iOS ramp reads it as "could not
+  look" and leaves the rollout alone.
+- **The pause budget.** Apple allows 30 paused days per version, cumulative across
+  pauses. A version that has used them is left for an owner decision, and its
+  issue says so.
+
+**Owner runbook names** (the secrets and variables CI reads):
+
+| Kind | Name | Used by |
+|---|---|---|
+| Secret | `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY_P8` | every iOS leg (`scripts/release/apple-setup.sh` writes them) |
+| Secret | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | dSYM upload; the iOS crash gate reads `SENTRY_AUTH_TOKEN` and `SENTRY_ORG` |
+| Variable | `APPLE_TEAM_ID` | `ios beta` (signing) |
+| Variable | `TESTFLIGHT_GROUPS` | `ios beta` (internal group, optional) |
+| Variable | `TESTFLIGHT_EXTERNAL_GROUPS` | `ios beta_external` (the external group with the public link). Required for the Sunday beta step |
+| Secret | `RELEASE_APP_ID`, `RELEASE_APP_PRIVATE_KEY` | the release App token for the merge (`release-promote.yml`, `app-store-brake.yml`) |
+
+Lanes: `ios beta`, `ios beta_external`, `ios release`, `ios upload_dsyms`.
+Scripts: `ruby fastlane/ios_promote.rb run | ramp | brake pause|resume X.Y.Z | override X.Y.Z`.
+The App Store Connect API key needs a role that can change a phased release and
+submit a version (App Manager or Admin; the phased-release page names Account
+Holder, Admin or App Manager, not fetched in this change).
+
+**The first live run checklist.** This change was written without a live App
+Store Connect account; each item is a check the owner (or the first live run)
+makes, and its answer goes on the release issue. The code states the same
+assumption where it relies on it (ADR 0033, "Assumptions the implementer must
+verify"):
+
+1. A newer release ends the previous phased rollout (owner's premise). Read N-1's `phasedReleaseState` after N is released.
+2. The phased-release states are Apple's documented `PhasedReleaseState` (`INACTIVE`, `ACTIVE`, `PAUSED`, `COMPLETE`); only `PAUSED` reads as paused. A `GET /v1/appStoreVersions/{id}/appStoreVersionPhasedRelease` after the first pause confirms it (`AppStoreConnect#phased_release`).
+3. A `PATCH` to `ACTIVE` in Pending Developer Release answers 409 (forum report). The train only pauses a live rollout; confirm it never sees that state.
+4. App Store Connect refuses a new version while one is Pending Developer Release, and the cancel call for review (`PATCH /v1/reviewSubmissions/{id}`, `canceled: true`, `AppStoreConnect#remove_from_review`) has the shape used here.
+5. Beta App Review latency: record the time from submit to approval on the release issue.
+6. Beta App Review reviews the first build of a version; a second RC may need a full review. The Sunday step records which RC it submitted.
+7. No per-build export-compliance answer once `ITSAppUsesNonExemptEncryption = NO` is in both Info.plists. Confirm on the first external upload.
+8. TestFlight builds expire after 90 days; the cut-to-submit gap is thirteen days.
+9. `ios beta_external` uses `pilot`'s distribute-only mode (`distribute_only: true`, the build picked by version and build number, nothing uploaded) with `submit_beta_review: true` and the version's `release-notes/vX.Y.Z/en-US.txt` as *What to Test*, which external testing requires. Confirm on the first external run that the build reaches the group and Beta App Review.
+10. Resume after a Sentry pause: the gate resumes only its own pause, after it passes on a daily run. The brake's pauses are the owner's to resume.
+11. The 30-day budget is cumulative per version: at 25 paused days, decide before it runs out.
+12. Spaceship is not used: the phased-release and review calls are the REST resources above. `build_id` and `beta_review_state` (`/v1/builds`, `/v1/builds/{id}/betaAppReviewSubmission`) are unverified in shape.
 
 ### Cutting a release
 
@@ -885,18 +963,17 @@ always available on `NSObject`) instead of `content.title = ...`.
 
 ### Versioning
 
-Mirrors item 3's scheme (git-derived, no hardcoded version) via a **Run
-Script build phase** named "Set version from git" (`project.pbxproj`,
-after the Resources phase): it computes the same `versionCode`
-(`git rev-list --count HEAD`) and a `versionName` (latest exact
-`vMAJOR.MINOR.PATCH` tag, else `0.1.0-dev.<count>` — no `+sha` suffix
-unlike Android's, since `CFBundleShortVersionString` is conventionally
-kept to dotted numbers/simple dev suffixes) and overwrites
-`CFBundleVersion`/`CFBundleShortVersionString` in the **built** Info.plist
-via `/usr/libexec/PlistBuddy`. `Configuration/Config.xcconfig`'s
-`CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` are only the static fallback
-used when git is unavailable (e.g. a source-only archive) — the script
-no-ops (keeping them) if `git rev-list` fails.
+Mirrors item 3's scheme (git-derived, no hardcoded version). Both the `iosApp`
+and `MuvissWidget` targets run the same **Run Script phase** "Set version from
+git", which calls `scripts/ios/set-version.sh` (so the app and its extension
+always match, ITMS-90473). It overwrites `CFBundleVersion` and
+`CFBundleShortVersionString` in the **built** Info.plist: `CFBundleVersion` is
+the Android `versionCode` (`scripts/release/version-code.sh` on an exact
+`vX.Y.Z[-rcN]` tag, else the commit count), and `CFBundleShortVersionString` is
+the numeric `X.Y.Z` of the latest tag, with any `-rcN` dropped, or `0.1.0` when
+untagged. `Configuration/Config.xcconfig`'s `CURRENT_PROJECT_VERSION`/
+`MARKETING_VERSION` are only the static fallback used when git is unavailable;
+the script keeps them in that case. Details in `app/iosApp/README.md`.
 
 ### Bundle id / signing (manual — no CI signing path yet)
 
@@ -935,15 +1012,9 @@ Automatic` (project.pbxproj) plus a blank `TEAM_ID` xcconfig variable means:
 (`app-icon-1024.png`, correctly 1024×1024) plus two *declared-but-empty*
 slots for iOS 18's dark/tinted Home Screen icon appearances (no file
 assigned — falls back to the default icon on iOS 18+, a cosmetic gap
-only). The blocking one: **`app-icon-1024.png` has an alpha channel**
-(`sips -g hasAlpha` → `yes`). App Store Connect rejects an App Store/
-marketing icon with transparency (`Invalid Large App Icon` at Archive
-validation or upload). Fix before the first real submission by
-flattening it onto an opaque background (e.g.
-`sips -s format png --setProperty hasAlpha no ...` after compositing
-onto white/black, or re-export from the source design tool without
-alpha) — not attempted here since there's no real Muviss brand artwork to
-re-derive it from yet (same caveat item 7 gives the desktop icons).
+only). The alpha channel that App Store Connect rejects (`Invalid Large App
+Icon`) is gone: `app-icon-1024.png` is opaque RGB (`sips -g hasAlpha` → `no`).
+Re-check that line before a submission if the icon is ever re-exported.
 
 ### Sentry test crash
 
@@ -1076,6 +1147,47 @@ by the time anyone read them again:
   Archive → TestFlight upload, and the Sentry test crash on a signed device
   build. The `MuvissWidget` target now *links* (it needed the same Sentry and
   sqlite3 settings), but nothing about the widget itself has been run.
+
+### iOS lanes (WS3)
+
+`fastlane/Fastfile`'s `platform :ios` (helpers in `fastlane/ios_release.rb`,
+tests in `fastlane/test/ios_release_test.rb`):
+
+- **`ios beta`** archives the release candidate (`iosApp`, Release, App Store
+  export, cloud-managed signing) and uploads it to TestFlight's internal
+  testers, without submitting it to review. It refuses a build whose
+  `CFBundleVersion` is not the RC's versionCode. Called by `release-rc.yml`'s
+  `ios` job on every RC tag.
+- **`ios upload_dsyms`** sends the archive's dSYMs to Sentry. It skips with a
+  notice unless `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and `SENTRY_PROJECT` are all set.
+- **`ios release`** sends the TestFlight build to the App Store listing with a
+  seven-day phased release. It takes the **RC** tag, `tag:vX.Y.Z-rcN` (or
+  `RELEASE_TAG`), and refuses any other: the build was uploaded under the RC's
+  versionCode, and the final tag's (rc 0) matches no TestFlight build. It
+  submits for review only with `submit_for_review:true`, and it refuses while
+  any file under `fastlane/metadata/ios` still contains `REPLACE_BEFORE_SUBMIT`.
+
+Environment: `APPLE_TEAM_ID` (repository variable), `APP_STORE_CONNECT_KEY_ID`,
+`APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY_P8` (repository secrets,
+set by `scripts/release/apple-setup.sh`), `TESTFLIGHT_GROUPS` (optional
+variable, comma-separated internal groups; when set, `ios beta` waits for
+processing and distributes to them, otherwise it only uploads), and `RELEASE_TAG` (set by CI; without
+it the exact tag at HEAD is used). The Sentry trio is the same repository secrets
+the Android build uses.
+
+The App Store Connect API key needs the **Admin** role. App Manager cannot
+create the cloud-managed signing certificates that `-allowProvisioningUpdates`
+asks for (Apple's roles page: App Manager has no certificate access unless an
+Admin grants "Certificates, Identifiers & Profiles"). The first iOS job on a
+new team is the check: a signing error there names the missing access.
+
+The Kotlin/Native release framework has line tables only because
+`app/shared/build.gradle.kts` passes `-Xadd-light-debug=enable` to the release
+binary. Without it the dSYM symbolicates Kotlin frames by name only.
+
+Not verified in CI: the archive, signing and upload (they need the Apple
+account and its secrets), and the `deliver` build selection by `build_number`.
+The iOS job skips with a notice while the Apple secrets are absent.
 
 ## 10. Web: the landing (muvissapp.com) and the Wasm app — EPIC 13 / issue #16
 
@@ -1256,9 +1368,9 @@ entitlement files, `MUVISS_APP_GROUP` in
 
 ### iOS: what to check in Xcode
 
-The `MuvissWidget` target was added to `project.pbxproj` by hand — the
-project opens and its target graph parses, but **it has never been built**,
-because building it needs Xcode and a team. Expect to adjust:
+The `MuvissWidget` target is built by CI's `ios` job, as a dependency of
+`iosApp` under `CODE_SIGNING_ALLOWED=NO`, so it compiles and links on every
+PR. What CI cannot show is behaviour on a signed device, so expect to adjust:
 
 - **Framework linking.** The target links the static `Shared` framework via
   `OTHER_LDFLAGS = -framework Shared` and a `FRAMEWORK_SEARCH_PATHS` entry

@@ -102,6 +102,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.theme
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_dark
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_light
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_system
+import com.codingpit.muviss.feature.settings.ui.generated.resources.tick_animations
+import com.codingpit.muviss.feature.settings.ui.generated.resources.tick_animations_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_attribution
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_language
 import kotlinx.coroutines.launch
@@ -175,6 +177,15 @@ fun SettingsScreen(
             description = stringResource(Res.string.animations_body),
             checked = state.animationsEnabled,
             onToggle = viewModel::onAnimationsToggled,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        SwitchRow(
+            label = stringResource(Res.string.tick_animations),
+            description = stringResource(Res.string.tick_animations_body),
+            checked = state.tickAnimations,
+            // Greyed, not hidden, while the master is off: same as the swipe row below.
+            enabled = state.animationsEnabled,
+            onToggle = viewModel::onTickAnimationsToggled,
         )
 
         SectionOverline(stringResource(Res.string.section_content), topPadding = true)

@@ -11,6 +11,8 @@ name: Release promote
 #
 # The production step needs no approval: the gates and the crash gate that
 # holds the ramp are what stand in for it (ADR 0030). `play-promote.yml` halts.
+# The iOS track (ADR 0033) runs in the same job, after Play, and holds on its own
+# gates; an iOS hold never holds Play. `app-store-brake.yml` is the owner's override.
 #
 # Dispatch it to see every decision first: dry_run defaults to true, and a
 # dry run changes nothing, on GitHub or in Play.
@@ -85,3 +87,25 @@ jobs:
           DRY_RUN: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) && 'false' || 'true' }}
           VERSION: ${{ inputs.version }}
         run: ruby fastlane/release_promote.rb run
+
+      # The iOS track (ADR 0033), after Play's step so that a version Play merged
+      # this run is already in main. Sunday: the RC goes to the external group
+      # and to Beta App Review. Once a full week on beta has passed and the
+      # version is merged into main, it is submitted to the App Store for
+      # automatic release with a 7-day phased rollout. A missing App Store Connect
+      # key skips this step with a notice (the runner says so); Play is unaffected.
+      - name: iOS track - external beta, then the App Store submit (ADR 0033)
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          # The external group with the public link (set in App Store Connect; the
+          # runbook is docs/RELEASING.md, iOS in the train).
+          TESTFLIGHT_EXTERNAL_GROUPS: ${{ vars.TESTFLIGHT_EXTERNAL_GROUPS }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          DRY_RUN: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) && 'false' || 'true' }}
+          VERSION: ${{ inputs.version }}
+        run: ruby fastlane/ios_promote.rb run

@@ -38,7 +38,7 @@ The backup agent (`MuvissBackupAgent`, `app/androidApp`) is an **allowlist**. It
 
 ## Consequences
 
-- **Schema v20** (`19.sqm`): `appSettings.deviceBackupEnabled INTEGER NOT NULL DEFAULT 0`, appended last. The number is 19, not the 18 the branch was first given: Muted Genres merged `18.sqm` (schema v19) first, so this migration takes the next free number, with fixture `20.db` (`AGENTS.md`'s rule).
+- **Schema v21** (`20.sqm`): `appSettings.deviceBackupEnabled INTEGER NOT NULL DEFAULT 0`, appended last. The number is 20, not the 18 the branch was first given: Muted Genres merged `18.sqm` and tick animations `19.sqm` first, so this migration takes the next free number, with fixture `21.db` (`AGENTS.md`'s rule).
 - **The Android manifest is no longer `allowBackup="false"`.** `docs/PRIVACY.md` and the manifest comment say so; both are updated here. The lint baseline's `allowBackup` deprecation finding is about this attribute.
 - **The Own TMDB Key on iOS is not claimed as excluded.** On Android it is excluded by the allowlist and the XML rules. On iOS it sits in KSafe's Keychain-backed store, and whether an encrypted device backup carries Keychain items with its accessibility class is not verified here. Filed as a follow-up.
 - **App Store nutrition label is unaffected**: an iCloud backup is Apple's, and Muviss collects nothing from it. The Play Data safety form is unaffected for the same reason.

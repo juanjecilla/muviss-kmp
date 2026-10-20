@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -224,6 +225,7 @@ private fun PageContent(
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
                     .toggleable(value = state.deviceBackupEnabled, role = Role.Switch, onValueChange = onDeviceBackupToggled)
                     .testTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -239,6 +241,7 @@ private fun PageContent(
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
                     .toggleable(value = state.notificationsEnabled, role = Role.Switch, onValueChange = onNotificationsToggled)
                     .testTag(ONBOARDING_NOTIFICATIONS_SWITCH_TAG),
                 horizontalArrangement = Arrangement.SpaceBetween,

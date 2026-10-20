@@ -6,11 +6,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
@@ -98,12 +100,10 @@ private val catalog = mapOf(
     ),
 )
 
-/** What the user has already ticked: one show barely started, one mid-season, one into its second season. */
-private val ticked = listOf(
-    EpisodeId(severance, 1, 1),
-    EpisodeId(severance, 1, 2),
-    EpisodeId(shogun, 1, 1),
-) + (1..4).map { EpisodeId(theBear, 1, it) } + EpisodeId(theBear, 2, 1)
+/** What the user has already ticked: one show barely started, one mid-season, one into its second season. Watch Next lists the last one ticked first, so they are ticked in the order the golden shows them, last to first. */
+private val ticked = listOf(EpisodeId(shogun, 1, 1)) +
+    (1..4).map { EpisodeId(theBear, 1, it) } + EpisodeId(theBear, 2, 1) +
+    listOf(EpisodeId(severance, 1, 1), EpisodeId(severance, 1, 2))
 
 @Composable
 private fun WatchNextUnderTest(darkTheme: Boolean) {
@@ -118,9 +118,10 @@ private fun WatchNextUnderTest(darkTheme: Boolean) {
     val clock = FakeClock(TODAY_EPOCH_DAY * 86_400_000L)
     val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(catalog)), InMemoryEpisodeCatalogStore())
     val watchNextViewModel = ProgressViewModel(
-        WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), watchNextCache, clock),
+        WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), watchNextCache, clock),
         ToggleEpisodeSeenUseCase(progressRepository),
         watchNextCache,
+        FakeFeatureFlags(),
     )
     val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
     val upcomingViewModel = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))

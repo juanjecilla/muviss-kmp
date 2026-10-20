@@ -11,7 +11,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Covers `19.sqm`: `appSettings.deviceBackupEnabled` (Device Backup, ADR 0034).
+ * Covers `20.sqm`: `appSettings.deviceBackupEnabled` (Device Backup, ADR 0034).
  *
  * What `verifyMigrations` cannot see: that an install which already has the app comes out with the
  * backup switch **off** (the OS backs nothing up until the person asks), and that a fresh install does too.
@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class DeviceBackupMigrationTest {
 
     // The one place this suite knows the migration's number; see the note in MutedGenresMigrationTest.
-    private val migratesFrom = 19L
+    private val migratesFrom = 20L
     private val producesVersion = migratesFrom + 1
 
     private val fixtures = File("src/commonMain/sqldelight/databases")
@@ -35,7 +35,7 @@ class DeviceBackupMigrationTest {
     }
 
     @Test
-    fun `19_sqm produced its own fixture`() {
+    fun `20_sqm produced its own fixture`() {
         assertTrue(MuvissDatabase.Schema.version >= producesVersion)
         assertTrue(fixtures.resolve("$producesVersion.db").exists(), "$producesVersion.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
     }
@@ -45,7 +45,7 @@ class DeviceBackupMigrationTest {
         val driver = oldDriver()
         runBlocking {
             val queries = MuvissDatabase(driver).appSettingsQueries
-            queries.ensureRow() // a v19 row, as an installed app has
+            queries.ensureRow() // a v20 row, as an installed app has
             queries.updateMutedGenresInSearch(true)
         }
         migrate(driver)

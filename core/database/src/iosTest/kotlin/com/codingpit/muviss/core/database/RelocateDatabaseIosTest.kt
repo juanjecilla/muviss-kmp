@@ -8,6 +8,7 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUUID
 import platform.Foundation.stringWithContentsOfFile
+import platform.Foundation.writeToFile
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

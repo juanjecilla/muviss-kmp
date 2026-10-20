@@ -39,7 +39,7 @@ A show's seasons and episodes as the source reported them, stored locally and re
 _Avoid_: snapshot, episode list, seasons (as a stored thing).
 
 **WatchNext**:
-The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
+The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. Ordered by when each title was last watched, newest first (a title with no Play sorts by when it was collected), so ticking an episode moves its title to the top. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
 _Avoid_: up next, continue watching, queue (a watchlist is a CollectionEntry with NotStarted status); upcoming (that is future air dates, a different question).
 
 **WatchProgress**:
@@ -49,6 +49,14 @@ _Avoid_: history, visibility.
 **WatchStatus**:
 A value derived from WatchProgress (never stored independently): NotStarted → Watching → Watched → Finished for TV; NotStarted → Watched for movies. Manual status actions mutate progress to keep the two consistent.
 _Avoid_: state, phase.
+
+**Tick**:
+The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
+_Avoid_: check, mark (as a noun); watch (that is the viewing, a Play).
+
+**Milestone**:
+A tick that finishes a season (a later one has aired) or leaves nothing aired unseen for the show (it is caught up). Derived from the tick and WatchNext, never stored. The only ticks that get more than the row's own feedback.
+_Avoid_: achievement, streak (that is a count of days, a different thing).
 
 **Favorite**:
 An independent boolean flag on a CollectionEntry, orthogonal to WatchStatus.
@@ -171,3 +179,13 @@ _Avoid_: recommendation (it implies a model that learned the user; this is the u
 **Taste Profile**:
 What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre. Belongs to the account like the rest of the user's data (synced and exported).
 _Avoid_: preferences, settings (those are per-device switches); taste, interests; algorithm; disliked genres (that is a Muted Genre).
+
+### Release train
+
+**Stage**:
+Where one platform's build of a version stands on the weekly train: internal, then open beta, then production. Each platform has its own Stage for the same version (ADR 0033), so Play can be in production while iOS is still on beta.
+_Avoid_: track (Play's word for a channel), phase (see Phased Release).
+
+**Phased Release**:
+Apple's seven-day rollout of an App Store version to a growing share of devices with automatic updates on (1%, 2%, 5%, 10%, 20%, 50%, then 100%). It can be paused, and a paused release resumes where it stopped. Play's equivalent is the staged-rollout ramp.
+_Avoid_: ramp (Play's word), staged rollout.
