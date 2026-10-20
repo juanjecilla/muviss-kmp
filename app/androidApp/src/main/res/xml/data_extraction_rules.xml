@@ -6,14 +6,16 @@
      library database is offered by MuvissBackupAgent, and only when Device Backup is on. -->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="root" path="." />
+        <!-- No root exclusion: the framework checks a restored file against every exclusion at once, and
+             root (the whole data directory) covers databases/, so it would drop the library on restore. -->
         <exclude domain="file" path="." />
         <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />
         <exclude domain="device_root" path="." />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="root" path="." />
+        <!-- No root exclusion: the framework checks a restored file against every exclusion at once, and
+             root (the whole data directory) covers databases/, so it would drop the library on restore. -->
         <exclude domain="file" path="." />
         <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />

@@ -4,7 +4,8 @@
      Device Backup is on; these rules are the second line of defence for everything else. Nothing secret may
      ever ride along: KSafe's DataStore (the Own TMDB Key) lives under files/ and is excluded here. -->
 <full-backup-content>
-    <exclude domain="root" path="." />
+    <!-- No root exclusion: a restored file is checked against every exclusion at once, and root (the whole
+         data directory) covers databases/, so it would drop the library on restore. -->
     <exclude domain="file" path="." />
     <exclude domain="sharedpref" path="." />
     <exclude domain="external" path="." />
