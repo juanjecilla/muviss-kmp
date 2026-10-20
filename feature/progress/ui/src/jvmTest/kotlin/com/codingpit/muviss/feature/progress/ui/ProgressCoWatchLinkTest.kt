@@ -11,6 +11,7 @@ import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
@@ -65,7 +66,7 @@ private fun ProgressUnderTest(onOpenCoWatch: (() -> Unit)?) {
     val progressRepository = FakeProgressRepository()
     val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
     val watchNextViewModel = ProgressViewModel(
-        WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), watchNextCache, FakeClock(0L)),
+        WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), watchNextCache, FakeClock(0L)),
         ToggleEpisodeSeenUseCase(progressRepository),
         watchNextCache,
         FakeFeatureFlags(),

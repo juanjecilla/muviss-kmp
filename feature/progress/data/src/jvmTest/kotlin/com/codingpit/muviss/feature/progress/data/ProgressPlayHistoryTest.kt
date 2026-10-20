@@ -240,4 +240,44 @@ class ProgressPlayHistoryTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    private suspend fun lastWatchedAt(): Map<MediaId, Long> {
+        var result = emptyMap<MediaId, Long>()
+        repository.observeLastWatchedAt().test {
+            result = awaitItem()
+            cancelAndIgnoreRemainingEvents()
+        }
+        return result
+    }
+
+    @Test
+    fun last_watched_is_the_newest_play_per_title() = runTest {
+        val other = MediaId.tmdbTv("66732")
+
+        clock.advanceTo(2_000L)
+        repository.recordPlay(ep1)
+        clock.advanceTo(5_000L)
+        repository.recordPlay(ep2)
+        clock.advanceTo(3_000L)
+        repository.recordPlay(EpisodeId(other, 1, 1))
+
+        assertEquals(mapOf(show to 5_000L, other to 3_000L), lastWatchedAt())
+    }
+
+    @Test
+    fun removing_the_latest_play_restores_the_previous_last_watched() = runTest {
+        clock.advanceTo(2_000L)
+        repository.recordPlay(ep1)
+        clock.advanceTo(5_000L)
+        repository.recordPlay(ep2)
+
+        repository.removeLatestPlay(ep2)
+
+        assertEquals(mapOf(show to 2_000L), lastWatchedAt())
+    }
+
+    @Test
+    fun a_title_without_plays_has_no_last_watched() = runTest {
+        assertEquals(emptyMap(), lastWatchedAt())
+    }
 }

@@ -39,7 +39,7 @@ A show's seasons and episodes as the source reported them, stored locally and re
 _Avoid_: snapshot, episode list, seasons (as a stored thing).
 
 **WatchNext**:
-The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
+The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. Ordered by when each title was last watched, newest first (a title with no Play sorts by when it was collected), so ticking an episode moves its title to the top. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
 _Avoid_: up next, continue watching, queue (a watchlist is a CollectionEntry with NotStarted status); upcoming (that is future air dates, a different question).
 
 **WatchProgress**:
