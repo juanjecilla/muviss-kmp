@@ -403,7 +403,7 @@ Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tick
 
 ## EPIC 35 — iOS to TestFlight and the App Store — issue #78 (status 2026-10-17)
 
-- **Status.** The repo side is merged: #426 (privacy manifests, version stamping, App Store metadata), #427 (the Fastfile lanes and the release-rc iOS job), #432 (ADR 0033's train, #411), and #433 (the owner runbook and `apple-setup.sh --verify`). Nothing has run against a live Apple account: the owner enrols as an Individual on 2026-10-18. Every Apple-facing step is unverified until the first live run (RELEASING.md section 9.6).
+- **Status.** The repo side is merged: #426 (privacy manifests, version stamping, App Store metadata), #427 (the Fastfile lanes and the release-rc iOS job), #432 (ADR 0033's train, #411), and #433 (the owner runbook and `apple-setup.sh --verify`). Nothing has run against a live Apple account: as of 2026-10-20 the Individual enrolment is not recorded (no `APPLE_TEAM_ID` variable on the repository), so step 1 below is still open. Every Apple-facing step is unverified until the first live run (RELEASING.md section 9.6).
 - **Ordered next steps for the owner** (each step, with its exact clicks and where its value goes, is RELEASING.md section 9.2):
   1. Enrol in the Apple Developer Program as an **Individual** (ID check, 24 to 48 hours, 99 USD a year). Copy the Team ID; the wizard stores it as `APPLE_TEAM_ID`.
   2. Register the App Group `group.com.codingpit.muviss` and both App IDs (`com.codingpit.muviss`, `com.codingpit.muviss.MuvissWidget`), App Groups only: no Sign in with Apple in v1.

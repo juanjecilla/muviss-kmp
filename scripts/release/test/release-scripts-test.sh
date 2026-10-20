@@ -262,6 +262,7 @@ expect_eq "and the PR still gets the milestone" "$(grep -c -- 'pr edit 13 --repo
 
 echo "apple-setup.sh --verify (docs/RELEASING.md section 9)"
 abin="$(mktemp -d)"
+trap 'rm -rf -- "$abin" "${av:-}" "${FAKE_GH_LOG:-}"' EXIT
 cat >"$abin/gh" <<'FAKEGH'
 #!/bin/bash
 echo "gh $*" >>"$FAKE_GH_LOG"

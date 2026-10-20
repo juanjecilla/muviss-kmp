@@ -1009,7 +1009,7 @@ Rules the train enforces:
 - **A new release ends the previous phased rollout (unverified).** This is the owner's premise, not something Apple documents. It is the first thing to check on the first live run (9.6, item 1). If N ends N-1's ramp early, the release issue says so.
 - **`ios-only-override`** (`app-store-brake.yml`, `action: ios-only-override`, `version`) is the one way past a Play hold. It merges the release PR itself, submits iOS, and records on the issue that Play is **not** promoted. The Sunday Play step will not touch that version (`ios_override_on`). Promote Play by hand (`play-promote.yml`) once its gates pass.
 - **Crash gate, per platform.** iOS builds report release `com.codingpit.muviss.ios@<name>+<code>` (`crashReleaseNamespace` in `app/shared`, #422). Android keeps `com.codingpit.muviss@…`. `sentry_gate.rb` asks for its own platform's namespace, so an iOS crash never holds Play and the reverse. A Sentry outage pauses nothing: the ramp reads it as "could not look" and leaves the rollout alone.
-- **Pause budget.** Apple allows 30 paused days per version, cumulative across pauses. A version that has used them is left for an owner decision, and its issue says so.
+- **Pause budget (unverified).** The train assumes Apple allows 30 paused days per version, cumulative across pauses; the first live run confirms it (9.6, item 11). A version that has used them is left for an owner decision, and its issue says so.
 - **Brake.** Use `app-store-brake.yml`, not "Remove from Sale". Removing the app from sale ends that version's phased release for good.
 - **Holds are recorded per platform**, on the release issue's marker. Markers written before iOS joined the train still parse and render "not on this train".
 
@@ -1252,8 +1252,9 @@ the two entitlement files (`app/iosApp/iosApp/iosApp.entitlements`,
 `app/iosApp/MuvissWidget/MuvissWidget.entitlements`), `MUVISS_APP_GROUP` in
 `core/database/src/iosMain/.../DatabaseFactory.ios.kt`, and the
 `UserDefaults(suiteName:)` in `app/iosApp/MuvissWidget/WidgetIntents.swift`.
-Until the App Group is registered and enabled on both App IDs, `DatabaseFactory.ios.kt`
-falls back to the Documents directory (ADR 0016) and the widget shows an empty library.
+On a device build, until the App Group is registered and enabled on both App IDs,
+`DatabaseFactory.ios.kt` falls back to the Documents directory (ADR 0016) and the widget
+shows an empty library. The Simulator has the App Group without a team (item 14).
 
 ### iOS: what to check in Xcode
 

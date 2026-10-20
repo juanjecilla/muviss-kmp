@@ -220,7 +220,7 @@ OPTIONAL_VARS=(TESTFLIGHT_GROUPS)
 # empty (Enter with no previous value, or stdin at EOF).
 require() {
   if [[ -z "${!1}" ]]; then
-    warn "$2 is required; nothing was saved. Re-run the wizard."
+    warn "$2 is required; this stage saved nothing (earlier stages are kept). Re-run the wizard."
     exit 1
   fi
 }
@@ -230,7 +230,7 @@ require() {
 # Needs APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID and APPLE_ASC_P8_PATH. It does
 # not prove the key's ROLE (Admin): only a cloud-managed signing run does.
 live_asc_check() {
-  command -v bundle >/dev/null 2>&1 && [ -f Gemfile ] || { warn "bundle or Gemfile missing: App Store Connect read skipped"; return 2; }
+  if ! command -v bundle >/dev/null 2>&1 || [ ! -f Gemfile ]; then return 2; fi
   APP_ID="$APP_ID" bundle exec ruby -Ifastlane -e '
     require "app_store_connect"
     client = AppStoreConnect::Client.new(
@@ -246,7 +246,7 @@ live_asc_check() {
 
 # lanes_check: the iOS lanes exist in this checkout. Loads fastlane, uploads nothing.
 lanes_check() {
-  command -v bundle >/dev/null 2>&1 && [ -f Gemfile ] || return 2
+  if ! command -v bundle >/dev/null 2>&1 || [ ! -f Gemfile ]; then return 2; fi
   bundle exec fastlane lanes 2>/dev/null | grep -q 'beta_external'
 }
 
@@ -275,8 +275,13 @@ verify_stage() {
     else printf '  %s-%s variable  %s (optional, unset)\n' "$DIM" "$RESET" "$name"; fi
   done
   if [[ -n "${APPLE_ASC_P8_PATH:-}" ]]; then
-    if live_asc_check; then printf '  %s✓%s App Store Connect: key works and the app record exists\n' "$GREEN" "$RESET"
-    else printf '  %s✗%s App Store Connect: the read failed (wrong key, issuer, or no app record)\n' "$RED" "$RESET"; missing=$((missing + 1)); fi
+    local asc=0
+    live_asc_check || asc=$?
+    case "$asc" in
+      0) printf '  %s✓%s App Store Connect: key works and the app record exists\n' "$GREEN" "$RESET" ;;
+      2) note "App Store Connect read skipped here (needs bundle and the Gemfile)." ;;
+      *) printf '  %s✗%s App Store Connect: the read failed (wrong key, issuer, or no app record)\n' "$RED" "$RESET"; missing=$((missing + 1)) ;;
+    esac
   else
     note "App Store Connect read not run: set APPLE_ASC_KEY_ID, APPLE_ASC_ISSUER_ID and APPLE_ASC_P8_PATH to run it."
   fi
