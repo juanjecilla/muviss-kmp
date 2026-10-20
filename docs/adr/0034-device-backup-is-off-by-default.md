@@ -9,7 +9,7 @@ Muviss's library (the SQLite database, watch history included) is the one thing 
 - **The switch is per device, not synced and not in the data export.** It describes this device's backup, not the library, so it is neither a `SyncChangeSet` field nor an `ExportShapeTest` field. `SyncChangeSetShapeTest` and `ExportShapeTest` are unchanged and green.
 - **KSafe and the Own TMDB Key are never offered to a backup by Muviss**, whatever the switch says. On Android that is enforced (the agent's allowlist and the XML rules leave them out). On iOS they sit in KSafe's Keychain-backed store, which Muviss does not exclude, and whether an encrypted device backup carries those items is not verified (see Consequences). They are secrets bound to a device key: a copy restored onto another phone should not decrypt them, and a copy that could would be a leak.
 - **The switch is offered only where the OS has a backup Muviss can honour** (`platformCanBackUp`: Android and iOS). Desktop and the web have none, so the row and the onboarding page are absent there.
-- **Delete all data resets the switch to off and removes the OS exclusion** with it. It does not reach into a backup the OS already holds; that is outside the app, and the privacy policy says so.
+- **Delete all data resets the switch to off and re-applies the default-off exclusion** with it, so the fresh library that follows stays out of the OS backup until the person opts in again. It does not reach into a backup the OS already holds; that is outside the app, and the privacy policy says so.
 
 ## iOS
 

@@ -1,6 +1,6 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-10-17._
+_Last updated: 2026-10-21._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
@@ -20,10 +20,12 @@ include the library, so a new phone picks up where you left off: iCloud or a
 device backup on iOS, and Google's backup or a device-to-device transfer on
 Android. It is off until you turn it on — in the first-run introduction or in
 Settings → Data — and it is not shown on platforms where the OS has no such
-backup to offer. When it is on, the copy is held by Apple or Google under your
-own account, as every other app's data is in that backup. Muviss has no server
-to receive it and never sees it. When it is off, the library is left out of
-those backups. Either way the copy stays under your own account, not Muviss's.
+backup to offer. When it is on, the copy goes wherever that backup goes, as
+every other app's data does: iCloud or Google's backup under your own account,
+a computer you back your iPhone up to, or the new phone in a device-to-device
+transfer. Muviss has no server to receive it and never sees it. When it is
+off, the library is left out of those backups and transfers. Either way the
+copy is yours, not Muviss's.
 
 ## Network calls Muviss makes
 
@@ -124,7 +126,8 @@ telemetry, no third-party trackers.
 device — your library, watch history, lists, triage decisions, profile and
 settings, Device Backup included (it goes back to off) — without uninstalling.
 A copy your phone's own backup already holds is outside Muviss and is not
-touched by this; delete it in the system's backup settings. Uninstalling does the same. Either way there
+touched by this; delete it where that backup lives (the phone's backup
+settings for iCloud or Google, or the computer that holds an iPhone backup). Uninstalling does the same. Either way there
 is nothing left on any server, because nothing you enter is ever sent to one.
 Settings → Data → Export saves a copy first if you might want it back.
 
