@@ -1070,6 +1070,47 @@ by the time anyone read them again:
   build. The `MuvissWidget` target now *links* (it needed the same Sentry and
   sqlite3 settings), but nothing about the widget itself has been run.
 
+### iOS lanes (WS3)
+
+`fastlane/Fastfile`'s `platform :ios` (helpers in `fastlane/ios_release.rb`,
+tests in `fastlane/test/ios_release_test.rb`):
+
+- **`ios beta`** archives the release candidate (`iosApp`, Release, App Store
+  export, cloud-managed signing) and uploads it to TestFlight's internal
+  testers, without submitting it to review. It refuses a build whose
+  `CFBundleVersion` is not the RC's versionCode. Called by `release-rc.yml`'s
+  `ios` job on every RC tag.
+- **`ios upload_dsyms`** sends the archive's dSYMs to Sentry. It skips with a
+  notice unless `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and `SENTRY_PROJECT` are all set.
+- **`ios release`** sends the TestFlight build to the App Store listing with a
+  seven-day phased release. It takes the **RC** tag, `tag:vX.Y.Z-rcN` (or
+  `RELEASE_TAG`), and refuses any other: the build was uploaded under the RC's
+  versionCode, and the final tag's (rc 0) matches no TestFlight build. It
+  submits for review only with `submit_for_review:true`, and it refuses while
+  any file under `fastlane/metadata/ios` still contains `REPLACE_BEFORE_SUBMIT`.
+
+Environment: `APPLE_TEAM_ID` (repository variable), `APP_STORE_CONNECT_KEY_ID`,
+`APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY_P8` (repository secrets,
+set by `scripts/release/apple-setup.sh`), `TESTFLIGHT_GROUPS` (optional
+variable, comma-separated internal groups; when set, `ios beta` waits for
+processing and distributes to them, otherwise it only uploads), and `RELEASE_TAG` (set by CI; without
+it the exact tag at HEAD is used). The Sentry trio is the same repository secrets
+the Android build uses.
+
+The App Store Connect API key needs the **Admin** role. App Manager cannot
+create the cloud-managed signing certificates that `-allowProvisioningUpdates`
+asks for (Apple's roles page: App Manager has no certificate access unless an
+Admin grants "Certificates, Identifiers & Profiles"). The first iOS job on a
+new team is the check: a signing error there names the missing access.
+
+The Kotlin/Native release framework has line tables only because
+`app/shared/build.gradle.kts` passes `-Xadd-light-debug=enable` to the release
+binary. Without it the dSYM symbolicates Kotlin frames by name only.
+
+Not verified in CI: the archive, signing and upload (they need the Apple
+account and its secrets), and the `deliver` build selection by `build_number`.
+The iOS job skips with a notice while the Apple secrets are absent.
+
 ## 10. Web: the landing (muvissapp.com) and the Wasm app — EPIC 13 / issue #16
 
 ### The landing owns GitHub Pages
