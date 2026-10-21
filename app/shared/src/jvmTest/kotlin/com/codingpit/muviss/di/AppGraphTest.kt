@@ -122,12 +122,7 @@ class AppGraphTest {
      */
     @Test
     fun `the onboarding view model resolves from the assembled graph`() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
-        try {
-            assertNotNull(startGraph().get<OnboardingViewModel>())
-        } finally {
-            Dispatchers.resetMain()
-        }
+        assertNotNull(startGraph().get<OnboardingViewModel>())
     }
 
     /**
