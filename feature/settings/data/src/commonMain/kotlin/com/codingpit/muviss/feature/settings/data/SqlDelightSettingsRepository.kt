@@ -116,10 +116,19 @@ class SqlDelightSettingsRepository(
         withContext(dispatchers.io + NonCancellable) {
             deviceBackupWrites.write(requestedAt) {
                 ensureRow()
-                settingsQueries.updateDeviceBackupEnabled(enabled)
-                // The column and the OS exclusion move together (ADR 0034): the exclusion is the part a restart
-                // would otherwise have to re-derive, so it is applied here rather than only at the next open.
-                DeviceBackupExclusion.apply(enabled)
+                // The column and the OS exclusion move together (ADR 0034), ordered so a failure on either side
+                // leaves the library excluded and the switch reading what the OS does: off excludes first and
+                // stores after; on stores first, and puts the switch back if the OS refuses to include it.
+                if (enabled) {
+                    settingsQueries.updateDeviceBackupEnabled(true)
+                    runCatching { DeviceBackupExclusion.apply(true) }.onFailure { error ->
+                        settingsQueries.updateDeviceBackupEnabled(false)
+                        throw error
+                    }
+                } else {
+                    DeviceBackupExclusion.apply(false)
+                    settingsQueries.updateDeviceBackupEnabled(false)
+                }
             }
         }
     }

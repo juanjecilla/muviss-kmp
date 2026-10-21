@@ -68,9 +68,10 @@ class SqlDelightLocalDataEraser(
         // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
         ownTmdbKey.clear()
         secrets.clearAll()
-        // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
-        // exclusion follows it: an iOS directory left un-excluded would back a deleted library up.
-        DeviceBackupExclusion.apply(enabled = false)
         widgetRefresher.refresh()
+        // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
+        // exclusion follows it: an iOS directory left un-excluded would back a deleted library up. Last,
+        // because it can throw; the data is already gone by then, and the next open applies it again.
+        DeviceBackupExclusion.apply(enabled = false)
     }
 }

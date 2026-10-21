@@ -13,7 +13,10 @@ import app.cash.sqldelight.db.SqlDriver
  * re-established on every launch, not only on the toggle.
  */
 expect object DeviceBackupExclusion {
-    /** Includes the library in the OS backup when [enabled], excludes it when not. Idempotent. */
+    /**
+     * Includes the library in the OS backup when [enabled], excludes it when not. Idempotent. Throws when the
+     * OS refuses the change, so a caller can keep the stored choice and the OS state from disagreeing.
+     */
     fun apply(enabled: Boolean)
 }
 

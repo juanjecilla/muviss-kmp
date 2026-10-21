@@ -8,6 +8,7 @@ import platform.Foundation.NSUUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -91,5 +92,10 @@ class DeviceBackupExclusionIosTest {
         assertFalse(isExcludedFromBackup(directory), "other files in a shared directory stay in the backup")
         assertTrue(isExcludedFromBackup("$directory/muviss.db"))
         assertTrue(isExcludedFromBackup("$directory/muviss.db-wal"))
+    }
+
+    @Test
+    fun a_refused_exclusion_is_reported_not_ignored() {
+        assertFailsWith<IllegalStateException> { applyTo("$directory/missing", enabled = false) }
     }
 }

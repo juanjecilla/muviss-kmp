@@ -80,8 +80,11 @@ actual class DatabaseDriverFactory {
                 .onFailure { runCatching { driver.close() } }
                 .getOrThrow()
             // ADR 0034: the OS exclusion is re-established on every open, from the stored choice. The
-            // directory's flag covers -wal/-shm files SQLite recreates while the app runs.
-            DeviceBackupExclusion.apply(storedDeviceBackupEnabled(driver))
+            // directory's flag covers -wal/-shm files SQLite recreates while the app runs. A refusal is
+            // not worth failing the launch over: it leaves the flags as the last successful apply set
+            // them (off by default, and the toggle never stores a choice the OS refused), and the next
+            // open tries again.
+            runCatching { DeviceBackupExclusion.apply(storedDeviceBackupEnabled(driver)) }
         }
     }
 

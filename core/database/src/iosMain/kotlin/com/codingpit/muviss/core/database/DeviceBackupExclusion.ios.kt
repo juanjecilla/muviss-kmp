@@ -31,11 +31,13 @@ actual object DeviceBackupExclusion {
  */
 internal fun applyTo(directory: String, enabled: Boolean, ownDirectory: Boolean = true) {
     val excluded = !enabled
-    setExcluded(directory, excluded && ownDirectory)
+    // Every path is attempted before failing, so one refusal does not leave the rest unflagged.
+    var failed = if (setExcluded(directory, excluded && ownDirectory)) 0 else 1
     listOf("", "-wal", "-shm").forEach { suffix ->
         val path = "$directory/$DATABASE_FILE_NAME$suffix"
-        if (NSFileManager.defaultManager.fileExistsAtPath(path)) setExcluded(path, excluded)
+        if (NSFileManager.defaultManager.fileExistsAtPath(path) && !setExcluded(path, excluded)) failed++
     }
+    check(failed == 0) { "Device Backup: the backup exclusion could not be ${if (excluded) "set" else "cleared"} on $failed path(s)" }
 }
 
 /** Whether [path] carries the exclusion itself (not through a parent directory). */
@@ -44,6 +46,4 @@ internal fun isExcludedFromBackup(path: String): Boolean {
     return (values?.get(NSURLIsExcludedFromBackupKey) as? NSNumber)?.boolValue ?: false
 }
 
-private fun setExcluded(path: String, excluded: Boolean) {
-    NSURL.fileURLWithPath(path).setResourceValue(NSNumber(bool = excluded), forKey = NSURLIsExcludedFromBackupKey, error = null)
-}
+private fun setExcluded(path: String, excluded: Boolean): Boolean = NSURL.fileURLWithPath(path).setResourceValue(NSNumber(bool = excluded), forKey = NSURLIsExcludedFromBackupKey, error = null)
