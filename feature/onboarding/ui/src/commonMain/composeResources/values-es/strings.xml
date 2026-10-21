@@ -22,7 +22,7 @@
     <string name="onboarding_import_action">Importar…</string>
 
     <string name="onboarding_backup_title">¿Conservar tu biblioteca en un teléfono nuevo?</string>
-    <string name="onboarding_backup_body">La copia de iCloud o Google puede incluir tu biblioteca e historial, así que un dispositivo nuevo sigue por donde lo dejaste. Está desactivada hasta que la actives, y Muviss nunca ve esa copia. Puedes cambiarlo cuando quieras en Ajustes.</string>
+    <string name="onboarding_backup_body">La copia de iCloud o Google puede incluir tu biblioteca e historial, así que un dispositivo nuevo sigue por donde lo dejaste. Está desactivada hasta que la actives, y Muviss nunca ve esa copia. Puedes cambiar esta opción cuando quieras en Ajustes.</string>
     <string name="onboarding_backup_switch">Copia de seguridad con este dispositivo</string>
 
     <string name="onboarding_notifications_title">Avisos de episodios nuevos</string>
