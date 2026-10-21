@@ -39,7 +39,7 @@ jobs:
       - name: Mint a release App token
         id: app
         if: steps.has-app.outputs.ok == 'true'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -130,3 +130,119 @@ jobs:
             gh release create "$TAG" --prerelease --verify-tag \
               --title "Muviss $TAG" --notes-file notes.md artifacts/*.aab
           fi
+
+  # The iOS release candidate (WS3, ADR 0033): the same RC, archived and uploaded
+  # to TestFlight's internal testers. It needs only the tag, not the Android
+  # build, so a failure on either side leaves the other standing. Until the
+  # Apple credentials exist (scripts/release/apple-setup.sh) it skips with a
+  # notice rather than failing the RC.
+  ios:
+    needs: tag
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check for the Apple credentials
+        id: ready
+        env:
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          missing=()
+          [ -n "$APPLE_TEAM_ID" ] || missing+=("vars.APPLE_TEAM_ID")
+          [ -n "$ASC_KEY_ID" ] || missing+=("APP_STORE_CONNECT_KEY_ID")
+          [ -n "$ASC_ISSUER_ID" ] || missing+=("APP_STORE_CONNECT_ISSUER_ID")
+          [ -n "$ASC_KEY_P8" ] || missing+=("APP_STORE_CONNECT_KEY_P8")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            message="iOS is skipped: ${missing[*]} not set (scripts/release/apple-setup.sh)."
+            echo "::notice title=iOS skipped::$message"
+            {
+              echo "### iOS release candidate skipped"
+              echo
+              echo "$message"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # dSYM upload needs all three; without them the lane skips it.
+          if [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ]; then
+            echo "sentry=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sentry=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=dSYMs not uploaded::SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT are not all set."
+          fi
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      # Full history and the tag: set-version.sh derives CFBundleVersion from
+      # `git rev-list --count` and `git describe`, as the Android build does.
+      - name: Check out the release candidate
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up JDK 21 (Corretto)
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: corretto
+          java-version: '21'
+
+      - name: Set up Gradle
+        if: steps.ready.outputs.ok == 'true'
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      # The Xcode build runs embedAndSignAppleFrameworkForXcode, a Kotlin/Native
+      # link that is the expensive part; the cache is ci.yml's, keyed the same way.
+      - name: Cache Kotlin/Native toolchain and compiler caches
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
+
+      - name: Set up Ruby
+        if: steps.ready.outputs.ok == 'true'
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+        with:
+          bundler-cache: true
+
+      - name: Install sentry-cli
+        if: steps.ready.outputs.ok == 'true' && steps.ready.outputs.sentry == 'true'
+        run: command -v sentry-cli >/dev/null || brew install sentry-cli
+
+      # Archive the RC (cloud-managed signing, App Store export) and upload it to
+      # TestFlight. Nothing is submitted for review here.
+      - name: Archive and upload to TestFlight (internal)
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          RELEASE_TAG: ${{ needs.tag.outputs.tag }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          # Optional: the internal group(s) to distribute to, comma-separated.
+          TESTFLIGHT_GROUPS: ${{ vars.TESTFLIGHT_GROUPS }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+        run: bundle exec fastlane ios beta
+
+      - name: Upload dSYMs to Sentry
+        if: steps.ready.outputs.ok == 'true' && steps.ready.outputs.sentry == 'true'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: bundle exec fastlane ios upload_dsyms
+
+      - name: Record the candidate
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: echo "### iOS candidate \`$TAG\` uploaded to TestFlight (internal)" >> "$GITHUB_STEP_SUMMARY"

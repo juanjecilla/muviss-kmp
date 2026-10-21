@@ -3,7 +3,7 @@ package com.codingpit.muviss.feature.settings.domain
 import com.codingpit.muviss.core.common.remoteconfig.FeatureRequestProvider
 
 /**
- * What a Feature Request carries to the form as hidden fields (ADR 0034). This is an
+ * What a Feature Request carries to the form as hidden fields (ADR 0035). This is an
  * allow-list, deliberately a closed type: enough to triage a request ("only on iOS 17",
  * "only in Spanish") and nothing that identifies a person or a device — no install or
  * account id, nothing from the library. Add a field here only after amending the privacy

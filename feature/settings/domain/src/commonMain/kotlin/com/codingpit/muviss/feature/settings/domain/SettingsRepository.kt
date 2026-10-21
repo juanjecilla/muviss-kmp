@@ -31,6 +31,12 @@ interface SettingsRepository {
     /** Mutes or unmutes one genre. [name] is kept so the list can be shown offline. Idempotent. */
     suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean)
 
+    /**
+     * Device Backup (ADR 0034): whether the OS may back this device's library up. Writes the column and then
+     * applies the matching file exclusion through `DeviceBackupExclusion`, so the two cannot disagree.
+     */
+    suspend fun setDeviceBackupEnabled(enabled: Boolean)
+
     /** Whether typed search also hides muted genres. */
     suspend fun setMutedGenresInSearch(enabled: Boolean)
 

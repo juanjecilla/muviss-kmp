@@ -1,5 +1,5 @@
 #!/bin/bash
-# Creates or updates the Feature Request form on Tally from tally-form.json (ADR 0034).
+# Creates or updates the Feature Request form on Tally from tally-form.json (ADR 0035).
 # Owner-only: TALLY_API_KEY (Tally -> Settings -> API keys) never ships in the app.
 #   scripts/feedback/tally-form.sh create            # makes a DRAFT, prints its URL
 #   scripts/feedback/tally-form.sh update <form-id>  # PATCHes the definition, keeping the form's current status

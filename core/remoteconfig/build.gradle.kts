@@ -21,7 +21,7 @@ fun localProperty(name: String): String? {
 
 val configCatSdkKey: String = localProperty("CONFIGCAT_SDK_KEY") ?: ""
 val byokEnabled: Boolean = localProperty("BYOK_ENABLED").toBoolean()
-// The Feature Request form (ADR 0034): blank URL keeps the Settings row hidden until the
+// The Feature Request form (ADR 0035): blank URL keeps the Settings row hidden until the
 // owner has created the form; Remote Config overrides both without a release.
 val featureRequestUrl: String = localProperty("FEATURE_REQUEST_URL")?.trim() ?: ""
 val featureRequestProvider: String = localProperty("FEATURE_REQUEST_PROVIDER")?.trim()?.ifEmpty { null } ?: "tally"

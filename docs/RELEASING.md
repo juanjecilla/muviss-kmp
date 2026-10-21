@@ -202,10 +202,14 @@ alternative would be to initialise first and gate afterwards, at the cost of an
 opted-out person's crash in that first window being sent.
 
 **`release`, `dist`, `environment`.** `release` is
-`com.codingpit.muviss@<versionName>+<versionCode>` and `dist` the versionCode —
-exactly what the Sentry Gradle plugin stamps on the mapping it uploads. They
-must stay identical or a trace cannot find its mapping (`MuvissCrashReporting.releaseOf`
-and `app/androidApp/build.gradle.kts`). `environment` is `SENTRY_ENVIRONMENT`
+`<namespace>@<versionName>+<versionCode>` and `dist` the versionCode. The
+namespace is per platform (`crashReleaseNamespace`, ADR 0033): Android, desktop
+and web report `com.codingpit.muviss`, exactly what the Sentry Gradle plugin
+stamps on the R8 mapping it uploads, and they must stay identical or a trace
+cannot find its mapping (`MuvissCrashReporting.releaseOf` and
+`app/androidApp/build.gradle.kts`); iOS reports `com.codingpit.muviss.ios`, so
+its crash gate never reads Play's crashes. `fastlane/sentry_gate.rb`'s
+`NAMESPACES` names the same two strings, and a change to either side changes both. `environment` is `SENTRY_ENVIRONMENT`
 (env or `local.properties`) if set, otherwise `production` when a release
 artefact was requested and `development` otherwise.
 
@@ -393,6 +397,11 @@ the schedule, the gates and where a fix goes.
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
   refused (the step then holds, with that reason).
+
+### iOS in the train
+
+iOS walks the same three stages as Play, one week apart, on the same RC binary (ADR 0033).
+Its table, rules, lanes and the owner runbook are in section 9 ("9.4 The staged train for iOS").
 
 ### Cutting a release
 
@@ -831,274 +840,286 @@ Before tagging a real release:
 4. If Sentry is configured, force a test crash and confirm it shows up in
    the Sentry project within a few minutes.
 
-## 9. iOS (TestFlight / App Store) — EPIC 11 / issue #13
+## 9. iOS (TestFlight / App Store) — EPIC 35 / issue #78, EPIC 11
 
-`app/iosApp` is a thin SwiftUI host embedding `:app:shared`'s Compose UI
-(`ComposeUIViewController { MuvissApp() }`, `MainViewController.kt`). This
-section covers what's automated vs. what's a manual, by-hand step — iOS has
-no unattended CI signing path in this repo yet (see "Signing" below).
+`app/iosApp` is a thin SwiftUI host embedding `:app:shared`'s Compose UI. Everything on the
+repo side is built and checked in (ADR 0033; PRs #426, #427 and #432). What is left is the Apple
+account, which only the owner can create. This section is that runbook, followed by how the
+release train treats iOS once it is set up.
 
-### Startup wiring
+Status on 2026-10-17: no Apple account exists yet. Enrolment is planned for 2026-10-18.
+Nothing in this section has been run against a live Apple account. Where Apple's own pages
+could not be confirmed, the step says **verify in UI**.
 
-Unlike Android (`MuvissApplication.onCreate`, which runs before any
-Activity), a SwiftUI app's `WindowGroup`/scene body is not guaranteed to run
-on every launch — a background `BGAppRefreshTask` launch may never compose
-it. So startup is split:
+### 9.1 Ordered checklist for the owner
 
-- **`AppDelegate.swift`** (`app/iosApp/iosApp/AppDelegate.swift`): a few
-  lines, wired via `@UIApplicationDelegateAdaptor` in `iOSApp.swift`. Its
-  `application(_:didFinishLaunchingWithOptions:)` is the one hook Apple
-  guarantees runs before launch completes regardless of why the process
-  launched, and it does exactly one thing: call `IosAppStartup.shared.start()`.
-- **`IosAppStartup.kt`** (`app/shared/src/iosMain/.../ios/`): the real
-  logic — starts crash reporting (`MuvissCrashReporting.start`, before Koin),
-  then Koin (guarded via `KoinPlatformTools.defaultContext().getOrNull()`,
-  the KMP-portable equivalent of `GlobalContext.getOrNull()`, which isn't
-  exported on non-JVM targets),
-  registers the `BGTaskScheduler` task, and configures `UNUserNotificationCenter`.
-- **`MainViewController.kt`** additionally wires `IosNotificationCenter.pendingDeepLinkMediaId`
-  into `MuvissApp(deepLinkMediaId, onDeepLinkConsumed)` — the same param pair
-  Android's `MainActivity` feeds from a notification tap's Intent extra,
-  just carried via a `StateFlow` instead since there's no Activity-recreation
-  equivalent on iOS.
+Who is in brackets: **Owner** does it by hand, **CI** does it on a tag or a schedule, and
+**wizard** means `scripts/release/apple-setup.sh` does it for you.
 
-Sentry's DSN is baked in via the same generated `MuvissBuildConfig`
-mechanism item 4 describes for Android — nothing iOS-specific to configure
-beyond having `SENTRY_DSN` in `local.properties`/CI env when building.
+1. Enrol as an **Individual** (O1). **Owner**
+2. Copy the Team ID (O2). **Owner**, then the wizard stores `APPLE_TEAM_ID`.
+3. Register the App Group and both App IDs (O3, O4). **Owner**
+4. Build and run on your own iPhone with your team (O5). **Owner**, and the airplane-mode widget test (device checklist, 9.8).
+5. Create the App Store Connect app record (O6). **Owner**
+6. Create the App Store Connect API key with the **Admin** role (O7). **Owner**, then the wizard stores three secrets.
+7. Sentry token, org and project (O8). **Owner**, then the wizard stores three secrets.
+8. TestFlight internal and external groups, the public link, Beta App Review information (O10). **Owner**, then the wizard stores two variables.
+9. App Privacy, age rating, price and availability, EU DSA trader answer, export compliance (O12 to O16). **Owner**
+10. Replace the four review-contact placeholders, decide the support URL (O11, O17). **Owner**
+11. Run `scripts/release/apple-setup.sh --verify` (9.3). **Owner**, read-only.
+12. Cut the first release candidate (O18). **Owner** cuts it, **CI** builds and uploads it.
+13. Work through the first-live-run checklist (9.6) and record each answer on the release issue. **Owner**
 
-### Notifications (EPIC 5 parity)
+### 9.2 The runbook, step by step
 
-iOS has no WorkManager equivalent, so the Android
-`NewEpisodesScheduler`/`NewEpisodesWorker`/`NewEpisodesNotifier` trio (see
-item 4's sibling code in `app/androidApp/.../notifications/`) is mirrored
-in Kotlin, in `app/shared/src/iosMain/.../ios/`, rather than in Swift:
+Each step says what it yields and where the value goes. "Verify" is how you know it worked.
 
-- **`IosBackgroundRefresh.kt`**: `BGTaskScheduler`-based. There is no
-  periodic-work primitive like `PeriodicWorkRequestBuilder` — every run is
-  a one-shot `BGAppRefreshTaskRequest` that resubmits itself (~12h out,
-  matching Android's repeat interval) after each run. Resolves
-  `CollectionApi`/`SettingsApi` via `KoinComponent`, same reasoning as
-  `NewEpisodesWorker`'s doc comment (the launch handler hands back a plain
-  `BGTask`, nothing Koin can construct through).
-- **`IosNotificationCenter.kt`**: `UNUserNotificationCenter`-based —
-  requests permission (idempotent; the OS only prompts once), posts one
-  notification per show (iOS groups same-`threadIdentifier` notifications
-  into a stack itself, so no hand-built summary notification like
-  Android's `InboxStyle` is needed), and its `UNUserNotificationCenterDelegateProtocol`
-  implementation turns a tap into the pending deep-link id
-  `MainViewController` reads.
-- The global notifications toggle (`SettingsApi.observeNotificationsEnabled`)
-  and per-show mute (already excluded inside
-  `CollectionApi.refreshAndFindNewEpisodes`) are the same EPIC 5 checks
-  Android's worker makes — no iOS-specific gating logic exists or should.
+**O1. Enrol in the Apple Developer Program as an Individual.** Owner.
+- Open <https://developer.apple.com/programs/enroll/>. Sign in with an Apple Account that has two-factor authentication on. Choose **Individual / Sole Proprietor** (verify in UI: the label has changed before). Enter your legal name and address; the name must match your government ID. Pay 99 USD a year.
+- Apple checks your identity. The page for it says "usually within 48 hours" (verify in UI); plan for a day or two.
+- Yields: an active membership.
+- Verify: the Apple confirmation email arrives, and <https://developer.apple.com/account> opens with a Membership section.
 
-**Info.plist** (`app/iosApp/iosApp/Info.plist`) needs, and now has:
-`BGTaskSchedulerPermittedIdentifiers` (`com.codingpit.muviss.refresh`, must
-match `IosBackgroundRefresh`'s `TASK_ID` exactly) and `UIBackgroundModes` =
-`fetch`. No `NSUserNotificationsUsageDescription`-style key is needed —
-`UNUserNotificationCenter`'s permission prompt uses fixed system copy, not
-an Info.plist string.
+**O2. Copy the Team ID.** Owner, and the wizard stores it.
+- On <https://developer.apple.com/account>, open Membership details (verify in UI). Copy the 10-character **Team ID**.
+- Yields: `APPLE_TEAM_ID`. Goes to the **GitHub variable** `APPLE_TEAM_ID` (the wizard sets it, or `gh variable set APPLE_TEAM_ID --body <id>`). For local device builds it also goes to `TEAM_ID=` in `app/iosApp/Configuration/Config.xcconfig`. **Do not commit that line.** The repo's copy stays blank.
+- Verify: `gh variable list` shows `APPLE_TEAM_ID`.
 
-A Kotlin/Native interop note for anyone touching this code: `UNMutableNotificationContent`'s
-`title`/`body`/`threadIdentifier`/`userInfo` bind as `val` (read-only) at
-the property-reference site — Kotlin/Native's ObjC interop doesn't widen an
-inherited read-only property to the subclass's read-write redeclaration —
-so `IosNotificationCenter` sets them via `setValue(_, forKey:)` (KVC,
-always available on `NSObject`) instead of `content.title = ...`.
+**O3. Register the App Group.** Owner.
+- Open <https://developer.apple.com/account/resources/identifiers/list/applicationGroup>. Click **+**, choose **App Groups**, Continue. Description `Muviss`, Identifier `group.com.codingpit.muviss`, Register (verify in UI).
+- Yields: the group. The widget reads the app's database through it (ADR 0016). The identifier must match, character for character, the two `.entitlements` files, `MUVISS_APP_GROUP` in `core/database/src/iosMain/.../DatabaseFactory.ios.kt`, and `UserDefaults(suiteName:)` in `app/iosApp/MuvissWidget/WidgetIntents.swift`.
+- Verify: the group is in the list.
 
-### Versioning
+**O4. Register both App IDs and enable the group on each.** Owner.
+- Open <https://developer.apple.com/account/resources/identifiers/list>. Click **+**, choose **App IDs**, then **App**.
+- The app: Description `Muviss`, Bundle ID **Explicit** `com.codingpit.muviss`. Under Capabilities tick **App Groups** and nothing else. Do **not** tick Sign in with Apple: v1 is local-only (ADR 0024), and sync's Sign in with Apple moves to EPIC 32 (#75). Register. Open it again, **App Groups → Configure**, tick `group.com.codingpit.muviss`, Save.
+- The widget: Description `Muviss Widget`, Bundle ID `com.codingpit.muviss.MuvissWidget`, App Groups only, the same group.
+- If Xcode already created either App ID during automatic signing, edit it rather than adding a second one.
+- Yields: two App IDs, both with App Groups configured. Neither target signs without both.
+- Verify: both show App Groups as configured (verify in UI for the label).
 
-Mirrors item 3's scheme (git-derived, no hardcoded version) via a **Run
-Script build phase** named "Set version from git" (`project.pbxproj`,
-after the Resources phase): it computes the same `versionCode`
-(`git rev-list --count HEAD`) and a `versionName` (latest exact
-`vMAJOR.MINOR.PATCH` tag, else `0.1.0-dev.<count>` — no `+sha` suffix
-unlike Android's, since `CFBundleShortVersionString` is conventionally
-kept to dotted numbers/simple dev suffixes) and overwrites
-`CFBundleVersion`/`CFBundleShortVersionString` in the **built** Info.plist
-via `/usr/libexec/PlistBuddy`. `Configuration/Config.xcconfig`'s
-`CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` are only the static fallback
-used when git is unavailable (e.g. a source-only archive) — the script
-no-ops (keeping them) if `git rev-list` fails.
+**O5. First signed build on your own iPhone.** Owner. This is not CI.
+- On your Mac: open `app/iosApp/iosApp.xcodeproj`. Under Signing & Capabilities, pick your team (Automatic signing lets Xcode create the provisioning profiles, so there is nothing to download by hand). If you want the team stored in the working copy, set `TEAM_ID` locally as in O2. Do not commit it.
+- On the iPhone, turn on Developer Mode (Settings → Privacy & Security; verify in UI). Connect it, select it as the run destination, Run.
+- Yields: the app running on a device signed by your team, which is the first real test of the App Group and the widget.
+- Verify: the app launches with no dyld error; the widget can be added and shows a title once the app has run (device checklist 9.8, items 1 to 6).
 
-### Bundle id / signing (manual — no CI signing path yet)
+**O6. Create the app record in App Store Connect.** Owner.
+- Open <https://appstoreconnect.apple.com/apps>. Click **+**, then **New App**. Platforms: **iOS**. Name: `Muviss`. Primary language: **English (U.S.)**. Bundle ID: `com.codingpit.muviss` (from O4, it appears in the list). SKU: `muviss` (internal; users never see it). User Access: **Full Access**.
+- Name availability is store-wide. If `Muviss` is taken, pick the closest free name and change `name.txt` in `fastlane/metadata/ios/en-US` and `es-ES` to match. Tell the agent, so the subtitle and listing stay consistent.
+- Yields: the app record. CI does not need its numeric Apple ID; it finds the app by bundle id.
+- Verify: `scripts/release/apple-setup.sh --verify` with `APPLE_ASC_KEY_ID`, `APPLE_ASC_ISSUER_ID` and `APPLE_ASC_P8_PATH` set (9.3) reports "app record found".
 
-`Configuration/Config.xcconfig` sets `PRODUCT_NAME=Muviss` and
-`PRODUCT_BUNDLE_IDENTIFIER=com.codingpit.muviss` — the same identifier as
-`:app:androidApp`'s `applicationId`, one stable id across platforms rather
-than the template's original per-developer
-`com.codingpit.muviss.KotlinProject$(TEAM_ID)` suffix. `CODE_SIGN_STYLE =
-Automatic` (project.pbxproj) plus a blank `TEAM_ID` xcconfig variable means:
+**O7. Create the App Store Connect API key, role Admin.** Owner, then the wizard stores three secrets.
+- Open <https://appstoreconnect.apple.com/access/integrations/api>. If the page offers **Request Access**, the Account Holder must grant it first. Under **Team Keys**, click **+**. Name `Muviss CI`. **Access: Admin**. Generate.
+- Copy the **Issuer ID** (above the keys table) and the new key's **Key ID**. Download `AuthKey_<KeyID>.p8`. Apple lets you download it **once**. Store it in a password manager.
+- Why Admin and not App Manager: cloud-managed signing (`-allowProvisioningUpdates`, the `ios beta` lane) asks Apple for distribution certificates. App Manager does not get certificate access by default; an Admin has to grant "Certificates, Identifiers & Profiles". An Apple developer forum report also describes an Admin-role key getting a 403 "You haven't been given access to cloud-managed distribution certificates" (Apple developer forums, thread 776036: a report, not an Apple statement). If the first `ios beta` fails that way, the Account Holder grants the key's user access to Certificates, Identifiers & Profiles, and the failure is recorded on the release issue. **verify in UI** for the role list.
+- Yields: `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY_P8` (the file's contents, the wizard reads the file). They are **secrets**.
+- Verify: `gh secret list` shows all three; the `--verify` read in O6 succeeds with the key.
 
-1. Open `app/iosApp/iosApp.xcodeproj` in Xcode.
-2. Signing & Capabilities → pick your Apple Developer team (free personal
-   team works for a Simulator/device run; TestFlight needs a paid Apple
-   Developer Program membership, $99/yr).
-3. Either let Xcode fill `DEVELOPMENT_TEAM` automatically, or put your
-   Team ID in `Configuration/Config.xcconfig`'s `TEAM_ID` (gitignored-safe
-   to edit locally; don't commit a real team id — there isn't one to
-   commit today).
-4. Product → Archive (Release configuration) once signing resolves.
-5. Organizer → Distribute App → TestFlight & App Store → upload. This step
-   requires a real, paid Apple Developer account and was **not**
-   attempted here — no such account exists in this environment.
-6. App Store Connect → TestFlight tab: add internal testers, submit for
-   Beta App Review if using external testing.
-7. App Store listing: reuse `docs/store/LISTING.md`'s copy (see its new
-   "App Store (iOS)" section for the App-Store-specific deltas — subtitle,
-   keywords, screenshot sizes) and `docs/PRIVACY.md` for the App Store
-   "Privacy Nutrition Label" — same "no accounts, no backend, no
-   analytics" story `docs/store/DATA_SAFETY.md` gives Play, just answered
-   in App Store Connect's own questionnaire shape instead of a repo file
-   (there is no App Store Connect API-driven equivalent wired up).
+**O8. Sentry: token, organisation and project.** Owner, then the wizard stores three secrets.
+- In Sentry, create an auth token (Settings → Account → API → Auth Tokens; verify in UI for the scopes needed: releases and org read). Note the organisation slug and the project slug. The Android build uses the same project.
+- Yields: `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, all **secrets** (`release-rc.yml`, `release-promote.yml` and the Sentry workflows read them as secrets). Without all three, the dSYM upload is skipped with a notice, and the iOS crash gate cannot read anything.
+- Verify: `gh secret list` shows the three names.
 
-### App icon — gap found, not fixed here
+**O9. Store the GitHub secrets and variables.** The wizard does this. Summary of the names CI reads:
 
-`Assets.xcassets/AppIcon.appiconset` has one real image
-(`app-icon-1024.png`, correctly 1024×1024) plus two *declared-but-empty*
-slots for iOS 18's dark/tinted Home Screen icon appearances (no file
-assigned — falls back to the default icon on iOS 18+, a cosmetic gap
-only). The blocking one: **`app-icon-1024.png` has an alpha channel**
-(`sips -g hasAlpha` → `yes`). App Store Connect rejects an App Store/
-marketing icon with transparency (`Invalid Large App Icon` at Archive
-validation or upload). Fix before the first real submission by
-flattening it onto an opaque background (e.g.
-`sips -s format png --setProperty hasAlpha no ...` after compositing
-onto white/black, or re-export from the source design tool without
-alpha) — not attempted here since there's no real Muviss brand artwork to
-re-derive it from yet (same caveat item 7 gives the desktop icons).
+| Kind | Name | Set by | Read by |
+|---|---|---|---|
+| Variable | `APPLE_TEAM_ID` | O2 | `release-rc.yml` ios job, `ios beta` (signing) |
+| Variable | `TESTFLIGHT_EXTERNAL_GROUPS` | O10 | `release-promote.yml` iOS step, `ios beta_external`. **Required** by the Sunday beta step |
+| Variable | `TESTFLIGHT_GROUPS` | O10 | `ios beta` (internal group, optional) |
+| Secret | `APP_STORE_CONNECT_KEY_ID` | O7 | every iOS leg |
+| Secret | `APP_STORE_CONNECT_ISSUER_ID` | O7 | every iOS leg |
+| Secret | `APP_STORE_CONNECT_KEY_P8` | O7 | every iOS leg |
+| Secret | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | O8 | `ios upload_dsyms`, the iOS crash gate (`app-store-phased-ramp.yml`, `app-store-brake.yml`, `release-promote.yml`) |
 
-### Sentry test crash
+Verify: `scripts/release/apple-setup.sh --verify` lists each name as present (names only; it never prints a value).
 
-The trigger ships in every build: **Settings → About, tap the version 7 times**
-and a "Send test crash" row appears, which throws an uncaught
-`MuvissTestCrash` (search Sentry for that name). It is in release builds on
-purpose — the point is a crash from the exact artefact the store serves,
-because only that proves the mapping uploaded with it matches.
+The iOS job in `release-rc.yml` **skips with a notice**, not a failure, while `APPLE_TEAM_ID` or any of the three App Store Connect secrets is missing. That is deliberate: it is the reason the first pushes to a release branch stay green before the account exists. A skip is therefore not proof of anything. Check the job summary for "iOS release candidate skipped".
 
-Run against the release artefacts, with the Sentry secrets set (section 4):
+Not stored: the Developer ID `.p12` (`MACOS_DEVELOPER_ID_P12_BASE64`, `MACOS_DEVELOPER_ID_P12_PASSWORD`). That is desktop's DMG signing (EPIC 36, section 7), and no workflow reads it yet.
 
-1. **Android** (gates v1.0.0, #81): the `release.yml` log shows the R8 mapping
-   uploaded. Install from the Play internal track, trigger, relaunch (the SDK
-   sends a fatal crash on the next start). The event has
-   `environment=production`, release `com.codingpit.muviss@<versionName>+<versionCode>`,
-   and a **deobfuscated** Kotlin stack.
-2. **Opt-out**: Settings → Privacy → "Send crash reports" off, trigger again,
-   relaunch. No new event.
-3. **Desktop** (gates v1.0.0): install the packaged installer from the GitHub
-   release, trigger, confirm the event with the right release and environment.
-   No mapping applies — the desktop build is not obfuscated.
-4. **iOS**: rides EPIC 35's TestFlight check (#78), which also owns uploading
-   dSYMs for the app and `Shared.framework`; without them a `Shared` frame is
-   a raw address.
+**O10. TestFlight groups, public link and Beta App Review information.** Owner, then the wizard stores two variables.
+- Open the app in App Store Connect, then the **TestFlight** tab (verified against Apple's help page on 2026-10-17).
+- **Internal Testing:** create a group, for example `Muviss internal`. Its name goes into `TESTFLIGHT_GROUPS` (optional).
+- **External Testing:** click **+** next to External Testing, enter a group name (for example `Muviss beta`), Create. Its name goes into `TESTFLIGHT_EXTERNAL_GROUPS`. **Required**: the Sunday beta step fails without it.
+- Select the external group, open the **Testers** tab, click **Create Public Link**. Choose **Open to Anyone**. The tester limit is optional: **Set Limit** accepts 1 to 10,000. Copy the link.
+- **Beta App Review:** the first build of each version needs a review by Apple. The **Test information** dialog asks for a feedback email and contact information (both required; verify in UI which fields are mandatory). Demo notes: the repo's text says there is no account and no sign-in, that search needs the internet, and that the library works offline once titles are added. It is in `fastlane/metadata/ios/review_information/notes.txt`. Paste it if the dialog has a notes box (verify in UI).
+- Yields: two group names and a public link.
+- Verify: open the public link in Safari on a phone that is not signed in to Apple's TestFlight. It should offer to join the group.
 
-**Not checked by hand: a crash in `NewEpisodesWorker` with the app not
-running** (#68 asked for it). What makes that case report is start order —
-`MuvissApplication.onCreate` calls `MuvissCrashReporting.start` before anything
-else, and a worker cold start runs `onCreate` too — which is the same code path
-the gesture exercises. Proving it for real would need a crash hook in the
-worker in release code; that was judged not worth it.
+**O11. Replace the review-contact placeholders.** Owner. Decision needed (below).
+- `fastlane/metadata/ios/review_information/{first_name,last_name,email_address,phone_number}.txt` each say `REPLACE_BEFORE_SUBMIT`. `ios release` refuses to run while any file under `fastlane/metadata/ios` still contains that string.
+- **Owner decision:** these files live in git. The repo goes public at the public flip (#81), so a personal phone number or email there would be public too. Either (a) fill them with a contact address you are happy to publish, or (b) enter the contact in App Store Connect's App Review Information box and change `IosRelease.placeholder_files` (and the Fastfile check) to skip the review-contact files. (b) is a small code change: ask the agent before the first `ios release`.
+- Verify: `grep -rn REPLACE_BEFORE_SUBMIT fastlane/metadata/ios` prints nothing.
 
-### Simulator run — verified 2026-09-02
+**O12. App Privacy questionnaire.** Owner. verify in UI for the labels.
+- App Store Connect → Muviss → **App Privacy** → Get Started / Edit.
+- Data collected: **Crash Data** only. Used for **App Functionality**, **Not linked to you**, **not used for tracking**. Our crash reports (Sentry) are sent only when the user keeps "Send crash reports" on (Settings → Privacy).
+- Answer "no" for everything else. Accounts, analytics and advertising do not exist in v1.
+- Device Backup (when it lands, #409) is the operating system's iCloud backup. We do not collect it, so do not declare it as our data. Apple's own backup is outside the questionnaire.
+- Keep `app/iosApp/iosApp/PrivacyInfo.xcprivacy` and the widget's file consistent with this answer (#424 checks them against Xcode's privacy report).
+- Yields: the published "Data Not Linked to You: Crash Data" label.
+- Verify: the App Privacy page shows that label and no tracking.
 
-The app builds, installs, launches and works on the Simulator. What it took,
-because none of it was obvious and the previous pass's notes here were wrong
-by the time anyone read them again:
+**O13. Age rating.** Owner. verify in UI for the questions.
+- App Information → **Age Rating** → answer the questionnaire. The app generates no user content and has no chat or purchases in v1. It does show third-party catalogue metadata (TMDB titles, posters and overviews), and that can include mature titles. Answer about the app's own content and check the result. The plan expects **4+**. If Apple gives a higher rating, record it on the release issue and do not argue it away.
+- Verify: the rating shown on the App Information page.
 
-- **The old blocker is gone.** EPIC 11's pass recorded that only the iOS 18.1
-  Simulator runtime was installed, that `xcodebuild -scheme … -destination …`
-  therefore resolved no Simulator destination, and that the asset catalog's
-  app-thinning step failed with `No simulator runtime version from ["22B81"]
-  available to use with iphonesimulator SDK version 23C53`. All three were
-  purely environmental. With an iOS 26.x runtime installed (Xcode → Settings →
-  Components) `-destination` resolves normally and thinning passes. Create a
-  device if none exists on it:
+**O14. Price and availability.** Owner.
+- Pricing and Availability: **Free**. Choose the territories. Nothing in v1 is paid (sync and co-watch are EPIC 32, after v1).
+- Verify: price shows 0 for all territories.
 
-  ```bash
-  xcrun simctl create Muviss-iOS26 \
-    com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro \
-    com.apple.CoreSimulator.SimRuntime.iOS-26-3
-  ```
+**O15. EU Digital Services Act: trader status.** Owner. A legal answer, not ours to give.
+- Apple asks each developer in the EU DSA flow whether they are a **trader**. verify in UI for the page: the prompt arrives from App Store Connect and the answer is made there.
+- If you are a **trader**, the EU App Store shows your address, phone and email on the app's page. For an Individual that is the address you gave in O1. If you are a **non-trader**, the address is not shown. Third-party summaries of Apple's rules say that a developer distributing free apps with no ads, no purchases and no other revenue may not need to provide the information. v1 is free with no ads, so the honest answer is probably non-trader, but the decision is yours.
+- Apps without this answer were removed from the EU App Store in 2025 (reported). Do not leave it blank.
+- Yields: a trader or non-trader declaration on the account. Verify: the declaration shows in App Store Connect and no "trader status" prompt remains.
 
-- **The real blocker was the link, and it had never been reached.** `Shared`
-  is a **static** framework (`isStatic = true`, `app/shared/build.gradle.kts`),
-  so every symbol its Kotlin/Native cinterops leave unresolved lands on
-  whoever links it — and a cinterop's `linkerOpts` reach only the binaries
-  *Gradle* links, never Xcode's. Two sets were missing, 50 symbols in total:
-  `_OBJC_CLASS_$_Sentry*` (`io.sentry:sentry-kotlin-multiplatform`, via
-  `:core:common`) and `_sqlite3_*` (`co.touchlab:sqliter`, via
-  `:core:database`). Both Xcode targets now set `SENTRY_XCFRAMEWORK_SLICE`
-  (SDK-conditional, pointing at the xcframework the root `build.gradle.kts`
-  already unzips) and link `-framework Sentry -lsqlite3`; the app target also
-  has an **Embed Sentry.framework** script phase, because Sentry-Dynamic is
-  dynamic and the app would otherwise die at launch with `dyld: Library not
-  loaded: @rpath/Sentry.framework/Sentry`. The extension finds the same copy
-  through its `@executable_path/../../Frameworks` rpath.
+**O16. Export compliance.** Owner confirms, CI already declares it.
+- `ITSAppUsesNonExemptEncryption` is `NO` in both `app/iosApp/iosApp/Info.plist` and `app/iosApp/MuvissWidget/Info.plist` (checked in the repo). That answers Apple's encryption question for every build. The value assumes the app uses only exempt encryption (HTTPS and the system's cryptography). Confirm that is still true.
+- Verify: on the first upload, no per-build compliance question appears (ADR 0033 assumption (d); #429 item 7).
 
-  A script phase rather than a Copy Files phase: the slice differs between
-  device and simulator, and a `PBXFileReference` cannot switch on SDK.
+**O17. Support URL and privacy URL.** Owner.
+- `fastlane/metadata/ios/en-US/support_url.txt` is `https://muvissapp.com/` because the site has no support page yet (#423). That is acceptable for a first submission only if you are content for support mail to go through the landing. Decide, and add a page or keep the URL on the release issue.
+- `privacy_url.txt` is `https://muvissapp.com/privacy/`. Open it in a private window before submitting; a 404 blocks the listing.
+- Verify: both URLs open in a private window.
 
-- **`ci.yml` now has a `macos-latest` `ios` job** doing exactly this —
-  `linkDebugFrameworkIosSimulatorArm64` then `xcodebuild -sdk iphonesimulator
-  CODE_SIGNING_ALLOWED=NO`. It exists because the gap above survived two
-  months and three epics with CI green throughout: everything else runs on
-  Linux, and `allMetadataJar` compiles `iosMain` to a metadata klib without
-  ever invoking Kotlin/Native or Xcode.
+**O18. Cut the first release candidate and see what happens.** Owner cuts; CI builds.
+- Cut with `scripts/release/start-release.sh X.Y.Z` (or let the Monday train do it). Pushing `release/X.Y.Z` runs `release-rc.yml`: it tags `vX.Y.Z-rcN`, uploads the Android build, then runs the iOS job on macOS.
+- The iOS job: checks the secrets (O9); sets up Xcode and Kotlin/Native; archives the Release build with cloud-managed signing; checks its `CFBundleVersion` equals the RC's version code; uploads it to TestFlight **internal** testers with `ios beta`; uploads dSYMs to Sentry if the three Sentry names are set.
+- Expect: the upload takes a while to process. The build then appears under TestFlight, with the RC's version number and its build number equal to the versionCode from `scripts/release/version-code.sh`. The job summary says "iOS candidate … uploaded to TestFlight (internal)".
+- Failure to watch for: the 403 about cloud-managed certificates (O7). Anything else, paste the first error into the release issue.
+- Verify: `gh run list --workflow=release-rc.yml --limit 3`, then the build in TestFlight.
 
-- **Signing.** A Simulator build needs no team; `TEAM_ID` stays blank and
-  `CODE_SIGNING_ALLOWED=NO` covers CI.
+**O19. Beta App Review (Sunday, before the App Store).** CI does it; the owner watches it.
+- On the Sunday step, `release-promote.yml`'s iOS step runs `ios beta_external`: it sends the RC's build to the external group and submits it to Beta App Review. Apple reviews the first build of a version. Latency is unknown (third-party guides say about a day; verify on the first live run).
+- Record submit-to-approval time on the release issue (#429 item 5). If Apple rejects the RC, iOS holds with the reason; Play is not held (9.4).
 
-- **The App Group works on the Simulator with no team at all** — worth knowing,
-  because §11 reads as though it could not. `muviss.db` was created at
-  `.../data/Containers/Shared/AppGroup/<uuid>/muviss.db`, not the
-  `NSDocumentDirectory` fallback: the Simulator honours the entitlement
-  without a provisioning profile. So the fallback in `DatabaseFactory.ios.kt`
-  is exercised on *device* builds without a team, not here. Don't read a
-  passing Simulator run as evidence that the fallback works.
+**O20. App Store production (after the merge).** CI does it when everything is in place.
+- The App Store step runs only once `release/X.Y.Z` is in `main` (Play's production step does that merge) and Beta App Review has approved the build. `ios release submit_for_review:true` sends the TestFlight build with its metadata, submits it for review, with automatic release and a seven-day phased release.
+- Before the first submission you need: O11 done, O12 to O17 answered, screenshots for the device classes in App Store Connect (`fastlane/screenshots/ios`; #425 tracks the 6.9-inch, 6.5-inch and 13-inch iPad sets), and the app record's price and availability.
+- `ios release` refuses while any metadata file holds `REPLACE_BEFORE_SUBMIT`.
 
-- **OAuth's PKCE flow state expires, and the failure is silent and
-  misleading.** A first attempt was abandoned mid-login and finished about
-  ten minutes later; GoTrue could no longer match the flow state, fell back
-  to `site_url` (`http://localhost:3000`), and Safari showed "cannot connect
-  to the server". Nothing was wrong with the app, the scheme or the
-  allow-list — `uri_allow_list` on the live project reads
-  `muviss://auth-callback`, exactly as `supabase/config.toml` declares. The
-  retry, finished in seconds, redirected to the custom scheme and completed.
-  If sign-in ever lands on `localhost`, suspect a slow login before
-  suspecting configuration.
+### 9.3 Checks you can run yourself
 
-- **The `muviss` URL scheme is registered** (`CFBundleURLTypes` in
-  `app/iosApp/iosApp/Info.plist`) and `iOSApp.swift`'s `.onOpenURL` hands
-  every incoming URL to `IosDeepLinks.handle`. That makes both the widget's
-  `muviss://title/<id>` and OAuth's `muviss://auth-callback` live, and
-  `Pkce.ios.kt`'s `sha256`/`secureRandomBytes` are now real
-  (CommonCrypto + `SecRandomCopyBytes`). Its old comment claimed iOS sign-in
-  needed `ASWebAuthenticationSession`; it does not — `ProfileScreen` opens
-  the authorize URL through Compose's `LocalUriHandler`, which on iOS is
-  `UIApplication.openURL`. ASWebAuthenticationSession remains a UX
-  improvement, not a requirement.
+```bash
+scripts/release/apple-setup.sh --verify
+# with the key in hand, it also reads the app record (read only):
+APPLE_ASC_KEY_ID=… APPLE_ASC_ISSUER_ID=… APPLE_ASC_P8_PATH=~/Downloads/AuthKey_….p8 \
+  scripts/release/apple-setup.sh --verify
+```
 
-- **App icon.** `app-icon-1024.png` no longer has an alpha channel (it was
-  RGBA but fully opaque, so it was re-encoded as RGB with no pixel changed),
-  which clears the `Invalid Large App Icon` rejection at Archive validation.
-  The two declared-but-empty dark/tinted slots, and the fact that the artwork
-  is still the KMP template's blue rather than anything in `MuvissPalette`,
-  are open.
+`--verify` reads the repository's secret and variable **names** with `gh secret list` and `gh variable list`, reports anything CI needs that is missing, and exits non-zero if a required name is absent. With the three `APPLE_ASC_*` variables set it makes one read-only App Store Connect call (`GET /v1/apps?filter[bundleId]=…`) through `fastlane/app_store_connect.rb`. It also checks that fastlane lists the `beta_external` lane. It uploads nothing and changes no setting. It does **not** prove the key's role: only the first cloud-managed signing run does that (O18).
 
-- **Smoke test, all passing** on iOS 26.3: launch with no dyld error; TMDB
-  search and the Popular rows (Ktor on Kotlin/Native); add to library, tick
-  two episodes, and both `episodeProgress.seen` and the derived
-  `episodePlay` id `episodeId@watchedAtEpochMs` present in SQLite (ADR
-  0011/0013); state surviving a cold start; the Progress tab deriving the
-  right next episode; `simctl openurl muviss://title/tmdb:tv:1399` landing on
-  that title's detail; and a full GitHub sign-in round trip — session
-  persisted, then push and pull, with local and server row counts matching
-  across all six tables.
+### 9.4 The staged train for iOS (ADR 0033)
 
-- **Not attempted here**, both needing a real paid Apple Developer account:
-  Archive → TestFlight upload, and the Sentry test crash on a signed device
-  build. The `MuvissWidget` target now *links* (it needed the same Sentry and
-  sqlite3 settings), but nothing about the widget itself has been run.
+iOS walks the same three stages as Play, one week apart, on the **same RC binary**. Each platform has its own stage in the release issue's marker. Shared gates (release-blocker, a fix PR into the branch, CI, draft notes) hold both platforms. The iOS steps are skipped with a notice while the App Store Connect key is unset, and Play runs as before.
+
+| When | iOS step | What happens | Where |
+|---|---|---|---|
+| Monday, after the RC | internal | `ios beta` uploads the RC to TestFlight internal testers | `release-rc.yml`, `ios` job |
+| Sunday, week 0 | external (Beta App Review) | `ios beta_external` sends the RC's build to the external group and submits it to Beta App Review | `release-promote.yml`, iOS step |
+| Sunday, week 1 | App Store | Once `release/X.Y.Z` is in `main` and Beta App Review has approved the build: `ios release submit_for_review:true` (automatic release, seven-day phased) | `release-promote.yml`, iOS step |
+| Daily | phased ramp | Pauses the live phased release while the iOS crash gate fails; resumes only its own pause once the gate passes | `app-store-phased-ramp.yml` |
+| Any time | brake | `pause`, `resume`, or `ios-only-override` for a version | `app-store-brake.yml` (manual) |
+
+Rules the train enforces:
+
+- **App Store needs the merge.** iOS production runs only after `release/X.Y.Z` is in `main`, which Play's production step does. A Play hold therefore holds iOS production. An iOS hold never holds Play.
+- **One unreleased version at a time (supersede, ADR 0033 rule (a)).** When N is due and N-1 is in Waiting for Review or In Review, N-1 is removed from review and marked superseded on its issue; N is submitted in its place (its fixes are already in N, because ADR 0030 forwards them). A rejected N-1 is superseded when N is due, and the rejection reason is copied onto N's issue. N-1 in *Pending Developer Release* is never superseded: N waits, because submitting N could end N-1's rollout.
+- **A new release ends the previous phased rollout (unverified).** This is the owner's premise, not something Apple documents. It is the first thing to check on the first live run (9.6, item 1). If N ends N-1's ramp early, the release issue says so.
+- **`ios-only-override`** (`app-store-brake.yml`, `action: ios-only-override`, `version`) is the one way past a Play hold. It merges the release PR itself, submits iOS, and records on the issue that Play is **not** promoted. The Sunday Play step will not touch that version (`ios_override_on`). Promote Play by hand (`play-promote.yml`) once its gates pass.
+- **Crash gate, per platform.** iOS builds report release `com.codingpit.muviss.ios@<name>+<code>` (`crashReleaseNamespace` in `app/shared`, #422). Android keeps `com.codingpit.muviss@…`. `sentry_gate.rb` asks for its own platform's namespace, so an iOS crash never holds Play and the reverse. A Sentry outage pauses nothing: the ramp reads it as "could not look" and leaves the rollout alone.
+- **Pause budget (unverified).** The train assumes Apple allows 30 paused days per version, cumulative across pauses; the first live run confirms it (9.6, item 11). A version that has used them is left for an owner decision, and its issue says so.
+- **Brake.** Use `app-store-brake.yml`, not "Remove from Sale". Removing the app from sale ends that version's phased release for good.
+- **Holds are recorded per platform**, on the release issue's marker. Markers written before iOS joined the train still parse and render "not on this train".
+
+### 9.5 Lanes and scripts
+
+`fastlane/Fastfile`, `platform :ios` (helpers in `fastlane/ios_release.rb`, tests in `fastlane/test/`):
+
+- `ios beta`: archives the RC (`iosApp`, Release, App Store export, cloud-managed signing), refuses a build whose `CFBundleVersion` is not the RC's version code, and uploads it. With `TESTFLIGHT_GROUPS` set it waits for Apple's processing and distributes the build to those internal groups (never a beta review); without it, it only uploads.
+- `ios beta_external`: sends the RC's build to the external group (public link) and submits it to Beta App Review. It uses `pilot`'s distribute-only mode (`distribute_only: true`): the build is picked by version and build number and never re-uploaded. The version's `fastlane/release-notes/vX.Y.Z/en-US.txt` is its *What to Test*, which external testing requires (#429 item 9).
+- `ios upload_dsyms`: sends the archive's dSYMs to Sentry. Skips with a notice unless `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and `SENTRY_PROJECT` are all set.
+- `ios release`: sends the TestFlight build to the App Store listing. It takes the **RC** tag (`tag:vX.Y.Z-rcN`, or `RELEASE_TAG`) and refuses any other: the build was uploaded under the RC's version code, and the final tag's matches no TestFlight build. Submits only with `submit_for_review:true`. Refuses while `fastlane/metadata/ios` still holds `REPLACE_BEFORE_SUBMIT`.
+
+Scripts: `ruby fastlane/ios_promote.rb run | ramp | brake pause|resume X.Y.Z | override X.Y.Z` (dry run unless `DRY_RUN=false`), and `scripts/release/apple-setup.sh --verify`.
+
+The Kotlin/Native release framework has line tables only because `app/shared/build.gradle.kts` passes `-Xadd-light-debug=enable` to the release binary. Without it the dSYM symbolicates Kotlin frames by name only (#428 checks the result).
+
+### 9.6 The first-live-run checklist (#429)
+
+Each item is an Apple behaviour that ADR 0033 assumes. Record the answer on the release issue. Nothing here is verified yet.
+
+1. A newer release ends the previous phased rollout. Read N-1's `phasedReleaseState` after N is released.
+2. The phased-release states are Apple's documented `PhasedReleaseState` (`INACTIVE`, `ACTIVE`, `PAUSED`, `COMPLETE`); only `PAUSED` reads as paused. Confirm with `GET /v1/appStoreVersions/{id}/appStoreVersionPhasedRelease` after the first pause.
+3. A `PATCH` to `ACTIVE` in Pending Developer Release answers 409 (a forum report). The train only pauses a live rollout; confirm it never reaches that state.
+4. Cancelling a review uses `PATCH /v1/reviewSubmissions/{id}` with `canceled: true`, found through `GET /v1/reviewSubmissions` and its `items`.
+5. Beta App Review latency: record submit to approval.
+6. Beta App Review on a second RC of the same version: does it need a full review?
+7. No per-build export-compliance question once `ITSAppUsesNonExemptEncryption = NO` is in both Info.plists.
+8. TestFlight builds expire after 90 days; the cut-to-submit gap is about thirteen days.
+9. `pilot`'s distribute-only mode in `ios beta_external` (`distribute_only: true`, `submit_beta_review: true`, the release notes as *What to Test*): the build reaches the external group and Beta App Review.
+10. Resume after a Sentry pause: the gate resumes only its own pause, after it passes on a daily run.
+11. The 30-day pause budget is cumulative per version, gate and brake pauses alike. A gate pause still holding at 30 days is handed to the owner. At 25 paused days, decide before it runs out.
+12. `GET /v1/builds` (`filter[version]`, `filter[preReleaseVersion.version]`) and `GET /v1/builds/{id}/betaAppReviewSubmission` have the shapes the code assumes.
+13. The iOS crash release string `com.codingpit.muviss.ios@…` appears on a real iOS build in Sentry (#422).
+
+Plus #428 (the release dSYM has Kotlin line tables and the Sentry framework's dSYM ships) and #424 (the privacy manifests match Xcode's report).
+
+Follow-ups for this train: #430 (Play's Sunday complete closes the release issue while iOS is still ramping), #431 (iosTest coverage for the iOS namespace).
+
+### 9.7 Versioning and the bundle identifier
+
+- `CFBundleVersion` is the Android `versionCode` (`scripts/release/version-code.sh` on an exact `vX.Y.Z[-rcN]` tag, the same formula as §3). `CFBundleShortVersionString` is the numeric `X.Y.Z` with any `-rcN` dropped (App Store Connect rejects a suffix).
+- Both targets (`iosApp` and `MuvissWidget`) run the "Set version from git" phase, which calls `scripts/ios/set-version.sh`. They must agree, or Apple rejects the upload (ITMS-90473). An untagged build reads `0.1.0`, and `Config.xcconfig`'s `CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` are only a fallback for a non-git checkout. Details in `app/iosApp/README.md`.
+- Bundle identifier `com.codingpit.muviss` (`PRODUCT_BUNDLE_IDENTIFIER` in `Config.xcconfig`), the same as Android's `applicationId`. The widget is `com.codingpit.muviss.MuvissWidget`.
+- Export compliance is declared in both Info.plists (O16). The background-refresh identifier `com.codingpit.muviss.refresh` appears in `BGTaskSchedulerPermittedIdentifiers`, and `UIBackgroundModes` is `fetch`.
+
+### 9.8 Device checklist: what only a signed build can show
+
+Run on a TestFlight build (or your own device build, items 1 to 6), on an iPhone and an iPad where the item says so.
+
+1. **Widget and App Group** (#23, #414): add the Watch next widget; it names the next unseen episode; Seen then Undo behave, and the Progress tab agrees.
+2. **Airplane mode**: force-quit, turn on airplane mode, check the widget still names an episode. This proves the App Group carries the catalogue (ADR 0016, ADR 0015). A blank widget means the extension is reading its own empty database.
+3. **Widget colours**: light and dark, against the app (#414).
+4. **Share sheet and copy** (#186, #415): copy and share on iPhone and iPad, from Settings and from a title. On iPad the popover must anchor (#416 is the `keyWindow` risk on multi-scene iPad).
+5. **Import, Spanish UI, notifications** (#240): import picker, share, Spanish strings, and the notification prompt on a fresh install.
+6. **Onboarding and the notification nudge** (#324): fresh install, then the prompt on the first notifications switch.
+7. **Background refresh** (#417): the BGTask runs and resubmits itself; the pending request exists after a run.
+8. **KSafe** (#322): the Keychain item for the Own TMDB Key survives a relaunch, on device.
+9. **Muted genres** (#388): mute a genre and check the deck, per target.
+10. **Sync triggers** (#114): the background trigger and foreground behaviour with sync turned on (EPIC 40), if a build with sync is in use. v1 builds have no sync UI.
+11. **Darwin engine and live TMDB** (#92): search, popular rows and a detail page on the Darwin engine.
+12. **Sentry test crash, symbolicated** (#428): Settings → About, tap the version seven times, press **Send test crash**. Relaunch. In Sentry, the event is `MuvissTestCrash`, with release `com.codingpit.muviss.ios@<name>+<code>`, `environment=production`, and Kotlin frames by name (not raw addresses). A raw address means the dSYM upload or the line tables failed (#428).
+13. **Device Backup restore** (#419, #420): only after the Device Backup epic (#409) lands. Turn the setting on, back up, restore onto a second device, check the library and that the Keychain items behave as the Device Backup decision record says.
+14. **Simulator facts, for reference**: the iOS 26 runtime is needed for `-destination`; the App Group works on the Simulator without a team, so the Documents fallback in `DatabaseFactory.ios.kt` is exercised only on device builds without a team. A passing Simulator run is not evidence that the fallback works.
+
+Expect OAuth sign-in to fail with "cannot connect to the server" if a sign-in is left open for about ten minutes: the PKCE state expires. That is not a configuration fault; retry.
+
+### 9.9 When Apple rejects
+
+- **Beta App Review rejects the RC.** The iOS production step is held with the reason, and the reason is copied to the release issue. Read the reason in the TestFlight build's review message (verify in UI). Fix it on the release branch, so the fix forwards (ADR 0030), and cut a new RC. A rejection the RC cannot answer is a `release-blocker`. Play is not held.
+- **App Review rejects the App Store submission.** Read the reason in App Store Connect's Resolution Center (verify in UI). If the fix needs code, follow the RC route above. If it needs only metadata or review notes, change the files under `fastlane/metadata/ios` and run `ios release` again. The rejected version is marked superseded when the next version is due (9.4).
+- **Apple asks for information in the Resolution Center.** Answer there. The answer belongs on the release issue too.
+- **You need to withdraw a version.** Use the brake (`app-store-brake.yml`, `pause`). Do not use "Remove from Sale".
+- If the rejection is a policy question you cannot settle, ask the agent to file it as an issue with the Apple reference and the reason copied in. Do not guess an answer to App Review.
+
+### 9.10 Deferred, and not part of v1
+
+Sign in with Apple, the in-app purchase product and `ASWebAuthenticationSession` (#33) belong to EPIC 32 (#75). The dark and tinted icon slots are empty (#34). iOS is arm64-only (#35). The App Store screenshots for the device classes are #425.
+
+### Startup wiring, notifications and the widget (reference)
+
+- **`AppDelegate.swift`** calls `IosAppStartup.shared.start()` from `application(_:didFinishLaunchingWithOptions:)`, the one hook Apple guarantees runs on every launch, including a background BGTask launch. `IosAppStartup.kt` starts crash reporting first (`MuvissCrashReporting.start`), then Koin, registers the `BGTaskScheduler` task and configures `UNUserNotificationCenter`.
+- **`MainViewController.kt`** feeds `IosNotificationCenter.pendingDeepLinkMediaId` into `MuvissApp(deepLinkMediaId, onDeepLinkConsumed)`.
+- **Notifications** mirror Android's new-episodes trio in Kotlin (`IosBackgroundRefresh.kt`, `IosNotificationCenter.kt`). Permission is requested through `SettingsApi.setNotificationsEnabled`, which asks the OS first (ADR 0029). Nothing asks cold.
+- **Widget:** Swift under `app/iosApp/MuvissWidget`, reaching Kotlin only through `IosWidgetBridge` (flat strings). CI builds and links it on every PR, but nothing about its behaviour has run on a device (9.8).
+- **Database:** `muviss.db` lives in the App Group container (ADR 0016). `DatabaseFactory.ios.kt` moves a pre-v9 database there once, and falls back to the Documents path when the entitlement is missing. Do not remove that fallback: without it a fresh clone crashes on launch.
+- **Sentry** reads its DSN from `SENTRY_DSN` at build time, the same as Android.
+- **Static framework:** `Shared` is a static framework, so The Xcode targets link `-framework Sentry -lsqlite3` and the app embeds `Sentry.framework` through a script phase (`SENTRY_XCFRAMEWORK_SLICE`). These were the 50 missing symbols found on the Simulator on 2026-09-02, and CI's `ios` job on `macos-latest` now builds them on every PR.
 
 ## 10. Web: the landing (muvissapp.com) and the Wasm app — EPIC 13 / issue #16
 
@@ -1248,40 +1269,21 @@ an empty library.
 
 ### iOS: one-time setup
 
-`scripts/release/apple-setup.sh` walks through all of this and the rest of the
-Apple side — membership, Team ID, App Group, both App IDs (with Sign in with
-Apple), the App Store Connect record, the App Store Connect API key and the
-Developer ID certificate for the DMG — storing what CI will need as GitHub
-secrets (`APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
-`APP_STORE_CONNECT_KEY_P8`, `MACOS_DEVELOPER_ID_P12_BASE64`,
-`MACOS_DEVELOPER_ID_P12_PASSWORD`) and `APPLE_TEAM_ID` as a variable. The
-steps it automates are the ones below.
-
-1. **Fill in `TEAM_ID`** in `app/iosApp/Configuration/Config.xcconfig` (Xcode
-   > Signing & Capabilities shows it once a team is selected). Same value the
-   rest of §9 needs; it is gitignored-by-convention only in the sense that it
-   ships blank — do not commit a real one.
-2. **Register the App Group** `group.com.codingpit.muviss` in the Apple
-   Developer portal (Certificates, Identifiers & Profiles > Identifiers > App
-   Groups).
-3. **Enable it on both bundle ids** — `com.codingpit.muviss` and
-   `com.codingpit.muviss.MuvissWidget`. Both entitlement files
-   (`app/iosApp/iosApp/iosApp.entitlements`,
-   `app/iosApp/MuvissWidget/MuvissWidget.entitlements`) already declare it;
-   the portal has to agree or neither target will sign.
-4. **Let Xcode regenerate the provisioning profiles** (automatic signing
-   picks the change up on the next build).
-
-The identifier appears in four places and they must all match: the two
-entitlement files, `MUVISS_APP_GROUP` in
+The Apple side is section 9, steps O2 to O4 (Team ID, App Group, both App IDs), and the
+owner's checklist is section 9.1. Four identifiers must agree, character for character:
+the two entitlement files (`app/iosApp/iosApp/iosApp.entitlements`,
+`app/iosApp/MuvissWidget/MuvissWidget.entitlements`), `MUVISS_APP_GROUP` in
 `core/database/src/iosMain/.../DatabaseFactory.ios.kt`, and the
 `UserDefaults(suiteName:)` in `app/iosApp/MuvissWidget/WidgetIntents.swift`.
+On a device build, until the App Group is registered and enabled on both App IDs,
+`DatabaseFactory.ios.kt` falls back to the Documents directory (ADR 0016) and the widget
+shows an empty library. The Simulator has the App Group without a team (item 14).
 
 ### iOS: what to check in Xcode
 
-The `MuvissWidget` target was added to `project.pbxproj` by hand — the
-project opens and its target graph parses, but **it has never been built**,
-because building it needs Xcode and a team. Expect to adjust:
+The `MuvissWidget` target is built by CI's `ios` job, as a dependency of
+`iosApp` under `CODE_SIGNING_ALLOWED=NO`, so it compiles and links on every
+PR. What CI cannot show is behaviour on a signed device, so expect to adjust:
 
 - **Framework linking.** The target links the static `Shared` framework via
   `OTHER_LDFLAGS = -framework Shared` and a `FRAMEWORK_SEARCH_PATHS` entry
@@ -1352,7 +1354,7 @@ setting the secret needs no further copy change.
 
 ## 13. Feature Request form (Tally) — EPIC 53 / issue #447
 
-The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0034. Owner steps, once:
+The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0035. Owner steps, once:
 
 1. In Tally, create an API key (Settings > API keys) and `export TALLY_API_KEY=…`. It stays with you; it never goes in the app or in CI.
 2. `scripts/feedback/tally-form.sh create` makes a **draft** from `scripts/feedback/tally-form.json` and prints the form id and `https://tally.so/r/<id>`. **First run, check the draft in the dashboard** (issue #450): the four hidden fields (`version`, `platform`, `os`, `locale`), the optional email, and that "Email me on each submission" is on. The script's block shapes were not verified against the live API, and the create response has no URL field, so the script derives it from the id.

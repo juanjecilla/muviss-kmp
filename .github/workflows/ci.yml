@@ -90,8 +90,9 @@ jobs:
           # Anything the shared Kotlin/Native framework or the Xcode project can
           # see. `core`, `feature` and `models` are in here because :app:shared
           # depends on them, so a change there does reach the iOS link. This
-          # file is in here too: a PR that edits CI must run the CI it edits.
-          IOS_PATHS='^(app/shared/|app/iosApp/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$'
+          # file is in here too: a PR that edits CI must run the CI it edits. So is
+          # version-code.sh, which scripts/ios/set-version.sh calls for tagged builds.
+          IOS_PATHS='^(app/shared/|app/iosApp/|scripts/ios/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$|^scripts/release/version-code\.sh$'
           # Everything above, plus the platforms iOS cannot see but `build`,
           # `desktop` and `web-tests` can.
           CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/|supabase/|scripts/)'
@@ -189,7 +190,7 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
@@ -407,7 +408,7 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
@@ -480,7 +481,7 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
@@ -628,7 +629,7 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
@@ -708,6 +709,26 @@ jobs:
           -sdk iphonesimulator
           CODE_SIGNING_ALLOWED=NO
           build
+
+      # The version stamping both targets' Run Script phases call (ITMS-90473
+      # is an app/extension mismatch). Needs PlistBuddy, so it runs here and
+      # not on the Linux guards.
+      - name: iOS version script tests
+        run: scripts/ios/test/set-version-test.sh
+
+      # The XCUITest smoke path: launch, get past onboarding, reach Search and
+      # open Settings. Offline-safe, English-only (see MuvissSmokeUITests).
+      # Runs the iosAppUITests target through the shared iosApp scheme.
+      # The simulator is looked up, not named: the image's device list changes
+      # under us (a pinned "iPhone 16" stopped existing).
+      - name: Run the iOS UI smoke tests (simulator)
+        run: |
+          udid=$(scripts/ios/simulator-udid.sh)
+          xcodebuild test \
+            -project app/iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -destination "platform=iOS Simulator,id=$udid" \
+            CODE_SIGNING_ALLOWED=NO
 
       # packageDmg used to run here, riding the macOS runner this job already
       # pays for. It was costing 2m30s — 25 billed minutes at the 10x macOS

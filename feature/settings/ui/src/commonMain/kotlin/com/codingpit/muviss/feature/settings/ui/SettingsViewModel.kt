@@ -54,7 +54,7 @@ data class SettingsUiState(
     val tickAnimations: Boolean = true,
     /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
     val notificationsDenied: Boolean = false,
-    /** Where the Feature Request row opens (ADR 0034), hidden fields included; null hides the row. */
+    /** Where the Feature Request row opens (ADR 0035), hidden fields included; null hides the row. */
     val featureRequestUrl: String? = null,
 )
 
@@ -185,6 +185,11 @@ class SettingsViewModel(
 
     fun onCrashReportsToggled(enabled: Boolean) {
         viewModelScope.launchReporting { actions.setCrashReportsEnabled(enabled) }
+    }
+
+    /** Device Backup (ADR 0034). Nothing is copied now: the OS includes or excludes the library at its next backup. */
+    fun onDeviceBackupToggled(enabled: Boolean) {
+        viewModelScope.launchReporting { actions.setDeviceBackupEnabled(enabled) }
     }
 
     fun exportData() {

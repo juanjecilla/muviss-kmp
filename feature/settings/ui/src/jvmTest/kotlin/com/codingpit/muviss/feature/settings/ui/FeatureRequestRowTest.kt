@@ -24,7 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** The Feature Request row (ADR 0034): hidden until there is a form, and it hands the link to its opener. */
+/** The Feature Request row (ADR 0035): hidden until there is a form, and it hands the link to its opener. */
 class FeatureRequestRowTest {
 
     @BeforeTest

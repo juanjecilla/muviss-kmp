@@ -18,6 +18,7 @@ import com.codingpit.muviss.feature.progress.domain.MarkPreviousSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkSeasonAiredSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.MarkShowAiredSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveEpisodeProgressUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObservePlayCountsUseCase
 import com.codingpit.muviss.feature.progress.domain.ObservePlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveRewatchCountsUseCase
@@ -66,6 +67,7 @@ val progressDataModule: Module = module {
     factory { ObservePlaysUseCase(get()) }
     factory { ObserveRewatchCountsUseCase(get()) }
     factory { ObserveRewatchTimestampsUseCase(get()) }
+    factory { ObserveLastWatchedAtUseCase(get()) }
     factory { ProgressPlayObservers(get(), get(), get(), get()) }
     factory { MarkPreviousSeenUseCase(get()) }
     factory { MarkAllAiredSeenUseCase(get()) }
@@ -79,6 +81,6 @@ val progressDataModule: Module = module {
     // `{ get() }` rather than `get()`: collection's repository depends on
     // `ProgressApi`, so resolving `CollectionApi` while building it closes a
     // cycle. See WatchNextUseCase's KDoc.
-    factory { WatchNextUseCase({ get() }, get(), get(), get()) }
+    factory { WatchNextUseCase({ get() }, get(), get(), get(), get()) }
     factory { RefreshWatchNextCatalogsUseCase({ get() }, get()) }
 }
