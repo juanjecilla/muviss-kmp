@@ -118,10 +118,13 @@ class SqlDelightSettingsRepository(
                 ensureRow()
                 // The column and the OS exclusion move together (ADR 0034), ordered so a failure on either side
                 // leaves the library excluded and the switch reading what the OS does: off excludes first and
-                // stores after; on stores first, and puts the switch back if the OS refuses to include it.
+                // stores after; on stores first, and puts both back if the OS refuses to include it (a refusal can
+                // come after some paths were already cleared, and a main file included without its -wal is the
+                // failure to avoid, so the exclusion is re-applied too, best effort).
                 if (enabled) {
                     settingsQueries.updateDeviceBackupEnabled(true)
                     runCatching { DeviceBackupExclusion.apply(true) }.onFailure { error ->
+                        runCatching { DeviceBackupExclusion.apply(false) }
                         settingsQueries.updateDeviceBackupEnabled(false)
                         throw error
                     }
