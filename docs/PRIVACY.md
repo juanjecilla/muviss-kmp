@@ -126,7 +126,9 @@ telemetry, no third-party trackers.
 **Settings → Data → Delete all data** deletes everything Muviss keeps on the
 device — your library, watch history, lists, triage decisions, profile and
 settings, Device Backup included (it goes back to off) — without uninstalling.
-Uninstalling does the same. Either way nothing is left on a Muviss server,
+Uninstalling removes the same, with one exception on iPhone: an Own TMDB Key
+you saved sits in the iOS Keychain, which can outlive the app, so use Delete
+all data first if you want the key gone too. Either way nothing is left on a Muviss server,
 because Muviss never sends what you enter to one. A copy your phone's own
 backup already holds is outside Muviss and is not touched by either; delete it
 where that backup lives (the phone's backup settings for iCloud or Google, or
