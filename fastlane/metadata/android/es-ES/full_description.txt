@@ -28,6 +28,7 @@ PRIVADO POR DISEÑO
 • Sin funciones sociales: sin muro, sin amigos, sin comentarios.
 • Sin anuncios ni analítica. Solo informes de errores anónimos y opcionales, que puedes desactivar en Ajustes.
 • Tu biblioteca vive en tu dispositivo y funciona sin conexión. Haz una copia en un archivo y restáurala en cualquier dispositivo.
+• Copia del dispositivo opcional: deja que la copia de seguridad de tu teléfono lleve tu biblioteca a uno nuevo. Desactivada hasta que la actives en un paso inicial o en Ajustes, y Muviss nunca ve esa copia.
 
 ¿Te falta algo, o algo falla? Pide una función o informa de un problema desde Ajustes: cada opción abre un formulario corto en tu navegador y tú decides qué escribir.
 

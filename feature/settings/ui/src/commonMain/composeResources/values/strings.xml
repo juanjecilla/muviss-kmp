@@ -42,6 +42,9 @@
     <string name="swipe_animations_body">Cards fly out when decided, and undo brings them back</string>
     <string name="import">Import</string>
     <string name="export">Export</string>
+    <string name="device_backup">Back up with this device</string>
+    <!-- Device Backup (ADR 0034): the OS copy, not Muviss. Off by default. -->
+    <string name="device_backup_body">Lets iCloud or Google backup include your library and watch history. Off by default. Muviss never sees these copies.</string>
     <string name="crash_reports">Send crash reports</string>
     <!-- Says what docs/PRIVACY.md says: what is sent, and that the library is not part of it. -->
     <string name="crash_reports_body">Anonymous. Sent only when something breaks, and never includes your library or watch history</string>

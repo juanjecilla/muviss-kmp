@@ -30,6 +30,9 @@ module ReleaseGates
     when ReleaseStages::INTERNAL
       state["beta_on"] && today >= Date.iso8601(state["beta_on"]) ? :beta : nil
     when ReleaseStages::BETA
+      # An iOS-only override merged this version without Play (ADR 0033): Play
+      # waits for the owner, so nothing here may promote it.
+      return nil if state["ios_override_on"] && state["merged_on"]
       # Merged into main, but the Play promotion after it failed: retry only
       # the promotion, never the merge.
       return :play_retry if state["merged_on"]
@@ -42,6 +45,28 @@ module ReleaseGates
   # Why the step must wait, empty when every gate passes. A fact that could not
   # be read is nil and holds: "we could not look" is not "nothing is wrong".
   def holds(facts:)
+    reasons = shared_holds(facts)
+    return reasons if facts[:rc_tag].nil?
+
+    reasons << "the versionCode of #{facts[:rc_tag]} could not be read" if facts[:rc_code].nil?
+    if facts[:expect_beta] && facts[:rc_code]
+      if facts[:beta_has_rc].nil?
+        reasons << "the beta track could not be read"
+      elsif facts[:beta_has_rc] == false
+        reasons << "the beta track's newest build is not #{facts[:rc_tag]} (versionCode #{facts[:rc_code]}): production promotes from beta"
+      end
+    end
+    reasons << "Sentry: #{facts[:sentry]}" if facts[:sentry]
+    Array(facts[:others_in_beta]).each do |other|
+      reasons << "#{other} is still on the beta track; it moves to production first"
+    end
+    reasons.compact
+  end
+
+  # The gates both stores share (ADR 0033): the release-blocker list, fixes in
+  # flight, the branch head being the RC, the RC built, CI green, the notes
+  # written. Nothing platform-specific, so iOS (ios_train.rb) calls this too.
+  def shared_holds(facts)
     return ["no release candidate has been built for this version"] if facts[:rc_tag].nil?
 
     reasons = []
@@ -59,19 +84,6 @@ module ReleaseGates
     reasons << rc_reason(facts) unless facts[:rc_built] == true
     reasons << ci_reason(facts) unless facts[:ci_green] == true
     reasons << notes_reason(facts) unless facts[:draft_locales] == []
-    # Play is asked for exactly this versionCode, and the Sentry gate needs it.
-    reasons << "the versionCode of #{facts[:rc_tag]} could not be read" if facts[:rc_code].nil?
-    if facts[:expect_beta] && facts[:rc_code]
-      if facts[:beta_has_rc].nil?
-        reasons << "the beta track could not be read"
-      elsif facts[:beta_has_rc] == false
-        reasons << "the beta track's newest build is not #{facts[:rc_tag]} (versionCode #{facts[:rc_code]}): production promotes from beta"
-      end
-    end
-    reasons << "Sentry: #{facts[:sentry]}" if facts[:sentry]
-    Array(facts[:others_in_beta]).each do |other|
-      reasons << "#{other} is still on the beta track; it moves to production first"
-    end
     reasons.compact
   end
 

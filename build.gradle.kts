@@ -188,6 +188,19 @@ fun sentryCocoaSlice(konanTargetName: String): String? = when (konanTargetName) 
     else -> null
 }
 
+/**
+ * Where the Swift compatibility shims (toolchain) and the Swift runtime stubs (SDK) live for
+ * [slice], or nothing off a Mac. Resolved through `xcrun`, so it follows the selected Xcode.
+ */
+fun Project.swiftLibrarySearchPaths(slice: String): List<String> {
+    if (!System.getProperty("os.name").startsWith("Mac")) return emptyList()
+    val sdk = if (slice.endsWith("simulator")) "iphonesimulator" else "iphoneos"
+    fun xcrun(vararg args: String): String = providers.exec { commandLine("xcrun", *args) }.standardOutput.asText.get().trim()
+    val toolchainSwift = File(xcrun("--find", "swiftc")).parentFile.parentFile.resolve("lib/swift/$sdk")
+    val sdkSwift = File(xcrun("--sdk", sdk, "--show-sdk-path")).resolve("usr/lib/swift")
+    return listOf(toolchainSwift.absolutePath, sdkSwift.absolutePath)
+}
+
 fun Project.linkSentryCocoaFramework() {
     plugins.withId("org.jetbrains.kotlin.multiplatform") {
         extensions.configure<KotlinMultiplatformExtension> {
@@ -215,6 +228,13 @@ fun Project.linkSentryCocoaFramework() {
                     // Sentry.framework" phase — see project.pbxproj.
                     if (outputKind == NativeOutputKind.TEST) {
                         linkerOpts("-rpath", searchPath)
+                        // Since sentry-kotlin-multiplatform 0.28.0 its cinterop klib carries
+                        // Swift objects (`SentryKMPInternal.swift.o`), which reference Swift's
+                        // static compatibility shims (`__swift_FORCE_LOAD_$_swiftCompatibility56`).
+                        // Kotlin/Native's linker has no Swift search paths, so a test
+                        // executable needs the toolchain's and the SDK's. `Shared` is static
+                        // and Xcode links the app with Swift, so only tests need this.
+                        swiftLibrarySearchPaths(slice).forEach { linkerOpts("-L$it") }
                     }
                     linkTaskProvider.configure { dependsOn(rootProject.tasks.named("unzipSentryCocoa")) }
                 }

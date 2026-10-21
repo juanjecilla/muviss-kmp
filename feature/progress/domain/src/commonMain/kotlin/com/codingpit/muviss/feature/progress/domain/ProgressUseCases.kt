@@ -104,6 +104,11 @@ class ObserveRewatchCountsUseCase(private val repository: ProgressRepository) {
     operator fun invoke(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = repository.observeRewatchCounts(sinceEpochMs)
 }
 
+/** When each title was last watched (its newest live Play) — what orders Watch Next. */
+class ObserveLastWatchedAtUseCase(private val repository: ProgressRepository) {
+    operator fun invoke(): Flow<Map<MediaId, Long>> = repository.observeLastWatchedAt()
+}
+
 /** Every rewatch's timestamp since a bound — the profile trend's input. */
 class ObserveRewatchTimestampsUseCase(private val repository: ProgressRepository) {
     operator fun invoke(sinceEpochMs: Long): Flow<List<Long>> = repository.observeRewatchTimestamps(sinceEpochMs)
