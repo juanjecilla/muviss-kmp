@@ -66,6 +66,7 @@ export const es: Dictionary = {
       { icon: "widget", title: "Widgets", body: "Tu siguiente episodio en la pantalla de inicio, con marcar y deshacer.", platforms: "Android · iOS" },
       { icon: "import", title: "Importa", body: "Trae tu historial desde Trakt, TV Time o un archivo CSV." },
       { icon: "export", title: "Copia y restaura", body: "Tus datos son tuyos: haz una copia en un archivo, restáurala en cualquier dispositivo o bórralo todo." },
+      { icon: "export", title: "Copia del dispositivo", body: "Opcionalmente, deja que la copia de iCloud o Google incluya tu biblioteca, para que un teléfono nuevo siga por donde lo dejaste. Desactivada hasta que la actives.", platforms: "Android · iOS" },
       { icon: "moon", title: "Claro y oscuro", body: "Sigue al sistema o elige el tema tú." },
       { icon: "globe", title: "En español e inglés", body: "La app habla tu idioma, español o inglés. Títulos, sinopsis y disponibilidad siguen el idioma y el país que elijas." },
     ],

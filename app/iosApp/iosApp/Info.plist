@@ -52,5 +52,22 @@
 	<array>
 		<string>fetch</string>
 	</array>
+	<!--
+	  Muviss's network traffic is HTTPS only (TMDB, and Supabase once sync ships), so it
+	  is exempt from export-compliance review. Without this key App Store Connect asks
+	  on every upload. Re-check if a non-HTTPS or custom-crypto path is ever added.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!--
+	  Launch screen: a flat colour, LaunchBackground in Assets.xcassets, which is
+	  MuvissPalette's background in dark (#14120E) and light (#FDF8EF). Replaces the
+	  generated launch screen (INFOPLIST_KEY_UILaunchScreen_Generation).
+	-->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>

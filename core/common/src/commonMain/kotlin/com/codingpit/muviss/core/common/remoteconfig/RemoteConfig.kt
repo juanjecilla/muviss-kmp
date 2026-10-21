@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
  *   both forms live with the same provider.
  * @property featureRequestUrl the public URL of the Feature Request form, or null when
  *   there is none yet. A null or blank URL hides the row whatever the provider says.
- * @property bugReportUrl the same for the Bug Report form (ADR 0034, #449).
+ * @property bugReportUrl the same for the Bug Report form (ADR 0035, #449).
  */
 data class RemoteValues(
     val byokEnabled: Boolean,

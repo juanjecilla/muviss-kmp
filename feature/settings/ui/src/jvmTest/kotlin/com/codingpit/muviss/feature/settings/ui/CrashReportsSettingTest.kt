@@ -31,6 +31,7 @@ import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
 import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
+import com.codingpit.muviss.feature.settings.domain.SetDeviceBackupEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
@@ -209,6 +210,8 @@ internal class FakeRepository(initial: AppSettings = AppSettings()) : SettingsRe
     override suspend fun setRegion(region: String) = settings.update { it.copy(region = region) }
     override suspend fun setNotificationsEnabled(enabled: Boolean) = settings.update { it.copy(notificationsEnabled = enabled) }
     override suspend fun setCrashReportsEnabled(enabled: Boolean) = settings.update { it.copy(crashReportsEnabled = enabled) }
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = settings.update { it.copy(deviceBackupEnabled = enabled) }
     override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = settings.update { current ->
         val kept = current.mutedGenres.filterNot { it.key == key }
         current.copy(mutedGenres = if (muted) kept + MutedGenreEntry(key, name) else kept)
@@ -244,6 +247,7 @@ internal fun settingsActions(repository: FakeRepository, permission: Notificatio
     SetCrashReportsEnabledUseCase(repository),
     MutedGenresActions(repository),
     ExportDataUseCase(repository),
+    SetDeviceBackupEnabledUseCase(repository),
 )
 
 /** A [SettingsViewModel] over [repository], [NoFlags] and a fixed clock; [onDeleteAll] observes the eraser. */
@@ -262,6 +266,7 @@ internal fun settingsViewModel(
         SetCrashReportsEnabledUseCase(repository),
         MutedGenresActions(repository),
         ExportDataUseCase(repository),
+        SetDeviceBackupEnabledUseCase(repository),
     ),
     AppVersion(versionName = "1.0.0", versionCode = 1),
     flags,

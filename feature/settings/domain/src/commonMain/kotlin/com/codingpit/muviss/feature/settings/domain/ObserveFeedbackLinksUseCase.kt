@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
- * Where Settings' two "talk to us" rows open (ADR 0034): the Feature Request form and the
+ * Where Settings' two "talk to us" rows open (ADR 0035): the Feature Request form and the
  * Bug Report form. A null link means there is nothing to open yet (no form, or the provider
  * is off), which hides that row.
  */

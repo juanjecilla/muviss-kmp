@@ -21,6 +21,10 @@
     <string name="onboarding_import_body">Bring your history from Trakt, TV Time, a CSV file or a Muviss backup.</string>
     <string name="onboarding_import_action">Import…</string>
 
+    <string name="onboarding_backup_title">Keep your library on a new phone?</string>
+    <string name="onboarding_backup_body">Your iCloud or Google backup can include your library and watch history, so a new device starts where you left off. It is off until you turn it on, and Muviss never sees that copy. You can change it any time in Settings.</string>
+    <string name="onboarding_backup_switch">Back up with this device</string>
+
     <string name="onboarding_notifications_title">New episode alerts</string>
     <string name="onboarding_notifications_body">Get a notification when a show you follow has a new episode. It is off until you turn it on, and you can change it any time in Settings.</string>
     <string name="onboarding_notifications_switch">New episode alerts</string>
