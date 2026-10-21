@@ -14,8 +14,9 @@ import platform.UIKit.popoverPresentationController
 /**
  * The window the user is looking at. `UIApplication.keyWindow` is deprecated and can be
  * nil or belong to a background scene on a multi-scene iPad, so the foreground-active
- * `UIWindowScene` is asked first; the application-level key window and then any window
- * are fallbacks for the cases where no scene is foregrounded yet.
+ * `UIWindowScene` is asked first, for its key window or else its first one (the
+ * application-level key window may belong to another scene); the application-level key
+ * window and then any window are fallbacks for the cases where no scene is foregrounded yet.
  */
 @Suppress("DEPRECATION")
 private fun currentWindow(): UIWindow? {
@@ -23,11 +24,11 @@ private fun currentWindow(): UIWindow? {
     val scenes = app.connectedScenes.filterIsInstance<UIWindowScene>()
     val foreground = scenes.firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
     val fromForeground = foreground?.let { scene ->
-        scene.keyWindow ?: scene.windows.filterIsInstance<UIWindow>().firstOrNull { it.isKeyWindow() }
+        val windows = scene.windows.filterIsInstance<UIWindow>()
+        scene.keyWindow ?: windows.firstOrNull { it.isKeyWindow() } ?: windows.firstOrNull()
     }
     return fromForeground
         ?: app.keyWindow
-        ?: foreground?.windows?.filterIsInstance<UIWindow>()?.firstOrNull()
         ?: scenes.asSequence().flatMap { it.windows.filterIsInstance<UIWindow>() }.firstOrNull()
 }
 
