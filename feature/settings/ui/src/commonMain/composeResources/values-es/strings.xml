@@ -42,6 +42,9 @@
     <string name="swipe_animations_body">Las tarjetas salen volando al decidir, y deshacer las trae de vuelta</string>
     <string name="import">Importar</string>
     <string name="export">Exportar</string>
+    <string name="device_backup">Copia de seguridad con este dispositivo</string>
+    <!-- Device Backup (ADR 0034): the OS copy, not Muviss. Off by default. -->
+    <string name="device_backup_body">Permite que la copia de iCloud o Google incluya tu biblioteca e historial. Desactivada por defecto. Muviss nunca ve estas copias.</string>
     <string name="crash_reports">Enviar informes de errores</string>
     <!-- Says what docs/PRIVACY.md says: what is sent, and that the library is not part of it. -->
     <string name="crash_reports_body">Anónimos. Solo se envían cuando algo falla, y nunca incluyen tu biblioteca ni tu historial</string>
