@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -51,6 +52,30 @@ class DatabaseFactoryJvmTest {
 
         assertEquals("DARK", reopened.theme)
         secondDriver.close()
+    }
+
+    /**
+     * #453: a file stamped behind its real schema (here: stamped 9 while `syncCursor`, which
+     * `9.sqm` creates, already exists) used to surface as SQLite's "table syncCursor already
+     * exists" from deep inside Koin. It now says which file, which versions, and what to do —
+     * and never the path.
+     */
+    @Test
+    fun `a database stamped behind its schema fails with a message that says what to do`() {
+        val directory = createTempDirectory("muviss-db-test").toFile()
+        createFileDriver(directory).also {
+            it.execute(identifier = null, sql = "PRAGMA user_version = 9;", parameters = 0, binders = null)
+            it.close()
+        }
+
+        val error = assertFailsWith<IllegalStateException> { createFileDriver(directory) }
+
+        val message = error.message.orEmpty()
+        assertTrue("muviss.db from schema version 9" in message, message)
+        assertTrue("already exists" in message, message)
+        assertTrue("move it aside" in message, message)
+        assertTrue(directory.absolutePath !in message, "the message must not carry the path: $message")
+        assertTrue(error.cause is java.sql.SQLException)
     }
 
     /**
