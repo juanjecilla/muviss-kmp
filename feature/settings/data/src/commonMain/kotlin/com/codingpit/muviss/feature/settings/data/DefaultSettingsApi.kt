@@ -30,6 +30,10 @@ internal class DefaultSettingsApi(
 
     override fun observeCrashReportsEnabled(): Flow<Boolean> = repository.observeSettings().map { it.crashReportsEnabled }
 
+    override fun observeDeviceBackupEnabled(): Flow<Boolean> = repository.observeSettings().map { it.deviceBackupEnabled }.distinctUntilChanged()
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = repository.setDeviceBackupEnabled(enabled)
+
     override fun observeMuting(): Flow<GenreMuting> = combine(repository.observeSettings(), session.showMuted) { settings, showMuted ->
         GenreMuting(
             configured = MutedGenresCodec.toMutedGenres(settings.mutedGenres),

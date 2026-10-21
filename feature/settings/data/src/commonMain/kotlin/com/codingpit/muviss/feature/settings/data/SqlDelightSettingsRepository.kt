@@ -10,6 +10,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.core.database.CollectionEntryQueries
+import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.core.database.MediaListQueries
@@ -23,6 +24,7 @@ import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
 import com.codingpit.muviss.feature.settings.domain.MutedGenresCodec
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import com.codingpit.muviss.models.GenreKey
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -62,10 +64,13 @@ class SqlDelightSettingsRepository(
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
     private val appVersion: AppVersion,
+    private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
 ) : SettingsRepository {
 
     private val json = Json { prettyPrint = true }
     private val mutedGenresLock = Mutex()
+
+    /** The column and the OS exclusion change together, so two overlapping toggles (Settings, onboarding) never interleave. */
 
     override fun observeSettings(): Flow<AppSettings> = settingsQueries.selectSettings()
         .asFlow()
@@ -101,6 +106,34 @@ class SqlDelightSettingsRepository(
         ensureRow()
         settingsQueries.updateCrashReportsEnabled(enabled)
         Unit
+    }
+
+    // NonCancellable: the caller is a view model's scope, and leaving Settings (or the introduction) clears it.
+    // A backup choice the person made must still land, column and OS exclusion together, once it has started.
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        // Taken before the hop to io: a choice made before Delete all data must not land after it.
+        val requestedAt = deviceBackupWrites.request()
+        withContext(dispatchers.io + NonCancellable) {
+            deviceBackupWrites.write(requestedAt) {
+                ensureRow()
+                // The column and the OS exclusion move together (ADR 0034), ordered so a failure on either side
+                // leaves the library excluded and the switch reading what the OS does: off excludes first and
+                // stores after; on stores first, and puts both back if the OS refuses to include it (a refusal can
+                // come after some paths were already cleared, and a main file included without its -wal is the
+                // failure to avoid, so the exclusion is re-applied too, best effort).
+                if (enabled) {
+                    settingsQueries.updateDeviceBackupEnabled(true)
+                    runCatching { DeviceBackupExclusion.apply(true) }.onFailure { error ->
+                        runCatching { DeviceBackupExclusion.apply(false) }
+                        settingsQueries.updateDeviceBackupEnabled(false)
+                        throw error
+                    }
+                } else {
+                    DeviceBackupExclusion.apply(false)
+                    settingsQueries.updateDeviceBackupEnabled(false)
+                }
+            }
+        }
     }
 
     override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = withContext(dispatchers.io) {
@@ -147,6 +180,7 @@ class SqlDelightSettingsRepository(
         crashReportsEnabled = crashReportsEnabled,
         mutedGenres = MutedGenresCodec.decode(mutedGenres),
         mutedGenresInSearch = mutedGenresInSearch,
+        deviceBackupEnabled = deviceBackupEnabled,
     )
 
     private fun CollectionEntryRow.toExport(): CollectionEntryExport = CollectionEntryExport(

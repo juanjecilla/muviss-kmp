@@ -69,7 +69,10 @@ class BaselineProfileGenerator {
         const val PACKAGE = "com.codingpit.muviss"
         const val TIMEOUT_MS = 5_000L
         const val GESTURE_MARGIN_FRACTION = 5
-        const val INTRODUCTION_PAGES = 7
+
+        // Next taps from the first page to DONE on Android: Welcome, Library, Watch next, Discover, Import, Device
+        // Backup (EPIC 51 WS6), Alerts, Muted genres, then Done. Without the Own TMDB Key page (byokEnabled is off).
+        const val INTRODUCTION_PAGES = 8
         const val INTRODUCTION_WAIT_MS = 1_500L
         val TABS = listOf("Library", "Progress", "Search", "Profile", "Settings")
     }
