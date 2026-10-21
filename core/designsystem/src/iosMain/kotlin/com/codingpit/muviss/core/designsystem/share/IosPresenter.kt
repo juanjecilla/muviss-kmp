@@ -33,18 +33,23 @@ private fun currentWindow(): UIWindow? {
 }
 
 /**
- * The view controller the user is looking at: the current window's root, walked down
+ * The view controller the user is looking at: the root of [host]'s window, walked down
  * through every modal already presented on top of it. Presenting from the root
  * while a sheet is up fails with "already presenting", which is why the walk exists.
+ *
+ * [host] is the controller hosting the Compose UI that asked (`LocalUIViewController`).
+ * Its window is the scene the user tapped in, which on an iPad running two Muviss
+ * windows side by side no scene lookup can tell apart, since both are foreground-active.
+ * Without one (or before it is in a window) the guess in [currentWindow] is the fallback.
  */
-fun topViewController(): UIViewController? {
-    var top = currentWindow()?.rootViewController
+fun topViewController(host: UIViewController? = null): UIViewController? {
+    var top = (host?.viewIfLoaded?.window ?: currentWindow())?.rootViewController
     while (top?.presentedViewController != null) top = top.presentedViewController
     return top
 }
 
 /**
- * Presents a share sheet from [topViewController], anchored so iPad accepts it.
+ * Presents a share sheet from [topViewController] of [host], anchored so iPad accepts it.
  *
  * On iPad a `UIActivityViewController` is a popover, and UIKit throws at present
  * time unless its `popoverPresentationController` has a source. Centred over the
@@ -54,8 +59,8 @@ fun topViewController(): UIViewController? {
  * Returns false when there is no window to present from.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun presentShareSheet(controller: UIActivityViewController): Boolean {
-    val presenter = topViewController() ?: return false
+fun presentShareSheet(controller: UIActivityViewController, host: UIViewController? = null): Boolean {
+    val presenter = topViewController(host) ?: return false
     controller.popoverPresentationController?.let { popover ->
         popover.sourceView = presenter.view
         popover.sourceRect = presenter.view.bounds.useContents {
