@@ -1,8 +1,14 @@
-# Staged releases (ADR 0030): every version walks internal -> open beta ->
-# production, a week apart, unless a gate holds it. This file is the schedule
-# arithmetic, the stagger rule the train applies, and the format of the
-# "Release X.Y.Z" issue that carries each version's state. The workflows make
-# the GitHub and Play calls; nothing here does I/O except the CLI below.
+# Staged releases (ADR 0030, iOS in ADR 0033): every version walks internal ->
+# open beta -> production, a week apart, unless a gate holds it. This file is
+# the schedule arithmetic, the stagger rule the train applies, and the format of
+# the "Release X.Y.Z" issue that carries each version's state. The workflows make
+# the GitHub, Play and App Store Connect calls; nothing here does I/O except the CLI.
+#
+# Each platform has its own stage. The top-level fields are Play's (and the
+# shared holds, which both platforms read): a marker written before iOS joined
+# the train has only those, and parses to "no iOS track". A version cut since
+# then carries an "ios" object with the iOS stage, its RC, its holds and its
+# phased-release bookkeeping (fastlane/ios_train.rb decides on them).
 #
 #   ruby fastlane/release_stages.rb schedule YYYY-MM-DD        cut date -> dates, JSON
 #   ruby fastlane/release_stages.rb render VERSION YYYY-MM-DD  the issue body for a fresh cut
@@ -25,6 +31,9 @@ module ReleaseStages
   TITLE_PREFIX = "Release ".freeze
   MARKER_PATTERN = /<!-- muviss-release: (\{.*\}) -->/.freeze
   STEP_NAMES = { INTERNAL => "Internal", BETA => "Open beta", PRODUCTION => "Production" }.freeze
+  IOS_STEP_NAMES = { INTERNAL => "TestFlight internal (cut)", BETA => "TestFlight external (Beta App Review)",
+                     PRODUCTION => "App Store (7-day phased release)" }.freeze
+  IOS_KEY = "ios".freeze
 
   module_function
 
@@ -58,7 +67,37 @@ module ReleaseStages
       "production_started_on" => nil,
       "completed_on" => nil,
       "holds" => [],
+      IOS_KEY => new_ios_state,
     )
+  end
+
+  # iOS's own track. `beta_done_on` is the Sunday the RC was submitted to Beta
+  # App Review; `production_started_on` the Sunday the App Store version was
+  # submitted (automatic release, 7-day phased). `ramp` is the phased release as
+  # the daily job last saw it, and what paused it (ADR 0033).
+  def new_ios_state
+    {
+      "stage" => INTERNAL,
+      "rc_tag" => nil,
+      "beta_done_on" => nil,
+      "production_started_on" => nil,
+      "superseded_on" => nil,
+      "holds" => [],
+      "ramp" => { "phased_state" => nil, "paused_by" => nil, "paused_on" => nil, "paused_days" => 0 },
+    }
+  end
+
+  # The iOS track of a state, or nil when the marker predates iOS in the train:
+  # such a version has no iOS stage, and the iOS steps leave it alone.
+  def ios_of(state)
+    track = state && state[IOS_KEY]
+    track.is_a?(Hash) ? with_ios_defaults(track) : nil
+  end
+
+  # A hand-edited iOS object may lack a key; the defaults keep the rest readable.
+  def with_ios_defaults(track)
+    new_ios_state.merge(track) { |_key, default, value| value.nil? ? default : value }
+      .then { |merged| merged.merge("ramp" => new_ios_state["ramp"].merge(track["ramp"].is_a?(Hash) ? track["ramp"] : {})) }
   end
 
   # The state a release issue carries, or nil if its body has no marker.
@@ -89,16 +128,58 @@ module ReleaseStages
     lines << ""
     lines << "Latest RC: #{state['rc_tag'] || 'none yet'}."
     lines << ""
-    holds = Array(state["holds"])
-    if holds.empty?
-      lines << "No holds."
-    else
-      lines << "Held:"
-      holds.each { |hold| lines << "- #{hold}" }
-    end
+    lines.concat(holds_lines("No holds.", "Held:", state["holds"]))
     lines << ""
+    lines.concat(ios_render_lines(state))
     lines << "Gates, the schedule and the rules: docs/RELEASING.md (staged releases). Edit the marker only to move a date."
     lines.join("\n") + "\n"
+  end
+
+  # The iOS section of the issue. A marker with no iOS track says so, rather
+  # than showing an iOS row that nothing will ever move.
+  def ios_render_lines(state)
+    track = ios_of(state)
+    return ["iOS: not on this train (cut before ADR 0033); the iOS steps leave it alone.", ""] unless track
+
+    cut_track = track.merge("cut_on" => state["cut_on"])
+    lines = ["iOS, the same three stages, independently (ADR 0033):", ""]
+    lines << "| Step | Date (UTC) | Status |"
+    lines << "|---|---|---|"
+    lines << "| #{IOS_STEP_NAMES[INTERNAL]} | #{state['cut_on']} | #{status_of(cut_track, INTERNAL)} |"
+    lines << "| #{IOS_STEP_NAMES[BETA]} | #{ios_beta_text(state, track)} | #{status_of(cut_track, BETA)} |"
+    lines << "| #{IOS_STEP_NAMES[PRODUCTION]} | #{ios_production_text(state, track)} | #{status_of(cut_track, PRODUCTION)} |"
+    lines << ""
+    lines << "Latest iOS RC: #{track['rc_tag'] || 'none yet'}."
+    lines << "Phased release: #{ios_ramp_text(track)}."
+    lines << "Superseded: #{track['superseded_on'] ? "#{track['superseded_on']} (removed from review)" : 'no'}."
+    lines << ""
+    lines.concat(holds_lines("No iOS holds.", "Held on iOS:", track["holds"]))
+    lines << ""
+  end
+
+  def holds_lines(none, heading, holds)
+    holds = Array(holds)
+    return [none] if holds.empty?
+
+    [heading] + holds.map { |hold| "- #{hold}" }
+  end
+
+  def ios_beta_text(state, track)
+    track["beta_done_on"] || state["beta_on"]
+  end
+
+  def ios_production_text(state, track)
+    track["production_started_on"] || (track["beta_done_on"] ? ReleaseStages.production_on(to_date(track["beta_done_on"])).iso8601 : state["production_on"])
+  end
+
+  def ios_ramp_text(track)
+    ramp = track["ramp"] || {}
+    return "not started" unless ramp["phased_state"]
+
+    text = ramp["phased_state"].to_s
+    text += ", paused by #{ramp['paused_by']} since #{ramp['paused_on']}" if ramp["paused_by"]
+    text += " (#{ramp['paused_days'].to_i} of 30 paused days used)" if ramp["paused_days"].to_i.positive?
+    text
   end
 
   # The train's stagger rule. `open` are the versions whose release/* branch is
@@ -139,6 +220,8 @@ module ReleaseStages
     { "hold" => hold, "adopt" => adopt, "stages" => stages, "unreadable" => unreadable }
   end
 
+  # `state` is a Play state, or an iOS track with `cut_on` merged in: both carry
+  # the same stage fields, so one rule words both.
   def status_of(state, step)
     rank = STAGES.index(step)
     current = STAGES.index(state["stage"]) || 0

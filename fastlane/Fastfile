@@ -4,13 +4,17 @@
 #   that branch merged into main   → release.yml          → `android promote` (20%, behind
 #                                                            the `production` environment)
 #   daily                          → play-rollout-ramp.yml → `android ramp` (20 → 50 → 100%)
-#   by hand                        → play-promote.yml      → promote / rollout / halt / resume
+#   push to release/* or hotfix/*  → release-rc.yml       → `ios beta` (TestFlight, WS3)
+#   by hand                        → `ios release` (App Store, submit only when asked)
 #
 # Credentials: PLAY_SERVICE_ACCOUNT_JSON holds the service-account key *contents*
-# (not a path), so CI never writes it to disk.
+# (not a path), so CI never writes it to disk. The iOS lanes read the App Store
+# Connect API key from APP_STORE_CONNECT_KEY_ID / _ISSUER_ID / _KEY_P8 (contents).
 
+require "tmpdir"
 require_relative "play_rollout"
 require_relative "sentry_gate"
+require_relative "ios_release"
 
 default_platform(:android)
 
@@ -18,6 +22,15 @@ default_platform(:android)
 # action parameters resolve from the repo root — hence two spellings.
 ANDROID_METADATA = "metadata/android"
 ANDROID_METADATA_FOR_ACTIONS = "fastlane/metadata/android"
+
+# Absolute paths for the iOS lanes, so neither gym's nor sh's working directory
+# can move them.
+REPO_ROOT = File.expand_path("..", __dir__)
+IOS_PROJECT = File.join(REPO_ROOT, "app/iosApp/iosApp.xcodeproj")
+IOS_SCHEME = "iosApp"
+IOS_OUTPUT = File.join(REPO_ROOT, "build/ios")
+IOS_METADATA = File.join(REPO_ROOT, "fastlane/metadata/ios")
+IOS_BUNDLE_ID = "com.codingpit.muviss"
 
 platform :android do
   # The versionCode of the release candidate: `major·1e6 + minor·1e4 + patch·100
@@ -307,6 +320,181 @@ platform :android do
   lane :resume do
     edit_production_release do |release|
       release.status == PlayRollout::HALTED && apply!(release, PlayRollout::IN_PROGRESS, release.user_fraction)
+    end
+  end
+end
+
+# iOS (WS3, ADR 0033). `ios beta` is the Monday step: the RC archived and sent to
+# TestFlight's internal testers. `ios release` is the App Store step; it submits
+# only when asked, because Beta App Review and App Review are the owner's calls.
+# `ios upload_dsyms` sends the same archive's symbols to Sentry.
+platform :ios do
+  # The RC's tag: release-rc.yml passes RELEASE_TAG; otherwise the exact tag at HEAD.
+  def ios_release_tag
+    ENV["RELEASE_TAG"] || sh("git", "describe", "--tags", "--exact-match", log: false).strip
+  end
+
+  # CFBundleVersion: the versionCode scripts/ios/set-version.sh stamps on the
+  # built app (the same formula as Android's, scripts/release/version-code.sh).
+  def ios_version_code(tag = ios_release_tag)
+    Integer(sh(File.join(REPO_ROOT, "scripts/release/version-code.sh"), tag, log: false).strip)
+  end
+
+  # Yields the App Store Connect API key (for the actions) and the path of a
+  # 0600 copy of the .p8 (for xcodebuild's -authenticationKeyPath). The copy
+  # lives in a temp directory that is removed when the block returns.
+  def with_app_store_connect_key
+    missing = IosRelease.missing_api_key_vars(ENV)
+    UI.user_error!("App Store Connect key is not set up (missing: #{missing.join(', ')})") unless missing.empty?
+
+    key_id = ENV.fetch("APP_STORE_CONNECT_KEY_ID")
+    api_key = app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_KEY_P8"),
+      is_key_content_base64: false,
+      in_house: false,
+    )
+    Dir.mktmpdir("asc-key") do |dir|
+      key_path = File.join(dir, "AuthKey_#{key_id}.p8")
+      File.write(key_path, ENV.fetch("APP_STORE_CONNECT_KEY_P8"))
+      File.chmod(0o600, key_path)
+      yield api_key, key_path
+    end
+  end
+
+  # CFBundleVersion of the built app, read from the .ipa itself.
+  def ipa_build_number(ipa)
+    Dir.mktmpdir("ipa-plist") do |dir|
+      sh("unzip", "-q", "-o", ipa, "Payload/*.app/Info.plist", "-d", dir, log: false)
+      plist = Dir.glob(File.join(dir, "Payload", "*.app", "Info.plist")).first
+      UI.user_error!("No Info.plist inside #{ipa}") unless plist
+      sh("/usr/bin/plutil", "-extract", "CFBundleVersion", "raw", "-o", "-", plist, log: false).strip
+    end
+  end
+
+  desc "Archive the release candidate and upload it to TestFlight's internal testers"
+  lane :beta do
+    tag = ios_release_tag
+    code = ios_version_code
+    team = ENV["APPLE_TEAM_ID"].to_s.strip
+    UI.user_error!("APPLE_TEAM_ID is not set (the Apple team that signs the app)") if team.empty?
+
+    # Headless runners have no login keychain for cloud-managed signing.
+    setup_ci if ENV["CI"]
+
+    with_app_store_connect_key do |api_key, key_path|
+      auth = IosRelease.xcode_auth_args(key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+                                        issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+                                        key_path: key_path, team_id: team)
+      ipa = build_app(
+        project: IOS_PROJECT,
+        scheme: IOS_SCHEME,
+        configuration: "Release",
+        export_method: "app-store",
+        export_team_id: team,
+        output_directory: IOS_OUTPUT,
+        archive_path: File.join(IOS_OUTPUT, "#{IOS_SCHEME}.xcarchive"),
+        clean: true,
+        include_symbols: true,
+        xcargs: auth,
+        export_xcargs: auth,
+      )
+
+      # The build phase stamps CFBundleVersion from git (scripts/ios/set-version.sh).
+      # A mismatch means the archive was not built from the RC tag: refuse it.
+      built = ipa_build_number(ipa)
+      UI.user_error!("#{File.basename(ipa)} has CFBundleVersion #{built}, but #{tag} is #{code}") unless built == code.to_s
+
+      # With internal groups named, wait for processing and hand the build to them;
+      # without, upload only (an internal group set to automatic distribution still
+      # gets it). pilot cannot distribute a build it did not wait for.
+      groups = IosRelease.testflight_groups(ENV["TESTFLIGHT_GROUPS"])
+      upload_to_testflight(
+        api_key: api_key,
+        ipa: ipa,
+        distribute_external: false,
+        groups: groups,
+        submit_beta_review: false, # internal groups only: never start a beta review
+        skip_submission: groups.nil?,
+        skip_waiting_for_build_processing: groups.nil?,
+      )
+    end
+  end
+
+  desc "Send the RC's TestFlight build to the external group (public link) and submit it to Beta App Review (ADR 0033)"
+  lane :beta_external do
+    tag = ios_release_tag
+    code = ios_version_code
+    groups = IosRelease.testflight_groups(ENV["TESTFLIGHT_EXTERNAL_GROUPS"])
+    UI.user_error!("TESTFLIGHT_EXTERNAL_GROUPS is not set (the external group with the public link)") unless groups
+
+    # External testing needs "What to Test": the version's English release notes,
+    # the same file Play's changelog comes from (the DRAFT gate has already passed).
+    notes_file = File.join(REPO_ROOT, "fastlane/release-notes", "v#{IosRelease.version_name(tag)}", "en-US.txt")
+    UI.user_error!("No release notes at #{notes_file}; external testing needs them as What to Test") unless File.exist?(notes_file)
+
+    with_app_store_connect_key do |api_key, _key_path|
+      # The build is the one `beta` uploaded on Monday: pilot's distribute-only
+      # mode selects it by version and build number (never an .ipa on disk) and
+      # never rebuilds or uploads it again (ADR 0033: one RC binary).
+      upload_to_testflight(
+        api_key: api_key,
+        app_identifier: IOS_BUNDLE_ID,
+        app_version: IosRelease.version_name(tag),
+        build_number: code.to_s,
+        distribute_only: true,
+        distribute_external: true,
+        groups: groups,
+        changelog: File.read(notes_file).strip,
+        submit_beta_review: true, # the open beta is the external group: Beta App Review is the step
+        skip_waiting_for_build_processing: true,
+      )
+    end
+  end
+
+  desc "Upload the release candidate's dSYMs to Sentry (skipped without the SENTRY_* variables)"
+  lane :upload_dsyms do
+    settings = IosRelease.sentry_settings(ENV)
+    if settings.nil?
+      UI.important("SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT are not all set; skipping the iOS dSYM upload")
+      next
+    end
+
+    dsyms = File.join(IOS_OUTPUT, "#{IOS_SCHEME}.xcarchive", "dSYMs")
+    UI.user_error!("No dSYMs at #{dsyms}; run `ios beta` first") unless Dir.exist?(dsyms)
+    sh("sentry-cli", "debug-files", "upload", "--org", settings[:org], "--project", settings[:project], "--wait", dsyms)
+  end
+
+  desc "Send the TestFlight build of an RC (tag:vX.Y.Z-rcN or RELEASE_TAG) to the App Store (submits only with submit_for_review:true)"
+  lane :release do |options|
+    # Refuse while the review contact or any other store text is still a stub.
+    placeholders = IosRelease.placeholder_files(IOS_METADATA)
+    UI.user_error!("#{IosRelease::PLACEHOLDER} is still in #{placeholders.join(', ')}; fill those in before submitting") unless placeholders.empty?
+
+    # The RC tag, never the final one: `ios beta` uploaded the build under the RC's
+    # versionCode, and the final tag's (rc 0) names no TestFlight build at all.
+    tag = (options[:tag] || ios_release_tag).to_s
+    UI.user_error!("ios release needs the RC tag that ios beta uploaded (vX.Y.Z-rcN), got '#{tag}'; pass tag:vX.Y.Z-rcN") unless IosRelease.rc_tag?(tag)
+    submit = options[:submit_for_review].to_s == "true"
+
+    with_app_store_connect_key do |api_key, _key_path|
+      deliver(
+        api_key: api_key,
+        app_identifier: IOS_BUNDLE_ID,
+        app_version: IosRelease.version_name(tag),
+        # The build is the TestFlight one already uploaded by `ios beta`: selected
+        # by its build number, never uploaded again (ADR 0033: one RC binary).
+        build_number: ios_version_code(tag).to_s,
+        skip_binary_upload: true,
+        metadata_path: IOS_METADATA,
+        screenshots_path: File.join(REPO_ROOT, "fastlane/screenshots/ios"),
+        skip_screenshots: !Dir.exist?(File.join(REPO_ROOT, "fastlane/screenshots/ios")),
+        submit_for_review: submit,
+        automatic_release: true,
+        phased_release: true,
+        force: true,
+      )
     end
   end
 end

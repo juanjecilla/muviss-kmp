@@ -22,6 +22,7 @@ import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
 import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
+import com.codingpit.muviss.feature.settings.domain.SetDeviceBackupEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
@@ -69,6 +70,10 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
 
     override suspend fun setCrashReportsEnabled(enabled: Boolean) {
         flow.value = flow.value.copy(crashReportsEnabled = enabled)
+    }
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        flow.value = flow.value.copy(deviceBackupEnabled = enabled)
     }
 
     override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) {
@@ -126,6 +131,7 @@ class SettingsViewModelTest {
             SetCrashReportsEnabledUseCase(repository),
             MutedGenresActions(repository),
             ExportDataUseCase(repository),
+            SetDeviceBackupEnabledUseCase(repository),
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),
         FakeFeatureFlags(),
