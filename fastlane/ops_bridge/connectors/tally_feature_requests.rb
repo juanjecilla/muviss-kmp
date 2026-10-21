@@ -2,7 +2,7 @@ require_relative "../bridge"
 
 module OpsBridge
   module Connectors
-    # Tally Feature Request form -> GitHub issue (EPIC 53 follow-up, #448; ADR 0034, ADR 0028).
+    # Tally Feature Request form -> GitHub issue (EPIC 53 follow-up, #448; ADR 0035, ADR 0028).
     # Each completed submission of the form behind Settings > "Request a feature" becomes one
     # issue, so a request lands where the work is planned instead of only in the owner's inbox.
     #

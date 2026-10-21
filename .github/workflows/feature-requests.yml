@@ -1,6 +1,6 @@
 name: Feature requests
 
-# Tally "Request a feature" form -> GitHub issues (#448, Ops Bridge connector #3, ADR 0028, ADR 0034).
+# Tally "Request a feature" form -> GitHub issues (#448, Ops Bridge connector #3, ADR 0028, ADR 0035).
 # Each completed submission becomes one issue labelled `from-feature-request` + `user-feedback`,
 # deduped on its submission id, so a request lands where work is planned and not only in the
 # owner's inbox. Polling, not a webhook: Tally cannot call GitHub's dispatch API directly, and a
