@@ -126,10 +126,11 @@ telemetry, no third-party trackers.
 **Settings → Data → Delete all data** deletes everything Muviss keeps on the
 device — your library, watch history, lists, triage decisions, profile and
 settings, Device Backup included (it goes back to off) — without uninstalling.
-A copy your phone's own backup already holds is outside Muviss and is not
-touched by this; delete it where that backup lives (the phone's backup
-settings for iCloud or Google, or the computer that holds an iPhone backup). Uninstalling does the same. Either way there
-is nothing left on any server, because nothing you enter is ever sent to one.
+Uninstalling does the same. Either way nothing is left on a Muviss server,
+because Muviss never sends what you enter to one. A copy your phone's own
+backup already holds is outside Muviss and is not touched by either; delete it
+where that backup lives (the phone's backup settings for iCloud or Google, or
+the computer that holds an iPhone backup).
 Settings → Data → Export saves a copy first if you might want it back.
 
 ## Contact
