@@ -39,7 +39,7 @@ jobs:
   # in the window above), so the saving would be noise and the risk would not.
   changes:
     name: Which lanes need running
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -121,7 +121,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.supabase == 'true'
     name: Supabase (pgTAP, Edge Functions)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -170,7 +170,7 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Nothing here has ever legitimately approached this. The point is the
     # ceiling, not the number: the default is 360 minutes, and a job that hangs
     # rather than fails burns all of it.
@@ -388,7 +388,7 @@ jobs:
   web-tests:
     needs: changes
     if: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     # Non-blocking is not the same as non-hanging: `continue-on-error` keeps a
     # red run from failing the workflow, but a job that never returns still
@@ -466,7 +466,7 @@ jobs:
   desktop:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # See `build`: the risk being bounded is a hang, not a slow build.
     timeout-minutes: 45
     steps:
@@ -604,7 +604,7 @@ jobs:
   ios:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
-    runs-on: macos-latest
+    runs-on: macos-15
     # Written when the repo was private and macOS billed at 10x, so the
     # default 360-minute ceiling was a month's allowance in one hung run. The
     # repo is public now and standard runners are free, so the ceiling is back

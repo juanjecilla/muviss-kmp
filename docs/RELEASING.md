@@ -753,8 +753,8 @@ properties to the JVM a JavaExec forks.
 ### CI
 
 `.github/workflows/release.yml`'s `desktop-release` job runs a 3-entry OS
-matrix: `ubuntu-latest` → `packageDeb`, `macos-latest` → `packageDmg`,
-`windows-latest` → `packageMsi`. Each format can only be produced on its native
+matrix: `ubuntu-24.04` → `packageDeb`, `macos-15` → `packageDmg`,
+`windows-2025` → `packageMsi`. Each format can only be produced on its native
 OS (jpackage delegates to the OS's own packaging tool), which is why this is a
 matrix of jobs rather than one job running three tasks, and `fail-fast: false`
 keeps one broken leg from taking the other two down.
@@ -762,7 +762,7 @@ keeps one broken leg from taking the other two down.
 Windows/MSI used to be left out, on the grounds that it was the one leg nobody
 here could verify locally before merging. EPIC 23 put it in: nobody can verify
 it locally *either way*, and a CI run is better evidence than a reading of the
-config. WiX ships preinstalled on `windows-latest` per `actions/runner-images`.
+config. WiX ships preinstalled on `windows-2025` per `actions/runner-images`.
 What CI still cannot say is whether the resulting `.msi` installs and launches —
 that needs a Windows machine, and is issue #44.
 
@@ -779,6 +779,19 @@ every change), smoke-launches the packaged Linux binary under Xvfb, and runs
 
 Installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`) and, on a
 release, are attached to the GitHub Release (see §5).
+
+#### Runner images (#481)
+
+Every `runs-on:` names a specific image (`ubuntu-24.04`, `macos-15`,
+`windows-2025`), never `-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26 on
+its own date, and a migration can break the Xvfb smoke launch, `verifyJlinkModules`
+or the iOS Kotlin/Native build on an unrelated PR. `pr-guards.yml`'s "Runner
+images are pinned" step (`scripts/ci/check-runner-pins.rb`) fails a floating
+label. Dependabot does not bump images, so the owner does, on a branch: change
+the label, let `ci.yml` run (it covers Linux, macOS and the packaged-binary
+smoke launch; `release.yml`'s Windows leg runs by `workflow_dispatch`), and merge
+only when it is green. GitHub announces a retiring image well ahead; watch
+`actions/runner-images` releases.
 
 ### Signing / notarization (manual follow-up, not attempted)
 
