@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.common.backup.platformCanBackUp
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
@@ -68,6 +69,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_c
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_done
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_question
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_value
+import com.codingpit.muviss.feature.settings.ui.generated.resources.device_backup
+import com.codingpit.muviss.feature.settings.ui.generated.resources.device_backup_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.export
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
@@ -119,6 +122,8 @@ fun SettingsScreen(
     // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
     // the screen works without it, so the many tests of everything else do not need a Koin graph.
     tmdbKey: TmdbKeyViewModel? = null,
+    // Whether the OS backup can carry the library (ADR 0034). A parameter so a test can show the row on desktop.
+    canBackUp: Boolean = platformCanBackUp,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
@@ -277,6 +282,17 @@ fun SettingsScreen(
             onClick = viewModel::exportData,
         )
         state.exportError?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        // Device Backup (ADR 0034): offered only where the OS has a backup Muviss can honour, and off by default.
+        if (canBackUp) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            SwitchRow(
+                label = stringResource(Res.string.device_backup),
+                description = stringResource(Res.string.device_backup_body),
+                checked = state.settings.deviceBackupEnabled,
+                onToggle = viewModel::onDeviceBackupToggled,
+                modifier = Modifier.testTag(DEVICE_BACKUP_ROW_TAG),
+            )
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         ActionRow(
             icon = MuvissIcons.Close,
@@ -404,12 +420,13 @@ internal fun SwitchRow(
     checked: Boolean,
     onToggle: (Boolean) -> Unit,
     enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     val contentAlpha = if (enabled) 1f else DISABLED_ALPHA
     // The whole row is the switch: a bare Switch next to its label was
     // announced as "On, switch" with no name (EPIC 31b, #164).
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onToggle)
             .padding(vertical = MuvissSpacing.xs),
@@ -634,5 +651,8 @@ private fun DeleteAllDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 }
 
 internal const val DELETE_ALL_ROW_TAG = "settings-delete-all"
+
+/** The Device Backup switch row (ADR 0034), so a test can find and flip it. */
+internal const val DEVICE_BACKUP_ROW_TAG = "settings-device-backup"
 internal const val DELETE_ALL_DIALOG_TAG = "settings-delete-all-dialog"
 internal const val DELETE_ALL_CONFIRM_TAG = "settings-delete-all-confirm"

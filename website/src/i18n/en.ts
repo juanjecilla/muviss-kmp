@@ -69,6 +69,7 @@ export const en = {
       { icon: "widget", title: "Home-screen widgets", body: "Your next episode on the home screen, with a one-tap tick and undo.", platforms: "Android · iOS" },
       { icon: "import", title: "Import", body: "Bring your history from Trakt, TV Time or a CSV file." },
       { icon: "export", title: "Back up & restore", body: "Your data is yours: back everything up to a file, restore it on any device, or delete it all." },
+      { icon: "export", title: "Device backup", body: "Optionally let iCloud or Google backup include your library, so a new phone picks up where you left off. Off until you turn it on.", platforms: "Android · iOS" },
       { icon: "moon", title: "Light & dark", body: "Follows your system, or pick a theme yourself." },
       { icon: "globe", title: "English & Spanish", body: "The app speaks your language, English or Spanish. Titles, synopses and availability follow the language and country you choose." },
     ],

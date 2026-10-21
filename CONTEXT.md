@@ -39,7 +39,7 @@ A show's seasons and episodes as the source reported them, stored locally and re
 _Avoid_: snapshot, episode list, seasons (as a stored thing).
 
 **WatchNext**:
-The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
+The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. Ordered by when each title was last watched, newest first (a title with no Play sorts by when it was collected), so ticking an episode moves its title to the top. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
 _Avoid_: up next, continue watching, queue (a watchlist is a CollectionEntry with NotStarted status); upcoming (that is future air dates, a different question).
 
 **WatchProgress**:
@@ -105,6 +105,10 @@ _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user own
 **Muted Genre**:
 A genre the user has chosen to leave out of what Muviss suggests. A title is hidden from a suggestion when *any* of its genres is muted; a title that carries no genres is never hidden, because nothing says what it is. Muted by default: Talk, News and Reality, for every install. A genre is identified by its type as well as its id — a movie genre and a TV genre can share a number. Muting only ever narrows suggestions: it never touches the collection, progress, Watch Next, notifications or a Snoozed Title, and a title the user opens, searches for by name (unless they opted in) or picks a genre for is shown regardless. The "Show muted" chip lifts it for one session.
 _Avoid_: blocked, blacklisted, filtered out (a filter is something the user narrows by in the moment; muting is a standing preference); hidden (that suggests the title is gone from the collection).
+
+**Device Backup**:
+A per-device switch that lets the OS's own backup (iCloud or a device backup on iOS; Google's backup and device-to-device transfer on Android) include this device's library. Off by default: the library is left out of OS backups until the person turns it on, in the first-run introduction or in Settings. Muviss copies nothing itself: the copy the OS makes lives wherever that backup lives, which is the person's own iCloud or Google account, a computer they back their iPhone up to, or the new phone in a device-to-device transfer, never with Muviss. Muviss never offers KSafe's secrets, including the Own TMDB Key, to it: on Android they are excluded; on iOS they sit in the Keychain, which Muviss does not exclude, and whether an encrypted device backup carries them is not verified. Per-device, never synced, never in the data export (ADR 0034).
+_Avoid_: cloud backup, sync (sync is the paid, Muviss-hosted copy), export (a file the person makes and keeps).
 
 ### First run and data source
 

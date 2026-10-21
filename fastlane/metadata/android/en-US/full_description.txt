@@ -28,6 +28,7 @@ PRIVATE BY DESIGN
 • No social features — no feeds, no friends, no comments.
 • No ads and no analytics. Only optional, anonymous crash reports, which you can turn off in Settings.
 • Your library lives on your device and works offline. Back it up to a file and restore it on any device.
+• Optional device backup: let your phone's own backup carry your library to a new phone. Off until you turn it on in a first-run step or in Settings, and Muviss never sees that copy.
 
 In English and Spanish, with light and dark themes, on phones and tablets.
 
