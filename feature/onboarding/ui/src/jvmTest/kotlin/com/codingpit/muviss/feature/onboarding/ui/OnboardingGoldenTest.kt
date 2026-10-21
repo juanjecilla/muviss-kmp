@@ -23,7 +23,7 @@ class OnboardingGoldenTest {
     @AfterTest
     fun restoreLocale() = Locale.setDefault(original)
 
-    private val all = pagesFor(canNotify = true, byokOffered = true)
+    private val all = pagesFor(canNotify = true, byokOffered = true, canBackUp = true)
 
     private fun state(page: OnboardingPage, source: TmdbDataSource = TmdbDataSource.MUVISS) = OnboardingUiState(pages = all, index = all.indexOf(page), keySource = source)
 
@@ -101,6 +101,7 @@ private fun Frame(state: OnboardingUiState, darkTheme: Boolean) {
                 onFinish = {},
                 onOpenImport = {},
                 onNotificationsToggled = {},
+                onDeviceBackupToggled = {},
                 onOpenSystemNotificationSettings = {},
                 onSaveKey = { _, _ -> },
                 onUseMuvissKey = {},

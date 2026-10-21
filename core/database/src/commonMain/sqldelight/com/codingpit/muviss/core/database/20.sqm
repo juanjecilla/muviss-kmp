@@ -1,0 +1,12 @@
+-- Device Backup (EPIC 51 WS6, ADR 0034). The filename is the version this migrates FROM:
+-- 20.sqm takes a v20 database to v21, after tick animations' `19.sqm`.
+--
+-- NUMBERING: the number a branch takes is whatever is free when it merges
+-- (`verifyMigrations` cannot see a collision); renumber and regenerate the
+-- fixture if another migration landed first.
+--
+-- One per-device flag on the singleton row, appended last. It does not sync and
+-- is not in the data export. The DEFAULT is the answer for every existing install
+-- too: the OS backs up nothing of a Muviss library until the person turns it on
+-- (ADR 0034). No `UPDATE` is needed; SQLite fills the DEFAULT into existing rows.
+ALTER TABLE appSettings ADD COLUMN deviceBackupEnabled INTEGER NOT NULL DEFAULT 0;
