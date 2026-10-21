@@ -12,8 +12,9 @@ what leaves your device.
 Everything you track — your collection, favorites, and per-episode watch
 progress — is stored **only on your device**, in a local SQLite database (see
 ADR 0002, "offline-first, local source of truth"). Muviss has no backend of
-its own and no account system; nobody but you (and whoever has your device)
-can see this data.
+its own and no account system; nobody but you (and whoever has your device,
+or, if you turn on Device Backup below, access to that backup) can see this
+data.
 
 **Device Backup (optional, off by default).** Your phone's own backup can
 include the library, so a new phone picks up where you left off: iCloud or a

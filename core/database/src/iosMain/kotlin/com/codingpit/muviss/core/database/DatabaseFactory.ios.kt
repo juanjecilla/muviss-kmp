@@ -12,6 +12,15 @@ import platform.Foundation.NSLock
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
+import platform.posix.LOCK_EX
+import platform.posix.LOCK_UN
+import platform.posix.O_CREAT
+import platform.posix.O_RDWR
+import platform.posix.S_IRUSR
+import platform.posix.S_IWUSR
+import platform.posix.close
+import platform.posix.flock
+import platform.posix.open
 
 /** The App Group the app and its widget extension share. Must match the entitlement on both targets. */
 const val MUVISS_APP_GROUP: String = "group.com.codingpit.muviss"
@@ -138,14 +147,30 @@ private fun putSidecarsBack(source: String, destination: String, move: (String, 
 
 private val createLock = NSLock()
 
+/**
+ * Serializes [DatabaseDriverFactory.create] within this process ([createLock], #251) **and** across processes: the
+ * widget extension opens the same App Group database, so the app and the widget could otherwise both run
+ * [relocateDatabase] at once and split `muviss.db` from its `-wal`. The cross-process half is an advisory `flock`
+ * on a file next to the database directory, held through the move and the first open. Without the App Group each
+ * process has its own Documents and nothing to share, and the lock is still harmless. If the lock file cannot be
+ * opened, the in-process lock alone applies, as before.
+ */
 private inline fun <T> withCreateLock(block: () -> T): T {
     createLock.lock()
+    val fd = open("${sharedContainerPath() ?: documentsPath()}/$CREATE_LOCK_FILE_NAME", O_CREAT or O_RDWR, S_IRUSR or S_IWUSR)
     try {
+        if (fd >= 0) flock(fd, LOCK_EX)
         return block()
     } finally {
+        if (fd >= 0) {
+            flock(fd, LOCK_UN)
+            close(fd)
+        }
         createLock.unlock()
     }
 }
+
+private const val CREATE_LOCK_FILE_NAME = ".muviss-db.lock"
 
 /**
  * The directory the database lives in: a `Database` subdirectory of the App Group container, or of Documents
