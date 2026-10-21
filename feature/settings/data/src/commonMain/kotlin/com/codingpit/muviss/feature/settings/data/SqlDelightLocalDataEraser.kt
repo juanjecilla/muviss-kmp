@@ -29,10 +29,16 @@ class SqlDelightLocalDataEraser(
     private val dispatchers: AppDispatchers,
     private val ownTmdbKey: OwnTmdbKey,
     private val secrets: SecretStore,
+    private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
     private val widgetRefresher: WidgetRefresher,
 ) : LocalDataEraser {
 
+    // Under the Device Backup lock: a toggle tapped before this cannot recreate the row after it.
     override suspend fun deleteAllData() = withContext(dispatchers.io) {
+        deviceBackupWrites.erase { eraseEverything() }
+    }
+
+    private suspend fun eraseEverything() {
         database.transaction {
             // The user's own data — the set sync's "discard local data" deletes.
             database.collectionEntryQueries.deleteAll()

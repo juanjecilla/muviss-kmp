@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.feature.settings.data.AppSettingsFeatureFlags
 import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
+import com.codingpit.muviss.feature.settings.data.DeviceBackupWrites
 import com.codingpit.muviss.feature.settings.data.ExportQueries
 import com.codingpit.muviss.feature.settings.data.MutedGenresSession
 import com.codingpit.muviss.feature.settings.data.OwnTmdbKeySettings
@@ -73,14 +74,16 @@ val settingsDataModule: Module = module {
             get(),
             get(),
             get(),
+            get(),
         )
     }
+    single { DeviceBackupWrites() }
     single { MutedGenresSession() }
     single<GenreCatalog> { TmdbGenreCatalog(get(), get()) }
     factory { LoadGenresUseCase(get()) }
     single<SettingsApi> { DefaultSettingsApi(get(), get(), get(), get()) }
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
-    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get()) }
+    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get()) }
     single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
     factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }

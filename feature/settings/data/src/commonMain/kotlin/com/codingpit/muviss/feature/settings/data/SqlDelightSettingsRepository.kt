@@ -64,13 +64,13 @@ class SqlDelightSettingsRepository(
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
     private val appVersion: AppVersion,
+    private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
 ) : SettingsRepository {
 
     private val json = Json { prettyPrint = true }
     private val mutedGenresLock = Mutex()
 
     /** The column and the OS exclusion change together, so two overlapping toggles (Settings, onboarding) never interleave. */
-    private val deviceBackupLock = Mutex()
 
     override fun observeSettings(): Flow<AppSettings> = settingsQueries.selectSettings()
         .asFlow()
@@ -110,13 +110,17 @@ class SqlDelightSettingsRepository(
 
     // NonCancellable: the caller is a view model's scope, and leaving Settings (or the introduction) clears it.
     // A backup choice the person made must still land, column and OS exclusion together, once it has started.
-    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = withContext(dispatchers.io + NonCancellable) {
-        deviceBackupLock.withLock {
-            ensureRow()
-            settingsQueries.updateDeviceBackupEnabled(enabled)
-            // The column and the OS exclusion move together (ADR 0034): the exclusion is the part a restart
-            // would otherwise have to re-derive, so it is applied here rather than only at the next open.
-            DeviceBackupExclusion.apply(enabled)
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        // Taken before the hop to io: a choice made before Delete all data must not land after it.
+        val requestedAt = deviceBackupWrites.request()
+        withContext(dispatchers.io + NonCancellable) {
+            deviceBackupWrites.write(requestedAt) {
+                ensureRow()
+                settingsQueries.updateDeviceBackupEnabled(enabled)
+                // The column and the OS exclusion move together (ADR 0034): the exclusion is the part a restart
+                // would otherwise have to re-derive, so it is applied here rather than only at the next open.
+                DeviceBackupExclusion.apply(enabled)
+            }
         }
     }
 
