@@ -13,6 +13,12 @@ on:
     branches: [ main, develop, 'release/**', 'hotfix/**' ]
   pull_request:
 
+# Least privilege (#482): the repository's default token is `read` today, but
+# that is a setting, not part of this file. No job here writes to the repo
+# (artifact upload uses the runtime token, not GITHUB_TOKEN), so none widens it.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
