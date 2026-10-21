@@ -146,4 +146,21 @@ class RelocateDatabaseIosTest {
 
         assertEquals(destination, resolveDatabaseDirectory(destination, listOf(container, documents)))
     }
+
+    @Test
+    fun a_failed_retry_of_an_interrupted_move_brings_the_log_back() {
+        // An earlier run moved the WAL and was killed; this run cannot move the main file.
+        write("$destination/muviss.db-wal", "root-wal")
+        write("$container/muviss.db", "root")
+        val realMove = { from: String, to: String -> manager.moveItemAtPath(from, toPath = to, error = null) }
+
+        val moved = relocateDatabase(listOf(container, documents), destination) { from, to ->
+            if (from.endsWith("/muviss.db")) false else realMove(from, to)
+        }
+
+        assertFalse(moved)
+        assertEquals("root-wal", read("$container/muviss.db-wal"), "the log is back with its database")
+        assertFalse(manager.fileExistsAtPath("$destination/muviss.db-wal"))
+        assertEquals(container, resolveDatabaseDirectory(destination, listOf(container, documents)))
+    }
 }

@@ -100,22 +100,40 @@ actual class DatabaseDriverFactory {
  * already waiting. A move that fails is undone, so the files stay together
  * at the source and [databaseDirectory] keeps opening them there.
  */
-internal fun relocateDatabase(sources: List<String>, destination: String): Boolean {
+internal fun relocateDatabase(
+    sources: List<String>,
+    destination: String,
+    move: (from: String, to: String) -> Boolean = { from, to -> NSFileManager.defaultManager.moveItemAtPath(from, toPath = to, error = null) },
+): Boolean {
     val manager = NSFileManager.defaultManager
     if (manager.fileExistsAtPath("$destination/$DATABASE_FILE_NAME")) return true
     val source = sources.firstOrNull { it != destination && manager.fileExistsAtPath("$it/$DATABASE_FILE_NAME") } ?: return true
-    val moved = mutableListOf<Pair<String, String>>()
     for (suffix in listOf("-wal", "-shm", "")) {
         val from = "$source/$DATABASE_FILE_NAME$suffix"
         val to = "$destination/$DATABASE_FILE_NAME$suffix"
         if (!manager.fileExistsAtPath(from)) continue
-        if (manager.fileExistsAtPath(to) || !manager.moveItemAtPath(from, toPath = to, error = null)) {
-            moved.asReversed().forEach { (back, here) -> manager.moveItemAtPath(here, toPath = back, error = null) }
+        if (manager.fileExistsAtPath(to) || !move(from, to)) {
+            putSidecarsBack(source, destination, move)
             return false
         }
-        moved += from to to
     }
     return true
+}
+
+/**
+ * Undoes a move that did not finish. The destination holds no `muviss.db` here, so any sidecar in it belongs to
+ * [source]'s database, whether this attempt moved it or an earlier, interrupted one did. Each goes back unless the
+ * source already has its own. If one cannot go back, the database would open without its log, which can lose
+ * committed transactions, so this throws and the open fails instead.
+ */
+private fun putSidecarsBack(source: String, destination: String, move: (String, String) -> Boolean) {
+    val manager = NSFileManager.defaultManager
+    for (suffix in listOf("-wal", "-shm")) {
+        val moved = "$destination/$DATABASE_FILE_NAME$suffix"
+        val home = "$source/$DATABASE_FILE_NAME$suffix"
+        if (!manager.fileExistsAtPath(moved) || manager.fileExistsAtPath(home)) continue
+        check(move(moved, home)) { "could not return $DATABASE_FILE_NAME$suffix to the database it belongs to" }
+    }
 }
 
 private val createLock = NSLock()

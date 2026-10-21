@@ -18,8 +18,12 @@ import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -109,6 +113,25 @@ class SqlDelightSettingsRepositoryTest {
             assertEquals(true, awaitItem().crashReportsEnabled)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun a_backup_choice_still_lands_when_the_screen_that_made_it_is_closed() = runTest {
+        // The io dispatcher queues, so the write is in flight when its caller's scope is cancelled
+        // (leaving Settings clears the view model).
+        val queued = SqlDelightSettingsRepository(
+            database.appSettingsQueries,
+            ExportQueries(database),
+            ImmediateDispatchers(StandardTestDispatcher(testScheduler)),
+            FakeClock(1_000L),
+            AppVersion("1.2.3", 42L),
+        )
+        // UNDISPATCHED: the tap runs at once and parks at the hop to io, as it does on the main thread.
+        val caller = launch(start = CoroutineStart.UNDISPATCHED) { queued.setDeviceBackupEnabled(true) }
+        caller.cancel()
+        advanceUntilIdle()
+
+        assertEquals(true, repository.observeSettings().first().deviceBackupEnabled)
     }
 
     @Test

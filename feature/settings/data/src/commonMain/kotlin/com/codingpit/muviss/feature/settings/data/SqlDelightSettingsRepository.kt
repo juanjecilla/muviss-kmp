@@ -24,6 +24,7 @@ import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
 import com.codingpit.muviss.feature.settings.domain.MutedGenresCodec
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import com.codingpit.muviss.models.GenreKey
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -107,7 +108,9 @@ class SqlDelightSettingsRepository(
         Unit
     }
 
-    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = withContext(dispatchers.io) {
+    // NonCancellable: the caller is a view model's scope, and leaving Settings (or the introduction) clears it.
+    // A backup choice the person made must still land, column and OS exclusion together, once it has started.
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = withContext(dispatchers.io + NonCancellable) {
         deviceBackupLock.withLock {
             ensureRow()
             settingsQueries.updateDeviceBackupEnabled(enabled)

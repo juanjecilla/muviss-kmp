@@ -5,8 +5,10 @@ import android.app.backup.BackupDataInput
 import android.app.backup.BackupDataOutput
 import android.app.backup.FullBackupDataOutput
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import android.os.ParcelFileDescriptor
 import java.io.File
+import java.io.IOException
 
 /**
  * Android's backup agent (Device Backup, ADR 0034). It is the only thing that decides what leaves the device
@@ -15,8 +17,8 @@ import java.io.File
  * the rest of the secrets), shared preferences and every other file are never offered, so they are not "excluded
  * by a rule that could drift" but simply never handed to the framework.
  *
- * The agent runs in **restricted mode**: the system creates this class without the app's `Application`, so there
- * is no Koin graph here and it must not reach for one. It reads the stored choice straight from the database file,
+ * The agent may run in **restricted mode** (the system creates this class without the app's `Application`) or next
+ * to a running app, so there is no Koin graph to rely on and it must not reach for one. It reads the stored choice straight from the database file,
  * as [DeviceBackupDecider] documents. It is also the same class the system instantiates by name, which is why
  * R8 keeps it (see `proguard-rules.pro`).
  *
@@ -34,12 +36,29 @@ class MuvissBackupAgent : BackupAgent() {
         val database = getDatabasePath(DATABASE_NAME)
         if (!DeviceBackupDecider.includesLibrary(readStoredFlag(database))) return
 
-        checkpointQuietly(database)
-        // -shm is left out on purpose: it is an index SQLite rebuilds from the WAL, and a restored copy of an
-        // index from another device describes nothing that device has.
-        listOf(database, File("${database.path}-wal"))
-            .filter { it.exists() }
-            .forEach { fullBackupFile(it, data) }
+        // One connection for the whole copy. The checkpoint folds the log into the main file, then an
+        // IMMEDIATE transaction holds SQLite's write lock while the files are copied: whether the system runs
+        // this agent restricted or alongside the app's own connections, no write can land between copying
+        // muviss.db and copying its -wal, so the pair restores as one consistent state. Readers are not
+        // blocked; writers wait out SQLite's busy timeout. If the lock cannot be had, the backup run fails
+        // rather than offering a torn copy (the previous backup stays in place).
+        SQLiteDatabase.openDatabase(database.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            runCatching { db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() } }
+            try {
+                db.beginTransactionNonExclusive()
+            } catch (e: SQLiteException) {
+                throw IOException("the library database is busy; not offering a torn copy", e)
+            }
+            try {
+                // -shm is left out on purpose: it is an index SQLite rebuilds from the WAL, and a restored copy
+                // of an index from another device describes nothing that device has.
+                listOf(database, File("${database.path}-wal"))
+                    .filter { it.exists() }
+                    .forEach { fullBackupFile(it, data) }
+            } finally {
+                db.endTransaction() // nothing was written: this only releases the lock
+            }
+        }
     }
 
     /**
@@ -55,18 +74,6 @@ class MuvissBackupAgent : BackupAgent() {
                 }
             }
         }.getOrNull()
-    }
-
-    /**
-     * Folds the write-ahead log into the main file so the copy is complete without it. Best effort: a busy
-     * database keeps its log, and [onFullBackup] then copies the `-wal` as well.
-     */
-    private fun checkpointQuietly(database: File) {
-        runCatching {
-            SQLiteDatabase.openDatabase(database.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
-                db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
-            }
-        }
     }
 
     private companion object {
