@@ -99,13 +99,19 @@ class StoreShotTest {
             for ((locale, dark) in listOf("en-US" to false, "en-US" to true, "es-ES" to false)) {
                 runBlocking { koin.get<SettingsRepository>().setTheme(if (dark) AppTheme.DARK else AppTheme.LIGHT) }
                 Locale.setDefault(Locale.forLanguageTag(locale))
-                shoot(catalog, locale, dark)
+                shootAll(catalog, locale, dark)
             }
         } finally {
             Locale.setDefault(defaultLocale)
             stopKoin()
             Dispatchers.resetMain()
         }
+    }
+
+    /** The phone set, plus the tablet sets for Play (EPIC 33, #381): light, per listing locale. */
+    private fun shootAll(catalog: StoreShotCatalog, locale: String, dark: Boolean) {
+        shoot(catalog, locale, dark)
+        if (!dark) Device.TABLETS.forEach { shoot(catalog, locale, dark, it) }
     }
 
     private fun startGraph(catalog: StoreShotCatalog): Koin {
@@ -160,9 +166,9 @@ class StoreShotTest {
             .forEach { (title, rating) -> collection.setRating(title.id, rating) }
     }
 
-    private fun shoot(catalog: StoreShotCatalog, locale: String, dark: Boolean) = runSkikoComposeUiTest(
-        size = Size(WIDTH_PX.toFloat(), HEIGHT_PX.toFloat()),
-        density = Density(DENSITY),
+    private fun shoot(catalog: StoreShotCatalog, locale: String, dark: Boolean, device: Device = Device.PHONE) = runSkikoComposeUiTest(
+        size = Size(device.widthPx.toFloat(), device.heightPx.toFloat()),
+        density = Density(device.density),
     ) {
         val posters = AsyncImagePreviewHandler { request ->
             val name = request.data.toString().substringAfterLast(StoreShotCatalog.POSTER_PREFIX, "")
@@ -218,7 +224,7 @@ class StoreShotTest {
         // nav.seasonsTwo just under the floating back button, ticks below it.
         detailList.performScrollToKey("seasonsHeader")
         waitForIdle()
-        bringToTop(nav.seasonsTwo, marginPx = 150f)
+        bringToTop(nav.seasonsTwo, marginPx = 150f, density = device.density)
         capture("detail-seasons")
 
         tab(nav.progress)
@@ -242,7 +248,7 @@ class StoreShotTest {
         settle { onAllNodes(hasText(nav.stats)).fetchSemanticsNodes().isNotEmpty() }
         // The identity block is the top half; the store shot is the numbers and charts.
         onAllNodes(hasText(nav.stats))[0].performScrollTo()
-        bringToTop(nav.stats, marginPx = 60f)
+        bringToTop(nav.stats, marginPx = 60f, density = device.density)
         capture("profile-stats")
 
         tab(nav.search)
@@ -262,7 +268,7 @@ class StoreShotTest {
         }
         capture("triage")
 
-        write(shots, locale, dark)
+        write(shots, locale, dark, device)
     }
 
     // Through the click action, not a touch: a touched tab kept its pressed
@@ -279,9 +285,9 @@ class StoreShotTest {
      * Through the scroll action of the tallest scrollable, not a drag: a drag
      * that starts on a row leaves that row's pressed layer in the shot.
      */
-    private fun SkikoComposeUiTest.bringToTop(text: String, marginPx: Float) {
+    private fun SkikoComposeUiTest.bringToTop(text: String, marginPx: Float, density: Float) {
         waitForIdle()
-        val topPx = onAllNodes(hasText(text))[0].getUnclippedBoundsInRoot().top.value * DENSITY
+        val topPx = onAllNodes(hasText(text))[0].getUnclippedBoundsInRoot().top.value * density
         val distance = topPx - marginPx
         if (kotlin.math.abs(distance) < 4f) return
         val scrollables = onAllNodes(hasScrollAction())
@@ -313,21 +319,37 @@ class StoreShotTest {
         waitForIdle()
     }
 
-    private fun write(shots: List<Pair<String, java.awt.image.BufferedImage>>, locale: String, dark: Boolean) {
+    private fun write(shots: List<Pair<String, java.awt.image.BufferedImage>>, locale: String, dark: Boolean, device: Device) {
         val root = repoRoot()
         if (!dark) {
-            val play = File(root, "fastlane/metadata/android/$locale/images/phoneScreenshots").apply {
+            val dir = File(root, "fastlane/metadata/android/$locale/images/${device.playFolder}").apply {
                 deleteRecursively()
                 mkdirs()
             }
             PLAY_ORDER.forEachIndexed { i, name ->
-                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second, "png", File(play, "${i + 1}_$name.png")) }
+                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second, "png", File(dir, "${i + 1}_$name.png")) }
             }
         }
-        if (locale == "en-US") {
+        // The landing's set is the phone's.
+        if (locale == "en-US" && device == Device.PHONE) {
             val site = File(root, "website/public/screenshots").apply { mkdirs() }
             val theme = if (dark) "dark" else "light"
             for ((name, image) in shots) if (name in SITE_NAMES) ImageIO.write(image, "png", File(site, "$name-$theme.png"))
+        }
+    }
+
+    /**
+     * A render target and where Play wants its images. The tablets are portrait and keep a 16:10 shape
+     * Play accepts; 600dp and 800dp wide are both past the width where the navigation rail replaces the bar.
+     */
+    private enum class Device(val widthPx: Int, val heightPx: Int, val density: Float, val playFolder: String) {
+        PHONE(1080, 1920, 2.625f, "phoneScreenshots"),
+        SEVEN_INCH(1200, 1920, 2f, "sevenInchScreenshots"),
+        TEN_INCH(1600, 2560, 2f, "tenInchScreenshots"),
+        ;
+
+        companion object {
+            val TABLETS = listOf(SEVEN_INCH, TEN_INCH)
         }
     }
 
@@ -348,9 +370,6 @@ class StoreShotTest {
     )
 
     private companion object {
-        const val WIDTH_PX = 1080
-        const val HEIGHT_PX = 1920
-        const val DENSITY = 2.625f
         const val DAY_MS = 86_400_000L
         val COPY = mapOf(
             "en" to Copy("Search", "Library", "Progress", "Profile", "Fill your library", "Watching", "Seasons (2)", "Stats", "Got it", "Watched", "Back"),
