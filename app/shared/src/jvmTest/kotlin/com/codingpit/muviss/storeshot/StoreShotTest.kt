@@ -108,10 +108,10 @@ class StoreShotTest {
         }
     }
 
-    /** The phone set, plus the tablet sets for Play (EPIC 33, #381): light, per listing locale. */
+    /** The phone set, plus the tablet sets for Play (#381) and the App Store's device classes (#425): light, per listing locale. */
     private fun shootAll(catalog: StoreShotCatalog, locale: String, dark: Boolean) {
         shoot(catalog, locale, dark)
-        if (!dark) Device.TABLETS.forEach { shoot(catalog, locale, dark, it) }
+        if (!dark) Device.EXTRA.forEach { shoot(catalog, locale, dark, it) }
     }
 
     private fun startGraph(catalog: StoreShotCatalog): Koin {
@@ -322,12 +322,12 @@ class StoreShotTest {
     private fun write(shots: List<Pair<String, java.awt.image.BufferedImage>>, locale: String, dark: Boolean, device: Device) {
         val root = repoRoot()
         if (!dark) {
-            val dir = File(root, "fastlane/metadata/android/$locale/images/${device.playFolder}").apply {
-                deleteRecursively()
+            val dir = File(root, device.folder(locale)).apply {
+                if (device.ownsFolder) deleteRecursively()
                 mkdirs()
             }
             PLAY_ORDER.forEachIndexed { i, name ->
-                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second, "png", File(dir, "${i + 1}_$name.png")) }
+                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second, "png", File(dir, device.fileName(i + 1, name))) }
             }
         }
         // The landing's set is the phone's.
@@ -339,17 +339,29 @@ class StoreShotTest {
     }
 
     /**
-     * A render target and where Play wants its images. The tablets are portrait and keep a 16:10 shape
-     * Play accepts; 600dp and 800dp wide are both past the width where the navigation rail replaces the bar.
+     * A render target and where its images go. Play's tablets and the App Store's device classes are
+     * portrait; every width here that is past 600dp shows the navigation rail instead of the bottom bar.
+     * The App Store sizes are the ones App Store Connect lists for the 6.9", 6.5" and 13" iPad classes
+     * (#425); deliver picks the class from the pixel size, the prefix only keeps the files apart.
      */
-    private enum class Device(val widthPx: Int, val heightPx: Int, val density: Float, val playFolder: String) {
-        PHONE(1080, 1920, 2.625f, "phoneScreenshots"),
-        SEVEN_INCH(1200, 1920, 2f, "sevenInchScreenshots"),
-        TEN_INCH(1600, 2560, 2f, "tenInchScreenshots"),
+    private enum class Device(val widthPx: Int, val heightPx: Int, val density: Float, private val folderTemplate: String, private val prefix: String = "") {
+        PHONE(1080, 1920, 2.625f, "fastlane/metadata/android/%s/images/phoneScreenshots"),
+        SEVEN_INCH(1200, 1920, 2f, "fastlane/metadata/android/%s/images/sevenInchScreenshots"),
+        TEN_INCH(1600, 2560, 2f, "fastlane/metadata/android/%s/images/tenInchScreenshots"),
+        IPHONE_69(1320, 2868, 3f, "fastlane/screenshots/ios/%s", "iPhone-6.9"),
+        IPHONE_65(1284, 2778, 3f, "fastlane/screenshots/ios/%s", "iPhone-6.5"),
+        IPAD_13(2064, 2752, 2f, "fastlane/screenshots/ios/%s", "iPad-13"),
         ;
 
+        fun folder(locale: String) = folderTemplate.format(locale)
+
+        /** The App Store folder holds three device classes, so one class must not clear the others'. */
+        val ownsFolder: Boolean get() = prefix.isEmpty()
+
+        fun fileName(position: Int, name: String) = if (prefix.isEmpty()) "${position}_$name.png" else "${prefix}_${position}_$name.png"
+
         companion object {
-            val TABLETS = listOf(SEVEN_INCH, TEN_INCH)
+            val EXTRA = listOf(SEVEN_INCH, TEN_INCH, IPHONE_69, IPHONE_65, IPAD_13)
         }
     }
 
