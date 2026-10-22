@@ -23,7 +23,7 @@ max_rows = 1000
 #
 # False on purpose (#75): a table added without thinking about its grants
 # should be unreachable, not readable by every holder of the anon key. Every
-# migration since 20261010000100 grants exactly what each role needs.
+# migration since 20261022000100 grants exactly what each role needs.
 auto_expose_new_tables = false
 
 [api.tls]
@@ -322,7 +322,7 @@ max_frequency = "5s"
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
 #
 # Stamps `sync_until` into every access token from `public.entitlement`
-# (ADR 0019, migration 20261010000000). Every synced table's RLS policy
+# (ADR 0019, migration 20261022000000). Every synced table's RLS policy
 # compares against that claim, so with the hook OFF nobody can sync at all —
 # on a hosted project it has to be enabled too (Authentication -> Hooks, or
 # `supabase config push`), in the same change that applies the migration.

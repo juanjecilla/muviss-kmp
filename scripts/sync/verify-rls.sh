@@ -12,7 +12,7 @@
 # user_id)` matches no rows and PostgREST returns an empty set rather than an
 # error. A 200 with rows in it would be the failure.
 #
-# Since EPIC 32 (migration 20261010000100) anon holds no table privilege at
+# Since EPIC 32 (migration 20261022000100) anon holds no table privilege at
 # all, so the expected read answer becomes a 401 with PostgREST code 42501
 # ("permission denied for table"). Both are accepted as OK: a project that has
 # not applied that migration yet still answers 200 []. `entitlement` (ADR 0019)

@@ -1,6 +1,6 @@
 -- pgTAP tests for EPIC 32 (#75, ADR 0019):
---   supabase/migrations/20261010000000_entitlement.sql
---   supabase/migrations/20261010000100_sync_requires_entitlement.sql
+--   supabase/migrations/20261022000000_entitlement.sql
+--   supabase/migrations/20261022000100_sync_requires_entitlement.sql
 --
 -- Run with `supabase test db` against the local stack (`supabase start`).
 -- Everything runs inside one transaction that is rolled back.
