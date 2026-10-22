@@ -1,7 +1,11 @@
 package com.codingpit.muviss.feature.settings.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.secrets.SecretStore
+import com.codingpit.muviss.core.common.widget.WidgetRefresher
+import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import kotlinx.coroutines.withContext
 
@@ -16,13 +20,25 @@ import kotlinx.coroutines.withContext
  *
  * Every screen observes its tables, so nothing needs restarting: the Library
  * empties, Settings shows the defaults and Discover shows its first-run intro.
+ * The home-screen widgets observe nothing (they render outside the app), so
+ * they are told explicitly once everything is gone (#317), the same push
+ * `SqlDelightProgressRepository` makes after every progress write.
  */
 class SqlDelightLocalDataEraser(
     private val database: MuvissDatabase,
     private val dispatchers: AppDispatchers,
+    private val ownTmdbKey: OwnTmdbKey,
+    private val secrets: SecretStore,
+    private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
+    private val widgetRefresher: WidgetRefresher,
 ) : LocalDataEraser {
 
+    // Under the Device Backup lock: a toggle tapped before this cannot recreate the row after it.
     override suspend fun deleteAllData() = withContext(dispatchers.io) {
+        deviceBackupWrites.erase { eraseEverything() }
+    }
+
+    private suspend fun eraseEverything() {
         database.transaction {
             // The user's own data — the set sync's "discard local data" deletes.
             database.collectionEntryQueries.deleteAll()
@@ -41,9 +57,21 @@ class SqlDelightLocalDataEraser(
             // Caches of TMDB's data.
             database.episodeQueries.deleteAll()
             database.titleWatchProvidersQueries.deleteAll()
+            // The last remote config (EPIC 45): a fresh install has none.
+            database.remoteConfigCacheQueries.deleteAll()
             // Whose library this was, and how far it had pulled.
             database.syncCursorQueries.deleteAll()
             database.syncStateQueries.deleteRow()
         }
+        // The Own TMDB Key (EPIC 46) is not in the database. `clear` also drops the copy the
+        // provider holds in memory, so the next request is Muviss's; `clearAll` then wipes the
+        // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
+        ownTmdbKey.clear()
+        secrets.clearAll()
+        widgetRefresher.refresh()
+        // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
+        // exclusion follows it: an iOS directory left un-excluded would back a deleted library up. Last,
+        // because it can throw; the data is already gone by then, and the next open applies it again.
+        DeviceBackupExclusion.apply(enabled = false)
     }
 }

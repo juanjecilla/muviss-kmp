@@ -23,7 +23,11 @@ kotlin {
             implementation(libs.turbine)
         }
         jvmTest.dependencies {
+            // `FakeClock` and `inMemoryDatabase()`.
+            implementation(projects.core.testing)
             implementation(libs.sqldelight.sqliteDriver)
+            // The eraser test builds a real OwnTmdbKey over a mock engine.
+            implementation(libs.ktor.clientMock)
             // Test-only: the idempotent-import integration test wires the real
             // collection and progress repositories against one shared in-memory
             // database — mirrors profile:data's own test-only dependency on

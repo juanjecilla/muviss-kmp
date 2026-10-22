@@ -2,13 +2,12 @@
 
 package com.codingpit.muviss.feature.profile.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.CountingDriver
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.profile.domain.MonthlyRewatchCalculator
 import com.codingpit.muviss.feature.profile.domain.RewatchRankingCalculator
@@ -28,10 +27,6 @@ import kotlin.time.measureTime
 private class BudgetDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
     override val io = d
-}
-
-private class BudgetClock : AppClock {
-    override fun nowEpochMs(): Long = 0L
 }
 
 /**
@@ -58,14 +53,13 @@ class RewatchPerformanceBudgetTest {
 
     @BeforeTest
     fun setUp() {
-        driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        MuvissDatabase.Schema.synchronous().create(driver)
+        driver = inMemoryDriver(::CountingDriver)
         database = MuvissDatabase(driver)
         repository = SqlDelightProgressRepository(
             database.episodeProgressQueries,
             database.episodePlayQueries,
             BudgetDispatchers(UnconfinedTestDispatcher()),
-            BudgetClock(),
+            FakeClock(0L),
             NoOpWidgetRefresher,
         )
     }

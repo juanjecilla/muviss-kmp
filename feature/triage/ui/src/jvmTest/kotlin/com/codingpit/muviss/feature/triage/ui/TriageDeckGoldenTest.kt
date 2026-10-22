@@ -41,7 +41,7 @@ class TriageDeckGoldenTest {
     @Test
     fun a_full_deck_shows_the_cards_waiting_behind_the_top_one() = runComposeUiTest {
         val harness = TriageHarness(tv = listOf(show("1"), show("2"), show("3"), show("4")))
-        val viewModel = showDeck(harness)
+        val viewModel = showDeck(harness, darkTheme = false)
 
         assertEquals(BACKING_CARD_COUNT, viewModel.state.value.backingCards.size)
         assertMatchesGolden("triage-deck-stacked", tolerance = DECK_TOLERANCE)
@@ -51,7 +51,7 @@ class TriageDeckGoldenTest {
     @Test
     fun the_last_card_stands_alone() = runComposeUiTest {
         val harness = TriageHarness(tv = listOf(show("1")))
-        val viewModel = showDeck(harness)
+        val viewModel = showDeck(harness, darkTheme = false)
 
         assertEquals(0, viewModel.state.value.backingCards.size)
         assertMatchesGolden("triage-deck-single", tolerance = DECK_TOLERANCE)
@@ -59,25 +59,43 @@ class TriageDeckGoldenTest {
 
     @Test
     fun a_movie_deck_offers_three_verdicts_and_says_watched() = runComposeUiTest {
-        showDeck(TriageHarness(movies = listOf(movie("1"), movie("2"), movie("3"))))
+        showDeck(TriageHarness(movies = listOf(movie("1"), movie("2"), movie("3"))), darkTheme = false)
         assertMatchesGolden("triage-deck-movie", tolerance = DECK_TOLERANCE)
     }
 
-    private fun ComposeUiTest.showDeck(harness: TriageHarness): TriageViewModel {
+    @Test
+    fun a_full_deck_shows_the_cards_waiting_behind_the_top_one_dark() = runComposeUiTest {
+        showDeck(TriageHarness(tv = listOf(show("1"), show("2"), show("3"), show("4"))), darkTheme = true)
+        assertMatchesGolden("triage-deck-stacked-dark", tolerance = DECK_TOLERANCE)
+    }
+
+    @Test
+    fun the_last_card_stands_alone_dark() = runComposeUiTest {
+        showDeck(TriageHarness(tv = listOf(show("1"))), darkTheme = true)
+        assertMatchesGolden("triage-deck-single-dark", tolerance = DECK_TOLERANCE)
+    }
+
+    @Test
+    fun a_movie_deck_offers_three_verdicts_and_says_watched_dark() = runComposeUiTest {
+        showDeck(TriageHarness(movies = listOf(movie("1"), movie("2"), movie("3"))), darkTheme = true)
+        assertMatchesGolden("triage-deck-movie-dark", tolerance = DECK_TOLERANCE)
+    }
+
+    private fun ComposeUiTest.showDeck(harness: TriageHarness, darkTheme: Boolean): TriageViewModel {
         val viewModel = harness.viewModel()
-        setContent { DeckUnderTest(viewModel) }
+        setContent { DeckUnderTest(viewModel, darkTheme) }
         waitForIdle()
         return viewModel
     }
 }
 
 @Composable
-private fun DeckUnderTest(viewModel: TriageViewModel) {
+private fun DeckUnderTest(viewModel: TriageViewModel, darkTheme: Boolean) {
     // Pinned, never left to default: `MuvissTheme`'s `darkTheme` reads
     // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded
     // on a machine in dark mode compares against a light render on CI and every
     // pixel moves. See `GoldenSurface`.
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface {
             TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {})
         }

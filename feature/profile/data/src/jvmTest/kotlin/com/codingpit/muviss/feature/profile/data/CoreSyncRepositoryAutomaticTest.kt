@@ -2,11 +2,10 @@
 
 package com.codingpit.muviss.feature.profile.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import com.codingpit.muviss.core.billing.Entitlement
 import com.codingpit.muviss.core.billing.EntitlementProvider
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
@@ -23,6 +22,9 @@ import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionExpiredException
 import com.codingpit.muviss.core.sync.SyncTable
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
@@ -30,6 +32,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -47,10 +50,6 @@ class CoreSyncRepositoryAutomaticTest {
     private class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
         override val default = d
         override val io = d
-    }
-
-    private class FixedClock : AppClock {
-        override fun nowEpochMs(): Long = 1_000L
     }
 
     private class ScriptedBackend(session: SyncSession?) : SyncBackend {
@@ -82,9 +81,9 @@ class CoreSyncRepositoryAutomaticTest {
 
     private class Rig(scope: TestScope, backgroundAvailable: Boolean = true) {
         val flags = FakeFeatureFlags()
-        val database: MuvissDatabase = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { MuvissDatabase.Schema.synchronous().create(it) }.let { MuvissDatabase(it) }
+        val database: MuvissDatabase = inMemoryDatabase()
         val backend = ScriptedBackend(SyncSession(SyncBackendId.SUPABASE, "user-1", "person@example.com", "token", null, null))
-        val clock = FixedClock()
+        val clock = FakeClock(1_000L)
         val engine = SyncEngine(
             backend,
             database,
@@ -219,6 +218,25 @@ class CoreSyncRepositoryAutomaticTest {
     }
 
     @Test
+    fun signing_out_on_purpose_never_passes_through_an_expired_session() = runTest {
+        val rig = Rig(this)
+        dirtyRow(rig.database)
+        rig.backend.failure = SyncSessionExpiredException()
+        rig.repository.syncNow()
+        val seen = mutableListOf<SyncAccountState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            rig.repository.observeAccount().collect { seen += it }
+        }
+        runCurrent()
+
+        rig.repository.signOut()
+        runCurrent()
+
+        assertFalse(SyncAccountState.SessionExpired in seen, "seen: $seen")
+        assertEquals(SyncAccountState.SignedOut, seen.last())
+    }
+
+    @Test
     fun a_different_account_is_reported_in_the_status_and_nothing_moves() = runTest {
         val rig = Rig(this)
         dirtyRow(rig.database)
@@ -228,6 +246,63 @@ class CoreSyncRepositoryAutomaticTest {
         assertTrue(rig.repository.observeSyncStatus().first().accountChanged)
         assertEquals(SyncOutcomeSummary.AccountChanged, rig.repository.syncNow())
         assertEquals(0, rig.backend.pushes)
+    }
+
+    @Test
+    fun signing_out_keeps_the_local_library_and_whose_it_is() = runTest {
+        val rig = Rig(this)
+        dirtyRow(rig.database)
+        rig.repository.syncNow()
+
+        rig.repository.signOut()
+
+        assertEquals(1, rig.database.collectionEntryQueries.selectAll().awaitAsList().size, "sign-out is not a wipe")
+        assertEquals("user-1", rig.database.syncStateQueries.selectState().awaitAsOne().ownerAccountId)
+    }
+
+    @Test
+    fun signing_back_in_as_someone_else_after_a_sign_out_asks_rather_than_syncs() = runTest {
+        val rig = Rig(this)
+        dirtyRow(rig.database)
+        rig.repository.syncNow()
+        rig.repository.signOut()
+        val pushesBefore = rig.backend.pushes
+
+        rig.backend.sessionState.value = SyncSession(SyncBackendId.SUPABASE, "user-2", "other@example.com", "token", null, null)
+
+        assertTrue(rig.repository.observeSyncStatus().first().accountChanged)
+        assertEquals(SyncOutcomeSummary.AccountChanged, rig.repository.syncNow())
+        assertEquals(pushesBefore, rig.backend.pushes)
+    }
+
+    @Test
+    fun replacing_takes_the_new_accounts_library_and_drops_this_devices() = runTest {
+        val rig = Rig(this)
+        dirtyRow(rig.database)
+        rig.database.syncStateQueries.ensureRow()
+        rig.database.syncStateQueries.setOwner("someone-else")
+
+        val outcome = rig.repository.resolveAccountChange(AccountChangeChoice.ReplaceWithAccountLibrary)
+
+        assertEquals(SyncOutcomeSummary.Success(syncedAtEpochMs = 1_000L), outcome)
+        assertTrue(rig.database.collectionEntryQueries.selectAll().awaitAsList().isEmpty())
+        assertEquals("user-1", rig.database.syncStateQueries.selectState().awaitAsOne().ownerAccountId)
+        assertFalse(rig.repository.observeSyncStatus().first().accountChanged)
+    }
+
+    @Test
+    fun adding_keeps_this_devices_library_and_sends_it() = runTest {
+        val rig = Rig(this)
+        dirtyRow(rig.database)
+        rig.database.syncStateQueries.ensureRow()
+        rig.database.syncStateQueries.setOwner("someone-else")
+
+        val outcome = rig.repository.resolveAccountChange(AccountChangeChoice.AddDeviceLibraryToAccount)
+
+        assertEquals(SyncOutcomeSummary.Success(syncedAtEpochMs = 1_000L), outcome)
+        assertEquals(1, rig.database.collectionEntryQueries.selectAll().awaitAsList().size)
+        assertTrue(rig.backend.pushes > 0)
+        assertEquals("user-1", rig.database.syncStateQueries.selectState().awaitAsOne().ownerAccountId)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -9,6 +10,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.core.database.CollectionEntryQueries
+import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.core.database.MediaListQueries
@@ -18,10 +20,16 @@ import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.core.database.TriageSnoozeQueries
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
+import com.codingpit.muviss.feature.settings.domain.MutedGenresCodec
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
+import com.codingpit.muviss.models.GenreKey
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
@@ -56,9 +64,13 @@ class SqlDelightSettingsRepository(
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
     private val appVersion: AppVersion,
+    private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
 ) : SettingsRepository {
 
     private val json = Json { prettyPrint = true }
+    private val mutedGenresLock = Mutex()
+
+    /** The column and the OS exclusion change together, so two overlapping toggles (Settings, onboarding) never interleave. */
 
     override fun observeSettings(): Flow<AppSettings> = settingsQueries.selectSettings()
         .asFlow()
@@ -96,6 +108,51 @@ class SqlDelightSettingsRepository(
         Unit
     }
 
+    // NonCancellable: the caller is a view model's scope, and leaving Settings (or the introduction) clears it.
+    // A backup choice the person made must still land, column and OS exclusion together, once it has started.
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        // Taken before the hop to io: a choice made before Delete all data must not land after it.
+        val requestedAt = deviceBackupWrites.request()
+        withContext(dispatchers.io + NonCancellable) {
+            deviceBackupWrites.write(requestedAt) {
+                ensureRow()
+                // The column and the OS exclusion move together (ADR 0034), ordered so a failure on either side
+                // leaves the library excluded and the switch reading what the OS does: off excludes first and
+                // stores after; on stores first, and puts both back if the OS refuses to include it (a refusal can
+                // come after some paths were already cleared, and a main file included without its -wal is the
+                // failure to avoid, so the exclusion is re-applied too, best effort).
+                if (enabled) {
+                    settingsQueries.updateDeviceBackupEnabled(true)
+                    runCatching { DeviceBackupExclusion.apply(true) }.onFailure { error ->
+                        runCatching { DeviceBackupExclusion.apply(false) }
+                        settingsQueries.updateDeviceBackupEnabled(false)
+                        throw error
+                    }
+                } else {
+                    DeviceBackupExclusion.apply(false)
+                    settingsQueries.updateDeviceBackupEnabled(false)
+                }
+            }
+        }
+    }
+
+    override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = withContext(dispatchers.io) {
+        // Read-modify-write on one column: serialized so two quick taps cannot drop one of them.
+        mutedGenresLock.withLock {
+            ensureRow()
+            val current = MutedGenresCodec.decode(settingsQueries.selectSettings().awaitAsOne().mutedGenres)
+            val updated = current.filterNot { it.key == key } + if (muted) listOf(MutedGenreEntry(key, name)) else emptyList()
+            settingsQueries.updateMutedGenres(MutedGenresCodec.encode(updated))
+        }
+        Unit
+    }
+
+    override suspend fun setMutedGenresInSearch(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        settingsQueries.updateMutedGenresInSearch(enabled)
+        Unit
+    }
+
     override suspend fun exportData(): String = withContext(dispatchers.io) {
         val export = MuvissDataExport(
             formatVersion = MuvissDataExport.CURRENT_FORMAT_VERSION,
@@ -121,6 +178,9 @@ class SqlDelightSettingsRepository(
         region = region,
         notificationsEnabled = notificationsEnabled,
         crashReportsEnabled = crashReportsEnabled,
+        mutedGenres = MutedGenresCodec.decode(mutedGenres),
+        mutedGenresInSearch = mutedGenresInSearch,
+        deviceBackupEnabled = deviceBackupEnabled,
     )
 
     private fun CollectionEntryRow.toExport(): CollectionEntryExport = CollectionEntryExport(

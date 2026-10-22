@@ -2,13 +2,22 @@ package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -25,14 +34,12 @@ class LocalDataEraserTest {
 
     @Test
     fun `after deleting everything the export is a fresh install's`() = runTest {
-        val database = MuvissDatabase(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { MuvissDatabase.Schema.synchronous().create(it) })
+        val database = inMemoryDatabase()
         val repository = SqlDelightSettingsRepository(
             database.appSettingsQueries,
             ExportQueries(database),
             dispatchers,
-            object : AppClock {
-                override fun nowEpochMs(): Long = 1L
-            },
+            FakeClock(1L),
             AppVersion("1", 1L),
         )
         val fixture = javaClass.getResource("/backups/v1-export.json")!!.readText()
@@ -43,15 +50,52 @@ class LocalDataEraserTest {
         database.profileQueries.ensureRow()
         database.profileQueries.updateDisplayName("Juanje")
         database.syncCursorQueries.upsert("collectionEntry", 42L)
+        database.remoteConfigCacheQueries.upsert("config", "{}")
+        val secrets = InMemorySecretStore()
+        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
+        secrets.put(OwnTmdbKey.STORE_NAME, "c".repeat(32))
+        secrets.put("something-else", "x")
 
-        SqlDelightLocalDataEraser(database, dispatchers).deleteAllData()
+        var widgetRefreshes = 0
+        SqlDelightLocalDataEraser(database, dispatchers, ownKey, secrets) { widgetRefreshes++ }.deleteAllData()
 
         val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
         assertTrue(export.collection.isEmpty() && export.progress.isEmpty() && export.plays.isEmpty())
         assertTrue(export.triage.isEmpty() && export.lists.isEmpty() && export.snoozes.isEmpty())
         assertEquals(null, export.profile, "the profile row is gone until something reads it again")
         assertTrue(database.syncCursorQueries.selectAll().awaitAsList().isEmpty())
+        assertEquals(null, database.remoteConfigCacheQueries.selectByKey("config").awaitAsOneOrNull(), "the cached remote config is a cache of this install")
+        assertEquals(null, secrets.get(OwnTmdbKey.STORE_NAME), "the Own TMDB Key goes with everything else")
+        assertEquals(null, secrets.get("something-else"), "and so does any other secret: the store is wiped, not one entry")
+        assertEquals(1, widgetRefreshes, "the home-screen widgets are told, or they keep showing the old library (#317)")
         database.appSettingsQueries.ensureRow()
         assertEquals("SYSTEM", database.appSettingsQueries.selectSettings().awaitAsOne().theme)
+    }
+
+    @Test
+    fun `a backup choice made before deleting everything does not come back after it`() = runTest {
+        val database = inMemoryDatabase()
+        val writes = DeviceBackupWrites()
+        val queuedIo = object : AppDispatchers {
+            override val default = StandardTestDispatcher(testScheduler)
+            override val io = default
+        }
+        val repository = SqlDelightSettingsRepository(
+            database.appSettingsQueries,
+            ExportQueries(database),
+            queuedIo,
+            FakeClock(1L),
+            AppVersion("1", 1L),
+            writes,
+        )
+        val secrets = InMemorySecretStore()
+        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
+
+        // The tap parks at the hop to io; Delete all data then runs to completion before it lands.
+        launch(start = CoroutineStart.UNDISPATCHED) { repository.setDeviceBackupEnabled(true) }
+        SqlDelightLocalDataEraser(database, dispatchers, ownKey, secrets, writes) {}.deleteAllData()
+        advanceUntilIdle()
+
+        assertEquals(null, database.appSettingsQueries.selectSettings().awaitAsOneOrNull())
     }
 }

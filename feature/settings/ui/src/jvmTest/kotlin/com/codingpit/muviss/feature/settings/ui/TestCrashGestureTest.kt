@@ -35,4 +35,18 @@ class TestCrashGestureTest {
 
         assertEquals(1, crashes)
     }
+
+    @Test
+    fun `the introduction can be replayed from About`() = runComposeUiTest {
+        var replays = 0
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                AboutSection(appVersionName = "1.0.0", onOpenLicenses = {}, onTestCrash = {}, onReplayIntroduction = { replays++ })
+            }
+        }
+
+        onNodeWithTag(REPLAY_INTRODUCTION_TAG).performClick()
+
+        assertEquals(1, replays)
+    }
 }

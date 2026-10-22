@@ -4,8 +4,12 @@ import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.crash.CrashReportingConfig
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.feature.settings.api.GenreMuting
+import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
+import com.codingpit.muviss.models.GenreKey
+import com.codingpit.muviss.models.MediaSummary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -122,6 +126,16 @@ class MuvissCrashReportingTest {
             override fun observeThemeMode(): Flow<ThemeMode> = MutableStateFlow(ThemeMode.SYSTEM)
             override fun observeNotificationsEnabled(): Flow<Boolean> = MutableStateFlow(true)
             override fun observeCrashReportsEnabled(): Flow<Boolean> = setting
+            override fun observeDeviceBackupEnabled(): Flow<Boolean> = MutableStateFlow(false)
+            override suspend fun setDeviceBackupEnabled(enabled: Boolean) = Unit
+
+            override fun observeMuting(): Flow<GenreMuting> = MutableStateFlow(GenreMuting())
+
+            override suspend fun examplesFor(key: GenreKey, limit: Int): List<MediaSummary> = emptyList()
+            override fun setShowMutedThisSession(show: Boolean) = Unit
+            override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = Unit
+
+            override suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = NotificationsChange.DISABLED
         }
 
         MuvissCrashReporting.follow(CoroutineScope(Dispatchers.Unconfined), { seen += it }) { settings }

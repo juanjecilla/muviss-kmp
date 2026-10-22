@@ -1,5 +1,7 @@
 package com.codingpit.muviss.ios
 
+import com.codingpit.muviss.MuvissCrashReporting
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -55,17 +57,49 @@ object IosWidgetBridge : KoinComponent {
 
     private val progressApi: ProgressApi by inject()
 
+    private val undoMarker: WidgetUndoMarker by lazy { WidgetUndoMarker.appGroup() }
+
     /**
      * Starts Koin if this process has none — the normal case in a widget
      * extension. Idempotent, and safe to call from the app too.
+     *
+     * Crash reporting starts here as well, as the first thing in the block, the
+     * way [IosAppStartup.start] starts it in the app: a widget that crashes while
+     * the graph is built is exactly the failure the home screen would otherwise
+     * hide. The app has already started it by the time this runs there, so the
+     * block is skipped and nothing is started twice.
+     *
+     * [IosNotificationSettings] is deliberately not bound in this graph. The
+     * widget resolves only [ProgressApi], which never reads it, and its `open()`
+     * needs `UIApplication`, which an extension does not have. The shared
+     * default (`SystemNotificationSettings.None`) therefore applies.
      */
     fun ensureStarted() {
         if (KoinPlatformTools.defaultContext().getOrNull() == null) {
+            MuvissCrashReporting.start(DatabaseDriverFactory())
             startKoin {
-                modules(appModules + module { single { DatabaseDriverFactory() } })
+                modules(
+                    appModules + module {
+                        single { DatabaseDriverFactory() }
+                        single<NotificationPermissionRequester> { IosNotificationPermissionRequester }
+                    },
+                )
             }
+            MuvissCrashReporting.followSettings()
         }
     }
+
+    /** The Undo marker's episode id, if the widget has just ticked one. */
+    fun justTicked(): String? = undoMarker.justTicked()
+
+    /** Records a tick from the widget so its row offers Undo. Set after the write, see `TickEpisodeIntent`. */
+    fun markJustTicked(episodeId: String) = undoMarker.markJustTicked(episodeId)
+
+    /** Drops the Undo marker. Called by the Undo intent, and by the app's refresh on every write. */
+    fun clearJustTicked() = undoMarker.clear()
+
+    /** One colour of the widget's palette as ARGB, read from `MuvissPalette` (see [IosWidgetPalette]). */
+    fun colorArgb(role: String, dark: Boolean): Int = IosWidgetPalette.argb(role, dark)
 
     /** The watch-next rows, newest state, at most [limit] of them. */
     fun watchNextRows(limit: Int): List<IosWidgetRow> {

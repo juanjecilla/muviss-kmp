@@ -1,6 +1,5 @@
 package com.codingpit.muviss.core.sync
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import kotlinx.coroutines.CompletableDeferred
@@ -12,13 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 internal class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
     override val io = d
-}
-
-internal class FakeClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun advanceTo(newMillis: Long) {
-        millis = newMillis
-    }
 }
 
 /**

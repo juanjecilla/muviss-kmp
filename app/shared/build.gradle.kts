@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 import java.util.Properties
 
 plugins {
@@ -74,6 +75,10 @@ kotlin {
             baseName = "Shared"
             isStatic = true
         }
+        // Release frameworks ship without DWARF line tables, so the app's dSYM
+        // symbolicates Kotlin frames to a symbol and no file or line (WS3, the
+        // iOS dSYM upload). Light debug info adds the line tables only.
+        target.binaries.getFramework(NativeBuildType.RELEASE).freeCompilerArgs += "-Xadd-light-debug=enable"
     }
 
     sourceSets {
@@ -84,6 +89,8 @@ kotlin {
             implementation(projects.core.common)
             implementation(projects.core.designsystem)
             implementation(projects.core.network)
+            implementation(projects.core.remoteconfig)
+            implementation(projects.core.secrets)
             implementation(projects.core.database)
             implementation(projects.core.billing)
             implementation(projects.core.sync)
@@ -96,6 +103,7 @@ kotlin {
             implementation(projects.feature.settings.ui)
             implementation(projects.feature.triage.ui)
             implementation(projects.feature.cowatch.ui)
+            implementation(projects.feature.onboarding.ui)
 
             // Feature data (Koin modules)
             implementation(projects.feature.search.data)
@@ -107,6 +115,9 @@ kotlin {
             implementation(projects.feature.settings.domain)
             implementation(projects.feature.triage.data)
             implementation(projects.feature.cowatch.data)
+            implementation(projects.feature.onboarding.data)
+            // The shell asks onboarding whether the introduction has been seen (its contract only).
+            implementation(projects.feature.onboarding.api)
 
             implementation(libs.navigation.compose)
             implementation(libs.compose.material3.adaptiveNavigationSuite)
@@ -122,6 +133,11 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
+        }
+        // Native tests for the iOS glue: deep-link parsing, the background-refresh
+        // decision, the Undo marker and the widget palette (run on the simulator).
+        iosTest.dependencies {
+            implementation(libs.kotlin.test)
         }
         // The one place the whole Koin graph exists, so the one place it can
         // be assembled and checked (see `AppGraphTest`).
@@ -156,4 +172,9 @@ tasks.withType<Test>().configureEach {
     systemProperty("muviss.storeshot", storeShot.toString())
     systemProperty("muviss.repo.root", repoRootPath)
     if (storeShot) outputs.upToDateWhen { false }
+    // PlayListingLimitsTest reads the Play listing; without this a listing edit
+    // alone would leave jvmTest up to date and the limits unchecked.
+    inputs.dir(rootDir.resolve("fastlane/metadata/android"))
+        .withPropertyName("playListing")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }

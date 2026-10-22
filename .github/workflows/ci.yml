@@ -3,11 +3,15 @@ name: CI
 # Git flow (ADR 0025): day-to-day PRs target `develop`; only `release/*` and
 # `hotfix/*` PRs target `main`. Pushes to the long-lived branches run too: they
 # are what every release is cut from.
+#
+# A PR runs CI whatever its base (#318): a stacked PR into a feature branch, or
+# a fix into `release/X.Y.Z` (ADR 0030), was otherwise never built, tested or
+# linted, and could look green with only CodeRabbit's check. Which base may be
+# merged into stays with the rulesets, not with this trigger.
 on:
   push:
     branches: [ main, develop, 'release/**', 'hotfix/**' ]
   pull_request:
-    branches: [ main, develop ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,9 +44,11 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       ios: ${{ steps.filter.outputs.ios }}
+      supabase: ${{ steps.filter.outputs.supabase }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # The three-dot diff below needs the merge base, so the default
           # single-commit checkout is not enough.
           fetch-depth: 0
@@ -58,6 +64,7 @@ jobs:
           run_everything() {
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "ios=true" >> "$GITHUB_OUTPUT"
+            echo "supabase=true" >> "$GITHUB_OUTPUT"
             exit 0
           }
 
@@ -83,18 +90,82 @@ jobs:
           # Anything the shared Kotlin/Native framework or the Xcode project can
           # see. `core`, `feature` and `models` are in here because :app:shared
           # depends on them, so a change there does reach the iOS link. This
-          # file is in here too: a PR that edits CI must run the CI it edits.
-          IOS_PATHS='^(app/shared/|app/iosApp/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$'
+          # file is in here too: a PR that edits CI must run the CI it edits. So is
+          # version-code.sh, which scripts/ios/set-version.sh calls for tagged builds.
+          IOS_PATHS='^(app/shared/|app/iosApp/|scripts/ios/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$|^scripts/release/version-code\.sh$'
           # Everything above, plus the platforms iOS cannot see but `build`,
           # `desktop` and `web-tests` can.
           CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/|supabase/|scripts/)'
 
           if echo "$changed" | grep -qE "$IOS_PATHS"; then ios=true; else ios=false; fi
           if echo "$changed" | grep -qE "$CODE_PATHS"; then code=true; else code=false; fi
+          # The server: migrations, pgTAP tests, Edge Functions (#280).
+          SUPABASE_PATHS='^supabase/|^\.github/workflows/ci\.yml$'
+          if echo "$changed" | grep -qE "$SUPABASE_PATHS"; then supabase=true; else supabase=false; fi
 
           echo "ios=$ios" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "Lanes -> code=$code ios=$ios"
+          echo "supabase=$supabase" >> "$GITHUB_OUTPUT"
+          echo "Lanes -> code=$code ios=$ios supabase=$supabase"
+
+  # The server's own tests (#280): the pgTAP suite in supabase/tests/database
+  # and the Edge Functions' Deno tests. supabase-dev.yml runs pgTAP too, but
+  # only after a merge to develop has already deployed to the dev project — so
+  # a PR that broke a policy or a trigger stayed green. This runs them against
+  # a throwaway local stack: no project ref, no secrets.
+  #
+  # Only the database container starts. pgTAP talks to Postgres directly, and
+  # the auth schema it needs ships in the Postgres image, so GoTrue, PostgREST,
+  # Kong and the rest would be minutes of image pulls for nothing.
+  supabase:
+    needs: changes
+    if: needs.changes.outputs.supabase == 'true'
+    name: Supabase (pgTAP, Edge Functions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        with:
+          version: latest
+
+      # A fresh start applies supabase/migrations in order, so this is also
+      # the check that the migration chain runs on an empty database.
+      - name: Start the local database
+        run: supabase start -x gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: pgTAP
+        run: supabase test db
+
+      # Deno 2.1, the runtime edge-runtime 1.74 ships, so a test that passes
+      # here also runs where the function is deployed. Skipped while the branch
+      # carries no functions (they arrive with the entitlement server, #283).
+      - name: Any Edge Functions?
+        id: functions
+        run: |
+          if ls supabase/functions/*/index.ts >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No Edge Functions on this branch."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        if: steps.functions.outputs.present == 'true'
+        with:
+          deno-version: v2.1.x
+
+      - name: Edge Functions (fmt, lint, check, test)
+        if: steps.functions.outputs.present == 'true'
+        working-directory: supabase/functions
+        run: |
+          deno fmt --check
+          deno lint
+          deno check */index.ts
+          deno test --allow-net=jsr.io
 
   build:
     needs: changes
@@ -107,8 +178,9 @@ jobs:
     steps:
       # Full history: the release build below takes its versionCode from
       # `git rev-list --count HEAD` and refuses a shallow clone.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
@@ -118,19 +190,24 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       - name: Spotless (format check)
         run: ./gradlew spotlessCheck --stacktrace
 
       - name: Detekt (static analysis)
         run: ./gradlew detekt --stacktrace
+
+      # The versionCode formula (ADR 0030) is pure Kotlin in build-logic; a
+      # change to it must not reach a release without these running.
+      - name: Build-logic tests (versionCode formula)
+        run: ./gradlew -p build-logic test --stacktrace
 
       # Every jvmTest task in the build, resolved by name rather than listed.
       # This used to be a hand-maintained allowlist, which meant a module
@@ -148,26 +225,46 @@ jobs:
       # sets a bundled font on every text style, so a screenshot matches a
       # developer's machine bar antialiasing, which the tolerance absorbs.
       #
-      # :server:test is named separately — the server is a plain JVM module and
-      # has no jvmTest task to match. So is :app:androidApp's
-      # testDebugUnitTest: an Android application module has no jvmTest
-      # either, and its tests (widget mapper, notification worker) ran
-      # nowhere (#67).
+      # :app:androidApp's testDebugUnitTest is named separately: an Android
+      # application module has no jvmTest task to match, and its tests
+      # (widget mapper, notification worker) ran nowhere (#67).
       - name: Unit tests (JVM)
         run: >
           ./gradlew
           jvmTest
-          :server:test
           :app:androidApp:testDebugUnitTest
           --continue
           --stacktrace
+
+      # Coverage of the run above (EPIC 38, #71). Kover instruments the test
+      # tasks it already ran, so this only merges and renders. Reported, not
+      # gated: no threshold until someone has decided what the number means.
+      - name: Coverage report (Kover)
+        run: |
+          ./gradlew :koverXmlReport :koverHtmlReport --stacktrace
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          root = ET.parse("build/reports/kover/report.xml").getroot()
+          print("### Coverage (JVM tests, all modules)\n")
+          print("| | covered | total | % |\n|---|---:|---:|---:|")
+          for c in root.findall("counter"):
+              covered, missed = int(c.get("covered")), int(c.get("missed"))
+              total = covered + missed
+              print(f"| {c.get('type').lower()} | {covered} | {total} | {100 * covered / total:.1f} |")
+          EOF
+
+      - name: Upload the coverage report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: build/reports/kover/
 
       # Golden-image failures are only readable as pictures: the harness writes
       # the actual capture and a magenta-marked diff next to each other, and
       # without them a red run says nothing but "pixels moved".
       - name: Upload test reports and golden diffs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-reports
           if-no-files-found: ignore
@@ -194,7 +291,7 @@ jobs:
 
       - name: Upload the lint report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lint-report
           if-no-files-found: ignore
@@ -233,8 +330,18 @@ jobs:
       # every PR (debug-signed without the keystore, which is fine here) and
       # fails if R8 wrote no mapping or reported missing classes. The licence
       # allow-list (licensee) is part of `check`, which nothing ran either.
-      - name: Release build with R8, and the licence allow-list
-        run: ./gradlew :app:androidApp:assembleRelease :app:androidApp:licenseeAndroidRelease --stacktrace
+      #
+      # The bundle and its two verify tasks are the RC's own command
+      # (android-release-build.yml). They are here because the 1.1.0 RC failed
+      # on a task-ordering error that exists only on that path (`bundleRelease`
+      # + `verifyReleaseExceptionClasses` after AGP 9.1's
+      # `mergeReleaseComposeMapping`) and `assembleRelease` never touches it
+      # (#340). R8 already ran above, so they add packaging, not a second shrink.
+      - name: Release build with R8, the release bundle, and the licence allow-list
+        run: >
+          ./gradlew :app:androidApp:assembleRelease :app:androidApp:licenseeAndroidRelease
+          :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources
+          :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
       - name: R8 left a mapping and no missing rules
         run: |
@@ -290,7 +397,9 @@ jobs:
     # already several times any legitimate runtime.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -299,13 +408,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       # Nothing in this repo configures the browser: `jsBrowserTest` uses the
       # Kotlin plugin's default karma + `karma-chrome-launcher`, which resolves
@@ -337,7 +446,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: web-test-reports
           if-no-files-found: ignore
@@ -361,7 +470,9 @@ jobs:
     # See `build`: the risk being bounded is a hang, not a slow build.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -370,13 +481,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       # Three steps, because they fail on different things and until EPIC 23
       # only the first existed: desktop was compiled on every PR and never
@@ -430,7 +541,7 @@ jobs:
 
       - name: Upload the jlink module report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: jlink-modules
           if-no-files-found: ignore
@@ -494,14 +605,22 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
-    # The only job in this file where the timeout is a spending control rather
-    # than a tidiness one. macOS bills at 10x, so the default 360-minute ceiling
-    # is 3,600 billed minutes from a single hung run — more than an entire
-    # month's free-tier allowance, gone in one afternoon. A successful run here
-    # is ~11 minutes end to end.
-    timeout-minutes: 45
+    # Written when the repo was private and macOS billed at 10x, so the
+    # default 360-minute ceiling was a month's allowance in one hung run. The
+    # repo is public now and standard runners are free, so the ceiling is back
+    # to being about a hang holding the PR. Raised from 45 when the
+    # Kotlin/Native tests and the release link joined the job (#67, #50).
+    timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v4
+      # Full history, like `build`: the release framework link below is a
+      # "Release" invocation, and :app:androidApp's guard (which is configured
+      # in the same build) refuses a shallow clone for one, since versionCode
+      # is `git rev-list --count HEAD`. An iOS release needs it too — its
+      # CFBundleVersion is the same commit count.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
 
       # The JDK gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
       # (Corretto 21), as JAVA_HOME: Gradle then runs the daemon on it as-is
@@ -510,13 +629,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       # The single most expensive thing in this file, and it was uncached.
       # `setup-gradle` above caches ~/.gradle; Kotlin/Native keeps its platform
@@ -531,7 +650,7 @@ jobs:
       # belong to. The restore-key prefix means a build-script edit warm-starts
       # from the previous cache rather than falling back to cold.
       - name: Cache Kotlin/Native toolchain and compiler caches
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts') }}
@@ -540,6 +659,46 @@ jobs:
 
       - name: Link Kotlin/Native framework (iOS simulator)
         run: ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
+      # Every module's tests on Kotlin/Native (#67). The JVM runs commonTest
+      # everywhere else; this is what catches what only K/N rejects — a comma
+      # in a backticked test name, a JVM-only API in commonMain — which used to
+      # surface only in a local `./gradlew build`. Its first local run also
+      # found 43 tests that passed on CI's English runner and failed on a
+      # Spanish Mac, now pinned in muviss.kmp.compose.
+      #
+      # The heap: the K/N compiler runs inside the Gradle daemon and OOMs at
+      # the 4 GiB gradle.properties sets for ~16 GB Linux runners (#49). This
+      # runner has 7 GB, so 5 GiB with two workers, raised here rather than
+      # in gradle.properties.
+      - name: Kotlin/Native tests (iOS simulator)
+        run: >
+          ./gradlew iosSimulatorArm64Test
+          -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+          --max-workers=2
+          --continue
+          --stacktrace
+
+      - name: Upload Kotlin/Native test reports
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-test-reports
+          if-no-files-found: ignore
+          path: |
+            **/build/reports/tests/iosSimulatorArm64Test/**
+            **/build/test-results/iosSimulatorArm64Test/**
+
+      # The configuration TestFlight and the App Store use, which nothing
+      # linked before (#50). It runs optimisation passes the debug link never
+      # reaches — devirtualisation is where it OOMed in #50 — so a release-only
+      # failure would otherwise first appear while shipping.
+      - name: Link the release framework (iOS simulator)
+        run: >
+          ./gradlew :app:shared:linkReleaseFrameworkIosSimulatorArm64
+          -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
+          --max-workers=2
+          --stacktrace
 
       - name: Build the Xcode project
         run: >
@@ -550,6 +709,26 @@ jobs:
           -sdk iphonesimulator
           CODE_SIGNING_ALLOWED=NO
           build
+
+      # The version stamping both targets' Run Script phases call (ITMS-90473
+      # is an app/extension mismatch). Needs PlistBuddy, so it runs here and
+      # not on the Linux guards.
+      - name: iOS version script tests
+        run: scripts/ios/test/set-version-test.sh
+
+      # The XCUITest smoke path: launch, get past onboarding, reach Search and
+      # open Settings. Offline-safe, English-only (see MuvissSmokeUITests).
+      # Runs the iosAppUITests target through the shared iosApp scheme.
+      # The simulator is looked up, not named: the image's device list changes
+      # under us (a pinned "iPhone 16" stopped existing).
+      - name: Run the iOS UI smoke tests (simulator)
+        run: |
+          udid=$(scripts/ios/simulator-udid.sh)
+          xcodebuild test \
+            -project app/iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -destination "platform=iOS Simulator,id=$udid" \
+            CODE_SIGNING_ALLOWED=NO
 
       # packageDmg used to run here, riding the macOS runner this job already
       # pays for. It was costing 2m30s — 25 billed minutes at the 10x macOS

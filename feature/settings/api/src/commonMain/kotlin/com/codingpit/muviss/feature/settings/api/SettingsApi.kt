@@ -1,5 +1,8 @@
 package com.codingpit.muviss.feature.settings.api
 
+import com.codingpit.muviss.models.GenreKey
+import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -20,6 +23,51 @@ interface SettingsApi {
      * value is read *before* Koin exists at startup, straight from `appSettings`.
      */
     fun observeCrashReportsEnabled(): Flow<Boolean>
+
+    /**
+     * Device Backup (ADR 0034): whether the OS may back this device's library up. Off by default. The Settings row
+     * and the Onboarding page are the only doors, and both are shown only where [platformCanBackUp] is true.
+     */
+    fun observeDeviceBackupEnabled(): Flow<Boolean>
+
+    /** Turns Device Backup on or off. Takes effect for the OS backup at its next run; nothing is copied now. */
+    suspend fun setDeviceBackupEnabled(enabled: Boolean)
+
+    /**
+     * What suggestion surfaces (triage deck, Discover, For you, More like this, and search when opted in)
+     * leave out. Emits again whenever the setting or the session's "show muted" chip changes.
+     */
+    fun observeMuting(): Flow<GenreMuting>
+
+    /** The chip on Triage and Discover: shows muted titles for this session only. Resets on relaunch. */
+    fun setShowMutedThisSession(show: Boolean)
+
+    /** Mutes or unmutes one genre, remembering [name] for the Settings list. The Onboarding page's door. */
+    suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean)
+
+    /**
+     * Up to [limit] popular posters for [key]'s genre, for Onboarding's "what would this hide" strip.
+     * Best-effort: empty offline or when the lookup fails, and callers must read empty as "no examples",
+     * never as an error.
+     */
+    suspend fun examplesFor(key: GenreKey, limit: Int = 3): List<MediaSummary>
+
+    /**
+     * Turns new-episode notifications on or off. Turning them **on** asks the OS first
+     * (EPIC 47) and stores nothing if it says no, so the switch never claims an alert
+     * that cannot arrive. The one door every surface uses — Settings, Onboarding and
+     * the Notification Nudge — so none of them can forget to ask.
+     */
+    suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange
+}
+
+/** What [SettingsApi.setNotificationsEnabled] ended up doing. */
+enum class NotificationsChange {
+    ENABLED,
+    DISABLED,
+
+    /** The user asked for them and the OS said no. Nothing was stored; the setting is as it was. */
+    DENIED,
 }
 
 /**
@@ -31,4 +79,26 @@ enum class ThemeMode {
     LIGHT,
     DARK,
     SYSTEM,
+}
+
+/**
+ * The muting a surface should apply right now (Muted Genres, ADR 0031).
+ *
+ * @property configured what Settings says is muted, whatever this session is showing.
+ * @property showMuted the session chip: true lifts muting on suggestion surfaces until relaunch.
+ * @property inSearch whether typed search is muted too.
+ */
+data class GenreMuting(
+    val configured: MutedGenres = MutedGenres.NONE,
+    val showMuted: Boolean = false,
+    val inSearch: Boolean = false,
+) {
+    /** What suggestion surfaces apply. */
+    val effective: MutedGenres get() = if (showMuted) MutedGenres.NONE else configured
+
+    /** What typed search applies: nothing unless the user opted in. */
+    val forSearch: MutedGenres get() = if (inSearch) effective else MutedGenres.NONE
+
+    /** Whether the chip has anything to toggle. */
+    val hasMuted: Boolean get() = configured.keys.isNotEmpty()
 }

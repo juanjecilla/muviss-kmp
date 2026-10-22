@@ -2,9 +2,9 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.uikit.LocalUIViewController
+import com.codingpit.muviss.core.designsystem.share.presentShareSheet
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.useContents
-import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSString
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
@@ -12,7 +12,7 @@ import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.stringByAppendingPathComponent
 import platform.Foundation.writeToFile
 import platform.UIKit.UIActivityViewController
-import platform.UIKit.popoverPresentationController
+import platform.UIKit.UIViewController
 
 /**
  * Writes the export to a temp file and hands it to the system share sheet
@@ -22,7 +22,7 @@ import platform.UIKit.popoverPresentationController
  * than plain text.
  */
 @OptIn(ExperimentalForeignApi::class)
-private class IosDataExporter : DataExporter {
+private class IosDataExporter(private val host: UIViewController) : DataExporter {
     override fun export(json: String, fileName: String) {
         // `NSString` is a distinct Kotlin/Native declaration from `kotlin.String`
         // even though they're ABI-compatible on Darwin, so these `NSString`
@@ -42,23 +42,13 @@ private class IosDataExporter : DataExporter {
         if (!written) return
 
         val fileUrl = NSURL.fileURLWithPath(filePath)
-        val activityController = UIActivityViewController(
-            activityItems = listOf(fileUrl),
-            applicationActivities = null,
-        )
-
-        // On iPad the share sheet is a popover, and UIKit throws at present
-        // time unless it is anchored. Centred over the presenting view with no
-        // arrow, the way an iPad shows a sheet with no button to point at.
-        val presenter = topViewController() ?: return
-        activityController.popoverPresentationController?.let { popover ->
-            popover.sourceView = presenter.view
-            popover.sourceRect = presenter.view.bounds.useContents { CGRectMake(size.width / 2, size.height / 2, 0.0, 0.0) }
-            popover.permittedArrowDirections = 0u
-        }
-        presenter.presentViewController(activityController, animated = true, completion = null)
+        // Anchored for iPad and presented from the top controller by the shared presenter.
+        presentShareSheet(UIActivityViewController(activityItems = listOf(fileUrl), applicationActivities = null), host)
     }
 }
 
 @Composable
-actual fun rememberDataExporter(): DataExporter = remember { IosDataExporter() }
+actual fun rememberDataExporter(): DataExporter {
+    val host = LocalUIViewController.current
+    return remember(host) { IosDataExporter(host) }
+}

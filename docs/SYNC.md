@@ -123,6 +123,62 @@ row and a paywall. Those are deliberately opposite, see ADR 0018.
    `MuvissBuildConfig`, never committed. CI and any clone without these two
    properties builds and runs exactly as before, with sync hidden.
 
+## Dev and prod projects (EPIC 43)
+
+Two Supabase projects, and nothing a person types by hand ever changes either
+one's schema:
+
+| | Dev | Prod |
+|---|---|---|
+| Ref | `mnleklzanxxpvmakrbxv` ("Muviss dev") | `sodjedenvnvsuktbxevt` ("Muviss app") |
+| Data | test accounts and rows only | real users' libraries |
+| Gets `supabase/` | `.github/workflows/supabase-dev.yml`, on every push to `develop` touching `supabase/`: migrations, Edge Functions, `config push`, then pgTAP against it | the Supabase GitHub integration, when a `release/*` merges into `main` |
+| Credentials | `supabase-dev` environment (deployable from `develop` only); a PAT that gets 403 on prod | the integration; no CI secret |
+| `scripts/sync/` | the default | `MUVISS_SUPABASE_TARGET=prod MUVISS_I_MEAN_PROD=yes` only |
+
+**How a migration is promoted.** Every step is a merge, never a command:
+
+1. A PR adds `supabase/migrations/<timestamp>_<name>.sql` (plus pgTAP in
+   `supabase/tests/database/`). CI's `supabase` lane applies the whole chain to
+   an empty local database and runs pgTAP and the Edge Functions' Deno tests
+   (#280). No project is touched.
+2. The PR merges into `develop` → `supabase-dev.yml` pushes it to **dev** and
+   runs pgTAP there. Exercise it on dev: a debug build pointed at dev's
+   `SUPABASE_URL`, and `scripts/sync/verify-*.sh` (dev by default).
+3. The release train cuts `release/X.Y.Z` from `develop`; when it merges into
+   `main` (ADR 0025/0030) the integration applies it to **prod**. A migration
+   that must not reach prod yet stays off `develop` (the #283 hold is the
+   example: its policies would refuse every sync until the auth hook is on).
+
+**Working by hand.** Reads and experiments are fine; schema changes are not.
+
+- `supabase link` is **per checkout** (it writes `supabase/.temp/project-ref`)
+  and every `--linked` command — `db query --linked`, `db push`, `config push`
+  — goes wherever it points. Check before any of them:
+
+  ```bash
+  cat supabase/.temp/project-ref    # mnleklzanxxpvmakrbxv = dev
+  ```
+
+  Keep checkouts linked to **dev** (`supabase link --project-ref
+  mnleklzanxxpvmakrbxv`). A checkout linked to prod turns a habitual
+  `supabase db push` into a production migration outside the release train.
+- Prefer naming the target over trusting the link: `--project-ref <ref>` or
+  `--db-url`, which is what `supabase-dev.yml` and `scripts/sync/lib.sh` do.
+- Anything that creates accounts or throwaway rows — RLS checks with several
+  users, `verify-pagination.sh` — runs against the **local** stack
+  (`supabase start`) or dev, never prod. Prod has no safe way to make test
+  accounts, by design.
+- Never `supabase db push` / `config push` against prod. If prod and the repo
+  have drifted, fix it with a migration through the steps above.
+
+**Why a second free project and not Supabase branching.** Branching (a
+preview database per PR) needs a paid plan and bills each branch's compute;
+the second project is free and, with CI's local stack covering per-PR
+checks, branching would add only a hosted copy per PR. Revisit if per-PR
+checks ever need hosted-only features (the auth hook end to end, Edge
+Functions behind the real gateway).
+
 ## Schema
 
 > Reference copy of the **original** schema. The executable ones are
@@ -422,8 +478,6 @@ other devices' real edits.
   `clearDirty`'s guard.
 - **An interrupted first sync** re-downloads from the start, since no cursor
   moves until everything drained.
-- **`SyncOutcome.AccountChanged`** shows in Profile as a failed sync until
-  EPIC 32 decides the account-switch policy and builds its confirmation.
 
 ## Automatic sync (EPIC 40, ADR 0021)
 
@@ -457,12 +511,18 @@ usable when signed in and entitled), a per-platform description ("in the
 background" / "when the system allows" / "while Muviss is open"), a status line
 (`Synced 3m ago`, then `4 changes waiting` or `Last sync failed: <reason>` with
 **Retry**), **Resync everything** behind a confirmation, and "Session expired,
-sign in again" when the session died. `AccountChanged` reads as a different
-account owning this device's library and offers nothing to fix it (EPIC 32).
+sign in again" when the session died. `AccountChanged` opens a blocking
+"Which library should this device keep?" dialog (#148, the ADR 0019 decision
+on #75): **Replace with <account>'s library** (`DiscardLocalData`, the default) or
+**Add this device's library to <account>** (`MergeLocalDataIntoAccount`). Both
+reset the cursors and make the signed-in account the owner. "Decide later",
+Back or Escape choose nothing: the status line keeps saying why nothing syncs
+and offers **Choose** to bring the dialog back, and every trigger keeps
+returning `AccountChanged` without pushing.
 
 **Failures** are typed (`Offline | Unauthorised | Server | Unknown`); the reason
 is the leading token of `syncState.lastError` (`REASON: diagnostic text`). Copy
-is `SyncCopy`, never an exception's message.
+is `feature/profile/ui`'s `SyncCopy.kt` (Compose Resources, en + es; the domain returns kinds, not strings), never an exception's message.
 
 ### Verifying it by hand
 
@@ -516,7 +576,7 @@ held (best effort; #281). Everything else, including unknown types, is a 200 no-
 | Pull without a valid `sync_until` | **HTTP 200 `[]`** — indistinguishable from "nothing new", so it must not be read as success when the engine already knows it is not entitled |
 | Token minted before the purchase landed | still no claim: wait for the `entitlement` row to turn active, *then* refresh the session |
 | Client writes `entitlement` | HTTP 403, `42501` `permission denied for table entitlement` |
-| anon (no token) on any synced table or `entitlement` | HTTP 401, `42501` `permission denied for table …` (anon holds no privilege since `20261010000100`) |
+| anon (no token) on any synced table or `entitlement` | HTTP 401, `42501` `permission denied for table …` (anon holds no privilege since `20261022000100`) |
 | Push with a still-valid token after `delete-account` | HTTP 409, `23503` (the user row is gone) |
 
 A lapse takes effect when the current token expires (`jwt_expiry`, one hour)
@@ -641,7 +701,7 @@ seen end to end.
 Nothing above has been deployed. Applying it is one change, in this order,
 because the policies refuse every sync the moment they land:
 
-1. `supabase db push` (both `20261010…` migrations).
+1. `supabase db push` (both `20261022…` migrations).
 2. Enable the hook on the project (Authentication → Hooks, or
    `supabase config push`) — without it no token carries `sync_until` and
    nobody can sync.
@@ -728,6 +788,15 @@ home:
   dashboard-only, not checkable via CLI/SQL; no table on the live project is
   within reach of even the local default of 1000 rows today, so this isn't
   currently biting anyone in practice.
+
+Since 2026-10-17 (#129) the RLS claims above are also a **pgTAP suite**,
+`supabase/tests/database/sync_rls.test.sql`, run by CI on every change to
+`supabase/` against the migrations from empty: RLS and a policy on every
+public table, three accounts (two Companions and a stranger) on the co-watch
+tables, forged writes, anonymous reads and writes. Its first run found that
+the co-watch addressee could hard-delete the author's rows (`using` governs
+DELETE, `with check` does not); `20261017000000_cowatch_addressee_reads_only.sql`
+splits the policy per command.
 
 **Still not run**: the Android `9.sqm` upgrade and first-sync-after-upgrade
 reconcile against a real seeded device (#100 items 5-6) — needs a deliberate

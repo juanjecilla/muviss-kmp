@@ -2,18 +2,13 @@ package com.codingpit.muviss.core.designsystem.share
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.uikit.LocalUIViewController
 import platform.UIKit.UIActivityViewController
-import platform.UIKit.UIApplication
 import platform.UIKit.UIPasteboard
+import platform.UIKit.UIViewController
 
-/**
- * `UIActivityViewController` and the general pasteboard.
- *
- * Presented without a popover anchor, like `DataExporter.ios.kt` — the
- * Kotlin/Native UIKit klib does not expose `popoverPresentationController`, so
- * iPad carries the same open risk recorded there.
- */
-private class IosTextSharer : TextSharer {
+/** `UIActivityViewController` and the general pasteboard, presented via [presentShareSheet] (anchored for iPad). */
+private class IosTextSharer(private val host: UIViewController) : TextSharer {
     override val canShare: Boolean = true
 
     override fun copy(text: String) {
@@ -21,11 +16,12 @@ private class IosTextSharer : TextSharer {
     }
 
     override fun share(text: String) {
-        val controller = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
-        UIApplication.sharedApplication.keyWindow?.rootViewController
-            ?.presentViewController(controller, animated = true, completion = null)
+        presentShareSheet(UIActivityViewController(activityItems = listOf(text), applicationActivities = null), host)
     }
 }
 
 @Composable
-actual fun rememberTextSharer(): TextSharer = remember { IosTextSharer() }
+actual fun rememberTextSharer(): TextSharer {
+    val host = LocalUIViewController.current
+    return remember(host) { IosTextSharer(host) }
+}

@@ -14,6 +14,7 @@
     <string name="search_placeholder">Search movies &amp; TV</string>
     <string name="search_clear">Clear search</string>
     <string name="carousel_for_you">For you</string>
+    <string name="show_muted">Show muted genres</string>
     <string name="genres_movies">Movie genres</string>
     <string name="genres_tv">TV genres</string>
     <string name="carousel_popular_movies">Popular movies</string>
@@ -84,6 +85,8 @@
     <string name="already_watched_times">Watched %1$d× so far. Did you watch it again, or was the last tick a mistake?</string>
     <string name="already_watched_once">Did you watch it again, or was that tick a mistake?</string>
     <!-- %1$s is the season's name. -->
+    <!-- %1$s show title. Shown with a burst when a tick leaves nothing aired unseen. -->
+    <string name="tick_caught_up">Caught up on %1$s</string>
     <string name="undo_season_seen">%1$s marked seen</string>
     <string name="undo_show_seen">Marked every aired episode seen</string>
 
@@ -110,4 +113,11 @@
     <!-- Screen-reader state of a season header (EPIC 31b, #164). -->
     <string name="a11y_expanded">Expanded</string>
     <string name="a11y_collapsed">Collapsed</string>
+
+    <!-- EPIC 47: the Notification Nudge -->
+    <string name="nudge_question">Get told when new episodes of %1$s air?</string>
+    <string name="nudge_turn_on">Turn on</string>
+    <string name="nudge_dismiss">Dismiss</string>
+    <string name="nudge_blocked">Notifications are blocked for Muviss in the system settings.</string>
+    <string name="nudge_open_settings">Open settings</string>
 </resources>

@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -41,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.common.backup.platformCanBackUp
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
@@ -67,11 +69,15 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_c
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_done
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_question
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_value
+import com.codingpit.muviss.feature.settings.ui.generated.resources.device_backup
+import com.codingpit.muviss.feature.settings.ui.generated.resources.device_backup_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.export
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
 import com.codingpit.muviss.feature.settings.ui.generated.resources.import
 import com.codingpit.muviss.feature.settings.ui.generated.resources.licenses
+import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_count
+import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_title
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications_blocked
 import com.codingpit.muviss.feature.settings.ui.generated.resources.open_settings
@@ -85,6 +91,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.section_data
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_privacy
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_triage
 import com.codingpit.muviss.feature.settings.ui.generated.resources.settings_title
+import com.codingpit.muviss.feature.settings.ui.generated.resources.show_introduction
 import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_period
 import com.codingpit.muviss.feature.settings.ui.generated.resources.snooze_placement
 import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animations
@@ -95,9 +102,13 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.theme
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_dark
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_light
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_system
+import com.codingpit.muviss.feature.settings.ui.generated.resources.tick_animations
+import com.codingpit.muviss.feature.settings.ui.generated.resources.tick_animations_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_attribution
 import com.codingpit.muviss.feature.settings.ui.generated.resources.tmdb_language
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -106,6 +117,13 @@ fun SettingsScreen(
     onOpenLicenses: () -> Unit,
     onOpenImport: () -> Unit,
     onOpenTriage: () -> Unit,
+    onOpenMutedGenres: () -> Unit = {},
+    onReplayIntroduction: () -> Unit = {},
+    // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
+    // the screen works without it, so the many tests of everything else do not need a Koin graph.
+    tmdbKey: TmdbKeyViewModel? = null,
+    // Whether the OS backup can carry the library (ADR 0034). A parameter so a test can show the row on desktop.
+    canBackUp: Boolean = platformCanBackUp,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
@@ -152,13 +170,22 @@ fun SettingsScreen(
             checked = state.settings.notificationsEnabled,
             onToggle = viewModel::onNotificationsToggled,
         )
-        NotificationsBlockedNote(state.settings.notificationsEnabled)
+        NotificationsBlockedNote(state.settings.notificationsEnabled || state.notificationsDenied)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         SwitchRow(
             label = stringResource(Res.string.animations),
             description = stringResource(Res.string.animations_body),
             checked = state.animationsEnabled,
             onToggle = viewModel::onAnimationsToggled,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        SwitchRow(
+            label = stringResource(Res.string.tick_animations),
+            description = stringResource(Res.string.tick_animations_body),
+            checked = state.tickAnimations,
+            // Greyed, not hidden, while the master is off: same as the swipe row below.
+            enabled = state.animationsEnabled,
+            onToggle = viewModel::onTickAnimationsToggled,
         )
 
         SectionOverline(stringResource(Res.string.section_content), topPadding = true)
@@ -179,6 +206,20 @@ fun SettingsScreen(
             selectedCode = state.settings.region,
             onSelect = viewModel::onRegionSelected,
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        ActionRow(
+            icon = MuvissIcons.SearchOff,
+            label = stringResource(Res.string.muted_genres_title),
+            value = pluralStringResource(Res.plurals.muted_genres_count, state.settings.mutedGenres.size, state.settings.mutedGenres.size),
+            onClick = onOpenMutedGenres,
+        )
+        if (tmdbKey != null) {
+            val keyState by tmdbKey.state.collectAsStateWithLifecycle()
+            if (keyState.visible) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                TmdbKeyRow(keyState, onSave = tmdbKey::save, onUseMuviss = tmdbKey::useMuvissKey, onDismiss = tmdbKey::dismissProblem)
+            }
+        }
 
         SectionOverline(stringResource(Res.string.section_triage), topPadding = true)
         ActionRow(
@@ -241,6 +282,17 @@ fun SettingsScreen(
             onClick = viewModel::exportData,
         )
         state.exportError?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        // Device Backup (ADR 0034): offered only where the OS has a backup Muviss can honour, and off by default.
+        if (canBackUp) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            SwitchRow(
+                label = stringResource(Res.string.device_backup),
+                description = stringResource(Res.string.device_backup_body),
+                checked = state.settings.deviceBackupEnabled,
+                onToggle = viewModel::onDeviceBackupToggled,
+                modifier = Modifier.testTag(DEVICE_BACKUP_ROW_TAG),
+            )
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         ActionRow(
             icon = MuvissIcons.Close,
@@ -273,6 +325,7 @@ fun SettingsScreen(
         AboutSection(
             appVersionName = state.appVersion.versionName,
             onOpenLicenses = onOpenLicenses,
+            onReplayIntroduction = onReplayIntroduction,
             onTestCrash = { throw MuvissTestCrash() },
         )
     }
@@ -325,9 +378,11 @@ private fun AppTheme.label(): StringResource = when (this) {
 private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     val system = LocalSystemNotificationSettings.current
     var blocked by remember { mutableStateOf(system.blocked()) }
+    val scope = rememberCoroutineScope()
     LifecycleResumeEffect(system) {
-        blocked = system.blocked()
-        onPauseOrDispose { }
+        // Awaited, not the cached blocked(): iOS only answers asynchronously.
+        val check = scope.launch { blocked = system.blockedNow() }
+        onPauseOrDispose { check.cancel() }
     }
     if (!enabledInApp || !blocked) return
     Row(
@@ -344,7 +399,7 @@ private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     }
 }
 
-/** The platform's notification state; Android provides a real one from `MuvissApp` (EPIC 30, #73). */
+/** The platform's notification state; Android and iOS bind a real one, provided from `MuvissApp` (EPIC 30, #73; iOS EPIC 47). */
 val LocalSystemNotificationSettings = staticCompositionLocalOf<SystemNotificationSettings> { SystemNotificationSettings.None }
 
 internal const val NOTIFICATIONS_BLOCKED_TAG = "settings-notifications-blocked"
@@ -359,18 +414,19 @@ internal const val NOTIFICATIONS_BLOCKED_TAG = "settings-notifications-blocked"
  * switch.
  */
 @Composable
-private fun SwitchRow(
+internal fun SwitchRow(
     label: String,
     description: String,
     checked: Boolean,
     onToggle: (Boolean) -> Unit,
     enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     val contentAlpha = if (enabled) 1f else DISABLED_ALPHA
     // The whole row is the switch: a bare Switch next to its label was
     // announced as "On, switch" with no name (EPIC 31b, #164).
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onToggle)
             .padding(vertical = MuvissSpacing.xs),
@@ -486,7 +542,12 @@ private fun ActionRow(
  * it like any other, which makes it the opt-out check too.
  */
 @Composable
-internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, onTestCrash: () -> Unit) {
+internal fun AboutSection(
+    appVersionName: String,
+    onOpenLicenses: () -> Unit,
+    onTestCrash: () -> Unit,
+    onReplayIntroduction: () -> Unit = {},
+) {
     var versionTaps by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         Text(
@@ -511,6 +572,19 @@ internal fun AboutSection(appVersionName: String, onOpenLicenses: () -> Unit, on
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(MuvissSpacing.m),
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onReplayIntroduction).padding(vertical = MuvissSpacing.s).testTag(REPLAY_INTRODUCTION_TAG),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(Res.string.show_introduction), style = MaterialTheme.typography.bodyLarge)
+            Icon(
+                MuvissIcons.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
             )
         }
         Row(
@@ -541,7 +615,8 @@ private fun TriageControlScheme.displayName(): String = stringResource(
     },
 )
 
-internal const val VERSION_ROW_TAG = "settings_version_row"
+internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
+const val VERSION_ROW_TAG = "settings_version_row"
 
 internal const val TEST_CRASH_TAPS = 7
 
@@ -576,5 +651,8 @@ private fun DeleteAllDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 }
 
 internal const val DELETE_ALL_ROW_TAG = "settings-delete-all"
+
+/** The Device Backup switch row (ADR 0034), so a test can find and flip it. */
+internal const val DEVICE_BACKUP_ROW_TAG = "settings-device-backup"
 internal const val DELETE_ALL_DIALOG_TAG = "settings-delete-all-dialog"
 internal const val DELETE_ALL_CONFIRM_TAG = "settings-delete-all-confirm"

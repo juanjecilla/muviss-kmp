@@ -2,13 +2,11 @@
 
 package com.codingpit.muviss.feature.progress.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CoroutineDispatcher
@@ -25,13 +23,6 @@ private class PlayDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val io = d
 }
 
-private class MovableClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun advanceTo(newMillis: Long) {
-        millis = newMillis
-    }
-}
-
 /**
  * Rewatch history (ADR 0011). The invariant under test throughout is that
  * `episodeProgress.seen` and `episodePlay` never disagree: `seen` stays the
@@ -41,7 +32,7 @@ private class MovableClock(private var millis: Long) : AppClock {
 class ProgressPlayHistoryTest {
 
     private lateinit var repository: SqlDelightProgressRepository
-    private lateinit var clock: MovableClock
+    private lateinit var clock: FakeClock
 
     private val show = MediaId.tmdbTv("1399")
     private val ep1 = EpisodeId(show, 1, 1)
@@ -50,10 +41,8 @@ class ProgressPlayHistoryTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
-        clock = MovableClock(1_000L)
+        val database = inMemoryDatabase()
+        clock = FakeClock(1_000L)
         repository = SqlDelightProgressRepository(
             database.episodeProgressQueries,
             database.episodePlayQueries,
@@ -250,5 +239,45 @@ class ProgressPlayHistoryTest {
             )
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    private suspend fun lastWatchedAt(): Map<MediaId, Long> {
+        var result = emptyMap<MediaId, Long>()
+        repository.observeLastWatchedAt().test {
+            result = awaitItem()
+            cancelAndIgnoreRemainingEvents()
+        }
+        return result
+    }
+
+    @Test
+    fun last_watched_is_the_newest_play_per_title() = runTest {
+        val other = MediaId.tmdbTv("66732")
+
+        clock.advanceTo(2_000L)
+        repository.recordPlay(ep1)
+        clock.advanceTo(5_000L)
+        repository.recordPlay(ep2)
+        clock.advanceTo(3_000L)
+        repository.recordPlay(EpisodeId(other, 1, 1))
+
+        assertEquals(mapOf(show to 5_000L, other to 3_000L), lastWatchedAt())
+    }
+
+    @Test
+    fun removing_the_latest_play_restores_the_previous_last_watched() = runTest {
+        clock.advanceTo(2_000L)
+        repository.recordPlay(ep1)
+        clock.advanceTo(5_000L)
+        repository.recordPlay(ep2)
+
+        repository.removeLatestPlay(ep2)
+
+        assertEquals(mapOf(show to 2_000L), lastWatchedAt())
+    }
+
+    @Test
+    fun a_title_without_plays_has_no_last_watched() = runTest {
+        assertEquals(emptyMap(), lastWatchedAt())
     }
 }

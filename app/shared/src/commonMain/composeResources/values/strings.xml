@@ -6,6 +6,8 @@
     <string name="nav_progress">Progress</string>
     <string name="nav_profile">Profile</string>
     <string name="nav_settings">Settings</string>
+    <!-- Nav item description while it needs the person's attention (#274), e.g. "Profile, action needed". -->
+    <string name="nav_needs_attention">%1$s, action needed</string>
     <!-- Web only: why changes in this tab may not survive. -->
     <string name="persistence_read_only_tab">Muviss is open in another tab. Changes here won't be saved.</string>
     <string name="persistence_not_persisted">This browser can't save your library. Changes will be lost when you close this tab.</string>

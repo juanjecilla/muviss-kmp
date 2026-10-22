@@ -1,10 +1,10 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-09-29._
+_Last updated: 2026-10-21._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
-document explains the only two ways Muviss talks to the network, and exactly
+document explains the only ways Muviss talks to the network, and exactly
 what leaves your device.
 
 ## What Muviss stores
@@ -12,10 +12,21 @@ what leaves your device.
 Everything you track — your collection, favorites, and per-episode watch
 progress — is stored **only on your device**, in a local SQLite database (see
 ADR 0002, "offline-first, local source of truth"). Muviss has no backend of
-its own and no account system; nobody but you (and whoever has your device)
-can see this data. It is not included in Android's automatic backup either
-(`allowBackup="false"` — see the comment in `AndroidManifest.xml`), so it
-never leaves the device even incidentally.
+its own and no account system; nobody but you (and whoever has your device,
+or, if you turn on Device Backup below, access to that backup) can see this
+data.
+
+**Device Backup (optional, off by default).** Your phone's own backup can
+include the library, so a new phone picks up where you left off: iCloud or a
+device backup on iOS, and Google's backup or a device-to-device transfer on
+Android. It is off until you turn it on — in the first-run introduction or in
+Settings → Data — and it is not shown on platforms where the OS has no such
+backup to offer. When it is on, the copy goes wherever that backup goes, as
+every other app's data does: iCloud or Google's backup under your own account,
+a computer you back your iPhone up to, or the new phone in a device-to-device
+transfer. Muviss has no server to receive it and never sees it. When it is
+off, the library is left out of those backups and transfers. Either way the
+copy is yours, not Muviss's.
 
 ## Network calls Muviss makes
 
@@ -28,6 +39,16 @@ never leaves the device even incidentally.
    that traffic.
 
    This product uses the TMDB API but is not endorsed or certified by TMDB.
+
+   **Your own TMDB key (optional).** Where the app offers it, Settings → TMDB
+   data source lets you use your own TMDB credential instead of Muviss's, so
+   your requests are made under your own TMDB account. The key is stored only
+   on your device, encrypted with a key held by the platform (Android Keystore,
+   iOS Keychain, the desktop's OS secret store, or the browser's WebCrypto),
+   and is sent only to TMDB. It is never synced, never included in a data
+   export, and removed by **Delete all data**. It is also excluded from
+   Android's backups and device transfers, whatever the Device Backup switch
+   says, and scrubbed from crash reports.
 
 2. **Sentry (crash reporting)** — optional, and you can turn it off. It is on
    by default in release builds, and off in developer builds (which have no
@@ -83,6 +104,20 @@ never leaves the device even incidentally.
      sent regardless of an opt-out (the same brief window the other platforms
      accept while their own stored choice is still being read).
 
+3. **ConfigCat (remote configuration)** — optional, and only on a build that
+   has a ConfigCat key configured (on a build without one, such as every
+   developer build, nothing is fetched). Muviss downloads a small settings file
+   from ConfigCat's servers (EU data governance) when the app starts or returns
+   to the foreground, at most once an hour. It holds values Muviss can change
+   after release — whether an optional feature is offered, and a replacement
+   TMDB credential if the one built into the app is ever revoked. **Nothing
+   about you is sent**: no identifier, no library, no settings; the values are
+   evaluated on your device. The request does expose your **IP address** to
+   ConfigCat, as any request to a server does, and it is not stored by Muviss.
+   The last file received is kept in the local database so the app works
+   offline; **Delete all data** removes it. See
+   [ConfigCat's privacy policy](https://configcat.com/privacy/).
+
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.
 
@@ -90,8 +125,14 @@ telemetry, no third-party trackers.
 
 **Settings → Data → Delete all data** deletes everything Muviss keeps on the
 device — your library, watch history, lists, triage decisions, profile and
-settings — without uninstalling. Uninstalling does the same. Either way there
-is nothing left on any server, because nothing you enter is ever sent to one.
+settings, Device Backup included (it goes back to off) — without uninstalling.
+Uninstalling removes the same, with one exception on iPhone: an Own TMDB Key
+you saved sits in the iOS Keychain, which can outlive the app, so use Delete
+all data first if you want the key gone too. Either way nothing is left on a Muviss server,
+because Muviss never sends what you enter to one. A copy your phone's own
+backup already holds is outside Muviss and is not touched by either; delete it
+where that backup lives (the phone's backup settings for iCloud or Google, or
+the computer that holds an iPhone backup).
 Settings → Data → Export saves a copy first if you might want it back.
 
 ## Contact

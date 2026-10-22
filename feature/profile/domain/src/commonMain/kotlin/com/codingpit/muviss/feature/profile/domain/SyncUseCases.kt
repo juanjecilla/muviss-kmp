@@ -37,6 +37,8 @@ class SyncActions(
 
     suspend fun resyncEverything(): SyncOutcomeSummary = repository.resyncEverything()
 
+    suspend fun resolveAccountChange(choice: AccountChangeChoice): SyncOutcomeSummary = repository.resolveAccountChange(choice)
+
     fun observeAccount(): Flow<SyncAccountState> = observeAccount.invoke()
 
     fun observeLastSyncedAt(): Flow<Long?> = observeLastSyncedAt.invoke()
@@ -45,7 +47,7 @@ class SyncActions(
 
     suspend fun completeSignIn(authCode: String): Result<Unit> = repository.completeSignIn(authCode)
 
-    fun observeSignInFailure(): Flow<String?> = repository.observeSignInFailure()
+    fun observeSignInFailure(): Flow<SignInFailure?> = repository.observeSignInFailure()
 
     fun signInFailureShown() = repository.signInFailureShown()
 

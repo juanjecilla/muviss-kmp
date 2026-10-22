@@ -10,6 +10,7 @@ import com.codingpit.muviss.core.sync.SyncFailureReason
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.SyncWriteRefusedException
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeSupabaseServer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -42,10 +43,6 @@ import kotlin.test.assertTrue
  * renewed. Both were broken; see ADR 0018.
  */
 class SupabaseSyncBackendTest {
-
-    private class RecordingClock(var millis: Long) : AppClock {
-        override fun nowEpochMs(): Long = millis
-    }
 
     private class InMemorySessionStore(private var session: SyncSession? = null) : SyncSessionStore {
         var cleared = false
@@ -131,7 +128,7 @@ class SupabaseSyncBackendTest {
         // expectSuccess is off for the shared client, so a 401 used to look
         // exactly like a 200. SyncEngine would then clear isDirty on rows the
         // server never accepted and never retry them.
-        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) {
             respond("""{"message":"JWT expired"}""", HttpStatusCode.Unauthorized, headersOf(HttpHeaders.ContentType, "application/json"))
         }
 
@@ -148,7 +145,7 @@ class SupabaseSyncBackendTest {
     fun a_rejected_pull_fails_with_the_status_not_a_deserialization_error() = runTest {
         // PostgREST answers errors with a JSON object; decoding it as List<T>
         // would blow up complaining about the shape, never mentioning the 403.
-        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) {
             respond("""{"message":"permission denied"}""", HttpStatusCode.Forbidden, headersOf(HttpHeaders.ContentType, "application/json"))
         }
 
@@ -162,7 +159,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun a_successful_push_succeeds() = runTest {
-        val (backend, requests) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+        val (backend, requests) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) {
             respond("", HttpStatusCode.Created)
         }
 
@@ -177,7 +174,7 @@ class SupabaseSyncBackendTest {
         // Without this, a session signed in on Monday stops syncing about an
         // hour later and only a manual re-login brings it back.
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 1_000L))
-        val clock = RecordingClock(1_000L)
+        val clock = FakeClock(1_000L)
         val (backend, requests) = backend(store, clock) { request ->
             if (request.url.encodedPath.endsWith("/auth/v1/token")) jsonOk(sessionBody) else respond("", HttpStatusCode.Created)
         }
@@ -194,7 +191,7 @@ class SupabaseSyncBackendTest {
     @Test
     fun a_token_with_time_left_is_used_as_is() = runTest {
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 10_000_000L))
-        val (backend, requests) = backend(store, RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+        val (backend, requests) = backend(store, FakeClock(1_000L)) { respond("", HttpStatusCode.Created) }
 
         backend.push(oneDirtyEntry)
 
@@ -207,7 +204,7 @@ class SupabaseSyncBackendTest {
         // a token revoked server-side ahead of time.
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 10_000_000L))
         var pushAttempts = 0
-        val (backend, _) = backend(store, RecordingClock(1_000L)) { request ->
+        val (backend, _) = backend(store, FakeClock(1_000L)) { request ->
             when {
                 request.url.encodedPath.endsWith("/auth/v1/token") -> jsonOk(sessionBody)
 
@@ -228,7 +225,7 @@ class SupabaseSyncBackendTest {
         // time left, and hand the rejected token straight back — so the retry
         // after a 401 on an early-revoked token was the same request again.
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 10_000_000L))
-        val (backend, requests) = backend(store, RecordingClock(1_000L)) { request ->
+        val (backend, requests) = backend(store, FakeClock(1_000L)) { request ->
             when {
                 request.url.encodedPath.endsWith("/auth/v1/token") -> jsonOk(sessionBody)
                 request.headers[HttpHeaders.Authorization] == "Bearer expired-token" -> respond("""{"message":"JWT expired"}""", HttpStatusCode.Unauthorized)
@@ -245,7 +242,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun a_push_refused_by_row_level_security_is_a_write_refusal() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) {
             respond(
                 """{"code":"42501","details":null,"hint":null,"message":"new row violates row-level security policy for table \"collection_entry\""}""",
                 HttpStatusCode.Forbidden,
@@ -261,7 +258,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun a_403_without_the_rls_code_is_an_ordinary_failure() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) {
             respond("""{"message":"forbidden by a proxy"}""", HttpStatusCode.Forbidden)
         }
 
@@ -271,7 +268,7 @@ class SupabaseSyncBackendTest {
     @Test
     fun the_grant_is_read_from_the_tokens_sync_until_claim() = runTest {
         val withClaim = sessionExpiringAt(null).copy(accessToken = FakeSupabaseServer.accessToken("user-1", syncUntil = "2026-11-09T00:16:15Z"))
-        val (backend, requests) = backend(InMemorySessionStore(withClaim), RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+        val (backend, requests) = backend(InMemorySessionStore(withClaim), FakeClock(1_000L)) { respond("", HttpStatusCode.Created) }
 
         assertEquals(1_794_183_375_000L, backend.syncGrantedUntil())
         assertTrue(requests.isEmpty(), "the fast path never touches the network")
@@ -279,16 +276,16 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun a_token_without_the_claim_grants_nothing_and_signed_out_neither() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) { respond("", HttpStatusCode.Created) }
         assertNull(backend.syncGrantedUntil(), "expired-token is not even a JWT")
 
-        val (signedOut, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+        val (signedOut, _) = backend(InMemorySessionStore(), FakeClock(1_000L)) { respond("", HttpStatusCode.Created) }
         assertNull(signedOut.syncGrantedUntil())
     }
 
     @Test
     fun the_entitlement_row_is_read_with_postgrests_timestamp_format() = runTest {
-        val (backend, requests) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) {
+        val (backend, requests) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) {
             jsonOk("""[{"active":true,"expires_at":"2026-11-09T00:16:15.289+00:00"}]""")
         }
 
@@ -299,7 +296,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun no_entitlement_row_is_no_entitlement() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), RecordingClock(1_000L)) { jsonOk("[]") }
+        val (backend, _) = backend(InMemorySessionStore(sessionExpiringAt(null)), FakeClock(1_000L)) { jsonOk("[]") }
 
         assertNull(backend.fetchEntitlement().getOrThrow())
     }
@@ -307,7 +304,7 @@ class SupabaseSyncBackendTest {
     @Test
     fun refreshing_on_demand_renews_a_token_that_has_time_left() = runTest {
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 10_000_000L))
-        val (backend, _) = backend(store, RecordingClock(1_000L)) { jsonOk(sessionBody) }
+        val (backend, _) = backend(store, FakeClock(1_000L)) { jsonOk(sessionBody) }
 
         assertEquals("fresh-token", backend.refreshSession().getOrThrow().accessToken)
         assertEquals("fresh-token", backend.session.first()?.accessToken)
@@ -316,7 +313,7 @@ class SupabaseSyncBackendTest {
     @Test
     fun deleting_the_account_calls_the_function_with_the_callers_token_and_signs_out_locally() = runTest {
         val store = InMemorySessionStore(sessionExpiringAt(null))
-        val (backend, requests) = backend(store, RecordingClock(1_000L)) { jsonOk("""{"deleted":"user-1"}""") }
+        val (backend, requests) = backend(store, FakeClock(1_000L)) { jsonOk("""{"deleted":"user-1"}""") }
 
         assertTrue(backend.deleteAccount().isSuccess)
 
@@ -332,7 +329,7 @@ class SupabaseSyncBackendTest {
     @Test
     fun a_failed_deletion_keeps_the_session() = runTest {
         val store = InMemorySessionStore(sessionExpiringAt(null))
-        val (backend, _) = backend(store, RecordingClock(1_000L)) { respond("""{"error":"delete failed"}""", HttpStatusCode.InternalServerError) }
+        val (backend, _) = backend(store, FakeClock(1_000L)) { respond("""{"error":"delete failed"}""", HttpStatusCode.InternalServerError) }
 
         assertTrue(backend.deleteAccount().isFailure)
         assertNotNull(backend.session.first())
@@ -344,7 +341,7 @@ class SupabaseSyncBackendTest {
         // later attempt fails identically. Dropping to signed-out puts the
         // sign-in button back, which is the only thing that can recover.
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 1_000L))
-        val (backend, _) = backend(store, RecordingClock(1_000L)) {
+        val (backend, _) = backend(store, FakeClock(1_000L)) {
             respond("""{"message":"Invalid Refresh Token"}""", HttpStatusCode.BadRequest)
         }
 
@@ -356,7 +353,7 @@ class SupabaseSyncBackendTest {
     @Test
     fun an_expired_session_with_no_refresh_token_signs_out() = runTest {
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 1_000L, refreshToken = null))
-        val (backend, _) = backend(store, RecordingClock(1_000L)) { respond("", HttpStatusCode.Created) }
+        val (backend, _) = backend(store, FakeClock(1_000L)) { respond("", HttpStatusCode.Created) }
 
         assertTrue(backend.push(oneDirtyEntry).isFailure)
         assertNull(backend.session.first())
@@ -370,7 +367,7 @@ class SupabaseSyncBackendTest {
         // access check for kotlinx.serialization's generated INSTANCE lookup
         // rejected with IllegalAccessException — only visible once a real
         // ContentNegotiation client (not a hand-built request) serializes it.
-        val (backend, requests) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+        val (backend, requests) = backend(InMemorySessionStore(), FakeClock(1_000L)) { jsonOk(sessionBody) }
 
         val result = backend.signInAnonymously()
 
@@ -382,7 +379,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun signing_in_stamps_an_absolute_expiry_from_the_relative_one() = runTest {
-        val clock = RecordingClock(50_000L)
+        val clock = FakeClock(50_000L)
         val (backend, _) = backend(InMemorySessionStore(), clock) { jsonOk(sessionBody) }
 
         backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT)
@@ -394,7 +391,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun the_authorize_url_carries_the_provider_redirect_and_a_hashed_challenge() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+        val (backend, _) = backend(InMemorySessionStore(), FakeClock(1_000L)) { jsonOk(sessionBody) }
 
         val url = backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT).getOrThrow()
 
@@ -409,7 +406,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun the_exchange_sends_the_verifier_that_produced_the_challenge() = runTest {
-        val (backend, requests) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+        val (backend, requests) = backend(InMemorySessionStore(), FakeClock(1_000L)) { jsonOk(sessionBody) }
 
         val url = backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT).getOrThrow()
         backend.completeOAuth("auth-code").getOrThrow()
@@ -427,7 +424,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun completing_without_starting_fails_rather_than_sending_a_blank_verifier() = runTest {
-        val (backend, requests) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+        val (backend, requests) = backend(InMemorySessionStore(), FakeClock(1_000L)) { jsonOk(sessionBody) }
 
         val result = backend.completeOAuth("auth-code")
 
@@ -437,7 +434,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun a_verifier_is_single_use() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) { jsonOk(sessionBody) }
+        val (backend, _) = backend(InMemorySessionStore(), FakeClock(1_000L)) { jsonOk(sessionBody) }
         backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT)
         backend.completeOAuth("auth-code").getOrThrow()
 
@@ -448,7 +445,7 @@ class SupabaseSyncBackendTest {
 
     @Test
     fun a_rejected_exchange_is_reported_and_clears_the_attempt() = runTest {
-        val (backend, _) = backend(InMemorySessionStore(), RecordingClock(1_000L)) {
+        val (backend, _) = backend(InMemorySessionStore(), FakeClock(1_000L)) {
             respond("""{"error":"invalid_grant","error_description":"code challenge does not match"}""", HttpStatusCode.BadRequest)
         }
         backend.beginOAuth(OAuthProvider.GITHUB, REDIRECT)

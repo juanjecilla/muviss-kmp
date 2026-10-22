@@ -143,7 +143,7 @@ fails at the browser, not at compile time, so a test pins the constant.
   `pendingEmail` and gained `pendingAuthUrl`, which the screen hands to
   `LocalUriHandler` and the ViewModel then clears so returning to the screen
   does not reopen the browser.
-- iOS, desktop and web report sign-in as unsupported. Each needs a different
+- iOS, desktop and web report sign-in as unsupported *(stale for iOS: it works since PR #37, see the superseded note below and `core/sync/.../Pkce.ios.kt`)*. Each needs a different
   browser round-trip — `ASWebAuthenticationSession`, a loopback HTTP server,
   an in-page redirect — and ADR 0003 makes Android the first-verify target.
   Everything still compiles on all six.

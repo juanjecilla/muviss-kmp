@@ -167,7 +167,7 @@ class SyncEngine(
             ownerAccountId = state?.ownerAccountId,
             lastAttemptAtEpochMs = state?.lastAttemptAtEpochMs,
             lastAttemptFailed = failed,
-            lastFailure = if (failed) SyncFailureReason.fromStored(state?.lastError) ?: SyncFailureReason.Unknown else null,
+            lastFailure = if (failed) SyncFailureReason.fromStored(state.lastError) ?: SyncFailureReason.Unknown else null,
             consecutiveFailures = state?.consecutiveFailures?.toInt() ?: 0,
             pendingChanges = pending,
         )
@@ -489,6 +489,14 @@ data class SyncStatusSnapshot(
     val consecutiveFailures: Int,
     val pendingChanges: Long,
 )
+
+/**
+ * True while this device's library belongs to an account other than [session]'s:
+ * every sync answers [SyncOutcome.AccountChanged] and nothing moves until
+ * [SyncEngine.resolveAccountChange] gets an explicit choice. The one definition
+ * the Profile dialog and the app-level nav badge (#274) both read.
+ */
+fun SyncStatusSnapshot.belongsToAnotherAccountThan(session: SyncSession?): Boolean = ownerAccountId != null && session != null && ownerAccountId != session.userId
 
 /**
  * The two inputs to [AutoSyncPolicy] that are not the session or the

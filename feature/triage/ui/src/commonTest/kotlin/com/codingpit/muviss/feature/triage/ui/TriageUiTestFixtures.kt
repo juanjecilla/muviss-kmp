@@ -1,12 +1,12 @@
 package com.codingpit.muviss.feature.triage.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.analytics.AnalyticsEvent
 import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -14,6 +14,10 @@ import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
+import com.codingpit.muviss.feature.settings.api.GenreMuting
+import com.codingpit.muviss.feature.settings.api.NotificationsChange
+import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckLoader
 import com.codingpit.muviss.feature.triage.domain.DeckSource
@@ -40,16 +44,19 @@ import com.codingpit.muviss.feature.triage.domain.UnsnoozeUseCase
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
@@ -76,10 +83,6 @@ internal fun detailsFor(summary: MediaSummary): MediaDetails = when (summary.typ
     )
 }
 
-internal class FakeClock(private val millis: Long = NOW_EPOCH_MS) : AppClock {
-    override fun nowEpochMs(): Long = millis
-}
-
 internal class RecordingAnalytics : AnalyticsTracker {
     val events = mutableListOf<AnalyticsEvent>()
 
@@ -104,8 +107,10 @@ internal class FakeFeatureFlags(
     override val triageControlScheme: Flow<TriageControlScheme> = state
     override val animationsEnabled: Flow<Boolean> = appAnimations
     override val triageDeckAnimations: Flow<Boolean> = deck
+    override val tickAnimations: Flow<Boolean> = MutableStateFlow(true)
     private val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
+    override val byokEnabled: Flow<Boolean> = MutableStateFlow(false)
 
     /** Settable directly, like the motion flags, so a deck test can pick a period without suspending. */
     val snoozePeriod = MutableStateFlow(snoozePeriodInitial)
@@ -136,6 +141,8 @@ internal class FakeFeatureFlags(
     override suspend fun setTriageDeckAnimations(enabled: Boolean) {
         deck.value = enabled
     }
+
+    override suspend fun setTickAnimations(enabled: Boolean) = Unit
 }
 
 internal class FakeTriagePreferences(seen: Boolean = true, snoozeHintSeen: Boolean = true) : TriagePreferences {
@@ -312,8 +319,12 @@ internal class FakeDeckSource(
     /** Every movie page asked for, in order — how far a refill read (#183). */
     val requestedPages = mutableListOf<Int>()
 
-    override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> {
+    /** What each TV request asked the source to leave out (muted genres are per type; the tests mute TV genres). */
+    val tvExcludedRequests = mutableListOf<Set<String>>()
+
+    override suspend fun page(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
         failure?.let { return Result.failure(it) }
+        if (type == MediaType.TV) tvExcludedRequests += excludedGenreIds
         if (type == MediaType.MOVIE) requestedPages += page
         if (type == MediaType.MOVIE && moviePages != null) {
             return Result.success(PagedResult(moviePages.byNumber[page].orEmpty(), page = page, totalPages = moviePages.totalPages))
@@ -325,6 +336,33 @@ internal class FakeDeckSource(
     override suspend fun genres(type: MediaType): Result<List<Genre>> = Result.success(genres)
 }
 
+/** Muting as Settings would report it, with the session chip kept in the fake the way the real api keeps it. */
+internal class FakeMutingApi(configured: MutedGenres = MutedGenres.NONE) : SettingsApi {
+    val configured = MutableStateFlow(configured)
+    val showMuted = MutableStateFlow(false)
+
+    override fun observeMuting(): Flow<GenreMuting> = combine(this.configured, showMuted) { muted, show -> GenreMuting(muted, show) }
+
+    override fun setShowMutedThisSession(show: Boolean) {
+        showMuted.value = show
+    }
+
+    override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = Unit
+
+    override fun observeThemeMode(): Flow<ThemeMode> = flowOf(ThemeMode.SYSTEM)
+
+    override suspend fun examplesFor(key: GenreKey, limit: Int): List<MediaSummary> = emptyList()
+
+    override fun observeNotificationsEnabled(): Flow<Boolean> = flowOf(false)
+
+    override fun observeCrashReportsEnabled(): Flow<Boolean> = flowOf(false)
+    override fun observeDeviceBackupEnabled(): Flow<Boolean> = flowOf(false)
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = Unit
+
+    override suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = NotificationsChange.DISABLED
+}
+
 /** What [FakeFeatureFlags] reports, bundled so [TriageHarness] doesn't grow a parameter per flag. */
 internal data class FakeFlagsConfig(
     val scheme: TriageControlScheme = TriageControlScheme.FOUR_WAY,
@@ -332,6 +370,7 @@ internal data class FakeFlagsConfig(
 )
 
 /** Everything a [TriageViewModel] needs, wired from real domain types over the fakes above. */
+@Suppress("LongParameterList") // one defaulted knob per thing a test varies
 internal class TriageHarness(
     movies: List<MediaSummary> = emptyList(),
     tv: List<MediaSummary> = emptyList(),
@@ -339,6 +378,7 @@ internal class TriageHarness(
     tutorialSeen: Boolean = true,
     flagsConfig: FakeFlagsConfig = FakeFlagsConfig(),
     moviePages: FakeDeckPages? = null,
+    muted: MutedGenres = MutedGenres.NONE,
 ) {
     val source = FakeDeckSource(movies, tv, genres, moviePages)
     val details = GatedDetailsSource(movies + tv)
@@ -349,7 +389,8 @@ internal class TriageHarness(
     val preferences = FakeTriagePreferences(tutorialSeen)
     val flags = FakeFeatureFlags(flagsConfig.scheme, deckAnimations = flagsConfig.deckAnimations)
     val snoozes = FakeTriageSnoozeRepository()
-    private val clock = FakeClock()
+    val settings = FakeMutingApi(muted)
+    private val clock = FakeClock(NOW_EPOCH_MS)
 
     private val record = RecordDecisionUseCase(repository, collection, progress, details, clock)
 
@@ -370,5 +411,6 @@ internal class TriageHarness(
         TriageOnboarding(ObserveTutorialSeenUseCase(preferences), ObserveSnoozeHintSeenUseCase(preferences)),
         flags,
         analytics,
+        settings,
     )
 }

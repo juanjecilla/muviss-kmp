@@ -108,6 +108,12 @@
     <init>(android.content.Context, androidx.work.WorkerParameters);
 }
 
+# Device Backup's agent (ADR 0034) is instantiated by name by the system's backup service, in restricted mode,
+# so R8 must keep its constructor or a release build silently backs nothing up (and fails the restore).
+-keep class com.codingpit.muviss.backup.MuvissBackupAgent {
+    <init>();
+}
+
 # The midnight widget refresh (EPIC 22) is the worker EPIC 30's audit found
 # without this rule: armed every night, ClassNotFoundException every night,
 # release builds only — so the "aired by today" boundary never moved on the
@@ -124,6 +130,13 @@
 # time warning, "An error occurred when parsing kotlin metadata") and falls
 # back to static analysis, which sees the constructor as unused and strips
 # it — crashing every release install before any app code runs (#147).
+# Re-checked on AGP 9.1.1 (#192): R8 no longer logs that warning — and on
+# AGP 9.2.1 (#307, 2026-10-17) a minified build *without* these two rules was
+# installed on an API 36 emulator and crashed on launch, before any app code:
+# "Unable to get provider androidx.startup.InitializationProvider:
+# NoSuchMethodException: androidx.work.impl.WorkDatabase_Impl.<init> []".
+# The same build with them launches. A quiet R8 is not a working R8; re-test
+# on a device (not by reading mapping.txt) before removing them.
 # The broader RoomDatabase rule covers any other AndroidX library that
 # generates a Room _Impl the same way under this R8/Kotlin combination, since
 # this app doesn't call Room directly and can't enumerate them by hand.

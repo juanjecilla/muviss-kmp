@@ -20,6 +20,11 @@
 -- deliberately NOT synced: motion tolerance belongs to a device and the person
 -- holding it, not to a library.
 --
+-- `tickAnimations` was added in `19.sqm` (EPIC 52). It narrows `animationsEnabled`
+-- the way `triageDeckAnimations` does: readers take the AND of the two. It
+-- covers the feedback a tick plays on the Progress and Detail screens. Per
+-- device and NOT synced, like every motion preference above.
+--
 -- `syncCursorEpochMs` was added in `7.sqm`. It is NOT a second copy of
 -- `lastSyncedAtEpochMs`: that one answers "when did this device last complete
 -- a cycle" and is stamped from the local clock for the profile screen's label,
@@ -72,6 +77,31 @@
 -- on every snooze instead of applying one, which is also the only route to a
 -- freely chosen date.
 --
+-- `onboardingCompleted` and `notificationNudgeDismissed` were added in
+-- `17.sqm` (EPIC 47, ADR 0029). Both per-device and NOT synced, like every
+-- preference above. `onboardingCompleted` defaults to 0, which is what makes a
+-- *fresh* install see the introduction: only a row `ensureRow` creates starts
+-- there, and the migration marks every row that already exists as completed
+-- (so an upgraded install never sees it). `notificationNudgeDismissed` is the
+-- once-ever mark for the Notification Nudge.
+--
+-- `mutedGenres` and `mutedGenresInSearch` were added in `18.sqm` (Muted Genres,
+-- ADR 0031). Per-device and NOT synced. `mutedGenres` is a `;`-joined list of
+-- `<movie|tv>:<tmdb genre id>:<name>` (the name is kept so Settings can list what is muted
+-- offline); the column DEFAULT is what mutes Talk, News and Reality on a fresh
+-- install, and `ALTER TABLE ADD COLUMN ... DEFAULT` is what gives an upgraded
+-- install's existing row the same value with no `UPDATE`. An empty string is a
+-- real choice ("mute nothing"), distinct from the default. `MutedGenresCodec`
+-- (feature/settings/domain) reads and writes it, and its test pins that its
+-- defaults equal this literal. `mutedGenresInSearch` extends muting to typed search.
+--
+-- `deviceBackupEnabled` was added in `20.sqm` (Device Backup, EPIC 51 WS6, ADR 0034).
+-- Per-device and NOT synced. Off by default: when on, the OS may copy this device's
+-- library into its own backup (iCloud / Google backup / device transfer); when off, the
+-- library is excluded from it. Read by `DeviceBackupExclusion` on iOS and by the Android
+-- backup agent, which runs before Koin exists and so reads the column from the database
+-- file itself.
+--
 -- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
 -- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
 -- is already true on every install that exists — folding the snooze hint into
@@ -95,7 +125,13 @@ CREATE TABLE appSettings (
     triageSnoozePeriod TEXT NOT NULL DEFAULT 'ONE_WEEK',
     triageSnoozePlacement TEXT NOT NULL DEFAULT 'MIXED_IN',
     triageSnoozeHintSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
-    discoverIntroSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    discoverIntroSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    onboardingCompleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    notificationNudgeDismissed INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality',
+    mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -110,9 +146,15 @@ WHERE id = 0;
 -- not a schema one — INSERT OR IGNORE means it only ever affects a row that
 -- does not exist yet, so no `.sqm` migration is needed and no existing
 -- install's saved language changes.
+-- `notificationsEnabled` seeds as 0 (EPIC 47): a brand-new install is asked in
+-- Onboarding, in the nudge or in Settings, never opted in by default. Like
+-- `language` above this is a query literal, and it only ever reaches a row that
+-- does not exist yet, so no install that has the app keeps anything but its own
+-- stored choice (the column DEFAULT stays 1 because SQLite cannot change a
+-- default without rebuilding the table, and nothing relies on it).
 ensureRow:
 INSERT OR IGNORE INTO appSettings(id, theme, language, region, notificationsEnabled)
-VALUES (0, 'SYSTEM', '', 'US', 1);
+VALUES (0, 'SYSTEM', '', 'US', 0);
 
 updateTheme:
 UPDATE appSettings SET theme = :theme WHERE id = 0;
@@ -135,6 +177,12 @@ UPDATE appSettings SET syncCursorEpochMs = :syncCursorEpochMs WHERE id = 0;
 updateTriageControlScheme:
 UPDATE appSettings SET triageControlScheme = :triageControlScheme WHERE id = 0;
 
+updateOnboardingCompleted:
+UPDATE appSettings SET onboardingCompleted = :onboardingCompleted WHERE id = 0;
+
+updateNotificationNudgeDismissed:
+UPDATE appSettings SET notificationNudgeDismissed = :notificationNudgeDismissed WHERE id = 0;
+
 updateTriageTutorialSeen:
 UPDATE appSettings SET triageTutorialSeen = :triageTutorialSeen WHERE id = 0;
 
@@ -143,6 +191,9 @@ UPDATE appSettings SET animationsEnabled = :animationsEnabled WHERE id = 0;
 
 updateTriageDeckAnimations:
 UPDATE appSettings SET triageDeckAnimations = :triageDeckAnimations WHERE id = 0;
+
+updateTickAnimations:
+UPDATE appSettings SET tickAnimations = :tickAnimations WHERE id = 0;
 
 updateCrashReportsEnabled:
 UPDATE appSettings SET crashReportsEnabled = :crashReportsEnabled WHERE id = 0;
@@ -169,6 +220,15 @@ UPDATE appSettings SET triageSnoozeHintSeen = :triageSnoozeHintSeen WHERE id = 0
 -- onboarding fact like `triageTutorialSeen`, so it is not synced.
 updateDiscoverIntroSeen:
 UPDATE appSettings SET discoverIntroSeen = :discoverIntroSeen WHERE id = 0;
+
+updateMutedGenres:
+UPDATE appSettings SET mutedGenres = :mutedGenres WHERE id = 0;
+
+updateMutedGenresInSearch:
+UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch WHERE id = 0;
+
+updateDeviceBackupEnabled:
+UPDATE appSettings SET deviceBackupEnabled = :deviceBackupEnabled WHERE id = 0;
 
 -- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
 deleteRow:
