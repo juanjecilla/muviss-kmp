@@ -33,6 +33,15 @@ class NoOpSyncBackend : SyncBackend {
 
     override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit> = Result.success(Unit)
 
+    /** There is never a session, so never a grant. */
+    override suspend fun syncGrantedUntil(): Long? = null
+
+    override suspend fun refreshSession(): Result<SyncSession> = Result.failure(notConfigured())
+
+    override suspend fun fetchEntitlement(): Result<ServerEntitlement?> = Result.success(null)
+
+    override suspend fun deleteAccount(): Result<Unit> = Result.failure(notConfigured())
+
     private fun notConfigured(): IllegalStateException = IllegalStateException(
         "Sync is not configured: SYNC_ENABLED and SUPABASE_URL/SUPABASE_ANON_KEY must all be set in local.properties (see docs/SYNC.md).",
     )

@@ -97,6 +97,18 @@ data, and it can only ever reach the caller. Play also wants a deletion path
 outside the app; that is a page on the website that explains the in-app
 path and offers an email request, not a second implementation.
 
+**Deleting the account erases the device's library.** Signing out keeps it
+(below); deleting does not. Once the server has deleted the account, the
+library belongs to nobody who can sync it, and keeping a copy of data the
+person asked to delete would make the deletion a sign-out with extra steps.
+The erase is Settings' "Delete all data", reached through the same use case,
+so the two cannot diverge, and it runs only after the server confirms: a
+failed call touches nothing locally. The confirmation says so before the
+call. If the server confirmed and the erase then fails, the account is still
+gone, so the outcome says that (`DeletedLocalDataNotErased`) rather than
+reporting a failure the person would retry against an account that no longer
+exists.
+
 ## When the account changes
 
 **Signing out keeps the local library.** The app is offline-first and works

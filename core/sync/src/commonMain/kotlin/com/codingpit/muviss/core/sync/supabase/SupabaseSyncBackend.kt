@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.sync.MediaListChange
 import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.PULL_PAGE_ROWS
 import com.codingpit.muviss.core.sync.PUSH_CHUNK_ROWS
+import com.codingpit.muviss.core.sync.ServerEntitlement
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
@@ -18,6 +19,7 @@ import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionExpiredException
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.SyncTable
+import com.codingpit.muviss.core.sync.SyncWriteRefusedException
 import com.codingpit.muviss.core.sync.TriageDecisionChange
 import com.codingpit.muviss.core.sync.TriageSnoozeChange
 import com.codingpit.muviss.core.sync.companion.CompanionBackend
@@ -58,6 +60,7 @@ internal class SupabaseSyncBackend(
 
     private val auth = SupabaseAuthClient(client, baseUrl, anonKey)
     private val postgrest = SupabasePostgrestClient(client, baseUrl, anonKey)
+    private val functions = SupabaseFunctionsClient(client, baseUrl, anonKey)
 
     /**
      * Co-watch's backend over this one's PostgREST client and tokens (EPIC 41).
@@ -130,9 +133,21 @@ internal class SupabaseSyncBackend(
         pushRows(TABLE_EPISODE_PLAY, changes.episodePlays, EpisodePlayChange.serializer())
     }
 
+    /**
+     * A row-level-security refusal is surfaced as [SyncWriteRefusedException]
+     * rather than a plain HTTP failure: since ADR 0019 it is what the server
+     * answers a push from a token without a live `sync_until` claim, which the
+     * engine shows as the paywall. Whether this particular refusal *was* that
+     * is the engine's to decide (see [SyncWriteRefusedException]).
+     */
     private suspend fun <T> pushRows(table: String, rows: List<T>, serializer: KSerializer<T>) {
         rows.chunked(PUSH_CHUNK_ROWS).forEach { chunk ->
-            withAccessToken { token -> postgrest.upsert(table, token, chunk, serializer) }
+            try {
+                withAccessToken { token -> postgrest.upsert(table, token, chunk, serializer) }
+            } catch (refused: SupabaseHttpException) {
+                if (refused.isRowLevelSecurityRefusal) throw SyncWriteRefusedException(refused)
+                throw refused
+            }
         }
     }
 
@@ -149,6 +164,35 @@ internal class SupabaseSyncBackend(
                 SyncTable.EPISODE_PLAY -> drain(RemoteTable(table, TABLE_EPISODE_PLAY, EpisodePlayChange.serializer()) { SyncChangeSet(episodePlays = it) }, start, onPage)
             }
         }
+    }
+
+    /** The token's `sync_until` claim (ADR 0019); see [syncUntilClaimEpochMs] for why reading it unverified is enough. */
+    override suspend fun syncGrantedUntil(): Long? {
+        ensureRestored()
+        return sessionState.value?.accessToken?.let(::syncUntilClaimEpochMs)
+    }
+
+    override suspend fun refreshSession(): Result<SyncSession> = runCatching {
+        ensureRestored()
+        val current = sessionState.value ?: error("Sync attempted while signed out")
+        renewSession(replacing = current.accessToken)
+    }
+
+    override suspend fun fetchEntitlement(): Result<ServerEntitlement?> = runCatching {
+        val row = withAccessToken { token -> postgrest.selectEntitlement(token) } ?: return@runCatching null
+        val expiresAt = row.expiresAt?.let { raw -> parseInstantEpochMs(raw) ?: error("entitlement.expires_at is not an ISO-8601 instant") }
+        ServerEntitlement(active = row.active, expiresAtEpochMs = expiresAt)
+    }
+
+    /**
+     * Deletes the account, then forgets the session **locally only**. No
+     * `/logout`: the user and its sessions are already gone server-side, and the
+     * access token (valid for up to an hour longer) now addresses rows that no
+     * longer exist — a push with it would be a 409 on the missing user.
+     */
+    override suspend fun deleteAccount(): Result<Unit> = runCatching {
+        withAccessToken { token -> functions.deleteAccount(token) }
+        clearSession()
     }
 
     /** One synced table as this backend addresses it: its seam name, its PostgREST name, and how its rows decode and wrap into a [SyncChangeSet]. */
@@ -201,8 +245,9 @@ internal class SupabaseSyncBackend(
      * sync alive, since Supabase tokens last about an hour; the reactive
      * half covers the cases the expiry stamp cannot predict — a device clock
      * that is wrong, or a token revoked server-side before its time. Retrying
-     * is safe because both callers are idempotent: PostgREST upserts
-     * `merge-duplicates`, and a pull is a read.
+     * is safe because every caller is idempotent: PostgREST upserts
+     * `merge-duplicates`, a pull is a read, and a second `delete-account` for a
+     * user the first one already deleted is a 401 rather than a second delete.
      */
     override suspend fun <T> withAccessToken(block: suspend (String) -> T): T {
         val token = requireAccessToken()
@@ -210,7 +255,7 @@ internal class SupabaseSyncBackend(
             block(token)
         } catch (e: SupabaseHttpException) {
             if (e.status != HTTP_UNAUTHORIZED) throw e
-            block(refreshSession().accessToken)
+            block(renewSession(replacing = token).accessToken)
         }
     }
 
@@ -219,7 +264,7 @@ internal class SupabaseSyncBackend(
         val current = sessionState.value ?: error("Sync attempted while signed out")
         val expiresAt = current.expiresAtEpochMs ?: return current.accessToken
         if (clock.nowEpochMs() < expiresAt - REFRESH_LEEWAY_MS) return current.accessToken
-        return refreshSession().accessToken
+        return renewSession(replacing = current.accessToken).accessToken
     }
 
     /**
@@ -233,13 +278,20 @@ internal class SupabaseSyncBackend(
      * turned every stretch offline into a forced re-login — the more often
      * sync runs unattended, the more often that would have fired. The session
      * stays, the error propagates, and the next attempt tries again.
+     *
+     * [replacing] is the access token the caller found wanting. If the session
+     * no longer holds it, another caller renewed it while this one waited on
+     * the lock, and the result is reused rather than spending a second refresh
+     * token. Keying that off the token rather than the expiry stamp is what
+     * lets a *reactive* renewal happen at all: a 401 on a token with time left
+     * (revoked early, a wrong device clock) or a token minted before a purchase
+     * (ADR 0019) has a perfectly good expiry, and the stamp-based check this
+     * replaced returned the same rejected token straight back.
      */
-    private suspend fun refreshSession(): SyncSession = refreshMutex.withLock {
+    private suspend fun renewSession(replacing: String): SyncSession = refreshMutex.withLock {
         ensureRestored()
         val current = sessionState.value ?: error("Sync attempted while signed out")
-        // Another caller may have refreshed while this one waited on the lock.
-        val expiresAt = current.expiresAtEpochMs
-        if (expiresAt != null && clock.nowEpochMs() < expiresAt - REFRESH_LEEWAY_MS) return@withLock current
+        if (current.accessToken != replacing) return@withLock current
         val refreshToken = current.refreshToken
         if (refreshToken == null) {
             clearSession()

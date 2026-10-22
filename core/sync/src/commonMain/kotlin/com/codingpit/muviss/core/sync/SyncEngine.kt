@@ -106,6 +106,7 @@ class SyncEngine(
     private val widgetRefresher: WidgetRefresher = AppWidgets,
     private val automatic: AutomaticSyncSettings = AutomaticSyncSettings(),
     private val titleRefresher: TitleRefresher = NoOpTitleRefresher,
+    private val localDataEraser: AccountLocalDataEraser = NoOpAccountLocalDataEraser,
 ) : SyncRunner {
     private val availability get() = automatic.availability
     private val syncAutomatically get() = automatic.switch
@@ -260,6 +261,11 @@ class SyncEngine(
      */
     private suspend fun guarded(block: suspend () -> SyncOutcome): SyncOutcome = runCatching { block() }.getOrElse { failure ->
         if (failure is CancellationException) throw failure
+        // A refused push is the paywall only when the credentials that made it
+        // carry no live grant (ADR 0019). The same refusal answers a write the
+        // policy forbids for any other reason — a forged co-watch row is the
+        // known one — and that stays a failure.
+        if (failure.isWriteRefusal() && !credentialsGrantSync()) return@getOrElse SyncOutcome.NotEntitled
         val reason = SyncFailureReason.classify(failure)
         val detail = failure.message ?: failure::class.simpleName ?: "Sync failed"
         recordFailure(reason, detail)
@@ -267,6 +273,10 @@ class SyncEngine(
     }
 
     private suspend fun syncCycle(userId: String, beforePush: suspend () -> Unit = {}): SyncOutcome {
+        // Before anything, including adopting the account: a server that will
+        // refuse every push and answer every pull with nothing must not be
+        // talked to as though it were syncing (ADR 0019).
+        if (!serverWillAcceptSync()) return SyncOutcome.NotEntitled
         database.syncStateQueries.ensureRow()
         val owner = currentOwner()
         when {
@@ -306,12 +316,100 @@ class SyncEngine(
         if (pulled > 0) refreshWidgets()
         if (touched.isNotEmpty()) refreshTitles(touched)
 
+        // The grant can lapse mid-cycle — a 401 renewal mid-pull mints a token
+        // without the claim — and an unentitled pull is `200 []`, which looks
+        // exactly like "nothing new". Whatever pages did arrive were real and
+        // stay applied; what must not happen is "last synced" advancing over
+        // a pull that could not see anything.
+        if (!credentialsGrantSync()) return SyncOutcome.NotEntitled
+
         // "Last synced" answers "when did this device last complete a cycle",
         // and must advance even when the pull came back empty.
         val finishedAt = clock.nowEpochMs()
         database.appSettingsQueries.updateLastSyncedAt(finishedAt)
         database.syncStateQueries.recordSuccess(finishedAt)
         return SyncOutcome.Success(pushedCount = pushed, pulledCount = pulled, syncedAtEpochMs = finishedAt)
+    }
+
+    /** Whether the session's credentials carry a grant the server will still honour now. Local; no network. */
+    private suspend fun credentialsGrantSync(): Boolean = backend.syncGrantedUntil()?.let { it > clock.nowEpochMs() } ?: false
+
+    /**
+     * Whether the server will accept this cycle at all. Credentials are minted
+     * with the grant they had at the time, so a purchase — on this device or on
+     * another — reaches the server's gate only through new ones. The engine
+     * only gets here once [EntitlementGate] has said yes, so credentials that
+     * say no are the stale ones: renew them once and ask again. A renewal that
+     * fails propagates (offline, or a dead session) and is reported as such.
+     */
+    private suspend fun serverWillAcceptSync(): Boolean {
+        if (credentialsGrantSync()) return true
+        backend.refreshSession().getOrThrow()
+        return credentialsGrantSync()
+    }
+
+    private fun Throwable.isWriteRefusal(): Boolean {
+        var current: Throwable? = this
+        var depth = 0
+        while (current != null && depth < MAX_CAUSE_DEPTH) {
+            if (current is SyncWriteRefusedException) return true
+            current = current.cause
+            depth++
+        }
+        return false
+    }
+
+    /**
+     * Deletes the signed-in account and everything the server holds for it
+     * (ADR 0019), then erases this device's library, one cycle's lock held so no
+     * push can race it into a 409 on the vanished user.
+     *
+     * The device's library is **erased**, and the person is told so before this
+     * is called (the confirmation copy belongs to the UI that calls it). A
+     * deleted account's library cannot be synced to anyone, and keeping it would
+     * leave a copy of data the person asked to delete. The erasure is the
+     * injected [AccountLocalDataEraser], which is Settings' "Delete all data",
+     * so the two cannot drift apart.
+     *
+     * It runs only after the server confirms, and a failed server call touches
+     * nothing locally. If the server confirmed but the local erasure throws,
+     * the account is still gone, so the engine forgets whose library this was
+     * (the owner and the cursors) and reports [AccountDeletionOutcome.DeletedLocalDataNotErased]
+     * rather than a success.
+     */
+    suspend fun deleteAccount(): AccountDeletionOutcome = withContext(dispatchers.io) {
+        syncMutex.withLock {
+            if (backend.session.first() == null) return@withLock AccountDeletionOutcome.NotSignedIn
+            backend.deleteAccount().fold(
+                onSuccess = { eraseAfterAccountDeleted() },
+                onFailure = { failure ->
+                    if (failure is CancellationException) throw failure
+                    AccountDeletionOutcome.Failed(SyncFailureReason.classify(failure))
+                },
+            )
+        }
+    }
+
+    private suspend fun eraseAfterAccountDeleted(): AccountDeletionOutcome {
+        val erasure = runCatching { localDataEraser.eraseLocalData() }.exceptionOrNull()
+        if (erasure is CancellationException) throw erasure
+        if (erasure == null) {
+            refreshWidgets()
+            return AccountDeletionOutcome.Deleted
+        }
+        forgetOwner()
+        refreshWidgets()
+        return AccountDeletionOutcome.DeletedLocalDataNotErased(SyncFailureReason.classify(erasure))
+    }
+
+    /** The owner, the cursors and the last failure all belonged to an account that no longer exists. */
+    private suspend fun forgetOwner() {
+        database.syncStateQueries.ensureRow()
+        database.transaction {
+            database.syncStateQueries.setOwner(null)
+            database.syncStateQueries.clearFailure()
+            changeLog.resetCursors()
+        }
     }
 
     private suspend fun currentOwner(): String? = database.syncStateQueries.selectState().awaitAsOneOrNull()?.ownerAccountId
@@ -358,6 +456,27 @@ class SyncEngine(
 }
 
 private const val OUTCOME_FAILED = "FAILED"
+private const val MAX_CAUSE_DEPTH = 8
+
+/** The outcome of [SyncEngine.deleteAccount]. Copy keys off [Failed.reason]; there is no text to show. */
+sealed interface AccountDeletionOutcome {
+    /** The server deleted the account and its data, and this device is signed out and its library erased. */
+    data object Deleted : AccountDeletionOutcome
+
+    /**
+     * The server deleted the account and this device is signed out, but the
+     * local library could not be erased. The account is gone either way, so this
+     * is not [Failed]: the UI should say the account was deleted and offer
+     * "Delete all data" for the rest. [reason] says what went wrong, with no text.
+     */
+    data class DeletedLocalDataNotErased(val reason: SyncFailureReason) : AccountDeletionOutcome
+
+    /** There was no account to delete. */
+    data object NotSignedIn : AccountDeletionOutcome
+
+    /** Nothing was deleted (or the server cannot say it was); the session and the library are untouched unless the session was dead. */
+    data class Failed(val reason: SyncFailureReason) : AccountDeletionOutcome
+}
 
 /** What [SyncEngine.observeStatus] reports; everything the Profile status line needs, and no copy. */
 data class SyncStatusSnapshot(

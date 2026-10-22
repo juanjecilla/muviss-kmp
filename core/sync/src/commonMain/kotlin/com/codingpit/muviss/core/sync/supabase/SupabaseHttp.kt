@@ -14,7 +14,27 @@ internal class SupabaseHttpException(
     val status: Int,
     what: String,
     body: String,
-) : RuntimeException("Supabase $what failed with HTTP $status${if (body.isBlank()) "" else ": $body"}")
+) : RuntimeException("Supabase $what failed with HTTP $status${if (body.isBlank()) "" else ": $body"}") {
+    /**
+     * PostgREST's error `code` (a Postgres SQLSTATE such as `42501`, or a
+     * `PGRSTxxx`), or null when the body carries none. Read with a pattern
+     * rather than a JSON parse because the body was truncated to
+     * [ERROR_BODY_LIMIT] and may no longer be valid JSON.
+     */
+    val postgrestCode: String? = POSTGREST_CODE.find(body)?.groupValues?.get(1)
+
+    /**
+     * A row-level-security refusal: HTTP 403 with SQLSTATE `42501`
+     * (`insufficient_privilege`). On a synced table that is what a push gets
+     * when the token carries no live `sync_until` claim (ADR 0019) — and also
+     * what a forged co-watch row gets, which is why the status and code alone
+     * never decide that a refusal is the paywall.
+     */
+    val isRowLevelSecurityRefusal: Boolean get() = status == HTTP_FORBIDDEN && postgrestCode == SQLSTATE_INSUFFICIENT_PRIVILEGE
+}
+
+private val POSTGREST_CODE = Regex("\"code\"\\s*:\\s*\"([^\"]+)\"")
+private const val SQLSTATE_INSUFFICIENT_PRIVILEGE = "42501"
 
 /**
  * Ktor's `expectSuccess` is off for the shared client (`:core:network`'s

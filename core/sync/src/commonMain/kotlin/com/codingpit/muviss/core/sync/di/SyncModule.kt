@@ -3,11 +3,13 @@ package com.codingpit.muviss.core.sync.di
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.sync.AccountLocalDataEraser
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.BuildSyncAvailability
 import com.codingpit.muviss.core.sync.DeepLinkRedirectTarget
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.MuvissBuildConfig
+import com.codingpit.muviss.core.sync.NoOpAccountLocalDataEraser
 import com.codingpit.muviss.core.sync.NoOpSyncBackend
 import com.codingpit.muviss.core.sync.NoOpTitleRefresher
 import com.codingpit.muviss.core.sync.OAuthRedirectTarget
@@ -49,6 +51,9 @@ val syncModule: Module = module {
     // overrides it once the collection feature's Koin module (which this
     // module cannot depend on, ADR 0004) is in the graph. See issue #101.
     single<TitleRefresher> { NoOpTitleRefresher }
+    // The same shape again, for the same reason: `:app:shared` binds the
+    // settings feature's eraser over it (ADR 0019, "Deleting the account").
+    single<AccountLocalDataEraser> { NoOpAccountLocalDataEraser }
     single { SignInFeedback() }
     // The scheme-based default. :app:desktopApp rebinds this to its loopback
     // server (ADR 0017); Koin's last binding wins, the same way
@@ -95,6 +100,7 @@ val syncModule: Module = module {
             entitlementGate = get(),
             automatic = get(),
             titleRefresher = get(),
+            localDataEraser = get(),
         )
     }
     single<SyncRunner> { get<SyncEngine>() }
