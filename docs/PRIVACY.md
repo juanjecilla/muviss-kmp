@@ -1,6 +1,6 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-10-21._
+_Last updated: 2026-10-22._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
@@ -127,7 +127,7 @@ if you choose to give one so we can reply) goes to the form provider and to us,
 never through the app. The link carries four values so a request can be
 understood: the **app version**, the **platform** (Android, iOS, desktop or
 web), the **operating system version** and the **app language**. It carries no
-identifier, nothing about your library and nothing about your settings. Opening
+identifier, nothing about your library and nothing about your other settings. Opening
 the page is an ordinary web request, so the provider's server receives that
 link, with those four values in it, as soon as the page loads, whether or not
 you go on to submit anything; closing the page without submitting means no
@@ -152,8 +152,12 @@ backup already holds is outside Muviss and is not touched by either; delete it
 where that backup lives (the phone's backup settings for iCloud or Google, or
 the computer that holds an iPhone backup).
 (A feature request you submit through the form is another exception: it
-lives with the form provider, outside the app, so deleting data in Muviss
-cannot remove it; ask us through the contact below and we will delete it. The
+lives outside the app, so deleting data in Muviss cannot remove it. It can
+exist in up to three places: with the form provider, in the notification email
+the provider sends us, and, if it was copied there, in a public issue (its
+text only, never your email address). Ask us through the contact below and we
+will delete all three: the response at the provider, the email, and the issue
+or the copied text in it. The
 issue tracker is public, so do not put your email address or the text of the
 request in that issue: say only that you want a request deleted, and we will
 reply there with a private way to identify it.)
