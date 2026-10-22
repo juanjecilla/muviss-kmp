@@ -11,9 +11,17 @@ name: Gradle verification metadata
 # (docs/RELEASING.md "Dependency verification"). The release App pushes, because a
 # push with GITHUB_TOKEN would not start CI on the new commit.
 #
-# macOS, because the iOS lanes only resolve there. This repository is public, so the
-# minutes are free.
+# One OS after another (macOS, Linux, Windows): some artifacts are picked by the host
+# (aapt2, Skiko's runtime, the Kotlin/Native toolchain) and the iOS lanes only run on
+# macOS, so each OS adds its own checksums and keeps the others'. This repository is
+# public, so the minutes are free. `workflow_dispatch` does the same for any branch,
+# which is how the file is first filled in and how it is repaired by hand.
 on:
+  workflow_dispatch:
+  # TEMPORARY (remove before merge): lets this branch fill the file in before the
+  # workflow exists on develop, which `workflow_dispatch` needs.
+  push:
+    branches: [ build/gradle-dependency-verification ]
   pull_request:
     branches: [ develop ]
     paths:
@@ -30,10 +38,21 @@ concurrency:
 
 jobs:
   regenerate:
-    name: Regenerate checksums for a Dependabot bump
-    if: github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/')
-    runs-on: macos-15
+    name: Regenerate checksums (${{ matrix.os }})
+    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(deps): checksums for')) || github.event_name == 'workflow_dispatch' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-15
+          - os: ubuntu-24.04
+          - os: windows-2025
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Mint a release App token
         id: app
@@ -44,7 +63,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.head_ref || github.ref_name }}
           token: ${{ steps.app.outputs.token }}
 
       - name: Set up JDK 21 (Corretto)
@@ -75,6 +94,6 @@ jobs:
           git config user.name "${SLUG}[bot]"
           git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
           git add gradle/verification-metadata.xml
-          git commit -m "chore(deps): checksums for this bump (gradle/verification-metadata.xml)"
+          git commit -m "chore(deps): checksums for ${{ matrix.os }} (gradle/verification-metadata.xml)"
           git push
           git diff --stat HEAD~1 -- gradle/verification-metadata.xml >> "$GITHUB_STEP_SUMMARY"

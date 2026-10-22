@@ -4,8 +4,10 @@
 # what it sees and keeps what it already trusted, so a version bump adds the new
 # artifacts' sha256 and leaves the old entries (prune with --prune below).
 #
-# Needs macOS: the iOS lanes only run there, and an entry for an artifact only a
-# lane we skipped would resolve is a check CI would then fail on.
+# Run it once per OS CI builds on (macOS, Linux, Windows): some artifacts are chosen by
+# the host (aapt2, Skiko's native runtime, the Kotlin/Native toolchain), so each OS adds
+# its own and Gradle keeps what the others wrote. The iOS lanes run on macOS only.
+# gradle-verification.yml does all three in turn.
 #
 #   scripts/gradle/update-verification.sh          add what a bump needs
 #   scripts/gradle/update-verification.sh --prune  also drop entries nothing resolves any more
@@ -17,6 +19,11 @@ if [ "${1:-}" = "--prune" ]; then
   rm -f gradle/verification-metadata.xml
 fi
 
+case "$(uname -s)" in
+  Darwin) ios_tasks=(iosSimulatorArm64Test linkReleaseFrameworkIosSimulatorArm64) ;;
+  *) ios_tasks=() ;;
+esac
+
 ./gradlew \
   --init-script scripts/gradle/resolve-all.init.gradle.kts \
   --write-verification-metadata sha256 \
@@ -26,7 +33,7 @@ fi
   spotlessCheck detekt \
   jvmTest :app:androidApp:testDebugUnitTest :app:desktopApp:test \
   compileKotlinJs compileKotlinWasmJs allMetadataJar \
-  iosSimulatorArm64Test linkReleaseFrameworkIosSimulatorArm64 \
+  "${ios_tasks[@]}" \
   :app:androidApp:assembleDebug :app:androidApp:lintDebug \
   :app:androidApp:assembleRelease :app:androidApp:bundleRelease \
   :app:androidApp:licenseeAndroidRelease :app:androidApp:verifyReleaseExceptionClasses \
