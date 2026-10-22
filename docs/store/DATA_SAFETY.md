@@ -71,7 +71,7 @@ in all three places. Both processes are stated in `docs/PRIVACY.md`.
   — only when the user opens **Settings → About → Request a feature**. Muviss
   hands the system browser a link; nothing is posted from the app. The link
   carries the app version, platform, OS version (where the app can read it;
-  not on the web) and app language (no
+  not on the web) and device language and region (no
   identifier, nothing from the library), and the provider gets those values when
   the page loads (Tally with the page request; Typeform from its page script,
   since a URL fragment is not sent with the request). What the user then types is theirs to

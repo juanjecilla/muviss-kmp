@@ -127,7 +127,7 @@ if you choose to give one so we can reply) goes to the form provider and to us,
 never through the app. The link carries up to four values so a request can be
 understood: the **app version**, the **platform** (Android, iOS, desktop or
 web), the **operating system version** where the app can read it (on the web
-it cannot, so that one is left out) and the **app language**. It carries no
+it cannot, so that one is left out) and the **device language and region** (for example `es-ES`). It carries no
 identifier, nothing about your library and nothing about your other settings. The
 provider receives those values as soon as the page loads, whether or not you
 go on to submit anything: Tally's server gets them with the request for the
