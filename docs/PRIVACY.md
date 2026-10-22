@@ -128,10 +128,11 @@ never through the app. The link carries up to four values so a request can be
 understood: the **app version**, the **platform** (Android, iOS, desktop or
 web), the **operating system version** where the app can read it (on the web
 it cannot, so that one is left out) and the **app language**. It carries no
-identifier, nothing about your library and nothing about your other settings. Opening
-the page is an ordinary web request, so the provider's server receives that
-link, with those values in it, as soon as the page loads, whether or not
-you go on to submit anything; closing the page without submitting means no
+identifier, nothing about your library and nothing about your other settings. The
+provider receives those values as soon as the page loads, whether or not you
+go on to submit anything: Tally's server gets them with the request for the
+page, and Typeform's page reads them from the link and sends them to Typeform
+while it loads; closing the page without submitting means no
 response is sent. The row appears only when a form has been set up. The text
 of a request may be copied into the project's public issue tracker so it can
 be planned, **never with your email address**; leave anything private out of

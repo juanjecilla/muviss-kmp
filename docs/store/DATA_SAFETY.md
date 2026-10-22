@@ -69,8 +69,9 @@ uninstalling. This is stated in `docs/PRIVACY.md`.
   hands the system browser a link; nothing is posted from the app. The link
   carries the app version, platform, OS version (where the app can read it;
   not on the web) and app language (no
-  identifier, nothing from the library), and the provider's server sees it when
-  the page loads, as it would any URL. What the user then types is theirs to
+  identifier, nothing from the library), and the provider gets those values when
+  the page loads (Tally with the page request; Typeform from its page script,
+  since a URL fragment is not sent with the request). What the user then types is theirs to
   submit. Not "data collected" by the app in Play's sense, but recorded so the
   answer stays consistent with `docs/PRIVACY.md`.
 
