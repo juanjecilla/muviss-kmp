@@ -78,12 +78,16 @@ class FeatureRequestLinkTest {
 
     @Test
     fun only_an_absolute_https_url_shows_the_row() {
-        listOf("none", "tally.so/r/abc", "http://tally.so/r/abc", "https://", "https:///r/abc", "https://:443/r/abc", "https://user@:443/r/abc", "https://tally.so:x/r/abc", "ftp://tally.so/r/abc").forEach {
+        listOf("none", "tally.so/r/abc", "http://tally.so/r/abc", "https://", "https:///r/abc", "https://:443/r/abc", "https://user@:443/r/abc", "https://tally.so:x/r/abc", "https://tally.so:65536/r/abc", "https://tally.so:999999/r/abc", "ftp://tally.so/r/abc").forEach {
             assertNull(FeatureRequestLink.build(FeatureRequestProvider.Tally, it, context), it)
         }
         assertEquals(
             "https://tally.so:443/r/abc?version=1.2.0&platform=android&os=15&locale=es-ES",
             FeatureRequestLink.build(FeatureRequestProvider.Tally, "https://tally.so:443/r/abc", context),
+        )
+        assertEquals(
+            "https://tally.so:65535/r/abc?version=1.2.0&platform=android&os=15&locale=es-ES",
+            FeatureRequestLink.build(FeatureRequestProvider.Tally, "https://tally.so:65535/r/abc", context),
         )
         assertEquals(
             "HTTPS://tally.so/r/abc?version=1.2.0&platform=android&os=15&locale=es-ES",

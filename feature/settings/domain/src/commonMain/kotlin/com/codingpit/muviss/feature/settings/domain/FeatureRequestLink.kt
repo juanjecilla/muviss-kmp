@@ -65,8 +65,11 @@ object FeatureRequestLink {
         } else {
             authority.substringBefore(':') to authority.substringAfter(':', missingDelimiterValue = "")
         }
-        return host.isNotEmpty() && host != "[]" && host != "]" && port.all { it in '0'..'9' }
+        return host.isNotEmpty() && host != "[]" && host != "]" && isPort(port)
     }
+
+    /** Empty (the scheme's default) or a whole number a URL parser accepts: 0..65535. */
+    private fun isPort(port: String): Boolean = port.isEmpty() || (port.length <= 5 && port.all { it in '0'..'9' } && port.toInt() <= MAX_PORT)
 
     private fun splitFragment(url: String): Pair<String, String> {
         val i = url.indexOf('#')
@@ -90,4 +93,5 @@ object FeatureRequestLink {
     private fun isUnreserved(ch: Char): Boolean = ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch in "-._~"
 
     private const val HEX = "0123456789ABCDEF"
+    private const val MAX_PORT = 65535
 }
