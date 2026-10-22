@@ -57,8 +57,15 @@ object FeatureRequestLink {
     private fun isAbsoluteHttps(url: String): Boolean {
         val scheme = "https://"
         if (!url.startsWith(scheme, ignoreCase = true)) return false
-        val host = url.substring(scheme.length).takeWhile { it !in "/?#" }
-        return host.isNotEmpty() && host.none { it.isWhitespace() }
+        val authority = url.substring(scheme.length).takeWhile { it !in "/?#" }.substringAfterLast('@')
+        if (authority.any { it.isWhitespace() }) return false
+        val (host, port) = if (authority.startsWith('[')) {
+            authority.substringBefore(']', missingDelimiterValue = "") + "]" to
+                authority.substringAfter(']', missingDelimiterValue = "").removePrefix(":")
+        } else {
+            authority.substringBefore(':') to authority.substringAfter(':', missingDelimiterValue = "")
+        }
+        return host.isNotEmpty() && host != "[]" && host != "]" && port.all { it in '0'..'9' }
     }
 
     private fun splitFragment(url: String): Pair<String, String> {

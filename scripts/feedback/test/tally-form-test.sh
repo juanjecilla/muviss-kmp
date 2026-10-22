@@ -16,7 +16,8 @@ method=""; url=""; body=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -X) method="$2"; shift ;;
-    -H) case "$2" in @*) echo "HEADERFILE $(cat "${2#@}") $(stat -f %Lp "${2#@}" 2>/dev/null || stat -c %a "${2#@}")" >> "$CALLS_LOG" ;; *Authorization*) echo "ARGKEY" >> "$CALLS_LOG" ;; esac; shift ;;
+    # GNU stat first: on Linux `stat -f` is file-system mode and "succeeds" with no mode.
+    -H) case "$2" in @*) echo "HEADERFILE $(cat "${2#@}") $(stat -c %a "${2#@}" 2>/dev/null || stat -f %Lp "${2#@}")" >> "$CALLS_LOG" ;; *Authorization*) echo "ARGKEY" >> "$CALLS_LOG" ;; esac; shift ;;
     --data-binary) body="$(cat "${2#@}")" ;;
     http*) url="$1" ;;
   esac
