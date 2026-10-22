@@ -2,8 +2,8 @@
 
 package com.codingpit.muviss.feature.search.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -21,11 +21,13 @@ import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
+import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
@@ -45,6 +47,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -59,7 +62,7 @@ internal class FakeDetailRepo(
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = detailsFailure?.let { Result.failure<MediaDetails>(it) } ?: Result.success(details)
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
     override suspend fun watchProviders(id: MediaId) = watchProviders
     override suspend fun recommendations(id: MediaId, page: Int) = recommendations
@@ -142,6 +145,7 @@ internal class FakeProgressApi : ProgressApi {
     val markedPrevious = mutableListOf<EpisodeId>()
     val clearedEpisodes = mutableListOf<EpisodeId>()
     var now = 1_000L
+    var writeFailure: Exception? = null
 
     val seenIds: Set<EpisodeId> get() = plays.value.filterValues { it.isNotEmpty() }.keys
 
@@ -171,6 +175,7 @@ internal class FakeProgressApi : ProgressApi {
     override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
 
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) {
+        writeFailure?.let { throw it }
         if (seen) {
             if (plays.value[episodeId].isNullOrEmpty()) addPlay(episodeId)
         } else {
@@ -234,11 +239,6 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = setEpisodeSeen(EpisodeId.forMovie(mediaId), watched)
 }
 
-/** Fixed "today" so aired-vs-unaired is a property of the fixture, not of the calendar. */
-private class TestClock(private val todayEpochMs: Long) : AppClock {
-    override fun nowEpochMs(): Long = todayEpochMs
-}
-
 class DetailViewModelTest {
 
     @BeforeTest
@@ -263,24 +263,28 @@ class DetailViewModelTest {
         seasons = listOf(Season(1, "Season 1", listOf(episode1, episode2))),
     )
 
+    @Suppress("LongParameterList") // one defaulted knob per thing a test varies
     private fun viewModel(
         collectionApi: FakeCollectionApi = FakeCollectionApi(),
         progressApi: FakeProgressApi = FakeProgressApi(),
         detailsToLoad: MediaDetails = details,
         id: MediaId = mediaId,
         repoFakes: DetailRepoFakes = DetailRepoFakes(),
+        settings: FakeMutingApi = FakeMutingApi(),
+        animateTicks: Boolean = true,
     ): DetailViewModel {
         val repo = FakeDetailRepo(detailsToLoad, repoFakes.watchProviders, repoFakes.recommendations, repoFakes.similar, repoFakes.detailsFailure)
             .also(repoFakes.onRepo)
         return DetailViewModel(
             id,
             MediaDetailUseCase(repo),
-            DetailPeers(collectionApi, progressApi, repoFakes.triageApi),
+            DetailPeers(collectionApi, progressApi, repoFakes.triageApi, settings),
             WatchProvidersUseCase(repo),
             MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
             // Day 10 onwards has aired; unairedEpisode (day 9999) has not.
-            TestClock(todayEpochMs = 20L * 86_400_000L),
+            FakeClock(20L * 86_400_000L),
             repoFakes.connectivity,
+            flowOf(animateTicks),
         )
     }
 
@@ -513,6 +517,86 @@ class DetailViewModelTest {
 
         assertTrue(vm.state.value.isSeen(episode1.id))
         assertFalse(vm.state.value.isSeen(episode2.id))
+    }
+
+    @Test
+    fun the_tick_that_leaves_nothing_aired_unseen_raises_a_celebration_once() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+        assertNull(vm.state.value.celebration, "an episode is still left")
+
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+        assertEquals("Caught up on Game of Thrones", vm.state.value.celebration?.label.text())
+
+        vm.consumeCelebration()
+        assertNull(vm.state.value.celebration)
+    }
+
+    @Test
+    fun a_tick_that_fails_to_save_raises_no_celebration() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+
+        progress.writeFailure = IllegalStateException("disk full")
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.celebration)
+    }
+
+    @Test
+    fun ticking_the_last_episode_again_after_an_undo_raises_a_new_celebration() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+        val first = vm.state.value.celebration
+
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+
+        val second = vm.state.value.celebration
+        assertNotNull(first)
+        assertNotNull(second)
+        assertNotEquals(first.token, second.token)
+    }
+
+    @Test
+    fun unaired_and_undated_episodes_do_not_stop_a_show_being_caught_up() = runTest {
+        val season = Season(1, "Season 1", listOf(episode1, episode2, unairedEpisode, undatedSpecial))
+        val vm = viewModel(detailsToLoad = MediaDetails(MediaSummary(show, "Game of Thrones"), seasons = listOf(season)), id = show)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.celebration)
+    }
+
+    @Test
+    fun with_tick_motion_off_the_last_tick_raises_no_celebration() = runTest {
+        val vm = viewModel(detailsToLoad = tvDetails, id = show, animateTicks = false)
+        advanceUntilIdle()
+        vm.toggleEpisodeSeen(episode1.id)
+        advanceUntilIdle()
+
+        vm.toggleEpisodeSeen(episode2.id)
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.celebration)
+        assertEquals(false, vm.state.value.animateTicks)
     }
 
     @Test
@@ -784,5 +868,32 @@ class DetailViewModelTest {
         advanceUntilIdle()
 
         assertTrue(vm.state.value.moreLikeThis.isEmpty())
+    }
+
+    @Test
+    fun moreLikeThis_leaves_out_muted_genres_and_keeps_titles_without_genre_ids() = runTest {
+        val talkShow = MediaSummary(MediaId.tmdbTv("1"), "Late show", genreIds = listOf("35", "10767"))
+        val drama = MediaSummary(MediaId.tmdbTv("2"), "Drama", genreIds = listOf("18"))
+        val unknown = MediaSummary(MediaId.tmdbTv("3"), "Unknown")
+        val vm = viewModel(
+            repoFakes = DetailRepoFakes(recommendations = Result.success(PagedResult(listOf(talkShow, drama, unknown), 1, 1))),
+            settings = FakeMutingApi(MutedGenres(setOf(GenreKey(MediaType.TV, "10767")))),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama, unknown), vm.state.value.moreLikeThis)
+    }
+
+    @Test
+    fun moreLikeThis_shows_muted_genres_while_the_session_chip_is_on() = runTest {
+        val talkShow = MediaSummary(MediaId.tmdbTv("1"), "Late show", genreIds = listOf("10767"))
+        val settings = FakeMutingApi(MutedGenres(setOf(GenreKey(MediaType.TV, "10767")))).also { it.showMuted.value = true }
+        val vm = viewModel(
+            repoFakes = DetailRepoFakes(recommendations = Result.success(PagedResult(listOf(talkShow), 1, 1))),
+            settings = settings,
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf(talkShow), vm.state.value.moreLikeThis)
     }
 }

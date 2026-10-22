@@ -1,0 +1,59 @@
+name: App Store phased ramp
+
+# The daily check on iOS's phased rollout (ADR 0033). Apple rolls a new App Store
+# version out over seven days; this job reads the iOS crash gate for each live
+# version (fastlane/sentry_gate.rb, platform :ios) and pauses that version's
+# phased release through App Store Connect when the gate fails. It resumes only a
+# pause the gate itself made, once the gate passes. A pause the owner made
+# (app-store-brake.yml) is never resumed here. Apple's 30-day pause budget per
+# version is cumulative; a version that has used it is left for an owner decision.
+#
+# Dispatch it to see each decision first: dry_run defaults to true and changes nothing.
+on:
+  schedule:
+    - cron: '30 9 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Evaluate the gate and print what would change; change nothing'
+        type: boolean
+        default: true
+
+# Shared with the Play ramp and the Sunday promotion: every one of them edits the
+# release issues' markers, so none runs at the same time as another.
+concurrency:
+  group: play-promote
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Writing each release issue's marker and comment.
+  issues: write
+
+jobs:
+  ramp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The gate reads each version's versionCode from its RC tag.
+          fetch-depth: 0
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+        with:
+          bundler-cache: true
+
+      - name: Pause or resume each live iOS rollout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          DRY_RUN: ${{ (github.event_name == 'schedule' || inputs.dry_run == false) && 'false' || 'true' }}
+        run: ruby fastlane/ios_promote.rb ramp

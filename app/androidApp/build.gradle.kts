@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.licensee)
     alias(libs.plugins.sentry)
     alias(libs.plugins.baselineprofile)
+    id("muviss.version")
 }
 
 kotlin {
@@ -34,11 +35,19 @@ licensee {
     allow("Apache-2.0")
     allow("MIT")
     // EPIC 22: `androidx.glance:glance-appwidget-external-protobuf` is
-    // Glance's repackaged protobuf and the only BSD-3-Clause artifact in the
-    // graph. Permissive, attribution-only, no Play Store implication — added
+    // Glance's repackaged protobuf, and (EPIC 46) KSafe's DataStore brings the
+    // same thing as `androidx.datastore:datastore-preferences-external-protobuf`
+    // — the only BSD-3-Clause artifacts in the graph. Permissive, attribution-only, no Play Store implication — added
     // deliberately rather than by widening the list to "anything permissive".
     allow("BSD-3-Clause")
     allowUrl("https://opensource.org/license/mit")
+    // EPIC 45: ConfigCat's Kotlin SDK and its one non-Kotlin-stdlib dependency
+    // (kotlin-semver) are MIT, but their POMs name the licence by the URL of
+    // the LICENSE file on GitHub instead of an SPDX id. Checked against each
+    // repository's licence file, and pinned to exactly these two URLs rather
+    // than allowing "any raw.githubusercontent.com".
+    allowUrl("https://raw.githubusercontent.com/configcat/kotlin-sdk/main/LICENSE")
+    allowUrl("https://raw.githubusercontent.com/z4kn4fein/kotlin-semver/main/LICENSE")
 }
 
 dependencies {
@@ -61,6 +70,7 @@ dependencies {
     implementation(projects.core.sync)
     // TmdbFailureTrace: the debug-only logcat trace of swallowed TMDB failures (#177).
     implementation(projects.core.network)
+    implementation(projects.core.secrets)
     implementation(libs.koin.core)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.work.runtimeKtx)
@@ -118,72 +128,43 @@ val hasReleaseSigningConfig =
         rootProject.file(releaseStoreFile).exists()
 
 // -----------------------------------------------------------------------
-// Versioning derived from git, so nobody has to remember to bump a constant
-// by hand. versionCode = total commit count on HEAD: it only ever goes up,
-// which is all Play Store requires, and works even before the first tag
-// exists (the repo currently has none). versionName mirrors the latest
-// tag when one is reachable, otherwise falls back to a readable dev label.
+// Versioning derived from git (MuvissVersion in build-logic, shared with
+// :core:common and :app:desktopApp): versionCode is `major·1e6 + minor·1e4 +
+// patch·100 + rcN` on an exact release tag, else the commit count on HEAD
+// (ADR 0030); versionName is the latest reachable tag or a dev label.
 // -----------------------------------------------------------------------
-// Uses ProviderFactory.exec (not java.lang.ProcessBuilder) because running an
-// external process directly at configuration time is incompatible with the
-// configuration cache this project enables (see gradle.properties); exec()
-// is the supported, cacheable equivalent.
-fun gitOutput(vararg args: String): String? = try {
-    val result =
-        providers.exec {
-            commandLine(*args)
-            workingDir = rootDir
-            isIgnoreExitValue = true
-        }
-    if (result.result.get().exitValue != 0) {
-        null
-    } else {
-        result.standardOutput.asText.get().trim().ifEmpty { null }
-    }
-} catch (_: Exception) {
-    null // git not installed / not a git checkout (e.g. a source-only archive)
-}
-
 // A release build without git would ship versionCode 1, which Play rejects as a
 // downgrade after the first upload (#77) — fail instead. Debug and test builds
 // keep the fallback so a source-only archive still compiles.
+// Only this project's release outputs count (#271). A qualified name (`:app:
+// shared:linkReleaseFramework...`, `:app:desktopApp:packageReleaseDmg`) runs in
+// its own project and says nothing about this one, so a shallow clone can run
+// it; an unqualified one (`bundleRelease`) runs in every project that has it,
+// this one included.
 val isReleaseInvocation =
     gradle.startParameter.taskNames.any { name ->
-        name.contains("Release", ignoreCase = true) || name.substringAfterLast(':').startsWith("bundle")
+        val qualified = name.contains(':')
+        val ownTask = !qualified || name.removePrefix(":").startsWith(project.path.removePrefix(":") + ":")
+        val local = name.substringAfterLast(':')
+        ownTask && (local.contains("Release", ignoreCase = true) || local.startsWith("bundle"))
     }
 
 // A shallow clone counts only the commits it fetched (often 1), which is the
-// same downgrade with extra steps.
-val isShallowCheckout = gitOutput("git", "rev-parse", "--is-shallow-repository") == "true"
-
-if (isReleaseInvocation && isShallowCheckout) {
-    error("versionCode comes from `git rev-list --count HEAD`, which is wrong in a shallow clone. Use fetch-depth: 0.")
+// same downgrade with extra steps. The release formula does not read the count,
+// but an untagged release build falls back to it.
+if (isReleaseInvocation && muvissVersion.isShallowCheckout) {
+    error("versionCode comes from git (the release tag, or `git rev-list --count HEAD`), which is wrong in a shallow clone. Use fetch-depth: 0.")
 }
 
 val gitVersionCode: Int =
-    gitOutput("git", "rev-list", "--count", "HEAD")?.toIntOrNull()
+    muvissVersion.codeOrNull
         ?: if (isReleaseInvocation) {
-            error("versionCode comes from `git rev-list --count HEAD`, and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
+            error("versionCode comes from git (the release tag, or `git rev-list --count HEAD`), and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
         } else {
             1
         }
 
-val gitVersionName: String = run {
-    val describe = gitOutput("git", "describe", "--tags", "--always", "--dirty")
-    // `-rcN` is dropped on purpose: production gets the RC binary itself
-    // (ADR 0025), so an RC has to carry the final versionName already.
-    val tagPattern = Regex("""^v?(\d+\.\d+\.\d+)(-rc\d+)?(-\d+-g[0-9a-f]+)?(-dirty)?$""")
-    val tagVersion = describe?.let { tagPattern.matchEntire(it)?.groupValues?.get(1) }
-    when {
-        tagVersion != null -> tagVersion
-
-        // reachable, but no tags yet
-        describe != null -> "0.1.0-dev.$gitVersionCode+$describe"
-
-        // git unavailable
-        else -> "0.1.0-dev.$gitVersionCode"
-    }
-}
+val gitVersionName: String = muvissVersion.name
 
 // -----------------------------------------------------------------------
 // Compose Resources must reach the package (#165). They ride on Android
@@ -273,6 +254,10 @@ tasks.register("verifyReleaseExceptionClasses") {
     group = "verification"
     description = "Fails if R8 merged one of the app's exceptions into another class (#199)."
     dependsOn("minifyReleaseWithR8")
+    // AGP 9.1+ rewrites mapping.txt after R8, merging the Compose mapping into it
+    // (`mergeReleaseComposeMapping`). Reading it without that dependency is an
+    // undeclared overlap Gradle refuses, and it failed the 1.1.0 RC build.
+    dependsOn(tasks.matching { it.name == "mergeReleaseComposeMapping" })
     val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
     // A local copy: the action must not capture the build script (configuration cache).
     val canaries = exceptionCanaries

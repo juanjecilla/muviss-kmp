@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.triage.domain
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.todayEpochDay
+import com.codingpit.muviss.core.testing.FakeClock
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -17,7 +18,7 @@ import kotlin.test.assertTrue
  */
 class SnoozeUseCaseTest {
 
-    private val clock = FakeClock()
+    private val clock = FakeClock(NOW_EPOCH_MS)
     private val today = clock.todayEpochDay()
 
     @Test

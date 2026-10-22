@@ -1,6 +1,5 @@
 package com.codingpit.muviss.feature.progress.domain
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -26,7 +25,8 @@ fun collectionSummary(
     id: MediaId,
     title: String = id.toString(),
     status: WatchStatus = WatchStatus.WATCHING,
-) = CollectionSummary(id, title, posterUrl = null, status = status)
+    addedAtEpochMs: Long = 0L,
+) = CollectionSummary(id, title, posterUrl = null, status = status, addedAtEpochMs = addedAtEpochMs)
 
 class FakeCollectionApi(summaries: List<CollectionSummary>) : CollectionApi {
     val flow = MutableStateFlow(summaries)
@@ -82,6 +82,11 @@ class FakeProgressRepository : ProgressRepository {
 
     override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
 
+    /** Each title's newest Play, set by a test to stand in for plays it does not record one by one. */
+    val lastWatched = MutableStateFlow<Map<MediaId, Long>>(emptyMap())
+
+    override fun observeLastWatchedAt(): Flow<Map<MediaId, Long>> = lastWatched
+
     override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
 
     override suspend fun recordPlay(episodeId: EpisodeId) = setSeen(episodeId, true)
@@ -103,10 +108,6 @@ class FakeProgressRepository : ProgressRepository {
 
 class MapEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {
     override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = Result.success(bySeasons[mediaId].orEmpty())
-}
-
-class FixedClock(private val millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
 }
 
 fun testEpisode(show: MediaId, season: Int, number: Int, airDay: Long?) = Episode(

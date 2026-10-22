@@ -19,10 +19,33 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinSerialization) apply false
-    alias(libs.plugins.ktor) apply false
     alias(libs.plugins.sqldelight) apply false
     alias(libs.plugins.spotless)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.kover)
+}
+
+// Coverage (EPIC 38, #71): one merged report over every module's JVM tests,
+// uploaded by CI as an artifact. Measured, not enforced — there is no threshold
+// yet, because a number nobody has looked at is not a bar. `merge` applies
+// Kover to the subprojects itself, so no module's build file mentions it.
+// The JVM is where every commonTest runs in CI, so its numbers stand for the
+// shared code; the Android-only hosts are left out (their unit tests run
+// through testDebugUnitTest, which Kover's JVM report does not see).
+kover {
+    merge {
+        subprojects { it.path !in setOf(":app:androidApp", ":app:baselineprofile") }
+    }
+    reports {
+        filters {
+            excludes {
+                // Generated: Compose Resources accessors, SQLDelight queries,
+                // the BuildConfig constants, and Compose's lambda holders.
+                packages("*.generated.resources")
+                classes("*.MuvissBuildConfig*", "*ComposableSingletons*", "com.codingpit.muviss.core.database.*Queries", "com.codingpit.muviss.core.database.*Impl*")
+            }
+        }
+    }
 }
 
 // Captured in root scope where the `libs` accessor is available.
@@ -165,6 +188,19 @@ fun sentryCocoaSlice(konanTargetName: String): String? = when (konanTargetName) 
     else -> null
 }
 
+/**
+ * Where the Swift compatibility shims (toolchain) and the Swift runtime stubs (SDK) live for
+ * [slice], or nothing off a Mac. Resolved through `xcrun`, so it follows the selected Xcode.
+ */
+fun Project.swiftLibrarySearchPaths(slice: String): List<String> {
+    if (!System.getProperty("os.name").startsWith("Mac")) return emptyList()
+    val sdk = if (slice.endsWith("simulator")) "iphonesimulator" else "iphoneos"
+    fun xcrun(vararg args: String): String = providers.exec { commandLine("xcrun", *args) }.standardOutput.asText.get().trim()
+    val toolchainSwift = File(xcrun("--find", "swiftc")).parentFile.parentFile.resolve("lib/swift/$sdk")
+    val sdkSwift = File(xcrun("--sdk", sdk, "--show-sdk-path")).resolve("usr/lib/swift")
+    return listOf(toolchainSwift.absolutePath, sdkSwift.absolutePath)
+}
+
 fun Project.linkSentryCocoaFramework() {
     plugins.withId("org.jetbrains.kotlin.multiplatform") {
         extensions.configure<KotlinMultiplatformExtension> {
@@ -192,6 +228,13 @@ fun Project.linkSentryCocoaFramework() {
                     // Sentry.framework" phase — see project.pbxproj.
                     if (outputKind == NativeOutputKind.TEST) {
                         linkerOpts("-rpath", searchPath)
+                        // Since sentry-kotlin-multiplatform 0.28.0 its cinterop klib carries
+                        // Swift objects (`SentryKMPInternal.swift.o`), which reference Swift's
+                        // static compatibility shims (`__swift_FORCE_LOAD_$_swiftCompatibility56`).
+                        // Kotlin/Native's linker has no Swift search paths, so a test
+                        // executable needs the toolchain's and the SDK's. `Shared` is static
+                        // and Xcode links the app with Swift, so only tests need this.
+                        swiftLibrarySearchPaths(slice).forEach { linkerOpts("-L$it") }
                     }
                     linkTaskProvider.configure { dependsOn(rootProject.tasks.named("unzipSentryCocoa")) }
                 }

@@ -13,9 +13,9 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -28,8 +28,10 @@ import kotlinx.coroutines.launch
  * question with one answer should have one implementation. The screen is now
  * one caller of this rather than its owner.
  *
- * Ordering is whatever [CollectionApi.observeSummaries] yields, filtered —
- * the widget deliberately does not sort differently from the tab it mirrors.
+ * Ordered by when each title was last watched, newest first (its newest live
+ * Play, [ObserveLastWatchedAtUseCase]); a title with no Play sorts by when it
+ * was collected. A tick therefore moves its row to the top, and Undo puts it
+ * back. The order is decided here, once, so the tab and the widgets agree.
  *
  * [collectionApi] is a **provider, not an instance**, and has to be. The
  * collection repository depends on `ProgressApi` to derive `WatchStatus`
@@ -43,12 +45,18 @@ import kotlinx.coroutines.launch
 class WatchNextUseCase(
     private val collectionApi: () -> CollectionApi,
     private val observeSeenEpisodes: ObserveSeenEpisodesUseCase,
+    private val observeLastWatchedAt: ObserveLastWatchedAtUseCase,
     private val catalogCache: EpisodeCatalogCache,
     private val clock: AppClock,
 ) {
 
-    operator fun invoke(): Flow<List<WatchNextItem>> = collectionApi().observeSummaries()
-        .map { summaries -> summaries.filter { it.status == WatchStatus.WATCHING } }
+    operator fun invoke(): Flow<List<WatchNextItem>> = combine(collectionApi().observeSummaries(), observeLastWatchedAt()) { summaries, lastWatched ->
+        summaries
+            .filter { it.status == WatchStatus.WATCHING }
+            .sortedByDescending { lastWatched[it.mediaId] ?: it.addedAtEpochMs }
+    }
+        // A play that leaves the order alone must not rebuild every row's flow.
+        .distinctUntilChanged()
         .flatMapLatest { watching -> itemsWhileLoadingCatalogs(watching) }
 
     /**

@@ -2,13 +2,9 @@
 
 package com.codingpit.muviss.feature.profile.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.billing.Entitlement
 import com.codingpit.muviss.core.billing.EntitlementProvider
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
-import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.DeepLinkRedirectTarget
 import com.codingpit.muviss.core.sync.EntitlementGate
 import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
@@ -23,6 +19,8 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncTable
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncOutcomeSummary
 import com.codingpit.muviss.feature.profile.domain.SyncProvider
@@ -50,10 +48,6 @@ class CoreSyncRepositoryGatingTest {
     private class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
         override val default = d
         override val io = d
-    }
-
-    private class FixedClock : AppClock {
-        override fun nowEpochMs(): Long = 1_000L
     }
 
     private class StubBackend(session: SyncSession?) : SyncBackend {
@@ -87,12 +81,10 @@ class CoreSyncRepositoryGatingTest {
         entitlement: Entitlement = Entitlement.Active,
         session: SyncSession? = signedIn,
     ): CoreSyncRepository {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         val backend = StubBackend(session)
         val gate = EntitlementGate { entitlement.isEntitled }
-        val clock = FixedClock()
+        val clock = FakeClock(1_000L)
         val engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock, gate)
         return CoreSyncRepository(
             availability = SyncAvailability { configured },
@@ -117,10 +109,20 @@ class CoreSyncRepositoryGatingTest {
     }
 
     @Test
-    fun an_unentitled_user_sees_a_locked_row_not_a_hidden_one() = runTest {
+    fun an_unentitled_signed_in_user_sees_a_locked_row_not_a_hidden_one() = runTest {
+        val state = repository(entitlement = Entitlement.Inactive, session = signedIn).observeAccount().first()
+
+        assertEquals(SyncAccountState.Locked(email = "person@example.com"), state)
+    }
+
+    @Test
+    fun a_signed_out_user_is_offered_sign_in_not_a_paywall() = runTest {
         val state = repository(entitlement = Entitlement.Inactive, session = null).observeAccount().first()
 
-        assertEquals(SyncAccountState.Locked(email = null), state)
+        // The entitlement is learned through an account: a desktop user who paid
+        // on a phone has no store here and could never get past a paywall that
+        // offered no sign-in (#286, ADR 0019).
+        assertEquals(SyncAccountState.SignedOut, state)
     }
 
     @Test

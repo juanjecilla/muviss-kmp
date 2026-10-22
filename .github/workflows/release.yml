@@ -3,9 +3,11 @@ name: Release
 # A release or hotfix branch merged into main is a release (ADR 0025):
 #
 #   tag            vX.Y.Z on the merge commit; delete the merged branch
-#   promote        the newest RC from Play internal → production at 20%,
-#                  behind the `production` environment (an owner approval);
-#                  play-rollout-ramp.yml takes it to 100% from there
+#   promote        on a manual merge: the RC (from beta, or internal if it never
+#                  went to beta) → production at 20%, behind the `production`
+#                  environment. The scheduled path (labelled auto-release) is
+#                  promoted by the Sunday step itself (ADR 0030).
+#                  play-rollout-ramp.yml takes it to 100% from there.
 #   desktop        DMG / DEB / MSI built from the tag
 #   github-release the RC's own AAB (never rebuilt) + the desktop installers
 #   back-merge     a PR main → develop, so develop sees the tag and any fix
@@ -50,12 +52,12 @@ jobs:
       - name: Mint a release App token
         id: app
         if: steps.has-app.outputs.ok == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
@@ -71,6 +73,9 @@ jobs:
           TAG="v$VERSION"
           RC_TAG="$(git tag -l "$TAG-rc*" | sort -V | tail -1)"
           [ -n "$RC_TAG" ] || { echo "::error::no release candidate was ever built for $VERSION (no $TAG-rc* tag); nothing to promote"; exit 1; }
+          # Before any ref changes: an RC the formula cannot encode stops the job
+          # here, not after the tag is pushed and the branch deleted.
+          RC_VERSION_CODE="$(scripts/release/version-code.sh "$RC_TAG")"
           # The merge must ship what the candidate was: if the branch moved
           # after its last RC, that newer code was never on a tester's phone.
           [ "$(git rev-parse "$RC_TAG^{commit}")" = "$(git rev-parse "origin/$HEAD_REF" 2>/dev/null || git rev-parse "$MERGE_SHA^2")" ] \
@@ -85,36 +90,53 @@ jobs:
             echo "version=$VERSION"
             echo "tag=$TAG"
             echo "rc_tag=$RC_TAG"
-            echo "rc_version_code=$(git rev-list --count "$RC_TAG")"
+            echo "rc_version_code=$RC_VERSION_CODE"
           } >> "$GITHUB_OUTPUT"
           echo "### Released \`$TAG\` (promoting \`$RC_TAG\`)" >> "$GITHUB_STEP_SUMMARY"
 
+  # The manual path: a person merged the release PR (ship-release or by hand).
+  # Required reviewers on the `production` environment are the last human gate
+  # before users get the build (scripts/release/owner-setup.sh configures them).
   promote:
     needs: tag
+    if: needs.tag.result == 'success' && !contains(github.event.pull_request.labels.*.name, 'auto-release')
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Required reviewers on this environment are the last human gate before
-    # users get the build (scripts/release/owner-setup.sh configures them).
     environment: production
+    permissions:
+      contents: read
+      issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with:
           bundler-cache: true
 
-      - name: Promote the RC to production (20%)
+      - name: Promote the beta RC to production (20%)
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
           VERSION_CODE: ${{ needs.tag.outputs.rc_version_code }}
+          VERSION: ${{ needs.tag.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
             echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set; skipping the promotion."
             exit 0
           fi
-          bundle exec fastlane android promote rollout:0.2 "version_code:$VERSION_CODE"
+          # A manual merge may ship an RC that never went to beta (a hotfix, or
+          # ahead of its Sunday): the lane then takes it from internal.
+          bundle exec fastlane android promote rollout:0.2 "version_code:$VERSION_CODE" allow_internal:true
+          # The release issue says so too (ADR 0030); a no-op without one.
+          ruby fastlane/release_promote.rb record-production "$VERSION"
+
+  # The scheduled path (ADR 0030) is not promoted here: release-promote.yml's
+  # Sunday step merged the PR as the release App (labelled auto-release) and
+  # promotes beta → production itself, in the same run and before any newer
+  # version takes the beta track, so the two can never race for it.
 
   # On dispatch, build the AAB alone (no upload) so the release path can be
   # exercised without a version.
@@ -151,7 +173,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # packageVersion comes from the exact tag (app/desktopApp/build.gradle.kts).
           ref: ${{ needs.tag.outputs.tag || github.ref }}
@@ -164,13 +186,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       - name: Build desktop installer
         env:
@@ -178,6 +200,9 @@ jobs:
           # when set; the v3 key is the fallback (CLAUDE.md, #91, #197).
           TMDB_READ_TOKEN: ${{ secrets.TMDB_READ_TOKEN }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          # Remote config (EPIC 45, ADR 0026). Blank = defaults only, no request ever
+          # made; the secret is set when the owner has created the ConfigCat product.
+          CONFIGCAT_SDK_KEY: ${{ secrets.CONFIGCAT_SDK_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           # Pinned rather than left to the task-name heuristic in
           # app/shared/build.gradle.kts (#110): none of the package tasks match
@@ -187,7 +212,7 @@ jobs:
         run: ./gradlew ${{ matrix.task }} --stacktrace
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: muviss-desktop-${{ matrix.os }}-${{ needs.tag.outputs.tag || github.run_number }}
           path: ${{ matrix.artifactPath }}
@@ -200,17 +225,18 @@ jobs:
     needs: [tag, desktop-release]
     if: needs.tag.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40 # up to ~25 waiting for a still-running RC workflow
     permissions:
       contents: write
+      actions: read # which RC run uploaded to TestFlight
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.tag.outputs.tag }}
           fetch-depth: 0
 
       - name: Download the desktop installers
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
           pattern: muviss-desktop-*
@@ -231,6 +257,32 @@ jobs:
         run: |
           PREV="$(git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | grep -B1 -x "$TAG" | head -1)"
           [ "$PREV" = "$TAG" ] && PREV=""
+          # The RC's iOS job skips without the Apple setup and can fail on its own, so
+          # say TestFlight only when its upload step succeeded for this RC's commit.
+          # IOS_UPLOAD: success | none (every run finished without an upload) |
+          # unknown (a lookup failed, or a run was still going ~25 minutes in).
+          RC_SHA="$(git rev-list -n 1 "$RC_TAG")"
+          IOS_UPLOAD=none
+          if ! RUNS="$(gh run list --workflow release-rc.yml --commit "$RC_SHA" --json databaseId --jq '.[].databaseId')"; then
+            IOS_UPLOAD=unknown
+            RUNS=""
+          fi
+          DEADLINE=$((SECONDS + 1500)) # one wait shared by every matching run
+          for RUN in $RUNS; do
+            STATUS=""
+            while :; do
+              STATUS="$(gh run view "$RUN" --json status --jq .status)" || { STATUS=""; break; }
+              [ "$STATUS" = "completed" ] && break
+              [ "$SECONDS" -ge "$DEADLINE" ] && break
+              sleep 30
+            done
+            if [ "$STATUS" != "completed" ]; then IOS_UPLOAD=unknown; continue; fi
+            if ! STEP="$(gh run view "$RUN" --json jobs --jq '.jobs[] | select(.name == "ios") | .steps[] | select(.name == "Archive and upload to TestFlight (internal)") | .conclusion')"; then
+              IOS_UPLOAD=unknown
+              continue
+            fi
+            if [ "$STEP" = "success" ]; then IOS_UPLOAD=success; break; fi
+          done
           {
             echo "Muviss ${TAG}."
             echo
@@ -243,7 +295,11 @@ jobs:
             echo "  All three are **unsigned and un-notarized** (#39): macOS Gatekeeper"
             echo "  will refuse the DMG until it is opened via right-click > Open, and"
             echo "  Windows SmartScreen will warn (#179)."
-            echo "- No iOS build — TestFlight is not wired into CI yet (#78)."
+            case "$IOS_UPLOAD" in
+              success) echo "- **iOS** — on TestFlight (internal) as the same candidate, uploaded by the release-candidate workflow's iOS job. Nothing is rebuilt here, and App Store submission is a separate step (ADR 0033)." ;;
+              none) echo "- **iOS** — no build for this version: the release-candidate workflow did not upload $RC_TAG to TestFlight." ;;
+              *) echo "- **iOS** — whether $RC_TAG reached TestFlight could not be verified when these notes were written; see the release-candidate workflow's iOS job." ;;
+            esac
             echo
             echo "### Not in this build"
             echo
@@ -278,12 +334,12 @@ jobs:
       - name: Mint a release App token
         id: app
         if: steps.has-app.outputs.ok == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           token: ${{ steps.app.outputs.token || github.token }}

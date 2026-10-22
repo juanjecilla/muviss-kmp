@@ -5,6 +5,10 @@ import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.search.domain.SearchRepository
+import com.codingpit.muviss.feature.settings.api.GenreMuting
+import com.codingpit.muviss.feature.settings.api.NotificationsChange
+import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.api.SnoozedTitle
 import com.codingpit.muviss.feature.triage.api.TriageApi
@@ -13,14 +17,18 @@ import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
@@ -77,12 +85,47 @@ internal class FakeRepo(
     override suspend fun search(query: String, page: Int) = searchResult(page)
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = Result.success(MediaDetails(MediaSummary(id, "t")))
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?) = discoverResult(type, page, genreId)
+
+    /** What each browse asked the source to leave out, per type. */
+    val discoverExcluded = mutableListOf<Pair<MediaType, Set<String>>>()
+
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
+        discoverExcluded += type to excludedGenreIds
+        return discoverResult(type, page, genreId)
+    }
     override suspend fun genres(type: MediaType) = if (type == MediaType.MOVIE) movieGenresResult else tvGenresResult
     override suspend fun watchProviders(id: MediaId) = Result.success(WatchProviders())
     override suspend fun recommendations(id: MediaId, page: Int) = recommendationsResult(id)
     override suspend fun similar(id: MediaId, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun episodeDetails(episodeId: EpisodeId) = Result.success(EpisodeDetails(episodeId, "Episode", episodeId.seasonNumber, episodeId.episodeNumber))
+}
+
+/** Muting as Settings would report it, with the session chip kept the way the real api keeps it. */
+internal class FakeMutingApi(configured: MutedGenres = MutedGenres.NONE, inSearch: Boolean = false) : SettingsApi {
+    val configured = MutableStateFlow(configured)
+    val inSearch = MutableStateFlow(inSearch)
+    val showMuted = MutableStateFlow(false)
+
+    override fun observeMuting(): Flow<GenreMuting> = combine(this.configured, showMuted, this.inSearch) { muted, show, search -> GenreMuting(muted, show, search) }
+
+    override fun setShowMutedThisSession(show: Boolean) {
+        showMuted.value = show
+    }
+
+    override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = Unit
+
+    override fun observeThemeMode(): Flow<ThemeMode> = flowOf(ThemeMode.SYSTEM)
+
+    override suspend fun examplesFor(key: GenreKey, limit: Int): List<MediaSummary> = emptyList()
+
+    override fun observeNotificationsEnabled(): Flow<Boolean> = flowOf(false)
+
+    override fun observeCrashReportsEnabled(): Flow<Boolean> = flowOf(false)
+    override fun observeDeviceBackupEnabled(): Flow<Boolean> = flowOf(false)
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = Unit
+
+    override suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = NotificationsChange.DISABLED
 }
 
 internal class FakeSearchCollectionApi(initialLibrary: List<CollectionSummary> = emptyList()) : CollectionApi {

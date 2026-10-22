@@ -2,11 +2,11 @@
 
 package com.codingpit.muviss.feature.triage.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
@@ -62,12 +62,10 @@ class TriageCollectionProgressIntegrationTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        database = MuvissDatabase(driver)
+        database = inMemoryDatabase()
 
         val dispatchers = ImmediateDispatchers(UnconfinedTestDispatcher())
-        val clock = FakeClock()
+        val clock = FakeClock(NOW_EPOCH_MS)
 
         val progressRepository = SqlDelightProgressRepository(database.episodeProgressQueries, database.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
         progressApi = RealProgressApi(progressRepository)
@@ -201,7 +199,7 @@ class TriageCollectionProgressIntegrationTest {
     @Test
     fun `a failed commit still blocks the title from reappearing`() = runTest {
         val offline = CountingDetailsSource(emptyMap())
-        val recordOffline = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, offline, FakeClock())
+        val recordOffline = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, offline, FakeClock(NOW_EPOCH_MS))
 
         assertTrue(recordOffline(ongoing.summary, TriageVerdict.LATER).isFailure)
 
@@ -213,7 +211,7 @@ class TriageCollectionProgressIntegrationTest {
 
 /** Hands back one page of whatever it was given, for both media types. */
 private class FixedDeckSource(private val items: List<MediaSummary>) : DeckSource {
-    override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> = Result.success(PagedResult(items.filter { it.type == type }, page = 1, totalPages = 1))
+    override suspend fun page(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = Result.success(PagedResult(items.filter { it.type == type }, page = 1, totalPages = 1))
 
     override suspend fun genres(type: MediaType): Result<List<Genre>> = Result.success(emptyList())
 }

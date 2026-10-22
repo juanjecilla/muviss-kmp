@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -50,7 +51,6 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterSkeleton
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.back_to_discover
@@ -70,6 +70,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.search_clear
 import com.codingpit.muviss.feature.search.ui.generated.resources.search_empty_body
 import com.codingpit.muviss.feature.search.ui.generated.resources.search_empty_title
 import com.codingpit.muviss.feature.search.ui.generated.resources.search_placeholder
+import com.codingpit.muviss.feature.search.ui.generated.resources.show_muted
 import com.codingpit.muviss.feature.search.ui.generated.resources.triage_entry_body
 import com.codingpit.muviss.feature.search.ui.generated.resources.triage_entry_title
 import com.codingpit.muviss.models.Genre
@@ -99,11 +100,11 @@ fun SearchScreen(
             state.loading -> LoadingSkeletonGrid()
 
             state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                ErrorState(state.error!!.resolve(), viewModel::retry)
+                ErrorState(state.error!!, viewModel::retry)
             }
 
             else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage, intro = DiscoverIntro(introVisible, onIntroDismissed))
+                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage, intro = DiscoverIntro(introVisible, onIntroDismissed), muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled))
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -202,6 +203,7 @@ private fun DiscoverBrowse(
     onOpenDetail: (MediaId) -> Unit,
     onOpenTriage: () -> Unit,
     intro: DiscoverIntro = DiscoverIntro(),
+    muted: MutedChip = MutedChip(),
 ) {
     Column(
         Modifier
@@ -215,6 +217,10 @@ private fun DiscoverBrowse(
         // Triage's main entry point (ADR 0010). It leads the browse because
         // an empty or thin library is exactly the state it exists to fix.
         TriageEntryCard(onOpenTriage)
+        // Muted Genres (ADR 0031): Popular and For you leave them out; this brings them back for the session.
+        if (muted.available) {
+            FilterChip(selected = muted.shown, onClick = muted.onToggle, label = { Text(stringResource(Res.string.show_muted)) }, modifier = Modifier.testTag(SHOW_MUTED_CHIP_TAG))
+        }
         // "For you" (EPIC 16) leads the browse when it has anything to show;
         // MediaCarousel itself renders nothing while state.forYou is empty
         // (no library signal yet), so no separate visibility check is needed.
@@ -225,6 +231,12 @@ private fun DiscoverBrowse(
         MediaCarousel(stringResource(Res.string.carousel_popular_tv), state.popularTv, onOpenDetail)
     }
 }
+
+/** The "show muted" chip: whether it is offered, whether it is on, and what tapping it does. */
+private class MutedChip(val available: Boolean = false, val shown: Boolean = false, val onToggle: () -> Unit = {})
+
+/** Test tag of the chip that lifts muting for the session (ADR 0031). */
+const val SHOW_MUTED_CHIP_TAG = "showMutedChip"
 
 /** Whether the first-run intro shows, and what dismissing it does. Bundled so DiscoverBrowse stays under detekt's parameter budget. */
 private class DiscoverIntro(val visible: Boolean = false, val onDismiss: () -> Unit = {})

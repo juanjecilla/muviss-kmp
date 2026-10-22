@@ -28,8 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.ref }}
           # Full history + tags: versionCode/versionName are derived from
           # `git rev-list --count` / `git describe` (see
@@ -44,13 +45,13 @@ jobs:
       # already this JDK — that download is where it came from — so builds,
       # tests and the desktop runtime image are unchanged.
       - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: corretto
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       - name: Decode release keystore
         env:
@@ -79,6 +80,9 @@ jobs:
           # when set; the v3 key is the fallback (CLAUDE.md, #91, #197).
           TMDB_READ_TOKEN: ${{ secrets.TMDB_READ_TOKEN }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          # Remote config (EPIC 45, ADR 0026). Blank = defaults only, no request ever
+          # made; the secret is set when the owner has created the ConfigCat product.
+          CONFIGCAT_SDK_KEY: ${{ secrets.CONFIGCAT_SDK_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           # Sentry Gradle plugin (:app:androidApp/build.gradle.kts): uploads the
           # R8 mapping only when all three of these are set, and does nothing —
@@ -91,8 +95,30 @@ jobs:
           SENTRY_ENVIRONMENT: production
         run: ./gradlew :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
+      # Without the keystore secrets the build does not fail: it falls back to
+      # debug signing (docs/RELEASING.md), and a debug-signed AAB would then be
+      # uploaded and attached to a release (#67). Play rejects one, but only
+      # after the upload; a dispatch build has no upload and would ship it.
+      # An AAB is jar-signed, so this reads it with keytool — apksigner only
+      # understands APKs. keytool localises its labels ("Owner:" is
+      # "Propietario:" on a Spanish JVM), hence the pinned locale.
+      - name: The AAB is signed, and not with the debug key
+        run: |
+          set -euo pipefail
+          aab=$(ls app/androidApp/build/outputs/bundle/release/*.aab)
+          if ! certs=$(keytool -J-Duser.language=en -J-Duser.country=US -printcert -jarfile "$aab" 2>&1) || ! grep -q "^Owner:" <<<"$certs"; then
+            echo "$certs"
+            echo "::error::$aab is not signed."
+            exit 1
+          fi
+          grep -E "^(Owner:|[[:space:]]+SHA256:)" <<<"$certs"
+          if grep -q "^Owner:.*CN=Android Debug" <<<"$certs"; then
+            echo "::error::$aab is signed with the Android debug key. Are the RELEASE_* and KEYSTORE_BASE64 secrets set?"
+            exit 1
+          fi
+
       - name: Upload AAB artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: muviss-android-${{ inputs.release_tag }}
           path: app/androidApp/build/outputs/bundle/release/*.aab
@@ -102,7 +128,7 @@ jobs:
       # green before the owner has created it (scripts/release/owner-setup.sh).
       - name: Set up Ruby
         if: inputs.upload_internal
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with:
           bundler-cache: true
 

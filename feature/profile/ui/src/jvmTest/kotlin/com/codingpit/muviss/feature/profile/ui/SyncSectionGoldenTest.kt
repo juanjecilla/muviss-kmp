@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.profile.ui
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.testing.assertMatchesGolden
+import com.codingpit.muviss.feature.profile.domain.LastSynced
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
 import com.codingpit.muviss.feature.profile.domain.SyncStatus
@@ -30,11 +31,11 @@ class SyncSectionGoldenTest {
     }
 
     private val signedInOff = signedInState(automaticSync = false)
-    private val signedInOnWaiting = signedInState(automaticSync = true, status = SyncStatus(pendingChanges = 4), label = "Synced just now")
+    private val signedInOnWaiting = signedInState(automaticSync = true, status = SyncStatus(pendingChanges = 4), lastSynced = LastSynced.JustNow)
     private val signedInFailed = signedInState(
         automaticSync = true,
         status = SyncStatus(lastFailure = SyncFailureKind.Offline),
-        label = "Synced 2h ago",
+        lastSynced = LastSynced.HoursAgo(2),
     )
     private val signedOutDisabledSwitch = SyncUiState(account = SyncAccountState.SignedOut, automaticSyncAvailable = true)
     private val sessionExpired = SyncUiState(account = SyncAccountState.SessionExpired, automaticSyncAvailable = true)
@@ -62,6 +63,16 @@ class SyncSectionGoldenTest {
 
     @Test
     fun signed_out_with_a_disabled_switch_dark() = runComposeUiTest { golden("signed-out", signedOutDisabledSwitch, darkTheme = true) }
+
+    // Deferred, so the golden is the section and its "Choose" button: the dialog
+    // is a separate window that the root capture does not include.
+    private val accountChangedDeferred = signedInState(status = SyncStatus(accountChanged = true)).copy(accountChoiceDeferred = true)
+
+    @Test
+    fun an_account_mismatch_left_for_later_light() = runComposeUiTest { golden("account-changed", accountChangedDeferred, darkTheme = false) }
+
+    @Test
+    fun an_account_mismatch_left_for_later_dark() = runComposeUiTest { golden("account-changed", accountChangedDeferred, darkTheme = true) }
 
     @Test
     fun an_expired_session_light() = runComposeUiTest { golden("session-expired", sessionExpired, darkTheme = false) }

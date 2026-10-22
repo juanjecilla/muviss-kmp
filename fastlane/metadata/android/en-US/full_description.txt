@@ -10,13 +10,14 @@ TRACK WHAT YOU WATCH
 KNOW WHAT'S NEXT
 • Watch next: every show you're following, with its next unseen episode and a one-tap tick.
 • Upcoming: air dates for your shows, day by day.
-• New-episode notifications when something you follow airs.
+• New-episode notifications when something you follow airs — off until you turn them on, in a short first-run introduction or in Settings.
 • A home-screen widget so the next episode is one tap away.
 
 FILL YOUR LIBRARY FAST
 • Go through titles one at a time and decide in a tap — not for me, later, watching, or caught up. Not sure yet? Snooze it and it comes back when you choose.
 • Import your history from Trakt, TV Time or a CSV file.
 • Discover by genre, see what's popular, and get suggestions based on what you love.
+• Mute the genres you never watch. Talk shows, news and reality TV stay out of suggestions by default; change that in a short first-run step or in Settings.
 
 SEE YOUR HABITS
 • Hours watched, episodes seen, favorite genres and watch streaks.
@@ -27,6 +28,9 @@ PRIVATE BY DESIGN
 • No social features — no feeds, no friends, no comments.
 • No ads and no analytics. Only optional, anonymous crash reports, which you can turn off in Settings.
 • Your library lives on your device and works offline. Back it up to a file and restore it on any device.
+• Optional device backup: let your phone's own backup carry your library to a new phone. Off until you turn it on in a first-run step or in Settings, and Muviss never sees that copy.
+
+Missing something, or something broken? Request a feature or report a problem from Settings: each opens a short form in your browser, and you decide what to write.
 
 In English and Spanish, with light and dark themes, on phones and tablets.
 

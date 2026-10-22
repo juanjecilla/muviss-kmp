@@ -4,13 +4,17 @@
 #   that branch merged into main   → release.yml          → `android promote` (20%, behind
 #                                                            the `production` environment)
 #   daily                          → play-rollout-ramp.yml → `android ramp` (20 → 50 → 100%)
-#   by hand                        → play-promote.yml      → promote / rollout / halt / resume
+#   push to release/* or hotfix/*  → release-rc.yml       → `ios beta` (TestFlight, WS3)
+#   by hand                        → `ios release` (App Store, submit only when asked)
 #
 # Credentials: PLAY_SERVICE_ACCOUNT_JSON holds the service-account key *contents*
-# (not a path), so CI never writes it to disk.
+# (not a path), so CI never writes it to disk. The iOS lanes read the App Store
+# Connect API key from APP_STORE_CONNECT_KEY_ID / _ISSUER_ID / _KEY_P8 (contents).
 
+require "tmpdir"
 require_relative "play_rollout"
 require_relative "sentry_gate"
+require_relative "ios_release"
 
 default_platform(:android)
 
@@ -19,10 +23,23 @@ default_platform(:android)
 ANDROID_METADATA = "metadata/android"
 ANDROID_METADATA_FOR_ACTIONS = "fastlane/metadata/android"
 
+# Absolute paths for the iOS lanes, so neither gym's nor sh's working directory
+# can move them.
+REPO_ROOT = File.expand_path("..", __dir__)
+IOS_PROJECT = File.join(REPO_ROOT, "app/iosApp/iosApp.xcodeproj")
+IOS_SCHEME = "iosApp"
+IOS_OUTPUT = File.join(REPO_ROOT, "build/ios")
+IOS_METADATA = File.join(REPO_ROOT, "fastlane/metadata/ios")
+IOS_BUNDLE_ID = "com.codingpit.muviss"
+
 platform :android do
-  # Must match app/androidApp/build.gradle.kts: versionCode = commit count on HEAD.
+  # The versionCode of the release candidate: `major·1e6 + minor·1e4 + patch·100
+  # + rcN` (ADR 0030), the same formula as app/androidApp's build (MuvissVersion)
+  # and scripts/release/version-code.sh. RELEASE_TAG is the RC tag (release-rc.yml
+  # passes it); without it, the exact tag at HEAD.
   def version_code
-    Integer(sh("git", "rev-list", "--count", "HEAD", log: false).strip)
+    tag = ENV["RELEASE_TAG"] || sh("git", "describe", "--tags", "--exact-match", log: false).strip
+    Integer(sh("../scripts/release/version-code.sh", tag, log: false).strip)
   end
 
   def json_key_data
@@ -88,18 +105,70 @@ platform :android do
     )
   end
 
-  desc "Promote the latest internal release to production at a staged rollout"
+  # The newest versionCode on a track, written to TRACK_RESULT_FILE ("" when the
+  # track is empty): the Sunday step checks beta carries the RC before merging
+  # a release into main (#349).
+  desc "Write a track's newest versionCode to TRACK_RESULT_FILE"
+  lane :track_latest do |options|
+    track = options[:track] || UI.user_error!("pass track:<internal|beta|production>")
+    codes = google_play_track_version_codes(track: track, json_key_data: json_key_data)
+    File.write(ENV.fetch("TRACK_RESULT_FILE") { UI.user_error!("TRACK_RESULT_FILE is not set") }, codes.map(&:to_i).max.to_s)
+  end
+
+  # The Sunday step (ADR 0030) puts the RC on open beta a week before production.
+  # Play's open testing track is called "beta" in its API.
+  desc "Promote the internal release to open beta (the beta track)"
+  lane :beta do |options|
+    if options[:version_code]
+      expected = Integer(options[:version_code])
+      latest = google_play_track_version_codes(track: "internal", json_key_data: json_key_data).max
+      UI.user_error!("Internal track's latest is #{latest}, but the RC for the beta step is #{expected}") unless latest == expected
+    end
+
+    draft = ENV.fetch("PLAY_RELEASE_STATUS", "completed") == PlayRollout::DRAFT
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "beta",
+      track_promote_release_status: draft ? PlayRollout::DRAFT : PlayRollout::COMPLETED,
+      json_key_data: json_key_data,
+      skip_upload_aab: true,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Promote the open-beta release to production at a staged rollout"
   lane :promote do |options|
     rollout = Float(options[:rollout] || "0.2")
     UI.user_error!("rollout must be in (0, 1]") unless rollout > 0 && rollout <= 1
 
-    # release.yml passes the RC's versionCode: promoting "the latest internal
-    # release" must mean the candidate this merge approved, not whatever was
-    # uploaded last.
+    # release.yml passes the RC's versionCode: promoting "the beta release" must
+    # mean the candidate this merge approved, not whatever was promoted last.
+    # Production promotes from beta, a week after the beta step (ADR 0030). A
+    # manual merge (allow_internal:true) may ship an RC that never went to beta,
+    # a hotfix or a version ahead of its Sunday; it is then taken from internal,
+    # and only when internal's latest is that exact RC.
+    source = "beta"
     if options[:version_code]
       expected = Integer(options[:version_code])
-      latest = google_play_track_version_codes(track: "internal", json_key_data: json_key_data).max
-      UI.user_error!("Internal track's latest is #{latest}, but the approved RC is #{expected}") unless latest == expected
+      latest_on = lambda do |track|
+        google_play_track_version_codes(track: track, json_key_data: json_key_data).max
+      rescue StandardError => e
+        UI.message("Could not read the #{track} track (#{e.class}); treating it as empty")
+        nil
+      end
+      beta_latest = latest_on.call("beta")
+      unless beta_latest == expected
+        internal_latest = options[:allow_internal].to_s == "true" ? latest_on.call("internal") : nil
+        unless internal_latest == expected
+          UI.user_error!("Beta track's latest is #{beta_latest.inspect}#{internal_latest ? ", internal's is #{internal_latest}" : ''}, but the approved RC is #{expected}")
+        end
+        source = "internal"
+        UI.important("#{expected} is not on beta; promoting it from internal (manual release)")
+      end
     end
 
     # Until the app's first production release has been reviewed, Play only
@@ -107,7 +176,7 @@ platform :android do
     # that first one for review in the Console (docs/RELEASING.md).
     draft = ENV.fetch("PLAY_RELEASE_STATUS", "completed") == PlayRollout::DRAFT
     upload_to_play_store(
-      track: "internal",
+      track: source,
       track_promote_to: "production",
       rollout: draft ? nil : rollout.to_s,
       # On a promote, release_status describes the *source* release; the
@@ -177,15 +246,25 @@ platform :android do
     true
   end
 
-  desc "Raise the production rollout along the ramp, from the latest release tag's age"
+  desc "Raise the production rollout along the ramp, from its release tag's age"
   lane :ramp do
-    tag = sh("git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1", log: false).strip
-    UI.user_error!("No release tag found") if tag.empty?
-    tagged_at = Integer(sh("git", "for-each-ref", "--format=%(creatordate:unix)", "refs/tags/#{tag}", log: false).strip)
-    age_days = (Time.now.to_i - tagged_at) / 86_400.0
-    UI.message("#{tag} is #{age_days.round(2)} days old")
+    newest = sh("git tag -l 'v[0-9]*' | grep -v -- '-' | sort -V | tail -1", log: false).strip
+    UI.user_error!("No release tag found") if newest.empty?
 
+    ramped_to_full = false
+    tag = nil
     edit_production_release do |release|
+      # The release Play is rolling out, not the newest tag: with staged
+      # releases a newer version can be tagged while this one still ramps.
+      tag = PlayRollout.tag_for(release.version_codes&.max) || newest
+      tagged_at = sh("git", "for-each-ref", "--format=%(creatordate:unix)", "refs/tags/#{tag}", log: false).strip
+      if tagged_at.empty?
+        UI.important("Production #{release.version_codes&.join(',')} has no #{tag} tag; leaving it alone")
+        next false
+      end
+      age_days = (Time.now.to_i - Integer(tagged_at)) / 86_400.0
+      UI.message("#{tag} is #{age_days.round(2)} days old")
+
       step = PlayRollout.next_step(status: release.status, fraction: release.user_fraction, age_days: age_days)
       next false unless step
 
@@ -201,8 +280,33 @@ platform :android do
         next false
       end
 
-      apply!(release, *step)
+      applied = apply!(release, *step)
+      ramped_to_full = applied && step[0] == PlayRollout::COMPLETED
+      applied
     end
+
+    # release-promote.yml's `complete` closes the release issue on this signal
+    # (ADR 0030): the version that reached 100%, written only after the edit
+    # committed. With nothing staged, the release already at 100% is written
+    # instead, every day: `complete` is a no-op once its issue is closed, and
+    # this is what retries a close that failed after Play committed.
+    finished = ramped_to_full ? tag : PlayRollout.tag_for(completed_production_code)
+    File.write(ENV["RAMP_RESULT_FILE"], "#{finished.delete_prefix('v')}\n") if finished && ENV["RAMP_RESULT_FILE"]
+  end
+
+  # The versionCode of the completed (100%) production release, or nil.
+  def completed_production_code
+    require "supply"
+    client = Supply::Client.make_from_config
+    client.begin_edit(package_name: Supply.config[:package_name])
+    track = client.get_edit_track("production")
+    client.abort_current_edit
+    # The track's releases come in no guaranteed order: the newest completed one.
+    Array(track&.releases).select { |r| r.status == PlayRollout::COMPLETED }
+                          .flat_map { |r| Array(r.version_codes).map(&:to_i) }.max
+  rescue StandardError => e
+    UI.message("Could not read the completed production release (#{e.class})")
+    nil
   end
 
   desc "Halt the staged production rollout (the ramp leaves halted releases alone)"
@@ -216,6 +320,181 @@ platform :android do
   lane :resume do
     edit_production_release do |release|
       release.status == PlayRollout::HALTED && apply!(release, PlayRollout::IN_PROGRESS, release.user_fraction)
+    end
+  end
+end
+
+# iOS (WS3, ADR 0033). `ios beta` is the Monday step: the RC archived and sent to
+# TestFlight's internal testers. `ios release` is the App Store step; it submits
+# only when asked, because Beta App Review and App Review are the owner's calls.
+# `ios upload_dsyms` sends the same archive's symbols to Sentry.
+platform :ios do
+  # The RC's tag: release-rc.yml passes RELEASE_TAG; otherwise the exact tag at HEAD.
+  def ios_release_tag
+    ENV["RELEASE_TAG"] || sh("git", "describe", "--tags", "--exact-match", log: false).strip
+  end
+
+  # CFBundleVersion: the versionCode scripts/ios/set-version.sh stamps on the
+  # built app (the same formula as Android's, scripts/release/version-code.sh).
+  def ios_version_code(tag = ios_release_tag)
+    Integer(sh(File.join(REPO_ROOT, "scripts/release/version-code.sh"), tag, log: false).strip)
+  end
+
+  # Yields the App Store Connect API key (for the actions) and the path of a
+  # 0600 copy of the .p8 (for xcodebuild's -authenticationKeyPath). The copy
+  # lives in a temp directory that is removed when the block returns.
+  def with_app_store_connect_key
+    missing = IosRelease.missing_api_key_vars(ENV)
+    UI.user_error!("App Store Connect key is not set up (missing: #{missing.join(', ')})") unless missing.empty?
+
+    key_id = ENV.fetch("APP_STORE_CONNECT_KEY_ID")
+    api_key = app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      key_content: ENV.fetch("APP_STORE_CONNECT_KEY_P8"),
+      is_key_content_base64: false,
+      in_house: false,
+    )
+    Dir.mktmpdir("asc-key") do |dir|
+      key_path = File.join(dir, "AuthKey_#{key_id}.p8")
+      File.write(key_path, ENV.fetch("APP_STORE_CONNECT_KEY_P8"))
+      File.chmod(0o600, key_path)
+      yield api_key, key_path
+    end
+  end
+
+  # CFBundleVersion of the built app, read from the .ipa itself.
+  def ipa_build_number(ipa)
+    Dir.mktmpdir("ipa-plist") do |dir|
+      sh("unzip", "-q", "-o", ipa, "Payload/*.app/Info.plist", "-d", dir, log: false)
+      plist = Dir.glob(File.join(dir, "Payload", "*.app", "Info.plist")).first
+      UI.user_error!("No Info.plist inside #{ipa}") unless plist
+      sh("/usr/bin/plutil", "-extract", "CFBundleVersion", "raw", "-o", "-", plist, log: false).strip
+    end
+  end
+
+  desc "Archive the release candidate and upload it to TestFlight's internal testers"
+  lane :beta do
+    tag = ios_release_tag
+    code = ios_version_code
+    team = ENV["APPLE_TEAM_ID"].to_s.strip
+    UI.user_error!("APPLE_TEAM_ID is not set (the Apple team that signs the app)") if team.empty?
+
+    # Headless runners have no login keychain for cloud-managed signing.
+    setup_ci if ENV["CI"]
+
+    with_app_store_connect_key do |api_key, key_path|
+      auth = IosRelease.xcode_auth_args(key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+                                        issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+                                        key_path: key_path, team_id: team)
+      ipa = build_app(
+        project: IOS_PROJECT,
+        scheme: IOS_SCHEME,
+        configuration: "Release",
+        export_method: "app-store",
+        export_team_id: team,
+        output_directory: IOS_OUTPUT,
+        archive_path: File.join(IOS_OUTPUT, "#{IOS_SCHEME}.xcarchive"),
+        clean: true,
+        include_symbols: true,
+        xcargs: auth,
+        export_xcargs: auth,
+      )
+
+      # The build phase stamps CFBundleVersion from git (scripts/ios/set-version.sh).
+      # A mismatch means the archive was not built from the RC tag: refuse it.
+      built = ipa_build_number(ipa)
+      UI.user_error!("#{File.basename(ipa)} has CFBundleVersion #{built}, but #{tag} is #{code}") unless built == code.to_s
+
+      # With internal groups named, wait for processing and hand the build to them;
+      # without, upload only (an internal group set to automatic distribution still
+      # gets it). pilot cannot distribute a build it did not wait for.
+      groups = IosRelease.testflight_groups(ENV["TESTFLIGHT_GROUPS"])
+      upload_to_testflight(
+        api_key: api_key,
+        ipa: ipa,
+        distribute_external: false,
+        groups: groups,
+        submit_beta_review: false, # internal groups only: never start a beta review
+        skip_submission: groups.nil?,
+        skip_waiting_for_build_processing: groups.nil?,
+      )
+    end
+  end
+
+  desc "Send the RC's TestFlight build to the external group (public link) and submit it to Beta App Review (ADR 0033)"
+  lane :beta_external do
+    tag = ios_release_tag
+    code = ios_version_code
+    groups = IosRelease.testflight_groups(ENV["TESTFLIGHT_EXTERNAL_GROUPS"])
+    UI.user_error!("TESTFLIGHT_EXTERNAL_GROUPS is not set (the external group with the public link)") unless groups
+
+    # External testing needs "What to Test": the version's English release notes,
+    # the same file Play's changelog comes from (the DRAFT gate has already passed).
+    notes_file = File.join(REPO_ROOT, "fastlane/release-notes", "v#{IosRelease.version_name(tag)}", "en-US.txt")
+    UI.user_error!("No release notes at #{notes_file}; external testing needs them as What to Test") unless File.exist?(notes_file)
+
+    with_app_store_connect_key do |api_key, _key_path|
+      # The build is the one `beta` uploaded on Monday: pilot's distribute-only
+      # mode selects it by version and build number (never an .ipa on disk) and
+      # never rebuilds or uploads it again (ADR 0033: one RC binary).
+      upload_to_testflight(
+        api_key: api_key,
+        app_identifier: IOS_BUNDLE_ID,
+        app_version: IosRelease.version_name(tag),
+        build_number: code.to_s,
+        distribute_only: true,
+        distribute_external: true,
+        groups: groups,
+        changelog: File.read(notes_file).strip,
+        submit_beta_review: true, # the open beta is the external group: Beta App Review is the step
+        skip_waiting_for_build_processing: true,
+      )
+    end
+  end
+
+  desc "Upload the release candidate's dSYMs to Sentry (skipped without the SENTRY_* variables)"
+  lane :upload_dsyms do
+    settings = IosRelease.sentry_settings(ENV)
+    if settings.nil?
+      UI.important("SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT are not all set; skipping the iOS dSYM upload")
+      next
+    end
+
+    dsyms = File.join(IOS_OUTPUT, "#{IOS_SCHEME}.xcarchive", "dSYMs")
+    UI.user_error!("No dSYMs at #{dsyms}; run `ios beta` first") unless Dir.exist?(dsyms)
+    sh("sentry-cli", "debug-files", "upload", "--org", settings[:org], "--project", settings[:project], "--wait", dsyms)
+  end
+
+  desc "Send the TestFlight build of an RC (tag:vX.Y.Z-rcN or RELEASE_TAG) to the App Store (submits only with submit_for_review:true)"
+  lane :release do |options|
+    # Refuse while the review contact or any other store text is still a stub.
+    placeholders = IosRelease.placeholder_files(IOS_METADATA)
+    UI.user_error!("#{IosRelease::PLACEHOLDER} is still in #{placeholders.join(', ')}; fill those in before submitting") unless placeholders.empty?
+
+    # The RC tag, never the final one: `ios beta` uploaded the build under the RC's
+    # versionCode, and the final tag's (rc 0) names no TestFlight build at all.
+    tag = (options[:tag] || ios_release_tag).to_s
+    UI.user_error!("ios release needs the RC tag that ios beta uploaded (vX.Y.Z-rcN), got '#{tag}'; pass tag:vX.Y.Z-rcN") unless IosRelease.rc_tag?(tag)
+    submit = options[:submit_for_review].to_s == "true"
+
+    with_app_store_connect_key do |api_key, _key_path|
+      deliver(
+        api_key: api_key,
+        app_identifier: IOS_BUNDLE_ID,
+        app_version: IosRelease.version_name(tag),
+        # The build is the TestFlight one already uploaded by `ios beta`: selected
+        # by its build number, never uploaded again (ADR 0033: one RC binary).
+        build_number: ios_version_code(tag).to_s,
+        skip_binary_upload: true,
+        metadata_path: IOS_METADATA,
+        screenshots_path: File.join(REPO_ROOT, "fastlane/screenshots/ios"),
+        skip_screenshots: !Dir.exist?(File.join(REPO_ROOT, "fastlane/screenshots/ios")),
+        submit_for_review: submit,
+        automatic_release: true,
+        phased_release: true,
+        force: true,
+      )
     end
   end
 end

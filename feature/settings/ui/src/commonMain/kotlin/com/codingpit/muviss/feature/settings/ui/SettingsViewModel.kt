@@ -13,6 +13,7 @@ import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
+import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
@@ -49,6 +50,10 @@ data class SettingsUiState(
     /** The app-wide motion switch. While it is off every per-feature motion row below is inert. */
     val animationsEnabled: Boolean = true,
     val triageDeckAnimations: Boolean = true,
+    /** Tick feedback on Progress and Detail (EPIC 52). Narrows [animationsEnabled] like the deck switch. */
+    val tickAnimations: Boolean = true,
+    /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
+    val notificationsDenied: Boolean = false,
 )
 
 /**
@@ -95,6 +100,10 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(triageDeckAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
+        featureFlags.tickAnimations
+            .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
+            .launchInReporting(viewModelScope)
+
         observeAppSettings()
     }
 
@@ -134,6 +143,10 @@ class SettingsViewModel(
         viewModelScope.launchReporting { featureFlags.setTriageDeckAnimations(enabled) }
     }
 
+    fun onTickAnimationsToggled(enabled: Boolean) {
+        viewModelScope.launchReporting { featureFlags.setTickAnimations(enabled) }
+    }
+
     fun onThemeSelected(theme: AppTheme) {
         viewModelScope.launchReporting { actions.setTheme(theme) }
     }
@@ -147,11 +160,20 @@ class SettingsViewModel(
     }
 
     fun onNotificationsToggled(enabled: Boolean) {
-        viewModelScope.launchReporting { actions.setNotificationsEnabled(enabled) }
+        viewModelScope.launchReporting {
+            val change = actions.setNotificationsEnabled(enabled)
+            // A refusal stores nothing, so the switch snaps back; this is what lets the screen say why.
+            _state.update { it.copy(notificationsDenied = change == NotificationsChange.DENIED) }
+        }
     }
 
     fun onCrashReportsToggled(enabled: Boolean) {
         viewModelScope.launchReporting { actions.setCrashReportsEnabled(enabled) }
+    }
+
+    /** Device Backup (ADR 0034). Nothing is copied now: the OS includes or excludes the library at its next backup. */
+    fun onDeviceBackupToggled(enabled: Boolean) {
+        viewModelScope.launchReporting { actions.setDeviceBackupEnabled(enabled) }
     }
 
     fun exportData() {

@@ -2,12 +2,11 @@ package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.settings.domain.ImportFileError
 import com.codingpit.muviss.feature.settings.domain.ImportFileException
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -26,19 +25,13 @@ class BackupRestoreTest {
         override val io = default
     }
 
-    private fun newDatabase(): MuvissDatabase {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        return MuvissDatabase(driver)
-    }
+    private fun newDatabase(): MuvissDatabase = inMemoryDatabase()
 
     private fun exporter(database: MuvissDatabase) = SqlDelightSettingsRepository(
         database.appSettingsQueries,
         ExportQueries(database),
         dispatchers,
-        object : AppClock {
-            override fun nowEpochMs(): Long = 9_000L
-        },
+        FakeClock(9_000L),
         AppVersion("1.2.3", 42L),
     )
 

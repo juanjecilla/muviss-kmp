@@ -1,0 +1,54 @@
+name: Play reviews
+
+# Google Play reviews of 3 stars or fewer -> GitHub issues (EPIC 48, Ops Bridge
+# connector #2, ADR 0028). The Reviews API returns only reviews with text, created or
+# edited in the LAST WEEK, so this runs daily: a weekly gap would drop reviews. Each
+# review keeps one issue (deduped on its review id), so an edit does not open another.
+#
+# The reviewer's name is never copied: the repository goes public.
+# The logic is fastlane/ops_bridge/connectors/play_reviews.rb; tests are fastlane/test/play_reviews_test.rb.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only say what would be opened; write nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Open issues for new low-star reviews
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: play-reviews-sync
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+        with:
+          ruby-version: "3.3"
+      - name: Sync
+        env:
+          # The same service account the Play upload uses, which also needs the Play Console
+          # permission "Reply to reviews" (Users and permissions > the account > App permissions).
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "PLAY_SERVICE_ACCOUNT_JSON is not set; nothing to do (docs/RELEASING.md, 'Ops Bridge')."
+            exit 0
+          fi
+          ruby fastlane/ops_bridge.rb sync play-reviews

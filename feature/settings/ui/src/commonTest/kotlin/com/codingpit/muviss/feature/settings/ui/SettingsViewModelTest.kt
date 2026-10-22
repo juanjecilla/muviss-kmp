@@ -2,26 +2,31 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
 import com.codingpit.muviss.feature.settings.domain.ExportDataUseCase
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
+import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
+import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
+import com.codingpit.muviss.feature.settings.domain.SetDeviceBackupEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
 import com.codingpit.muviss.feature.settings.domain.SetThemeUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
+import com.codingpit.muviss.models.GenreKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,12 +69,20 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
         flow.value = flow.value.copy(crashReportsEnabled = enabled)
     }
 
-    override suspend fun exportData(): String = exportResult.getOrThrow()
-}
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        flow.value = flow.value.copy(deviceBackupEnabled = enabled)
+    }
 
-private object FixedClock : AppClock {
-    // 2026-10-07T12:00:00Z
-    override fun nowEpochMs(): Long = 1_791_374_400_000L
+    override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) {
+        val kept = flow.value.mutedGenres.filterNot { it.key == key }
+        flow.value = flow.value.copy(mutedGenres = if (muted) kept + MutedGenreEntry(key, name) else kept)
+    }
+
+    override suspend fun setMutedGenresInSearch(enabled: Boolean) {
+        flow.value = flow.value.copy(mutedGenresInSearch = enabled)
+    }
+
+    override suspend fun exportData(): String = exportResult.getOrThrow()
 }
 
 private class FakeEraser : LocalDataEraser {
@@ -81,9 +94,20 @@ private class FakeEraser : LocalDataEraser {
     }
 }
 
+private class FakePermission(var answer: Boolean = true) : NotificationPermissionRequester {
+    var asked = 0
+        private set
+
+    override suspend fun request(): Boolean {
+        asked++
+        return answer
+    }
+}
+
 class SettingsViewModelTest {
 
     private val eraser = FakeEraser()
+    private val permission = FakePermission()
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -97,14 +121,16 @@ class SettingsViewModelTest {
             SetThemeUseCase(repository),
             SetLanguageUseCase(repository),
             SetRegionUseCase(repository),
-            SetNotificationsEnabledUseCase(repository),
+            SetNotificationsEnabledUseCase(repository, permission),
             SetCrashReportsEnabledUseCase(repository),
+            MutedGenresActions(repository),
             ExportDataUseCase(repository),
+            SetDeviceBackupEnabledUseCase(repository),
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),
         FakeFeatureFlags(),
         DeleteAllDataUseCase(eraser),
-        FixedClock,
+        FakeClock(1_791_374_400_000L), // 2026-10-07T12:00:00Z
     )
 
     @Test
@@ -159,15 +185,47 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun onNotificationsToggled_persists() = runTest {
+    fun onNotificationsToggled_on_asks_the_os_and_persists_when_it_agrees() = runTest {
         val repository = FakeSettingsRepository()
         val vm = viewModel(repository)
+        advanceUntilIdle()
+
+        vm.onNotificationsToggled(true)
+        advanceUntilIdle()
+
+        assertEquals(1, permission.asked)
+        assertEquals(true, vm.state.value.settings.notificationsEnabled)
+        assertEquals(false, vm.state.value.notificationsDenied)
+    }
+
+    @Test
+    fun onNotificationsToggled_on_stores_nothing_when_the_os_refuses() = runTest {
+        permission.answer = false
+        val repository = FakeSettingsRepository()
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+
+        vm.onNotificationsToggled(true)
+        advanceUntilIdle()
+
+        assertEquals(false, repository.flow.value.notificationsEnabled, "a switch must never read on for an alert that cannot arrive")
+        assertEquals(true, vm.state.value.notificationsDenied, "the screen needs to say why the switch snapped back")
+    }
+
+    @Test
+    fun onNotificationsToggled_off_never_asks_the_os_and_clears_a_denial() = runTest {
+        permission.answer = false
+        val repository = FakeSettingsRepository()
+        val vm = viewModel(repository)
+        advanceUntilIdle()
+        vm.onNotificationsToggled(true)
         advanceUntilIdle()
 
         vm.onNotificationsToggled(false)
         advanceUntilIdle()
 
-        assertEquals(false, vm.state.value.settings.notificationsEnabled)
+        assertEquals(1, permission.asked, "only the first, enabling, toggle asks")
+        assertEquals(false, vm.state.value.notificationsDenied)
     }
 
     @Test
@@ -179,6 +237,18 @@ class SettingsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(false, vm.state.value.animationsEnabled)
+    }
+
+    @Test
+    fun onTickAnimationsToggled_persists_without_touching_the_master() = runTest {
+        val vm = viewModel(FakeSettingsRepository())
+        advanceUntilIdle()
+
+        vm.onTickAnimationsToggled(false)
+        advanceUntilIdle()
+
+        assertEquals(false, vm.state.value.tickAnimations)
+        assertEquals(true, vm.state.value.animationsEnabled)
     }
 
     @Test
@@ -282,12 +352,15 @@ private class FakeFeatureFlags : FeatureFlags {
     private val scheme = MutableStateFlow(TriageControlScheme.DEFAULT)
     val animations = MutableStateFlow(true)
     val deckAnimations = MutableStateFlow(true)
+    val tickAnims = MutableStateFlow(true)
 
     override val triageControlScheme: Flow<TriageControlScheme> = scheme
     override val animationsEnabled: Flow<Boolean> = animations
     override val triageDeckAnimations: Flow<Boolean> = deckAnimations
+    override val tickAnimations: Flow<Boolean> = tickAnims
     val autoSync = MutableStateFlow(false)
     override val syncAutomatically: Flow<Boolean> = autoSync
+    override val byokEnabled: Flow<Boolean> = MutableStateFlow(false)
     val snoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
     val snoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
     override val triageSnoozePeriod: Flow<SnoozePeriod> = snoozePeriod
@@ -315,5 +388,9 @@ private class FakeFeatureFlags : FeatureFlags {
 
     override suspend fun setTriageDeckAnimations(enabled: Boolean) {
         deckAnimations.value = enabled
+    }
+
+    override suspend fun setTickAnimations(enabled: Boolean) {
+        tickAnims.value = enabled
     }
 }

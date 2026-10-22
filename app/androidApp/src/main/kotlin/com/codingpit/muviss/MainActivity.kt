@@ -1,10 +1,7 @@
 package com.codingpit.muviss
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,29 +12,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.core.content.ContextCompat
-import androidx.core.content.edit
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.sync.OAUTH_CODE_PARAM
-import com.codingpit.muviss.feature.collection.api.CollectionApi
-import com.codingpit.muviss.models.MediaType
-import com.codingpit.muviss.notifications.NotificationPermission
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import com.codingpit.muviss.notifications.AndroidNotificationPermissionRequester
 import org.koin.core.context.GlobalContext
 
 /**
- * Thin Android host. Two EPIC 5 (new-episode notifications) concerns live
- * here rather than in shared `commonMain` code, because both are
- * Android-specific platform APIs with no KMP seam elsewhere in the app yet:
+ * Thin Android host. Two concerns live here rather than in shared `commonMain` code,
+ * because both are Android-specific platform APIs with no KMP seam elsewhere in the app yet:
  *
- * - The `POST_NOTIFICATIONS` runtime permission (API 33+), asked for once the
- *   library holds a TV show — the first moment a new-episode alert means
- *   anything — after a one-line rationale (EPIC 30, #73). It used to fire on
- *   the very first launch, before the user had a reason to accept, and a
- *   denial on 13+ is sticky.
+ * - The `POST_NOTIFICATIONS` runtime permission (API 33+). It is only ever asked for at the
+ *   moment the user turns notifications on — in Onboarding, the Notification Nudge or
+ *   Settings (EPIC 47) — through [AndroidNotificationPermissionRequester], which this
+ *   activity lends its result launcher to. It used to be asked once a show was saved
+ *   (EPIC 30, #73), and before that on the very first launch; a denial on 13+ is sticky.
  * - Reading the notification tap's deep-link extra (`EXTRA_DEEP_LINK_MEDIA_ID`,
  *   set by `notifications.NewEpisodesNotifier`) and forwarding it into
  *   `MuvissApp()`, which navigates to that show's `DetailRoute` once
@@ -51,7 +39,13 @@ class MainActivity : ComponentActivity() {
     private var oauthCode by mutableStateOf<String?>(null)
 
     private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* denied => graceful no-op, see NewEpisodesNotifier */ }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            notificationPermissions?.onResult(granted)
+        }
+
+    /** The process-wide requester, if the host bound the Android one (it always does outside tests). */
+    private val notificationPermissions: AndroidNotificationPermissionRequester?
+        get() = GlobalContext.getOrNull()?.get<NotificationPermissionRequester>() as? AndroidNotificationPermissionRequester
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -59,7 +53,7 @@ class MainActivity : ComponentActivity() {
 
         deepLinkMediaId = intent.deepLinkMediaIdExtra()
         oauthCode = intent.oauthCode()
-        askForNotificationsOnceAShowIsSaved()
+        notificationPermissions?.attach { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
 
         setContent {
             MuvissApp(
@@ -71,36 +65,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        // A launcher belongs to its activity; a request in flight when it goes is a refusal.
+        notificationPermissions?.detach()
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         deepLinkMediaId = intent.deepLinkMediaIdExtra()
         oauthCode = intent.oauthCode()
-    }
-
-    /**
-     * Waits for the first saved TV show, then explains and asks — once. The
-     * "asked" mark is a per-device UI fact, so it lives in plain preferences
-     * rather than the synced database.
-     */
-    private fun askForNotificationsOnceAShowIsSaved() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_ASKED, false) || NotificationPermission.granted(this)) return
-        val collection = GlobalContext.get().get<CollectionApi>()
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                collection.observeSummaries().first { all -> all.any { it.mediaId.type == MediaType.TV } }
-                if (prefs.getBoolean(KEY_ASKED, false) || NotificationPermission.granted(this@MainActivity)) return@repeatOnLifecycle
-                prefs.edit { putBoolean(KEY_ASKED, true) }
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle(R.string.permission_title)
-                    .setMessage(R.string.permission_body)
-                    .setPositiveButton(R.string.permission_allow) { _, _ -> requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
-                    .setNegativeButton(R.string.permission_not_now, null)
-                    .show()
-            }
-        }
     }
 
     private fun Intent.deepLinkMediaIdExtra(): String? = getStringExtra(EXTRA_DEEP_LINK_MEDIA_ID)
@@ -124,9 +99,6 @@ class MainActivity : ComponentActivity() {
         // an Android Uri exposes them.
         private const val OAUTH_SCHEME = "muviss"
         private const val OAUTH_HOST = "auth-callback"
-
-        private const val PREFS = "muviss_host"
-        private const val KEY_ASKED = "notification_permission_asked"
     }
 }
 

@@ -1,17 +1,29 @@
 package com.codingpit.muviss.di
 
+import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.database.PersistenceStatus
+import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
 import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
+import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
+import com.codingpit.muviss.feature.onboarding.ui.OnboardingViewModel
 import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -57,7 +69,12 @@ class AppGraphTest {
     private fun startGraph(): Koin {
         val directory = createTempDirectory("muviss-app-graph").toFile()
         val app = startKoin {
-            modules(appModules + module { single { DatabaseDriverFactory(directory) } })
+            modules(
+                appModules + module {
+                    single { DatabaseDriverFactory(directory) }
+                    single<SecretStore> { InMemorySecretStore() }
+                },
+            )
         }
         koin = app.koin
         return app.koin
@@ -87,6 +104,25 @@ class AppGraphTest {
         // EPIC 40: the coordinator and the settings it follows are part of the graph.
         assertNotNull(koin.get<SyncCoordinator>())
         assertNotNull(koin.get<AutomaticSyncSettings>())
+        // EPIC 45: the provider needs RemoteConfig for its per-request credential, and FeatureFlags
+        // reads byokEnabled from it; neither resolves unless remoteConfigModule is in the graph.
+        assertNotNull(koin.get<RemoteConfig>())
+        assertNotNull(koin.get<MetadataProvider>())
+        assertNotNull(koin.get<FeatureFlags>())
+        // EPIC 47: the nudge reads the library and Settings through their :api, resolved lazily; the
+        // contract must resolve in both orders with the rest of the graph.
+        assertNotNull(koin.get<OnboardingApi>())
+        assertNotNull(koin.get<NotificationPermissionRequester>())
+    }
+
+    /**
+     * The first-run introduction's view model is the first thing a fresh install builds. Its
+     * constructor has a defaulted `Boolean` (Device Backup's `canBackUp`), which `viewModelOf` would
+     * try to resolve from Koin and fail on; that shipped to CI as an iOS launch crash.
+     */
+    @Test
+    fun `the onboarding view model resolves from the assembled graph`() {
+        assertNotNull(startGraph().get<OnboardingViewModel>())
     }
 
     /**

@@ -2,12 +2,15 @@
 
 package com.codingpit.muviss.feature.profile.ui
 
-import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.profile.domain.AccountChangeChoice
 import com.codingpit.muviss.feature.profile.domain.AutomaticSyncMode
+import com.codingpit.muviss.feature.profile.domain.LastSynced
 import com.codingpit.muviss.feature.profile.domain.LocalProfile
 import com.codingpit.muviss.feature.profile.domain.ObserveLastSyncedAtUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
@@ -17,6 +20,7 @@ import com.codingpit.muviss.feature.profile.domain.ProfileActions
 import com.codingpit.muviss.feature.profile.domain.ProfileRepository
 import com.codingpit.muviss.feature.profile.domain.SetAvatarUseCase
 import com.codingpit.muviss.feature.profile.domain.SetDisplayNameUseCase
+import com.codingpit.muviss.feature.profile.domain.SignInFailure
 import com.codingpit.muviss.feature.profile.domain.SyncAccountState
 import com.codingpit.muviss.feature.profile.domain.SyncActions
 import com.codingpit.muviss.feature.profile.domain.SyncFailureKind
@@ -47,6 +51,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -116,14 +121,6 @@ private class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = error("not used")
 }
 
-private class FixedClock(private val epochDay: Long) : AppClock {
-    override fun nowEpochMs(): Long = epochDay * MILLIS_PER_DAY
-
-    private companion object {
-        const val MILLIS_PER_DAY = 86_400_000L
-    }
-}
-
 private class FakeSyncRepository(
     override val isAvailable: Boolean = true,
     initialAccount: SyncAccountState = SyncAccountState.SignedOut,
@@ -143,7 +140,7 @@ private class FakeSyncRepository(
     var completeSignInResult: Result<Unit> = Result.success(Unit)
     var syncNowResult: SyncOutcomeSummary = SyncOutcomeSummary.Success(1_000L)
     var signOutCalled = false
-    val signInFailure = MutableStateFlow<String?>(null)
+    val signInFailure = MutableStateFlow<SignInFailure?>(null)
     var failureShownCount = 0
 
     override fun observeAccount(): Flow<SyncAccountState> = account
@@ -174,7 +171,7 @@ private class FakeSyncRepository(
         return completeSignInResult
     }
 
-    override fun observeSignInFailure(): Flow<String?> = signInFailure
+    override fun observeSignInFailure(): Flow<SignInFailure?> = signInFailure
 
     override fun signInFailureShown() {
         failureShownCount++
@@ -187,6 +184,16 @@ private class FakeSyncRepository(
     }
 
     override suspend fun syncNow(): SyncOutcomeSummary = syncNowResult
+
+    val resolutions = mutableListOf<AccountChangeChoice>()
+    var resolveResult: SyncOutcomeSummary = SyncOutcomeSummary.Success(3_000L)
+
+    /** Answering clears the mismatch, as the engine does by adopting the signed-in account. */
+    override suspend fun resolveAccountChange(choice: AccountChangeChoice): SyncOutcomeSummary {
+        resolutions += choice
+        if (resolveResult is SyncOutcomeSummary.Success) status.value = status.value.copy(accountChanged = false)
+        return resolveResult
+    }
 
     companion object {
         const val AUTHORIZE_URL = "https://project.supabase.co/auth/v1/authorize?provider=github"
@@ -208,10 +215,10 @@ class ProfileViewModelTest {
         syncRepository: FakeSyncRepository = FakeSyncRepository(),
     ): ProfileViewModel = ProfileViewModel(
         ObserveProfileUseCase(profileRepository),
-        ObserveProfileStatsUseCase(collectionApi, progressApi, FixedClock(epochDay = 0)),
+        ObserveProfileStatsUseCase(collectionApi, progressApi, FakeClock(epochMsAtStartOfDay(0))),
         ProfileActions(SetDisplayNameUseCase(profileRepository), SetAvatarUseCase(profileRepository)),
         SyncActions(syncRepository, ObserveSyncAccountUseCase(syncRepository), ObserveLastSyncedAtUseCase(syncRepository)),
-        FixedClock(epochDay = 0),
+        FakeClock(epochMsAtStartOfDay(0)),
     )
 
     @Test
@@ -344,7 +351,7 @@ class ProfileViewModelTest {
         val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
 
-        repository.signInFailure.value = "code challenge does not match"
+        repository.signInFailure.value = SignInFailure.Declined("code challenge does not match")
         advanceUntilIdle()
 
         assertEquals("code challenge does not match", vm.state.value.sync.message.text())
@@ -355,7 +362,7 @@ class ProfileViewModelTest {
         val repository = FakeSyncRepository()
         val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
-        repository.signInFailure.value = "invalid grant"
+        repository.signInFailure.value = SignInFailure.Generic
         advanceUntilIdle()
 
         vm.syncMessageShown()
@@ -495,7 +502,7 @@ class ProfileViewModelTest {
 
         repository.status.value = SyncStatus(lastSyncedAtEpochMs = 0L, pendingChanges = 4)
         advanceUntilIdle()
-        assertEquals("Synced just now", vm.state.value.sync.lastSyncedLabel)
+        assertEquals(LastSynced.JustNow, vm.state.value.sync.lastSynced)
         assertEquals(SyncStatusDetail.Waiting(4), vm.state.value.sync.statusDetail)
 
         repository.status.value = SyncStatus(lastSyncedAtEpochMs = 0L, pendingChanges = 4, lastFailure = SyncFailureKind.Offline)
@@ -518,7 +525,7 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun a_different_account_is_explained_and_nothing_is_offered_to_fix_it() = runTest {
+    fun a_different_account_is_explained_when_sync_now_runs_into_it() = runTest {
         val repository = FakeSyncRepository(initialAccount = signedIn).apply { syncNowResult = SyncOutcomeSummary.AccountChanged }
         val vm = viewModel(syncRepository = repository)
         advanceUntilIdle()
@@ -527,6 +534,128 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         assertEquals("This device's library belongs to a different account, so nothing was synced.", vm.state.value.sync.message.text())
+    }
+
+    // --- a different account (#148) -----------------------------------------------
+
+    private fun mismatched() = FakeSyncRepository(initialAccount = signedIn).apply {
+        status.value = SyncStatus(accountChanged = true)
+        syncNowResult = SyncOutcomeSummary.AccountChanged
+    }
+
+    @Test
+    fun a_different_account_opens_the_library_choice_without_resolving_anything() = runTest {
+        val repository = mismatched()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.sync.choosingAccountLibrary)
+        assertTrue(repository.resolutions.isEmpty(), "nothing is decided on the person's behalf")
+    }
+
+    @Test
+    fun no_library_choice_while_the_accounts_match() = runTest {
+        val vm = viewModel(syncRepository = FakeSyncRepository(initialAccount = signedIn))
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.sync.choosingAccountLibrary)
+    }
+
+    @Test
+    fun replacing_resolves_with_the_account_library_and_closes_the_dialog() = runTest {
+        val repository = mismatched()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onAccountChoiceMade(AccountChangeChoice.ReplaceWithAccountLibrary)
+        advanceUntilIdle()
+
+        assertEquals(listOf(AccountChangeChoice.ReplaceWithAccountLibrary), repository.resolutions)
+        assertFalse(vm.state.value.sync.choosingAccountLibrary)
+        assertFalse(vm.state.value.sync.syncing)
+        assertEquals("Library replaced with your account's", vm.state.value.sync.message.text())
+    }
+
+    @Test
+    fun adding_resolves_by_merging_this_device_into_the_account() = runTest {
+        val repository = mismatched()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onAccountChoiceMade(AccountChangeChoice.AddDeviceLibraryToAccount)
+        advanceUntilIdle()
+
+        assertEquals(listOf(AccountChangeChoice.AddDeviceLibraryToAccount), repository.resolutions)
+        assertFalse(vm.state.value.sync.choosingAccountLibrary)
+        assertEquals("This device's library was added to your account", vm.state.value.sync.message.text())
+    }
+
+    @Test
+    fun a_failed_resolution_says_why_in_words() = runTest {
+        val repository = mismatched().apply { resolveResult = SyncOutcomeSummary.Failed(SyncFailureKind.Offline) }
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onAccountChoiceMade(AccountChangeChoice.ReplaceWithAccountLibrary)
+        advanceUntilIdle()
+
+        assertEquals("Sync failed: you seem to be offline", vm.state.value.sync.message.text())
+    }
+
+    @Test
+    fun deciding_later_closes_the_dialog_and_does_nothing_else() = runTest {
+        val repository = mismatched()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+
+        vm.onAccountChoiceDeferred()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.sync.choosingAccountLibrary)
+        assertTrue(repository.resolutions.isEmpty())
+        assertEquals(SyncStatusDetail.AccountChanged, vm.state.value.sync.statusDetail, "the mismatch is still on the status line")
+        assertNull(vm.state.value.sync.message)
+    }
+
+    @Test
+    fun choose_brings_the_dialog_back_after_deciding_later() = runTest {
+        val repository = mismatched()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        vm.onAccountChoiceDeferred()
+
+        vm.onAccountChoiceRequested()
+
+        assertTrue(vm.state.value.sync.choosingAccountLibrary)
+    }
+
+    @Test
+    fun sync_now_into_a_mismatch_brings_the_dialog_back() = runTest {
+        val repository = mismatched()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        vm.onAccountChoiceDeferred()
+
+        vm.onSyncNowClicked()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.sync.choosingAccountLibrary)
+        assertTrue(repository.resolutions.isEmpty())
+    }
+
+    @Test
+    fun a_later_mismatch_asks_again_even_after_deciding_later_on_an_earlier_one() = runTest {
+        val repository = mismatched()
+        val vm = viewModel(syncRepository = repository)
+        advanceUntilIdle()
+        vm.onAccountChoiceDeferred()
+
+        repository.status.value = SyncStatus(accountChanged = false)
+        advanceUntilIdle()
+        repository.status.value = SyncStatus(accountChanged = true)
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.sync.choosingAccountLibrary)
     }
 
     @Test

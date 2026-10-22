@@ -7,6 +7,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(projects.feature.triage.domain)
+            implementation(projects.feature.settings.api)
             implementation(projects.core.common)
             implementation(projects.core.designsystem)
             implementation(projects.models)
@@ -20,6 +21,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
         }
         commonTest.dependencies {
+            // `FakeClock` (the shared `AppClock` fake).
+            implementation(projects.core.testing)
             implementation(libs.kotlinx.coroutinesTest)
             implementation(libs.turbine)
             // Test-only: the deck's use cases are constructed from real

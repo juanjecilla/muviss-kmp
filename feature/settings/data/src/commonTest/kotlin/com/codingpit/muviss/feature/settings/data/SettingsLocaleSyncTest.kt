@@ -30,6 +30,10 @@ private class FakeSettingsRepository(initial: AppSettings) : SettingsRepository 
     override suspend fun setRegion(region: String) = error("not used")
     override suspend fun setNotificationsEnabled(enabled: Boolean) = error("not used")
     override suspend fun setCrashReportsEnabled(enabled: Boolean) = error("not used")
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = error("not used")
+    override suspend fun setGenreMuted(key: com.codingpit.muviss.models.GenreKey, name: String, muted: Boolean) = error("not used")
+    override suspend fun setMutedGenresInSearch(enabled: Boolean) = error("not used")
     override suspend fun exportData(): String = error("not used")
 }
 

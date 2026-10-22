@@ -2,14 +2,12 @@
 
 package com.codingpit.muviss.feature.progress.data
 
-import app.cash.sqldelight.async.coroutines.synchronous
-import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
-import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
-import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CoroutineDispatcher
@@ -26,13 +24,6 @@ private class ImmediateDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val io = d
 }
 
-private class FakeClock(private var millis: Long) : AppClock {
-    override fun nowEpochMs(): Long = millis
-    fun advanceTo(newMillis: Long) {
-        millis = newMillis
-    }
-}
-
 class SqlDelightProgressRepositoryTest {
 
     private lateinit var queries: EpisodeProgressQueries
@@ -46,9 +37,7 @@ class SqlDelightProgressRepositoryTest {
 
     @BeforeTest
     fun setUp() {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        MuvissDatabase.Schema.synchronous().create(driver)
-        val database = MuvissDatabase(driver)
+        val database = inMemoryDatabase()
         queries = database.episodeProgressQueries
         clock = FakeClock(1_000L)
         repository = SqlDelightProgressRepository(
