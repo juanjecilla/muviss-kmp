@@ -77,6 +77,17 @@ class FeatureRequestLinkTest {
     }
 
     @Test
+    fun only_an_absolute_https_url_shows_the_row() {
+        listOf("none", "tally.so/r/abc", "http://tally.so/r/abc", "https://", "https:///r/abc", "ftp://tally.so/r/abc").forEach {
+            assertNull(FeatureRequestLink.build(FeatureRequestProvider.Tally, it, context), it)
+        }
+        assertEquals(
+            "HTTPS://tally.so/r/abc?version=1.2.0&platform=android&os=15&locale=es-ES",
+            FeatureRequestLink.build(FeatureRequestProvider.Tally, "HTTPS://tally.so/r/abc", context),
+        )
+    }
+
+    @Test
     fun an_unknown_stored_provider_reads_as_tally_not_off() {
         assertEquals(FeatureRequestProvider.Tally, FeatureRequestProvider.fromStored("jotform"))
         assertEquals(FeatureRequestProvider.Tally, FeatureRequestProvider.fromStored(null))

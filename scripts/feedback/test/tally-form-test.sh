@@ -16,6 +16,7 @@ method=""; url=""; body=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -X) method="$2"; shift ;;
+    -H) case "$2" in @*) echo "HEADERFILE $(cat "${2#@}") $(stat -f %Lp "${2#@}" 2>/dev/null || stat -c %a "${2#@}")" >> "$CALLS_LOG" ;; *Authorization*) echo "ARGKEY" >> "$CALLS_LOG" ;; esac; shift ;;
     --data-binary) body="$(cat "${2#@}")" ;;
     http*) url="$1" ;;
   esac
@@ -33,6 +34,8 @@ expect_eq "create exits 0" "$rc" "0"
 case "$out" in *"https://tally.so/r/wA1b2C"*) pass "create prints the public URL from the returned id" ;; *) fail "create prints the URL: $out" ;; esac
 grep -q '^POST https://stub.test/forms ' "$log" && pass "create POSTs /forms" || fail "create POSTs /forms"
 grep -q '"HIDDEN_FIELDS"' "$log" && pass "create sends the checked-in definition" || fail "create sends the definition"
+grep -q '^HEADERFILE Authorization: Bearer test-key 600$' "$log" && pass "the key reaches curl through a 0600 header file" || fail "the key reaches curl through a 0600 header file: $(grep HEADERFILE "$log")"
+grep -q '^ARGKEY' "$log" && fail "the key is on curl's command line" || pass "the key is not on curl's command line"
 for f in version platform os locale; do
   grep -q "\"name\": *\"$f\"" "$log" && pass "definition carries hidden field $f" || fail "definition carries hidden field $f"
 done

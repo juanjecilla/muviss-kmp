@@ -13,9 +13,15 @@ DEFINITION="${TALLY_FORM_DEFINITION:-$HERE/tally-form.json}"
 BASE="${TALLY_API_BASE:-https://api.tally.so}"
 : "${TALLY_API_KEY:?set TALLY_API_KEY (Tally -> Settings -> API keys)}"
 
+# The key goes to curl through a 0600 header file, never on its command line, where any
+# local process could read it from a process listing.
+headers="$(umask 077 && mktemp)"
+trap 'rm -f "$headers"' EXIT
+printf 'Authorization: Bearer %s\n' "$TALLY_API_KEY" > "$headers"
+
 call() { # method path [body-file]
   local method="$1" path="$2" body="${3:-}"
-  local args=(-sS -X "$method" "$BASE$path" -H "Authorization: Bearer $TALLY_API_KEY" -H "Content-Type: application/json" -w '\n%{http_code}')
+  local args=(-sS -X "$method" "$BASE$path" -H "@$headers" -H "Content-Type: application/json" -w '\n%{http_code}')
   [ -n "$body" ] && args+=(--data-binary "@$body")
   local out code
   out="$(curl "${args[@]}")"

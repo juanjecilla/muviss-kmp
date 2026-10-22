@@ -27,12 +27,14 @@ data class FeatureRequestContext(
 object FeatureRequestLink {
     /**
      * Returns null — hide the row — when [provider] is [FeatureRequestProvider.Off] or
-     * [baseUrl] is null or blank. Tally reads hidden fields from the query string,
+     * [baseUrl] is not an absolute `https://` URL (null, blank, a ConfigCat placeholder such
+     * as `none`, a bare `tally.so/r/abc`, or `http://`, which would send the context fields
+     * in the clear). Tally reads hidden fields from the query string,
      * Typeform from the URL fragment, which is why the provider matters here.
      */
     fun build(provider: FeatureRequestProvider, baseUrl: String?, context: FeatureRequestContext): String? {
         val base = baseUrl?.trim().orEmpty()
-        if (provider == FeatureRequestProvider.Off || base.isEmpty()) return null
+        if (provider == FeatureRequestProvider.Off || !isAbsoluteHttps(base)) return null
         val fields = context.fields().joinToString("&") { (k, v) -> "$k=${encode(v)}" }
         if (fields.isEmpty()) return base
         return when (provider) {
@@ -50,6 +52,13 @@ object FeatureRequestLink {
 
             FeatureRequestProvider.Off -> null
         }
+    }
+
+    private fun isAbsoluteHttps(url: String): Boolean {
+        val scheme = "https://"
+        if (!url.startsWith(scheme, ignoreCase = true)) return false
+        val host = url.substring(scheme.length).takeWhile { it !in "/?#" }
+        return host.isNotEmpty() && host.none { it.isWhitespace() }
     }
 
     private fun splitFragment(url: String): Pair<String, String> {
