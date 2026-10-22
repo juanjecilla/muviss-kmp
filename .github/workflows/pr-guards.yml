@@ -97,6 +97,9 @@ jobs:
         run: ruby scripts/ci/test/check_action_pins_test.rb && ruby scripts/ci/check-action-pins.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
+      # ci.yml's lane filter must fail open (#490): proved on throwaway repositories.
+      - name: CI lane filter fails open
+        run: scripts/ci/test/decide-lanes-test.sh
       # Play's field limits (title 30, short 80, full 4000 characters) on every
       # listing locale, on the PR that edits the copy rather than at the next
       # release cut (#76).
