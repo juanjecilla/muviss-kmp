@@ -79,6 +79,11 @@ class SettingsViewModel(
     private val _state = MutableStateFlow(SettingsUiState(appVersion = appVersion))
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
 
+    // Declared above `init`: initializers run in source order, so one below it would reset the Job that
+    // `init` just started and [retry] would add a second collection instead of replacing the first.
+    // (Kotlin/JVM happens to drop a `= null` initializer, which is why no JVM test can show this.)
+    private var settingsObservation: Job? = null
+
     init {
         featureFlags.triageSnoozePeriod
             .onEach { period -> _state.update { it.copy(snoozePeriod = period) } }
@@ -108,29 +113,19 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
-        observeAppSettings()
-        observeFeedbackLinks()
-    }
+        // The links read Remote Config and the device locale, never the settings, so a settings failure
+        // does not end them and [retry] has nothing to restart.
+        observations.feedbackLinks()
+            .onEach { links -> _state.update { it.copy(featureRequestUrl = links.featureRequest, bugReportUrl = links.bugReport) } }
+            .launchInReporting(viewModelScope)
 
-    private var settingsObservation: Job? = null
-    private var feedbackObservation: Job? = null
+        observeAppSettings()
+    }
 
     /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
     fun retry() {
         _state.update { it.copy(loading = true, error = null) }
         observeAppSettings()
-        observeFeedbackLinks()
-    }
-
-    /**
-     * The links are combined with [SettingsObservations.settings], so a settings failure ends them too:
-     * they restart with the settings on [retry], or the rows would stay hidden until the view model is recreated.
-     */
-    private fun observeFeedbackLinks() {
-        feedbackObservation?.cancel()
-        feedbackObservation = observations.feedbackLinks()
-            .onEach { links -> _state.update { it.copy(featureRequestUrl = links.featureRequest, bugReportUrl = links.bugReport) } }
-            .launchInReporting(viewModelScope)
     }
 
     private fun observeAppSettings() {

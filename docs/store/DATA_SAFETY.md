@@ -44,9 +44,12 @@ collects, stores, or shares for its own purposes.
 
 ## Does your app provide a way for users to request data deletion?
 
-There is no account and no server-side data to delete. Locally, Settings →
-Data → Delete all data removes everything the app keeps, and so does
-uninstalling. This is stated in `docs/PRIVACY.md`.
+There is no account. Locally, Settings → Data → Delete all data removes
+everything the app keeps, and so does uninstalling. The one thing kept outside
+the app is a feature request the user chose to submit: it stays with the form
+provider, in our notification email and, if copied, in a public issue (text
+only). The user asks through the contact in `docs/PRIVACY.md` and we delete it
+in all three places. Both processes are stated in `docs/PRIVACY.md`.
 
 ## Third parties data is shared with
 
@@ -67,9 +70,11 @@ uninstalling. This is stated in `docs/PRIVACY.md`.
 - **Tally** (tally.so, or Typeform if the provider is switched in Remote Config)
   — only when the user opens **Settings → About → Request a feature**. Muviss
   hands the system browser a link; nothing is posted from the app. The link
-  carries the app version, platform, OS version and app language (no
-  identifier, nothing from the library), and the provider's server sees it when
-  the page loads, as it would any URL. What the user then types is theirs to
+  carries the app version, platform, OS version (where the app can read it;
+  not on the web) and device language and region (no
+  identifier, nothing from the library), and the provider gets those values when
+  the page loads (Tally with the page request; Typeform from its page script,
+  since a URL fragment is not sent with the request). What the user then types is theirs to
   submit. Not "data collected" by the app in Play's sense, but recorded so the
   answer stays consistent with `docs/PRIVACY.md`.
 

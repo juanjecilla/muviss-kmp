@@ -6,8 +6,8 @@ import com.codingpit.muviss.core.common.platform.platformName
 import com.codingpit.muviss.core.common.platform.platformOsVersion
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
  * Where Settings' two "talk to us" rows open (ADR 0035): the Feature Request form and the
@@ -18,22 +18,25 @@ data class FeedbackLinks(val featureRequest: String? = null, val bugReport: Stri
 
 /**
  * The [FeedbackLinks] for Settings. Follows Remote Config, so moving or switching a form needs
- * no release, and follows the app language so a report says which one the user actually reads
- * the app in. Both forms carry the same four hidden fields ([FeatureRequestContext]), so a bug
+ * no release. Both forms carry the same four hidden fields ([FeatureRequestContext]), so a bug
  * report adds nothing to what the privacy policy already says.
+ *
+ * `locale` is the device locale, which is what picks the app's UI strings (English where
+ * Muviss has no translation for it). It is deliberately not the Settings language: that
+ * one only chooses the language of TMDB requests, so a user reading the app in Spanish
+ * with English titles would otherwise be reported as `en-US`.
  */
 class ObserveFeedbackLinksUseCase(
     private val remoteConfig: RemoteConfig,
-    private val observeSettings: ObserveSettingsUseCase,
     private val systemLocale: SystemLocale,
     private val appVersion: AppVersion,
 ) {
-    operator fun invoke(): Flow<FeedbackLinks> = combine(remoteConfig.values, observeSettings()) { remote, settings ->
+    operator fun invoke(): Flow<FeedbackLinks> = remoteConfig.values.map { remote ->
         val context = FeatureRequestContext(
             version = appVersion.versionName,
             platform = platformName,
             os = platformOsVersion,
-            locale = SupportedLocales.resolveLanguage(settings.language, systemLocale.languageTag),
+            locale = systemLocale.languageTag ?: SupportedLocales.DEFAULT_LANGUAGE,
         )
         FeedbackLinks(
             featureRequest = FeatureRequestLink.build(remote.featureRequestProvider, remote.featureRequestUrl, context),
