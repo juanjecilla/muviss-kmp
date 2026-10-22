@@ -1,0 +1,104 @@
+name: Gradle verification metadata
+
+# A Dependabot Gradle bump changes which artifacts resolve, so
+# gradle/verification-metadata.xml has to gain their sha256 (#480). Left alone the
+# PR is red until a person regenerates the file. This does it, on the PR branch, so
+# the new checksums arrive as a reviewable diff in the PR rather than as a manual
+# step: nothing is "re-trusted" without someone reading the lines that were added.
+#
+# Dependabot PRs run with Dependabot's own secret store, not the repository's. The
+# owner copies RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY there once
+# (docs/RELEASING.md "Dependency verification"). The release App pushes, because a
+# push with GITHUB_TOKEN would not start CI on the new commit.
+#
+# One OS after another (macOS, Linux, Windows): some artifacts are picked by the host
+# (aapt2, Skiko's runtime, the Kotlin/Native toolchain) and the iOS lanes only run on
+# macOS, so each OS adds its own checksums and keeps the others'. This repository is
+# public, so the minutes are free. `workflow_dispatch` does the same for any branch,
+# which is how the file is first filled in and how it is repaired by hand.
+on:
+  workflow_dispatch:
+  # TEMPORARY (remove before merge): lets this branch fill the file in before the
+  # workflow exists on develop, which `workflow_dispatch` needs.
+  push:
+    branches: [ build/gradle-dependency-verification ]
+  pull_request:
+    branches: [ develop ]
+    paths:
+      - 'gradle/libs.versions.toml'
+      - 'gradle/wrapper/**'
+      - '**/*.gradle.kts'
+
+permissions:
+  contents: read
+
+# Never cancelled: the bot's own commit starts another (skipped) run in this group, and
+# cancelling would kill the OS legs that have not run yet.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    name: Regenerate checksums (${{ matrix.os }})
+    if: >-
+      (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(deps): checksums for')) || github.event_name == 'workflow_dispatch' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-15
+          - os: ubuntu-24.04
+          - os: windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ steps.app.outputs.token }}
+          # versionCode is a commit count; a shallow clone fails the build on purpose.
+          fetch-depth: 0
+
+      - name: Set up JDK 21 (Corretto)
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: corretto
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      # The metadata is generated from the PR's own build files, which Dependabot
+      # wrote; nothing here runs code a contributor chose, and the commit is only
+      # pushed back to Dependabot's branch.
+      - name: Regenerate gradle/verification-metadata.xml
+        run: scripts/gradle/update-verification.sh
+
+      - name: Commit the new checksums
+        env:
+          SLUG: ${{ steps.app.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          if git diff --quiet -- gradle/verification-metadata.xml; then
+            echo "Checksums already cover this bump." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
+          git add gradle/verification-metadata.xml
+          git commit -m "chore(deps): checksums for ${{ matrix.os }} (gradle/verification-metadata.xml)"
+          git push
+          git diff --stat HEAD~1 -- gradle/verification-metadata.xml >> "$GITHUB_STEP_SUMMARY"
