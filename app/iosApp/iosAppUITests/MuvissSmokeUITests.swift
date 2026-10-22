@@ -35,6 +35,27 @@ final class MuvissSmokeUITests: XCTestCase {
         )
     }
 
+    /// Settings > Export presents the system share sheet (#415, #186). On an iPad that sheet is a popover and
+    /// UIKit throws at present time unless it is anchored, which killed the app before the anchor existed;
+    /// on an iPhone it is a bottom sheet. Either way the app must still be running with the sheet up.
+    func testExportPresentsTheShareSheetWithoutCrashing() throws {
+        let app = launch()
+        let skip = app.element(labelled: "Skip")
+        if skip.waitForExistence(timeout: 10) { skip.tap() }
+        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 15), "Search was not reached")
+        app.element(labelled: "Settings").tap()
+        XCTAssertTrue(app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 10), "Settings did not open")
+
+        let export = app.element(labelled: "Export")
+        for _ in 0..<6 where !export.exists { app.swipeUp() }
+        XCTAssertTrue(export.waitForExistence(timeout: 10), "the Export button was not found")
+        export.tap()
+
+        let sheet = app.otherElements["ActivityListView"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15), "the share sheet did not appear")
+        XCTAssertEqual(app.state, .runningForeground, "the app died presenting the share sheet")
+    }
+
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
