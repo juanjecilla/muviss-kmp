@@ -1,6 +1,7 @@
 package com.codingpit.muviss.core.remoteconfig.di
 
 import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.FeatureRequestProvider
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.database.MuvissDatabase
@@ -23,7 +24,11 @@ import org.koin.dsl.module
  */
 val remoteConfigModule: Module = module {
     single<RemoteConfig> {
-        val defaults = RemoteValues(byokEnabled = MuvissBuildConfig.BYOK_ENABLED)
+        val defaults = RemoteValues(
+            byokEnabled = MuvissBuildConfig.BYOK_ENABLED,
+            featureRequestProvider = FeatureRequestProvider.fromStored(MuvissBuildConfig.FEATURE_REQUEST_PROVIDER),
+            featureRequestUrl = MuvissBuildConfig.FEATURE_REQUEST_URL.takeIf { it.isNotBlank() },
+        )
         if (MuvissBuildConfig.CONFIGCAT_SDK_KEY.isBlank()) {
             DefaultsRemoteConfig(defaults)
         } else {

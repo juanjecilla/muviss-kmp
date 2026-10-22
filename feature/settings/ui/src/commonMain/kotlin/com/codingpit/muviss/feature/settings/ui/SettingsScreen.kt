@@ -35,6 +35,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -82,6 +83,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.notification
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications_blocked
 import com.codingpit.muviss.feature.settings.ui.generated.resources.open_settings
 import com.codingpit.muviss.feature.settings.ui.generated.resources.provider_region
+import com.codingpit.muviss.feature.settings.ui.generated.resources.request_feature
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_four_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_three_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_about
@@ -127,6 +129,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
+    val uriHandler = LocalUriHandler.current
     val systemDefault = stringResource(Res.string.system_default)
 
     LaunchedEffect(state.exportJson) {
@@ -326,6 +329,7 @@ fun SettingsScreen(
             appVersionName = state.appVersion.versionName,
             onOpenLicenses = onOpenLicenses,
             onReplayIntroduction = onReplayIntroduction,
+            onRequestFeature = state.featureRequestUrl?.let { url -> { uriHandler.openUri(url) } },
             onTestCrash = { throw MuvissTestCrash() },
         )
     }
@@ -547,6 +551,8 @@ internal fun AboutSection(
     onOpenLicenses: () -> Unit,
     onTestCrash: () -> Unit,
     onReplayIntroduction: () -> Unit = {},
+    /** Opens the Feature Request form (ADR 0035); null while there is none, which hides the row. */
+    onRequestFeature: (() -> Unit)? = null,
 ) {
     var versionTaps by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
@@ -587,6 +593,21 @@ internal fun AboutSection(
                 modifier = Modifier.size(16.dp),
             )
         }
+        if (onRequestFeature != null) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onRequestFeature).padding(vertical = MuvissSpacing.s).testTag(FEATURE_REQUEST_TAG),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(Res.string.request_feature), style = MaterialTheme.typography.bodyLarge)
+                Icon(
+                    MuvissIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
         Row(
             Modifier.fillMaxWidth().clickable(onClick = onOpenLicenses).padding(vertical = MuvissSpacing.s),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -616,6 +637,7 @@ private fun TriageControlScheme.displayName(): String = stringResource(
 )
 
 internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
+internal const val FEATURE_REQUEST_TAG = "featureRequest"
 const val VERSION_ROW_TAG = "settings_version_row"
 
 internal const val TEST_CRASH_TAPS = 7

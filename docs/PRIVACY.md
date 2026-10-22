@@ -1,6 +1,6 @@
 # Privacy Policy — Muviss
 
-_Last updated: 2026-10-21._
+_Last updated: 2026-10-22._
 
 Muviss is a personal, offline-first tracker for movies and TV shows. There are
 no user accounts, no social features, and no analytics/advertising SDKs. This
@@ -118,6 +118,26 @@ copy is yours, not Muviss's.
    offline; **Delete all data** removes it. See
    [ConfigCat's privacy policy](https://configcat.com/privacy/).
 
+**Feature requests.** Settings → About → **Request a feature** opens a form in
+your browser, hosted by [Tally](https://tally.so/help/privacy-policy) (or by
+[Typeform](https://www.typeform.com/privacy-policy/) if we ever switch
+provider; the row opens whichever one is set up). Muviss itself sends nothing:
+the link is opened by your browser, and what you write (and the email address,
+if you choose to give one so we can reply) goes to the form provider and to us,
+never through the app. The link carries up to four values so a request can be
+understood: the **app version**, the **platform** (Android, iOS, desktop or
+web), the **operating system version** where the app can read it (on the web
+it cannot, so that one is left out) and the **device language and region** (for example `es-ES`). It carries no
+identifier, nothing about your library and nothing about your other settings. The
+provider receives those values as soon as the page loads, whether or not you
+go on to submit anything: Tally's server gets them with the request for the
+page, and Typeform's page reads them from the link and sends them to Typeform
+while it loads; closing the page without submitting means no
+response is sent. The row appears only when a form has been set up. The text
+of a request may be copied into the project's public issue tracker so it can
+be planned, **never with your email address**; leave anything private out of
+it.
+
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.
 
@@ -133,6 +153,16 @@ because Muviss never sends what you enter to one. A copy your phone's own
 backup already holds is outside Muviss and is not touched by either; delete it
 where that backup lives (the phone's backup settings for iCloud or Google, or
 the computer that holds an iPhone backup).
+(A feature request you submit through the form is another exception: it
+lives outside the app, so deleting data in Muviss cannot remove it. It can
+exist in up to three places: with the form provider, in the notification email
+the provider sends us, and, if it was copied there, in a public issue (its
+text only, never your email address). Ask us through the contact below and we
+will delete all three: the response at the provider, the email, and the issue
+or the copied text in it. The
+issue tracker is public, so do not put your email address or the text of the
+request in that issue: say only that you want a request deleted, and we will
+reply there with a private way to identify it.)
 Settings → Data → Export saves a copy first if you might want it back.
 
 ## Contact
