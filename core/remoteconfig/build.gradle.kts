@@ -21,6 +21,10 @@ fun localProperty(name: String): String? {
 
 val configCatSdkKey: String = localProperty("CONFIGCAT_SDK_KEY") ?: ""
 val byokEnabled: Boolean = localProperty("BYOK_ENABLED").toBoolean()
+// The Feature Request form (ADR 0035): blank URL keeps the Settings row hidden until the
+// owner has created the form; Remote Config overrides both without a release.
+val featureRequestUrl: String = localProperty("FEATURE_REQUEST_URL")?.trim() ?: ""
+val featureRequestProvider: String = localProperty("FEATURE_REQUEST_PROVIDER")?.trim()?.ifEmpty { null } ?: "tally"
 
 val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/commonMain/kotlin")
 
@@ -28,12 +32,20 @@ val generateBuildConfig by tasks.registering {
     val outDir = buildConfigDir
     val sdkKey = configCatSdkKey
     val byok = byokEnabled
+    val requestUrl = featureRequestUrl
+    val requestProvider = featureRequestProvider
     // Inputs, so changing a property regenerates the file instead of being
     // ignored until a clean build.
     inputs.property("configCatSdkKey", sdkKey)
     inputs.property("byokEnabled", byok)
+    inputs.property("featureRequestUrl", requestUrl)
+    inputs.property("featureRequestProvider", requestProvider)
     outputs.dir(outDir)
     doLast {
+        // A value ends up inside a Kotlin string literal, so a quote, a backslash or a `$` in it (a URL
+        // with a `$` in its query, say) would otherwise break the generated file and with it the build.
+        // Local to the task: a script-level function would not serialise into the configuration cache.
+        fun literal(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
         val target = outDir.get()
             .file("com/codingpit/muviss/core/remoteconfig/MuvissBuildConfig.kt").asFile
         target.parentFile.mkdirs()
@@ -42,8 +54,10 @@ val generateBuildConfig by tasks.registering {
             package com.codingpit.muviss.core.remoteconfig
 
             internal object MuvissBuildConfig {
-                const val CONFIGCAT_SDK_KEY: String = "$sdkKey"
+                const val CONFIGCAT_SDK_KEY: String = "${literal(sdkKey)}"
                 const val BYOK_ENABLED: Boolean = $byok
+                const val FEATURE_REQUEST_URL: String = "${literal(requestUrl)}"
+                const val FEATURE_REQUEST_PROVIDER: String = "${literal(requestProvider)}"
             }
             """.trimIndent() + "\n",
         )

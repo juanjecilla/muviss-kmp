@@ -1328,3 +1328,21 @@ secret than the one in the APK — the point is rotation, not secrecy. Set it ba
 `docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
 (it exposes the device IP to ConfigCat and sends nothing about the user), so
 setting the secret needs no further copy change.
+
+## 13. Feature Request form (Tally) — EPIC 53 / issue #447
+
+The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0035. Owner steps, once:
+
+1. In Tally, create an API key (Settings > API keys). Run `read -rs TALLY_API_KEY && export TALLY_API_KEY` (bash or zsh) and paste the key at the silent prompt, so it never lands in your shell history. It stays with you; it never goes in the app or in CI.
+2. `scripts/feedback/tally-form.sh create` makes a **draft** from `scripts/feedback/tally-form.json` and prints the form id and `https://tally.so/r/<id>`. **First run, check the draft in the dashboard** (issue #450): the four hidden fields (`version`, `platform`, `os`, `locale`), the optional email, and that "Email me on each submission" is on. The script's block shapes were not verified against the live API, and the create response has no URL field, so the script derives it from the id.
+3. `scripts/feedback/tally-form.sh publish <id>` publishes it, sending the blocks along with the status (a status-only PATCH leaves the public page with no fields, only a Submit button). `update <id>` re-applies the checked-in definition as a draft after you edit the JSON, so run `publish` again afterwards.
+4. Turn it on, either way:
+   - **Compiled default:** `FEATURE_REQUEST_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets (needs a release).
+   - **ConfigCat** (no release needed): create two text settings in the product from §12 with exactly these keys: **`featureRequestProvider`**, default `tally`, and **`featureRequestUrl`**, default the published `https://tally.so/r/<id>`. A setting that does not exist falls back to the compiled default, and that default for the URL is blank, so until `featureRequestUrl` exists with a real URL the row stays hidden. ConfigCat will not save an empty text value; to keep the setting while the row is off, use a placeholder such as `none`.
+
+   Only an absolute `https://` URL shows the row. A blank value, a placeholder, a URL without its scheme or an `http://` one all hide it.
+5. Verify end to end: open the app, tap the row, and submit a test response; confirm the email arrives and `version`, `platform` and `locale` are filled. `os` is filled on Android, iOS and desktop only; the web app cannot read the OS version and leaves it empty.
+
+**Switching to Typeform** (the fallback, if Tally ever fails us): create the form by hand in Typeform with the same four **hidden fields** (`version`, `platform`, `os`, `locale`), turn on **Send email for new responses** in the form's notification settings (Typeform does not email responses by default) and confirm it with a test submission, then set ConfigCat `featureRequestProvider` = `typeform` and `featureRequestUrl` = its public URL. Typeform reads hidden fields from the URL fragment, so the provider key must change with the URL. Its free plan stops collecting after about 10 responses a month, so treat it as a stop-gap. `featureRequestProvider` = `off` hides the row whatever the URL is.
+
+Each response reaches you by email for now; making it a GitHub issue is #448.
