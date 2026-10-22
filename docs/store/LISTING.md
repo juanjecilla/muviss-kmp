@@ -33,8 +33,8 @@ Generated, not captured: a `StoreShot` mode of the golden harness renders
 seeded screens into `fastlane/metadata/android/<locale>/images/` (EPIC 33,
 #76). Seed data is an invented catalogue with generated art — no real TMDB
 posters in marketing material. The set, in display order: Library (mixed
-statuses), title detail with episode ticks, Progress (watch next), Triage,
-Profile stats, Search/Discover. See "Listing images" below.
+statuses), TV detail with episode ticks, movie detail (watched and rated),
+Progress (watch next), Triage, Profile stats, Search/Discover. See "Listing images" below.
 
 ## App Store (iOS) — EPIC 11 / issue #13
 
@@ -103,4 +103,4 @@ screenshots — only the eventual public App Store listing does).
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-en.svg -o fastlane/metadata/android/en-US/images/featureGraphic.png
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-es.svg -o fastlane/metadata/android/es-ES/images/featureGraphic.png
   ```
-- `phoneScreenshots/` — six 1080×1920 shots from StoreShot (`./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot`): the real app over an invented catalogue with generated posters, so no third-party artwork appears. One light set per listing locale (en-US, es-ES); the catalogue's titles and overviews are invented English in both, as a real TMDB title's would be untranslated if TMDB has no Spanish text. The dark English set goes to the landing.
+- `phoneScreenshots/` — seven 1080×1920 shots (Play allows eight) from StoreShot (`./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot`): the real app over an invented catalogue with generated posters, so no third-party artwork appears. One light set per listing locale (en-US, es-ES); the catalogue's titles and overviews are invented English in both, as a real TMDB title's would be untranslated if TMDB has no Spanish text. The dark English set goes to the landing.
