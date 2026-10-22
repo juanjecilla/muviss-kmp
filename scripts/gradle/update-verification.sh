@@ -24,6 +24,10 @@ case "$(uname -s)" in
   *) ios_tasks=() ;;
 esac
 
+# A lane can fail on a host for reasons that have nothing to do with dependencies (golden images and
+# font rendering differ on Windows, say). The checksums of what that lane resolved are written
+# regardless, and CI is what judges the tests, so the run only warns.
+status=0
 ./gradlew \
   --init-script scripts/gradle/resolve-all.init.gradle.kts \
   --write-verification-metadata sha256 \
@@ -39,6 +43,7 @@ esac
   :app:androidApp:licenseeAndroidRelease :app:androidApp:verifyReleaseExceptionClasses \
   :app:desktopApp:packageDistributionForCurrentOS :app:desktopApp:verifyJlinkModules \
   verifySqlDelightMigration koverHtmlReport \
-  kotlinNpmInstall kotlinWasmNpmInstall kotlinStoreYarnLock kotlinWasmStoreYarnLock
+  kotlinNpmInstall kotlinWasmNpmInstall kotlinStoreYarnLock kotlinWasmStoreYarnLock || status=$?
+[ "$status" -eq 0 ] || echo "::warning::some lanes failed on this host (exit $status); checksums were still written"
 
 echo "gradle/verification-metadata.xml updated: $(grep -c '<component ' gradle/verification-metadata.xml) components"
