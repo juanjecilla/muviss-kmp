@@ -48,9 +48,12 @@ final class MuvissSmokeUITests: XCTestCase {
         app.element(labelled: "Settings").tap()
         XCTAssertTrue(app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 45), "Settings did not open")
 
+        // Settings is one scrolling column, so Export exists (in the tree) long before it is on screen:
+        // scroll until it can actually be tapped, not just until it is found.
         let export = app.element(labelled: "Export")
-        for _ in 0..<6 where !export.exists { app.swipeUp() }
         XCTAssertTrue(export.waitForExistence(timeout: 10), "the Export button was not found")
+        for _ in 0..<6 where !export.isHittable { app.swipeUp() }
+        XCTAssertTrue(export.isHittable, "the Export button never scrolled on screen")
         export.tap()
 
         let sheet = app.otherElements["ActivityListView"]
