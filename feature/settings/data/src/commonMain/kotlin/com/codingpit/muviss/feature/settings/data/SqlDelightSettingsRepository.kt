@@ -166,6 +166,7 @@ class SqlDelightSettingsRepository(
             lists = exportQueries.lists.selectAllListsForExport().awaitAsList().map { it.toExport() },
             listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
+            settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
         )
         json.encodeToString(export)
     }
@@ -255,6 +256,20 @@ class SqlDelightSettingsRepository(
         mediaId = mediaId,
         addedAtEpochMs = addedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun AppSettingsRow.toExport(): SettingsExport = SettingsExport(
+        theme = theme,
+        language = language,
+        region = region,
+        animationsEnabled = animationsEnabled,
+        triageDeckAnimations = triageDeckAnimations,
+        tickAnimations = tickAnimations,
+        triageControlScheme = triageControlScheme,
+        triageSnoozePeriod = triageSnoozePeriod,
+        triageSnoozePlacement = triageSnoozePlacement,
+        mutedGenres = mutedGenres,
+        mutedGenresInSearch = mutedGenresInSearch,
     )
 
     private fun ProfileRow.toExport(): ProfileExport = ProfileExport(displayName = displayName, avatarId = avatarId)
