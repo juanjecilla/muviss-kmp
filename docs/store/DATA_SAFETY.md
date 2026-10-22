@@ -44,9 +44,12 @@ collects, stores, or shares for its own purposes.
 
 ## Does your app provide a way for users to request data deletion?
 
-There is no account and no server-side data to delete. Locally, Settings →
-Data → Delete all data removes everything the app keeps, and so does
-uninstalling. This is stated in `docs/PRIVACY.md`.
+There is no account. Locally, Settings → Data → Delete all data removes
+everything the app keeps, and so does uninstalling. The one thing kept outside
+the app is a feature request the user chose to submit: it stays with the form
+provider, in our notification email and, if copied, in a public issue (text
+only). The user asks through the contact in `docs/PRIVACY.md` and we delete it
+in all three places. Both processes are stated in `docs/PRIVACY.md`.
 
 ## Third parties data is shared with
 
