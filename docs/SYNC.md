@@ -576,7 +576,7 @@ held (best effort; #281). Everything else, including unknown types, is a 200 no-
 | Pull without a valid `sync_until` | **HTTP 200 `[]`** — indistinguishable from "nothing new", so it must not be read as success when the engine already knows it is not entitled |
 | Token minted before the purchase landed | still no claim: wait for the `entitlement` row to turn active, *then* refresh the session |
 | Client writes `entitlement` | HTTP 403, `42501` `permission denied for table entitlement` |
-| anon (no token) on any synced table or `entitlement` | HTTP 401, `42501` `permission denied for table …` (anon holds no privilege since `20261010000100`) |
+| anon (no token) on any synced table or `entitlement` | HTTP 401, `42501` `permission denied for table …` (anon holds no privilege since `20261022000100`) |
 | Push with a still-valid token after `delete-account` | HTTP 409, `23503` (the user row is gone) |
 
 A lapse takes effect when the current token expires (`jwt_expiry`, one hour)
@@ -629,7 +629,7 @@ seen end to end.
 Nothing above has been deployed. Applying it is one change, in this order,
 because the policies refuse every sync the moment they land:
 
-1. `supabase db push` (both `20261010…` migrations).
+1. `supabase db push` (both `20261022…` migrations).
 2. Enable the hook on the project (Authentication → Hooks, or
    `supabase config push`) — without it no token carries `sync_until` and
    nobody can sync.
