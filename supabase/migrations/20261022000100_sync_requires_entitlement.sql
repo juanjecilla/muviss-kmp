@@ -114,23 +114,65 @@ grant select, insert, update, delete on table public.triage_snooze to authentica
 grant all on table public.triage_snooze to service_role;
 
 -- cowatch_link -- (addressed rows, ADR 0022)
+-- One policy per command, as 20261017000000_cowatch_addressee_reads_only.sql left it
+-- (#129): the addressee may read, only the author may write. Each keeps that
+-- shape and gains the claim: a `for all` policy here would let the addressee's
+-- `using` through on UPDATE and DELETE again.
 drop policy if exists "author and addressee" on public.cowatch_link;
 drop policy if exists "author and addressee while entitled" on public.cowatch_link;
-create policy "author and addressee while entitled" on public.cowatch_link
-  for all to authenticated
-  using ((auth.uid() = user_id or auth.uid() = recipient_id) and (auth.jwt()->>'sync_until')::timestamptz > now())
+drop policy if exists "author and addressee read" on public.cowatch_link;
+drop policy if exists "author inserts" on public.cowatch_link;
+drop policy if exists "author updates" on public.cowatch_link;
+drop policy if exists "author deletes" on public.cowatch_link;
+drop policy if exists "author and addressee read while entitled" on public.cowatch_link;
+drop policy if exists "author inserts while entitled" on public.cowatch_link;
+drop policy if exists "author updates while entitled" on public.cowatch_link;
+drop policy if exists "author deletes while entitled" on public.cowatch_link;
+create policy "author and addressee read while entitled" on public.cowatch_link
+  for select to authenticated
+  using ((auth.uid() = user_id or auth.uid() = recipient_id) and (auth.jwt()->>'sync_until')::timestamptz > now());
+create policy "author inserts while entitled" on public.cowatch_link
+  for insert to authenticated
   with check (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now());
+create policy "author updates while entitled" on public.cowatch_link
+  for update to authenticated
+  using (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now())
+  with check (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now());
+create policy "author deletes while entitled" on public.cowatch_link
+  for delete to authenticated
+  using (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now());
 revoke all on table public.cowatch_link from anon, authenticated, public;
 grant select, insert, update, delete on table public.cowatch_link to authenticated;
 grant all on table public.cowatch_link to service_role;
 
 -- cowatch_pool_entry -- (addressed rows, ADR 0022)
+-- One policy per command, as 20261017000000_cowatch_addressee_reads_only.sql left it
+-- (#129): the addressee may read, only the author may write. Each keeps that
+-- shape and gains the claim: a `for all` policy here would let the addressee's
+-- `using` through on UPDATE and DELETE again.
 drop policy if exists "author and addressee" on public.cowatch_pool_entry;
 drop policy if exists "author and addressee while entitled" on public.cowatch_pool_entry;
-create policy "author and addressee while entitled" on public.cowatch_pool_entry
-  for all to authenticated
-  using ((auth.uid() = user_id or auth.uid() = recipient_id) and (auth.jwt()->>'sync_until')::timestamptz > now())
+drop policy if exists "author and addressee read" on public.cowatch_pool_entry;
+drop policy if exists "author inserts" on public.cowatch_pool_entry;
+drop policy if exists "author updates" on public.cowatch_pool_entry;
+drop policy if exists "author deletes" on public.cowatch_pool_entry;
+drop policy if exists "author and addressee read while entitled" on public.cowatch_pool_entry;
+drop policy if exists "author inserts while entitled" on public.cowatch_pool_entry;
+drop policy if exists "author updates while entitled" on public.cowatch_pool_entry;
+drop policy if exists "author deletes while entitled" on public.cowatch_pool_entry;
+create policy "author and addressee read while entitled" on public.cowatch_pool_entry
+  for select to authenticated
+  using ((auth.uid() = user_id or auth.uid() = recipient_id) and (auth.jwt()->>'sync_until')::timestamptz > now());
+create policy "author inserts while entitled" on public.cowatch_pool_entry
+  for insert to authenticated
   with check (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now());
+create policy "author updates while entitled" on public.cowatch_pool_entry
+  for update to authenticated
+  using (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now())
+  with check (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now());
+create policy "author deletes while entitled" on public.cowatch_pool_entry
+  for delete to authenticated
+  using (auth.uid() = user_id and (auth.jwt()->>'sync_until')::timestamptz > now());
 revoke all on table public.cowatch_pool_entry from anon, authenticated, public;
 grant select, insert, update, delete on table public.cowatch_pool_entry to authenticated;
 grant all on table public.cowatch_pool_entry to service_role;

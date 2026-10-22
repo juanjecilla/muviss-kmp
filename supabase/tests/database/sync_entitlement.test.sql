@@ -73,17 +73,19 @@ select is(
     where schemaname = 'public'
       and tablename in ('collection_entry', 'episode_progress', 'media_list', 'list_entry', 'triage_decision',
                         'episode_play', 'triage_snooze', 'cowatch_link', 'cowatch_pool_entry')
-      and qual like '%sync_until%' and with_check like '%sync_until%'),
-  9,
-  'all nine synced tables require sync_until for reads and writes'
+      and ((qual is not null and qual not like '%sync_until%')
+        or (with_check is not null and with_check not like '%sync_until%'))),
+  0,
+  'no policy on a synced table can be satisfied without sync_until'
 );
 select is(
-  (select count(*)::int from pg_policies
+  (select count(distinct tablename)::int from pg_policies
     where schemaname = 'public'
       and tablename in ('collection_entry', 'episode_progress', 'media_list', 'list_entry', 'triage_decision',
-                        'episode_play', 'triage_snooze', 'cowatch_link', 'cowatch_pool_entry')),
+                        'episode_play', 'triage_snooze', 'cowatch_link', 'cowatch_pool_entry')
+      and cmd in ('ALL', 'SELECT')),
   9,
-  'and each has exactly one policy, so no older permissive one is left behind'
+  'and all nine still have a read policy, none dropped along with an older permissive one'
 );
 select is(
   (select count(*)::int from pg_policies
