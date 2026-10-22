@@ -27,12 +27,14 @@ data class FeatureRequestContext(
 object FeatureRequestLink {
     /**
      * Returns null — hide the row — when [provider] is [FeatureRequestProvider.Off] or
-     * [baseUrl] is null or blank. Tally reads hidden fields from the query string,
+     * [baseUrl] is not an absolute `https://` URL (null, blank, a ConfigCat placeholder such
+     * as `none`, a bare `tally.so/r/abc`, or `http://`, which would send the context fields
+     * in the clear). Tally reads hidden fields from the query string,
      * Typeform from the URL fragment, which is why the provider matters here.
      */
     fun build(provider: FeatureRequestProvider, baseUrl: String?, context: FeatureRequestContext): String? {
         val base = baseUrl?.trim().orEmpty()
-        if (provider == FeatureRequestProvider.Off || base.isEmpty()) return null
+        if (provider == FeatureRequestProvider.Off || !isAbsoluteHttps(base)) return null
         val fields = context.fields().joinToString("&") { (k, v) -> "$k=${encode(v)}" }
         if (fields.isEmpty()) return base
         return when (provider) {
@@ -51,6 +53,23 @@ object FeatureRequestLink {
             FeatureRequestProvider.Off -> null
         }
     }
+
+    private fun isAbsoluteHttps(url: String): Boolean {
+        val scheme = "https://"
+        if (!url.startsWith(scheme, ignoreCase = true)) return false
+        val authority = url.substring(scheme.length).takeWhile { it !in "/?#" }.substringAfterLast('@')
+        if (authority.any { it.isWhitespace() }) return false
+        val (host, port) = if (authority.startsWith('[')) {
+            authority.substringBefore(']', missingDelimiterValue = "") + "]" to
+                authority.substringAfter(']', missingDelimiterValue = "").removePrefix(":")
+        } else {
+            authority.substringBefore(':') to authority.substringAfter(':', missingDelimiterValue = "")
+        }
+        return host.isNotEmpty() && host != "[]" && host != "]" && isPort(port)
+    }
+
+    /** Empty (the scheme's default) or a whole number a URL parser accepts: 0..65535. */
+    private fun isPort(port: String): Boolean = port.isEmpty() || (port.length <= 5 && port.all { it in '0'..'9' } && port.toInt() <= MAX_PORT)
 
     private fun splitFragment(url: String): Pair<String, String> {
         val i = url.indexOf('#')
@@ -74,4 +93,5 @@ object FeatureRequestLink {
     private fun isUnreserved(ch: Char): Boolean = ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch in "-._~"
 
     private const val HEX = "0123456789ABCDEF"
+    private const val MAX_PORT = 65535
 }

@@ -135,7 +135,7 @@ _Avoid_: feature flag (that is the in-code seam both Remote Config and per-devic
 ### Talking to us
 
 **Feature Request**:
-Something the user asks Muviss to do that it does not yet, sent from Settings through a form hosted outside the app, with only the app version, platform, OS version and language alongside. One-way: the app never receives an answer, and a request is not a bug report. The user may leave an email address on the form; the app never sees it.
+Something the user asks Muviss to do that it does not yet, sent from Settings through a form hosted outside the app, with only the app version, platform, OS version (where known) and device language alongside. One-way: the app never receives an answer, and a request is not a bug report. The user may leave an email address on the form; the app never sees it.
 _Avoid_: feedback (too wide: it would take in bug reports and praise), suggestion box, ticket, survey.
 
 ### Co-watch

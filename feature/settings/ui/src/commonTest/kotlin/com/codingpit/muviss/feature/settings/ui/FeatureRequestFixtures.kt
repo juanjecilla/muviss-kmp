@@ -17,7 +17,6 @@ internal fun settingsObservations(
     settings = observeSettings,
     featureRequestLink = ObserveFeatureRequestLinkUseCase(
         remoteConfig = remote,
-        observeSettings = observeSettings,
         systemLocale = object : SystemLocale {
             override val languageTag: String? = "en-US"
         },

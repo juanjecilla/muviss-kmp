@@ -316,13 +316,13 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun retry_after_a_failed_settings_load_brings_the_feature_request_link_back() = runTest {
+    fun a_failed_settings_load_leaves_the_feature_request_link_up() = runTest {
         val remote = DefaultsRemoteConfig(RemoteValues(byokEnabled = false, featureRequestUrl = "https://tally.so/r/abc"))
         val repository = FakeSettingsRepository().apply { failure = IllegalStateException("db locked") }
         val vm = viewModel(repository, remote)
         advanceUntilIdle()
-        // The link is combined with the settings, so the failure ended it too.
-        assertNull(vm.state.value.featureRequestUrl)
+        // The link reads Remote Config and the device locale only, so a settings failure does not end it.
+        assertTrue(vm.state.value.featureRequestUrl.orEmpty().startsWith("https://tally.so/r/abc?version=1.0.0"))
 
         repository.failure = null
         vm.retry()
