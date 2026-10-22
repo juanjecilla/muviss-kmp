@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.onboarding.data.di
 
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
+import com.codingpit.muviss.feature.onboarding.data.ApplySystemMotionDefault
 import com.codingpit.muviss.feature.onboarding.data.DefaultOnboardingApi
 import com.codingpit.muviss.feature.onboarding.data.SqlDelightOnboardingRepository
 import com.codingpit.muviss.feature.onboarding.data.notificationNudge
@@ -19,6 +20,7 @@ import org.koin.dsl.module
 val onboardingDataModule: Module = module {
     single<OnboardingRepository> { SqlDelightOnboardingRepository(get<MuvissDatabase>().appSettingsQueries, get()) }
     factory { CompleteOnboardingUseCase(get()) }
+    factory { ApplySystemMotionDefault(get(), get()) }
     single<NotificationNudge> { notificationNudge(get(), get(), get()) }
     single<OnboardingApi> { DefaultOnboardingApi(get(), get(), get()) }
 }
