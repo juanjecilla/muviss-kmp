@@ -165,7 +165,7 @@ _Avoid_: recommendation (nothing enters a Shortlist that a Companion did not alr
 ### What's next?
 
 **Completion**:
-The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
+The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Two kinds, told apart because the sentence differs: **Finished** (a movie watched, or a show that has ended and is fully seen) and **Caught up** (a show that is still airing, with no aired episode left unseen). Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
 _Avoid_: finished (that is one WatchStatus, and Completion includes Watched); done, completed.
 
 **Pick Session**:
