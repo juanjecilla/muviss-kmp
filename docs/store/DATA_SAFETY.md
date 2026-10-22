@@ -67,7 +67,8 @@ uninstalling. This is stated in `docs/PRIVACY.md`.
 - **Tally** (tally.so, or Typeform if the provider is switched in Remote Config)
   — only when the user opens **Settings → About → Request a feature**. Muviss
   hands the system browser a link; nothing is posted from the app. The link
-  carries the app version, platform, OS version and app language (no
+  carries the app version, platform, OS version (where the app can read it;
+  not on the web) and app language (no
   identifier, nothing from the library), and the provider's server sees it when
   the page loads, as it would any URL. What the user then types is theirs to
   submit. Not "data collected" by the app in Play's sense, but recorded so the
