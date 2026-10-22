@@ -3,10 +3,16 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
@@ -44,10 +50,13 @@ class DetailSnackbarTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    @Test
-    fun the_undo_snackbar_does_not_cover_the_last_row_when_the_list_is_scrolled_to_its_end() = runComposeUiTest {
+    private fun ComposeUiTest.assertLastRowClearsSnackbar(width: Dp = 412.dp, height: Dp = 892.dp, fontScale: Float = 1f): Float {
         val viewModel = showViewModel()
-        setContent { DetailUnderTest(viewModel) }
+        setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
+                DetailUnderTest(viewModel, width, height)
+            }
+        }
         mainClock.autoAdvance = false
         waitForIdle()
 
@@ -59,15 +68,38 @@ class DetailSnackbarTest {
         onNodeWithTag(DETAIL_LIST_TAG).performScrollToKey("end")
         mainClock.advanceTimeBy(500)
 
-        val snackbarTop = onNodeWithTag(DETAIL_SNACKBAR_TAG).fetchSemanticsNode().boundsInRoot.top
+        val snackbar = onNodeWithTag(DETAIL_SNACKBAR_TAG).fetchSemanticsNode().boundsInRoot
         val lastRowBottom = onNodeWithText(LAST_EPISODE).fetchSemanticsNode().boundsInRoot.bottom
-        assertTrue(lastRowBottom <= snackbarTop, "last row ends at $lastRowBottom, snackbar starts at $snackbarTop")
+        assertTrue(lastRowBottom <= snackbar.top, "last row ends at $lastRowBottom, snackbar starts at ${snackbar.top}")
+        return snackbar.height
+    }
+
+    @Test
+    fun the_undo_snackbar_does_not_cover_the_last_row_when_the_list_is_scrolled_to_its_end() = runComposeUiTest {
+        assertLastRowClearsSnackbar()
+        Unit
+    }
+
+    /** DetailExpanded (>= 840dp) takes the same bottom padding as the compact layout (#477). */
+    @Test
+    fun the_expanded_layout_clears_the_undo_snackbar_too() = runComposeUiTest {
+        assertLastRowClearsSnackbar(width = 900.dp, height = 700.dp)
+        Unit
+    }
+
+    /** The measured-height path: a large font in a narrow column wraps the undo message. */
+    @Test
+    fun a_wrapped_undo_snackbar_still_clears_the_last_row() = runComposeUiTest {
+        val oneLine = assertLastRowClearsSnackbar()
+        val wrapped = assertLastRowClearsSnackbar(width = 260.dp, fontScale = 2f)
+        // The case only means something if the message really did wrap.
+        assertTrue(wrapped > oneLine * 1.5f, "snackbar was $wrapped tall, a one-line one $oneLine")
     }
 
     @Composable
-    private fun DetailUnderTest(viewModel: DetailViewModel) {
+    private fun DetailUnderTest(viewModel: DetailViewModel, width: Dp, height: Dp) {
         MuvissTheme(darkTheme = false) {
-            GoldenSurface {
+            GoldenSurface(width = width, height = height) {
                 DetailScreen(viewModel = viewModel, onBack = {}, onOpenDetail = {}, onOpenEpisode = {})
             }
         }
