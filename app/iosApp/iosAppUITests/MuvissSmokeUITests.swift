@@ -24,13 +24,15 @@ final class MuvissSmokeUITests: XCTestCase {
             skip.tap()
         }
 
-        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 15), "Search was not reached")
+        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 45), "Search was not reached")
 
         let settings = app.element(labelled: "Settings")
         XCTAssertTrue(settings.waitForExistence(timeout: 10), "Settings tab was not found")
         settings.tap()
+        // A cold CI simulator can take well over ten seconds to draw the first Settings frame (the
+        // test failed there, not in a bug, #502's run): wait for it generously.
         XCTAssertTrue(
-            app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 10),
+            app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 45),
             "Settings did not open"
         )
     }
@@ -42,9 +44,9 @@ final class MuvissSmokeUITests: XCTestCase {
         let app = launch()
         let skip = app.element(labelled: "Skip")
         if skip.waitForExistence(timeout: 10) { skip.tap() }
-        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 15), "Search was not reached")
+        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 45), "Search was not reached")
         app.element(labelled: "Settings").tap()
-        XCTAssertTrue(app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 10), "Settings did not open")
+        XCTAssertTrue(app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 45), "Settings did not open")
 
         let export = app.element(labelled: "Export")
         for _ in 0..<6 where !export.exists { app.swipeUp() }
