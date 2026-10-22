@@ -94,7 +94,7 @@ val settingsDataModule: Module = module {
     single { SettingsLocaleSync(get(), get(), get(), get()) } withOptions { createdAtStart() }
 
     factory { ObserveSettingsUseCase(get()) }
-    factory { ObserveFeatureRequestLinkUseCase(get(), get(), get(), get()) }
+    factory { ObserveFeatureRequestLinkUseCase(get(), get(), get()) }
     factory { SettingsObservations(get(), get()) }
     factory { SetThemeUseCase(get()) }
     factory { SetLanguageUseCase(get()) }

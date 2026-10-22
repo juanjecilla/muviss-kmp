@@ -6,22 +6,25 @@ import com.codingpit.muviss.core.common.platform.platformName
 import com.codingpit.muviss.core.common.platform.platformOsVersion
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
  * The Feature Request link for Settings, or null while there is nothing to open (no form
  * yet, or the provider is off). Follows Remote Config, so moving or switching the form
- * needs no release, and follows the app language so the request says which one the user
- * actually reads the app in.
+ * needs no release.
+ *
+ * `locale` is the device locale, which is what picks the app's UI strings (English where
+ * Muviss has no translation for it). It is deliberately not the Settings language: that
+ * one only chooses the language of TMDB requests, so a user reading the app in Spanish
+ * with English titles would otherwise be reported as `en-US`.
  */
 class ObserveFeatureRequestLinkUseCase(
     private val remoteConfig: RemoteConfig,
-    private val observeSettings: ObserveSettingsUseCase,
     private val systemLocale: SystemLocale,
     private val appVersion: AppVersion,
 ) {
-    operator fun invoke(): Flow<String?> = combine(remoteConfig.values, observeSettings()) { remote, settings ->
+    operator fun invoke(): Flow<String?> = remoteConfig.values.map { remote ->
         FeatureRequestLink.build(
             provider = remote.featureRequestProvider,
             baseUrl = remote.featureRequestUrl,
@@ -29,7 +32,7 @@ class ObserveFeatureRequestLinkUseCase(
                 version = appVersion.versionName,
                 platform = platformName,
                 os = platformOsVersion,
-                locale = SupportedLocales.resolveLanguage(settings.language, systemLocale.languageTag),
+                locale = systemLocale.languageTag ?: SupportedLocales.DEFAULT_LANGUAGE,
             ),
         )
     }.distinctUntilChanged()
