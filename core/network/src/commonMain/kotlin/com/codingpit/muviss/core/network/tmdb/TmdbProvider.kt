@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.network.tmdb
 
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.network.DefaultMetadataLocale
+import com.codingpit.muviss.core.network.DiscoverFilters
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.core.network.MuvissBuildConfig
@@ -115,14 +116,14 @@ class TmdbProvider internal constructor(
         MediaType.TV -> tvDetails(id.external)
     }
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> {
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> = discoverFiltered(type, page, DiscoverFilters(genreIds = setOfNotNull(genreId), excludedGenreIds = excludedGenreIds))
+
+    override suspend fun discoverFiltered(type: MediaType, page: Int, filters: DiscoverFilters): PagedResult<MediaSummary> {
         val dto: TmdbPageDto = get("discover/${type.tmdbPath}") {
             parameter("language", locale.language)
-            parameter("sort_by", "popularity.desc")
+            parameter("sort_by", filters.sort.tmdbValue)
             parameter("page", page)
-            genreId?.let { parameter("with_genres", it) }
-            // `|` is "any of these" in TMDB's filter syntax. An explicit pick is never also excluded.
-            (excludedGenreIds - genreId).takeIf { it.isNotEmpty() }?.let { parameter("without_genres", it.joinToString("|")) }
+            applyDiscoverFilters(type, filters)
         }
         return TmdbMapper.discoverPageToPagedResult(type, dto)
     }
