@@ -39,7 +39,8 @@ concurrency:
 jobs:
   regenerate:
     name: Regenerate checksums (${{ matrix.os }})
-    if: (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(deps): checksums for')) || github.event_name == 'workflow_dispatch' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
+    if: >-
+      (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(deps): checksums for')) || github.event_name == 'workflow_dispatch' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
     strategy:
       max-parallel: 1
       fail-fast: true
