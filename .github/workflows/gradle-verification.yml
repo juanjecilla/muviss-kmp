@@ -32,9 +32,11 @@ on:
 permissions:
   contents: read
 
+# Never cancelled: the bot's own commit starts another (skipped) run in this group, and
+# cancelling would kill the OS legs that have not run yet.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   regenerate:
