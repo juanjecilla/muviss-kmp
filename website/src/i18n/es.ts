@@ -112,7 +112,7 @@ export const es: Dictionary = {
     lede: "Muviss es un proyecto de una sola persona. Estas son las formas de contactar con el desarrollador, en el orden que suele dar una respuesta más rápida.",
     forms: {
       title: "Avisa de un problema o pide una función",
-      body: "Cada uno abre un formulario corto en tu navegador, y tú decides qué escribir. Los mismos dos enlaces están en la app: Ajustes y luego Acerca de.",
+      body: "Cada uno abre un formulario corto en tu navegador, y tú decides qué escribir. Lo que escribas puede copiarse al gestor público de incidencias, así que deja fuera lo privado y usa el correo para eso. Los mismos dos enlaces están en la app: Ajustes y luego Acerca de.",
       bug: "Avisar de un problema",
       feature: "Pedir una función",
     },

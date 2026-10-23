@@ -115,7 +115,7 @@ export const en = {
     lede: "Muviss is a one-person project. Here is how to reach the developer, in the order that usually gets the quickest answer.",
     forms: {
       title: "Report a problem or ask for a feature",
-      body: "Each opens a short form in your browser, and you decide what to write. The same two links are in the app: Settings, then About.",
+      body: "Each opens a short form in your browser, and you decide what to write. What you write may be copied to the public issue tracker, so leave anything private out and use email for that. The same two links are in the app: Settings, then About.",
       bug: "Report a problem",
       feature: "Request a feature",
     },
