@@ -15,10 +15,15 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
 import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
+import com.codingpit.muviss.feature.onboarding.ui.OnboardingViewModel
 import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -108,6 +113,16 @@ class AppGraphTest {
         // contract must resolve in both orders with the rest of the graph.
         assertNotNull(koin.get<OnboardingApi>())
         assertNotNull(koin.get<NotificationPermissionRequester>())
+    }
+
+    /**
+     * The first-run introduction's view model is the first thing a fresh install builds. Its
+     * constructor has a defaulted `Boolean` (Device Backup's `canBackUp`), which `viewModelOf` would
+     * try to resolve from Koin and fail on; that shipped to CI as an iOS launch crash.
+     */
+    @Test
+    fun `the onboarding view model resolves from the assembled graph`() {
+        assertNotNull(startGraph().get<OnboardingViewModel>())
     }
 
     /**
