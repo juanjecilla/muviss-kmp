@@ -48,11 +48,14 @@ case "${1:-}" in
   update)
     id="${2:?usage: update <form-id>}"
     # The definition says DRAFT; sending that to a published form would unpublish it.
+    # No status, no PATCH: guessing DRAFT could unpublish a live form. That also covers a failed GET,
+    # whose `exit` only leaves the command substitution.
     status="$(call GET "/forms/$id" | sed -n 's/.*"status" *: *"\([A-Z]*\)".*/\1/p' | head -1)"
+    [ -n "$status" ] || { echo "Could not read form $id's status from Tally; nothing was changed." >&2; exit 1; }
     tmp="$(mktemp)"
-    sed "s/\"status\": *\"[A-Z]*\"/\"status\": \"${status:-DRAFT}\"/" "$DEFINITION" > "$tmp"
+    sed "s/\"status\": *\"[A-Z]*\"/\"status\": \"$status\"/" "$DEFINITION" > "$tmp"
     call PATCH "/forms/$id" "$tmp" >/dev/null; rm -f "$tmp"
-    echo "Updated form $id from $DEFINITION (status stays ${status:-DRAFT})"
+    echo "Updated form $id from $DEFINITION (status stays $status)"
     ;;
   publish)
     id="${2:?usage: publish <form-id>}"

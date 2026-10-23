@@ -29,10 +29,13 @@ module OpsBridge
       MAX_PER_RUN = 10
       # The hidden fields the app sends (FeatureRequestContext). Anything else in the answer is ignored.
       CONTEXT_FIELDS = %w[version platform os locale].freeze
+      TEXT_TYPES = %w[TEXTAREA INPUT_TEXT].freeze
 
-      # [submission] is one entry of Tally's `submissions`, [questions] its `questions`: the
-      # request is the first text area, the "why" the second, the email the INPUT_EMAIL, the
-      # context the HIDDEN_FIELDS answer.
+      # [submission] is one entry of Tally's `submissions`, [questions] its `questions` (in form
+      # order): the request is the answer to the form's first text question, the "why" to its
+      # second, the email the INPUT_EMAIL, the context the HIDDEN_FIELDS answer. Text answers are
+      # matched to their question by id, never by where they sit in `responses`: a "why" listed
+      # first must not become the issue title.
       def self.to_item(submission, questions)
         return nil unless submission["isCompleted"]
 
@@ -46,18 +49,19 @@ module OpsBridge
 
       def self.answers_by_type(submission, questions)
         type_of = questions.to_h { |question| [question["id"], question["type"]] }
-        text = []
+        text_ids = questions.select { |question| TEXT_TYPES.include?(question["type"]) }.map { |question| question["id"] }
+        text_by_id = {}
         email = nil
         context = {}
         Array(submission["responses"]).each do |response|
           answer = response["answer"]
           case type_of[response["questionId"]]
-          when "TEXTAREA", "INPUT_TEXT" then text << answer.to_s
+          when *TEXT_TYPES then text_by_id[response["questionId"]] = answer.to_s
           when "INPUT_EMAIL" then email = answer
           when "HIDDEN_FIELDS" then context = answer.is_a?(Hash) ? answer : {}
           end
         end
-        { text: text, email: email, context: context }
+        { text: text_ids.map { |id| text_by_id[id].to_s }, email: email, context: context }
       end
 
       def self.headline(request)
