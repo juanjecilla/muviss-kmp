@@ -167,8 +167,14 @@ Settings → Data → Export saves a copy first if you might want it back.
 
 ## Contact
 
-Muviss is developed by Juanje Cilla. Open an issue on the project's GitHub
-repository for privacy questions.
+Muviss is developed by Juanje Cilla. The [support page](https://muvissapp.com/support/)
+lists how to reach the developer. Email is the private channel. The in-app forms
+are for bug reports and feature requests, and what you write in them may be
+copied to the public issue tracker (see above).
+For a question about your data, or to ask for something you sent through a form
+to be deleted, use the email address there rather than a public GitHub issue.
+The project's GitHub repository also takes issues for anything that is fine to
+say in public.
 
 ## Changes to this policy
 
