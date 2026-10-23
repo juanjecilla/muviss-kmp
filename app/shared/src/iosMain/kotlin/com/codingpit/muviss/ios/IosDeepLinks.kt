@@ -62,7 +62,7 @@ object IosDeepLinks {
      * take the app down.
      */
     fun handle(url: String): Boolean {
-        val components = NSURLComponents(uRL = NSURL(string = url), resolvingAgainstBaseURL = false) ?: return false
+        val components = NSURLComponents(uRL = NSURL(string = url), resolvingAgainstBaseURL = false)
         if (components.scheme != SCHEME) return false
         return when (components.host) {
             HOST_TITLE -> {
