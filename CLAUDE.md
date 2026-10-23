@@ -43,7 +43,7 @@ Vertical slice per feature, each split into four modules:
 :feature:<name>:ui       Compose screens + ViewModels + nav (internal)
 ```
 
-Dependency rule: **`ui → domain ← data`**; cross-feature deps go through the peer's `:api` only. Shared infra:
+Dependency rule: **`ui → domain ← data`**; cross-feature deps go through the peer's `:api` only. `./gradlew verifyModuleGraph` (part of `check` and CI) enforces it over the declared project graph; an edge that predates it goes in `config/module-graph-exceptions.txt` with a reason, and a stale entry fails. Shared infra:
 
 ```
 :models             common exported data models (MediaId, MediaSummary, WatchStatus…)

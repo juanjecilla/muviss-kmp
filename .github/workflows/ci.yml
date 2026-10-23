@@ -209,6 +209,12 @@ jobs:
       - name: Build-logic tests (versionCode formula)
         run: ./gradlew -p build-logic test --stacktrace
 
+      # ADR 0004's dependency rule over the declared project graph (#483):
+      # peers through :api only, `ui -> domain <- data`, infrastructure below
+      # features. Reads Gradle's graph, so an unused forbidden edge fails too.
+      - name: Module graph (vertical-slice rule)
+        run: ./gradlew verifyModuleGraph --stacktrace
+
       # Every jvmTest task in the build, resolved by name rather than listed.
       # This used to be a hand-maintained allowlist, which meant a module
       # missing from it was a module whose tests never ran — and modules kept
