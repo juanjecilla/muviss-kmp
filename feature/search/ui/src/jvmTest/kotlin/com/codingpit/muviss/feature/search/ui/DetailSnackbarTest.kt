@@ -89,9 +89,12 @@ class DetailSnackbarTest {
 
     /** The measured-height path: a large font in a narrow column wraps the undo message. */
     @Test
-    fun a_wrapped_undo_snackbar_still_clears_the_last_row() = runComposeUiTest {
-        val oneLine = assertLastRowClearsSnackbar()
-        val wrapped = assertLastRowClearsSnackbar(width = 260.dp, fontScale = 2f)
+    fun a_wrapped_undo_snackbar_still_clears_the_last_row() {
+        // One scope per layout: `setContent` may only be called once per `runComposeUiTest`.
+        var oneLine = 0f
+        var wrapped = 0f
+        runComposeUiTest { oneLine = assertLastRowClearsSnackbar() }
+        runComposeUiTest { wrapped = assertLastRowClearsSnackbar(width = 260.dp, fontScale = 2f) }
         // The case only means something if the message really did wrap.
         assertTrue(wrapped > oneLine * 1.5f, "snackbar was $wrapped tall, a one-line one $oneLine")
     }
