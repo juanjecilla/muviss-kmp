@@ -41,8 +41,15 @@ for f in version platform os locale; do
   grep -q "\"name\": *\"$f\"" "$log" && pass "definition carries hidden field $f" || fail "definition carries hidden field $f"
 done
 
-: > "$log"; "$SCRIPT" update wA1b2C >/dev/null
+: > "$log"; CURL_BODY='{"id":"wA1b2C","status":"DRAFT"}' "$SCRIPT" update wA1b2C >/dev/null
 grep -q '^PATCH https://stub.test/forms/wA1b2C ' "$log" && pass "update PATCHes the form" || fail "update PATCHes the form"
+grep -q '"status": "DRAFT"' "$log" && pass "update of a draft stays a draft" || fail "update of a draft stays a draft"
+: > "$log"; CURL_BODY='{"id":"wA1b2C","status":"PUBLISHED"}' "$SCRIPT" update wA1b2C >/dev/null
+grep -q '^PATCH ' "$log" && grep -q '"status": "PUBLISHED"' "$log" && pass "update of a published form does not unpublish it" || fail "update of a published form does not unpublish it"
+: > "$log"; if "$SCRIPT" update wA1b2C >/dev/null 2>&1; then fail "update without a readable status fails"; else pass "update without a readable status fails"; fi
+grep -q '^PATCH ' "$log" && fail "update without a readable status PATCHes nothing" || pass "update without a readable status PATCHes nothing"
+: > "$log"; if CURL_STATUS=500 "$SCRIPT" update wA1b2C >/dev/null 2>&1; then fail "update after a failed GET fails"; else pass "update after a failed GET fails"; fi
+grep -q '^PATCH ' "$log" && fail "update after a failed GET PATCHes nothing" || pass "update after a failed GET PATCHes nothing"
 
 : > "$log"; "$SCRIPT" publish wA1b2C >/dev/null
 grep -q '^PATCH https://stub.test/forms/wA1b2C ' "$log" && grep -q '"status": "PUBLISHED"' "$log" && pass "publish PATCHes status PUBLISHED" || fail "publish PATCHes status"

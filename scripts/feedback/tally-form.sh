@@ -2,7 +2,7 @@
 # Creates or updates the Feature Request form on Tally from tally-form.json (ADR 0035).
 # Owner-only: TALLY_API_KEY (Tally -> Settings -> API keys) never ships in the app.
 #   scripts/feedback/tally-form.sh create            # makes a DRAFT, prints its URL
-#   scripts/feedback/tally-form.sh update <form-id>  # PATCHes the definition, keeping it a draft
+#   scripts/feedback/tally-form.sh update <form-id>  # PATCHes the definition, keeping the form's current status
 #   scripts/feedback/tally-form.sh publish <form-id> # PATCHes the definition with status PUBLISHED
 # Publishing sends the blocks too: a status-only PATCH left the public page with zero blocks
 # (just a Submit button), because Tally keeps draft blocks apart until a PATCH carries them.
@@ -47,8 +47,15 @@ case "${1:-}" in
     ;;
   update)
     id="${2:?usage: update <form-id>}"
-    call PATCH "/forms/$id" "$DEFINITION" >/dev/null
-    echo "Updated form $id from $DEFINITION"
+    # The definition says DRAFT; sending that to a published form would unpublish it.
+    # No status, no PATCH: guessing DRAFT could unpublish a live form. That also covers a failed GET,
+    # whose `exit` only leaves the command substitution.
+    status="$(call GET "/forms/$id" | sed -n 's/.*"status" *: *"\([A-Z]*\)".*/\1/p' | head -1)"
+    [ -n "$status" ] || { echo "Could not read form $id's status from Tally; nothing was changed." >&2; exit 1; }
+    tmp="$(mktemp)"
+    sed "s/\"status\": *\"[A-Z]*\"/\"status\": \"$status\"/" "$DEFINITION" > "$tmp"
+    call PATCH "/forms/$id" "$tmp" >/dev/null; rm -f "$tmp"
+    echo "Updated form $id from $DEFINITION (status stays $status)"
     ;;
   publish)
     id="${2:?usage: publish <form-id>}"
