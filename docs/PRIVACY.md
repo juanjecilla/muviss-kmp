@@ -153,15 +153,15 @@ because Muviss never sends what you enter to one. A copy your phone's own
 backup already holds is outside Muviss and is not touched by either; delete it
 where that backup lives (the phone's backup settings for iCloud or Google, or
 the computer that holds an iPhone backup).
-(A feature request you submit through the form is another exception: it
-lives outside the app, so deleting data in Muviss cannot remove it. It can
+(A feature request or bug report you submit through a form is another
+exception: it lives outside the app, so deleting data in Muviss cannot remove it. It can
 exist in up to three places: with the form provider, in the notification email
 the provider sends us, and, if it was copied there, in a public issue (its
 text only, never your email address). Ask us through the contact below and we
 will delete all three: the response at the provider, the email, and the issue
 or the copied text in it. The
 issue tracker is public, so do not put your email address or the text of the
-request in that issue: say only that you want a request deleted, and we will
+request or report in that issue: say only that you want one deleted, and we will
 reply there with a private way to identify it.)
 Settings → Data → Export saves a copy first if you might want it back.
 

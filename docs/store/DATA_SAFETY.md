@@ -46,7 +46,7 @@ collects, stores, or shares for its own purposes.
 
 There is no account. Locally, Settings → Data → Delete all data removes
 everything the app keeps, and so does uninstalling. The one thing kept outside
-the app is a feature request the user chose to submit: it stays with the form
+the app is a feature request or bug report the user chose to submit: it stays with the form
 provider, in our notification email and, if copied, in a public issue (text
 only). The user asks through the contact in `docs/PRIVACY.md` and we delete it
 in all three places. Both processes are stated in `docs/PRIVACY.md`.
