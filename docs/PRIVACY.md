@@ -134,9 +134,9 @@ go on to submit anything: Tally's server gets them with the request for the
 page, and Typeform's page reads them from the link and sends them to Typeform
 while it loads; closing the page without submitting means no
 response is sent. The rows appear only when a form has been set up. The text
-of a request may be copied into the project's public issue tracker so it can
-be planned, **never with your email address**; leave anything private out of
-it.
+of a feature request or bug report may be copied into the project's public
+issue tracker so it can be planned or triaged, **never with your email
+address**; leave anything private out of it.
 
 Muviss makes no other network calls: no analytics, no advertising, no
 telemetry, no third-party trackers.
