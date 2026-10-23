@@ -38,6 +38,14 @@ interface MetadataProvider {
      */
     suspend fun discover(type: MediaType, page: Int = 1, genreId: String? = null, excludedGenreIds: Set<String> = emptySet()): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
 
+    /**
+     * [discover] with the full set of filters a Pick Session can ask for. A separate method with a
+     * default, not more parameters on [discover], so the hand-written fakes that override [discover]
+     * (seven of them, ADR 0031's lesson) keep compiling: a provider that does not know the extra
+     * filters answers with the genre-only browse. [TmdbProvider] overrides it.
+     */
+    suspend fun discoverFiltered(type: MediaType, page: Int = 1, filters: DiscoverFilters): PagedResult<MediaSummary> = discover(type, page, filters.genreIds.singleOrNull(), filters.excludedGenreIds)
+
     /** Localized genre list for [type], used to populate discover's filter chips. */
     suspend fun genres(type: MediaType): List<Genre> = emptyList()
 
