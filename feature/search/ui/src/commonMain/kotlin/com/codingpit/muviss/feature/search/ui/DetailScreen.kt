@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -82,6 +83,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -89,6 +92,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -187,6 +191,9 @@ fun DetailScreen(
     var editingNote by remember { mutableStateOf(false) }
     var tickedEpisode by remember { mutableStateOf<EpisodeId?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    // The snackbar's measured height, so the list's end clears a wrapped message too.
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
 
     // A bulk mark parks its undo in state; this turns it into the snackbar and
     // clears it once acted on, so it can't reappear on the next recomposition.
@@ -217,10 +224,13 @@ fun DetailScreen(
                     onTapSeenEpisode = { tickedEpisode = it },
                     notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
                 )
+                // At least the usual allowance, so the end does not jump when a one-line
+                // snackbar appears; more when a long title or a large font wraps it.
+                val bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight)
                 if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(state, viewModel, callbacks)
+                    DetailExpanded(state, viewModel, callbacks, bottomPadding)
                 } else {
-                    DetailCompact(state, viewModel, callbacks)
+                    DetailCompact(state, viewModel, callbacks, bottomPadding)
                 }
             }
         }
@@ -238,7 +248,13 @@ fun DetailScreen(
 
         // Detail is a scrolling Box rather than a Scaffold, so it hosts its
         // own snackbar for the bulk-mark undo.
-        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .testTag(DETAIL_SNACKBAR_TAG),
+        )
     }
 
     tickedEpisode?.let { episodeId ->
@@ -307,11 +323,14 @@ private class DetailCallbacks(
  * on screen is composed.
  */
 @Composable
-private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks) {
+private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks, bottomPadding: Dp) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     val inset = Modifier.padding(horizontal = MuvissSpacing.l)
-    LazyColumn(Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG)) {
+    LazyColumn(
+        Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        contentPadding = PaddingValues(bottom = bottomPadding),
+    ) {
         item(key = "hero", contentType = "hero") { DetailHero(details) }
         item(key = "actions", contentType = "actions") {
             Box(inset.padding(top = MuvissSpacing.m)) { ActionRow(state, viewModel, callbacks.onAddToList) }
@@ -324,7 +343,7 @@ private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, call
 
 /** Expanded (≥840dp): poster + actions pinned left, content right. */
 @Composable
-private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks) {
+private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks, bottomPadding: Dp) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     // The body lines up with the title column beside the poster, as it did
@@ -332,7 +351,10 @@ private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, cal
     val bodyColumn = Modifier
         .padding(start = MuvissSpacing.xxl + POSTER_COLUMN_WIDTH + MuvissSpacing.xl, end = MuvissSpacing.xxl)
         .widthIn(max = 640.dp)
-    LazyColumn(Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG)) {
+    LazyColumn(
+        Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        contentPadding = PaddingValues(bottom = bottomPadding),
+    ) {
         item(key = "hero", contentType = "hero") {
             Column {
                 DetailBackdrop(details, height = 200.dp)
@@ -369,6 +391,9 @@ private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, cal
 private val POSTER_COLUMN_WIDTH = 150.dp
 
 internal const val DETAIL_LIST_TAG = "detailList"
+
+/** The bulk-mark undo snackbar's host, so a test can find where it sits over the list. */
+internal const val DETAIL_SNACKBAR_TAG = "detailSnackbar"
 
 /** What the list items read: one bundle, so the item builders keep short signatures. */
 private class DetailListContext(
