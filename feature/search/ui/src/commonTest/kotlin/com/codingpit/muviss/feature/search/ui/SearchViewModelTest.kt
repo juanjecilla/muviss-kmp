@@ -254,7 +254,7 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun loadMore_never_repeats_a_title_already_on_screen() = runTest {
+    fun load_more_never_repeats_a_title_already_on_screen() = runTest {
         // #463: TMDB paging drifted, so page 2 came back with a title page 1 already showed. Appending it blindly
         // put the same id in the keyed grid twice and crashed it.
         val fresh = MediaSummary(MediaId.tmdbMovie("9"), "Fresh")
@@ -315,7 +315,44 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun genre_loadMore_never_repeats_a_title_already_on_screen() = runTest {
+    fun a_stale_page_never_frees_a_newer_page_request() = runTest {
+        // The first search's page 2 outlives a restart, and the restarted search asks for its own page 2. When the
+        // old one answers it must not clear `loadingMore` under the new one, or the next scroll asks for page 2 again.
+        val oldPageTwo = CompletableDeferred<Result<PagedResult<MediaSummary>>>()
+        val newPageTwo = CompletableDeferred<Result<PagedResult<MediaSummary>>>()
+        var pageTwoCalls = 0
+        val vm = viewModel(
+            FakeRepo(
+                searchResult = { page ->
+                    if (page == 2) {
+                        if (pageTwoCalls++ == 0) oldPageTwo.await() else newPageTwo.await()
+                    } else {
+                        Result.success(PagedResult(listOf(searchItem), page, totalPages = 2))
+                    }
+                },
+            ),
+        )
+        advanceUntilIdle()
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+        vm.onQueryChange("alien")
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+
+        oldPageTwo.complete(Result.success(PagedResult(emptyList(), 2, totalPages = 2)))
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.loadingMore)
+        assertEquals(2, pageTwoCalls)
+    }
+
+    @Test
+    fun genre_load_more_never_repeats_a_title_already_on_screen() = runTest {
         // #463, the same drift on the genre drill-down.
         val fresh = MediaSummary(MediaId.tmdbMovie("9"), "Fresh")
         val vm = viewModel(
