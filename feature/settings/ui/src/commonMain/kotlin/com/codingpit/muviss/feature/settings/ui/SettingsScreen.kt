@@ -35,6 +35,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -42,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.common.backup.platformCanBackUp
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
@@ -68,6 +70,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_c
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_done
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_question
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all_value
+import com.codingpit.muviss.feature.settings.ui.generated.resources.device_backup
+import com.codingpit.muviss.feature.settings.ui.generated.resources.device_backup_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.export
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
@@ -79,6 +83,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.notification
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications_blocked
 import com.codingpit.muviss.feature.settings.ui.generated.resources.open_settings
 import com.codingpit.muviss.feature.settings.ui.generated.resources.provider_region
+import com.codingpit.muviss.feature.settings.ui.generated.resources.report_problem
+import com.codingpit.muviss.feature.settings.ui.generated.resources.request_feature
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_four_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_three_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_about
@@ -119,9 +125,12 @@ fun SettingsScreen(
     // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
     // the screen works without it, so the many tests of everything else do not need a Koin graph.
     tmdbKey: TmdbKeyViewModel? = null,
+    // Whether the OS backup can carry the library (ADR 0034). A parameter so a test can show the row on desktop.
+    canBackUp: Boolean = platformCanBackUp,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
+    val uriHandler = LocalUriHandler.current
     val systemDefault = stringResource(Res.string.system_default)
 
     LaunchedEffect(state.exportJson) {
@@ -277,6 +286,17 @@ fun SettingsScreen(
             onClick = viewModel::exportData,
         )
         state.exportError?.let { Text(it.resolve(), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        // Device Backup (ADR 0034): offered only where the OS has a backup Muviss can honour, and off by default.
+        if (canBackUp) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            SwitchRow(
+                label = stringResource(Res.string.device_backup),
+                description = stringResource(Res.string.device_backup_body),
+                checked = state.settings.deviceBackupEnabled,
+                onToggle = viewModel::onDeviceBackupToggled,
+                modifier = Modifier.testTag(DEVICE_BACKUP_ROW_TAG),
+            )
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         ActionRow(
             icon = MuvissIcons.Close,
@@ -310,6 +330,8 @@ fun SettingsScreen(
             appVersionName = state.appVersion.versionName,
             onOpenLicenses = onOpenLicenses,
             onReplayIntroduction = onReplayIntroduction,
+            onRequestFeature = state.featureRequestUrl?.let { url -> { uriHandler.openUri(url) } },
+            onReportProblem = state.bugReportUrl?.let { url -> { uriHandler.openUri(url) } },
             onTestCrash = { throw MuvissTestCrash() },
         )
     }
@@ -404,12 +426,13 @@ internal fun SwitchRow(
     checked: Boolean,
     onToggle: (Boolean) -> Unit,
     enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     val contentAlpha = if (enabled) 1f else DISABLED_ALPHA
     // The whole row is the switch: a bare Switch next to its label was
     // announced as "On, switch" with no name (EPIC 31b, #164).
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onToggle)
             .padding(vertical = MuvissSpacing.xs),
@@ -530,6 +553,10 @@ internal fun AboutSection(
     onOpenLicenses: () -> Unit,
     onTestCrash: () -> Unit,
     onReplayIntroduction: () -> Unit = {},
+    /** Opens the Feature Request form (ADR 0035); null while there is none, which hides the row. */
+    onRequestFeature: (() -> Unit)? = null,
+    /** Opens the Bug Report form (ADR 0035, #449); null while there is none, which hides the row. */
+    onReportProblem: (() -> Unit)? = null,
 ) {
     var versionTaps by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
@@ -570,6 +597,36 @@ internal fun AboutSection(
                 modifier = Modifier.size(16.dp),
             )
         }
+        if (onRequestFeature != null) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onRequestFeature).padding(vertical = MuvissSpacing.s).testTag(FEATURE_REQUEST_TAG),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(Res.string.request_feature), style = MaterialTheme.typography.bodyLarge)
+                Icon(
+                    MuvissIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        if (onReportProblem != null) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onReportProblem).padding(vertical = MuvissSpacing.s).testTag(BUG_REPORT_TAG),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(Res.string.report_problem), style = MaterialTheme.typography.bodyLarge)
+                Icon(
+                    MuvissIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
         Row(
             Modifier.fillMaxWidth().clickable(onClick = onOpenLicenses).padding(vertical = MuvissSpacing.s),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -599,6 +656,8 @@ private fun TriageControlScheme.displayName(): String = stringResource(
 )
 
 internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
+internal const val FEATURE_REQUEST_TAG = "featureRequest"
+internal const val BUG_REPORT_TAG = "bugReport"
 const val VERSION_ROW_TAG = "settings_version_row"
 
 internal const val TEST_CRASH_TAPS = 7
@@ -634,5 +693,8 @@ private fun DeleteAllDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 }
 
 internal const val DELETE_ALL_ROW_TAG = "settings-delete-all"
+
+/** The Device Backup switch row (ADR 0034), so a test can find and flip it. */
+internal const val DEVICE_BACKUP_ROW_TAG = "settings-device-backup"
 internal const val DELETE_ALL_DIALOG_TAG = "settings-delete-all-dialog"
 internal const val DELETE_ALL_CONFIRM_TAG = "settings-delete-all-confirm"
