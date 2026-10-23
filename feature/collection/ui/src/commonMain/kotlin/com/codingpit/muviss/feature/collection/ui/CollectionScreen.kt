@@ -34,8 +34,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
@@ -222,6 +226,11 @@ private fun LibraryScreen(
         viewModel.consumeMessage()
     }
 
+    // The snackbar's measured height, so the end of the list clears a message that wraps (a long
+    // name, a large font) and not only the one-line case.
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             CollectionFilterChips(state, onSelect = viewModel::selectFilter)
@@ -234,14 +243,27 @@ private fun LibraryScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     when {
                         state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
+
                         state.error != null -> ErrorState(state.error!!, onRetry = { viewModel.refresh() })
+
                         state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter, state.typeFilter, onOpenSearch)
-                        else -> CollectionGrid(state.visibleEntries, onOpenDetail)
+
+                        else -> CollectionGrid(
+                            state.visibleEntries,
+                            bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight),
+                            onOpenDetail,
+                        )
                     }
                 }
             }
         }
-        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .testTag(COLLECTION_SNACKBAR_TAG),
+        )
     }
 }
 
@@ -302,28 +324,33 @@ private fun CollectionFilterChips(
 @Composable
 private fun CollectionGrid(
     entries: List<CollectionEntry>,
+    bottomPadding: Dp,
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 110.dp),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        // The refresh-failure snackbar sits over the bottom of the grid, so the last row
+        // must be scrollable clear of it.
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
-            bottom = MuvissSpacing.bottomContent,
+            bottom = bottomPadding,
         ),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag(COLLECTION_GRID_TAG),
     ) {
         items(entries, key = { it.mediaId.toString() }) { entry ->
-            PosterCard(
-                title = entry.title,
-                posterUrl = entry.posterUrl,
-                onClick = { onOpenDetail(entry.mediaId) },
-                rating = entry.rating,
-                progress = entry.watchingProgress(),
-            )
+            Box(Modifier.testTag(COLLECTION_CELL_TAG)) {
+                PosterCard(
+                    title = entry.title,
+                    posterUrl = entry.posterUrl,
+                    onClick = { onOpenDetail(entry.mediaId) },
+                    rating = entry.rating,
+                    progress = entry.watchingProgress(),
+                )
+            }
         }
     }
 }
@@ -359,3 +386,8 @@ private fun CollectionSort.label(): String = stringResource(
         CollectionSort.TITLE -> Res.string.sort_title
     },
 )
+
+/** Test hooks: the refresh-failure snackbar, the library grid, and one grid cell. */
+internal const val COLLECTION_SNACKBAR_TAG = "collection-snackbar"
+internal const val COLLECTION_GRID_TAG = "collection-grid"
+internal const val COLLECTION_CELL_TAG = "collection-cell"

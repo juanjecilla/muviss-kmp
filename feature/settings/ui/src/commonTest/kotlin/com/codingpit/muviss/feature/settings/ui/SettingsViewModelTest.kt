@@ -8,6 +8,9 @@ import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -19,6 +22,7 @@ import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
 import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SetCrashReportsEnabledUseCase
+import com.codingpit.muviss.feature.settings.domain.SetDeviceBackupEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
@@ -68,6 +72,10 @@ private class FakeSettingsRepository(initial: AppSettings = AppSettings()) : Set
         flow.value = flow.value.copy(crashReportsEnabled = enabled)
     }
 
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
+        flow.value = flow.value.copy(deviceBackupEnabled = enabled)
+    }
+
     override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) {
         val kept = flow.value.mutedGenres.filterNot { it.key == key }
         flow.value = flow.value.copy(mutedGenres = if (muted) kept + MutedGenreEntry(key, name) else kept)
@@ -110,8 +118,11 @@ class SettingsViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(repository: FakeSettingsRepository) = SettingsViewModel(
-        ObserveSettingsUseCase(repository),
+    private fun viewModel(
+        repository: FakeSettingsRepository,
+        remote: RemoteConfig = DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
+    ) = SettingsViewModel(
+        settingsObservations(ObserveSettingsUseCase(repository), remote),
         SettingsActions(
             SetThemeUseCase(repository),
             SetLanguageUseCase(repository),
@@ -120,6 +131,7 @@ class SettingsViewModelTest {
             SetCrashReportsEnabledUseCase(repository),
             MutedGenresActions(repository),
             ExportDataUseCase(repository),
+            SetDeviceBackupEnabledUseCase(repository),
         ),
         AppVersion(versionName = "1.0.0", versionCode = 42),
         FakeFeatureFlags(),
@@ -301,6 +313,22 @@ class SettingsViewModelTest {
 
         kotlin.test.assertNull(vm.state.value.error)
         kotlin.test.assertFalse(vm.state.value.loading)
+    }
+
+    @Test
+    fun a_failed_settings_load_leaves_the_feature_request_link_up() = runTest {
+        val remote = DefaultsRemoteConfig(RemoteValues(byokEnabled = false, featureRequestUrl = "https://tally.so/r/abc"))
+        val repository = FakeSettingsRepository().apply { failure = IllegalStateException("db locked") }
+        val vm = viewModel(repository, remote)
+        advanceUntilIdle()
+        // The link reads Remote Config and the device locale only, so a settings failure does not end it.
+        assertTrue(vm.state.value.featureRequestUrl.orEmpty().startsWith("https://tally.so/r/abc?version=1.0.0"))
+
+        repository.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.featureRequestUrl.orEmpty().startsWith("https://tally.so/r/abc?version=1.0.0"))
     }
 
     @Test
