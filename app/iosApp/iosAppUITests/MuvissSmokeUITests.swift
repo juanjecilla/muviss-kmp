@@ -24,13 +24,44 @@ final class MuvissSmokeUITests: XCTestCase {
             skip.tap()
         }
 
-        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 15), "Search was not reached")
+        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 45), "Search was not reached")
 
+        openSettings(app)
+    }
+
+    /// Settings > Export presents the system share sheet (#415, #186). On an iPad that sheet is a popover and
+    /// UIKit throws at present time unless it is anchored, which killed the app before the anchor existed;
+    /// on an iPhone it is a bottom sheet. Either way the app must still be running with the sheet up.
+    func testExportPresentsTheShareSheetWithoutCrashing() throws {
+        let app = launch()
+        let skip = app.element(labelled: "Skip")
+        if skip.waitForExistence(timeout: 10) { skip.tap() }
+        XCTAssertTrue(app.element(labelled: "Search").waitForExistence(timeout: 45), "Search was not reached")
+        openSettings(app)
+
+        // Export sits below the fold. Compose may or may not expose an off-screen row to accessibility,
+        // so scroll until it is both found and tappable rather than relying on either alone.
+        let export = app.element(labelled: "Export")
+        for _ in 0..<8 where !(export.exists && export.isHittable) { app.swipeUp() }
+        XCTAssertTrue(export.waitForExistence(timeout: 10), "the Export button was not found")
+        XCTAssertTrue(export.isHittable, "the Export button never scrolled on screen")
+        export.tap()
+
+        let sheet = app.otherElements["ActivityListView"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15), "the share sheet did not appear")
+        XCTAssertEqual(app.state, .runningForeground, "the app died presenting the share sheet")
+    }
+
+    /// Taps the Settings tab once it can take the tap, then waits for the screen. A cold CI simulator can
+    /// take well over ten seconds to draw the first Settings frame (the test failed there, not in a bug,
+    /// #502's run), so both waits are generous.
+    private func openSettings(_ app: XCUIApplication) {
         let settings = app.element(labelled: "Settings")
-        XCTAssertTrue(settings.waitForExistence(timeout: 10), "Settings tab was not found")
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: settings)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 45), .completed, "Settings tab was not ready")
         settings.tap()
         XCTAssertTrue(
-            app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 10),
+            app.element(identifiedAs: "settings_version_row").waitForExistence(timeout: 45),
             "Settings did not open"
         )
     }

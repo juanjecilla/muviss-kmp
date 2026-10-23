@@ -75,10 +75,10 @@ internal class FakeTriageApi(initial: Map<MediaId, TriageVerdict> = emptyMap()) 
 }
 
 internal class FakeRepo(
-    private val searchResult: (page: Int) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), it, it)) },
+    private val searchResult: suspend (page: Int) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), it, it)) },
     private val movieGenresResult: Result<List<Genre>> = Result.success(emptyList()),
     private val tvGenresResult: Result<List<Genre>> = Result.success(emptyList()),
-    private val discoverResult: (type: MediaType, page: Int, genreId: String?) -> Result<PagedResult<MediaSummary>> =
+    private val discoverResult: suspend (type: MediaType, page: Int, genreId: String?) -> Result<PagedResult<MediaSummary>> =
         { _, page, _ -> Result.success(PagedResult(emptyList(), page, page)) },
     private val recommendationsResult: (id: MediaId) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), 1, 1)) },
 ) : SearchRepository {
@@ -121,6 +121,9 @@ internal class FakeMutingApi(configured: MutedGenres = MutedGenres.NONE, inSearc
     override fun observeNotificationsEnabled(): Flow<Boolean> = flowOf(false)
 
     override fun observeCrashReportsEnabled(): Flow<Boolean> = flowOf(false)
+    override fun observeDeviceBackupEnabled(): Flow<Boolean> = flowOf(false)
+
+    override suspend fun setDeviceBackupEnabled(enabled: Boolean) = Unit
 
     override suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = NotificationsChange.DISABLED
 }

@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.settings.data
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
+import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
@@ -28,10 +29,16 @@ class SqlDelightLocalDataEraser(
     private val dispatchers: AppDispatchers,
     private val ownTmdbKey: OwnTmdbKey,
     private val secrets: SecretStore,
+    private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
     private val widgetRefresher: WidgetRefresher,
 ) : LocalDataEraser {
 
+    // Under the Device Backup lock: a toggle tapped before this cannot recreate the row after it.
     override suspend fun deleteAllData() = withContext(dispatchers.io) {
+        deviceBackupWrites.erase { eraseEverything() }
+    }
+
+    private suspend fun eraseEverything() {
         database.transaction {
             // The user's own data — the set sync's "discard local data" deletes.
             database.collectionEntryQueries.deleteAll()
@@ -62,5 +69,9 @@ class SqlDelightLocalDataEraser(
         ownTmdbKey.clear()
         secrets.clearAll()
         widgetRefresher.refresh()
+        // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
+        // exclusion follows it: an iOS directory left un-excluded would back a deleted library up. Last,
+        // because it can throw; the data is already gone by then, and the next open applies it again.
+        DeviceBackupExclusion.apply(enabled = false)
     }
 }
