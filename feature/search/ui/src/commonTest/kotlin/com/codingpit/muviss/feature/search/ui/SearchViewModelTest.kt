@@ -25,6 +25,7 @@ import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -274,6 +275,43 @@ class SearchViewModelTest {
 
         assertEquals(listOf(searchItem, fresh), vm.state.value.results)
         assertEquals(2, vm.state.value.resultsPage)
+    }
+
+    @Test
+    fun a_page_asked_before_the_search_restarted_is_dropped() = runTest {
+        // A to B and back to A: the first A's page 2 is still in flight and was filtered against a page 1 that is
+        // no longer on screen, so appending it could repeat a title of the second A's page 1.
+        val fresh = MediaSummary(MediaId.tmdbMovie("9"), "Fresh")
+        val pageTwo = CompletableDeferred<Result<PagedResult<MediaSummary>>>()
+        var firstPages = 0
+        val vm = viewModel(
+            FakeRepo(
+                searchResult = { page ->
+                    if (page == 2) {
+                        pageTwo.await()
+                    } else {
+                        val items = if (firstPages++ == 0) listOf(searchItem) else listOf(searchItem, fresh)
+                        Result.success(PagedResult(items, page, totalPages = 2))
+                    }
+                },
+            ),
+        )
+        advanceUntilIdle()
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+
+        vm.onQueryChange("alien")
+        advanceUntilIdle()
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+        pageTwo.complete(Result.success(PagedResult(listOf(fresh), 2, totalPages = 2)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(searchItem, fresh), vm.state.value.results)
+        assertEquals(1, vm.state.value.resultsPage)
+        assertFalse(vm.state.value.loadingMore)
     }
 
     @Test

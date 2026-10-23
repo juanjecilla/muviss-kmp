@@ -110,6 +110,14 @@ class SearchViewModel(
 
     private var loadJob: Job? = null
 
+    /**
+     * Bumped whenever a paged list starts again from page 1. A later page carries the generation it was asked in,
+     * and is dropped if the list has been restarted since: `loadMore` is not part of [loadJob], so a query changed
+     * from A to B and back to A would otherwise append the first A's page 2 to the second A's page 1, whose titles
+     * the request never saw.
+     */
+    private var generation = 0
+
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
@@ -197,6 +205,7 @@ class SearchViewModel(
     /** Switches to [SearchMode.GENRE_BROWSE] and loads its first page. */
     fun selectGenre(genre: Genre, type: MediaType) {
         loadJob?.cancel()
+        generation++
         loadJob = viewModelScope.launchReporting {
             _state.update {
                 it.copy(
@@ -222,6 +231,7 @@ class SearchViewModel(
     /** Leaves [SearchMode.GENRE_BROWSE] back to the discover carousels. */
     fun clearGenre() {
         loadJob?.cancel()
+        generation++
         _state.update {
             it.copy(
                 mode = SearchMode.DISCOVER,
@@ -310,6 +320,7 @@ class SearchViewModel(
     private fun loadMoreGenreResults(current: SearchUiState) {
         val genre = current.selectedGenre ?: return
         val type = current.selectedGenreType ?: return
+        val asked = generation
         viewModelScope.launchReporting {
             _state.update { it.copy(loadingMore = true) }
             val muted = mutedFor(type, genre.id)
@@ -317,6 +328,7 @@ class SearchViewModel(
             discoverMedia(type, current.genrePage + 1, genre.id, muted.forType(type), shown = shown).fold(
                 onSuccess = { page ->
                     _state.update {
+                        if (asked != generation) return@update it.copy(loadingMore = false)
                         it.copy(
                             loadingMore = false,
                             genreResults = it.genreResults + page.items.filterNot(muted::hides),
@@ -331,6 +343,8 @@ class SearchViewModel(
     }
 
     private suspend fun runSearch(query: String, page: Int) {
+        if (page == 1) generation++
+        val asked = generation
         if (page == 1) {
             _state.update { it.copy(mode = SearchMode.SEARCH_RESULTS, loading = true, error = null) }
         } else {
@@ -342,7 +356,7 @@ class SearchViewModel(
                 _state.update {
                     // A later page for a query the user has since replaced is stale: appending it would mix two
                     // searches, and could repeat a title the new results already show.
-                    if (page > 1 && it.query != query) return@update it.copy(loadingMore = false)
+                    if (page > 1 && (it.query != query || asked != generation)) return@update it.copy(loadingMore = false)
                     // Typed search is only muted when the user opted in (ADR 0031): looking a show up by name is
                     // an explicit act, unlike a feed that picked it for them.
                     val found = result.items.filterNot(muting.forSearch::hides)
