@@ -9,10 +9,12 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
+import com.codingpit.muviss.feature.progress.domain.CompletionDetector
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
+import com.codingpit.muviss.feature.progress.domain.TickEpisodeUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import kotlinx.coroutines.Dispatchers
@@ -67,7 +69,7 @@ private fun ProgressUnderTest(onOpenCoWatch: (() -> Unit)?) {
     val watchNextCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
     val watchNextViewModel = ProgressViewModel(
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), watchNextCache, FakeClock(0L)),
-        ToggleEpisodeSeenUseCase(progressRepository),
+        TickEpisodeUseCase(ToggleEpisodeSeenUseCase(progressRepository), CompletionDetector.None),
         watchNextCache,
         FakeFeatureFlags(),
     )
