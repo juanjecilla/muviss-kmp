@@ -44,6 +44,20 @@ class TallyFeatureRequestsTest < Minitest::Test
     assert_operator item(request: "x" * 500).title.length, :<=, OpsBridge::TITLE_LIMIT
   end
 
+  def test_answers_are_matched_to_their_question_not_to_their_position
+    reversed = submission
+    reversed["responses"] = reversed["responses"].reverse
+    result = Tally.to_item(reversed, QUESTIONS)
+    assert_equal "[Feature request] Let me tag shows with my own labels", result.title
+    assert_operator result.body.index("Let me tag shows"), :<, result.body.index("To find them later")
+  end
+
+  def test_a_why_without_a_request_is_skipped_not_promoted_to_the_title
+    lone_why = submission(request: nil)
+    lone_why["responses"].reject! { |response| response["questionId"] == "q-request" }
+    assert_nil Tally.to_item(lone_why, QUESTIONS)
+  end
+
   # --- the body ---------------------------------------------------------------------
 
   def test_the_body_has_the_context_the_text_and_the_marker
