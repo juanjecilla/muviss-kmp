@@ -177,7 +177,12 @@ class ReleasePromotion
 
     state = state.merge("stage" => ReleaseStages::DONE, "completed_on" => @today.iso8601, "holds" => [])
     @github.update_issue(issue["number"], ReleaseStages.render(state))
-    @github.close_issue(issue["number"], "#{version} reached 100% of production. Closed.")
+    if ios_still_ramping?(state)
+      # iOS has its own track (ADR 0033); `complete_ios` in ios_promote.rb closes the issue when it finishes.
+      @github.comment(issue["number"], "#{version} reached 100% of production on Play. The iOS phased release is still on its own track; this issue closes when it finishes.")
+    else
+      @github.close_issue(issue["number"], "#{version} reached 100% of production. Closed.")
+    end
   end
 
   # release.yml promoted the version itself (the manual path): record it.
@@ -193,6 +198,16 @@ class ReleasePromotion
   end
 
   private
+
+  # iOS is on the train for this version when it has an RC or has left its first stage, and has neither
+  # finished nor been superseded. A version that never reached TestFlight is not waiting on iOS (#430).
+  def ios_still_ramping?(state)
+    track = ReleaseStages.ios_of(state)
+    return false unless track
+    return false if track["stage"] == ReleaseStages::DONE || track["superseded_on"]
+
+    !track["rc_tag"].nil? || track["stage"] != ReleaseStages::INTERNAL
+  end
 
   def live_records
     @github.release_issues.map { |issue| [issue, state_of(issue)] }

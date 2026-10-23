@@ -449,6 +449,49 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal "done", ReleaseStages.stage_of(issue["body"])
   end
 
+  def promote_complete(version)
+    ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                         today: Date.new(2026, 10, 12), apply: true, out: @out).complete(version)
+  end
+
+  def issue_for(version)
+    @github.issues.find { |i| i["title"] == ReleaseStages.title(version) }
+  end
+
+  def test_complete_leaves_the_issue_open_while_ios_is_still_ramping
+    ios = ReleaseStages.new_ios_state.merge("stage" => "production", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+
+    issue = issue_for("1.0.0")
+    refute issue["closed"], "iOS is still ramping, so the issue stays open"
+    assert_equal "done", ReleaseStages.stage_of(issue["body"]), "Play's own track is done"
+    assert_equal "production", ReleaseStages.parse(issue["body"])["ios"]["stage"]
+    assert(@github.calls.any? { |kind, _number, body| kind == :comment && body.include?("iOS phased release is still on its own track") })
+  end
+
+  def test_complete_closes_when_ios_never_reached_testflight
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08")
+
+    promote_complete("1.0.0")
+
+    assert issue_for("1.0.0")["closed"]
+  end
+
+  def test_complete_closes_when_ios_already_finished_or_was_superseded
+    done = ReleaseStages.new_ios_state.merge("stage" => "done", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "ios" => done)
+    superseded = ReleaseStages.new_ios_state.merge("stage" => "beta", "rc_tag" => "v1.0.1-rc1", "superseded_on" => "2026-10-05")
+    add_version("1.0.1", "production", "ios" => superseded)
+
+    promote_complete("1.0.0")
+    promote_complete("1.0.1")
+
+    assert issue_for("1.0.0")["closed"]
+    assert issue_for("1.0.1")["closed"]
+  end
+
   def test_record_production_marks_a_promotion_done_outside_the_sunday_step
     promotion = ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
                                      today: Date.new(2026, 10, 25), apply: true, out: @out)
