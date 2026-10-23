@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 and newer (ADR 0034). Both sections are stated explicitly on purpose: device-to-device transfer
+     (<device-transfer>) is NOT stopped by android:allowBackup on targetSdk 31+, so an unlisted section would
+     leave the transfer path to the framework's defaults. The same exclusions apply to both paths: KSafe's
+     DataStore (the Own TMDB Key and every other secret) and shared preferences never leave the device. The
+     library database is offered by MuvissBackupAgent, and only when Device Backup is on. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- No root exclusion: the framework checks a restored file against every exclusion at once, and
+             root (the whole data directory) covers databases/, so it would drop the library on restore. -->
+        <exclude domain="file" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <!-- No root exclusion: the framework checks a restored file against every exclusion at once, and
+             root (the whole data directory) covers databases/, so it would drop the library on restore. -->
+        <exclude domain="file" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+    </device-transfer>
+</data-extraction-rules>
