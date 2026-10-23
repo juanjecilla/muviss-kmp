@@ -2,6 +2,9 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -59,15 +62,39 @@ class FeatureRequestRowTest {
     }
 
     @Test
+    fun `the bug report row is absent while there is no form and opens its form when tapped`() = runComposeUiTest {
+        var shown by mutableStateOf(false)
+        var opened = 0
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                AboutSection(
+                    appVersionName = "1.0.0",
+                    onOpenLicenses = {},
+                    onTestCrash = {},
+                    onReportProblem = if (shown) ({ opened++ }) else null,
+                )
+            }
+        }
+
+        onNodeWithTag(BUG_REPORT_TAG).assertDoesNotExist()
+        shown = true
+        onNodeWithTag(BUG_REPORT_TAG).performClick()
+
+        assertEquals(1, opened)
+    }
+
+    @Test
     fun `the view model carries no link by default and a tagged one once a form is served`() {
         val repository = FakeRepository()
         assertNull(settingsViewModel(repository).state.value.featureRequestUrl)
+        assertNull(settingsViewModel(repository).state.value.bugReportUrl)
 
         val remote = DefaultsRemoteConfig(
             RemoteValues(
                 byokEnabled = false,
                 featureRequestProvider = FeatureRequestProvider.Tally,
                 featureRequestUrl = "https://tally.so/r/abc",
+                bugReportUrl = "https://tally.so/r/bug",
             ),
         )
         val vm = SettingsViewModel(
@@ -85,5 +112,6 @@ class FeatureRequestRowTest {
 
         val url = vm.state.value.featureRequestUrl
         assertEquals(true, url?.startsWith("https://tally.so/r/abc?version=1.0.0&platform=desktop"), url)
+        assertEquals(true, vm.state.value.bugReportUrl?.startsWith("https://tally.so/r/bug?version=1.0.0"), vm.state.value.bugReportUrl)
     }
 }

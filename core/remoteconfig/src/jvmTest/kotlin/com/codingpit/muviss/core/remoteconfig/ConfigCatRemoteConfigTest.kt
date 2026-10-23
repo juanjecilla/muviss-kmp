@@ -79,28 +79,31 @@ class ConfigCatRemoteConfigTest {
         assertEquals(RemoteValues(byokEnabled = true, tmdbFallbackReadToken = ROTATED), config.values.value)
     }
 
-    private fun servedForm(provider: String, url: String): String = """
+    private fun servedForm(provider: String, url: String, bug: String = "none-yet"): String = """
         {"p":{"u":"https://cdn-eu.configcat.com","r":0,"s":"salt"},
          "f":{"featureRequestProvider":{"t":1,"v":{"s":"$provider"}},
-              "featureRequestUrl":{"t":1,"v":{"s":"$url"}}}}
+              "featureRequestUrl":{"t":1,"v":{"s":"$url"}},
+              "bugReportUrl":{"t":1,"v":{"s":"$bug"}}}}
     """.trimIndent()
 
     @Test
     fun a_served_form_replaces_the_compiled_default() = runTest {
-        body = servedForm(provider = "typeform", url = " https://x.typeform.com/to/abc ")
+        body = servedForm(provider = "typeform", url = " https://x.typeform.com/to/abc ", bug = "https://x.typeform.com/to/bug")
         val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
         config.refreshIfStale()
         assertEquals(FeatureRequestProvider.Typeform, config.values.value.featureRequestProvider)
         assertEquals("https://x.typeform.com/to/abc", config.values.value.featureRequestUrl)
+        assertEquals("https://x.typeform.com/to/bug", config.values.value.bugReportUrl)
     }
 
     @Test
     fun a_blank_served_url_hides_the_row_and_an_unknown_provider_reads_as_tally() = runTest {
-        body = servedForm(provider = "jotform", url = "  ")
+        body = servedForm(provider = "jotform", url = "  ", bug = "  ")
         val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
         config.refreshIfStale()
         assertEquals(FeatureRequestProvider.Tally, config.values.value.featureRequestProvider)
         assertNull(config.values.value.featureRequestUrl)
+        assertNull(config.values.value.bugReportUrl)
     }
 
     @Test

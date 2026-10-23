@@ -86,6 +86,9 @@ internal class ConfigCatRemoteConfig(
                 featureRequestUrl = client.getValue(KEY_FEATURE_REQUEST_URL, defaults.featureRequestUrl.orEmpty())
                     .trim()
                     .takeIf { it.isNotEmpty() },
+                bugReportUrl = client.getValue(KEY_BUG_REPORT_URL, defaults.bugReportUrl.orEmpty())
+                    .trim()
+                    .takeIf { it.isNotEmpty() },
             )
         } ?: defaults
         state.value = next
@@ -116,6 +119,7 @@ internal class ConfigCatRemoteConfig(
         const val KEY_TMDB_FALLBACK_TOKEN = "tmdbFallbackReadToken"
         const val KEY_FEATURE_REQUEST_PROVIDER = "featureRequestProvider"
         const val KEY_FEATURE_REQUEST_URL = "featureRequestUrl"
+        const val KEY_BUG_REPORT_URL = "bugReportUrl"
 
         /** One fetch per hour per active device is the budget ADR 0026 sets against the free tier. */
         const val STALE_AFTER_MS: Long = 60L * 60L * 1000L

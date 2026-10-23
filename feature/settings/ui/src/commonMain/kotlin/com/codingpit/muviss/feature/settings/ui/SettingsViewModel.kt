@@ -56,6 +56,8 @@ data class SettingsUiState(
     val notificationsDenied: Boolean = false,
     /** Where the Feature Request row opens (ADR 0035), hidden fields included; null hides the row. */
     val featureRequestUrl: String? = null,
+    /** Where the Bug Report row opens (ADR 0035, #449); null hides the row. */
+    val bugReportUrl: String? = null,
 )
 
 /**
@@ -111,10 +113,10 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
-        // The link reads Remote Config and the device locale, never the settings, so a settings failure
-        // does not end it and [retry] has nothing to restart.
-        observations.featureRequestLink()
-            .onEach { url -> _state.update { it.copy(featureRequestUrl = url) } }
+        // The links read Remote Config and the device locale, never the settings, so a settings failure
+        // does not end them and [retry] has nothing to restart.
+        observations.feedbackLinks()
+            .onEach { links -> _state.update { it.copy(featureRequestUrl = links.featureRequest, bugReportUrl = links.bugReport) } }
             .launchInReporting(viewModelScope)
 
         observeAppSettings()

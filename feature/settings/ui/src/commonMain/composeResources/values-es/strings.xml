@@ -146,6 +146,7 @@
     <string name="tmdb_source_yours">Tu clave</string>
     <string name="show_introduction">Mostrar la introducción otra vez</string>
     <string name="request_feature">Sugerir una función</string>
+    <string name="report_problem">Informar de un problema</string>
     <string name="muted_genres_title">Géneros silenciados</string>
     <plurals name="muted_genres_count">
         <item quantity="one">%1$d silenciado</item>

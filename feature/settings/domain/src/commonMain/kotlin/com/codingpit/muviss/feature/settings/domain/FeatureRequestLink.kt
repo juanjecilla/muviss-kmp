@@ -23,7 +23,7 @@ data class FeatureRequestContext(
     ).filter { it.second.isNotBlank() }
 }
 
-/** Builds the URL the Feature Request row opens. Pure, so both providers are pinned by plain tests. */
+/** Builds the URL a Settings feedback row opens (Feature Request or Bug Report: same fields, same providers). Pure, so both providers are pinned by plain tests. */
 object FeatureRequestLink {
     /**
      * Returns null — hide the row — when [provider] is [FeatureRequestProvider.Off] or

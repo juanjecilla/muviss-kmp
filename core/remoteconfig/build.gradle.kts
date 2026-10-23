@@ -24,6 +24,7 @@ val byokEnabled: Boolean = localProperty("BYOK_ENABLED").toBoolean()
 // The Feature Request form (ADR 0035): blank URL keeps the Settings row hidden until the
 // owner has created the form; Remote Config overrides both without a release.
 val featureRequestUrl: String = localProperty("FEATURE_REQUEST_URL")?.trim() ?: ""
+val bugReportUrl: String = localProperty("BUG_REPORT_URL")?.trim() ?: ""
 val featureRequestProvider: String = localProperty("FEATURE_REQUEST_PROVIDER")?.trim()?.ifEmpty { null } ?: "tally"
 
 val buildConfigDir = layout.buildDirectory.dir("generated/muvissBuildConfig/commonMain/kotlin")
@@ -33,12 +34,14 @@ val generateBuildConfig by tasks.registering {
     val sdkKey = configCatSdkKey
     val byok = byokEnabled
     val requestUrl = featureRequestUrl
+    val bugUrl = bugReportUrl
     val requestProvider = featureRequestProvider
     // Inputs, so changing a property regenerates the file instead of being
     // ignored until a clean build.
     inputs.property("configCatSdkKey", sdkKey)
     inputs.property("byokEnabled", byok)
     inputs.property("featureRequestUrl", requestUrl)
+    inputs.property("bugReportUrl", bugUrl)
     inputs.property("featureRequestProvider", requestProvider)
     outputs.dir(outDir)
     doLast {
@@ -57,6 +60,7 @@ val generateBuildConfig by tasks.registering {
                 const val CONFIGCAT_SDK_KEY: String = "${literal(sdkKey)}"
                 const val BYOK_ENABLED: Boolean = $byok
                 const val FEATURE_REQUEST_URL: String = "${literal(requestUrl)}"
+                const val BUG_REPORT_URL: String = "${literal(bugUrl)}"
                 const val FEATURE_REQUEST_PROVIDER: String = "${literal(requestProvider)}"
             }
             """.trimIndent() + "\n",

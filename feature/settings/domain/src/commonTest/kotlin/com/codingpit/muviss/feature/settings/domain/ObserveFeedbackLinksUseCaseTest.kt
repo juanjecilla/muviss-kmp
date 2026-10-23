@@ -9,8 +9,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-class ObserveFeatureRequestLinkUseCaseTest {
-    private fun linkFor(deviceTag: String?) = ObserveFeatureRequestLinkUseCase(
+class ObserveFeedbackLinksUseCaseTest {
+    private fun linkFor(deviceTag: String?) = ObserveFeedbackLinksUseCase(
         remoteConfig = DefaultsRemoteConfig(RemoteValues(byokEnabled = false, featureRequestUrl = "https://tally.so/r/abc")),
         systemLocale = object : SystemLocale {
             override val languageTag: String? = deviceTag
@@ -20,13 +20,13 @@ class ObserveFeatureRequestLinkUseCaseTest {
 
     @Test
     fun locale_is_the_device_locale_that_picks_the_ui_strings() = runTest {
-        val link = linkFor("es-ES")().first()
+        val link = linkFor("es-ES")().first().featureRequest
         assertTrue(link.orEmpty().endsWith("&locale=es-ES"), "was $link")
     }
 
     @Test
     fun locale_falls_back_to_english_when_the_platform_reports_none() = runTest {
-        val link = linkFor(null)().first()
+        val link = linkFor(null)().first().featureRequest
         assertTrue(link.orEmpty().endsWith("&locale=en-US"), "was $link")
     }
 }

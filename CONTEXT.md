@@ -138,6 +138,10 @@ _Avoid_: feature flag (that is the in-code seam both Remote Config and per-devic
 Something the user asks Muviss to do that it does not yet, sent from Settings through a form hosted outside the app, with only the app version, platform, OS version (where known) and device language alongside. One-way: the app never receives an answer, and a request is not a bug report. The user may leave an email address on the form; the app never sees it.
 _Avoid_: feedback (too wide: it would take in bug reports and praise), suggestion box, ticket, survey.
 
+**Bug Report**:
+What went wrong with the app, sent the same way as a Feature Request, from the row under it in Settings, with the same four values and the same one-way rules. Kept apart from a Feature Request because it is triaged as a defect, not a wish.
+_Avoid_: crash report (that is the automatic, opt-out Sentry kind), feedback.
+
 ### Co-watch
 
 **Companion**:

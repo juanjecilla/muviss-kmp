@@ -174,4 +174,39 @@ class TallyFeatureRequestsTest < Minitest::Test
     assert_equal 1, code
     assert_includes out.string, "TALLY_FEATURE_REQUEST_FORM_ID"
   end
+
+  # --- the Bug Report form (#449) -----------------------------------------------------
+
+  def test_the_bug_report_connector_shares_the_rules_with_its_own_names
+    bug = OpsBridge::Connectors::TallyBugReports
+    result = bug.to_item(submission(request: "The app closes when I open Settings", email: "jane@example.com"), QUESTIONS)
+    assert_equal "[Bug report] The app closes when I open Settings", result.title
+    assert_equal ["from-bug-report", "bug", "user-feedback"], result.labels
+    assert_includes result.body, "A bug report from the in-app form"
+    assert_includes result.body, "**What happened?**"
+    assert_includes result.body, "**What did you expect?**"
+    refute_includes result.body, "jane@example.com"
+    assert_equal "sub1", OpsBridge.marker_in("tally-bug-report", result.body)
+    assert_nil OpsBridge.marker_in("tally-feature-request", result.body)
+    assert_nil bug.to_item(submission(request: " "), QUESTIONS)
+  end
+
+  def test_the_two_forms_never_claim_each_others_issues
+    features = Tally.new(form_id: "f", token: "k", http: FakeHttp.new({}))
+    bugs = OpsBridge::Connectors::TallyBugReports.new(form_id: "b", token: "k", http: FakeHttp.new({}))
+    assert_equal "tally-feature-requests", features.name
+    assert_equal "tally-bug-reports", bugs.name
+    refute_equal features.kind, bugs.kind
+    refute_equal features.source_label, bugs.source_label
+    assert_equal 10, bugs.max_new
+  end
+
+  def test_main_wires_the_bug_report_connector_with_its_own_form_id
+    out = StringIO.new
+    code = OpsBridge.main(%w[sync tally-bug-reports], { "GITHUB_REPOSITORY" => "o/r", "GITHUB_TOKEN" => "t", "TALLY_API_KEY" => "k" }, out: out)
+    assert_equal 1, code
+    assert_includes out.string, "TALLY_BUG_REPORT_FORM_ID"
+    refute_includes out.string, "TALLY_FEATURE_REQUEST_FORM_ID"
+  end
 end
+
