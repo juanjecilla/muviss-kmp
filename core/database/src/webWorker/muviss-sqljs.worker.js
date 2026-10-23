@@ -44,6 +44,9 @@ let isWriter = false;
 // to say on it. See announce().
 let persistencePort = null;
 let lastPersistence = null;
+// True from a failed snapshot write until the next one succeeds. Reported on the
+// persistence channel so the banner can say the last changes are not saved (#292).
+let lastWriteFailed = false;
 
 // --- IndexedDB -------------------------------------------------------------
 
@@ -88,11 +91,21 @@ async function saveSnapshot() {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
+    if (lastWriteFailed) {
+      lastWriteFailed = false;
+      announce();
+    }
   } catch (e) {
     // A failed snapshot must not fail the query that triggered it: the write
     // is already committed in memory and the tab keeps working. Losing it on
-    // reload is the pre-EPIC-24 behaviour, not a new failure.
+    // reload is the pre-EPIC-24 behaviour, not a new failure — but the person
+    // using it should be told (#292): a full origin quota or a window that
+    // evicts storage looks exactly like a working tab otherwise.
     console.warn("[muviss] could not write the snapshot", e);
+    if (!lastWriteFailed) {
+      lastWriteFailed = true;
+      announce();
+    }
   }
 }
 
@@ -145,7 +158,7 @@ async function flush() {
 // port arrives through the handler that waits on it — so the first announcement
 // is always made before there is anywhere to send it.
 function announce() {
-  lastPersistence = { writer: isWriter, supported: hasWebLocks() };
+  lastPersistence = { writer: isWriter, supported: hasWebLocks(), lastWriteFailed };
   if (persistencePort) persistencePort.postMessage(lastPersistence);
 }
 

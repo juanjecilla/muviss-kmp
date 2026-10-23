@@ -39,6 +39,7 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.app.shared.generated.resources.persistence_write_failed
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
@@ -469,6 +470,7 @@ private fun rememberPersistenceWarning(): String? {
         PersistenceState.Pending, PersistenceState.Durable -> null
         PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
         PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
+        PersistenceState.WriteFailed -> stringResource(Res.string.persistence_write_failed)
     }
 }
 
