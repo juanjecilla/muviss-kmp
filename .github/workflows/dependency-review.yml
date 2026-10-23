@@ -1,0 +1,33 @@
+name: Dependency review
+
+# What a pull request ADDS to the dependency graph (Gradle, npm, bundler, Actions),
+# checked against GitHub's advisory database (#479). Dependabot alerts cover what
+# is already shipped; this stops a vulnerable or copyleft dependency at the door.
+#
+# Licences: the Android release has its own allow-list in `licensee`
+# (Apache-2.0, MIT, BSD-3-Clause), which is the strict check. This one covers
+# every ecosystem, including the website's and CI tooling's dev dependencies, whose
+# permissive licences (ISC, BSD-2-Clause, 0BSD...) the Android list was never meant
+# to judge, so it denies copyleft instead of allow-listing.
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Dependencies added by this PR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-2.0-only, GPL-2.0-or-later, GPL-3.0-only, GPL-3.0-or-later, AGPL-3.0-only, AGPL-3.0-or-later, LGPL-2.1-only, LGPL-2.1-or-later, LGPL-3.0-only, LGPL-3.0-or-later
+          comment-summary-in-pr: never
