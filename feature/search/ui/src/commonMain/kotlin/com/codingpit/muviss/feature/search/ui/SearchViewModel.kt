@@ -176,7 +176,7 @@ class SearchViewModel(
 
     fun onQueryChange(query: String) {
         _state.update { it.copy(query = query) }
-        loadJob?.cancel()
+        cancelLoad()
         if (query.isBlank()) {
             _state.update { it.copy(mode = SearchMode.DISCOVER, error = null, selectedGenre = null, selectedGenreType = null) }
             reloadDiscoverIfStale()
@@ -196,7 +196,7 @@ class SearchViewModel(
 
     /** Switches to [SearchMode.GENRE_BROWSE] and loads its first page. */
     fun selectGenre(genre: Genre, type: MediaType) {
-        loadJob?.cancel()
+        cancelLoad()
         loadJob = viewModelScope.launchReporting {
             _state.update {
                 it.copy(
@@ -221,7 +221,7 @@ class SearchViewModel(
 
     /** Leaves [SearchMode.GENRE_BROWSE] back to the discover carousels. */
     fun clearGenre() {
-        loadJob?.cancel()
+        cancelLoad()
         _state.update {
             it.copy(
                 mode = SearchMode.DISCOVER,
@@ -236,12 +236,22 @@ class SearchViewModel(
         reloadDiscoverIfStale()
     }
 
+    /**
+     * Stops whatever page is in flight, including a next page. A response that was already on its way would
+     * otherwise land on a list it no longer belongs to (another genre's, or a cleared one), and
+     * `loadingMore` would stay set for a request nobody is waiting for (#471).
+     */
+    private fun cancelLoad() {
+        loadJob?.cancel()
+        _state.update { if (it.loadingMore) it.copy(loadingMore = false) else it }
+    }
+
     /** Loads the next page for whichever paged mode is active; a no-op in [SearchMode.DISCOVER]. */
     fun loadMore() {
         val s = _state.value
-        if (s.loadingMore) return
+        if (s.loadingMore || s.loading) return
         when (s.mode) {
-            SearchMode.SEARCH_RESULTS -> if (s.canLoadMoreResults) viewModelScope.launchReporting { runSearch(s.query, s.resultsPage + 1) }
+            SearchMode.SEARCH_RESULTS -> if (s.canLoadMoreResults) loadJob = viewModelScope.launchReporting { runSearch(s.query, s.resultsPage + 1) }
             SearchMode.GENRE_BROWSE -> if (s.canLoadMoreGenreResults) loadMoreGenreResults(s)
             SearchMode.DISCOVER -> Unit
         }
@@ -253,7 +263,7 @@ class SearchViewModel(
             SearchMode.DISCOVER -> loadDiscover()
 
             SearchMode.SEARCH_RESULTS -> {
-                loadJob?.cancel()
+                cancelLoad()
                 loadJob = viewModelScope.launchReporting { runSearch(s.query, page = 1) }
             }
 
@@ -285,7 +295,7 @@ class SearchViewModel(
     private fun loadDiscover() {
         // A second load must not race the first: both read `muting` mid-flight, and whichever finishes
         // last wins, which could be the one that saw the older muting.
-        loadJob?.cancel()
+        cancelLoad()
         discoverStale = false
         loadJob = viewModelScope.launchReporting {
             _state.update { it.copy(loading = true, error = null) }
@@ -310,7 +320,7 @@ class SearchViewModel(
     private fun loadMoreGenreResults(current: SearchUiState) {
         val genre = current.selectedGenre ?: return
         val type = current.selectedGenreType ?: return
-        viewModelScope.launchReporting {
+        loadJob = viewModelScope.launchReporting {
             _state.update { it.copy(loadingMore = true) }
             val muted = mutedFor(type, genre.id)
             discoverMedia(type, current.genrePage + 1, genre.id, muted.forType(type)).fold(
