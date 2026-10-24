@@ -83,6 +83,17 @@ class CheckRunnerPinsTest < Minitest::Test
     YAML
   end
 
+  def test_a_hyphenated_matrix_property_is_followed_to_its_values
+    assert_empty offenders(<<~YAML)
+      jobs:
+        a:
+          strategy:
+            matrix:
+              runner-label: [ubuntu-24.04]
+          runs-on: ${{ matrix.runner-label }}
+    YAML
+  end
+
   def test_a_label_list_is_checked_entry_by_entry
     assert_equal ["ubuntu-latest"], offenders("jobs:\n  a:\n    runs-on: [self-hosted, ubuntu-latest]\n")
   end

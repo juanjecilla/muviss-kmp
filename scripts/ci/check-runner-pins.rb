@@ -16,7 +16,7 @@ def labels(value, matrix)
   # A runner group alone names no image; its labels, when given, are what get checked.
   value = value.fetch("labels", []) if value.is_a?(Hash)
   Array(value).flat_map do |label|
-    next [label] unless label.is_a?(String) && label =~ /\A\$\{\{\s*matrix\.(\w+)\s*\}\}\z/
+    next [label] unless label.is_a?(String) && label =~ /\A\$\{\{\s*matrix\.([\w-]+)\s*\}\}\z/
 
     matrix.fetch($1, ["<unresolved #{label}>"])
   end
