@@ -43,6 +43,46 @@ class CheckRunnerPinsTest < Minitest::Test
     assert_equal ["${{ inputs.runner }}"], offenders("jobs:\n  a:\n    runs-on: ${{ inputs.runner }}\n")
   end
 
+  def test_a_size_suffix_does_not_hide_a_floating_label
+    assert_equal %w[macos-latest-large macos-latest-xlarge], offenders(<<~YAML)
+      jobs:
+        a:
+          runs-on: macos-latest-large
+        b:
+          runs-on: macos-latest-xlarge
+        c:
+          runs-on: macos-15-xlarge
+    YAML
+  end
+
+  def test_a_runner_group_mapping_is_checked_by_its_labels
+    assert_equal ["ubuntu-latest"], offenders(<<~YAML)
+      jobs:
+        a:
+          runs-on:
+            group: pinned
+            labels: [self-hosted, ubuntu-24.04]
+        b:
+          runs-on:
+            group: floating
+            labels: ubuntu-latest
+        c:
+          runs-on:
+            group: only-a-group
+    YAML
+  end
+
+  def test_an_ordinary_matrix_axis_is_followed_to_its_values
+    assert_equal ["macos-latest"], offenders(<<~YAML)
+      jobs:
+        a:
+          strategy:
+            matrix:
+              os: [ubuntu-24.04, macos-latest]
+          runs-on: ${{ matrix.os }}
+    YAML
+  end
+
   def test_a_label_list_is_checked_entry_by_entry
     assert_equal ["ubuntu-latest"], offenders("jobs:\n  a:\n    runs-on: [self-hosted, ubuntu-latest]\n")
   end

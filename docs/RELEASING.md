@@ -807,8 +807,8 @@ release, are attached to the GitHub Release (see §5).
 #### Runner images (#481)
 
 Every `runs-on:` names a specific image (`ubuntu-24.04`, `macos-15`,
-`windows-2025`), never `-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26 on
-its own date, and a migration can break the Xvfb smoke launch, `verifyJlinkModules`
+`windows-2025`), never `-latest`: GitHub is moving `ubuntu-latest` to Ubuntu 26
+on its own schedule, and a migration can break the Xvfb smoke launch, `verifyJlinkModules`
 or the iOS Kotlin/Native build on an unrelated PR. `pr-guards.yml`'s "Runner
 images are pinned" step (`scripts/ci/check-runner-pins.rb`) fails a floating
 label. Dependabot does not bump images, so the owner does, on a branch: change
