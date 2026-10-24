@@ -280,6 +280,30 @@ fewer**, labelled `from-play-review` + `user-feedback`.
   no gems. Try it: Actions > "Play reviews" > Run workflow (dry run is on by default).
   Tests: `ruby fastlane/test/play_reviews_test.rb`. Never run against the live API.
 
+#### Feature requests and bug reports to issue (#448, #449, connectors #3 and #4)
+
+`.github/workflows/feature-requests.yml` opens one issue per completed submission of the in-app
+**Request a feature** form (section 13), labelled `from-feature-request` + `user-feedback`, and of
+the **Report a problem** form, labelled `from-bug-report` + `bug` + `user-feedback`.
+
+- **Hourly** (and by hand, dry by default). Polling rather than a Tally webhook: Tally's webhook
+  sends its own fixed JSON and cannot call GitHub's dispatch API, so it would need a hosted
+  receiver, which ADR 0028 rules out. Tally keeps every submission, so nothing is lost between runs.
+- **The respondent's email is never copied** (the repository goes public); the issue only says
+  whether one was left, and the owner replies from the Tally dashboard. The text goes in a code
+  fence, so an `@name` cannot ping anyone. The hidden fields (`version`, `platform`, `os`,
+  `locale`) are shown, sanitised, since a query parameter is anything someone types.
+- **Capped**: an empty submission is skipped and one run opens at most 10 issues, oldest first, so a
+  flood of junk costs an hour at a time. One issue per submission id; re-running opens nothing.
+- **No reverse mapping.** Closing the issue changes nothing in Tally.
+- **Secrets**: `TALLY_API_KEY` (Tally > Settings > API keys) and `TALLY_FEATURE_REQUEST_FORM_ID`
+  (the id `scripts/feedback/tally-form.sh create` printed); `TALLY_BUG_REPORT_FORM_ID` for the Bug
+  Report form. With the key or a form's id unset, that form's step does nothing. `scripts/release/owner-setup.sh` asks for both. Scheduled workflows only run from the
+  default branch, so nothing happens until this reaches `main`.
+- **Try it**: `DRY_RUN=1 TALLY_API_KEY=… TALLY_FEATURE_REQUEST_FORM_ID=… GITHUB_REPOSITORY=… GITHUB_TOKEN=… ruby fastlane/ops_bridge.rb sync tally-feature-requests`,
+  or Actions > "Feature requests" > Run workflow (dry run is on by default). Tests:
+  `ruby fastlane/test/tally_feature_requests_test.rb`, run by `pr-guards`.
+
 ## 5. Branches, the release train and CI (ADR 0025)
 
 ### The flow
@@ -753,8 +777,8 @@ properties to the JVM a JavaExec forks.
 ### CI
 
 `.github/workflows/release.yml`'s `desktop-release` job runs a 3-entry OS
-matrix: `ubuntu-latest` → `packageDeb`, `macos-latest` → `packageDmg`,
-`windows-latest` → `packageMsi`. Each format can only be produced on its native
+matrix: `ubuntu-24.04` → `packageDeb`, `macos-15` → `packageDmg`,
+`windows-2025` → `packageMsi`. Each format can only be produced on its native
 OS (jpackage delegates to the OS's own packaging tool), which is why this is a
 matrix of jobs rather than one job running three tasks, and `fail-fast: false`
 keeps one broken leg from taking the other two down.
@@ -762,7 +786,7 @@ keeps one broken leg from taking the other two down.
 Windows/MSI used to be left out, on the grounds that it was the one leg nobody
 here could verify locally before merging. EPIC 23 put it in: nobody can verify
 it locally *either way*, and a CI run is better evidence than a reading of the
-config. WiX ships preinstalled on `windows-latest` per `actions/runner-images`.
+config. WiX ships preinstalled on `windows-2025` per `actions/runner-images`.
 What CI still cannot say is whether the resulting `.msi` installs and launches —
 that needs a Windows machine, and is issue #44.
 
@@ -779,6 +803,19 @@ every change), smoke-launches the packaged Linux binary under Xvfb, and runs
 
 Installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`) and, on a
 release, are attached to the GitHub Release (see §5).
+
+#### Runner images (#481)
+
+Every `runs-on:` names a specific image (`ubuntu-24.04`, `macos-15`,
+`windows-2025`), never `-latest`: GitHub is moving `ubuntu-latest` to Ubuntu 26
+on its own schedule, and a migration can break the Xvfb smoke launch, `verifyJlinkModules`
+or the iOS Kotlin/Native build on an unrelated PR. `pr-guards.yml`'s "Runner
+images are pinned" step (`scripts/ci/check-runner-pins.rb`) fails a floating
+label. Dependabot does not bump images, so the owner does, on a branch: change
+the label, let `ci.yml` run (it covers Linux, macOS and the packaged-binary
+smoke launch; `release.yml`'s Windows leg runs by `workflow_dispatch`), and merge
+only when it is green. GitHub announces a retiring image well ahead; watch
+`actions/runner-images` releases.
 
 ### Signing / notarization (manual follow-up, not attempted)
 
@@ -1328,3 +1365,29 @@ secret than the one in the APK — the point is rotation, not secrecy. Set it ba
 `docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
 (it exposes the device IP to ConfigCat and sends nothing about the user), so
 setting the secret needs no further copy change.
+
+## 13. Feature Request form (Tally) — EPIC 53 / issue #447
+
+The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0035. Owner steps, once:
+
+1. In Tally, create an API key (Settings > API keys). Run `read -rs TALLY_API_KEY && export TALLY_API_KEY` (bash or zsh) and paste the key at the silent prompt, so it never lands in your shell history. It stays with you; it never goes in the app or in CI.
+2. `scripts/feedback/tally-form.sh create` makes a **draft** from `scripts/feedback/tally-form.json` and prints the form id and `https://tally.so/r/<id>`. **First run, check the draft in the dashboard** (issue #450): the four hidden fields (`version`, `platform`, `os`, `locale`), the optional email, and that "Email me on each submission" is on. The script's block shapes were not verified against the live API, and the create response has no URL field, so the script derives it from the id.
+3. `scripts/feedback/tally-form.sh publish <id>` publishes it, sending the blocks along with the status (a status-only PATCH leaves the public page with no fields, only a Submit button). `update <id>` re-applies the checked-in definition as a draft after you edit the JSON, so run `publish` again afterwards.
+4. Turn it on, either way:
+   - **Compiled default:** `FEATURE_REQUEST_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets (needs a release).
+   - **ConfigCat** (no release needed): create two text settings in the product from §12 with exactly these keys: **`featureRequestProvider`**, default `tally`, and **`featureRequestUrl`**, default the published `https://tally.so/r/<id>`. A setting that does not exist falls back to the compiled default, and that default for the URL is blank, so until `featureRequestUrl` exists with a real URL the row stays hidden. ConfigCat will not save an empty text value; to keep the setting while the row is off, use a placeholder such as `none`.
+
+   Only an absolute `https://` URL shows the row. A blank value, a placeholder, a URL without its scheme or an `http://` one all hide it.
+5. Verify end to end: open the app, tap the row, and submit a test response; confirm the email arrives and `version`, `platform` and `locale` are filled. `os` is filled on Android, iOS and desktop only; the web app cannot read the OS version and leaves it empty.
+
+**Switching to Typeform** (the fallback, if Tally ever fails us): create the form by hand in Typeform with the same four **hidden fields** (`version`, `platform`, `os`, `locale`), turn on **Send email for new responses** in the form's notification settings (Typeform does not email responses by default) and confirm it with a test submission, then set ConfigCat `featureRequestProvider` = `typeform` and `featureRequestUrl` = its public URL. Typeform reads hidden fields from the URL fragment, so the provider key must change with the URL. Its free plan stops collecting after about 10 responses a month, so treat it as a stop-gap. `featureRequestProvider` = `off` hides the row whatever the URL is.
+
+Each response (of either form) reaches you by email. It also becomes a GitHub issue within the hour once its form's id is an Actions secret next to `TALLY_API_KEY`: `TALLY_FEATURE_REQUEST_FORM_ID` for feature requests, `TALLY_BUG_REPORT_FORM_ID` for bug reports (below). See 'Feature requests to issue' under the Ops Bridge.
+
+### Bug Report form (#449)
+
+A second row, **Report a problem**, sits under **Request a feature** in Settings > About and opens a second Tally form (`scripts/feedback/tally-bug-report.json`: what happened, what was expected, an optional email, the same four hidden fields). It follows the same rules: dark until its URL is set, the same provider switch (`featureRequestProvider`, which governs both rows; `off` hides both), no new data in the link. Because the switch is shared, **switching to Typeform moves both forms**: create the bug report form in Typeform too and set `bugReportUrl` to it in the same change, or clear `bugReportUrl` to hide the row. A Tally `bugReportUrl` left behind would still show the row, but its link would carry the four values in a fragment that Tally does not read.
+
+1. `TALLY_FORM_DEFINITION=scripts/feedback/tally-bug-report.json scripts/feedback/tally-form.sh create`, then `publish <id>` with the same variable set (publish re-sends the definition).
+2. `BUG_REPORT_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets, or the ConfigCat text setting **`bugReportUrl`**.
+3. Add the Actions secret `TALLY_BUG_REPORT_FORM_ID` so the Ops Bridge turns each report into an issue.

@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   tag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -88,7 +88,7 @@ jobs:
 
   prerelease:
     needs: [tag, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -138,7 +138,7 @@ jobs:
   # notice rather than failing the RC.
   ios:
     needs: tag
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 75
     steps:
       - name: Check for the Apple credentials

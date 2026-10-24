@@ -297,6 +297,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
 | — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0030) | #342 |
 | — | EPIC 51 What's next?: a Pick Session after a Completion (and from Discover, Progress, Library, Detail) that ends in a Next Pick; Taste Profile; rules over the user's own history behind a ranker seam (ADR 0032) | #396 |
+| — | EPIC 53 Feature Request: a Settings row that opens a hosted Tally form in the browser, Typeform behind a Remote Config switch, dark until the owner sets the URL (ADR 0035) | #447 |
 | — | EPIC 52 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`19.sqm`) | #391 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
@@ -607,3 +608,11 @@ widget has been run).
 Depends on EPIC 39 (#85, merged). **ADR 0021**; no schema number of its own (the `syncAutomatically` column and `syncState` came with EPIC 39's `9.sqm`). Off by default and gated three ways, all inside `SyncEngine.syncNow(trigger)`: a build flag (`SYNC_BACKGROUND_ENABLED`), a per-device switch on Profile, and the session and entitlement. Triggers: a debounced push after local writes and a foreground sync everywhere (`SyncCoordinator`), plus WorkManager (`SyncWorker`, hourly), a piggyback on iOS's background refresh, a 15 minute desktop timer while open, and web `visibilitychange`/`online` events (inert until web sign-in, #46). A weekly full pull bounds the sequence-gap risk. Failures are typed and finally visible on Profile; the switch's status line, "Resync everything" and "Session expired" are in. `AccountChanged` is surfaced and left to EPIC 32. See `docs/SYNC.md` "Automatic sync" and ADR 0021.
 
 **Not verified by any test**, tracked as a checklist on #86: a real WorkManager run and the release-build `-keep` rule, iOS `BGAppRefreshTask` and its expiration handler, a packaged desktop app left open, two browser tabs, a live Supabase project (#88, #100).
+
+## EPIC 53 — Feature Request — issue #447
+
+Added 2026-10-19 from a grilling session. **ADR 0035**; vocabulary in `CONTEXT.md` (Feature Request). Ships as `no-landing`: a support affordance, not something the app does for the user (#451 is the optional landing line). No schema change, so no migration number.
+
+**What.** A **Request a feature** row in Settings > About, on all six targets, that opens a Tally form in the system browser with `version`/`platform`/`os`/`locale` as hidden fields. Remote Config serves `featureRequestProvider` (`tally` | `typeform` | `off`) and `featureRequestUrl`; the compiled defaults are `FEATURE_REQUEST_PROVIDER`/`FEATURE_REQUEST_URL`, blank so it ships dark. `scripts/feedback/tally-form.sh` creates/updates/publishes the form from `scripts/feedback/tally-form.json`; owner steps in `docs/RELEASING.md` §13. Responses arrive by Tally's email notification.
+
+**Follow-ups, each with an issue:** responses become GitHub issues through a polled Ops Bridge connector (#448, connector #3); a Bug Report form and row with its own connector (#449); verifying on devices (#450: desktop confirmed from the real app, Android, iOS, web and Typeform pending); the landing line (#451); a desktop DB migration error (#453).
