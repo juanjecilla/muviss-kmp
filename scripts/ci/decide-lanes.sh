@@ -6,10 +6,16 @@
 # Reads EVENT and BASE_REF, writes code=, ios=, supabase= to $GITHUB_OUTPUT.
 set -uo pipefail
 
+# A lost output is not a decision: the gated jobs would read it as "false" and skip. Fail instead.
+write_lanes() { # code ios supabase
+  printf 'code=%s\nios=%s\nsupabase=%s\n' "$1" "$2" "$3" >> "$GITHUB_OUTPUT" || {
+    echo "::error::Could not write the lane decision to \$GITHUB_OUTPUT."
+    exit 1
+  }
+}
+
 run_everything() {
-  echo "code=true" >> "$GITHUB_OUTPUT"
-  echo "ios=true" >> "$GITHUB_OUTPUT"
-  echo "supabase=true" >> "$GITHUB_OUTPUT"
+  write_lanes true true true
   exit 0
 }
 
@@ -42,13 +48,13 @@ IOS_PATHS='^(app/shared/|app/iosApp/|scripts/ios/|core/|feature/|models/|build-l
 # `desktop` and `web-tests` can.
 CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/|supabase/|scripts/)'
 
-if echo "$changed" | grep -qE "$IOS_PATHS"; then ios=true; else ios=false; fi
-if echo "$changed" | grep -qE "$CODE_PATHS"; then code=true; else code=false; fi
+# A here-string, not `echo | grep -q`: grep -q stops reading at the first match, the echo then
+# dies of SIGPIPE on a list longer than the pipe buffer, and pipefail would turn the lane off.
+if grep -E "$IOS_PATHS" <<< "$changed" > /dev/null; then ios=true; else ios=false; fi
+if grep -E "$CODE_PATHS" <<< "$changed" > /dev/null; then code=true; else code=false; fi
 # The server: migrations, pgTAP tests, Edge Functions (#280).
 SUPABASE_PATHS='^supabase/|^\.github/workflows/ci\.yml$|^scripts/ci/decide-lanes\.sh$'
-if echo "$changed" | grep -qE "$SUPABASE_PATHS"; then supabase=true; else supabase=false; fi
+if grep -E "$SUPABASE_PATHS" <<< "$changed" > /dev/null; then supabase=true; else supabase=false; fi
 
-echo "ios=$ios" >> "$GITHUB_OUTPUT"
-echo "code=$code" >> "$GITHUB_OUTPUT"
-echo "supabase=$supabase" >> "$GITHUB_OUTPUT"
+write_lanes "$code" "$ios" "$supabase"
 echo "Lanes -> code=$code ios=$ios supabase=$supabase"

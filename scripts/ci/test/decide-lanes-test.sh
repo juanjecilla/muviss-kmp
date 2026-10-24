@@ -53,4 +53,16 @@ expect "a change to the CI file runs the CI it edits" "true true true" "$(lanes 
 
 repo scripts/ci/decide-lanes.sh
 expect "a change to the lane filter runs every lane" "true true true" "$(lanes pull_request base)"
+# More than a pipe buffer of paths, with the only iOS match first: `echo | grep -q` used to stop
+# reading at that match, the echo died of SIGPIPE, and pipefail turned the lane off.
+big=(app/shared/Early.kt)
+for i in $(seq 1 3000); do big+=("zz/a-long-directory-name-to-fill-the-pipe/file-$i.md"); done
+repo "${big[@]}"
+expect "a large diff with an early match keeps its lanes" "true true false" "$(lanes pull_request base)"
+
+repo README.md
+(cd "$tmp/r" && EVENT=push BASE_REF=base GITHUB_OUTPUT="$tmp/no-such-dir/out" "$script" >/dev/null 2>&1)
+expect "an output that cannot be written fails the job" "1" "$?"
+(cd "$tmp/r" && EVENT=pull_request BASE_REF=base GITHUB_OUTPUT="$tmp/no-such-dir/out" "$script" >/dev/null 2>&1)
+expect "a lane decision that cannot be written fails the job" "1" "$?"
 exit $fail
