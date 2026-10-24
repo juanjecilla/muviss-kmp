@@ -95,6 +95,10 @@ jobs:
       # fake a pin. Dependabot keeps the pins current.
       - name: Actions are pinned to commit SHAs
         run: ruby scripts/ci/test/check_action_pins_test.rb && ruby scripts/ci/check-action-pins.rb
+      # Every workflow declares its own top-level `permissions:` (#482), so the
+      # least-privilege posture lives in the file and not in a repo setting.
+      - name: Workflows declare permissions
+        run: ruby scripts/ci/test/check_workflow_permissions_test.rb && ruby scripts/ci/check-workflow-permissions.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
       # Play's field limits (title 30, short 80, full 4000 characters) on every
