@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
@@ -46,6 +45,7 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
+import com.codingpit.muviss.core.designsystem.component.posterGridCells
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -328,7 +328,7 @@ private fun CollectionGrid(
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 110.dp),
+        columns = posterGridCells(),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         // The refresh-failure snackbar sits over the bottom of the grid, so the last row

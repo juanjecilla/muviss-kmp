@@ -39,6 +39,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -768,9 +769,14 @@ internal fun NoteEditorContent(initial: String, onSave: (String) -> Unit, onCanc
 }
 
 @Composable
-private fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () -> Unit) {
-    Row(Modifier.clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = watched, onCheckedChange = { onToggle() })
+internal fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () -> Unit) {
+    // One control: the row toggles and says what it is. A checkbox with its own handler beside a
+    // clickable row is two controls for one thing, and the checkbox on its own has no label.
+    Row(
+        Modifier.toggleable(value = watched, role = Role.Checkbox, onValueChange = { onToggle() }),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = watched, onCheckedChange = null)
         Text(
             when {
                 !watched -> stringResource(Res.string.movie_mark_watched)
