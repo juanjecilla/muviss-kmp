@@ -1,0 +1,70 @@
+name: Feature requests and bug reports
+
+# Tally "Request a feature" and "Report a problem" forms -> GitHub issues (#448, #449, Ops Bridge
+# connectors #3 and #4, ADR 0028, ADR 0035).
+# Each completed submission becomes one issue labelled `from-feature-request` + `user-feedback`,
+# deduped on its submission id, so a request lands where work is planned and not only in the
+# owner's inbox. Polling, not a webhook: Tally cannot call GitHub's dispatch API directly, and a
+# hosted receiver is what ADR 0028 rules out. Tally keeps every submission, so hourly loses nothing.
+#
+# The respondent's email is never copied (the repository is public); one run opens at most 10
+# issues, and an empty submission is skipped.
+# Bug reports are labelled `from-bug-report` + `bug` + `user-feedback`.
+# The logic is fastlane/ops_bridge/connectors/tally_feature_requests.rb; tests are fastlane/test/tally_feature_requests_test.rb.
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only say what would be opened; write nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Open issues for new feature requests and bug reports
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: feature-requests-sync
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1.328.0
+        with:
+          ruby-version: "3.3"
+      - name: Sync
+        env:
+          # A Tally API key (Settings > API keys) and the id of the form `scripts/feedback/tally-form.sh` made.
+          TALLY_API_KEY: ${{ secrets.TALLY_API_KEY }}
+          TALLY_FEATURE_REQUEST_FORM_ID: ${{ secrets.TALLY_FEATURE_REQUEST_FORM_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+        run: |
+          if [ -z "$TALLY_API_KEY" ] || [ -z "$TALLY_FEATURE_REQUEST_FORM_ID" ]; then
+            echo "TALLY_API_KEY or TALLY_FEATURE_REQUEST_FORM_ID is not set; nothing to do (docs/RELEASING.md, 'Feature requests to GitHub')."
+            exit 0
+          fi
+          ruby fastlane/ops_bridge.rb sync tally-feature-requests
+      - name: Sync bug reports
+        env:
+          TALLY_API_KEY: ${{ secrets.TALLY_API_KEY }}
+          TALLY_BUG_REPORT_FORM_ID: ${{ secrets.TALLY_BUG_REPORT_FORM_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+        run: |
+          if [ -z "$TALLY_API_KEY" ] || [ -z "$TALLY_BUG_REPORT_FORM_ID" ]; then
+            echo "TALLY_API_KEY or TALLY_BUG_REPORT_FORM_ID is not set; nothing to do (docs/RELEASING.md, 'Feature requests to GitHub')."
+            exit 0
+          fi
+          ruby fastlane/ops_bridge.rb sync tally-bug-reports
