@@ -63,4 +63,13 @@ class ModuleGraphTest {
         assertEquals(1, problems.size)
         assertTrue("no longer applies" in problems.single())
     }
+
+    @Test
+    fun an_exception_without_a_reason_excuses_nothing() {
+        val bad = edges(":core:sync -> :feature:collection:data")
+        val problems = ModuleGraph.check(bad, listOf(ModuleGraph.Exception(":core:sync", ":feature:collection:data", " ")))
+        assertEquals(2, problems.size)
+        assertTrue(problems.any { "infrastructure may not depend" in it })
+        assertTrue(problems.any { "needs a reason" in it })
+    }
 }

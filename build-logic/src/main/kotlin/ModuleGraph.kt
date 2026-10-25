@@ -15,7 +15,8 @@
  *
  * An [Exception] is a dated, issue-linked edge that predates the check. It is
  * read here so the list is one place and fails once the edge is fixed (a stale
- * exception is itself a violation), instead of rotting.
+ * exception is itself a violation), instead of rotting. One with no reason
+ * excuses nothing and is reported.
  */
 object ModuleGraph {
     data class Edge(val from: String, val to: String)
@@ -55,13 +56,16 @@ object ModuleGraph {
 
     /** One line per problem; empty when the graph holds. */
     fun check(edges: Collection<Edge>, exceptions: Collection<Exception> = emptyList()): List<String> {
-        val excused = exceptions.map { Edge(it.from, it.to) }.toSet()
+        // An exception is the record of why an edge is tolerated; without the why it excuses nothing.
+        val (reasoned, unreasoned) = exceptions.partition { it.reason.isNotBlank() }
+        val excused = reasoned.map { Edge(it.from, it.to) }.toSet()
         val problems = edges.distinct().sortedBy { it.from + it.to }.mapNotNull { edge ->
             violation(edge)?.takeUnless { edge in excused }?.let { "${edge.from} -> ${edge.to}: $it" }
         }
         val present = edges.toSet()
-        val stale = exceptions.filter { Edge(it.from, it.to) !in present || violation(Edge(it.from, it.to)) == null }
+        val missingReason = unreasoned.map { "exception ${it.from} -> ${it.to} needs a reason after `#`" }
+        val stale = reasoned.filter { Edge(it.from, it.to) !in present || violation(Edge(it.from, it.to)) == null }
             .map { "exception ${it.from} -> ${it.to} no longer applies (${it.reason}); delete it" }
-        return problems + stale
+        return problems + missingReason + stale
     }
 }
