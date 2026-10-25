@@ -8,6 +8,9 @@ import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -115,8 +118,11 @@ class SettingsViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(repository: FakeSettingsRepository) = SettingsViewModel(
-        ObserveSettingsUseCase(repository),
+    private fun viewModel(
+        repository: FakeSettingsRepository,
+        remote: RemoteConfig = DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
+    ) = SettingsViewModel(
+        settingsObservations(ObserveSettingsUseCase(repository), remote),
         SettingsActions(
             SetThemeUseCase(repository),
             SetLanguageUseCase(repository),
@@ -307,6 +313,22 @@ class SettingsViewModelTest {
 
         kotlin.test.assertNull(vm.state.value.error)
         kotlin.test.assertFalse(vm.state.value.loading)
+    }
+
+    @Test
+    fun a_failed_settings_load_leaves_the_feature_request_link_up() = runTest {
+        val remote = DefaultsRemoteConfig(RemoteValues(byokEnabled = false, featureRequestUrl = "https://tally.so/r/abc"))
+        val repository = FakeSettingsRepository().apply { failure = IllegalStateException("db locked") }
+        val vm = viewModel(repository, remote)
+        advanceUntilIdle()
+        // The link reads Remote Config and the device locale only, so a settings failure does not end it.
+        assertTrue(vm.state.value.featureRequestUrl.orEmpty().startsWith("https://tally.so/r/abc?version=1.0.0"))
+
+        repository.failure = null
+        vm.retry()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.featureRequestUrl.orEmpty().startsWith("https://tally.so/r/abc?version=1.0.0"))
     }
 
     @Test

@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import java.io.File
+import java.sql.SQLException
 
 private const val DATABASE_FILE_NAME = "muviss.db"
 
@@ -59,12 +60,28 @@ internal fun createFileDriver(directory: File): SqlDriver = synchronized(createL
     } else {
         val currentVersion = driver.userVersion()
         if (currentVersion < targetVersion) {
-            schema.migrate(driver, currentVersion, targetVersion)
+            try {
+                schema.migrate(driver, currentVersion, targetVersion)
+            } catch (e: SQLException) {
+                driver.close()
+                throw IllegalStateException(unmigratable(databaseFile.name, currentVersion, targetVersion, e), e)
+            }
             driver.setUserVersion(targetVersion)
         }
     }
     driver
 }
+
+/**
+ * Says what a failed migration means, where SQLite's own text ("table syncCursor already
+ * exists") does not (#453). A file stamped `user_version = N` whose tables are already ahead
+ * of N was written by a build with different `.sqm` numbering — a feature branch, in practice,
+ * since a released install only ever sees the numbering it shipped with. Only the file *name*
+ * goes in the message: it ends up in crash reports, and the path carries the user's name.
+ */
+internal fun unmigratable(fileName: String, from: Long, to: Long, cause: SQLException): String = "Cannot migrate $fileName from schema version $from to $to (${cause.message}). " +
+    "The file was probably written by a build with a different migration history; " +
+    "move it aside to start with a fresh database."
 
 /**
  * Serializes [createFileDriver]'s check-then-create. Desktop opens the
