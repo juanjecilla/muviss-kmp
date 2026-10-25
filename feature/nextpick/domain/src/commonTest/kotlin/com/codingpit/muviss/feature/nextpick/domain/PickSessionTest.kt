@@ -212,4 +212,26 @@ class PickSessionTest {
         assertFailsWith<IllegalArgumentException> { done.skip() }
         assertFailsWith<IllegalArgumentException> { done.answer(PickAnswer.Company(PickCompany.ALONE)) }
     }
+
+    @Test
+    fun sets_the_caller_still_holds_cannot_change_an_open_session() {
+        val profile = mutableSetOf<PickQuestion>()
+        val moods = mutableSetOf(PickMood.LIGHT)
+        val session = PickSession.start(PickContext(answeredByProfile = profile, startingCriteria = PickCriteria(moods = moods)))
+        val first = session.question
+        profile += PickQuestion.entries
+        moods += PickMood.TENSE
+        assertEquals(first, session.question)
+        assertEquals(setOf(PickMood.LIGHT), session.criteria.moods)
+    }
+
+    @Test
+    fun a_mood_answer_is_copied_when_it_is_accepted() {
+        var session = PickSession.start(PickContext(length = PickSessionLength.STANDARD, online = false))
+        while (session.question != PickQuestion.MOOD) session = session.skip()
+        val picked = mutableSetOf(PickMood.ESCAPE)
+        val after = session.answer(PickAnswer.Mood(picked))
+        picked += PickMood.ROMANTIC
+        assertEquals(setOf(PickMood.ESCAPE), after.criteria.moods)
+    }
 }

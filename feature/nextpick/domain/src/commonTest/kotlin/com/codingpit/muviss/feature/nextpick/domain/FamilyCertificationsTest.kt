@@ -14,7 +14,8 @@ class FamilyCertificationsTest {
 
     @Test
     fun spain_has_its_own_table_and_the_region_is_case_insensitive() {
-        assertEquals(CertificationFilter("ES", setOf("TP", "7")), FamilyCertifications.forRegion("es", MediaType.MOVIE))
+        assertEquals(CertificationFilter("ES", setOf("A", "Ai", "7", "7i")), FamilyCertifications.forRegion("es", MediaType.MOVIE))
+        assertEquals(CertificationFilter("ES", setOf("ERI", "TP", "7")), FamilyCertifications.forRegion("ES", MediaType.TV))
     }
 
     @Test

@@ -16,15 +16,18 @@ data class CertificationFilter(val country: String, val allowed: Set<String>)
 object FamilyCertifications {
     private const val FALLBACK = "US"
 
+    // The values are TMDB's own (`/certification/{movie,tv}/list`), not the agencies' labels: a value
+    // TMDB never stores matches nothing and silently narrows the filter.
     private val movies = mapOf(
         "US" to setOf("G", "PG"),
-        "ES" to setOf("TP", "7"),
+        // ICAA: A/Ai (all ages, Ai "recommended for children"), 7/7i. Spanish films carry no "TP".
+        "ES" to setOf("A", "Ai", "7", "7i"),
     )
 
     private val shows = mapOf(
         "US" to setOf("TV-Y", "TV-Y7", "TV-G", "TV-PG"),
-        // Spain's TMDB TV certifications are the same scale as its films'.
-        "ES" to setOf("TP", "7"),
+        // Spain's TV scale differs from its films': ERI (for younger children), TP (all ages), 7.
+        "ES" to setOf("ERI", "TP", "7"),
     )
 
     /** The filter for [region] (an ISO 3166-1 alpha-2 code, any case) and [type]. */

@@ -96,13 +96,18 @@ class PickSession private constructor(
          * library, and with an empty library there is only the catalogue.
          */
         fun start(context: PickContext): PickSession {
-            var criteria = context.startingCriteria
+            // The sets may be the caller's mutable ones; the session must not change under its reader.
+            val owned = context.copy(
+                answeredByProfile = context.answeredByProfile.toSet(),
+                startingCriteria = context.startingCriteria.copy(moods = context.startingCriteria.moods.toSet()),
+            )
+            var criteria = owned.startingCriteria
             if (!context.online) {
                 criteria = criteria.copy(source = PickSource.MY_LIST)
             } else if (!context.hasBacklog) {
                 criteria = criteria.copy(source = PickSource.SOMETHING_NEW)
             }
-            return PickSession(context, criteria, shown = 0, settled = emptySet())
+            return PickSession(owned, criteria, shown = 0, settled = emptySet())
         }
     }
 }

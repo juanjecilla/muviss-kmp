@@ -64,7 +64,7 @@ sealed interface PickAnswer {
 
     data class Mood(val moods: Set<PickMood>) : PickAnswer {
         override val question = PickQuestion.MOOD
-        override fun applyTo(criteria: PickCriteria) = criteria.copy(moods = moods)
+        override fun applyTo(criteria: PickCriteria) = criteria.copy(moods = moods.toSet())
     }
 
     data class Anchor(val anchor: PickAnchor) : PickAnswer {
