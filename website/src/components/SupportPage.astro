@@ -1,0 +1,67 @@
+---
+import Base from "../layouts/Base.astro";
+import { issuesUrl, links } from "../config/links";
+import { t, type Locale } from "../i18n";
+
+interface Props {
+  locale: Locale;
+}
+
+// Both languages of /support render from this one component, so the channels cannot drift apart.
+// The App Store requires the support URL to lead to contact information (#423, #446).
+const { locale } = Astro.props;
+const dict = t(locale).support;
+---
+
+<Base locale={locale} title={dict.meta.title} description={dict.meta.description}>
+  <article class="wrap prose">
+    <h1>{dict.title}</h1>
+    <p class="lede">{dict.lede}</p>
+
+    <section>
+      <h2>{dict.forms.title}</h2>
+      <p>{dict.forms.body}</p>
+      <ul>
+        <li><a href={links.bugReport} rel="noopener">{dict.forms.bug}</a></li>
+        <li><a href={links.featureRequest} rel="noopener">{dict.forms.feature}</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>{dict.issues.title}</h2>
+      <p>{dict.issues.body}</p>
+      <p><a href={issuesUrl} rel="noopener">{dict.issues.link}</a></p>
+    </section>
+
+    <section>
+      <h2>{dict.email.title}</h2>
+      <p>{dict.email.body}</p>
+      <p><a href={`mailto:${links.supportEmail}`}>{links.supportEmail}</a></p>
+    </section>
+
+    <p><a href="/privacy/">{dict.privacy}</a></p>
+  </article>
+</Base>
+
+<style>
+  .prose {
+    max-width: 760px;
+    padding-block: clamp(40px, 7vw, 80px);
+  }
+  .prose h1 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    margin-bottom: 8px;
+  }
+  .prose h2 {
+    font-size: 1.5rem;
+    margin-top: 2em;
+    margin-bottom: 0.5em;
+  }
+  .lede {
+    color: var(--muted);
+    font-size: 1.125rem;
+  }
+  .prose li {
+    margin-block: 0.4em;
+  }
+</style>

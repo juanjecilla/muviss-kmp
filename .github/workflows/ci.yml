@@ -13,6 +13,12 @@ on:
     branches: [ main, develop, 'release/**', 'hotfix/**' ]
   pull_request:
 
+# Least privilege (#482): the repository's default token is `read` today, but
+# that is a setting, not part of this file. No job here writes to the repo
+# (artifact upload uses the runtime token, not GITHUB_TOKEN), so none widens it.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -39,7 +45,7 @@ jobs:
   # in the window above), so the saving would be noise and the risk would not.
   changes:
     name: Which lanes need running
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -58,55 +64,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -uo pipefail
-
-          run_everything() {
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "ios=true" >> "$GITHUB_OUTPUT"
-            echo "supabase=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          }
-
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "Not a pull request; running every lane."
-            run_everything
-          fi
-
-          # Fail open. A guard that silently skips the build because it could
-          # not work out the diff is worse than one that costs a few minutes.
-          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD") || {
-            echo "::warning::Could not diff against origin/${BASE_REF}; running every lane."
-            run_everything
-          }
-          if [ -z "$changed" ]; then
-            echo "::warning::Empty diff against origin/${BASE_REF}; running every lane."
-            run_everything
-          fi
-
-          echo "Changed files:"
-          echo "$changed" | sed 's/^/  /'
-
-          # Anything the shared Kotlin/Native framework or the Xcode project can
-          # see. `core`, `feature` and `models` are in here because :app:shared
-          # depends on them, so a change there does reach the iOS link. This
-          # file is in here too: a PR that edits CI must run the CI it edits. So is
-          # version-code.sh, which scripts/ios/set-version.sh calls for tagged builds.
-          IOS_PATHS='^(app/shared/|app/iosApp/|scripts/ios/|core/|feature/|models/|build-logic/|gradle/|config/)|\.gradle\.kts$|^gradle\.properties$|^settings\.gradle\.kts$|^\.github/workflows/ci\.yml$|^scripts/release/version-code\.sh$'
-          # Everything above, plus the platforms iOS cannot see but `build`,
-          # `desktop` and `web-tests` can.
-          CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/|supabase/|scripts/)'
-
-          if echo "$changed" | grep -qE "$IOS_PATHS"; then ios=true; else ios=false; fi
-          if echo "$changed" | grep -qE "$CODE_PATHS"; then code=true; else code=false; fi
-          # The server: migrations, pgTAP tests, Edge Functions (#280).
-          SUPABASE_PATHS='^supabase/|^\.github/workflows/ci\.yml$'
-          if echo "$changed" | grep -qE "$SUPABASE_PATHS"; then supabase=true; else supabase=false; fi
-
-          echo "ios=$ios" >> "$GITHUB_OUTPUT"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "supabase=$supabase" >> "$GITHUB_OUTPUT"
-          echo "Lanes -> code=$code ios=$ios supabase=$supabase"
+        run: scripts/ci/decide-lanes.sh
 
   # The server's own tests (#280): the pgTAP suite in supabase/tests/database
   # and the Edge Functions' Deno tests. supabase-dev.yml runs pgTAP too, but
@@ -121,7 +79,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.supabase == 'true'
     name: Supabase (pgTAP, Edge Functions)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -170,7 +128,7 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Nothing here has ever legitimately approached this. The point is the
     # ceiling, not the number: the default is 360 minutes, and a job that hangs
     # rather than fails burns all of it.
@@ -208,6 +166,12 @@ jobs:
       # change to it must not reach a release without these running.
       - name: Build-logic tests (versionCode formula)
         run: ./gradlew -p build-logic test --stacktrace
+
+      # ADR 0004's dependency rule over the declared project graph (#483):
+      # peers through :api only, `ui -> domain <- data`, infrastructure below
+      # features. Reads Gradle's graph, so an unused forbidden edge fails too.
+      - name: Module graph (vertical-slice rule)
+        run: ./gradlew verifyModuleGraph --stacktrace
 
       # Every jvmTest task in the build, resolved by name rather than listed.
       # This used to be a hand-maintained allowlist, which meant a module
@@ -343,13 +307,10 @@ jobs:
           :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources
           :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
+      # The assertion is a script so its red cases can be tested (#486):
+      # scripts/ci/test/check-r8-output-test.sh, run by pr-guards.
       - name: R8 left a mapping and no missing rules
-        run: |
-          test -s app/androidApp/build/outputs/mapping/release/mapping.txt
-          if [ -e app/androidApp/build/outputs/mapping/release/missing_rules.txt ]; then
-            cat app/androidApp/build/outputs/mapping/release/missing_rules.txt
-            exit 1
-          fi
+        run: scripts/ci/check-r8-output.sh
 
 
   # JS and Wasm tests live in their own job for the same reason desktop does
@@ -388,7 +349,7 @@ jobs:
   web-tests:
     needs: changes
     if: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     # Non-blocking is not the same as non-hanging: `continue-on-error` keeps a
     # red run from failing the workflow, but a job that never returns still
@@ -466,7 +427,7 @@ jobs:
   desktop:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # See `build`: the risk being bounded is a hang, not a slow build.
     timeout-minutes: 45
     steps:
@@ -604,7 +565,7 @@ jobs:
   ios:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
-    runs-on: macos-latest
+    runs-on: macos-15
     # Written when the repo was private and macOS billed at 10x, so the
     # default 360-minute ceiling was a month's allowance in one hung run. The
     # repo is public now and standard runners are free, so the ceiling is back

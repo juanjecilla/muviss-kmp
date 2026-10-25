@@ -11,7 +11,7 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
 import kotlinx.coroutines.delay
 import kotlinx.io.readByteArray
 import kotlinx.serialization.json.Json
@@ -247,7 +247,7 @@ class FakeSupabaseServer(
         else -> ""
     }
 
-    private suspend fun ByteReadChannel.drainToString(): String = readRemaining().readByteArray().decodeToString()
+    private suspend fun ByteReadChannel.drainToString(): String = readBuffer().readByteArray().decodeToString()
 
     // ------------------------------------------------------------------ auth ---
 

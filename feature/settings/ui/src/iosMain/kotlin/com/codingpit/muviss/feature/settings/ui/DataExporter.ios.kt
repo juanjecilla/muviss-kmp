@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.uikit.LocalUIViewController
 import com.codingpit.muviss.core.designsystem.share.presentShareSheet
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSString
@@ -11,6 +12,7 @@ import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.stringByAppendingPathComponent
 import platform.Foundation.writeToFile
 import platform.UIKit.UIActivityViewController
+import platform.UIKit.UIViewController
 
 /**
  * Writes the export to a temp file and hands it to the system share sheet
@@ -20,7 +22,7 @@ import platform.UIKit.UIActivityViewController
  * than plain text.
  */
 @OptIn(ExperimentalForeignApi::class)
-private class IosDataExporter : DataExporter {
+private class IosDataExporter(private val host: UIViewController) : DataExporter {
     override fun export(json: String, fileName: String) {
         // `NSString` is a distinct Kotlin/Native declaration from `kotlin.String`
         // even though they're ABI-compatible on Darwin, so these `NSString`
@@ -41,9 +43,12 @@ private class IosDataExporter : DataExporter {
 
         val fileUrl = NSURL.fileURLWithPath(filePath)
         // Anchored for iPad and presented from the top controller by the shared presenter.
-        presentShareSheet(UIActivityViewController(activityItems = listOf(fileUrl), applicationActivities = null))
+        presentShareSheet(UIActivityViewController(activityItems = listOf(fileUrl), applicationActivities = null), host)
     }
 }
 
 @Composable
-actual fun rememberDataExporter(): DataExporter = remember { IosDataExporter() }
+actual fun rememberDataExporter(): DataExporter {
+    val host = LocalUIViewController.current
+    return remember(host) { IosDataExporter(host) }
+}
