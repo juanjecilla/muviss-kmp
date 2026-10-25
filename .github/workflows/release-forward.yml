@@ -29,7 +29,7 @@ permissions:
 jobs:
   forward:
     if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Mint a release App token

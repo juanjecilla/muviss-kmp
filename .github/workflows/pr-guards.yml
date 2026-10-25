@@ -25,7 +25,7 @@ jobs:
   main-source-guard:
     name: PRs into main come from release/* or hotfix/*
     if: github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Check the head branch
@@ -45,7 +45,7 @@ jobs:
   release-notes-guard:
     name: Release notes are final
     if: github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,7 +64,7 @@ jobs:
   landing-guard:
     name: Features reach the landing
     if: github.base_ref == 'develop'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -83,7 +83,7 @@ jobs:
   # nothing else exercises them until a real release runs. Seconds to run.
   release-tooling:
     name: Release tooling tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -95,15 +95,29 @@ jobs:
       # fake a pin. Dependabot keeps the pins current.
       - name: Actions are pinned to commit SHAs
         run: ruby scripts/ci/test/check_action_pins_test.rb && ruby scripts/ci/check-action-pins.rb
+      # Runners are pinned too (#481): `-latest` moves on GitHub's date, and the
+      # lane that breaks is an unrelated PR's.
+      - name: Runner images are pinned
+        run: ruby scripts/ci/test/check_runner_pins_test.rb && ruby scripts/ci/check-runner-pins.rb
+      # Every workflow declares its own top-level `permissions:` (#482), so the
+      # least-privilege posture lives in the file and not in a repo setting.
+      - name: Workflows declare permissions
+        run: ruby scripts/ci/test/check_workflow_permissions_test.rb && ruby scripts/ci/check-workflow-permissions.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
+      # The R8 mapping assertion in ci.yml, proved red on generated fixtures (#486).
+      - name: CI check scripts go red on bad input
+        run: scripts/ci/test/check-r8-output-test.sh
+      # ci.yml's lane filter must fail open (#490): proved on throwaway repositories.
+      - name: CI lane filter fails open
+        run: scripts/ci/test/decide-lanes-test.sh
       # Play's field limits (title 30, short 80, full 4000 characters) on every
       # listing locale, on the PR that edits the copy rather than at the next
       # release cut (#76).
       - name: Play listing within limits
         run: scripts/store/check-listing.sh
       - name: Rollout ramp policy
-        run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb && for t in ops_bridge sentry_connector play_reviews; do ruby fastlane/test/${t}_test.rb || exit 1; done
+        run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb && for t in ops_bridge sentry_connector play_reviews tally_feature_requests; do ruby fastlane/test/${t}_test.rb || exit 1; done
       - name: Staged release schedule and train plan (ADR 0030)
         run: ruby fastlane/test/release_stages_test.rb
       - name: Sunday promotion gates (ADR 0030)
