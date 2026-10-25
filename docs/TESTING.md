@@ -20,7 +20,9 @@ scope limit.
 ```
 
 Kotlin warnings are errors in **main** source (`muviss.kmp.library`, #485), on every
-concrete target; test source still warns (`runComposeUiTest` v2, #492) and shared
+concrete target of the library and Compose modules. The host modules apply neither
+convention and still only warn: `:app:androidApp`, `:app:desktopApp`, `:app:webApp` and
+`:app:baselineprofile`. Test source still warns (`runComposeUiTest` v2, #492) and shared
 metadata compilations are skipped (#493). Fix the warning, or `@Suppress` it at the
 narrowest scope with a comment; `-PallowWarnings` is for a local experiment only.
 
