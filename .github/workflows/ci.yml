@@ -307,13 +307,10 @@ jobs:
           :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources
           :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
+      # The assertion is a script so its red cases can be tested (#486):
+      # scripts/ci/test/check-r8-output-test.sh, run by pr-guards.
       - name: R8 left a mapping and no missing rules
-        run: |
-          test -s app/androidApp/build/outputs/mapping/release/mapping.txt
-          if [ -e app/androidApp/build/outputs/mapping/release/missing_rules.txt ]; then
-            cat app/androidApp/build/outputs/mapping/release/missing_rules.txt
-            exit 1
-          fi
+        run: scripts/ci/check-r8-output.sh
 
 
   # JS and Wasm tests live in their own job for the same reason desktop does

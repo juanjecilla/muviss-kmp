@@ -105,6 +105,9 @@ jobs:
         run: ruby scripts/ci/test/check_workflow_permissions_test.rb && ruby scripts/ci/check-workflow-permissions.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
+      # The R8 mapping assertion in ci.yml, proved red on generated fixtures (#486).
+      - name: CI check scripts go red on bad input
+        run: scripts/ci/test/check-r8-output-test.sh
       # ci.yml's lane filter must fail open (#490): proved on throwaway repositories.
       - name: CI lane filter fails open
         run: scripts/ci/test/decide-lanes-test.sh
