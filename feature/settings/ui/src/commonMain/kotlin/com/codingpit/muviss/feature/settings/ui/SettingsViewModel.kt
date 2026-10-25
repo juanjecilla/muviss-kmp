@@ -17,8 +17,8 @@ import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.DeleteAllDataUseCase
-import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
+import com.codingpit.muviss.feature.settings.domain.SettingsObservations
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
 import com.codingpit.muviss.feature.settings.ui.generated.resources.error_generic
 import kotlinx.coroutines.Job
@@ -54,6 +54,10 @@ data class SettingsUiState(
     val tickAnimations: Boolean = true,
     /** The user just asked for notifications and the OS said no (EPIC 47); the blocked note explains the snapped-back switch. */
     val notificationsDenied: Boolean = false,
+    /** Where the Feature Request row opens (ADR 0035), hidden fields included; null hides the row. */
+    val featureRequestUrl: String? = null,
+    /** Where the Bug Report row opens (ADR 0035, #449); null hides the row. */
+    val bugReportUrl: String? = null,
 )
 
 /**
@@ -64,7 +68,7 @@ data class SettingsUiState(
  * ([rememberDataExporter]).
  */
 class SettingsViewModel(
-    private val observeSettings: ObserveSettingsUseCase,
+    private val observations: SettingsObservations,
     private val actions: SettingsActions,
     appVersion: AppVersion,
     private val featureFlags: FeatureFlags,
@@ -74,6 +78,11 @@ class SettingsViewModel(
 
     private val _state = MutableStateFlow(SettingsUiState(appVersion = appVersion))
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
+
+    // Declared above `init`: initializers run in source order, so one below it would reset the Job that
+    // `init` just started and [retry] would add a second collection instead of replacing the first.
+    // (Kotlin/JVM happens to drop a `= null` initializer, which is why no JVM test can show this.)
+    private var settingsObservation: Job? = null
 
     init {
         featureFlags.triageSnoozePeriod
@@ -104,10 +113,14 @@ class SettingsViewModel(
             .onEach { enabled -> _state.update { it.copy(tickAnimations = enabled) } }
             .launchInReporting(viewModelScope)
 
+        // The links read Remote Config and the device locale, never the settings, so a settings failure
+        // does not end them and [retry] has nothing to restart.
+        observations.feedbackLinks()
+            .onEach { links -> _state.update { it.copy(featureRequestUrl = links.featureRequest, bugReportUrl = links.bugReport) } }
+            .launchInReporting(viewModelScope)
+
         observeAppSettings()
     }
-
-    private var settingsObservation: Job? = null
 
     /** Re-subscribes after a failed load (EPIC 30, #73): a Flow that threw is finished and will not emit again on its own. */
     fun retry() {
@@ -117,7 +130,7 @@ class SettingsViewModel(
 
     private fun observeAppSettings() {
         settingsObservation?.cancel()
-        settingsObservation = observeSettings()
+        settingsObservation = observations.settings()
             .catch { e -> _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) } }
             .onEach { settings -> _state.update { it.copy(loading = false, settings = settings, error = null) } }
             .launchInReporting(viewModelScope)
