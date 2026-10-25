@@ -425,6 +425,58 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun a_next_page_that_arrives_after_another_genre_was_picked_is_dropped() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, page, genreId ->
+                    val item = MediaSummary(MediaId.tmdbMovie("$genreId-$page"), "Genre $genreId page $page")
+                    Result.success(PagedResult(listOf(item), page, totalPages = 3))
+                },
+                discoverGate = { page, genreId -> if (genreId == "28" && page == 2) gate.await() },
+            ),
+        )
+        advanceUntilIdle()
+        vm.selectGenre(movieGenre, MediaType.MOVIE)
+        advanceUntilIdle()
+        vm.loadMore()
+        assertTrue(vm.state.value.loadingMore)
+
+        vm.selectGenre(Genre("35", "Comedy"), MediaType.MOVIE)
+        advanceUntilIdle()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val ids = vm.state.value.genreResults.map { it.id.toString() }
+        assertEquals(1, ids.size, "only the picked genre's first page is shown: $ids")
+        assertTrue(ids.single().contains("35"))
+        assertFalse(vm.state.value.loadingMore)
+        assertEquals(1, vm.state.value.genrePage)
+    }
+
+    @Test
+    fun leaving_genre_browse_cancels_a_next_page_and_frees_load_more() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, page, _ -> Result.success(PagedResult(listOf(MediaSummary(MediaId.tmdbMovie("p$page"), "Page $page")), page, totalPages = 3)) },
+                discoverGate = { page, _ -> if (page == 2) gate.await() },
+            ),
+        )
+        advanceUntilIdle()
+        vm.selectGenre(movieGenre, MediaType.MOVIE)
+        advanceUntilIdle()
+        vm.loadMore()
+
+        vm.clearGenre()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.genreResults.isEmpty())
+        assertFalse(vm.state.value.loadingMore)
+    }
+
+    @Test
     fun clearGenre_returns_to_discover_mode_and_drops_genre_results() = runTest {
         val vm = viewModel(
             FakeRepo(discoverResult = { _, page, _ -> Result.success(PagedResult(listOf(popularMovie), page, page)) }),
