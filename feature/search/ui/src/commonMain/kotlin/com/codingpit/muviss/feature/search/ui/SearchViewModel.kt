@@ -110,6 +110,14 @@ class SearchViewModel(
 
     private var loadJob: Job? = null
 
+    /**
+     * The `loadMore` request in flight, cancelled whenever a paged list starts again from page 1 (see [restartPaging]).
+     * Left running, a query changed from A to B and back to A would append the first A's page 2 to the second A's
+     * page 1, whose titles it was never filtered against; and its late reply would clear `loadingMore` under a newer
+     * page request, letting the same page be asked for twice.
+     */
+    private var pageJob: Job? = null
+
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
@@ -176,7 +184,8 @@ class SearchViewModel(
 
     fun onQueryChange(query: String) {
         _state.update { it.copy(query = query) }
-        cancelLoad()
+        loadJob?.cancel()
+        restartPaging()
         if (query.isBlank()) {
             _state.update { it.copy(mode = SearchMode.DISCOVER, error = null, selectedGenre = null, selectedGenreType = null) }
             reloadDiscoverIfStale()
@@ -196,7 +205,8 @@ class SearchViewModel(
 
     /** Switches to [SearchMode.GENRE_BROWSE] and loads its first page. */
     fun selectGenre(genre: Genre, type: MediaType) {
-        cancelLoad()
+        loadJob?.cancel()
+        restartPaging()
         loadJob = viewModelScope.launchReporting {
             _state.update {
                 it.copy(
@@ -221,7 +231,8 @@ class SearchViewModel(
 
     /** Leaves [SearchMode.GENRE_BROWSE] back to the discover carousels. */
     fun clearGenre() {
-        cancelLoad()
+        loadJob?.cancel()
+        restartPaging()
         _state.update {
             it.copy(
                 mode = SearchMode.DISCOVER,
@@ -236,22 +247,12 @@ class SearchViewModel(
         reloadDiscoverIfStale()
     }
 
-    /**
-     * Stops whatever page is in flight, including a next page. A response that was already on its way would
-     * otherwise land on a list it no longer belongs to (another genre's, or a cleared one), and
-     * `loadingMore` would stay set for a request nobody is waiting for (#471).
-     */
-    private fun cancelLoad() {
-        loadJob?.cancel()
-        _state.update { if (it.loadingMore) it.copy(loadingMore = false) else it }
-    }
-
     /** Loads the next page for whichever paged mode is active; a no-op in [SearchMode.DISCOVER]. */
     fun loadMore() {
         val s = _state.value
-        if (s.loadingMore || s.loading) return
+        if (s.loadingMore) return
         when (s.mode) {
-            SearchMode.SEARCH_RESULTS -> if (s.canLoadMoreResults) loadJob = viewModelScope.launchReporting { runSearch(s.query, s.resultsPage + 1) }
+            SearchMode.SEARCH_RESULTS -> if (s.canLoadMoreResults) pageJob = viewModelScope.launchReporting { runSearch(s.query, s.resultsPage + 1) }
             SearchMode.GENRE_BROWSE -> if (s.canLoadMoreGenreResults) loadMoreGenreResults(s)
             SearchMode.DISCOVER -> Unit
         }
@@ -263,7 +264,7 @@ class SearchViewModel(
             SearchMode.DISCOVER -> loadDiscover()
 
             SearchMode.SEARCH_RESULTS -> {
-                cancelLoad()
+                loadJob?.cancel()
                 loadJob = viewModelScope.launchReporting { runSearch(s.query, page = 1) }
             }
 
@@ -295,7 +296,7 @@ class SearchViewModel(
     private fun loadDiscover() {
         // A second load must not race the first: both read `muting` mid-flight, and whichever finishes
         // last wins, which could be the one that saw the older muting.
-        cancelLoad()
+        loadJob?.cancel()
         discoverStale = false
         loadJob = viewModelScope.launchReporting {
             _state.update { it.copy(loading = true, error = null) }
@@ -320,10 +321,11 @@ class SearchViewModel(
     private fun loadMoreGenreResults(current: SearchUiState) {
         val genre = current.selectedGenre ?: return
         val type = current.selectedGenreType ?: return
-        loadJob = viewModelScope.launchReporting {
+        pageJob = viewModelScope.launchReporting {
             _state.update { it.copy(loadingMore = true) }
             val muted = mutedFor(type, genre.id)
-            discoverMedia(type, current.genrePage + 1, genre.id, muted.forType(type)).fold(
+            val shown = current.genreResults.idSet()
+            discoverMedia(type, current.genrePage + 1, genre.id, muted.forType(type), shown = shown).fold(
                 onSuccess = { page ->
                     _state.update {
                         it.copy(
@@ -341,13 +343,18 @@ class SearchViewModel(
 
     private suspend fun runSearch(query: String, page: Int) {
         if (page == 1) {
+            restartPaging()
             _state.update { it.copy(mode = SearchMode.SEARCH_RESULTS, loading = true, error = null) }
         } else {
             _state.update { it.copy(loadingMore = true) }
         }
-        searchMedia(query, page).fold(
+        val shown = if (page == 1) emptySet() else _state.value.results.idSet()
+        searchMedia(query, page, shown = shown).fold(
             onSuccess = { result ->
                 _state.update {
+                    // A later page for a query the user has since replaced is stale: appending it would mix two
+                    // searches, and could repeat a title the new results already show.
+                    if (page > 1 && it.query != query) return@update it.copy(loadingMore = false)
                     // Typed search is only muted when the user opted in (ADR 0031): looking a show up by name is
                     // an explicit act, unlike a feed that picked it for them.
                     val found = result.items.filterNot(muting.forSearch::hides)
@@ -366,9 +373,19 @@ class SearchViewModel(
         )
     }
 
+    /** Cancels the page request in flight, which so never lands, and hands `loadingMore` back to the next one. */
+    private fun restartPaging() {
+        pageJob?.cancel()
+        pageJob = null
+        _state.update { it.copy(loadingMore = false) }
+    }
+
     private fun fail(e: Throwable) {
         _state.update { it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) }
     }
+
+    /** The ids on screen, handed to the paged use cases so a repeated title is dropped before it reaches the list. */
+    private fun List<MediaSummary>.idSet(): Set<MediaId> = mapTo(mutableSetOf()) { it.id }
 
     /**
      * Seeds recommendations from [library]'s favorites/top-rated titles via

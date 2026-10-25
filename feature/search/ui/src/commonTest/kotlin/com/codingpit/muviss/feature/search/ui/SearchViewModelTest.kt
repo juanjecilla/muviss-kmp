@@ -254,6 +254,126 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun load_more_never_repeats_a_title_already_on_screen() = runTest {
+        // #463: TMDB paging drifted, so page 2 came back with a title page 1 already showed. Appending it blindly
+        // put the same id in the keyed grid twice and crashed it.
+        val fresh = MediaSummary(MediaId.tmdbMovie("9"), "Fresh")
+        val vm = viewModel(
+            FakeRepo(
+                searchResult = { page ->
+                    val items = if (page == 1) listOf(searchItem) else listOf(searchItem, fresh)
+                    Result.success(PagedResult(items, page, totalPages = 2))
+                },
+            ),
+        )
+        advanceUntilIdle()
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+
+        vm.loadMore()
+        advanceUntilIdle()
+
+        assertEquals(listOf(searchItem, fresh), vm.state.value.results)
+        assertEquals(2, vm.state.value.resultsPage)
+    }
+
+    @Test
+    fun a_page_asked_before_the_search_restarted_is_dropped() = runTest {
+        // A to B and back to A: the first A's page 2 is still in flight and was filtered against a page 1 that is
+        // no longer on screen, so appending it could repeat a title of the second A's page 1.
+        val fresh = MediaSummary(MediaId.tmdbMovie("9"), "Fresh")
+        val pageTwo = CompletableDeferred<Result<PagedResult<MediaSummary>>>()
+        var firstPages = 0
+        val vm = viewModel(
+            FakeRepo(
+                searchResult = { page ->
+                    if (page == 2) {
+                        pageTwo.await()
+                    } else {
+                        val items = if (firstPages++ == 0) listOf(searchItem) else listOf(searchItem, fresh)
+                        Result.success(PagedResult(items, page, totalPages = 2))
+                    }
+                },
+            ),
+        )
+        advanceUntilIdle()
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+
+        vm.onQueryChange("alien")
+        advanceUntilIdle()
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+        pageTwo.complete(Result.success(PagedResult(listOf(fresh), 2, totalPages = 2)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(searchItem, fresh), vm.state.value.results)
+        assertEquals(1, vm.state.value.resultsPage)
+        assertFalse(vm.state.value.loadingMore)
+    }
+
+    @Test
+    fun a_stale_page_never_frees_a_newer_page_request() = runTest {
+        // The first search's page 2 outlives a restart, and the restarted search asks for its own page 2. When the
+        // old one answers it must not clear `loadingMore` under the new one, or the next scroll asks for page 2 again.
+        val oldPageTwo = CompletableDeferred<Result<PagedResult<MediaSummary>>>()
+        val newPageTwo = CompletableDeferred<Result<PagedResult<MediaSummary>>>()
+        var pageTwoCalls = 0
+        val vm = viewModel(
+            FakeRepo(
+                searchResult = { page ->
+                    if (page == 2) {
+                        if (pageTwoCalls++ == 0) oldPageTwo.await() else newPageTwo.await()
+                    } else {
+                        Result.success(PagedResult(listOf(searchItem), page, totalPages = 2))
+                    }
+                },
+            ),
+        )
+        advanceUntilIdle()
+        vm.onQueryChange("matrix")
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+        vm.onQueryChange("alien")
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+
+        oldPageTwo.complete(Result.success(PagedResult(emptyList(), 2, totalPages = 2)))
+        advanceUntilIdle()
+        vm.loadMore()
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.loadingMore)
+        assertEquals(2, pageTwoCalls)
+    }
+
+    @Test
+    fun genre_load_more_never_repeats_a_title_already_on_screen() = runTest {
+        // #463, the same drift on the genre drill-down.
+        val fresh = MediaSummary(MediaId.tmdbMovie("9"), "Fresh")
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, page, _ ->
+                    val items = if (page == 1) listOf(popularMovie) else listOf(popularMovie, fresh)
+                    Result.success(PagedResult(items, page, totalPages = 2))
+                },
+            ),
+        )
+        advanceUntilIdle()
+        vm.selectGenre(movieGenre, MediaType.MOVIE)
+        advanceUntilIdle()
+
+        vm.loadMore()
+        advanceUntilIdle()
+
+        assertEquals(listOf(popularMovie, fresh), vm.state.value.genreResults)
+    }
+
+    @Test
     fun loadMore_is_a_noop_once_the_last_page_is_reached() = runTest {
         val vm = viewModel(FakeRepo(searchResult = { Result.success(PagedResult(listOf(searchItem), 1, 1)) }))
         advanceUntilIdle()
