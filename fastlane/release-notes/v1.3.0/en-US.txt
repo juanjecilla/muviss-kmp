@@ -1,9 +1,9 @@
 What's new in Muviss 1.3.0:
-- Report a problem through a second hosted form
-- Request a feature from Settings through a hosted form
+- Report a problem from Settings
+- Request a feature from Settings
 - Device Backup, off by default
-- A next page cannot land on another genre's list
-- Posters announced once, one watched checkbox, deck back cards hidden, text-size aware grids
+- Loading more results after switching genre no longer mixes in the previous genre
+- Better screen reader support and layouts that hold up at large text sizes
 - Detail's undo snackbar no longer covers the last row
 - Snackbars no longer cover the last row of Lists and Collection
 - Bug fixes and improvements.
