@@ -1,5 +1,6 @@
-DRAFT: rewrite for users in en-US (max 500 chars) and delete this line before release/1.2.0 merges into main.
-- confirm a tick with a row sweep, milestone burst and a setting (#391) (#395)
-- badge the Profile tab while an account switch waits for a choice (#274) (#380)
-- a signed-out user is offered sign-in, not a paywall (#286) (#379)
-- a co-watch addressee may read the author's rows, not delete them (#129) (#378)
+What's new in Muviss 1.2.0:
+- Confirm a tick with a row sweep, milestone burst and a setting
+- Muted Genres keep talk, news and reality TV out of suggestions
+- First-run introduction, notifications opt-in
+- Delete all data refreshes the home-screen widgets
+- Bug fixes and improvements.
