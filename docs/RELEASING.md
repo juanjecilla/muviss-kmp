@@ -439,6 +439,12 @@ scripts/release/start-release.sh 1.0.0 --dry-run  # checks only
 scripts/release/next-version.sh                   # what the train would cut
 ```
 
+The train's version (and the range its notes and changelog cover) starts at the
+previous release **including one still in flight**: with 1.2.0 in open beta and
+no `v1.2.0` tag yet, the next cut is 1.2.1 or 1.3.0, counted from where
+`release/1.2.0` left `develop`. `scripts/release/previous-release.sh` is that
+lookup (an RC tag or a `release/*` branch names a version in flight).
+
 It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
 only) a `release/*` branch is open. The train applies ADR 0030's stagger rule

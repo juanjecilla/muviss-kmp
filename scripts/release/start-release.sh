@@ -109,7 +109,9 @@ fi
 # branch afterwards is in the RC but not here; the GitHub Release's compare
 # link is the exhaustive list. Only a `!` in the header (`feat(x)!:`) marks a
 # breaking change; one in the subject is the subject's.
-range="${PREV:+$PREV..}HEAD"
+found="$(scripts/release/previous-release.sh HEAD "$VERSION")" || die "could not find the release before $VERSION"
+read -r _ FROM <<<"$found" || true
+range="${FROM:+$FROM..}HEAD"
 changelog_items() { # <type>
   git log --no-merges --format='%s' "$range" \
     | grep -E "^$1(\([^)]*\))?!?: " \

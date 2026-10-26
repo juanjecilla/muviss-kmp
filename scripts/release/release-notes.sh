@@ -31,9 +31,11 @@ LEDGER="$DIR/.generated"
 HIDDEN_SCOPES='release|ci|build|deps|ops|supabase|sync|cowatch|billing|config|ios|web|desktop|docs|test|landing|website|store'
 HIDDEN_WORDS='sync|co-watch|cowatch|paywall|sign-in|sign in|signed-out|signed out|account|entitlement|tmdb key|own key|byok'
 
-# The newest final release older than this version (rc tags are not releases).
-PREV="$( { git tag -l 'v[0-9]*' | grep -v -- '-' || true; echo "v$VERSION"; } | sort -uV | grep -B1 -x "v$VERSION" | grep -vx "v$VERSION" || true)"
-range="${PREV:+$PREV..}HEAD"
+# What is new since the release before this one, final or still in flight:
+# 1.3.0's notes must not repeat 1.2.0's while 1.2.0 is still in beta.
+found="$(scripts/release/previous-release.sh HEAD "$VERSION")"
+read -r _ FROM <<<"$found" || true
+range="${FROM:+$FROM..}HEAD"
 
 items() { # <feat|fix> -> one user-facing line per change
   git log --no-merges --format='%s' "$range" \

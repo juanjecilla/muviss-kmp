@@ -30,8 +30,8 @@ commit "$r" "fix(search): x"
 expect_eq "fix bumps patch" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.0.1"
 commit "$r" "feat(triage): y"
 expect_eq "feat bumps minor" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.1.0"
-git -C "$r" tag -a v1.0.1-rc1 -m rc
-expect_eq "rc tags are not releases" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.1.0"
+git -C "$r" tag -a v1.0.1-rc1 -m rc; commit "$r" "fix(search): after the rc"
+expect_eq "a version in flight (its rc tag) bases the next one" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.0.2"
 commit "$r" "refactor(db)!: z"
 expect_eq "bang bumps major" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "2.0.0"
 r2="$(new_repo)"; commit "$r2" "chore: init"; git -C "$r2" tag -a v1.2.3 -m t
@@ -47,6 +47,24 @@ r4="$(new_repo)"; commit "$r4" "chore: init"; git -C "$r4" tag -a v1.0.0 -m t
 git -C "$r4" switch -q -c main; commit "$r4" "fix: release fix"; git -C "$r4" tag -a v1.1.0 -m t
 git -C "$r4" switch -q develop; commit "$r4" "fix: after"
 expect_eq "unreachable newest tag still bases the bump" "$(cd "$r4" && "$SCRIPTS/next-version.sh" develop)" "1.1.1"
+# Staged releases (ADR 0030): 1.2.0 is in beta with no final tag when the train
+# runs again. The next version follows it, from where its branch left develop.
+r8="$(new_repo)"; commit "$r8" "chore: init"; git -C "$r8" tag -a v1.1.0 -m t
+commit "$r8" "feat(lists): shipped in 1.2.0"; git -C "$r8" branch release/1.2.0
+git -C "$r8" switch -q release/1.2.0; commit "$r8" "fix(lists): a release fix"; git -C "$r8" tag -a v1.2.0-rc2 -m rc
+git -C "$r8" switch -q develop; commit "$r8" "fix(search): after the cut"
+expect_eq "a version in beta bases the next cut" "$(cd "$r8" && "$SCRIPTS/next-version.sh" develop)" "1.2.1"
+commit "$r8" "feat(triage): after the cut"
+expect_eq "a feature after the cut bumps past it" "$(cd "$r8" && "$SCRIPTS/next-version.sh" develop)" "1.3.0"
+git -C "$r8" tag -d v1.2.0-rc2 >/dev/null
+expect_eq "a release branch with no rc yet counts" "$(cd "$r8" && "$SCRIPTS/next-version.sh" develop)" "1.3.0"
+expect_eq "previous-release before a version skips newer ones" \
+  "$(cd "$r8" && "$SCRIPTS/previous-release.sh" develop 1.2.0 | cut -d' ' -f1)" "1.1.0"
+r9="$(new_repo)"; commit "$r9" "chore: init"; git -C "$r9" tag -a v1.1.0 -m t; git -C "$r9" branch release/1.2.0
+(cd "$r9" && "$SCRIPTS/next-version.sh" develop >/dev/null 2>&1); expect_eq "nothing since the cut exits 3" "$?" "3"
+# A release line with no common ancestor (a shallow clone) is an error, not "no release".
+git -C "$r9" switch -q --orphan release/1.3.0; commit "$r9" "chore: unrelated"; git -C "$r9" switch -q develop
+(cd "$r9" && "$SCRIPTS/next-version.sh" develop >/dev/null 2>&1); expect_eq "a failed lookup fails the version" "$?" "1"
 
 echo "landing-guard.sh"
 r="$(new_repo)"; commit "$r" "chore: init"; base="$(git -C "$r" rev-parse HEAD)"
@@ -75,7 +93,7 @@ echo "start-release.sh"
 origin="$(mktemp -d)"; git -C "$origin" init -q --bare -b develop
 r="$(new_repo)"
 mkdir -p "$r/scripts/release" "$r/scripts/store" "$r/fastlane/metadata/android/en-US" "$r/fastlane/metadata/android/es-ES"
-cp "$SCRIPTS/start-release.sh" "$SCRIPTS/release-notes.sh" "$r/scripts/release/"; cp "$REPO_ROOT/scripts/store/check-listing.sh" "$r/scripts/store/"
+cp "$SCRIPTS/start-release.sh" "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$r/scripts/release/"; cp "$REPO_ROOT/scripts/store/check-listing.sh" "$r/scripts/store/"
 for l in en-US es-ES; do echo T >"$r/fastlane/metadata/android/$l/title.txt"; echo S >"$r/fastlane/metadata/android/$l/short_description.txt"; echo F >"$r/fastlane/metadata/android/$l/full_description.txt"; done
 git -C "$r" add -A; commit "$r" "chore: init"
 git -C "$r" tag -a v1.0.0 -m t
@@ -105,7 +123,7 @@ git -C "$r" push -q origin 'v1.0.0^{commit}:refs/heads/main'
 
 # A newer section goes above the older ones, and a breaking change says so.
 r5="$(new_repo)"
-mkdir -p "$r5/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r5/scripts/release/"
+mkdir -p "$r5/scripts/release"; cp "$SCRIPTS/start-release.sh" "$SCRIPTS/previous-release.sh" "$r5/scripts/release/"
 printf '# Changelog\n\nheader\n\n## 1.0.0 — 2026-10-07\n\nFirst release.\n' >"$r5/CHANGELOG.md"
 git -C "$r5" add -A; commit "$r5" "chore: init"; git -C "$r5" tag -a v1.0.0 -m t
 commit "$r5" "feat(sync)!: accounts"; commit "$r5" "feat: great news!"; commit "$r5" "chore: noise"
@@ -117,7 +135,7 @@ log5="$(git -C "$r5" show release/2.0.0:CHANGELOG.md)"
   && grep -q '^header$' <<<"$log5" && pass "new section above the old, header kept" || fail "section order: $log5"
 grep -q -- '^- \*\*sync\*\*: accounts (breaking)$' <<<"$log5" && pass "breaking change is marked" || fail "breaking: $log5"
 grep -q -- '^- great news!$' <<<"$log5" && pass "a ! in the subject is not breaking" || fail "subject bang: $log5"
-r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r6/scripts/release/"
+r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$SCRIPTS/previous-release.sh" "$r6/scripts/release/"
 git -C "$r6" add -A; commit "$r6" "chore: init"; git -C "$r6" tag -a v1.0.0 -m t; commit "$r6" "ci: only"
 o6="$(mktemp -d)"; git -C "$o6" init -q --bare -b develop
 git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
@@ -294,7 +312,7 @@ fi
 echo "release-notes.sh"
 r="$(new_repo)"
 mkdir -p "$r/scripts/release" "$r/fastlane/metadata/android/en-US" "$r/fastlane/metadata/android/es-ES"
-cp "$SCRIPTS/release-notes.sh" "$r/scripts/release/"
+cp "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$r/scripts/release/"
 git -C "$r" add -A; commit "$r" "chore: init"; git -C "$r" tag -a v1.0.0 -m t
 commit "$r" "feat(settings): mute genres (#389)"
 commit "$r" "feat(onboarding): first-run introduction (EPIC 47) (#323)"
