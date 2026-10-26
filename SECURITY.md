@@ -20,6 +20,6 @@ Out of scope: TMDB's API, and findings that need a rooted/jailbroken device or p
 
 - **CodeQL** code scanning (default setup) for Kotlin/Java, JavaScript/TypeScript and GitHub Actions workflows (#478): it looks for injection and unsafe-deserialization patterns, and for workflow injection and risky `pull_request_target` use. Findings are in the repository's *Security* tab; a dismissed one carries its reason.
 - **Dependabot alerts and security updates** are on (#479), next to the weekly version updates in `.github/dependabot.yml`.
-- **Dependency review** on pull requests into `main` or `develop` (`.github/workflows/dependency-review.yml`): fails on a newly added dependency, in any scope (runtime, development or unknown), with a high-severity advisory or a GPL, LGPL or AGPL licence. The Android release has the stricter `licensee` allow-list on top.
+- **Dependency review** on pull requests into `main` or `develop` (`.github/workflows/dependency-review.yml`): fails on a newly added dependency, in any scope (runtime, development or unknown), with a high-severity advisory or a GPL or AGPL licence. Weak copyleft (LGPL, MPL) passes there, since the website build uses it; the Android release has the stricter `licensee` allow-list (Apache-2.0, MIT, BSD-3-Clause) on top.
 - **Secret scanning with push protection** is on.
 - Every GitHub Action is pinned to a commit SHA, every runner image to a version, and every workflow declares its token permissions; CI checks all three.
