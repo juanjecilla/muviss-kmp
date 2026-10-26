@@ -40,7 +40,7 @@ items() { # <feat|fix> -> one user-facing line per change
     | grep -E "^$1(\([^)]*\))?!?: " \
     | grep -vE "^$1\(($HIDDEN_SCOPES)\)" \
     | grep -viE "$HIDDEN_WORDS" \
-    | sed -E "s/^$1(\([^)]*\))?!?: //; s/( \((#[0-9]+|(EPIC|ADR|WS|Wave) [^)]*)\))+$//; s/ #[0-9]+([^0-9]|$)/\1/g" \
+    | sed -E "s/^$1(\([^)]*\))?!?: //; s/( \((#[0-9]+|(EPIC|ADR|WS|Wave) [^)]*)\))+$//; s/^#[0-9]+[[:space:]]*//; s/ #[0-9]+([^0-9]|$)/\1/g" \
     | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }' \
     | awk '!seen[$0]++' || true
 }
