@@ -370,8 +370,6 @@ the schedule, the gates and where a fix goes.
   - the newest RC is not the branch head (a commit landed after it was built),
     or that RC's `release-rc.yml` run did not succeed;
   - CI on the branch head is not green;
-  - the store notes still carry `DRAFT:` (or are missing), checked at the beta
-    step too, since testers see them;
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
   - another version is still on the beta track (one per stage). This is read from
@@ -404,6 +402,32 @@ the schedule, the gates and where a fix goes.
 iOS walks the same three stages as Play, one week apart, on the same RC binary (ADR 0033).
 Its table, rules, lanes and the owner runbook are in section 9 ("9.4 The staged train for iOS").
 
+### Release notes
+
+The train writes them; nobody has to (`scripts/release/release-notes.sh`, run
+with no `--write` to preview). One file per listing locale,
+`fastlane/release-notes/vX.Y.Z/<locale>.txt`, within Play's 500 characters:
+
+- **What is in them.** The `feat` and `fix` subjects since the previous release,
+  features first, without issue references. Left out: infrastructure scopes
+  (`release`, `ci`, `build`, `ops`, `supabase`, ...), other platforms (`ios`,
+  `web`, `desktop`), and anything paid or remotely dark (sync, co-watch, the own
+  TMDB key), which never appear in public copy. Phrase a `feat`/`fix` subject
+  as something a user would recognise; it is the store text.
+- **Spanish (and any other non-English locale)** gets one sentence that counts
+  the changes ("Muviss 1.2.0 trae 3 novedades y 1 corrección de errores."): a
+  commit subject cannot be translated here.
+- **When.** `start-release.sh` writes them with the cut. Every push to the
+  release branch (`release-rc.yml`) writes them again first; when a merged fix
+  changed them it commits them as the release App and stops, and the run that
+  push starts tags and builds the commit that carries them. So the RC on Play,
+  the GitHub pre-release and the file in the repo always agree.
+- **Editing by hand is allowed, never required.** `.generated` records what the
+  script last wrote per locale; a file that no longer matches is a person's and
+  is kept from then on. A file that still starts with the old `DRAFT:` marker is
+  replaced. `release-notes-guard` still refuses a `DRAFT:` file on a PR into
+  `main`, which generated notes never carry.
+
 ### Cutting a release
 
 The train does it on Mondays. By hand (the first release, or an off-cycle one):
@@ -421,8 +445,7 @@ only) a `release/*` branch is open. The train applies ADR 0030's stagger rule
 itself and passes `--stagger-checked`; a hand cut refuses while any release
 branch is open, unless you pass that flag after checking that none is still in
 internal. The branch starts with one commit:
-draft release notes for every listing locale, seeded from the `feat`/`fix`
-subjects since the last release, first line `DRAFT: …`, and this version's
+the release notes for every listing locale, and this version's
 section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
 uncapped). The changelog is generated, not edited: a fix merged into the
 release branch later is in the RC but not in that section.
@@ -431,8 +454,7 @@ Then:
 
 1. Install the RC from Play's internal track and run §8.
 2. Fix anything on the release branch (PRs into `release/x.y.z`). Each push is a new RC.
-3. Rewrite the notes for users in every locale and delete the `DRAFT:` line —
-   `release-notes-guard` fails the PR into `main` until you do.
+3. Nothing for the notes: they never hold a release (see **Release notes** below).
 4. Nothing, on the scheduled path: the Sunday step after the beta opens the PR
    `release/x.y.z → main` and merges it as the App (see **Staged releases**). To
    merge by hand instead, open that PR and **merge with a merge commit** — or
