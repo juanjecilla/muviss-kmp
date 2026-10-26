@@ -40,7 +40,7 @@ items() { # <feat|fix> -> one user-facing line per change
     | grep -E "^$1(\([^)]*\))?!?: " \
     | grep -vE "^$1\(($HIDDEN_SCOPES)\)" \
     | grep -viE "$HIDDEN_WORDS" \
-    | sed -E "s/^$1(\([^)]*\))?!?: //; s/( \((#[0-9]+|(EPIC|ADR|WS|Wave) [^)]*)\))+$//" \
+    | sed -E "s/^$1(\([^)]*\))?!?: //; s/( \((#[0-9]+|(EPIC|ADR|WS|Wave) [^)]*)\))+$//; s/ #[0-9]+([^0-9]|$)/\1/g" \
     | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }' \
     | awk '!seen[$0]++' || true
 }
@@ -55,7 +55,7 @@ english() {
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     local next="$out"$'\n'"- $line"
-    [ "$(printf '%s\n%s' "$next" "$tail" | wc -m | tr -d ' ')" -le "$MAX" ] || break
+    [ "$(printf '%s\n%s\n' "$next" "$tail" | wc -m | tr -d ' ')" -le "$MAX" ] || break
     out="$next"
   done <<<"$(printf '%s\n%s\n' "$features" "$fixes")"
   printf '%s\n%s\n' "$out" "$tail"
@@ -77,9 +77,12 @@ spanish() {
 }
 
 notes_for() { # <locale>
+  # A listing language with no sentence of its own gets the English list: it is
+  # what Play shows for an untranslated locale anyway, and the count sentence
+  # is Spanish. A new language adds its own branch here.
   case "$1" in
     es-*) spanish ;;
-    *) english ;;
+    en-* | *) english ;;
   esac
 }
 

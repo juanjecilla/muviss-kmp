@@ -1051,7 +1051,7 @@ APPLE_ASC_KEY_ID=… APPLE_ASC_ISSUER_ID=… APPLE_ASC_P8_PATH=~/Downloads/AuthK
 
 ### 9.4 The staged train for iOS (ADR 0033)
 
-iOS walks the same three stages as Play, one week apart, on the **same RC binary**. Each platform has its own stage in the release issue's marker. Shared gates (release-blocker, a fix PR into the branch, CI, draft notes) hold both platforms. The iOS steps are skipped with a notice while the App Store Connect key is unset, and Play runs as before.
+iOS walks the same three stages as Play, one week apart, on the **same RC binary**. Each platform has its own stage in the release issue's marker. Shared gates (release-blocker, a fix PR into the branch, CI) hold both platforms. The iOS steps are skipped with a notice while the App Store Connect key is unset, and Play runs as before.
 
 | When | iOS step | What happens | Where |
 |---|---|---|---|

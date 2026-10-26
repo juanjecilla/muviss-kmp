@@ -298,7 +298,7 @@ cp "$SCRIPTS/release-notes.sh" "$r/scripts/release/"
 git -C "$r" add -A; commit "$r" "chore: init"; git -C "$r" tag -a v1.0.0 -m t
 commit "$r" "feat(settings): mute genres (#389)"
 commit "$r" "feat(onboarding): first-run introduction (EPIC 47) (#323)"
-commit "$r" "fix(search): offline copy"
+commit "$r" "fix(search): offline copy #412"
 commit "$r" "fix(profile): a signed-out user is offered sign-in, not a paywall"
 commit "$r" "feat(cowatch): share the invite"
 commit "$r" "fix(release): the train skips a holiday"
@@ -307,7 +307,7 @@ commit "$r" "feat(settings): bring your own TMDB key"
 git -C "$r" tag -a v1.1.0-rc1 -m rc
 rn() { (cd "$r" && scripts/release/release-notes.sh 1.1.0 "$@" 2>/dev/null); }
 out="$(rn)"
-grep -q -- '- Mute genres$' <<<"$out" && grep -q -- '- First-run introduction$' <<<"$out" && grep -q -- '- Offline copy$' <<<"$out" \
+grep -q -- '- Mute genres$' <<<"$out" && grep -q -- '- First-run introduction$' <<<"$out" && grep -q -- "- Offline copy$" <<<"$out" \
   && pass "lists user-facing feat/fix, capitalised, without issue refs" || fail "user-facing items: $out"
 grep -qiE 'paywall|invite|holiday|widget|tmdb' <<<"$out" && fail "hides paid, dark, infra and other-platform work: $out" \
   || pass "hides paid, dark, infra and other-platform work"
