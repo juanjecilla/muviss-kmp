@@ -1,5 +1,4 @@
 What's new in Muviss 1.3.0:
-- The Pick Session domain
 - Report a problem through a second hosted form
 - Request a feature from Settings through a hosted form
 - Device Backup, off by default
