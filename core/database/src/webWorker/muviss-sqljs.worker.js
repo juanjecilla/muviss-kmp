@@ -80,7 +80,20 @@ async function loadSnapshot() {
   }
 }
 
-async function saveSnapshot() {
+// Snapshot writes run one at a time, in order. The debounce timer does not wait
+// for the write it starts, so two could overlap, and a slow older write that
+// succeeded after a newer one failed (a full quota) would clear the warning
+// while the newest changes were not saved. Chained, each write exports the
+// database as it is when its turn comes, and the last one to finish is the
+// newest: its outcome is the one the flag reports.
+let saveChain = Promise.resolve();
+
+function saveSnapshot() {
+  saveChain = saveChain.then(writeSnapshot);
+  return saveChain;
+}
+
+async function writeSnapshot() {
   if (!isWriter || !db) return;
   try {
     const bytes = db.export();

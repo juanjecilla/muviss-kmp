@@ -10,7 +10,7 @@
     <string name="nav_needs_attention">%1$s, action needed</string>
     <!-- Web only: why changes in this tab may not survive. -->
     <string name="persistence_read_only_tab">Muviss is open in another tab. Changes here won't be saved.</string>
-    <string name="persistence_write_failed">Muviss couldn't save your latest changes in this browser. They will be lost if you close this tab.</string>
+    <string name="persistence_write_failed">Muviss couldn't save your latest changes in this browser. They will be lost if you reload or close this tab.</string>
     <string name="persistence_not_persisted">This browser can't save your library. Changes will be lost when you close this tab.</string>
     <!-- New-episode notifications on desktop and iOS (NotificationText.kt); Android's live in res/. -->
     <string name="notification_episode_out">%1$s is out</string>
