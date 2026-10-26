@@ -39,9 +39,9 @@ jobs:
               exit 1 ;;
           esac
 
-  # The release notes are written on the release branch, and the train seeds
-  # them with a draft marker. Merging into main promotes the RC to production
-  # with whatever notes it carries, so a draft must not get that far.
+  # The train writes the release notes (scripts/release/release-notes.sh), and
+  # merging into main promotes the RC to production with whatever notes it
+  # carries: a hand-made draft, or notes over Play's limit, must not get that far.
   release-notes-guard:
     name: Release notes are final
     if: github.base_ref == 'main'
