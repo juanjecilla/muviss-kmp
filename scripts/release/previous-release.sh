@@ -11,7 +11,8 @@
 # RC tag, else with its branch. `<commit>..<ref>` is then what is new since.
 #
 # With <before>, only versions older than it count (the notes of 1.2.0 follow
-# 1.1.0 even once 1.3.0 is cut). Prints nothing when there is no earlier release.
+# 1.1.0 even once 1.3.0 is cut). Prints nothing when there is no earlier release;
+# exits non-zero when the lookup fails, so callers must not swallow it.
 #
 # Usage: scripts/release/previous-release.sh [ref] [before X.Y.Z]
 set -euo pipefail
@@ -42,4 +43,7 @@ line="$(git tag -l "v$prev-rc*" | sort -V | tail -1)"
 if [ -z "$line" ]; then
   line="$(git for-each-ref --count=1 --format='%(refname)' "refs/heads/release/$prev" "refs/remotes/origin/release/$prev")"
 fi
-echo "$prev $(git merge-base "$REF" "$line")"
+# No common ancestor (a shallow clone, say) is an error, never "no release":
+# an empty base would turn the range into all of history.
+base="$(git merge-base "$REF" "$line")" || { echo "no merge base between $REF and $line" >&2; exit 1; }
+echo "$prev $base"

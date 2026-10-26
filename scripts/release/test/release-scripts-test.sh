@@ -62,6 +62,9 @@ expect_eq "previous-release before a version skips newer ones" \
   "$(cd "$r8" && "$SCRIPTS/previous-release.sh" develop 1.2.0 | cut -d' ' -f1)" "1.1.0"
 r9="$(new_repo)"; commit "$r9" "chore: init"; git -C "$r9" tag -a v1.1.0 -m t; git -C "$r9" branch release/1.2.0
 (cd "$r9" && "$SCRIPTS/next-version.sh" develop >/dev/null 2>&1); expect_eq "nothing since the cut exits 3" "$?" "3"
+# A release line with no common ancestor (a shallow clone) is an error, not "no release".
+git -C "$r9" switch -q --orphan release/1.3.0; commit "$r9" "chore: unrelated"; git -C "$r9" switch -q develop
+(cd "$r9" && "$SCRIPTS/next-version.sh" develop >/dev/null 2>&1); expect_eq "a failed lookup fails the version" "$?" "1"
 
 echo "landing-guard.sh"
 r="$(new_repo)"; commit "$r" "chore: init"; base="$(git -C "$r" rev-parse HEAD)"

@@ -33,7 +33,8 @@ HIDDEN_WORDS='sync|co-watch|cowatch|paywall|sign-in|sign in|signed-out|signed ou
 
 # What is new since the release before this one, final or still in flight:
 # 1.3.0's notes must not repeat 1.2.0's while 1.2.0 is still in beta.
-read -r _ FROM <<<"$(scripts/release/previous-release.sh HEAD "$VERSION")" || true
+found="$(scripts/release/previous-release.sh HEAD "$VERSION")"
+read -r _ FROM <<<"$found" || true
 range="${FROM:+$FROM..}HEAD"
 
 items() { # <feat|fix> -> one user-facing line per change

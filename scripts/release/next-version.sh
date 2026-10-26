@@ -17,7 +17,8 @@ REF="${1:-origin/develop}"
 # the back-merge PR lands, develop cannot reach the tag that was just put on
 # main. A version still in flight (ADR 0030: cut, not yet in production) counts
 # too, or the train would cut it again. `FROM..REF` excludes everything it took.
-read -r PREV FROM <<<"$("$(dirname "$0")/previous-release.sh" "$REF")" || true
+found="$("$(dirname "$0")/previous-release.sh" "$REF")"
+read -r PREV FROM <<<"$found" || true
 if [ -z "${PREV:-}" ]; then
   echo "1.0.0"
   exit 0
