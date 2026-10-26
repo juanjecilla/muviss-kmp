@@ -39,7 +39,8 @@ object ShortlistRanking {
 
     fun rank(mine: List<PoolItem>, theirs: List<PoolItem>): List<ShortlistItem> {
         val theirsById = theirs.associateBy { it.mediaId }
-        return mine.mapNotNull { ours ->
+        // Deduped by id: the Shortlist list is keyed by it, and a repeat would crash the list (#463).
+        return mine.distinctBy { it.mediaId }.mapNotNull { ours ->
             val yours = theirsById[ours.mediaId] ?: return@mapNotNull null
             ours to yours
         }.map { (ours, yours) ->

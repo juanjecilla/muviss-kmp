@@ -26,6 +26,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -379,7 +381,9 @@ private fun MuvissScaffold(
                     selected = selected,
                     onClick = { controller.navigateTo(dest) },
                     icon = { NavItemIcon(dest, needsAttention = accountChangePending && dest.key == ACCOUNT_CHANGE_DESTINATION_KEY) },
-                    label = { Text(dest.label) },
+                    // At 200 % text the five labels no longer fit their slots and break mid-word
+                    // ("Searc/h"). The bar's labels stop scaling at 1.3×; the rest of the app does not.
+                    label = { CappedFontScale(NAV_LABEL_MAX_FONT_SCALE) { Text(dest.label, maxLines = 1) } },
                     colors = itemColors,
                 )
             }
@@ -476,4 +480,14 @@ private fun rememberPersistenceWarning(): String? {
 
 private fun configureImageLoader() {
     SingletonImageLoader.setSafe { context -> createImageLoader(context) }
+}
+
+/** Largest font scale the bottom-bar labels follow. Beyond it the labels would overflow their slots. */
+private const val NAV_LABEL_MAX_FONT_SCALE = 1.3f
+
+/** Content whose text stops growing at [max] times the base size: the user's setting still applies up to there. */
+@Composable
+private fun CappedFontScale(max: Float, content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(density.density, minOf(density.fontScale, max)), content = content)
 }

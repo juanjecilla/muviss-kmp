@@ -18,7 +18,7 @@ class IosTrainTest < Minitest::Test
   def approved_facts(overrides = {})
     {
       version: "1.1.0", rc_tag: "v1.1.0-rc1", rc_code: 1_001_000, blockers: [], fix_prs: [], head: "abc", head_is_rc: true,
-      rc_built: true, ci_green: true, draft_locales: [], ios_uploaded: true, sentry_ios: nil,
+      rc_built: true, ci_green: true, ios_uploaded: true, sentry_ios: nil,
       beta_review: "APPROVED", merged: true, ios_beta_rc: "v1.1.0-rc1", previous_version: nil, previous_status: nil,
     }.merge(overrides)
   end
