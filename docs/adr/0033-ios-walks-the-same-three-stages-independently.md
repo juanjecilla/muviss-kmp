@@ -85,3 +85,7 @@ These are the points Apple did not answer, or answered only in a forum. Each one
 10. **The iOS release name reaches Sentry** as `com.codingpit.muviss.ios@…` with dSYMs matched to it (WS2/WS5). Confirm on the first TestFlight crash before the App Store gate relies on it.
 11. **The 30-day pause budget** is cumulative per version, across gate and brake pauses. A release paused for 25 days needs an owner decision before the budget runs out.
 12. **Spaceship's method names** for phased release were not verified; use the REST resource or check the gem source.
+
+## Amendment, 2026-10-26: the notes gate is gone
+
+The `DRAFT:` notes gate held 1.2.0 at internal for a week and, through the stagger rule, stopped the train from cutting 1.3.0. A gate on text nobody had been asked to write does not protect anything. The train now writes final notes itself (`scripts/release/release-notes.sh`): at the cut, and again on every push to the release branch, so fixes are included. A person may still edit them and the train then keeps their text. The Sunday steps no longer read the notes. `release-notes-guard` still refuses a hand-made `DRAFT:` file on a PR into `main`. See `docs/RELEASING.md`, "Release notes".

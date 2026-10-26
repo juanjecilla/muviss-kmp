@@ -12,9 +12,9 @@
 # promotes the last RC (release.yml).
 #
 # The branch starts with one commit: Play release notes for every listing
-# locale, seeded from the conventional commits since the last release and
-# marked as a draft, plus this version's CHANGELOG.md section. The RC builds accept the draft; the PR into main does not
-# (scripts/release/check-release-notes.sh --final).
+# locale, generated from the conventional commits since the last release
+# (scripts/release/release-notes.sh), plus this version's CHANGELOG.md section.
+# Nobody has to edit the notes; a person may, and the train then keeps their text.
 #
 # Usage:  scripts/release/start-release.sh 1.2.0 [--hotfix] [--dry-run]
 set -euo pipefail
@@ -94,32 +94,12 @@ fi
 
 git switch --quiet -c "$BRANCH" "origin/$BASE"
 
-# Seed the release notes. Only feat and fix subjects are user-facing; the rest
-# (chore, docs, ci, test, refactor) would read as noise in a store listing.
-range="${PREV:+$PREV..}HEAD"
-changes="$(git log --no-merges --format='%s' "$range" \
-  | grep -E '^(feat|fix)(\([^)]*\))?!?: ' \
-  | sed -E 's/^(feat|fix)(\([^)]*\))?!?: /- /' \
-  | head -12 || true)"
-[ -n "$changes" ] || changes="- Bug fixes and improvements."
+# The release notes: final, user-facing, for every listing locale. They never
+# hold a release; release-rc.yml rewrites them as fixes land on the branch.
 if [ -d fastlane/metadata/android ]; then
-  for dir in fastlane/metadata/android/*/; do
-    locale="$(basename "$dir")"
-    notes="fastlane/release-notes/v$VERSION/$locale.txt"
-    [ -f "$notes" ] && continue
-    mkdir -p "$(dirname "$notes")"
-    {
-      echo "DRAFT: rewrite for users in $locale (max 500 chars) and delete this line before $BRANCH merges into main."
-      echo "$changes"
-    } >"$notes"
-    # Play caps notes at 500 characters and the RC upload enforces it; drop
-    # trailing items rather than fail the first RC on a long week.
-    while [ "$(wc -m <"$notes" | tr -d ' ')" -gt 500 ]; do
-      sed -i.bak '$d' "$notes" && rm -f "$notes.bak"
-    done
-  done
+  scripts/release/release-notes.sh "$VERSION" --write >/dev/null
   git add fastlane/release-notes
-  ok "seeded draft release notes in fastlane/release-notes/v$VERSION/"
+  ok "wrote release notes in fastlane/release-notes/v$VERSION/"
 fi
 
 # CHANGELOG.md gets a section for this version from the same commits, never by
@@ -129,6 +109,7 @@ fi
 # branch afterwards is in the RC but not here; the GitHub Release's compare
 # link is the exhaustive list. Only a `!` in the header (`feat(x)!:`) marks a
 # breaking change; one in the subject is the subject's.
+range="${PREV:+$PREV..}HEAD"
 changelog_items() { # <type>
   git log --no-merges --format='%s' "$range" \
     | grep -E "^$1(\([^)]*\))?!?: " \
@@ -155,9 +136,9 @@ SECTION="$section" awk '
 mv CHANGELOG.md.tmp CHANGELOG.md
 git add CHANGELOG.md
 git commit --quiet -m "chore(release): start $VERSION" \
-  -m "Seeds draft Play release notes for every listing locale and the CHANGELOG.md section (ADR 0025)."
+  -m "Writes the Play release notes for every listing locale and the CHANGELOG.md section (ADR 0025)."
 ok "added the $VERSION section to CHANGELOG.md"
 
 git push --quiet -u origin "$BRANCH"
 ok "pushed $BRANCH — release-rc.yml is building rc1"
-printf '\n  Watch it:  gh run watch\n  Next:      edit the notes, then open a PR %s → main\n\n' "$BRANCH"
+printf '\n  Watch it:  gh run watch\n  Next:      the Sunday step promotes %s (docs/RELEASING.md, staged releases)\n\n' "$BRANCH"
