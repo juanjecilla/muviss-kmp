@@ -1,0 +1,79 @@
+-- The Taste Profile (EPIC 51, #402, CONTEXT.md): what the person said they
+-- like, one row per item. Genres, formats, streaming services, languages and
+-- the company they usually watch with. Disliked genres are NOT here; they are
+-- Muted Genres (ADR 0031), which stay per-device.
+--
+-- One row per item rather than one column holding a list, for the reason
+-- `triageSnooze` and `episodePlay` are rows: two devices each adding one item
+-- must both keep it. A single column would last-write-wins the whole set and
+-- drop one device's change. Hence a derived TEXT primary key, `kind:value`, so
+-- an item recorded on two devices is one row, not two.
+--
+-- `label` is the name shown when the item was chosen (a genre, a service), so
+-- the editor and the export can name it offline, the way Muted Genres keep
+-- theirs. It is display text only and never part of the key.
+--
+-- Sync columns per ADR 0002. Deletes are SOFT, and every read filters
+-- `deleted = 0`, for the same reason as `triageSnooze` (ADR 0023): a hard
+-- delete leaves no timestamp for last-write-wins to compare, so the other
+-- device's copy would be pushed back and "unlike" would undo itself.
+CREATE TABLE tasteProfile (
+    id TEXT NOT NULL PRIMARY KEY,
+    kind TEXT NOT NULL,
+    value TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+);
+
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX tasteProfile_dirty ON tasteProfile(isDirty) WHERE isDirty = 1;
+
+-- Every item the person has picked, for the editor, the Pick Session and
+-- the export. Grouped by kind so the editor reads top to bottom.
+selectAll:
+SELECT *
+FROM tasteProfile
+WHERE deleted = 0
+ORDER BY kind ASC, label ASC, value ASC;
+
+-- Does not filter `deleted` — callers decide (mirrors triageSnooze.selectById).
+selectById:
+SELECT *
+FROM tasteProfile
+WHERE id = :id;
+
+-- Picking an item again overwrites it in place and clears any tombstone, so
+-- an item unpicked then picked again is one row.
+upsert:
+INSERT OR REPLACE INTO tasteProfile(id, kind, value, label, updatedAtEpochMs, isDirty, deleted)
+VALUES (:id, :kind, :value, :label, :updatedAtEpochMs, :isDirty, :deleted);
+
+-- Unpicking an item. Soft, so the tombstone propagates instead of the other
+-- device pushing the item back.
+softDelete:
+UPDATE tasteProfile
+SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
+WHERE id = :id;
+
+selectDirty:
+SELECT *
+FROM tasteProfile
+WHERE isDirty = 1;
+
+-- Conditional on the stamp the push carried, so an edit made mid-push stays
+-- dirty (EPIC 39, ADR 0020).
+clearDirty:
+UPDATE tasteProfile
+SET isDirty = 0
+WHERE id = :id AND updatedAtEpochMs = :pushedAt;
+
+-- First sync for an account, and "resync everything" (EPIC 39, ADR 0020).
+markAllDirty:
+UPDATE tasteProfile SET isDirty = 1;
+
+-- Account switch, "discard local data" (EPIC 39), and Settings > Delete all
+-- data. Hard on purpose: a local wipe is not a message to other devices.
+deleteAll:
+DELETE FROM tasteProfile;
