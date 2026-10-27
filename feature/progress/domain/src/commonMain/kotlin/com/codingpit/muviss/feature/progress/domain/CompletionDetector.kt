@@ -6,10 +6,13 @@ import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * The derived [WatchStatus] of a title the person has in their library, or null when it is not in
@@ -30,9 +33,18 @@ fun interface TitleStatusSource {
  * the plain use cases and so cannot emit, which is what "never a Completion" means here.
  *
  * Status is compared before and after the write, synchronously: [WatchStatus] is derived, so the
- * second read already sees the tick.
+ * second read already sees the tick. The read, write, read runs under one lock: two quick taps on a
+ * show's last two episodes would otherwise both read Watching before either write, both read Watched
+ * after, and emit two Completions for one. Ticks are hand-made and short, so one lock for every title
+ * costs nothing a person could notice.
+ *
+ * Detection never blocks the tick. A status that cannot be read (the derivation throws for a title
+ * whose stored counts break `WatchProgress`'s invariant, and the source derives the whole library)
+ * reads as unknown, which detects nothing, and the write still happens.
  */
 class CompletionDetector(private val statuses: TitleStatusSource) {
+
+    private val lock = Mutex()
 
     private val emitted = MutableSharedFlow<Completion>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -43,10 +55,21 @@ class CompletionDetector(private val statuses: TitleStatusSource) {
     suspend fun around(mediaId: MediaId, seen: Boolean, write: suspend () -> Unit) {
         // Unticking can never complete a title, so it skips the two reads.
         if (!seen) return write()
-        val before = statuses.statusOf(mediaId)
-        write()
-        val after = statuses.statusOf(mediaId)
-        completionOf(mediaId, before, after)?.let(emitted::tryEmit)
+        lock.withLock {
+            val before = statusOrNull(mediaId)
+            write()
+            val after = statusOrNull(mediaId)
+            completionOf(mediaId, before, after)?.let(emitted::tryEmit)
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // Any failure to read means "unknown", never a failed tick.
+    private suspend fun statusOrNull(mediaId: MediaId): WatchStatus? = try {
+        statuses.statusOf(mediaId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
     }
 
     companion object {
