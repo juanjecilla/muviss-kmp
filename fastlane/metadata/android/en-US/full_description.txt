@@ -12,6 +12,7 @@ KNOW WHAT'S NEXT
 • Upcoming: air dates for your shows, day by day.
 • New-episode notifications when something you follow airs — off until you turn them on, in a short first-run introduction or in Settings.
 • A home-screen widget so the next episode is one tap away.
+• Finished something? A short set of questions finds your next pick, from your list or from new titles, with a reason for each one. Offline, it picks from your list.
 
 FILL YOUR LIBRARY FAST
 • Go through titles one at a time and decide in a tap — not for me, later, watching, or caught up. Not sure yet? Snooze it and it comes back when you choose.
