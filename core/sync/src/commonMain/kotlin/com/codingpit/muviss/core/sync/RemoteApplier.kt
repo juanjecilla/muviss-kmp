@@ -54,6 +54,7 @@ internal class RemoteApplier(private val database: MuvissDatabase, private val c
         changes.triageDecisions.forEach { applyTriageDecision(it) }
         changes.triageSnoozes.forEach { applyTriageSnooze(it) }
         changes.episodePlays.forEach { applyEpisodePlay(it) }
+        changes.tasteProfileItems.forEach { applyTasteProfileItem(it) }
 
         val touched = buildSet {
             changes.collectionEntries.mapTo(this) { it.mediaId }
@@ -254,6 +255,20 @@ internal class RemoteApplier(private val database: MuvissDatabase, private val c
             overview = change.overview,
             snoozedAtEpochMs = change.snoozedAtEpochMs,
             dueAtEpochDay = change.dueAtEpochDay,
+            updatedAtEpochMs = change.updatedAtEpochMs,
+            isDirty = false,
+            deleted = change.deleted,
+        )
+    }
+
+    private suspend fun applyTasteProfileItem(change: TasteProfileItemChange) {
+        val local = database.tasteProfileQueries.selectById(change.id).awaitAsOneOrNull()
+        if (local != null && !remoteWins(local.updatedAtEpochMs, local.isDirty, change.updatedAtEpochMs)) return
+        database.tasteProfileQueries.upsert(
+            id = change.id,
+            kind = change.kind,
+            itemValue = change.value,
+            label = change.label,
             updatedAtEpochMs = change.updatedAtEpochMs,
             isDirty = false,
             deleted = change.deleted,

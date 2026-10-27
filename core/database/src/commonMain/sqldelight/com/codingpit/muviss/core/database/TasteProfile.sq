@@ -20,7 +20,7 @@
 CREATE TABLE tasteProfile (
     id TEXT NOT NULL PRIMARY KEY,
     kind TEXT NOT NULL,
-    value TEXT NOT NULL,
+    itemValue TEXT NOT NULL,
     label TEXT NOT NULL DEFAULT '',
     updatedAtEpochMs INTEGER NOT NULL,
     isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
@@ -36,7 +36,7 @@ selectAll:
 SELECT *
 FROM tasteProfile
 WHERE deleted = 0
-ORDER BY kind ASC, label ASC, value ASC;
+ORDER BY kind ASC, label ASC, itemValue ASC;
 
 -- Does not filter `deleted` — callers decide (mirrors triageSnooze.selectById).
 selectById:
@@ -47,8 +47,8 @@ WHERE id = :id;
 -- Picking an item again overwrites it in place and clears any tombstone, so
 -- an item unpicked then picked again is one row.
 upsert:
-INSERT OR REPLACE INTO tasteProfile(id, kind, value, label, updatedAtEpochMs, isDirty, deleted)
-VALUES (:id, :kind, :value, :label, :updatedAtEpochMs, :isDirty, :deleted);
+INSERT OR REPLACE INTO tasteProfile(id, kind, itemValue, label, updatedAtEpochMs, isDirty, deleted)
+VALUES (:id, :kind, :itemValue, :label, :updatedAtEpochMs, :isDirty, :deleted);
 
 -- Unpicking an item. Soft, so the tombstone propagates instead of the other
 -- device pushing the item back.
