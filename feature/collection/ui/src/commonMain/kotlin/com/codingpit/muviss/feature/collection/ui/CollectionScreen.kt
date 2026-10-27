@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -21,6 +22,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -68,6 +70,7 @@ import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_wat
 import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_with_count
 import com.codingpit.muviss.feature.collection.ui.generated.resources.find_something
 import com.codingpit.muviss.feature.collection.ui.generated.resources.library_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.next_pick_entry
 import com.codingpit.muviss.feature.collection.ui.generated.resources.segment_library
 import com.codingpit.muviss.feature.collection.ui.generated.resources.segment_lists
 import com.codingpit.muviss.feature.collection.ui.generated.resources.sort_by
@@ -107,6 +110,8 @@ fun CollectionScreen(
     onOpenDetail: (MediaId) -> Unit,
     onOpenList: (MediaList) -> Unit,
     onOpenSearch: () -> Unit = {},
+    /** The way into the Pick Session (EPIC 51, #545), drawn on the Library segment. Null draws nothing. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     var segment by remember { mutableStateOf(CollectionSegment.LIBRARY) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -130,7 +135,7 @@ fun CollectionScreen(
             modifier = Modifier.padding(horizontal = MuvissSpacing.l),
         )
         when (segment) {
-            CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail, onOpenSearch)
+            CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail, onOpenSearch, onOpenNextPick)
             CollectionSegment.LISTS -> ListsScreen(listsViewModel, onOpenList)
         }
     }
@@ -214,6 +219,7 @@ private fun LibraryScreen(
     viewModel: CollectionViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenNextPick: (() -> Unit)?,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -233,6 +239,7 @@ private fun LibraryScreen(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
+            onOpenNextPick?.let { LibraryNextPickButton(it) }
             CollectionFilterChips(state, onSelect = viewModel::selectFilter)
 
             PullToRefreshBox(
@@ -391,3 +398,23 @@ private fun CollectionSort.label(): String = stringResource(
 internal const val COLLECTION_SNACKBAR_TAG = "collection-snackbar"
 internal const val COLLECTION_GRID_TAG = "collection-grid"
 internal const val COLLECTION_CELL_TAG = "collection-cell"
+
+/** Test tag of the "What's next?" entry on the Library (EPIC 51, #545). */
+internal const val LIBRARY_NEXT_PICK_TAG = "libraryNextPick"
+
+/**
+ * The way into the Pick Session from the Library (EPIC 51, #545): a labelled button above the filter chips,
+ * with the 48dp minimum touch target. The words say what it opens, so there is no icon to label.
+ */
+@Composable
+private fun LibraryNextPickButton(onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s)
+            .heightIn(min = 48.dp)
+            .testTag(LIBRARY_NEXT_PICK_TAG),
+    ) {
+        Text(stringResource(Res.string.next_pick_entry))
+    }
+}

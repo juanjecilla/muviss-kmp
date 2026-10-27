@@ -337,6 +337,7 @@ private fun MuvissScaffold(
             controller.destinations.firstOrNull { dest ->
                 currentDestination?.hierarchy?.any { it.hasRoute(dest.route::class) } == true
             }
+        controller.showingOnboarding = currentDestination?.hasRoute(OnboardingRoute::class) == true
     }
 
     LaunchedEffect(deepLinkMediaId) {
@@ -437,15 +438,21 @@ private fun MuvissScaffold(
                             scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
                     },
                 ) {
-                    searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                    searchSection(
+                        navController,
+                        onOpenTriage = { navController.navigate(TriageRoute) },
+                        onOpenNextPick = controller::openNextPick,
+                    )
                     collectionSection(
                         navController,
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenSearch = { controller.destinations.firstOrNull { it.key == "search" }?.let(controller::navigateTo) },
+                        onOpenNextPick = controller::openNextPick,
                     )
                     progressSection(
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenCoWatch = openCoWatch,
+                        onOpenNextPick = controller::openNextPick,
                     )
                     profileSection(navController, onOpenCompanions = openCoWatch)
                     settingsSection(
