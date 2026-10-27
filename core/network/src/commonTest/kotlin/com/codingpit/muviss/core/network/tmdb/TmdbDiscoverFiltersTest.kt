@@ -3,7 +3,10 @@ package com.codingpit.muviss.core.network.tmdb
 import com.codingpit.muviss.core.common.epochDayOfCivil
 import com.codingpit.muviss.core.network.DiscoverFilters
 import com.codingpit.muviss.core.network.DiscoverSort
+import com.codingpit.muviss.core.network.MetadataProvider
+import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.PagedResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -70,10 +73,12 @@ class TmdbDiscoverFiltersTest {
         val with = ask(MediaType.MOVIE, DiscoverFilters(watchProviderIds = setOf(8, 337), watchRegion = "ES"))
         assertEquals("8|337", with["with_watch_providers"])
         assertEquals("ES", with["watch_region"])
+        assertEquals("flatrate", with["with_watch_monetization_types"])
 
         val without = ask(MediaType.MOVIE, DiscoverFilters(watchProviderIds = setOf(8)))
         assertNull(without["with_watch_providers"])
         assertNull(without["watch_region"])
+        assertNull(without["with_watch_monetization_types"])
     }
 
     @Test
@@ -99,5 +104,27 @@ class TmdbDiscoverFiltersTest {
         assertEquals("10767", params["without_genres"])
         assertEquals("2", params["page"])
         assertEquals("popularity.desc", params["sort_by"])
+    }
+
+    @Test
+    fun newest_first_uses_the_films_or_the_shows_date() = runTest {
+        assertEquals("primary_release_date.desc", ask(MediaType.MOVIE, DiscoverFilters(sort = DiscoverSort.NEWEST_FIRST))["sort_by"])
+        assertEquals("first_air_date.desc", ask(MediaType.TV, DiscoverFilters(sort = DiscoverSort.NEWEST_FIRST))["sort_by"])
+    }
+
+    @Test
+    fun a_provider_without_filters_keeps_a_genre_when_several_are_chosen() = runTest {
+        var asked: String? = null
+        val genreOnly = object : MetadataProvider by fixture().provider {
+            override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> {
+                asked = genreId
+                return PagedResult(emptyList(), page = page, totalPages = page)
+            }
+
+            // Delegation would forward this to TmdbProvider's override; the interface default is what is under test.
+            override suspend fun discoverFiltered(type: MediaType, page: Int, filters: DiscoverFilters): PagedResult<MediaSummary> = super<MetadataProvider>.discoverFiltered(type, page, filters)
+        }
+        genreOnly.discoverFiltered(MediaType.MOVIE, filters = DiscoverFilters(genreIds = linkedSetOf("35", "16")))
+        assertEquals("35", asked)
     }
 }

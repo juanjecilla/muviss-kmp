@@ -121,7 +121,7 @@ class TmdbProvider internal constructor(
     override suspend fun discoverFiltered(type: MediaType, page: Int, filters: DiscoverFilters): PagedResult<MediaSummary> {
         val dto: TmdbPageDto = get("discover/${type.tmdbPath}") {
             parameter("language", locale.language)
-            parameter("sort_by", filters.sort.tmdbValue)
+            parameter("sort_by", filters.sort.tmdbValue(type))
             parameter("page", page)
             applyDiscoverFilters(type, filters)
         }

@@ -29,6 +29,8 @@ internal fun HttpRequestBuilder.applyDiscoverFilters(type: MediaType, filters: D
     if (region != null && filters.watchProviderIds.isNotEmpty()) {
         parameter("watch_region", region)
         parameter("with_watch_providers", filters.watchProviderIds.joinToString("|"))
+        // Without it a provider also matches titles it only rents or sells.
+        parameter("with_watch_monetization_types", "flatrate")
     }
     if (type == MediaType.MOVIE && filters.certifications.isNotEmpty() && !filters.certificationCountry.isNullOrBlank()) {
         parameter("certification_country", filters.certificationCountry)

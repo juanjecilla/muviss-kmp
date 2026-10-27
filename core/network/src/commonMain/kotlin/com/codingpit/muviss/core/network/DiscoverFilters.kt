@@ -1,10 +1,16 @@
 package com.codingpit.muviss.core.network
 
-/** How TMDB orders a discover page. */
-enum class DiscoverSort(val tmdbValue: String) {
+import com.codingpit.muviss.models.MediaType
+
+/** How TMDB orders a discover page. The date sort is named per type, like the date filters. */
+enum class DiscoverSort(private val movieValue: String, private val tvValue: String = movieValue) {
     POPULARITY("popularity.desc"),
     RATING("vote_average.desc"),
-    NEWEST_FIRST("primary_release_date.desc"),
+    NEWEST_FIRST("primary_release_date.desc", "first_air_date.desc"),
+    ;
+
+    /** TMDB's `sort_by` value for a `/discover/{movie|tv}` request. */
+    fun tmdbValue(type: MediaType): String = if (type == MediaType.MOVIE) movieValue else tvValue
 }
 
 /**
@@ -27,7 +33,10 @@ data class DiscoverFilters(
     /** First release (a film) or first air date (a show), inclusive. */
     val releasedOnOrAfterEpochDay: Long? = null,
     val releasedOnOrBeforeEpochDay: Long? = null,
-    /** Streaming providers, TMDB ids, any of. Needs [watchRegion]; without it TMDB ignores them, so the provider sends neither. */
+    /**
+     * Streaming providers, TMDB ids, any of, counting subscription availability only (not rent or buy).
+     * Needs [watchRegion]; without it TMDB ignores them, so the provider sends neither.
+     */
     val watchProviderIds: Set<Int> = emptySet(),
     val watchRegion: String? = null,
     /** Films only: `certification_country` plus these ratings, any of. Shows have no such filter on TMDB. */
