@@ -143,6 +143,8 @@ kotlin {
         // be assembled and checked (see `AppGraphTest`).
         jvmTest.dependencies {
             implementation(libs.kotlin.test)
+            // EPIC 51 (#400): AppGraphTest names Next Pick's domain contracts to prove they resolve.
+            implementation(projects.feature.nextpick.domain)
             implementation(libs.sqldelight.sqliteDriver)
             // The automatic-sync suites (EPIC 40) run the real Koin graph, the
             // real SyncEngine and the real Supabase backend over
