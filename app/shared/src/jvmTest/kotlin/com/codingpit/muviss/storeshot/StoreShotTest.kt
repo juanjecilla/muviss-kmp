@@ -323,7 +323,8 @@ class StoreShotTest {
         val root = repoRoot()
         if (!dark) {
             val dir = File(root, device.folder(locale)).apply {
-                if (device.ownsFolder) deleteRecursively()
+                // A shot renamed or dropped since the last render must not linger for deliver/supply to upload.
+                if (device.ownsFolder) deleteRecursively() else listFiles()?.filter(device::ownsFile)?.forEach(File::delete)
                 mkdirs()
             }
             PLAY_ORDER.forEachIndexed { i, name ->
@@ -357,6 +358,9 @@ class StoreShotTest {
 
         /** The App Store folder holds three device classes, so one class must not clear the others'. */
         val ownsFolder: Boolean get() = prefix.isEmpty()
+
+        /** In a shared folder, a file this class wrote: its prefix and the `_` after it, so 6.9 never matches 6.5. */
+        fun ownsFile(file: File) = file.name.startsWith("${prefix}_")
 
         fun fileName(position: Int, name: String) = if (prefix.isEmpty()) "${position}_$name.png" else "${prefix}_${position}_$name.png"
 
