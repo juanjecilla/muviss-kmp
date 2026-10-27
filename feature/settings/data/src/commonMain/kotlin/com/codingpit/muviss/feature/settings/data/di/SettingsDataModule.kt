@@ -6,10 +6,12 @@ import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
 import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.feature.settings.data.AppSettingsFeatureFlags
 import com.codingpit.muviss.feature.settings.data.AppSettingsNextPickPreferences
 import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
+import com.codingpit.muviss.feature.settings.data.DefaultTasteProfileApi
 import com.codingpit.muviss.feature.settings.data.DeviceBackupWrites
 import com.codingpit.muviss.feature.settings.data.ExportQueries
 import com.codingpit.muviss.feature.settings.data.MutedGenresSession
@@ -19,6 +21,7 @@ import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
 import com.codingpit.muviss.feature.settings.data.SqlDelightBackupRestorer
 import com.codingpit.muviss.feature.settings.data.SqlDelightLocalDataEraser
 import com.codingpit.muviss.feature.settings.data.SqlDelightSettingsRepository
+import com.codingpit.muviss.feature.settings.data.SqlDelightTasteProfileRepository
 import com.codingpit.muviss.feature.settings.data.TmdbExternalIdResolver
 import com.codingpit.muviss.feature.settings.data.TmdbGenreCatalog
 import com.codingpit.muviss.feature.settings.domain.ApplyImportUseCase
@@ -37,6 +40,7 @@ import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
 import com.codingpit.muviss.feature.settings.domain.ObserveFeedbackLinksUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
+import com.codingpit.muviss.feature.settings.domain.ObserveTasteProfileUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveTmdbDataSourceUseCase
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
 import com.codingpit.muviss.feature.settings.domain.SaveTmdbKeyUseCase
@@ -45,12 +49,15 @@ import com.codingpit.muviss.feature.settings.domain.SetDeviceBackupEnabledUseCas
 import com.codingpit.muviss.feature.settings.domain.SetLanguageUseCase
 import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCase
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
+import com.codingpit.muviss.feature.settings.domain.SetTasteItemUseCase
 import com.codingpit.muviss.feature.settings.domain.SetThemeUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
 import com.codingpit.muviss.feature.settings.domain.SettingsObservations
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
+import com.codingpit.muviss.feature.settings.domain.TasteProfileRepository
 import com.codingpit.muviss.feature.settings.domain.TraktImportParser
 import com.codingpit.muviss.feature.settings.domain.TvTimeImportParser
+import kotlinx.coroutines.flow.map
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.createdAtStart
 import org.koin.core.module.dsl.withOptions
@@ -89,6 +96,15 @@ val settingsDataModule: Module = module {
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
     single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get()) }
     single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
+    single<TasteProfileRepository> { SqlDelightTasteProfileRepository(get<MuvissDatabase>().tasteProfileQueries, get(), get()) }
+    factory { ObserveTasteProfileUseCase(get()) }
+    factory {
+        SetTasteItemUseCase(
+            get(),
+            get<SettingsRepository>().observeSettings().map { settings -> settings.mutedGenres.mapTo(linkedSetOf()) { it.key } },
+        )
+    }
+    single<TasteProfileApi> { DefaultTasteProfileApi(get(), get()) }
     factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }
     single<NextPickPreferences> { AppSettingsNextPickPreferences(get(), get()) }
