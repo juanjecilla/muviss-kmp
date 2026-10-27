@@ -48,7 +48,6 @@ class FakeIosGit
   def sha_of(_ref) = "rc-sha"
   def branch_head(_version) = "rc-sha"
   def version_code(_tag) = 1_001_000
-  def draft_locales(_version) = []
 end
 
 # After the merge into main: release.yml deleted the branch, and a later RC
@@ -56,7 +55,6 @@ end
 class FakeMergedIosGit < FakeIosGit
   def latest_rc(_version) = "v1.1.0-rc9"
   def branch_head(_version) = raise("no such branch")
-  def draft_locales(_version) = raise("no such branch")
 end
 
 # App Store Connect as the runner reads it. `status` is the 1.0.0 version's state;
