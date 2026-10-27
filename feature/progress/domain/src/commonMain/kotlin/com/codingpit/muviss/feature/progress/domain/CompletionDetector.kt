@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.core.common.review.ReviewLedger
 import com.codingpit.muviss.feature.progress.api.Completion
 import com.codingpit.muviss.feature.progress.api.CompletionKind
 import com.codingpit.muviss.models.EpisodeId
@@ -42,7 +43,11 @@ fun interface TitleStatusSource {
  * whose stored counts break `WatchProgress`'s invariant, and the source derives the whole library)
  * reads as unknown, which detects nothing, and the write still happens.
  */
-class CompletionDetector(private val statuses: TitleStatusSource) {
+class CompletionDetector(
+    private val statuses: TitleStatusSource,
+    /** Counts every hand tick that marks something seen, for the store-review guardrail (#410). Never fails the tick. */
+    private val ledger: ReviewLedger = ReviewLedger.None,
+) {
 
     private val lock = Mutex()
 
@@ -59,8 +64,14 @@ class CompletionDetector(private val statuses: TitleStatusSource) {
             val before = statusOrNull(mediaId)
             write()
             val after = statusOrNull(mediaId)
+            countTickOrIgnore()
             completionOf(mediaId, before, after)?.let(emitted::tryEmit)
         }
+    }
+
+    /** Counting is a side channel: a failure to count must never fail the tick, but cancellation still propagates. */
+    private suspend fun countTickOrIgnore() {
+        runCatching { ledger.countTick() }.onFailure { if (it is CancellationException) throw it }
     }
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // Any failure to read means "unknown", never a failed tick.
@@ -76,7 +87,7 @@ class CompletionDetector(private val statuses: TitleStatusSource) {
         private const val BUFFER = 8
 
         /** Detects nothing. For tests and previews that tick without a library behind them. */
-        val None = CompletionDetector { null }
+        val None = CompletionDetector(TitleStatusSource { null })
 
         /**
          * The Completion, if any, that moving from [before] to [after] is. Only a move *into* Watched

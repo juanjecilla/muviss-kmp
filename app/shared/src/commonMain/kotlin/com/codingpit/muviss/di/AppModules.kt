@@ -59,4 +59,5 @@ val appModules: List<Module> =
         coWatchUiModule,
         onboardingDataModule,
         onboardingUiModule,
+        reviewPromptModule,
     )

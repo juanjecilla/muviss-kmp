@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.connectivity.AndroidConnectivityMonitor
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
+import com.codingpit.muviss.core.common.review.ReviewPrompter
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
@@ -19,6 +20,7 @@ import com.codingpit.muviss.notifications.AndroidNotificationPermissionRequester
 import com.codingpit.muviss.notifications.AndroidNotificationSettings
 import com.codingpit.muviss.notifications.NewEpisodesNotifier
 import com.codingpit.muviss.notifications.NewEpisodesScheduler
+import com.codingpit.muviss.review.AndroidReviewPrompter
 import com.codingpit.muviss.sync.SyncScheduleController
 import com.codingpit.muviss.sync.WorkManagerSyncScheduler
 import com.codingpit.muviss.widget.GlanceWidgetRefresher
@@ -78,6 +80,8 @@ class MuvissApplication : Application() {
                             single<SystemNotificationSettings> { AndroidNotificationSettings(this@MuvissApplication) }
                             // Turning notifications on asks the OS here, not on first launch (EPIC 47).
                             single<NotificationPermissionRequester> { AndroidNotificationPermissionRequester(this@MuvissApplication) }
+                            // The store review sheet (#410) needs the foreground Activity, which MainActivity lends it.
+                            single<ReviewPrompter> { AndroidReviewPrompter(this@MuvissApplication) }
                             // An offline error retries itself on reconnect (#249).
                             single<ConnectivityMonitor> { AndroidConnectivityMonitor(this@MuvissApplication) }
                             // Debug builds only: the class-name chain of a swallowed

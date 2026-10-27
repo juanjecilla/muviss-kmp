@@ -116,6 +116,8 @@ kotlin {
             implementation(projects.feature.onboarding.data)
             // The shell asks onboarding whether the introduction has been seen (its contract only).
             implementation(projects.feature.onboarding.api)
+            // The Completion stream the store-review listener collects (#410).
+            implementation(projects.feature.progress.api)
 
             implementation(libs.navigation.compose)
             implementation(libs.compose.material3.adaptiveNavigationSuite)

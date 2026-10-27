@@ -102,6 +102,13 @@
 -- backup agent, which runs before Koin exists and so reads the column from the database
 -- file itself.
 --
+-- `reviewInstalledAtEpochMs`, `reviewTickCount`, `reviewLastAskedAtEpochMs` and
+-- `reviewLastAskedVersion` were added in `21.sqm` (#410, the store review prompt). The
+-- ledger the prompt's guardrails read: install date, hand ticks, and the last ask. Per
+-- device, NOT synced, NOT exported. A null install date is "not yet stamped", which the
+-- policy treats as ineligible; existing installs are stamped on their first launch after
+-- upgrading, so they wait the full install period from there.
+--
 -- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
 -- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
 -- is already true on every install that exists — folding the snooze hint into
@@ -131,7 +138,11 @@ CREATE TABLE appSettings (
     mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality',
     mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    reviewInstalledAtEpochMs INTEGER,
+    reviewTickCount INTEGER NOT NULL DEFAULT 0,
+    reviewLastAskedAtEpochMs INTEGER,
+    reviewLastAskedVersion TEXT
 );
 
 selectSettings:
@@ -229,6 +240,27 @@ UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch WHERE id = 0;
 
 updateDeviceBackupEnabled:
 UPDATE appSettings SET deviceBackupEnabled = :deviceBackupEnabled WHERE id = 0;
+
+-- The store-review ledger (#410, `21.sqm`). Four per-device counters, never synced or exported:
+-- they describe how this device's app has been used, not the library. Read by `ReviewLedger`
+-- (settings data) and only ever written through the three statements below, so no caller can
+-- set a counter to a value it did not earn. The install stamp is written once, and the count and
+-- the ask record are plain increments/overwrites on the one singleton row.
+selectReviewLedger:
+SELECT reviewInstalledAtEpochMs, reviewTickCount, reviewLastAskedAtEpochMs, reviewLastAskedVersion
+FROM appSettings
+WHERE id = 0;
+
+-- Null stays null until the first launch stamps it: a null install date means "not yet eligible",
+-- never "installed at the epoch" (which would be eligible at once).
+stampReviewInstalledIfUnknown:
+UPDATE appSettings SET reviewInstalledAtEpochMs = :epochMs WHERE id = 0 AND reviewInstalledAtEpochMs IS NULL;
+
+incrementReviewTickCount:
+UPDATE appSettings SET reviewTickCount = reviewTickCount + 1 WHERE id = 0;
+
+recordReviewAsked:
+UPDATE appSettings SET reviewLastAskedAtEpochMs = :epochMs, reviewLastAskedVersion = :version WHERE id = 0;
 
 -- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
 deleteRow:

@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.settings.data.di
 
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.review.ReviewLedger
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
@@ -16,6 +17,7 @@ import com.codingpit.muviss.feature.settings.data.RegistryImportMediaDetailsSour
 import com.codingpit.muviss.feature.settings.data.SettingsLocaleSync
 import com.codingpit.muviss.feature.settings.data.SqlDelightBackupRestorer
 import com.codingpit.muviss.feature.settings.data.SqlDelightLocalDataEraser
+import com.codingpit.muviss.feature.settings.data.SqlDelightReviewLedger
 import com.codingpit.muviss.feature.settings.data.SqlDelightSettingsRepository
 import com.codingpit.muviss.feature.settings.data.TmdbExternalIdResolver
 import com.codingpit.muviss.feature.settings.data.TmdbGenreCatalog
@@ -80,6 +82,8 @@ val settingsDataModule: Module = module {
         )
     }
     single { DeviceBackupWrites() }
+    // The store-review counters (#410): per device, the same appSettings row as the switches above.
+    single<ReviewLedger> { SqlDelightReviewLedger(get(), get()) }
     single { MutedGenresSession() }
     single<GenreCatalog> { TmdbGenreCatalog(get(), get()) }
     factory { LoadGenresUseCase(get()) }

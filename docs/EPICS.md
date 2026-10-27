@@ -463,6 +463,9 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-27
+- **In-app review prompt** (#410): the Play / App Store review sheet after a user-made Completion, guarded by install age, ticks, a 90-day cooldown and once per version. Per-device counters on `appSettings`. Claims `21.sqm` (schema v22, fixture `22.db`); PR #543 and #553 also claim `21.sqm`, and the merge queue renumbers whichever lands later. Device verification of the dialog (Android and iOS, quota behaviour) is tracked in #559.
+
 ### 2026-10-17
 - **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `20.sqm` (schema v21, fixture `21.db`) because Muted Genres took `18.sqm` and tick animations `19.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
 

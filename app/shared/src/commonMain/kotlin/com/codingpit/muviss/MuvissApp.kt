@@ -78,6 +78,7 @@ import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
+import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -141,6 +142,7 @@ fun MuvissApp(
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
         AutoSyncOnForeground()
+        AskForReviewAfterCompletion()
         RefreshRemoteConfigOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
@@ -184,6 +186,18 @@ private fun AutoSyncOnForeground() {
     PlatformSyncTriggers(coordinator)
     LifecycleEventEffect(Lifecycle.Event.ON_START) { coordinator.onForeground() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { coordinator.onForeground() }
+}
+
+/**
+ * Starts the store-review listener (#410) for as long as the app is composed. It is started here,
+ * rather than from a screen, for the same reason as [AutoSyncOnForeground]: a Completion can be
+ * made on any tab. Nothing in this composable decides anything; the policy lives in
+ * [ReviewPromptOnCompletion] and the use case under it.
+ */
+@Composable
+private fun AskForReviewAfterCompletion() {
+    val listener = koinInject<ReviewPromptOnCompletion>()
+    LaunchedEffect(listener) { listener.start(this) }
 }
 
 /**

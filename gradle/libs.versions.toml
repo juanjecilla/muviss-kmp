@@ -29,6 +29,9 @@ material3Adaptive = "1.2.0"
 koin = "4.2.2"
 sqldelight = "2.4.1"
 configcat = "5.1.0"
+# Play In-App Review (#410). Its POMs name the Play Core SDK terms, not an SPDX id, so
+# app/androidApp/build.gradle.kts allows that one URL, scoped to these artifacts.
+playReview = "2.0.2"
 ksafe = "3.3.0"
 coil = "3.6.3"
 navigationCompose = "2.9.2"
@@ -96,6 +99,7 @@ wrappers-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", ve
 
 # Remote config (EPIC 45, ADR 0026)
 configcat-kotlinClient = { module = "com.configcat:configcat-kotlin-client", version.ref = "configcat" }
+play-review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "playReview" }
 
 # Encrypted key/value storage for secrets (EPIC 46, ADR 0027)
 ksafe = { module = "eu.anifantakis:ksafe", version.ref = "ksafe" }
