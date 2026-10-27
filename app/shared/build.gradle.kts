@@ -104,6 +104,7 @@ kotlin {
             implementation(projects.feature.triage.ui)
             implementation(projects.feature.cowatch.ui)
             implementation(projects.feature.onboarding.ui)
+            implementation(projects.feature.nextpick.ui)
 
             // Feature data (Koin modules)
             implementation(projects.feature.search.data)
@@ -114,6 +115,7 @@ kotlin {
             implementation(projects.feature.triage.data)
             implementation(projects.feature.cowatch.data)
             implementation(projects.feature.onboarding.data)
+            implementation(projects.feature.nextpick.data)
             // The shell asks onboarding whether the introduction has been seen (its contract only).
             implementation(projects.feature.onboarding.api)
 

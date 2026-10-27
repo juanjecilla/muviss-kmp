@@ -62,6 +62,10 @@ import com.codingpit.muviss.di.rememberDatabaseDriverFactory
 import com.codingpit.muviss.feature.collection.ui.collectionSection
 import com.codingpit.muviss.feature.cowatch.ui.CompanionsRoute
 import com.codingpit.muviss.feature.cowatch.ui.coWatchSection
+import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
+import com.codingpit.muviss.feature.nextpick.ui.CompletionSheetHost
+import com.codingpit.muviss.feature.nextpick.ui.NextPickRoute
+import com.codingpit.muviss.feature.nextpick.ui.nextPickSection
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.onboarding.data.ApplySystemMotionDefault
 import com.codingpit.muviss.feature.onboarding.ui.OnboardingRoute
@@ -85,6 +89,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -404,6 +409,12 @@ private fun MuvissScaffold(
         ScreenInsets {
             Column {
                 PersistenceBanner(message = rememberPersistenceWarning())
+                // The "What's next?" sheet (EPIC 51, #400) is hosted here rather than on a screen: its
+                // trigger is a hot flow, so it must be collecting when a tick finishes a title.
+                CompletionSheetHost(
+                    viewModel = koinViewModel<CompletionPromptViewModel>(),
+                    onWhatsNext = { navController.navigate(NextPickRoute) },
+                )
                 NavHost(
                     navController = navController,
                     startDestination = startRoute,
@@ -457,6 +468,8 @@ private fun MuvissScaffold(
                     // Not a top-level destination — reached from Discover and Settings.
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    // Not a bottom-bar destination: reached from the completion sheet and the entry points (EPIC 51).
+                    nextPickSection(navController)
                 }
             }
         }

@@ -82,5 +82,5 @@ val triageDataModule: Module = module {
     factory { TriageOnboarding(get(), get()) }
     factory { TriageActions(get(), get(), get(), get(), get()) }
 
-    single<TriageApi> { DefaultTriageApi(get(), get(), get(), get(), get()) }
+    single<TriageApi> { DefaultTriageApi(get(), get(), get(), get(), get(), get()) }
 }
