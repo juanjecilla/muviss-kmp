@@ -162,4 +162,15 @@
     <string name="muted_genres_movies">Películas</string>
     <string name="muted_genres_offline">No se pudo cargar la lista de géneros. Tus géneros silenciados de arriba siguen funcionando.</string>
     <string name="muted_genres_retry">Reintentar</string>
+    <string name="section_next_pick">¿Qué sigue?</string>
+    <string name="next_pick_prompt">Ofrecer «¿Qué sigue?» al terminar</string>
+    <string name="next_pick_prompt_body">Al terminar una película o una serie, propone unas preguntas que acaban en una recomendación. Como mucho una vez al día.</string>
+    <string name="next_pick_length">Preguntas</string>
+    <string name="length_quick">Rápidas (hasta 2)</string>
+    <string name="length_standard">Normales (hasta 4)</string>
+    <string name="length_none">Ninguna</string>
+    <string name="next_pick_result">Resultado</string>
+    <string name="result_one">Una recomendación</string>
+    <string name="result_top">Varias recomendaciones</string>
+    <string name="result_deck">Mazo</string>
 </resources>

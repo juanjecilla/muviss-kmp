@@ -19,11 +19,13 @@ import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
 import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
 import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
+import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.onboarding.ui.OnboardingViewModel
 import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -124,6 +126,14 @@ class AppGraphTest {
         assertNotNull(koin.get<PickContextSource>())
         assertNotNull(koin.get<NextPickActions>())
         assertNotNull(koin.get<CompletionPromptStore>())
+        // EPIC 51 (#403): the Next Pick preferences are bound by settings:data and read by the Pick Session (#400).
+        assertNotNull(koin.get<NextPickPreferences>())
+    }
+
+    /** The Next Pick section of Settings (#403): its view model takes two contracts, so it resolves from the real graph. */
+    @Test
+    fun `the next pick settings view model resolves from the assembled graph`() {
+        assertNotNull(startGraph().get<NextPickSettingsViewModel>())
     }
 
     /**

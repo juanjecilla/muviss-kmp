@@ -54,6 +54,8 @@ import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.label
 import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.nextpick.api.ResultMode
+import com.codingpit.muviss.feature.nextpick.api.SessionLength
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SupportedLocales
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
@@ -76,21 +78,32 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.export
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
 import com.codingpit.muviss.feature.settings.ui.generated.resources.import
+import com.codingpit.muviss.feature.settings.ui.generated.resources.length_none
+import com.codingpit.muviss.feature.settings.ui.generated.resources.length_quick
+import com.codingpit.muviss.feature.settings.ui.generated.resources.length_standard
 import com.codingpit.muviss.feature.settings.ui.generated.resources.licenses
 import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_count
 import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_title
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_length
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_prompt
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_prompt_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_result
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications_blocked
 import com.codingpit.muviss.feature.settings.ui.generated.resources.open_settings
 import com.codingpit.muviss.feature.settings.ui.generated.resources.provider_region
 import com.codingpit.muviss.feature.settings.ui.generated.resources.report_problem
 import com.codingpit.muviss.feature.settings.ui.generated.resources.request_feature
+import com.codingpit.muviss.feature.settings.ui.generated.resources.result_deck
+import com.codingpit.muviss.feature.settings.ui.generated.resources.result_one
+import com.codingpit.muviss.feature.settings.ui.generated.resources.result_top
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_four_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_three_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_about
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_appearance
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_content
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_data
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_next_pick
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_privacy
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_triage
 import com.codingpit.muviss.feature.settings.ui.generated.resources.settings_title
@@ -125,6 +138,8 @@ fun SettingsScreen(
     // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
     // the screen works without it, so the many tests of everything else do not need a Koin graph.
     tmdbKey: TmdbKeyViewModel? = null,
+    // The "What's next?" rows (EPIC 51, #403). Null hides the section: the screen's own tests do not build it.
+    nextPick: NextPickSettingsViewModel? = null,
     // Whether the OS backup can carry the library (ADR 0034). A parameter so a test can show the row on desktop.
     canBackUp: Boolean = platformCanBackUp,
 ) {
@@ -270,6 +285,34 @@ fun SettingsScreen(
             enabled = state.animationsEnabled,
             onToggle = viewModel::onTriageDeckAnimationsToggled,
         )
+
+        if (nextPick != null) {
+            val nextPickState by nextPick.state.collectAsStateWithLifecycle()
+            SectionOverline(stringResource(Res.string.section_next_pick), topPadding = true)
+            SwitchRow(
+                label = stringResource(Res.string.next_pick_prompt),
+                description = stringResource(Res.string.next_pick_prompt_body),
+                checked = nextPickState.completionPromptEnabled,
+                onToggle = nextPick::onCompletionPromptToggled,
+                modifier = Modifier.testTag(NEXT_PICK_PROMPT_TAG),
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            PickerRow(
+                label = stringResource(Res.string.next_pick_length),
+                value = nextPickState.sessionLength.label(),
+                options = SessionLength.entries.map { it.name to it.label() },
+                selectedCode = nextPickState.sessionLength.name,
+                onSelect = { name -> nextPick.onSessionLengthSelected(SessionLength.fromStored(name)) },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            PickerRow(
+                label = stringResource(Res.string.next_pick_result),
+                value = nextPickState.resultMode.label(),
+                options = ResultMode.entries.map { it.name to it.label() },
+                selectedCode = nextPickState.resultMode.name,
+                onSelect = { name -> nextPick.onResultModeSelected(ResultMode.fromStored(name)) },
+            )
+        }
 
         SectionOverline(stringResource(Res.string.section_data), topPadding = true)
         ActionRow(
@@ -648,6 +691,24 @@ internal fun AboutSection(
  * differ only in whether a downward drag commits Watching or is inert.
  */
 @Composable
+private fun SessionLength.label(): String = stringResource(
+    when (this) {
+        SessionLength.QUICK -> Res.string.length_quick
+        SessionLength.STANDARD -> Res.string.length_standard
+        SessionLength.NONE -> Res.string.length_none
+    },
+)
+
+@Composable
+private fun ResultMode.label(): String = stringResource(
+    when (this) {
+        ResultMode.ONE_PICK -> Res.string.result_one
+        ResultMode.TOP_PICKS -> Res.string.result_top
+        ResultMode.DECK -> Res.string.result_deck
+    },
+)
+
+@Composable
 private fun TriageControlScheme.displayName(): String = stringResource(
     when (this) {
         TriageControlScheme.FOUR_WAY -> Res.string.scheme_four_way
@@ -655,6 +716,7 @@ private fun TriageControlScheme.displayName(): String = stringResource(
     },
 )
 
+internal const val NEXT_PICK_PROMPT_TAG = "nextPickPrompt"
 internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
 internal const val FEATURE_REQUEST_TAG = "featureRequest"
 internal const val BUG_REPORT_TAG = "bugReport"
