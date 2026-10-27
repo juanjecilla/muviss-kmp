@@ -392,6 +392,8 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 **Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
 
+**Taste Profile (#402), `21.sqm`.** A synced `tasteProfile` table, one row per liked item keyed `KIND:value` with soft deletes, so two devices adding different items both keep them. Synced (`SyncChangeSet.tasteProfileItems`, `taste_profile` in Supabase `20261027000000`) and exported as a defaulted `tasteProfile` field that does not bump the format version, so older builds still read the file. Settings > Your taste is the editor. A genre is liked or muted, never both (`TasteRules`). Scoped out: the onboarding page (#583), the engine's rules (#584), a regional services catalogue (#585), pgTAP (#586) and the goldens and device walk (#587). `21.sqm` also collides with #543, #553 and #563 until the merge queue renumbers.
+
 ## EPIC 52 — Tick animations — issue #391
 
 **`19.sqm`.** A tick on the Progress tab played a button pop and a snackbar, then the row snapped to the next episode, so it was easy to miss. Now the row confirms it (a sweep with "S1E3 seen", the episode line slides, the bar fills, a caught-up row fades out), a Milestone (a season finished, or nothing aired left unseen) adds a hand-drawn burst over the list, and Detail gets a lighter version (row wash, count and bar animate, the season checkbox pulses once, a burst only when a single tick catches the show up — bulk marks never burst).
