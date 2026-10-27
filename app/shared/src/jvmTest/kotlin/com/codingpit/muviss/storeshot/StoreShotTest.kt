@@ -328,7 +328,7 @@ class StoreShotTest {
                 mkdirs()
             }
             PLAY_ORDER.forEachIndexed { i, name ->
-                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second, "png", File(dir, device.fileName(i + 1, name))) }
+                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second.opaque(), "png", File(dir, device.fileName(i + 1, name))) }
             }
         }
         // The landing's set is the phone's.
@@ -337,6 +337,19 @@ class StoreShotTest {
             val theme = if (dark) "dark" else "light"
             for ((name, image) in shots) if (name in SITE_NAMES) ImageIO.write(image, "png", File(site, "$name-$theme.png"))
         }
+    }
+
+    /**
+     * The capture without its alpha channel. App Store Connect rejects a screenshot that has one, and
+     * Play asks for 24-bit PNGs; the frame is opaque anyway, so only the PNG colour type changes.
+     */
+    private fun java.awt.image.BufferedImage.opaque(): java.awt.image.BufferedImage {
+        val rgb = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        rgb.createGraphics().apply {
+            drawImage(this@opaque, 0, 0, null)
+            dispose()
+        }
+        return rgb
     }
 
     /**
