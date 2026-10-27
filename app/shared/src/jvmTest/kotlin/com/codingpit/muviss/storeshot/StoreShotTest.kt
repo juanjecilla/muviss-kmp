@@ -225,6 +225,19 @@ class StoreShotTest {
         settle { onAllNodes(hasText(catalog.lighthouse.summary.title)).fetchSemanticsNodes().isNotEmpty() }
         capture("watch-next")
 
+        // A film, watched and rated 8: the Watched filter of the Library, then its card.
+        // The Library tab reopens the show's detail it was left on; back out to the list first.
+        tab(nav.library)
+        settle { onAllNodes(hasContentDescription(nav.back)).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasContentDescription(nav.back))[0].performClick()
+        settle { onAllNodes(hasText(nav.watched, substring = true) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasText(nav.watched, substring = true) and hasClickAction())[0].performClick()
+        val copperSky = catalog.copperSky.summary.title
+        settle { onAllNodes(hasContentDescription(copperSky)).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasClickAction() and (hasContentDescription(copperSky) or hasText(copperSky) or hasAnyDescendantDescribed(copperSky)))[0].performClick()
+        settle { onAllNodes(hasTestTag("detailList")).fetchSemanticsNodes().isNotEmpty() }
+        capture("movie-detail")
+
         tab(nav.profile)
         settle { onAllNodes(hasText(nav.stats)).fetchSemanticsNodes().isNotEmpty() }
         // The identity block is the top half; the store shot is the numbers and charts.
@@ -330,6 +343,8 @@ class StoreShotTest {
         val seasonsTwo: String,
         val stats: String,
         val gotIt: String,
+        val watched: String,
+        val back: String,
     )
 
     private companion object {
@@ -338,10 +353,10 @@ class StoreShotTest {
         const val DENSITY = 2.625f
         const val DAY_MS = 86_400_000L
         val COPY = mapOf(
-            "en" to Copy("Search", "Library", "Progress", "Profile", "Fill your library", "Watching", "Seasons (2)", "Stats", "Got it"),
-            "es" to Copy("Buscar", "Biblioteca", "Progreso", "Perfil", "Llena tu biblioteca", "Viendo", "Temporadas (2)", "Estadísticas", "Entendido"),
+            "en" to Copy("Search", "Library", "Progress", "Profile", "Fill your library", "Watching", "Seasons (2)", "Stats", "Got it", "Watched", "Back"),
+            "es" to Copy("Buscar", "Biblioteca", "Progreso", "Perfil", "Llena tu biblioteca", "Viendo", "Temporadas (2)", "Estadísticas", "Entendido", "Vistas", "Atrás"),
         )
-        val PLAY_ORDER = listOf("library", "detail-seasons", "watch-next", "triage", "profile-stats", "discover")
+        val PLAY_ORDER = listOf("library", "detail-seasons", "movie-detail", "watch-next", "triage", "profile-stats", "discover")
         val SITE_NAMES = setOf("detail-seasons", "library", "watch-next", "triage", "profile-stats")
     }
 }
