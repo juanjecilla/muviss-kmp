@@ -132,6 +132,16 @@ _Avoid_: fallback (it suggests moving on after a failure, which the chain never 
 Values Muviss can change after a build has shipped — whether an optional feature is offered, which fallback TMDB credential to use — each with a built-in default that applies offline. It reads nothing about the user (ADR 0026); deciding per user is not something it does today.
 _Avoid_: feature flag (that is the in-code seam both Remote Config and per-device settings sit behind), A/B test, analytics.
 
+### Talking to us
+
+**Feature Request**:
+Something the user asks Muviss to do that it does not yet, sent from Settings through a form hosted outside the app, with only the app version, platform, OS version (where known) and device language alongside. One-way: the app never receives an answer, and a request is not a bug report. The user may leave an email address on the form; the app never sees it.
+_Avoid_: feedback (too wide: it would take in bug reports and praise), suggestion box, ticket, survey.
+
+**Bug Report**:
+What went wrong with the app, sent the same way as a Feature Request, from the row under it in Settings, with the same four values and the same one-way rules. Kept apart from a Feature Request because it is triaged as a defect, not a wish.
+_Avoid_: crash report (that is the automatic, opt-out Sentry kind), feedback.
+
 ### Co-watch
 
 **Companion**:
@@ -165,7 +175,7 @@ _Avoid_: recommendation (nothing enters a Shortlist that a Companion did not alr
 ### What's next?
 
 **Completion**:
-The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
+The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Two kinds, told apart because the sentence differs: **Finished** (a movie watched, or a show that has ended and is fully seen) and **Caught up** (a show that is still airing, with no aired episode left unseen). Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
 _Avoid_: finished (that is one WatchStatus, and Completion includes Watched); done, completed.
 
 **Pick Session**:

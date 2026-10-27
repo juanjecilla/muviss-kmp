@@ -169,4 +169,15 @@ class ShortlistRankingTest {
         assertEquals("poster", only.posterUrl)
         assertEquals(120, only.runtimeMinutes)
     }
+
+    @Test
+    fun a_title_repeated_in_our_pool_appears_once_in_the_shortlist() {
+        // The Shortlist list is keyed by media id (#463): a repeat in either pool must not reach it twice.
+        val result = ShortlistRanking.rank(
+            mine = listOf(item("1"), item("1")),
+            theirs = listOf(item("1")),
+        )
+
+        assertEquals(listOf(MediaId.tmdbMovie("1")), result.map { it.mediaId })
+    }
 }
