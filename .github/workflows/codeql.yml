@@ -1,0 +1,122 @@
+name: CodeQL
+
+# Code scanning (#478): injection and unsafe-deserialization patterns in the Kotlin
+# and TypeScript sources, and workflow injection or risky `pull_request_target`
+# use in this directory. Findings land in the repository's Security tab.
+#
+# Advanced setup, not default setup: the repository's default setup and this file
+# cannot both run. Turning default setup off is a one-time owner step, see
+# SECURITY.md.
+#
+# The languages and why they build the way they do:
+# - java-kotlin runs `build-mode: manual`. The codeql-action README pinned below
+#   ("Which build mode should I use?") says `none` is not yet supported for Kotlin,
+#   so the extractor needs a real compile. The compile is a subset of the Linux
+#   lane in ci.yml, and `--no-build-cache` stops setup-gradle's restored cache
+#   from skipping the compile tasks the extractor observes.
+# - javascript-typescript and actions are interpreted, so they use `none`.
+#
+# Action pins are checked by scripts/ci/check-action-pins.rb, and the runner by
+# scripts/ci/check-runner-pins.rb, both in pr-guards.yml.
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.kt'
+      - '**/*.kts'
+      - '**/*.java'
+      - '**/*.gradle'
+      - 'gradle/**'
+      - '**/*.js'
+      - '**/*.mjs'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.jsx'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ develop ]
+    paths:
+      - '**/*.kt'
+      - '**/*.kts'
+      - '**/*.java'
+      - '**/*.gradle'
+      - 'gradle/**'
+      - '**/*.js'
+      - '**/*.mjs'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.jsx'
+      - '.github/workflows/**'
+  # Weekly, on the default branch, so a new query or a new advisory surfaces
+  # without waiting for someone to touch a source file.
+  schedule:
+    - cron: '17 6 * * 1'
+
+# Least privilege (#482): the token is read-only for the whole file. Only the
+# analyze job, which uploads SARIF, gets `security-events: write`. The repository
+# is public, so `actions: read` (needed only for private repositories) is not requested.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    # The Kotlin compile is the long pole. The others finish in minutes. The
+    # ceiling matters more than the number: a hang would otherwise run for six hours.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      # Full history: CodeQL's diff-informed queries on a pull request compare
+      # against the merge base, which a shallow clone does not have.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # The same JDK and Gradle setup as ci.yml's Linux lane. Set up before
+      # `init`, so the tracer sees the JDK the build will use.
+      - name: Set up JDK 21 (Corretto)
+        if: matrix.build-mode == 'manual'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: corretto
+          java-version: '21'
+
+      - name: Set up Gradle
+        if: matrix.build-mode == 'manual'
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # The compile tasks ci.yml already runs on Linux, minus iOS (Kotlin/Native
+      # needs macOS). Together they compile the commonMain of every module through
+      # the Android, JS and Wasm targets, and the desktop JVM app.
+      - name: Build Kotlin for CodeQL
+        if: matrix.build-mode == 'manual'
+        run: ./gradlew :app:androidApp:assembleDebug compileKotlinJs compileKotlinWasmJs :app:desktopApp:compileKotlin --no-build-cache --stacktrace
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:${{ matrix.language }}
