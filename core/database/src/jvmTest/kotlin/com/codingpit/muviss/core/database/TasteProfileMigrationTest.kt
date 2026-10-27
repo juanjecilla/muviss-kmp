@@ -82,7 +82,7 @@ class TasteProfileMigrationTest {
             database.tasteProfileQueries.upsert(
                 id = "GENRE:movie:28",
                 kind = "GENRE",
-                value = "movie:28",
+                itemValue = "movie:28",
                 label = "Action",
                 updatedAtEpochMs = 1_000L,
                 isDirty = true,

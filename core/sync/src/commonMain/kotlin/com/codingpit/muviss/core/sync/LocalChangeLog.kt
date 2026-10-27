@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
+import com.codingpit.muviss.core.database.TasteProfile as TasteProfileRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
 
@@ -77,6 +78,12 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
             wrap = { SyncChangeSet(episodePlays = it) },
             push = push,
         ) { chunk -> chunk.forEach { database.episodePlayQueries.clearDirty(it.id, it.updatedAtEpochMs) } }
+
+        SyncTable.TASTE_PROFILE -> send(
+            rows = database.tasteProfileQueries.selectDirty().awaitAsList().map { it.toChange() },
+            wrap = { SyncChangeSet(tasteProfileItems = it) },
+            push = push,
+        ) { chunk -> chunk.forEach { database.tasteProfileQueries.clearDirty(it.id, it.updatedAtEpochMs) } }
     }
 
     private suspend fun <T> send(
@@ -130,6 +137,7 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.triageDecisionQueries.markAllDirty()
         database.triageSnoozeQueries.markAllDirty()
         database.episodePlayQueries.markAllDirty()
+        database.tasteProfileQueries.markAllDirty()
     }
 
     /**
@@ -145,6 +153,7 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.triageDecisionQueries.deleteAll()
         database.triageSnoozeQueries.deleteAll()
         database.episodePlayQueries.deleteAll()
+        database.tasteProfileQueries.deleteAll()
     }
 }
 
@@ -224,6 +233,15 @@ internal fun TriageSnoozeRow.toChange() = TriageSnoozeChange(
     overview = overview,
     snoozedAtEpochMs = snoozedAtEpochMs,
     dueAtEpochDay = dueAtEpochDay,
+    updatedAtEpochMs = updatedAtEpochMs,
+    deleted = deleted,
+)
+
+internal fun TasteProfileRow.toChange() = TasteProfileItemChange(
+    id = id,
+    kind = kind,
+    value = itemValue,
+    label = label,
     updatedAtEpochMs = updatedAtEpochMs,
     deleted = deleted,
 )
