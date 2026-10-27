@@ -1,11 +1,18 @@
 package com.codingpit.muviss.feature.nextpick.domain
 
 /**
- * How a Pick Session's result is presented (EPIC 51, #401 adds Top Picks and Deck). Lives beside the
- * settings seam rather than in `:api`, which #403 owns; a presentation is a UI choice, not a contract
- * a peer needs.
+ * How a Pick Session's result is presented (EPIC 51, ADR 0032). The engine's output is the same for every
+ * mode; a mode only decides how much of it one screen draws. The values are spelled as #543's `ResultMode`
+ * so that its persisted choice maps across by name.
+ *
+ * [pickCount] is how many picks one screen draws from the engine's ranked list: One Pick draws the first and
+ * "another" steps down the list; Top Picks and Deck draw the top [PickEngine.DEFAULT_LIMIT].
  */
-enum class NextPickResultMode { ONE_PICK, }
+enum class NextPickResultMode(val pickCount: Int) {
+    ONE_PICK(1),
+    TOP_PICKS(PickEngine.DEFAULT_LIMIT),
+    DECK(PickEngine.DEFAULT_LIMIT),
+}
 
 /**
  * The session length and result mode the person chose (EPIC 51, #403). Until #403 lands, Next Pick
