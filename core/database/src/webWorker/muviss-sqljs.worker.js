@@ -103,6 +103,10 @@ async function writeSnapshot() {
       tx.objectStore(STORE).put(bytes, KEY);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      // A full quota aborts the transaction rather than failing the request,
+      // and may fire only `abort`. Unhandled, this promise never settles and
+      // every later snapshot waits behind it in `saveChain`.
+      tx.onabort = () => reject(tx.error ?? new DOMException("snapshot write aborted", "AbortError"));
     });
     if (lastWriteFailed) {
       lastWriteFailed = false;

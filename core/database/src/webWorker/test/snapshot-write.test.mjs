@@ -7,7 +7,7 @@
 // are shared by every script run in the same realm, which is how the test sets
 // the worker's state and calls its functions.
 //
-// Run: node --test core/database/src/webWorker/test/
+// Run: node --test core/database/src/webWorker/test/snapshot-write.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -16,10 +16,11 @@ import vm from "node:vm";
 const WORKER = new URL("../muviss-sqljs.worker.js", import.meta.url);
 const IMPORT = 'import initSqlJs from "sql.js";';
 
-// An IndexedDB whose `put` fails when `failing` is true as it settles. With
+// An IndexedDB whose `put` fails when `failing` is true as it settles, and
+// whose transaction only aborts (as a full quota does) when `aborting` is. With
 // `hold`, each put waits until the test releases it, to make writes overlap.
 function fakeIndexedDb() {
-  const fake = { failing: false, puts: [], holds: [] };
+  const fake = { failing: false, aborting: false, puts: [], holds: [] };
   fake.open = () => {
     const req = {};
     queueMicrotask(() => {
@@ -30,7 +31,10 @@ function fakeIndexedDb() {
             objectStore: () => ({
               put: (bytes) => {
                 const settle = () => {
-                  if (fake.failing) {
+                  if (fake.aborting) {
+                    tx.error = new Error("QuotaExceededError");
+                    tx.onabort?.();
+                  } else if (fake.failing) {
                     tx.error = new Error("QuotaExceededError");
                     tx.onerror();
                   } else {
@@ -66,6 +70,7 @@ function loadWorker() {
     clearTimeout,
     queueMicrotask,
     Promise,
+    DOMException,
   });
   vm.runInContext(source.replace(IMPORT, "const initSqlJs = async () => ({});"), context);
   // Copied on this side: an object made in the worker's realm has that realm's
@@ -121,4 +126,19 @@ test("writes run in order, so an older write cannot clear a newer failure", asyn
 
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
   assert.equal(announced.at(-1).lastWriteFailed, true);
+});
+
+test("an aborted transaction is a failed write, and does not block the next one", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  const settled = (p) =>
+    Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error("write never settled")), 200))]);
+
+  indexedDB.aborting = true;
+  await settled(run("saveSnapshot()"));
+  assert.equal(announced.at(-1).lastWriteFailed, true);
+
+  indexedDB.aborting = false;
+  await settled(run("saveSnapshot()"));
+  assert.equal(announced.at(-1).lastWriteFailed, false);
+  assert.deepEqual(indexedDB.puts, ["snapshot 2"]);
 });
