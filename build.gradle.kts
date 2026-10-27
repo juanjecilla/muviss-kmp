@@ -23,6 +23,7 @@ plugins {
     alias(libs.plugins.spotless)
     alias(libs.plugins.detekt)
     alias(libs.plugins.kover)
+    id("muviss.module-graph")
 }
 
 // Coverage (EPIC 38, #71): one merged report over every module's JVM tests,
@@ -242,3 +243,6 @@ fun Project.linkSentryCocoaFramework() {
         }
     }
 }
+
+// ADR 0004's dependency rule is part of `check`, not just a CI step (#483).
+tasks.named("check") { dependsOn("verifyModuleGraph") }
