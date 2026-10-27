@@ -26,6 +26,7 @@ import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -98,6 +99,8 @@ class AppGraphTest {
         assertNotNull(koin.get<CollectionApi>())
         assertNotNull(koin.get<ProgressApi>())
         assertNotNull(koin.get<SettingsApi>())
+        // EPIC 51 (#402): the Taste Profile, read later by the Pick Session and For you through :api.
+        assertNotNull(koin.get<TasteProfileApi>())
         assertNotNull(koin.get<ProfileApi>())
         assertNotNull(koin.get<TriageApi>())
         assertNotNull(koin.get<ListsApi>())
