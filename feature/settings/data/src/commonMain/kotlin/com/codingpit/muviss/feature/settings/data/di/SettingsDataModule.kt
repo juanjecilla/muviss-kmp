@@ -4,9 +4,11 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
+import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.feature.settings.data.AppSettingsFeatureFlags
+import com.codingpit.muviss.feature.settings.data.AppSettingsNextPickPreferences
 import com.codingpit.muviss.feature.settings.data.DefaultSettingsApi
 import com.codingpit.muviss.feature.settings.data.DeviceBackupWrites
 import com.codingpit.muviss.feature.settings.data.ExportQueries
@@ -89,6 +91,7 @@ val settingsDataModule: Module = module {
     single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
     factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }
+    single<NextPickPreferences> { AppSettingsNextPickPreferences(get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
     single { SettingsLocaleSync(get(), get(), get(), get()) } withOptions { createdAtStart() }

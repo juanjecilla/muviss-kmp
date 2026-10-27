@@ -25,6 +25,7 @@ fun NavGraphBuilder.settingsSection(
             onOpenTriage = onOpenTriage,
             onReplayIntroduction = onReplayIntroduction,
             tmdbKey = koinViewModel<TmdbKeyViewModel>(),
+            nextPick = koinViewModel<NextPickSettingsViewModel>(),
         )
     }
     composable<LicensesRoute> {

@@ -2,27 +2,16 @@ package com.codingpit.muviss.feature.nextpick.domain
 
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickSource
+import com.codingpit.muviss.feature.nextpick.api.SessionLength
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
-
-/** How many questions a session may ask at most. The person picks it in Settings (#403). */
-enum class PickSessionLength(val maxQuestions: Int) {
-    /** Up to two: the default. */
-    QUICK(2),
-
-    /** Up to four. */
-    STANDARD(4),
-
-    /** Straight to a pick. */
-    NONE(0),
-}
 
 /**
  * What the session needs to know about the person and the moment to decide what is worth asking.
  * Everything here is read once when the session opens; nothing in it is stored back.
  */
 data class PickContext(
-    val length: PickSessionLength = PickSessionLength.QUICK,
+    val length: SessionLength = SessionLength.DEFAULT,
     /** False offline: only the library can answer, so the session says so and asks nothing about the catalogue. */
     val online: Boolean = true,
     /** Whether the library has anything unstarted to offer. Without it "my list" has no answer. */

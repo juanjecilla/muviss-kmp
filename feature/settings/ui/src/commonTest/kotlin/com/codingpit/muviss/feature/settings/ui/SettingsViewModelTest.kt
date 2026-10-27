@@ -387,6 +387,9 @@ private class FakeFeatureFlags : FeatureFlags {
     val snoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
     override val triageSnoozePeriod: Flow<SnoozePeriod> = snoozePeriod
     override val triageSnoozePlacement: Flow<SnoozePlacement> = snoozePlacement
+    override val completionPromptEnabled: Flow<Boolean> = MutableStateFlow(true)
+
+    override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
 
     override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) {
         snoozePeriod.value = period

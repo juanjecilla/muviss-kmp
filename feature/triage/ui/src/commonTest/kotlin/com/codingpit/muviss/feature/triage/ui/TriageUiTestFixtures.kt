@@ -117,6 +117,7 @@ internal class FakeFeatureFlags(
     val snoozePlacement = MutableStateFlow(snoozePlacementInitial)
     override val triageSnoozePeriod: Flow<SnoozePeriod> = snoozePeriod
     override val triageSnoozePlacement: Flow<SnoozePlacement> = snoozePlacement
+    override val completionPromptEnabled: Flow<Boolean> = MutableStateFlow(true)
 
     override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) {
         snoozePeriod.value = period
@@ -125,6 +126,8 @@ internal class FakeFeatureFlags(
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) {
         snoozePlacement.value = placement
     }
+
+    override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
 
     override suspend fun setSyncAutomatically(enabled: Boolean) {
         autoSync.value = enabled
