@@ -20,7 +20,7 @@ import org.koin.dsl.module
 val onboardingDataModule: Module = module {
     single<OnboardingRepository> { SqlDelightOnboardingRepository(get<MuvissDatabase>().appSettingsQueries, get()) }
     factory { CompleteOnboardingUseCase(get()) }
-    factory { ApplySystemMotionDefault(get(), get()) }
+    factory { ApplySystemMotionDefault(get<MuvissDatabase>().appSettingsQueries, get(), get(), get()) }
     single<NotificationNudge> { notificationNudge(get(), get(), get()) }
     single<OnboardingApi> { DefaultOnboardingApi(get(), get(), get()) }
 }

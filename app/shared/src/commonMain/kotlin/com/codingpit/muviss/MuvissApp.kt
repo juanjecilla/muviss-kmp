@@ -275,12 +275,11 @@ private fun rememberStartRoute(deepLinkMediaId: String?): Any? {
     val onboarding = koinInject<OnboardingApi>()
     val completed by produceState<Boolean?>(initialValue = null) { value = onboarding.observeCompleted().first() }
     val route = remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
-    // A fresh install (the introduction is what it starts on) takes its animations default from the OS's
-    // reduce-motion setting, once; an explicit choice in Settings later is never touched (#394).
+    // A fresh install takes its animations default from the OS's reduce-motion setting, once, on its first
+    // launch whatever the start route; the use case keeps its own mark, so a choice made in Settings
+    // afterwards is never touched (#394).
     val applyMotionDefault = koinInject<ApplySystemMotionDefault>()
-    LaunchedEffect(route) {
-        if (route is OnboardingRoute) applyMotionDefault()
-    }
+    LaunchedEffect(Unit) { applyMotionDefault() }
     return route
 }
 
