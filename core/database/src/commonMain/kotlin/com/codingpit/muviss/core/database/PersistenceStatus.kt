@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * On Android, iOS and desktop the answer is always yes and this exists only so
  * the question can be asked from `commonMain`. On web it is a real question
- * with three answers, because only one browser tab persists (ADR 0008, EPIC
+ * with four answers, because only one browser tab persists (ADR 0008, EPIC
  * 24): the tab holding the `muviss-db` Web Lock snapshots to IndexedDB, and
  * any other tab runs normally in memory and never writes.
  *
@@ -37,6 +37,14 @@ sealed interface PersistenceState {
     data object ReadOnlyTab : PersistenceState
 
     /**
+     * This tab is the writer but its last snapshot to IndexedDB failed (a full
+     * origin quota, storage evicted by the browser). Changes since the last
+     * good write will not survive a reload. Clears itself on the next
+     * successful write (#292).
+     */
+    data object WriteFailed : PersistenceState
+
+    /**
      * Nothing persists anywhere: the browser has no Web Locks, so no tab was
      * elected and every tab is session-only. A private window with site data
      * blocked is the usual cause.
@@ -58,8 +66,9 @@ sealed interface PersistenceState {
  * checked first because when Web Locks is missing nobody is the writer, so
  * `writer` is `false` for an uninteresting reason.
  */
-internal fun persistenceStateOf(writer: Boolean, webLocksSupported: Boolean): PersistenceState = when {
+internal fun persistenceStateOf(writer: Boolean, webLocksSupported: Boolean, lastWriteFailed: Boolean = false): PersistenceState = when {
     !webLocksSupported -> PersistenceState.NotPersisted
+    writer && lastWriteFailed -> PersistenceState.WriteFailed
     writer -> PersistenceState.Durable
     else -> PersistenceState.ReadOnlyTab
 }
