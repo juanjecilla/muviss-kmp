@@ -173,6 +173,12 @@ jobs:
       - name: Module graph (vertical-slice rule)
         run: ./gradlew verifyModuleGraph --stacktrace
 
+      # The web database worker is plain JavaScript that no Kotlin test reaches,
+      # and the web lane is deferred. These run it under the runner's own Node
+      # against a faked IndexedDB (#292). Named files: Node 20 has no --test globs.
+      - name: Web worker tests (snapshot writes)
+        run: node --test core/database/src/webWorker/test/snapshot-write.test.mjs
+
       # Every jvmTest task in the build, resolved by name rather than listed.
       # This used to be a hand-maintained allowlist, which meant a module
       # missing from it was a module whose tests never ran — and modules kept
