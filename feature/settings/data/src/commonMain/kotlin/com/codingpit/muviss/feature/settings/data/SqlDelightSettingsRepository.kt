@@ -173,8 +173,10 @@ class SqlDelightSettingsRepository(
 
     private suspend fun ensureRow() = withContext(dispatchers.io) { settingsQueries.ensureRow() }
 
+    // A restored backup from a newer build can store a theme this one does not know; it is kept
+    // as is (a later build reads it again) and shown as the system theme meanwhile, never thrown.
     private fun AppSettingsRow.toDomain(): AppSettings = AppSettings(
-        theme = AppTheme.valueOf(theme),
+        theme = AppTheme.entries.firstOrNull { it.name == theme } ?: AppTheme.SYSTEM,
         language = language,
         region = region,
         notificationsEnabled = notificationsEnabled,
