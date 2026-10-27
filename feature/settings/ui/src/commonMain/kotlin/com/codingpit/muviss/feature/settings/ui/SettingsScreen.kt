@@ -114,6 +114,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animat
 import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animations_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_controls
 import com.codingpit.muviss.feature.settings.ui.generated.resources.system_default
+import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_profile_row_hint
+import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_profile_title
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_dark
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_light
@@ -134,6 +136,7 @@ fun SettingsScreen(
     onOpenImport: () -> Unit,
     onOpenTriage: () -> Unit,
     onOpenMutedGenres: () -> Unit = {},
+    onOpenTasteProfile: () -> Unit = {},
     onReplayIntroduction: () -> Unit = {},
     // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
     // the screen works without it, so the many tests of everything else do not need a Koin graph.
@@ -231,6 +234,13 @@ fun SettingsScreen(
             label = stringResource(Res.string.muted_genres_title),
             value = pluralStringResource(Res.plurals.muted_genres_count, state.settings.mutedGenres.size, state.settings.mutedGenres.size),
             onClick = onOpenMutedGenres,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        ActionRow(
+            icon = MuvissIcons.Favorite,
+            label = stringResource(Res.string.taste_profile_title),
+            value = stringResource(Res.string.taste_profile_row_hint),
+            onClick = onOpenTasteProfile,
         )
         if (tmdbKey != null) {
             val keyState by tmdbKey.state.collectAsStateWithLifecycle()

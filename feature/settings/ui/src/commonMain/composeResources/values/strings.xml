@@ -173,4 +173,23 @@
     <string name="result_one">One pick</string>
     <string name="result_top">Top picks</string>
     <string name="result_deck">Deck</string>
+
+    <!-- EPIC 51 (#402): Taste Profile. -->
+    <string name="taste_profile_title">Your taste</string>
+    <string name="taste_profile_row_hint">Genres, formats, services, languages</string>
+    <string name="taste_profile_body">What you like, so suggestions start closer to it. All optional, and you can change it at any time.</string>
+    <string name="taste_section_genres_movies">Movie genres you like</string>
+    <string name="taste_section_genres_tv">Show genres you like</string>
+    <string name="taste_genres_offline">Genres appear once you are online.</string>
+    <string name="taste_muted_hint">Genres you muted in Content are off here: a genre is liked or muted, never both.</string>
+    <string name="taste_section_formats">What you watch</string>
+    <string name="taste_section_services">Services you use</string>
+    <string name="taste_section_languages">Languages you like</string>
+    <string name="taste_section_company">Usually watching with</string>
+    <string name="taste_format_movie">Movies</string>
+    <string name="taste_format_series">Series</string>
+    <string name="taste_format_limited">Limited series</string>
+    <string name="taste_company_alone">Alone</string>
+    <string name="taste_company_partner">Partner</string>
+    <string name="taste_company_family">Family</string>
 </resources>
