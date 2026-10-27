@@ -48,9 +48,37 @@ licensee {
     // than allowing "any raw.githubusercontent.com".
     allowUrl("https://raw.githubusercontent.com/configcat/kotlin-sdk/main/LICENSE")
     allowUrl("https://raw.githubusercontent.com/z4kn4fein/kotlin-semver/main/LICENSE")
+    // #410: Play In-App Review and the Google Play services artifacts it pulls in. Their POMs name
+    // Google's Android SDK / Play Core terms by URL, not an SPDX id, so none of them is OSS. They are
+    // allowed here by exact coordinates, one line each, rather than by the terms URL: the URL would
+    // also admit any future artifact that quotes the same terms, and a version bump should fail this
+    // build on purpose so the terms are read again before any of them moves.
+    allowDependency("com.google.android.play", "review", "2.0.2") {
+        because("Play In-App Review (#410): Play Core SDK terms (developer.android.com/guide/playcore/license)")
+    }
+    allowDependency("com.google.android.play", "review-ktx", "2.0.2") {
+        because("Play In-App Review's Kotlin extensions (#410): Play Core SDK terms (developer.android.com/guide/playcore/license)")
+    }
+    allowDependency("com.google.android.play", "core-common", "2.0.4") {
+        because("Play Core common, a dependency of Play In-App Review (#410): Play Core SDK terms (developer.android.com/guide/playcore/license)")
+    }
+    allowDependency("com.google.android.gms", "play-services-basement", "18.4.0") {
+        because("Google Play services basement, a dependency of Play In-App Review (#410): Android SDK terms (developer.android.com/studio/terms)")
+    }
+    allowDependency("com.google.android.gms", "play-services-tasks", "18.2.0") {
+        because("Google Play services tasks, a dependency of Play In-App Review (#410): Android SDK terms (developer.android.com/studio/terms)")
+    }
 }
 
 dependencies {
+    // The Play review SDK pulls androidx.fragment 1.1.0, and lint rejects that next to the
+    // ActivityResult APIs `MainActivity` uses (InvalidFragmentVersionForActivityResult, needs 1.3.0).
+    // A constraint raises whatever version is resolved without adding a direct dependency on it.
+    constraints {
+        implementation("androidx.fragment:fragment:1.9.1") {
+            because("Play In-App Review (#410) pulls fragment 1.1.0; lint needs 1.3.0+ for registerForActivityResult")
+        }
+    }
     implementation(projects.app.shared)
 
     // EPIC 5 (new-episode notifications): the background worker talks to the
@@ -78,6 +106,9 @@ dependencies {
     implementation(libs.androidx.glance.material3)
 
     implementation(libs.androidx.activity.compose)
+    // Play In-App Review (#410): the store's review sheet, after a user-made Completion. Its
+    // licence is the Play Core SDK terms, not an OSS one, which is why licensee below names it.
+    implementation(libs.play.review.ktx)
     // Installs the committed baseline profile on devices without Play's cloud
     // profiles (sideloads, first days after release). EPIC 34 / #77.
     implementation(libs.androidx.profileinstaller)

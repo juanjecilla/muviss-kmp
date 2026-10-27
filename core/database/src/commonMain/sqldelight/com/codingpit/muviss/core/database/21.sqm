@@ -1,0 +1,17 @@
+-- Store review prompt (#410). The filename is the version this migrates FROM: 21.sqm
+-- takes a v21 database to v22 (fixture 22.db).
+--
+-- NUMBERING: PR #543 and PR #553 also claim 21.sqm. Whichever merges later is renumbered
+-- by the merge queue, which is the repo's normal rule (CLAUDE.md, migrations note), so the
+-- collision is expected here, not a defect.
+--
+-- Four per-device counters for the review prompt's guardrails, appended last. None of them
+-- syncs or appears in the data export. The install stamp stays NULL until the first launch
+-- after this migration writes it (see `stampReviewInstalledIfUnknown`), so an upgraded install
+-- waits a full install period from its upgrade. The tick count starts at 0 and counts only
+-- hand ticks from here on, not the rows that already exist: an import or a sync pull never
+-- counted and a backfill would count them.
+ALTER TABLE appSettings ADD COLUMN reviewInstalledAtEpochMs INTEGER;
+ALTER TABLE appSettings ADD COLUMN reviewTickCount INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE appSettings ADD COLUMN reviewLastAskedAtEpochMs INTEGER;
+ALTER TABLE appSettings ADD COLUMN reviewLastAskedVersion TEXT;

@@ -61,10 +61,12 @@ class CompletionDetectorTest {
     @Test
     fun unticking_reads_no_status_at_all() = runTest {
         var reads = 0
-        val detector = CompletionDetector {
-            reads++
-            WatchStatus.WATCHING
-        }
+        val detector = CompletionDetector(
+            TitleStatusSource {
+                reads++
+                WatchStatus.WATCHING
+            },
+        )
         var wrote = false
         detector.around(show, seen = false) { wrote = true }
         assertEquals(0, reads)
@@ -73,7 +75,7 @@ class CompletionDetectorTest {
 
     @Test
     fun a_status_that_cannot_be_read_still_lets_the_tick_through() = runTest {
-        val detector = CompletionDetector { error("seenEpisodes > airedEpisodes on another title") }
+        val detector = CompletionDetector(TitleStatusSource { error("seenEpisodes > airedEpisodes on another title") })
         var wrote = false
         detector.around(show, seen = true) { wrote = true }
         assertEquals(true, wrote)
@@ -84,10 +86,12 @@ class CompletionDetectorTest {
         // Two unseen episodes left; the show is Watched once both are ticked.
         var unseen = 2
         // The read suspends, as the real one does on the database, so the two ticks can interleave.
-        val detector = CompletionDetector {
-            yield()
-            if (unseen == 0) WatchStatus.WATCHED else WatchStatus.WATCHING
-        }
+        val detector = CompletionDetector(
+            TitleStatusSource {
+                yield()
+                if (unseen == 0) WatchStatus.WATCHED else WatchStatus.WATCHING
+            },
+        )
         val seen = mutableListOf<Completion>()
         val collecting = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { detector.completions.toList(seen) }
 
