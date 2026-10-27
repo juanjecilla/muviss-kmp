@@ -248,6 +248,42 @@ expect_eq "and no PR is created for it" "$(grep -c 'pr create' "$FAKE_GH_LOG")" 
 expect_eq "and gets no PR or branch" "$(grep -c 'pr create' "$FAKE_GH_LOG")$(git -C "$fo" rev-parse --verify -q forward/pr-7-to-release-1.4.0 >/dev/null && echo pushed)" "0"
 ff bogus >/dev/null 2>&1; expect_eq "an unknown command is refused" "$?" "2"
 
+# #526/#527 (#529): a hand edit to the release notes exists only on the release
+# branch, so its cherry-pick onto develop is an add/delete conflict. The notes are
+# the fix, so the forward PR must carry them, not open empty.
+: >"$FAKE_GH_LOG"
+git -C "$f" switch -q -c release/1.5.0 develop; mkdir -p "$f/fastlane/release-notes/v1.5.0"
+echo "Generated notes." >"$f/fastlane/release-notes/v1.5.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "chore(release): cut the 1.5.0 notes"
+echo "Hand-written notes for 1.5.0." >"$f/fastlane/release-notes/v1.5.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 1.5.0 notes"
+NOTESSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.5.0; git -C "$f" switch -q develop
+expect_eq "a notes-only edit forwards to develop with its content" "$(ff forward 9 release/1.5.0 "$NOTESSHA" develop)" "forward #9 to develop: opened (clean)"
+expect_eq "the notes file is on the forward branch" "$(git -C "$fo" show forward/pr-9-to-develop:fastlane/release-notes/v1.5.0/en-US.txt)" "Hand-written notes for 1.5.0."
+expect_eq "its PR says the notes came with the fix" "$(grep -c 'release notes' "$FAKE_GH_LOG")" "1"
+expect_eq "and no conflict is recorded" "$(git -C "$fo" log --format=%s -n 1 forward/pr-9-to-develop)" "chore(release): hand-edit the 1.5.0 notes"
+
+# A notes edit that comes with a code conflict is still a person's job.
+git -C "$f" switch -q -c release/1.6.0 develop
+mkdir -p "$f/fastlane/release-notes/v1.6.0"; echo "Generated." >"$f/fastlane/release-notes/v1.6.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "chore(release): cut the 1.6.0 notes"
+echo fix2 >"$f/fix.txt"; echo "Notes." >"$f/fastlane/release-notes/v1.6.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "fix: a code fix and its notes"
+MIXSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.6.0; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "a notes edit beside a code conflict still opens for a person" "$(ff forward 10 release/1.6.0 "$MIXSHA" release/1.3.0)" "forward #10 to release/1.3.0: opened (conflict)"
+expect_eq "the conflicting branch carries only the marker commit" "$(git -C "$fo" log --format=%s -n 1 forward/pr-10-to-release-1.3.0)" "chore(release): forward #10 to release/1.3.0 needs a person"
+
+# A notes file that both branches changed is not release-only: it is a real
+# conflict, and the release side must not overwrite the target's edit silently.
+git -C "$f" switch -q -c release/1.7.0 develop; mkdir -p "$f/fastlane/release-notes/v1.7.0"
+echo "Generated." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): cut the 1.7.0 notes"
+echo "Hand edit." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 1.7.0 notes"
+BOTHSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.7.0; git -C "$f" switch -q develop
+git -C "$f" switch -q -c release/1.8.0 develop; mkdir -p "$f/fastlane/release-notes/v1.7.0"
+echo "Their edit." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): the 1.8.0 branch edits the same notes"
+git -C "$f" push -q origin release/1.8.0; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "notes both sides changed still open for a person" "$(ff forward 11 release/1.7.0 "$BOTHSHA" release/1.8.0)" "forward #11 to release/1.8.0: opened (conflict)"
+
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'
