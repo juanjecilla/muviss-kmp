@@ -22,6 +22,9 @@ import org.jetbrains.compose.resources.stringResource
  * Only titles the library does not hold can be swiped: Triage excludes what is in the library, and its undo removes
  * the library entry, so a backlog pick would vanish from the deck or be deleted by an undo. Offline the pool is the
  * backlog alone, which leaves nothing to swipe, and the screen says so.
+ *
+ * The handoff is not wired yet: the app shell passes no `onOpenDeck` handler, so the button does nothing until #554
+ * builds it. The mode is unreachable until #543 adds the Settings switch, so no person can hit it.
  */
 object DeckPresentation : PickPresentation {
 
