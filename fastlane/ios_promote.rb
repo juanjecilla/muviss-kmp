@@ -234,13 +234,12 @@ class IosPromotion
     rc_sha = safe("RC commit") { @git.sha_of(rc) }
     facts[:rc_built] = safe("RC run") { @github.run_conclusion(rc_sha, "release-rc.yml") == "success" } if rc_sha
     if merged
-      facts.merge!(head_is_rc: true, ci_green: true, draft_locales: [])
+      facts.merge!(head_is_rc: true, ci_green: true)
     else
       head = safe("branch head") { @git.branch_head(version) }
       facts[:head] = head
       facts[:head_is_rc] = head && rc_sha ? head == rc_sha : nil
       facts[:ci_green] = safe("CI") { head && @github.checks_green?(head) } if head
-      facts[:draft_locales] = safe("notes") { @git.draft_locales(version) }
     end
     facts[:rc_code] = safe("version code") { @git.version_code(rc) }
     facts[:sentry_ios] = facts[:rc_code] ? sentry_hold(version, facts[:rc_code]) : nil
