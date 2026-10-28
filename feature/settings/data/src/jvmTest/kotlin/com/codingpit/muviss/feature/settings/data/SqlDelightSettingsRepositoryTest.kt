@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.settings.data
 
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
@@ -71,6 +72,15 @@ class SqlDelightSettingsRepositoryTest {
             assertFalse(settings.notificationsEnabled)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun a_theme_from_a_newer_build_reads_as_system_and_stays_stored() = runTest {
+        database.appSettingsQueries.ensureRow()
+        database.appSettingsQueries.updateTheme("SEPIA")
+
+        assertEquals(AppTheme.SYSTEM, repository.observeSettings().first().theme)
+        assertEquals("SEPIA", database.appSettingsQueries.selectSettings().awaitAsOne().theme)
     }
 
     @Test

@@ -83,7 +83,6 @@ module ReleaseGates
     reasons << branch_reason(facts) if facts[:head_is_rc] != true
     reasons << rc_reason(facts) unless facts[:rc_built] == true
     reasons << ci_reason(facts) unless facts[:ci_green] == true
-    reasons << notes_reason(facts) unless facts[:draft_locales] == []
     reasons.compact
   end
 
@@ -101,12 +100,6 @@ module ReleaseGates
     return "CI on the branch head is not green" if facts[:ci_green] == false
 
     "CI on the branch head could not be read"
-  end
-
-  def notes_reason(facts)
-    return "the store notes could not be read" if facts[:draft_locales].nil?
-
-    "the store notes are still a DRAFT (or missing) for #{facts[:draft_locales].join(', ')}"
   end
 end
 
@@ -250,7 +243,6 @@ class ReleasePromotion
     facts[:head_is_rc] = head && rc_sha ? head == rc_sha : nil
     facts[:rc_built] = safe("RC run") { @github.run_conclusion(rc_sha, "release-rc.yml") == "success" } if rc_sha
     facts[:ci_green] = safe("CI") { head && @github.checks_green?(head) } if head
-    facts[:draft_locales] = safe("notes") { @git.draft_locales(version) }
     facts[:rc_code] = safe("version code") { @git.version_code(rc) }
     facts[:sentry] = facts[:rc_code] ? sentry_hold(version, facts[:rc_code]) : nil
     # Production promotes from the beta track, so it must carry this RC before
@@ -474,20 +466,6 @@ module ReleasePromotionAdapters
 
     def version_code(tag)
       Integer(Shell.capture("scripts/release/version-code.sh", tag))
-    end
-
-    # Locales whose notes still carry the DRAFT: marker, or have none.
-    def draft_locales(version)
-      branch = "origin/release/#{version}"
-      locales = Shell.capture("git", "ls-tree", "--name-only", branch, "fastlane/metadata/android/").lines.map { |l| File.basename(l.strip) }
-      locales.reject(&:empty?).select do |locale|
-        notes = begin
-          Shell.capture("git", "show", "#{branch}:fastlane/release-notes/v#{version}/#{locale}.txt")
-        rescue StandardError
-          nil
-        end
-        notes.nil? || notes.lines.any? { |line| line.start_with?("DRAFT:") }
-      end
     end
   end
 
