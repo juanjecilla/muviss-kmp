@@ -393,5 +393,59 @@ rn --write >/dev/null
 cp "$SCRIPTS/check-release-notes.sh" "$r/scripts/release/"
 (cd "$r" && scripts/release/check-release-notes.sh 1.1.0 --final >/dev/null 2>&1); expect_eq "generated notes pass the main guard" "$?" "0"
 
+# A `Notes: none` trailer keeps a commit out of the notes and the Spanish count.
+# The trailer is read only from a body's last paragraph, in any case.
+t="$(new_repo)"
+mkdir -p "$t/scripts/release" "$t/fastlane/metadata/android/en-US" "$t/fastlane/metadata/android/es-ES"
+cp "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$t/scripts/release/"
+git -C "$t" add -A; commit "$t" "chore: init"; git -C "$t" tag -a v1.0.0 -m t
+commit "$t" "feat(lists): a visible feature"
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(settings): a store-invisible feature
+
+Notes: none
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(lists): a mid-body line is prose
+
+Notes: none
+
+This paragraph follows the line above, so the line is not a trailer.
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(triage): trailer above another trailer, any case
+
+Reviewed-by: someone
+notes: NONE
+Co-Authored-By: Someone <someone@example.com>
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+fix(search): an invisible fix is opted out too
+
+Notes: none
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(search): a trailer that is not one: Notes: none, really
+
+Notes: nothing
+MSG
+tn() { (cd "$t" && scripts/release/release-notes.sh 1.1.0 2>/dev/null); }
+out="$(tn)"
+# Listed: the plain feat, the prose mid-body feat, and the feat whose body has
+# only a non-"none" Notes line. Opted out: the Notes: none feat, the feat with
+# Notes: none among other trailers, and the fix.
+grep -q -- '^- A visible feature$' <<<"$out" && grep -q -- '^- A mid-body line is prose$' <<<"$out" \
+  && grep -q -- '^- A trailer that is not one: Notes: none, really$' <<<"$out" \
+  && pass "features without an opt-out trailer are listed" || fail "listed features: $out"
+grep -q -- 'store-invisible' <<<"$out" && fail "a Notes: none feat is listed: $out" \
+  || pass "a Notes: none feat is absent"
+grep -q -- 'another trailer' <<<"$out" && fail "Notes: none among other trailers is listed: $out" \
+  || pass "Notes: none among other trailers, in any case, is absent"
+grep -q -- 'invisible fix' <<<"$out" && fail "a Notes: none fix is listed: $out" \
+  || pass "a Notes: none fix is absent"
+grep -q '^Muviss 1.1.0 trae 3 novedades y mejoras.$' <<<"$out" \
+  && pass "Spanish count matches the English list (opted-out commits not counted)" \
+  || fail "Spanish count: $out"
+
 echo
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
