@@ -168,12 +168,20 @@ class ReleasePromotion
     return @out.puts("the release issue for #{version} has no readable marker; nothing to close") unless state
     return @out.puts("#{version} is already done; nothing to close") if state["stage"] == ReleaseStages::DONE && issue["state"].to_s.casecmp?("closed")
 
+    # The ramp reports a finished release every day, so an issue left open for iOS sees this again:
+    # it keeps the day Play actually finished and says nothing new.
+    if state["stage"] == ReleaseStages::DONE && ios_still_ramping?(state)
+      return @out.puts("#{version} is already done on Play; the issue waits for iOS")
+    end
+
     state = state.merge("stage" => ReleaseStages::DONE, "completed_on" => @today.iso8601, "holds" => [])
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
     if ios_still_ramping?(state)
       # iOS has its own track (ADR 0033); `complete_ios` in ios_promote.rb closes the issue when it finishes.
+      # Comment first: if it fails, nothing is recorded and tomorrow's run tries again.
       @github.comment(issue["number"], "#{version} reached 100% of production on Play. The iOS phased release is still on its own track; this issue closes when it finishes.")
+      @github.update_issue(issue["number"], ReleaseStages.render(state))
     else
+      @github.update_issue(issue["number"], ReleaseStages.render(state))
       @github.close_issue(issue["number"], "#{version} reached 100% of production. Closed.")
     end
   end

@@ -454,6 +454,29 @@ class ReleasePromotionTest < Minitest::Test
     assert(@github.calls.any? { |kind, _number, body| kind == :comment && body.include?("iOS phased release is still on its own track") })
   end
 
+  def test_a_daily_complete_while_ios_ramps_keeps_the_date_and_comments_once
+    ios = ReleaseStages.new_ios_state.merge("stage" => "production", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+    ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                         today: Date.new(2026, 10, 13), apply: true, out: @out).complete("1.0.0")
+
+    assert_equal 1, @github.calls.count { |c| c.first == :comment }
+    assert_equal "2026-10-12", ReleaseStages.parse(issue_for("1.0.0")["body"])["completed_on"]
+    refute issue_for("1.0.0")["closed"]
+  end
+
+  def test_a_failed_comment_records_nothing_so_the_next_run_retries
+    ios = ReleaseStages.new_ios_state.merge("stage" => "production", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+    def @github.comment(*) = raise("GitHub answered 502")
+
+    assert_raises(RuntimeError) { promote_complete("1.0.0") }
+
+    assert_equal "production", ReleaseStages.stage_of(issue_for("1.0.0")["body"])
+  end
+
   def test_complete_closes_when_ios_never_reached_testflight
     add_version("1.0.0", "production", "production_started_on" => "2026-10-08")
 
