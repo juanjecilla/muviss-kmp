@@ -427,6 +427,10 @@ with no `--write` to preview). One file per listing locale,
   is kept from then on. A file that still starts with the old `DRAFT:` marker is
   replaced. `release-notes-guard` still refuses a `DRAFT:` file on a PR into
   `main`, which generated notes never carry.
+- **Forwarded notes.** A notes edit in a fix forwards to develop and to its own
+  version's release line only. On any other release line `forward-fix.sh` leaves
+  those notes out and logs `skipped vX.Y.Z notes for release/A.B.C`, so no stray
+  `vX.Y.Z/` directory lands there (#575).
 
 ### Cutting a release
 

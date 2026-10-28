@@ -248,6 +248,39 @@ expect_eq "and no PR is created for it" "$(grep -c 'pr create' "$FAKE_GH_LOG")" 
 expect_eq "and gets no PR or branch" "$(grep -c 'pr create' "$FAKE_GH_LOG")$(git -C "$fo" rev-parse --verify -q forward/pr-7-to-release-1.4.0 >/dev/null && echo pushed)" "0"
 ff bogus >/dev/null 2>&1; expect_eq "an unknown command is refused" "$?" "2"
 
+# #575: release notes belong to their own version's line. A notes edit to
+# vX.Y.Z forwards to develop and to release/X.Y.Z, and is left out of any other
+# release line, so no stray vX.Y.Z/ directory lands there.
+: >"$FAKE_GH_LOG"
+git -C "$f" switch -q -c release/1.5.0 develop; mkdir -p "$f/fastlane/release-notes/v1.5.0"
+echo "Generated." >"$f/fastlane/release-notes/v1.5.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): cut the 1.5.0 notes"
+echo "Hand-written." >"$f/fastlane/release-notes/v1.5.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 1.5.0 notes"
+NOTES15="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.5.0
+git -C "$f" switch -q -c side15 develop; mkdir -p "$f/fastlane/release-notes/v1.5.0"
+echo "Added locale." >"$f/fastlane/release-notes/v1.5.0/es-ES.txt"; git -C "$f" add -A; commit "$f" "chore(release): add a 1.5.0 locale"
+ADDSHA="$(git -C "$f" rev-parse HEAD)"
+git -C "$f" switch -q develop; git -C "$f" switch -q -c release/1.6.0 develop; git -C "$f" push -q origin release/1.6.0; git -C "$f" switch -q develop
+out="$(ff forward 9 release/1.5.0 "$NOTES15" release/1.6.0 2>&1)"
+expect_eq "an older version's notes skip a newer line" "$(grep -c 'skipped v1.5.0 notes for release/1.6.0' <<<"$out")" "1"
+expect_eq "and the forward is not opened for them" "$(tail -n 1 <<<"$out")" "forward #9 to release/1.6.0: nothing left once the other version's release notes are skipped"
+expect_eq "with no PR and no branch" "$(grep -c 'pr create' "$FAKE_GH_LOG")$(git -C "$fo" rev-parse --verify -q forward/pr-9-to-release-1.6.0 >/dev/null && echo pushed)" "0"
+: >"$FAKE_GH_LOG"; out="$(ff forward 10 release/1.5.0 "$ADDSHA" release/1.6.0 2>&1)"
+expect_eq "a notes file added cleanly is skipped too" "$(tail -n 1 <<<"$out")" "forward #10 to release/1.6.0: nothing left once the other version's release notes are skipped"
+expect_eq "and still no PR" "$(grep -c 'pr create' "$FAKE_GH_LOG")" "0"
+
+git -C "$f" switch -q -c side16 develop; mkdir -p "$f/fastlane/release-notes/v1.6.0"
+echo "Own notes." >"$f/fastlane/release-notes/v1.6.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): add the 1.6.0 notes"
+OWNSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "a version's own notes forward to its line" "$(ff forward 11 release/1.5.0 "$OWNSHA" release/1.6.0)" "forward #11 to release/1.6.0: opened (clean)"
+expect_eq "the own notes file is on the forward branch" "$(git -C "$fo" show forward/pr-11-to-release-1.6.0:fastlane/release-notes/v1.6.0/en-US.txt)" "Own notes."
+expect_eq "its PR says what was left out: nothing" "$(grep -c 'Left out' "$FAKE_GH_LOG")" "0"
+
+git -C "$f" switch -q -c side15dev develop; mkdir -p "$f/fastlane/release-notes/v1.5.0"
+echo "Dev locale." >"$f/fastlane/release-notes/v1.5.0/de-DE.txt"; git -C "$f" add -A; commit "$f" "chore(release): add a 1.5.0 locale on develop"
+DEVSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "a notes file forwards to develop, any version" "$(ff forward 12 release/1.5.0 "$DEVSHA" develop)" "forward #12 to develop: opened (clean)"
+expect_eq "with its content" "$(git -C "$fo" show forward/pr-12-to-develop:fastlane/release-notes/v1.5.0/de-DE.txt)" "Dev locale."
+
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'
