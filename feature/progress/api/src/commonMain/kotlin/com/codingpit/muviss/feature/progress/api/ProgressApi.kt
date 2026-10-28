@@ -5,6 +5,21 @@ import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+
+/**
+ * How a title was completed (EPIC 51, ADR 0032). [FINISHED] is a movie watched or a show that has
+ * ended and is fully seen; [CAUGHT_UP] is a show that is still airing and has no aired episode left
+ * unseen. Same moment, different sentence: "you finished it" against "you're caught up".
+ */
+enum class CompletionKind { FINISHED, CAUGHT_UP }
+
+/**
+ * A title became Watched or Finished because the person ticked it in the app. Never emitted for an
+ * import, a sync pull, a restore, reconciliation, a widget, Triage or any bulk mark: the person did
+ * not just finish anything. Derived from the change in `WatchStatus`, never stored.
+ */
+data class Completion(val mediaId: MediaId, val kind: CompletionKind)
 
 /**
  * One viewing of one episode (or of a movie, via [EpisodeId.forMovie]).
@@ -199,4 +214,22 @@ interface ProgressApi {
 
     /** Toggles a movie's watched flag. */
     suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean)
+
+    /**
+     * What [tickEpisode] and [tickMovie] emit when the tick finished a title: one [Completion] per
+     * completing tick, nothing for anything else. Hot and shared, so collect it where the prompt is
+     * shown; a Completion nobody is collecting for is dropped, not queued.
+     */
+    val completions: Flow<Completion> get() = emptyFlow()
+
+    /**
+     * [setEpisodeSeen] for a tick the person makes by hand in the app (the Progress tab, Detail's
+     * checkmark). The only difference is that finishing the title emits a [Completion]. The widgets,
+     * Triage, import and every bulk write keep calling [setEpisodeSeen], which is silent by
+     * construction rather than by a filter someone has to keep right.
+     */
+    suspend fun tickEpisode(episodeId: EpisodeId, seen: Boolean) = setEpisodeSeen(episodeId, seen)
+
+    /** [setMovieWatched] for a tick the person makes by hand; see [tickEpisode]. */
+    suspend fun tickMovie(mediaId: MediaId, watched: Boolean) = setMovieWatched(mediaId, watched)
 }

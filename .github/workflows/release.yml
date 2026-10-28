@@ -33,7 +33,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request' && github.event.pull_request.merged &&
       (startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'hotfix/'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -100,7 +100,7 @@ jobs:
   promote:
     needs: tag
     if: needs.tag.result == 'success' && !contains(github.event.pull_request.labels.*.name, 'auto-release')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: production
     permissions:
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Ruby
-        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
         with:
           bundler-cache: true
 
@@ -161,13 +161,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             task: :app:desktopApp:packageDeb
             artifactPath: app/desktopApp/build/compose/binaries/main/deb/*.deb
-          - os: macos-latest
+          - os: macos-15
             task: :app:desktopApp:packageDmg
             artifactPath: app/desktopApp/build/compose/binaries/main/dmg/*.dmg
-          - os: windows-latest
+          - os: windows-2025
             task: :app:desktopApp:packageMsi
             artifactPath: app/desktopApp/build/compose/binaries/main/msi/*.msi
     runs-on: ${{ matrix.os }}
@@ -224,7 +224,7 @@ jobs:
   github-release:
     needs: [tag, desktop-release]
     if: needs.tag.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40 # up to ~25 waiting for a still-running RC workflow
     permissions:
       contents: write
@@ -316,7 +316,7 @@ jobs:
 
   back-merge:
     needs: tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write

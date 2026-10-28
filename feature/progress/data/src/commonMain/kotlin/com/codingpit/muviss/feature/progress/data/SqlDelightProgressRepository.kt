@@ -77,7 +77,7 @@ class SqlDelightProgressRepository(
     override fun observeLastWatchedAt(): Flow<Map<MediaId, Long>> = playQueries.lastWatchedAtByMedia()
         .asFlow()
         .mapToList(dispatchers.io)
-        .map { rows -> rows.associate { MediaId.parse(it.mediaId) to (it.lastWatchedAt ?: 0L) } }
+        .map { rows -> rows.associate { MediaId.parse(it.mediaId) to it.lastWatchedAt } }
 
     override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = playQueries.rewatchTimestamps(sinceEpochMs)
         .asFlow()

@@ -26,6 +26,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,6 +41,7 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.app.shared.generated.resources.persistence_write_failed
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
@@ -60,6 +63,7 @@ import com.codingpit.muviss.feature.collection.ui.collectionSection
 import com.codingpit.muviss.feature.cowatch.ui.CompanionsRoute
 import com.codingpit.muviss.feature.cowatch.ui.coWatchSection
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
+import com.codingpit.muviss.feature.onboarding.data.ApplySystemMotionDefault
 import com.codingpit.muviss.feature.onboarding.ui.OnboardingRoute
 import com.codingpit.muviss.feature.onboarding.ui.onboardingSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
@@ -270,7 +274,13 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
 private fun rememberStartRoute(deepLinkMediaId: String?): Any? {
     val onboarding = koinInject<OnboardingApi>()
     val completed by produceState<Boolean?>(initialValue = null) { value = onboarding.observeCompleted().first() }
-    return remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
+    val route = remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
+    // A fresh install takes its animations default from the OS's reduce-motion setting, once, on its first
+    // launch whatever the start route; the use case keeps its own mark, so a choice made in Settings
+    // afterwards is never touched (#394).
+    val applyMotionDefault = koinInject<ApplySystemMotionDefault>()
+    LaunchedEffect(Unit) { applyMotionDefault() }
+    return route
 }
 
 /** The decision [rememberStartRoute] makes, apart from the reading: null while [completed] is unknown. */
@@ -378,7 +388,9 @@ private fun MuvissScaffold(
                     selected = selected,
                     onClick = { controller.navigateTo(dest) },
                     icon = { NavItemIcon(dest, needsAttention = accountChangePending && dest.key == ACCOUNT_CHANGE_DESTINATION_KEY) },
-                    label = { Text(dest.label) },
+                    // At 200 % text the five labels no longer fit their slots and break mid-word
+                    // ("Searc/h"). The bar's labels stop scaling at 1.3×; the rest of the app does not.
+                    label = { CappedFontScale(NAV_LABEL_MAX_FONT_SCALE) { Text(dest.label, maxLines = 1) } },
                     colors = itemColors,
                 )
             }
@@ -469,9 +481,20 @@ private fun rememberPersistenceWarning(): String? {
         PersistenceState.Pending, PersistenceState.Durable -> null
         PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
         PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
+        PersistenceState.WriteFailed -> stringResource(Res.string.persistence_write_failed)
     }
 }
 
 private fun configureImageLoader() {
     SingletonImageLoader.setSafe { context -> createImageLoader(context) }
+}
+
+/** Largest font scale the bottom-bar labels follow. Beyond it the labels would overflow their slots. */
+private const val NAV_LABEL_MAX_FONT_SCALE = 1.3f
+
+/** Content whose text stops growing at [max] times the base size: the user's setting still applies up to there. */
+@Composable
+private fun CappedFontScale(max: Float, content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(density.density, minOf(density.fontScale, max)), content = content)
 }
