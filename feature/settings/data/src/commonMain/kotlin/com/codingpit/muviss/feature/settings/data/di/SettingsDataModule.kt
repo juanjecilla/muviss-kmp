@@ -33,6 +33,7 @@ import com.codingpit.muviss.feature.settings.domain.ImportParser
 import com.codingpit.muviss.feature.settings.domain.LoadGenresUseCase
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import com.codingpit.muviss.feature.settings.domain.MutedGenresActions
+import com.codingpit.muviss.feature.settings.domain.ObserveFeedbackLinksUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveSettingsUseCase
 import com.codingpit.muviss.feature.settings.domain.ObserveTmdbDataSourceUseCase
 import com.codingpit.muviss.feature.settings.domain.PreviewImportUseCase
@@ -44,6 +45,7 @@ import com.codingpit.muviss.feature.settings.domain.SetNotificationsEnabledUseCa
 import com.codingpit.muviss.feature.settings.domain.SetRegionUseCase
 import com.codingpit.muviss.feature.settings.domain.SetThemeUseCase
 import com.codingpit.muviss.feature.settings.domain.SettingsActions
+import com.codingpit.muviss.feature.settings.domain.SettingsObservations
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import com.codingpit.muviss.feature.settings.domain.TraktImportParser
 import com.codingpit.muviss.feature.settings.domain.TvTimeImportParser
@@ -92,6 +94,8 @@ val settingsDataModule: Module = module {
     single { SettingsLocaleSync(get(), get(), get(), get()) } withOptions { createdAtStart() }
 
     factory { ObserveSettingsUseCase(get()) }
+    factory { ObserveFeedbackLinksUseCase(get(), get(), get()) }
+    factory { SettingsObservations(get(), get()) }
     factory { SetThemeUseCase(get()) }
     factory { SetLanguageUseCase(get()) }
     factory { SetRegionUseCase(get()) }

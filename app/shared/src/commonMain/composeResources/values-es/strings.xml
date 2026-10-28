@@ -7,6 +7,7 @@
     <string name="nav_needs_attention">%1$s, requiere tu atención</string>
     <string name="nav_settings">Ajustes</string>
     <string name="persistence_read_only_tab">Muviss está abierta en otra pestaña. Los cambios que hagas aquí no se guardarán.</string>
+    <string name="persistence_write_failed">Muviss no ha podido guardar tus últimos cambios en este navegador. Se perderán si recargas o cierras esta pestaña.</string>
     <string name="persistence_not_persisted">Este navegador no puede guardar tu biblioteca. Los cambios se perderán al cerrar esta pestaña.</string>
     <!-- New-episode notifications on desktop and iOS (NotificationText.kt); Android's live in res/. -->
     <string name="notification_episode_out">Ya está disponible %1$s</string>
