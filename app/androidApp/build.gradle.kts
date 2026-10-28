@@ -149,7 +149,7 @@ val ossLicensesReport = layout.buildDirectory.file("reports/licensee/androidRele
 val ossLicensesSource =
     rootProject.layout.projectDirectory.file("feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt")
 
-val verifyOssLicenses by tasks.registering {
+val verifyOssLicenses = tasks.register("verifyOssLicenses") {
     group = "verification"
     description = "Fails if licensee's release report lists an artifact that About > Licenses has no entry for (#562)."
     dependsOn("licenseeAndroidRelease")
