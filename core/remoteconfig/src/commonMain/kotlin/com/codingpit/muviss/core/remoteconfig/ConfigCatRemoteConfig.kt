@@ -1,6 +1,7 @@
 package com.codingpit.muviss.core.remoteconfig
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.remoteconfig.FeatureRequestProvider
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.configcat.ConfigCache
@@ -79,6 +80,15 @@ internal class ConfigCatRemoteConfig(
             RemoteValues(
                 byokEnabled = client.getValue(KEY_BYOK_ENABLED, defaults.byokEnabled),
                 tmdbFallbackReadToken = tmdbReadTokenOrNull(client.getValue(KEY_TMDB_FALLBACK_TOKEN, "")),
+                featureRequestProvider = FeatureRequestProvider.fromStored(
+                    client.getValue(KEY_FEATURE_REQUEST_PROVIDER, defaults.featureRequestProvider.key),
+                ),
+                featureRequestUrl = client.getValue(KEY_FEATURE_REQUEST_URL, defaults.featureRequestUrl.orEmpty())
+                    .trim()
+                    .takeIf { it.isNotEmpty() },
+                bugReportUrl = client.getValue(KEY_BUG_REPORT_URL, defaults.bugReportUrl.orEmpty())
+                    .trim()
+                    .takeIf { it.isNotEmpty() },
             )
         } ?: defaults
         state.value = next
@@ -107,6 +117,9 @@ internal class ConfigCatRemoteConfig(
 
         const val KEY_BYOK_ENABLED = "byokEnabled"
         const val KEY_TMDB_FALLBACK_TOKEN = "tmdbFallbackReadToken"
+        const val KEY_FEATURE_REQUEST_PROVIDER = "featureRequestProvider"
+        const val KEY_FEATURE_REQUEST_URL = "featureRequestUrl"
+        const val KEY_BUG_REPORT_URL = "bugReportUrl"
 
         /** One fetch per hour per active device is the budget ADR 0026 sets against the free tier. */
         const val STALE_AFTER_MS: Long = 60L * 60L * 1000L

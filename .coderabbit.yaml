@@ -13,7 +13,8 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    base_branches: [ "develop", "main" ]
+    # A fix for a version in flight is a PR into release/X.Y.Z or hotfix/X.Y.Z (docs/RELEASING.md).
+    base_branches: [ "develop", "main", "release/.*", "hotfix/.*" ]
   path_filters:
     - "!**/src/jvmTest/resources/screenshots/**"
     - "!**/*.png"
