@@ -414,6 +414,12 @@ with no `--write` to preview). One file per listing locale,
   `web`, `desktop`), and anything paid or remotely dark (sync, co-watch, the own
   TMDB key), which never appear in public copy. Phrase a `feat`/`fix` subject
   as something a user would recognise; it is the store text.
+  - **Opting a commit out.** A commit whose body ends in a `Notes: none` trailer
+    (key and value in any case, anywhere in the trailer block) is left out of
+    both the English list and the Spanish count. A `Notes: none` line in prose
+    above the last paragraph does not count. It is for a `feat` with nothing a
+    user can see yet; the version bump still follows the type, so this does not
+    stop a release being a minor one.
 - **Spanish (and any other non-English locale)** gets one sentence that counts
   the changes ("Muviss 1.2.0 trae 3 novedades y 1 corrección de errores."): a
   commit subject cannot be translated here.
