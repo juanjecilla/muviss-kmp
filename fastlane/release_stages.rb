@@ -82,6 +82,10 @@ module ReleaseStages
       "beta_done_on" => nil,
       "production_started_on" => nil,
       "superseded_on" => nil,
+      # The newest RC the iOS RC job uploaded to TestFlight internal (#604). Not `rc_tag`: that is the
+      # build sent to external beta, and the Sunday step reads it as such. Its presence keeps the
+      # version on the iOS train even while its beta step is held.
+      "testflight_rc" => nil,
       "holds" => [],
       "ramp" => { "phased_state" => nil, "paused_by" => nil, "paused_on" => nil, "paused_days" => 0 },
     }

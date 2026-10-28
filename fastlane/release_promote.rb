@@ -6,6 +6,7 @@
 #   ruby fastlane/release_promote.rb run                       DRY_RUN=false acts; anything else only prints
 #   ruby fastlane/release_promote.rb complete X.Y.Z            the ramp reached 100%: close the release issue
 #   ruby fastlane/release_promote.rb record-production X.Y.Z   release.yml promoted it (the manual path)
+#   ruby fastlane/release_promote.rb record-testflight vX.Y.Z-rcN   the iOS RC job uploaded it to TestFlight internal (#604)
 #
 # ReleaseGates is pure. ReleasePromotion decides and acts through four adapters
 # (GitHub, git, Play, Sentry) that the tests replace with fakes; the real ones
@@ -186,6 +187,25 @@ class ReleasePromotion
     end
   end
 
+  # The iOS RC job uploaded this RC to TestFlight internal (#604). Only the marker's iOS track changes:
+  # no comment, because every RC push would add one. A re-run for the same tag changes nothing.
+  def record_testflight(tag)
+    version = tag[/\Av(\d+\.\d+\.\d+)-rc\d+\z/, 1]
+    raise ArgumentError, "expected vX.Y.Z-rcN, got #{tag.inspect}" unless version
+
+    issue, state = find(version)
+    return @out.puts("no release issue for #{version}; nothing to record") unless issue
+    return @out.puts("the release issue for #{version} has no readable marker; nothing to record") unless state
+
+    track = ReleaseStages.ios_of(state)
+    return @out.puts("#{version} has no iOS track (cut before ADR 0033); nothing to record") unless track
+    return if track["testflight_rc"] == tag
+
+    state = state.merge(ReleaseStages::IOS_KEY => track.merge("testflight_rc" => tag))
+    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    @out.puts "recorded #{tag} on the iOS track of #{version}"
+  end
+
   # release.yml promoted the version itself (the manual path): record it.
   def record_production(version)
     issue, state = find(version)
@@ -200,14 +220,16 @@ class ReleasePromotion
 
   private
 
-  # iOS is on the train for this version when it has an RC or has left its first stage, and has neither
-  # finished nor been superseded. A version that never reached TestFlight is not waiting on iOS (#430).
+  # iOS is on the train for this version when it has an RC, a TestFlight upload, or has left its first stage,
+  # and has neither finished nor been superseded. A version that never reached TestFlight is not waiting on
+  # iOS (#430). An upload counts even while its external-beta step is held (#604): that is the case where
+  # iOS can still advance after Play is done.
   def ios_still_ramping?(state)
     track = ReleaseStages.ios_of(state)
     return false unless track
     return false if track["stage"] == ReleaseStages::DONE || track["superseded_on"]
 
-    !track["rc_tag"].nil? || track["stage"] != ReleaseStages::INTERNAL
+    !track["rc_tag"].nil? || !track["testflight_rc"].nil? || track["stage"] != ReleaseStages::INTERNAL
   end
 
   def live_records
@@ -536,11 +558,15 @@ if __FILE__ == $PROGRAM_NAME
     if (summary = ENV["GITHUB_STEP_SUMMARY"])
       File.open(summary, "a") { |f| outcomes.each { |o| f.puts "- #{o.version}: #{o.status}#{o.step ? " (#{o.step})" : ''}#{o.reasons.empty? ? '' : " — #{o.reasons.join('; ')}"}" } }
     end
-  when "complete", "record-production"
+  when "complete", "record-production", "record-testflight"
     promotion = ReleasePromotion.new(github: github, git: nil, play: nil, sentry: nil, today: Date.today, apply: true)
-    command == "complete" ? promotion.complete(args.fetch(0)) : promotion.record_production(args.fetch(0))
+    case command
+    when "complete" then promotion.complete(args.fetch(0))
+    when "record-production" then promotion.record_production(args.fetch(0))
+    else promotion.record_testflight(args.fetch(0))
+    end
   else
-    warn "usage: release_promote.rb run | complete X.Y.Z | record-production X.Y.Z"
+    warn "usage: release_promote.rb run | complete X.Y.Z | record-production X.Y.Z | record-testflight vX.Y.Z-rcN"
     exit 2
   end
 end
