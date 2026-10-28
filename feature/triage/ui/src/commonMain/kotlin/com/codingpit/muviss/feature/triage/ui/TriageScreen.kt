@@ -182,6 +182,10 @@ fun TriageScreen(
         val result = snackbarHostState.showSnackbar(
             message = getString(Res.string.commit_failed_snackbar, failed.summary.title, failed.message.resolveAsync()),
             actionLabel = getString(Res.string.action_retry),
+            // Same as the Undo below: an action label makes Material3 default to
+            // Indefinite, and this one would then sit over the verdict buttons
+            // until it was tapped or dismissed.
+            duration = SnackbarDuration.Long,
         )
         if (result == SnackbarResult.ActionPerformed) viewModel.onRetryFailedCommit() else viewModel.onFailedCommitDismissed()
     }
