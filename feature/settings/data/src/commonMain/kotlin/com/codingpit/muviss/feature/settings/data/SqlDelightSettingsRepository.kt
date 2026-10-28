@@ -166,14 +166,17 @@ class SqlDelightSettingsRepository(
             lists = exportQueries.lists.selectAllListsForExport().awaitAsList().map { it.toExport() },
             listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
+            settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
         )
         json.encodeToString(export)
     }
 
     private suspend fun ensureRow() = withContext(dispatchers.io) { settingsQueries.ensureRow() }
 
+    // A restored backup from a newer build can store a theme this one does not know; it is kept
+    // as is (a later build reads it again) and shown as the system theme meanwhile, never thrown.
     private fun AppSettingsRow.toDomain(): AppSettings = AppSettings(
-        theme = AppTheme.valueOf(theme),
+        theme = AppTheme.entries.firstOrNull { it.name == theme } ?: AppTheme.SYSTEM,
         language = language,
         region = region,
         notificationsEnabled = notificationsEnabled,
@@ -255,6 +258,20 @@ class SqlDelightSettingsRepository(
         mediaId = mediaId,
         addedAtEpochMs = addedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun AppSettingsRow.toExport(): SettingsExport = SettingsExport(
+        theme = theme,
+        language = language,
+        region = region,
+        animationsEnabled = animationsEnabled,
+        triageDeckAnimations = triageDeckAnimations,
+        tickAnimations = tickAnimations,
+        triageControlScheme = triageControlScheme,
+        triageSnoozePeriod = triageSnoozePeriod,
+        triageSnoozePlacement = triageSnoozePlacement,
+        mutedGenres = mutedGenres,
+        mutedGenresInSearch = mutedGenresInSearch,
     )
 
     private fun ProfileRow.toExport(): ProfileExport = ProfileExport(displayName = displayName, avatarId = avatarId)
