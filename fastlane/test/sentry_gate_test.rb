@@ -2,6 +2,26 @@ require "minitest/autorun"
 require_relative "../sentry_gate"
 
 class SentryGateTest < Minitest::Test
+  # Only a declaration that is one string literal is read; anything else (a concatenation, a constant)
+  # reads as nil and fails, rather than matching its first literal.
+  DECLARATION = /^internal actual val crashReleaseNamespace: String = "([^"]+)"[ \t]*$/
+
+  # The Kotlin `crashReleaseNamespace` actuals and this gate's NAMESPACES are kept in step by hand
+  # (#431); reading the Kotlin source here is what makes a drift fail a PR check.
+  def test_the_gates_namespaces_match_the_apps_per_platform_release_strings
+    shared = File.expand_path("../../app/shared/src", __dir__)
+    actual = ->(source_set) { File.read(File.join(shared, source_set, "kotlin/com/codingpit/muviss/CrashReleaseNamespace.kt"))[DECLARATION, 1] }
+
+    assert_equal SentryGate::NAMESPACES.fetch(:ios), actual.call("iosMain")
+    assert_equal SentryGate::NAMESPACES.fetch(:android), actual.call("androidMain")
+    %w[jvmMain webMain].each { |source_set| assert_equal SentryGate::NAMESPACES.fetch(:android), actual.call(source_set) }
+  end
+
+  def test_a_namespace_that_is_not_one_literal_is_not_read
+    assert_nil 'internal actual val crashReleaseNamespace: String = "com.codingpit.muviss" + ".ios"'[DECLARATION, 1]
+    assert_equal "com.codingpit.muviss.ios", %(internal actual val crashReleaseNamespace: String = "com.codingpit.muviss.ios"\n)[DECLARATION, 1]
+  end
+
   def test_release_name_matches_what_the_app_reports
     assert_equal "com.codingpit.muviss@1.1.0+160", SentryGate.release_name(version_name: "1.1.0", version_code: 160)
   end

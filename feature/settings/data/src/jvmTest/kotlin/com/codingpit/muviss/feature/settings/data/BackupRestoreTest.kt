@@ -50,6 +50,98 @@ class BackupRestoreTest {
         assertEquals(Json.decodeFromString<MuvissDataExport>(first), Json.decodeFromString<MuvissDataExport>(second))
     }
 
+    // ---- display preferences (#392) -----------------------------------------------------------
+
+    private suspend fun changePreferences(database: MuvissDatabase) = database.appSettingsQueries.run {
+        ensureRow()
+        updateTheme("DARK")
+        updateLanguage("es-ES")
+        updateRegion("ES")
+        updateAnimationsEnabled(false)
+        updateTriageDeckAnimations(false)
+        updateTickAnimations(false)
+        updateTriageControlScheme("TWO_WAY")
+        updateTriageSnoozePeriod("ONE_MONTH")
+        updateTriageSnoozePlacement("FIRST")
+        updateMutedGenres("movie:27:Horror")
+        updateMutedGenresInSearch(true)
+        // Device-bound and one-time flags are not part of a backup.
+        updateNotificationsEnabled(true)
+        updateSyncAutomatically(true)
+        updateCrashReportsEnabled(false)
+        updateDiscoverIntroSeen(true)
+    }
+
+    @Test
+    fun `a restore on a clean database brings the display preferences back`() = runTest {
+        val source = newDatabase()
+        changePreferences(source)
+        val backup = exporter(source).exportData()
+
+        val fresh = newDatabase()
+        restorer(fresh).restore(backup)
+
+        val row = fresh.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("DARK", row.theme)
+        assertEquals("es-ES", row.language)
+        assertEquals("ES", row.region)
+        assertEquals(false, row.animationsEnabled)
+        assertEquals(false, row.triageDeckAnimations)
+        assertEquals(false, row.tickAnimations)
+        assertEquals("TWO_WAY", row.triageControlScheme)
+        assertEquals("ONE_MONTH", row.triageSnoozePeriod)
+        assertEquals("FIRST", row.triageSnoozePlacement)
+        assertEquals("movie:27:Horror", row.mutedGenres)
+        assertEquals(true, row.mutedGenresInSearch)
+    }
+
+    @Test
+    fun `device-bound settings and one-time hints stay out of the backup and the restore`() = runTest {
+        val source = newDatabase()
+        changePreferences(source)
+        val backup = exporter(source).exportData()
+
+        val fresh = newDatabase()
+        restorer(fresh).restore(backup)
+
+        val row = fresh.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals(false, row.notificationsEnabled, "a fresh install is asked, never opted in")
+        assertEquals(false, row.syncAutomatically)
+        assertEquals(true, row.crashReportsEnabled)
+        assertEquals(false, row.discoverIntroSeen)
+    }
+
+    @Test
+    fun `a preference already chosen on this device is kept over the backup's`() = runTest {
+        val source = newDatabase()
+        changePreferences(source)
+        val backup = exporter(source).exportData()
+
+        val local = newDatabase()
+        local.appSettingsQueries.ensureRow()
+        local.appSettingsQueries.updateTheme("LIGHT")
+
+        restorer(local).restore(backup)
+
+        val row = local.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("LIGHT", row.theme, "chosen here, so the backup does not replace it")
+        assertEquals("es-ES", row.language, "still at its default, so the backup fills it")
+    }
+
+    @Test
+    fun `restoring the same backup twice changes nothing the second time`() = runTest {
+        val source = newDatabase()
+        changePreferences(source)
+        val backup = exporter(source).exportData()
+        val fresh = newDatabase()
+
+        restorer(fresh).restore(backup)
+        val first = fresh.appSettingsQueries.selectSettings().awaitAsOne()
+        restorer(fresh).restore(backup)
+
+        assertEquals(first, fresh.appSettingsQueries.selectSettings().awaitAsOne())
+    }
+
     @Test
     fun `a v1 export still restores`() = runTest {
         val v1 = javaClass.getResource("/backups/v1-export.json")!!.readText()
