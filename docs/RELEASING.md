@@ -391,6 +391,15 @@ the schedule, the gates and where a fix goes.
   linking the original. A forward PR that conflicts is still opened, empty, and
   stays open for a person; a forward PR into a release branch holds that
   version's promotion until it merges. Each push to a release branch is a new RC.
+  A hand edit to the release notes (`fastlane/release-notes/`), which exist only
+  on the release branch, makes git report a delete/modify conflict, which the
+  forward resolves by itself: it takes the notes as the release branch wrote
+  them and continues, so the PR carries them (#529) and nobody has to step in.
+  A notes file that both branches changed still opens as a conflict.
+  **CodeRabbit does not review a forward PR** (the App authored it, and it skips
+  App-authored PRs), so its approval has to come from a person: approve it, or
+  for a conflicting one resolve it and merge it by hand, as #528 did for #527
+  (#573).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
