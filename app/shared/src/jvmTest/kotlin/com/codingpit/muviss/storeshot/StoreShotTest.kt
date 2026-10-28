@@ -99,13 +99,19 @@ class StoreShotTest {
             for ((locale, dark) in listOf("en-US" to false, "en-US" to true, "es-ES" to false)) {
                 runBlocking { koin.get<SettingsRepository>().setTheme(if (dark) AppTheme.DARK else AppTheme.LIGHT) }
                 Locale.setDefault(Locale.forLanguageTag(locale))
-                shoot(catalog, locale, dark)
+                shootAll(catalog, locale, dark)
             }
         } finally {
             Locale.setDefault(defaultLocale)
             stopKoin()
             Dispatchers.resetMain()
         }
+    }
+
+    /** The phone set, plus the tablet sets for Play (#381) and the App Store's device classes (#425): light, per listing locale. */
+    private fun shootAll(catalog: StoreShotCatalog, locale: String, dark: Boolean) {
+        shoot(catalog, locale, dark)
+        if (!dark) Device.EXTRA.forEach { shoot(catalog, locale, dark, it) }
     }
 
     private fun startGraph(catalog: StoreShotCatalog): Koin {
@@ -160,9 +166,9 @@ class StoreShotTest {
             .forEach { (title, rating) -> collection.setRating(title.id, rating) }
     }
 
-    private fun shoot(catalog: StoreShotCatalog, locale: String, dark: Boolean) = runSkikoComposeUiTest(
-        size = Size(WIDTH_PX.toFloat(), HEIGHT_PX.toFloat()),
-        density = Density(DENSITY),
+    private fun shoot(catalog: StoreShotCatalog, locale: String, dark: Boolean, device: Device = Device.PHONE) = runSkikoComposeUiTest(
+        size = Size(device.widthPx.toFloat(), device.heightPx.toFloat()),
+        density = Density(device.density),
     ) {
         val posters = AsyncImagePreviewHandler { request ->
             val name = request.data.toString().substringAfterLast(StoreShotCatalog.POSTER_PREFIX, "")
@@ -218,7 +224,7 @@ class StoreShotTest {
         // nav.seasonsTwo just under the floating back button, ticks below it.
         detailList.performScrollToKey("seasonsHeader")
         waitForIdle()
-        bringToTop(nav.seasonsTwo, marginPx = 150f)
+        bringToTop(nav.seasonsTwo, marginPx = 150f, density = device.density)
         capture("detail-seasons")
 
         tab(nav.progress)
@@ -242,7 +248,7 @@ class StoreShotTest {
         settle { onAllNodes(hasText(nav.stats)).fetchSemanticsNodes().isNotEmpty() }
         // The identity block is the top half; the store shot is the numbers and charts.
         onAllNodes(hasText(nav.stats))[0].performScrollTo()
-        bringToTop(nav.stats, marginPx = 60f)
+        bringToTop(nav.stats, marginPx = 60f, density = device.density)
         capture("profile-stats")
 
         tab(nav.search)
@@ -262,7 +268,7 @@ class StoreShotTest {
         }
         capture("triage")
 
-        write(shots, locale, dark)
+        write(shots, locale, dark, device)
     }
 
     // Through the click action, not a touch: a touched tab kept its pressed
@@ -279,9 +285,9 @@ class StoreShotTest {
      * Through the scroll action of the tallest scrollable, not a drag: a drag
      * that starts on a row leaves that row's pressed layer in the shot.
      */
-    private fun SkikoComposeUiTest.bringToTop(text: String, marginPx: Float) {
+    private fun SkikoComposeUiTest.bringToTop(text: String, marginPx: Float, density: Float) {
         waitForIdle()
-        val topPx = onAllNodes(hasText(text))[0].getUnclippedBoundsInRoot().top.value * DENSITY
+        val topPx = onAllNodes(hasText(text))[0].getUnclippedBoundsInRoot().top.value * density
         val distance = topPx - marginPx
         if (kotlin.math.abs(distance) < 4f) return
         val scrollables = onAllNodes(hasScrollAction())
@@ -313,21 +319,66 @@ class StoreShotTest {
         waitForIdle()
     }
 
-    private fun write(shots: List<Pair<String, java.awt.image.BufferedImage>>, locale: String, dark: Boolean) {
+    private fun write(shots: List<Pair<String, java.awt.image.BufferedImage>>, locale: String, dark: Boolean, device: Device) {
         val root = repoRoot()
         if (!dark) {
-            val play = File(root, "fastlane/metadata/android/$locale/images/phoneScreenshots").apply {
-                deleteRecursively()
+            val dir = File(root, device.folder(locale)).apply {
+                // A shot renamed or dropped since the last render must not linger for deliver/supply to upload.
+                if (device.ownsFolder) deleteRecursively() else listFiles()?.filter(device::ownsFile)?.forEach(File::delete)
                 mkdirs()
             }
             PLAY_ORDER.forEachIndexed { i, name ->
-                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second, "png", File(play, "${i + 1}_$name.png")) }
+                shots.firstOrNull { it.first == name }?.let { ImageIO.write(it.second.opaque(), "png", File(dir, device.fileName(i + 1, name))) }
             }
         }
-        if (locale == "en-US") {
+        // The landing's set is the phone's.
+        if (locale == "en-US" && device == Device.PHONE) {
             val site = File(root, "website/public/screenshots").apply { mkdirs() }
             val theme = if (dark) "dark" else "light"
             for ((name, image) in shots) if (name in SITE_NAMES) ImageIO.write(image, "png", File(site, "$name-$theme.png"))
+        }
+    }
+
+    /**
+     * The capture without its alpha channel. App Store Connect rejects a screenshot that has one, and
+     * Play asks for 24-bit PNGs; the frame is opaque anyway, so only the PNG colour type changes.
+     */
+    private fun java.awt.image.BufferedImage.opaque(): java.awt.image.BufferedImage {
+        val rgb = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        rgb.createGraphics().apply {
+            drawImage(this@opaque, 0, 0, null)
+            dispose()
+        }
+        return rgb
+    }
+
+    /**
+     * A render target and where its images go. Play's tablets and the App Store's device classes are
+     * portrait; every width here that is past 600dp shows the navigation rail instead of the bottom bar.
+     * The App Store sizes are the ones App Store Connect lists for the 6.9", 6.5" and 13" iPad classes
+     * (#425); deliver picks the class from the pixel size, the prefix only keeps the files apart.
+     */
+    private enum class Device(val widthPx: Int, val heightPx: Int, val density: Float, private val folderTemplate: String, private val prefix: String = "") {
+        PHONE(1080, 1920, 2.625f, "fastlane/metadata/android/%s/images/phoneScreenshots"),
+        SEVEN_INCH(1200, 1920, 2f, "fastlane/metadata/android/%s/images/sevenInchScreenshots"),
+        TEN_INCH(1600, 2560, 2f, "fastlane/metadata/android/%s/images/tenInchScreenshots"),
+        IPHONE_69(1320, 2868, 3f, "fastlane/screenshots/ios/%s", "iPhone-6.9"),
+        IPHONE_65(1284, 2778, 3f, "fastlane/screenshots/ios/%s", "iPhone-6.5"),
+        IPAD_13(2064, 2752, 2f, "fastlane/screenshots/ios/%s", "iPad-13"),
+        ;
+
+        fun folder(locale: String) = folderTemplate.format(locale)
+
+        /** The App Store folder holds three device classes, so one class must not clear the others'. */
+        val ownsFolder: Boolean get() = prefix.isEmpty()
+
+        /** In a shared folder, a file this class wrote: its prefix and the `_` after it, so 6.9 never matches 6.5. */
+        fun ownsFile(file: File) = file.name.startsWith("${prefix}_")
+
+        fun fileName(position: Int, name: String) = if (prefix.isEmpty()) "${position}_$name.png" else "${prefix}_${position}_$name.png"
+
+        companion object {
+            val EXTRA = listOf(SEVEN_INCH, TEN_INCH, IPHONE_69, IPHONE_65, IPAD_13)
         }
     }
 
@@ -348,9 +399,6 @@ class StoreShotTest {
     )
 
     private companion object {
-        const val WIDTH_PX = 1080
-        const val HEIGHT_PX = 1920
-        const val DENSITY = 2.625f
         const val DAY_MS = 86_400_000L
         val COPY = mapOf(
             "en" to Copy("Search", "Library", "Progress", "Profile", "Fill your library", "Watching", "Seasons (2)", "Stats", "Got it", "Watched", "Back"),

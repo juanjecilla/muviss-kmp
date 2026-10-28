@@ -60,6 +60,7 @@ class SqlDelightBackupRestorer(
                 backup.lists.forEach { tally.count(restoreList(it)) }
                 backup.listEntries.forEach { tally.count(restoreListEntry(it)) }
                 backup.profile?.let { restoreProfile(it) }
+                backup.settings?.let { restoreSettings(it) }
 
                 val mediaIds = buildSet {
                     backup.collection.mapTo(this) { it.mediaId }
@@ -238,6 +239,29 @@ class SqlDelightBackupRestorer(
         }
     }
 
+    /**
+     * Preferences carry no timestamp either, so they restore field by field and only over a field the
+     * person has not changed on this device: one still at its first-run default takes the backup's value,
+     * one already set keeps its own (a restore merges, it never replaces). A value of a newer build that
+     * this one does not know is stored as is, like `appSettings` does.
+     */
+    private suspend fun restoreSettings(backup: SettingsExport) {
+        val queries = database.appSettingsQueries
+        queries.ensureRow()
+        val local = queries.selectSettings().awaitAsOneOrNull() ?: return
+        if (local.theme == DEFAULT_THEME) queries.updateTheme(backup.theme)
+        if (local.language == DEFAULT_LANGUAGE) queries.updateLanguage(backup.language)
+        if (local.region == DEFAULT_REGION) queries.updateRegion(backup.region)
+        if (local.animationsEnabled) queries.updateAnimationsEnabled(backup.animationsEnabled)
+        if (local.triageDeckAnimations) queries.updateTriageDeckAnimations(backup.triageDeckAnimations)
+        if (local.tickAnimations) queries.updateTickAnimations(backup.tickAnimations)
+        if (local.triageControlScheme == DEFAULT_SCHEME) queries.updateTriageControlScheme(backup.triageControlScheme)
+        if (local.triageSnoozePeriod == DEFAULT_SNOOZE_PERIOD) queries.updateTriageSnoozePeriod(backup.triageSnoozePeriod)
+        if (local.triageSnoozePlacement == DEFAULT_SNOOZE_PLACEMENT) queries.updateTriageSnoozePlacement(backup.triageSnoozePlacement)
+        if (local.mutedGenres == DEFAULT_MUTED_GENRES) queries.updateMutedGenres(backup.mutedGenres)
+        if (!local.mutedGenresInSearch) queries.updateMutedGenresInSearch(backup.mutedGenresInSearch)
+    }
+
     private class Tally {
         var restored = 0
             private set
@@ -256,5 +280,15 @@ class SqlDelightBackupRestorer(
         // Profile.sq's `ensureRow` defaults.
         const val DEFAULT_DISPLAY_NAME = "You"
         const val DEFAULT_AVATAR = "indigo"
+
+        // A fresh `appSettings` row, as `ensureRow` seeds it. Mirrors AppSettings.sq: a field equal to
+        // its seed has not been chosen, so a restore may fill it.
+        const val DEFAULT_THEME = "SYSTEM"
+        const val DEFAULT_LANGUAGE = ""
+        const val DEFAULT_REGION = "US"
+        const val DEFAULT_SCHEME = "FOUR_WAY"
+        const val DEFAULT_SNOOZE_PERIOD = "ONE_WEEK"
+        const val DEFAULT_SNOOZE_PLACEMENT = "MIXED_IN"
+        const val DEFAULT_MUTED_GENRES = "tv:10767:Talk;tv:10763:News;tv:10764:Reality"
     }
 }
