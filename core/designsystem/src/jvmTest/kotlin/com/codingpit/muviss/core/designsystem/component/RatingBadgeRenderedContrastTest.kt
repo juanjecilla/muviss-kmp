@@ -96,16 +96,12 @@ class RatingBadgeRenderedContrastTest {
         setContent { BadgeOnPoster(poster, darkTheme) }
         waitForIdle()
         val pixels = onNodeWithTag(RATING_BADGE_TAG).captureToImage().toPixelMap()
-        val height = pixels.height
-        // Stadium-shaped pill: the rounded ends have radius height/2, so this band is inside it.
-        val band = (height / 2 until pixels.width - height / 2).flatMap { x ->
-            (0 until height).map { y -> pixels[x, y] }
-        }
-        val counts = band.groupingBy { it.toArgb() }.eachCount()
-        val ink = counts.keys.map { Color(it) }.maxBy { wcagRelativeLuminance(it) }
-        val dominant = counts.filterValues { it >= band.size * DOMINANT_SHARE }.keys.map { Color(it) }
-        val background = dominant.filter { it != ink }.maxBy { wcagRelativeLuminance(it) }
-        return Measured(ink = ink, background = background, ratio = wcagContrastRatio(ink, background))
+        val band = sampleBadgeBand(pixels)
+        return Measured(
+            ink = band.ink,
+            background = band.lightest,
+            ratio = wcagContrastRatio(band.ink, band.lightest),
+        )
     }
 
     private data class Measured(val ink: Color, val background: Color, val ratio: Double)
@@ -116,9 +112,4 @@ class RatingBadgeRenderedContrastTest {
     }
 
     private fun Color.hex(): String = "#%06X".format(toArgb() and 0xFFFFFF)
-
-    private companion object {
-        /** A tone must cover this share of the band to count as the background the text sits on. */
-        const val DOMINANT_SHARE = 0.05
-    }
 }
