@@ -33,8 +33,13 @@ on:
       - '**/*.tsx'
       - '**/*.jsx'
       - '.github/workflows/**'
+      # A local action's metadata is scanned by the actions language too.
+      - '**/action.yml'
+      - '**/action.yaml'
+  # Release and hotfix fixes go straight into release/* or main, so they are
+  # scanned during review too, not first after they land.
   pull_request:
-    branches: [ develop ]
+    branches: [ develop, main, 'release/**' ]
     paths:
       - '**/*.kt'
       - '**/*.kts'
@@ -47,6 +52,9 @@ on:
       - '**/*.tsx'
       - '**/*.jsx'
       - '.github/workflows/**'
+      # A local action's metadata is scanned by the actions language too.
+      - '**/action.yml'
+      - '**/action.yaml'
   # Weekly, on the default branch, so a new query or a new advisory surfaces
   # without waiting for someone to touch a source file.
   schedule:
