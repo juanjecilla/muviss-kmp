@@ -1,0 +1,11 @@
+# actionlint configuration (found at this path by `actionlint`; the lint runs in
+# pr-guards.yml).
+#
+# The one ignored finding is ci.yml's `web-tests` job, `if: false`, on purpose:
+# web is deferred and the job is parked until #172 is fixed (docs/EPICS.md,
+# "Web is deferred"). Scoped to ci.yml so an `if: false` anywhere else still
+# fails. Remove this entry when the job is restored.
+paths:
+  .github/workflows/ci.yml:
+    ignore:
+      - 'constant expression "false" in condition'
