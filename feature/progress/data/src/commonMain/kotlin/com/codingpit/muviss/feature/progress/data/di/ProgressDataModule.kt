@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.progress.data.di
 
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.feature.progress.data.CollectionTitleStatusSource
 import com.codingpit.muviss.feature.progress.data.DefaultProgressApi
 import com.codingpit.muviss.feature.progress.data.ProgressPlayObservers
 import com.codingpit.muviss.feature.progress.data.RegistryEpisodeCatalogSource
@@ -9,6 +10,7 @@ import com.codingpit.muviss.feature.progress.data.SqlDelightEpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ClearPlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ClearProgressUseCase
+import com.codingpit.muviss.feature.progress.domain.CompletionDetector
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogStore
@@ -30,10 +32,14 @@ import com.codingpit.muviss.feature.progress.domain.ProgressBulkMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressPlayMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
+import com.codingpit.muviss.feature.progress.domain.ProgressTicks
 import com.codingpit.muviss.feature.progress.domain.RecordPlayUseCase
 import com.codingpit.muviss.feature.progress.domain.RefreshWatchNextCatalogsUseCase
 import com.codingpit.muviss.feature.progress.domain.RemoveLatestPlayUseCase
 import com.codingpit.muviss.feature.progress.domain.SetMovieWatchedUseCase
+import com.codingpit.muviss.feature.progress.domain.TickEpisodeUseCase
+import com.codingpit.muviss.feature.progress.domain.TickMovieUseCase
+import com.codingpit.muviss.feature.progress.domain.TitleStatusSource
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.UndoBulkMarkUseCase
 import com.codingpit.muviss.feature.progress.domain.UnmarkSeasonsUseCase
@@ -49,13 +55,19 @@ val progressDataModule: Module = module {
     single<ProgressRepository> { SqlDelightProgressRepository(get(), get(), get(), get(), get()) }
     single<EpisodeCatalogSource> { RegistryEpisodeCatalogSource(get(), get()) }
     single<EpisodeCatalogStore> { SqlDelightEpisodeCatalogStore(get(), get(), get()) }
-    single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get(), get(), get(), get()) }
+    // A single, so every tick shares the one hot Completion flow the shell will collect (#397).
+    single<TitleStatusSource> { CollectionTitleStatusSource({ get() }) }
+    single { CompletionDetector(get()) }
+    single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get(), get(), get(), get(), get()) }
 
     factory { ObserveEpisodeProgressUseCase(get()) }
     factory { ObserveSeenEpisodesUseCase(get()) }
     factory { ObserveSeenCountUseCase(get()) }
     factory { ObserveSeenActivityEpochDaysUseCase(get()) }
     factory { ToggleEpisodeSeenUseCase(get()) }
+    factory { TickEpisodeUseCase(get(), get()) }
+    factory { TickMovieUseCase(get(), get()) }
+    factory { ProgressTicks(get(), get(), get()) }
     factory { MarkSeasonAiredSeenUseCase(get()) }
     factory { MarkShowAiredSeenUseCase(get()) }
     factory { UnmarkSeasonsUseCase(get()) }

@@ -83,7 +83,6 @@ module ReleaseGates
     reasons << branch_reason(facts) if facts[:head_is_rc] != true
     reasons << rc_reason(facts) unless facts[:rc_built] == true
     reasons << ci_reason(facts) unless facts[:ci_green] == true
-    reasons << notes_reason(facts) unless facts[:draft_locales] == []
     reasons.compact
   end
 
@@ -101,12 +100,6 @@ module ReleaseGates
     return "CI on the branch head is not green" if facts[:ci_green] == false
 
     "CI on the branch head could not be read"
-  end
-
-  def notes_reason(facts)
-    return "the store notes could not be read" if facts[:draft_locales].nil?
-
-    "the store notes are still a DRAFT (or missing) for #{facts[:draft_locales].join(', ')}"
   end
 end
 
@@ -175,9 +168,22 @@ class ReleasePromotion
     return @out.puts("the release issue for #{version} has no readable marker; nothing to close") unless state
     return @out.puts("#{version} is already done; nothing to close") if state["stage"] == ReleaseStages::DONE && issue["state"].to_s.casecmp?("closed")
 
+    # The ramp reports a finished release every day, so an issue left open for iOS sees this again:
+    # it keeps the day Play actually finished and says nothing new.
+    if state["stage"] == ReleaseStages::DONE && ios_still_ramping?(state)
+      return @out.puts("#{version} is already done on Play; the issue waits for iOS")
+    end
+
     state = state.merge("stage" => ReleaseStages::DONE, "completed_on" => @today.iso8601, "holds" => [])
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
-    @github.close_issue(issue["number"], "#{version} reached 100% of production. Closed.")
+    if ios_still_ramping?(state)
+      # iOS has its own track (ADR 0033); `complete_ios` in ios_promote.rb closes the issue when it finishes.
+      # Comment first: if it fails, nothing is recorded and tomorrow's run tries again.
+      @github.comment(issue["number"], "#{version} reached 100% of production on Play. The iOS phased release is still on its own track; this issue closes when it finishes.")
+      @github.update_issue(issue["number"], ReleaseStages.render(state))
+    else
+      @github.update_issue(issue["number"], ReleaseStages.render(state))
+      @github.close_issue(issue["number"], "#{version} reached 100% of production. Closed.")
+    end
   end
 
   # release.yml promoted the version itself (the manual path): record it.
@@ -193,6 +199,16 @@ class ReleasePromotion
   end
 
   private
+
+  # iOS is on the train for this version when it has an RC or has left its first stage, and has neither
+  # finished nor been superseded. A version that never reached TestFlight is not waiting on iOS (#430).
+  def ios_still_ramping?(state)
+    track = ReleaseStages.ios_of(state)
+    return false unless track
+    return false if track["stage"] == ReleaseStages::DONE || track["superseded_on"]
+
+    !track["rc_tag"].nil? || track["stage"] != ReleaseStages::INTERNAL
+  end
 
   def live_records
     @github.release_issues.map { |issue| [issue, state_of(issue)] }
@@ -235,7 +251,6 @@ class ReleasePromotion
     facts[:head_is_rc] = head && rc_sha ? head == rc_sha : nil
     facts[:rc_built] = safe("RC run") { @github.run_conclusion(rc_sha, "release-rc.yml") == "success" } if rc_sha
     facts[:ci_green] = safe("CI") { head && @github.checks_green?(head) } if head
-    facts[:draft_locales] = safe("notes") { @git.draft_locales(version) }
     facts[:rc_code] = safe("version code") { @git.version_code(rc) }
     facts[:sentry] = facts[:rc_code] ? sentry_hold(version, facts[:rc_code]) : nil
     # Production promotes from the beta track, so it must carry this RC before
@@ -459,20 +474,6 @@ module ReleasePromotionAdapters
 
     def version_code(tag)
       Integer(Shell.capture("scripts/release/version-code.sh", tag))
-    end
-
-    # Locales whose notes still carry the DRAFT: marker, or have none.
-    def draft_locales(version)
-      branch = "origin/release/#{version}"
-      locales = Shell.capture("git", "ls-tree", "--name-only", branch, "fastlane/metadata/android/").lines.map { |l| File.basename(l.strip) }
-      locales.reject(&:empty?).select do |locale|
-        notes = begin
-          Shell.capture("git", "show", "#{branch}:fastlane/release-notes/v#{version}/#{locale}.txt")
-        rescue StandardError
-          nil
-        end
-        notes.nil? || notes.lines.any? { |line| line.start_with?("DRAFT:") }
-      end
     end
   end
 

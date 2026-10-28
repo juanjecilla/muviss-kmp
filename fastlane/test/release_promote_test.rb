@@ -85,13 +85,12 @@ class FakeGitHub
 end
 
 class FakeGit
-  attr_accessor :rc_by_version, :heads, :shas, :drafts, :codes, :raise_on_draft
+  attr_accessor :rc_by_version, :heads, :shas, :codes
 
   def initialize
     @rc_by_version = {}
     @heads = {}
     @shas = {}
-    @drafts = Hash.new { [] }
     @codes = {}
   end
 
@@ -109,12 +108,6 @@ class FakeGit
 
   def version_code(tag)
     @codes.fetch(tag)
-  end
-
-  def draft_locales(version)
-    raise @raise_on_draft if @raise_on_draft
-
-    @drafts[version]
   end
 end
 
@@ -405,11 +398,6 @@ class ReleasePromotionTest < Minitest::Test
     assert_includes reasons, "CI on the branch head is not green"
   end
 
-  def test_draft_store_notes_hold_the_beta_too
-    reasons = held_reasons { @git.drafts["1.1.0"] = %w[en-US es-ES] }
-    assert_includes reasons, "the store notes are still a DRAFT (or missing) for en-US, es-ES"
-  end
-
   def test_a_sentry_hold_holds_and_asks_about_the_rc_build
     reasons = held_reasons { @sentry.answer = "2 new crash issue(s) first seen in this release: ABC-1, ABC-2" }
     assert_includes reasons, "Sentry: 2 new crash issue(s) first seen in this release: ABC-1, ABC-2"
@@ -422,19 +410,14 @@ class ReleasePromotionTest < Minitest::Test
     assert_includes @out.string, "could not read blockers: RuntimeError"
   end
 
-  def test_unreadable_notes_hold
-    reasons = held_reasons { @git.raise_on_draft = RuntimeError.new("git") }
-    assert_includes reasons, "the store notes could not be read"
-  end
-
   def test_a_held_step_is_recorded_on_the_issue_once
-    @git.drafts["1.1.0"] = %w[en-US]
+    @github.green["sha-1.1.0-rc3"] = false
     run_on(SUNDAY_BETA)
     comments = @github.calls.count { |c| c.first == :comment }
     run_on(SUNDAY_BETA)
     assert_equal comments, @github.calls.count { |c| c.first == :comment }, "an unchanged hold is not commented again"
     assert_equal 1, comments
-    assert_includes @github.issues.first["body"], "DRAFT (or missing) for en-US"
+    assert_includes @github.issues.first["body"], "CI on the branch head is not green"
   end
 
   # ---- the other two entry points -----------------------------------------
@@ -447,6 +430,72 @@ class ReleasePromotionTest < Minitest::Test
     issue = @github.issues.find { |i| i["title"] == "Release 1.0.0" }
     assert issue["closed"]
     assert_equal "done", ReleaseStages.stage_of(issue["body"])
+  end
+
+  def promote_complete(version)
+    ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                         today: Date.new(2026, 10, 12), apply: true, out: @out).complete(version)
+  end
+
+  def issue_for(version)
+    @github.issues.find { |i| i["title"] == ReleaseStages.title(version) }
+  end
+
+  def test_complete_leaves_the_issue_open_while_ios_is_still_ramping
+    ios = ReleaseStages.new_ios_state.merge("stage" => "production", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+
+    issue = issue_for("1.0.0")
+    refute issue["closed"], "iOS is still ramping, so the issue stays open"
+    assert_equal "done", ReleaseStages.stage_of(issue["body"]), "Play's own track is done"
+    assert_equal "production", ReleaseStages.parse(issue["body"])["ios"]["stage"]
+    assert(@github.calls.any? { |kind, _number, body| kind == :comment && body.include?("iOS phased release is still on its own track") })
+  end
+
+  def test_a_daily_complete_while_ios_ramps_keeps_the_date_and_comments_once
+    ios = ReleaseStages.new_ios_state.merge("stage" => "production", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+    ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                         today: Date.new(2026, 10, 13), apply: true, out: @out).complete("1.0.0")
+
+    assert_equal 1, @github.calls.count { |c| c.first == :comment }
+    assert_equal "2026-10-12", ReleaseStages.parse(issue_for("1.0.0")["body"])["completed_on"]
+    refute issue_for("1.0.0")["closed"]
+  end
+
+  def test_a_failed_comment_records_nothing_so_the_next_run_retries
+    ios = ReleaseStages.new_ios_state.merge("stage" => "production", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+    def @github.comment(*) = raise("GitHub answered 502")
+
+    assert_raises(RuntimeError) { promote_complete("1.0.0") }
+
+    assert_equal "production", ReleaseStages.stage_of(issue_for("1.0.0")["body"])
+  end
+
+  def test_complete_closes_when_ios_never_reached_testflight
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08")
+
+    promote_complete("1.0.0")
+
+    assert issue_for("1.0.0")["closed"]
+  end
+
+  def test_complete_closes_when_ios_already_finished_or_was_superseded
+    done = ReleaseStages.new_ios_state.merge("stage" => "done", "rc_tag" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "ios" => done)
+    superseded = ReleaseStages.new_ios_state.merge("stage" => "beta", "rc_tag" => "v1.0.1-rc1", "superseded_on" => "2026-10-05")
+    add_version("1.0.1", "production", "ios" => superseded)
+
+    promote_complete("1.0.0")
+    promote_complete("1.0.1")
+
+    assert issue_for("1.0.0")["closed"]
+    assert issue_for("1.0.1")["closed"]
   end
 
   def test_record_production_marks_a_promotion_done_outside_the_sunday_step
