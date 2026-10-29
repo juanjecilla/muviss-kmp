@@ -92,6 +92,7 @@ class PickSessionTest {
     @Test
     fun my_list_makes_the_catalogue_questions_pointless() {
         var session = PickSession.start(PickContext(length = PickSessionLength.STANDARD, anchorCandidate = finished, hasWatchedTitles = true))
+        session = session.skip() // the anchor is asked first now; skipping it leaves the source question next
         session = session.answer(PickAnswer.Source(PickSource.MY_LIST))
         val rest = mutableListOf<PickQuestion>()
         while (session.question != null) {
@@ -100,7 +101,8 @@ class PickSessionTest {
         }
         assertFalse(PickQuestion.ANCHOR in rest)
         assertFalse(PickQuestion.ERA_AND_SERVICES in rest)
-        assertEquals(listOf(PickQuestion.FORMAT_AND_TIME, PickQuestion.MOOD, PickQuestion.COMPANY), rest)
+        // The skipped anchor used one of the four standard slots, so Company is past the cap now.
+        assertEquals(listOf(PickQuestion.FORMAT_AND_TIME, PickQuestion.MOOD), rest)
     }
 
     @Test
@@ -120,10 +122,16 @@ class PickSessionTest {
         val without = questionsAskedWhenSkippingAll(PickContext(length = PickSessionLength.STANDARD))
         assertFalse(PickQuestion.ANCHOR in without)
         var session = PickSession.start(PickContext(length = PickSessionLength.STANDARD, anchorCandidate = finished))
-        session = session.skip().skip().skip()
         assertEquals(PickQuestion.ANCHOR, session.question)
         session = session.answer(PickAnswer.Anchor(PickAnchor(finished, like = true)))
         assertEquals(PickAnchor(finished, like = true), session.criteria.anchor)
+    }
+
+    @Test
+    fun a_quick_session_from_a_completion_asks_the_anchor_first_so_it_is_never_skipped_by_length() {
+        // Quick is two questions. The anchor used to come fourth, so a default session never reached it.
+        val asked = questionsAskedWhenSkippingAll(PickContext(length = PickSessionLength.QUICK, anchorCandidate = finished))
+        assertEquals(listOf(PickQuestion.ANCHOR, PickQuestion.SOURCE), asked)
     }
 
     private fun askedAfter(context: PickContext, format: PickAnswer.FormatAndTime): List<PickQuestion> {

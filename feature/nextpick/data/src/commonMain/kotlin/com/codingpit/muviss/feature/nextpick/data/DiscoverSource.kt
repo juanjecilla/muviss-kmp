@@ -14,7 +14,9 @@ import com.codingpit.muviss.feature.nextpick.domain.MoodGenres
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidate
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidates
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
+import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import kotlinx.coroutines.flow.first
 
 /**
@@ -36,7 +38,7 @@ internal class DiscoverSource(
         val statuses = collection().observeSummaries().first().associate { it.mediaId to it.status }
         val types = listOfNotNull(criteria.type).ifEmpty { listOf(MediaType.MOVIE, MediaType.TV) }
         return types.flatMap { type ->
-            metadata.discoverFiltered(type, page = 1, filters = filtersFor(criteria, type)).items.map { summary ->
+            browse(type, criteria).map { summary ->
                 PickCandidate(
                     summary = summary,
                     source = CandidateSource.DISCOVER,
@@ -44,6 +46,14 @@ internal class DiscoverSource(
                 )
             }
         }
+    }
+
+    /** A failed TMDB call is no candidates from this source, so the backlog still answers (#548). */
+    @Suppress("SwallowedException") // Offline or rate-limited: the session falls back to the other sources, nothing is shown.
+    private suspend fun browse(type: MediaType, criteria: PickCriteria): List<MediaSummary> = try {
+        metadata.discoverFiltered(type, page = 1, filters = filtersFor(criteria, type)).items
+    } catch (failure: MetadataError) {
+        emptyList()
     }
 
     private fun filtersFor(criteria: PickCriteria, type: MediaType): DiscoverFilters {

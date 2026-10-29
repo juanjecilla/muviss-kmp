@@ -21,6 +21,7 @@ import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_she
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_sheet_not_now
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_sheet_title
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_sheet_whats_next
+import com.codingpit.muviss.models.MediaId
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -30,8 +31,9 @@ import org.jetbrains.compose.resources.stringResource
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CompletionSheetHost(viewModel: CompletionPromptViewModel, onWhatsNext: () -> Unit) {
+fun CompletionSheetHost(viewModel: CompletionPromptViewModel, onWhatsNext: (anchor: MediaId?) -> Unit) {
     val visible by viewModel.visible.collectAsStateWithLifecycle()
+    val anchor by viewModel.anchor.collectAsStateWithLifecycle()
     if (!visible) return
     ModalBottomSheet(onDismissRequest = viewModel::dismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
@@ -42,7 +44,7 @@ fun CompletionSheetHost(viewModel: CompletionPromptViewModel, onWhatsNext: () ->
             Button(
                 onClick = {
                     viewModel.dismiss()
-                    onWhatsNext()
+                    onWhatsNext(anchor)
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(Res.string.nextpick_sheet_whats_next)) }

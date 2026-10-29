@@ -79,7 +79,14 @@ class PickSession private constructor(
 
     private fun advance(next: PickCriteria, done: PickQuestion) = PickSession(context, next, shown + 1, settled + done)
 
-    private fun nextEligible(): PickQuestion? = PickQuestion.entries.firstOrNull { it !in settled && it !in context.answeredByProfile && isWorthAsking(it) }
+    private fun nextEligible(): PickQuestion? = askOrder().firstOrNull { it !in settled && it !in context.answeredByProfile && isWorthAsking(it) }
+
+    /**
+     * The catalogue order, except that a session opened from a Completion asks [PickQuestion.ANCHOR] first.
+     * Otherwise a Quick session (two questions) never reaches it, and the title just finished would be the
+     * one thing the person was never asked about (#548).
+     */
+    private fun askOrder(): List<PickQuestion> = if (context.anchorCandidate == null) PickQuestion.entries else listOf(PickQuestion.ANCHOR) + PickQuestion.entries.filter { it != PickQuestion.ANCHOR }
 
     private fun isWorthAsking(question: PickQuestion): Boolean = when (question) {
         PickQuestion.SOURCE -> context.online && context.hasBacklog

@@ -5,6 +5,7 @@ import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.nextpick.data.AnchorCandidates
 import com.codingpit.muviss.feature.nextpick.data.AppSettingsCompletionPromptStore
 import com.codingpit.muviss.feature.nextpick.data.CollectionBacklogCandidates
 import com.codingpit.muviss.feature.nextpick.data.CollectionHistoryReader
@@ -39,13 +40,16 @@ val nextPickDataModule: Module = module {
         val settings: () -> SettingsApi = { get() }
         val clock: AppClock = get()
         val thisYear = { civilDateOf(clock.nowEpochMs().floorDiv(MS_PER_DAY)).year }
+        val metadata: MetadataProvider = get()
+        // Order is not priority: PickEngine merges one copy per title by source (backlog, then anchor, then discover).
         PickEngine(
             sources = listOf(
                 CollectionBacklogCandidates(collection),
-                DiscoverSource(get<MetadataProvider>(), collection, thisYear),
+                DiscoverSource(metadata, collection, thisYear),
+                AnchorCandidates(metadata, collection),
             ),
             exclusions = TriageExclusions(triage),
-            history = CollectionHistoryReader(clock),
+            history = CollectionHistoryReader(clock, collection),
             muting = SettingsMuting(settings),
         )
     }

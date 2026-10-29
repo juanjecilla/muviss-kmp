@@ -7,6 +7,9 @@
     <string name="nextpick_step">Question %1$d of %2$d</string>
     <string name="nextpick_offline">You\'re offline, so only your list is searched.</string>
     <string name="nextpick_q_source">Where should it come from?</string>
+    <string name="nextpick_q_anchor">More like the one you just finished?</string>
+    <string name="nextpick_anchor_like">More like it</string>
+    <string name="nextpick_anchor_unlike">Something different</string>
     <string name="nextpick_source_mine">From my list</string>
     <string name="nextpick_source_new">Something new</string>
     <string name="nextpick_source_either">Either</string>

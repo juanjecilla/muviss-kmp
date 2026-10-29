@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
 import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
+import com.codingpit.muviss.feature.nextpick.domain.PickResult
 import com.codingpit.muviss.feature.nextpick.domain.PickSession
 import com.codingpit.muviss.feature.nextpick.domain.RankedPick
 import com.codingpit.muviss.models.MediaId
@@ -27,6 +28,8 @@ sealed interface PickSessionUiState {
         val total: Int,
         val offline: Boolean,
         val canGoBack: Boolean,
+        /** The title the session is about when it was opened from a Completion; "more like it" is about this one (#548). */
+        val anchor: MediaId? = null,
     ) : PickSessionUiState
 
     /** The pick, with [outcome] once the person has added, refused or snoozed it. */
@@ -51,6 +54,8 @@ class PickSessionViewModel(
     private val context: suspend () -> PickContext,
     private val engine: PickEngine,
     private val actions: NextPickActions,
+    /** The title a Completion just finished, when the session was opened from one (#548). Null otherwise. */
+    private val anchor: MediaId? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<PickSessionUiState>(PickSessionUiState.Loading)
@@ -62,6 +67,12 @@ class PickSessionViewModel(
     private val shown = mutableSetOf<MediaId>()
     private var current: RankedPick? = null
 
+    /**
+     * The engine's ranked pool for the current answers, read once. "Another" takes the next pick from it, so
+     * it costs no new TMDB requests (#548). Dropped whenever the answers or the criteria change.
+     */
+    private var pool: PickResult? = null
+
     init {
         start()
     }
@@ -71,11 +82,13 @@ class PickSessionViewModel(
         viewModelScope.launchReporting {
             _state.value = PickSessionUiState.Loading
             val read = context()
-            readContext = read
-            session = PickSession.start(read)
+            val opened = read.withAnchor()
+            readContext = opened
+            session = PickSession.start(opened)
             previous.clear()
             shown.clear()
             current = null
+            pool = null
             advance()
         }
     }
@@ -89,6 +102,7 @@ class PickSessionViewModel(
         val last = previous.removeLastOrNull() ?: return false
         session = last
         current = null
+        pool = null
         viewModelScope.launchReporting { advance() }
         return true
     }
@@ -109,6 +123,7 @@ class PickSessionViewModel(
         val now = session ?: return
         previous.addLast(now)
         session = next(now)
+        pool = null
         viewModelScope.launchReporting { advance() }
     }
 
@@ -123,6 +138,7 @@ class PickSessionViewModel(
                 total = read.length.maxQuestions,
                 offline = !read.online,
                 canGoBack = previous.isNotEmpty(),
+                anchor = read.anchorCandidate,
             )
         } else {
             pickNext()
@@ -133,7 +149,7 @@ class PickSessionViewModel(
         val live = session ?: return
         val read = readContext ?: return
         try {
-            val result = engine.pick(live.criteria, read, limit = shown.size + 1)
+            val result = pool ?: engine.pick(live.criteria, read, limit = POOL_SIZE).also { pool = it }
             val next = result.picks.firstOrNull { it.candidate.id !in shown }
             if (next == null) {
                 current = null
@@ -151,6 +167,9 @@ class PickSessionViewModel(
         }
     }
 
+    /** The context the session runs on: the caller's, with the anchor it was opened from (#548). */
+    private fun PickContext.withAnchor(): PickContext = anchor?.let { copy(anchorCandidate = it) } ?: this
+
     private fun act(outcome: PickOutcome, write: suspend (RankedPick) -> Unit) {
         val pick = current ?: return
         val offline = (_state.value as? PickSessionUiState.Result)?.offline ?: false
@@ -160,3 +179,9 @@ class PickSessionViewModel(
         }
     }
 }
+
+/**
+ * How many ranked picks one gather keeps for "Another". The engine's [PickEngine.DEFAULT_LIMIT] is what one pick
+ * shows; this is how far "Another" can go before the answers have to change. The TMDB cost is the same at any limit.
+ */
+private const val POOL_SIZE = 20

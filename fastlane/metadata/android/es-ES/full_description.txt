@@ -12,7 +12,7 @@ SABE QUÉ VIENE AHORA
 • Próximos estrenos: las fechas de emisión de tus series, día a día.
 • Avisos de nuevos episodios cuando se emite algo que sigues: desactivados hasta que los actives, en una breve introducción al abrir la app o en Ajustes.
 • Un widget en la pantalla de inicio para tener el siguiente episodio a un toque.
-• ¿Has terminado algo? Unas pocas preguntas dan con tu próxima elección, de tu lista o de títulos nuevos, con el motivo de cada una. Sin conexión, elige de tu lista.
+• ¿Has terminado algo? Unas pocas preguntas dan con tu próxima elección, de tu lista o de títulos nuevos, con el motivo de cada una. Con conexión, también puede buscar algo parecido a lo que acabas de terminar. Sin conexión, elige de tu lista.
 
 LLENA TU BIBLIOTECA EN UN MOMENTO
 • Repasa títulos de uno en uno y decide con un toque — no es para mí, más tarde, viéndola o al día. ¿Aún no lo sabes? Pospónlo y volverá cuando tú digas.
