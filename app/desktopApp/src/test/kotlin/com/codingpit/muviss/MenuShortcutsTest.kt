@@ -82,4 +82,17 @@ class MenuShortcutsTest {
     fun `the two destinations worth a chord still have one`() {
         assertEquals(setOf("search", "settings"), viewShortcuts.keys)
     }
+
+    /** What's next? (#545) is bound to the platform's primary modifier plus N. */
+    @Test
+    fun `what's next is bound to the platform's primary modifier plus N`() {
+        assertEquals(expected(Key.N), nextPickShortcut)
+    }
+
+    /** A second binding on a chord already taken would be dropped by the menu, or would steal the other one. */
+    @Test
+    fun `what's next does not share a chord with any other shortcut`() {
+        val taken = viewShortcuts.values + listOfNotNull(quitShortcut)
+        assertTrue(nextPickShortcut !in taken, "Ctrl/Cmd+N collides with another menu shortcut: $taken")
+    }
 }

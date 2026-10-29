@@ -56,4 +56,5 @@
     <string name="list_rename_failed">No se pudo renombrar la lista.</string>
     <string name="list_delete_failed">No se pudo eliminar la lista.</string>
     <string name="list_restore_failed">No se pudo recuperar la lista.</string>
+    <string name="next_pick_entry">¿Qué sigue?</string>
 </resources>

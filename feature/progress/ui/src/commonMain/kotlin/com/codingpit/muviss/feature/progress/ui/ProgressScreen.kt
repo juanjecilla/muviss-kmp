@@ -90,6 +90,7 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.action_undo
 import com.codingpit.muviss.feature.progress.ui.generated.resources.cowatch_entry
 import com.codingpit.muviss.feature.progress.ui.generated.resources.mark_watched_description
 import com.codingpit.muviss.feature.progress.ui.generated.resources.next_episode_of
+import com.codingpit.muviss.feature.progress.ui.generated.resources.next_pick_entry
 import com.codingpit.muviss.feature.progress.ui.generated.resources.progress_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_upcoming
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_watch_next
@@ -132,6 +133,8 @@ fun ProgressScreen(
     upcomingViewModel: UpcomingViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenCoWatch: (() -> Unit)?,
+    /** "What's next?" (EPIC 51, #545): offered as the empty Watch Next's way in. Null draws nothing. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     var selectedTab by remember { mutableStateOf(ProgressTab.WATCH_NEXT) }
 
@@ -160,7 +163,7 @@ fun ProgressScreen(
             }
         }
         when (selectedTab) {
-            ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail)
+            ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail, onOpenNextPick)
             ProgressTab.UPCOMING -> UpcomingScreen(upcomingViewModel, onOpenDetail)
         }
     }
@@ -171,6 +174,7 @@ fun ProgressScreen(
 private fun WatchNextScreen(
     viewModel: ProgressViewModel,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenNextPick: (() -> Unit)?,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -271,6 +275,9 @@ private fun WatchNextScreen(
                         icon = MuvissIcons.WatchNext,
                         title = stringResource(Res.string.watch_next_empty_title),
                         body = stringResource(Res.string.watch_next_empty_body),
+                        // Nothing in progress to pick up, so the way into a Pick Session is the prominent one here (EPIC 51, #545).
+                        actionLabel = onOpenNextPick?.let { stringResource(Res.string.next_pick_entry) },
+                        onAction = onOpenNextPick,
                     )
 
                     else -> WatchNextList(

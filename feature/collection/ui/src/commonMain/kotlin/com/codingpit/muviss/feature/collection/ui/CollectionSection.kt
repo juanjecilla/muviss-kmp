@@ -17,7 +17,13 @@ import org.koin.core.parameter.parametersOf
  * internal push (into a list's contents, EPIC 17), the same way
  * search:ui's `searchSection` drives its own `DetailRoute` pushes.
  */
-fun NavGraphBuilder.collectionSection(navController: NavController, onOpenDetail: (MediaId) -> Unit, onOpenSearch: () -> Unit = {}) {
+fun NavGraphBuilder.collectionSection(
+    navController: NavController,
+    onOpenDetail: (MediaId) -> Unit,
+    onOpenSearch: () -> Unit = {},
+    /** Opens the Pick Session (EPIC 51, #545). Required: the session is in `:feature:nextpick`, which this module may not depend on. */
+    onOpenNextPick: () -> Unit,
+) {
     composable<CollectionRoute> {
         val viewModel = koinViewModel<CollectionViewModel>()
         val listsViewModel = koinViewModel<ListsViewModel>()
@@ -27,6 +33,7 @@ fun NavGraphBuilder.collectionSection(navController: NavController, onOpenDetail
             onOpenDetail = onOpenDetail,
             onOpenList = { list -> navController.navigate(ListContentsRoute(list.id, list.name)) },
             onOpenSearch = onOpenSearch,
+            onOpenNextPick = onOpenNextPick,
         )
     }
     composable<ListContentsRoute> { entry ->

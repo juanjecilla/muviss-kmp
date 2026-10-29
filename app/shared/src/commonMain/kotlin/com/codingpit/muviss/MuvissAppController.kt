@@ -17,6 +17,7 @@ import com.codingpit.muviss.app.shared.generated.resources.nav_search
 import com.codingpit.muviss.app.shared.generated.resources.nav_settings
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.feature.collection.ui.CollectionRoute
+import com.codingpit.muviss.feature.nextpick.ui.NextPickRoute
 import com.codingpit.muviss.feature.profile.ui.ProfileRoute
 import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
@@ -82,6 +83,24 @@ class MuvissAppController internal constructor(
     /** The top-level destination currently selected, or null before the first frame. */
     var currentDestination: MuvissDestination? by mutableStateOf(null)
         internal set
+
+    /**
+     * Whether the first-run introduction is on screen (EPIC 47). Written by `MuvissScaffold`, like
+     * [currentDestination]. The menu's "What's next?" is disabled while it is: a session pushed over
+     * the introduction would leave the first run with no way back to it.
+     */
+    var showingOnboarding: Boolean by mutableStateOf(false)
+        internal set
+
+    /**
+     * Opens the Pick Session (EPIC 51, #545) from any destination, as the entry points in each feature do.
+     *
+     * Not [navigateTo]: the session is not a tab, so it must not pop to Search or save and restore a
+     * tab's back stack. `launchSingleTop` stops a repeated chord from stacking sessions.
+     */
+    fun openNextPick() {
+        navController.navigate(NextPickRoute) { launchSingleTop = true }
+    }
 
     /**
      * Navigates to a top-level destination exactly as the navigation bar does.
