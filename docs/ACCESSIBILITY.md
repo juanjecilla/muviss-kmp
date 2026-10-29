@@ -64,9 +64,9 @@ confirmed to fire before the scrim was restored.
 
 `RatingBadgeGoldenTest` records the badge over the white and black backdrops,
 in light and dark themes (`rating-badge-{white,black}-{light,dark}.png`). The
-tolerance is the persistence banner's 3.5%, not one measured for this golden.
-It was recorded and checked on macOS only; the first `ubuntu-latest` run is the
-measurement.
+goldens were recorded on macOS. Rendered on Linux (FreeType, Ubuntu 24.04
+container, `-PgoldenReport`) they move 1.16% (black backdrop) and 0.94% (white),
+all glyph edges, with no palette colour lost or gained; the tolerance is 1.5%.
 
 ### Still open: real posters (#592)
 

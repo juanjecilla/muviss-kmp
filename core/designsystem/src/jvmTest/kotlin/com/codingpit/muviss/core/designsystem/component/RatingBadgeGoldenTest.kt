@@ -83,11 +83,11 @@ internal val BADGE_FRAME_HEIGHT = 40.dp
 
 /**
  * The frame is 80x40dp and the pill with its label fills a large share of it,
- * so glyph edges are a big part of the image, as in the persistence banner
- * (whose 3.5% this matches: its frame is text-dominated in the same way). The
- * tolerance is the banner's, not one measured for this golden. A Linux render
- * of this golden has not been compared yet; the first CI run is the
- * measurement, and the palette check still fails a colour change at any
- * tolerance.
+ * so glyph edges are a big part of the image. Measured 2026-10-29 by rendering
+ * the four macOS-recorded goldens on Linux (FreeType, Ubuntu 24.04 container,
+ * `-PgoldenReport`): 1.16% moved on the black-poster pair and 0.94% on the
+ * white one, every moved pixel a glyph edge, with no palette colour lost or
+ * gained. 1.5% leaves that drift a margin and is well under what a colour
+ * change moves; the palette check fails a colour change at any tolerance.
  */
-private const val BADGE_TOLERANCE = 0.035
+private const val BADGE_TOLERANCE = 0.015
