@@ -62,7 +62,7 @@ A device's first-run values are never written, never pushed and never dirty. Onl
 - **The OS motion default is not a change.** `ApplySystemMotionDefault` calls `flags.setAnimationsEnabled(false)` today, and that setter is the one a person's toggle uses, so it would stamp and dirty the group. #642 gives the OS default its own stamp-free write (an `UPDATE` that sets only `animationsEnabled`), used by that one caller and nothing else.
 - **An upgraded install's motion value is always a choice or the default.** `21.sqm` marked `motionDefaultApplied` on every existing row without applying the OS default, so no existing row can hold an OS-derived value. For them, `animationsEnabled <> 1` is a choice.
 - **Owner adoption does not dirty the group.** The first sync from a database with no owner "marks every local row dirty" (`docs/SYNC.md`). The group is dirty on adoption only when its stamp is non-null, so a device that never changed a display preference pushes nothing. The muted choice and decisions exist only once the person has chosen, so they are dirty on adoption as any row is.
-- **The backfill.** `25.sqm` sets stamp `0` and dirty `1` where any member differs from the first-run value above, with `theme <> 'SYSTEM' OR language <> '' OR region <> 'US' OR animationsEnabled <> 1 OR triageDeckAnimations <> 1 OR tickAnimations <> 1 OR triageControlScheme <> 'FOUR_WAY' OR triageSnoozePeriod <> 'ONE_WEEK' OR triageSnoozePlacement <> 'MIXED_IN' OR mutedGenresInSearch <> 0`. The stamp is a constant, not the migration's clock, so the same database always produces the same rows (ADR 0013's reproducibility argument). Any real change made later outranks it.
+- **The backfill.** `26.sqm` sets stamp `0` and dirty `1` where any member differs from the first-run value above, with `theme <> 'SYSTEM' OR language <> '' OR region <> 'US' OR animationsEnabled <> 1 OR triageDeckAnimations <> 1 OR tickAnimations <> 1 OR triageControlScheme <> 'FOUR_WAY' OR triageSnoozePeriod <> 'ONE_WEEK' OR triageSnoozePlacement <> 'MIXED_IN' OR mutedGenresInSearch <> 0`. The stamp is a constant, not the migration's clock, so the same database always produces the same rows (ADR 0013's reproducibility argument). Any real change made later outranks it.
 
 ### Muted Genres: a choice, and decisions over its defaults
 
@@ -89,7 +89,7 @@ So "mute nothing" is the marker plus tombstones for the defaults. A device that 
 
 **The read rule.** Every query for the explicitly-muted set filters `AND deleted = 0`. A query that forgets it reads unmute decisions as mutes. This is the same lesson as `episodePlay` and `triageSnooze` (CLAUDE.md). The marker is the one singleton here; it has no `deleted` column.
 
-**Conversion.** `25.sqm` creates the tables. The legacy `appSettings.mutedGenres` string is converted in Kotlin on the first open where `mutedGenreChoice` is absent and the string is not the default: a marker with `defaultsAtChoice` set to the code's defaults, a live row for each listed genre that is not a default, and a tombstone for each default the string leaves out. Everything written there has `isDirty = 1`, and decisions have `updatedAtEpochMs = 0`. Parsing stays in `MutedGenresCodec`, because genre names are free text and a SQL split would mishandle them. The string column stays, dead, as `syncCursorEpochMs` does. Export does not read it: the export derives it from the effective set, so it cannot go stale.
+**Conversion.** `26.sqm` creates the tables. The legacy `appSettings.mutedGenres` string is converted in Kotlin on the first open where `mutedGenreChoice` is absent and the string is not the default: a marker with `defaultsAtChoice` set to the code's defaults, a live row for each listed genre that is not a default, and a tombstone for each default the string leaves out. Everything written there has `isDirty = 1`, and decisions have `updatedAtEpochMs = 0`. Parsing stays in `MutedGenresCodec`, because genre names are free text and a SQL split would mishandle them. The string column stays, dead, as `syncCursorEpochMs` does. Export does not read it: the export derives it from the effective set, so it cannot go stale.
 
 ### Wire shape and migrations
 
@@ -132,7 +132,7 @@ So "mute nothing" is the marker plus tombstones for the defaults. A device that 
 
 ## Schema
 
-**`25.sqm`** (the number is the owner's fixed order: 553 takes 21, 543 takes 22, 588 takes 23, 563 takes 24, this takes 25). It is written in full by the first slice that merges, which is #642, and the later slices do not change it. It contains:
+**`26.sqm`** (the number is the coordinator's fixed order: 553 takes 22, 543 takes 23, 588 takes 24, 563 takes 25, this takes 26). It is written in full by the first slice that merges, which is #642, and the later slices do not change it. It contains:
 
 - `ALTER TABLE appSettings ADD COLUMN displayPreferencesUpdatedAtEpochMs INTEGER` (nullable);
 - `ALTER TABLE appSettings ADD COLUMN displayPreferencesDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0`, both last in the declaration;
@@ -140,20 +140,20 @@ So "mute nothing" is the marker plus tombstones for the defaults. A device that 
 - `CREATE TABLE mutedGenre (mediaType TEXT NOT NULL, genreId INTEGER NOT NULL, name TEXT NOT NULL, deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0, isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1, updatedAtEpochMs INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (mediaType, genreId))`, with `CREATE INDEX mutedGenre_dirty ON mutedGenre(isDirty) WHERE isDirty = 1;` as 15.sqm does for the other synced tables;
 - `CREATE TABLE mutedGenreChoice (id INTEGER NOT NULL PRIMARY KEY, defaultsAtChoice TEXT NOT NULL, updatedAtEpochMs INTEGER NOT NULL DEFAULT 0, isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1)`. It is a singleton like `appSettings`, so it has no dirty index.
 
-The schema fixture is `26.db` (migrating `25.sqm` takes a v25 database to v26, as `21.sqm` took v21 to v22 and produced `22.db`), generated with `generateCommonMainMuvissDatabaseSchema`.
+The schema fixture is `27.db` (migrating `26.sqm` takes a v26 database to v27, as `21.sqm` took v21 to v22 and produced `22.db`), generated with `generateCommonMainMuvissDatabaseSchema`.
 
-**Not claimed by this ADR:** the develop branch already has `21.sqm` (#394's motion default) and `databases/22.db`, so the open stack's 21-to-24 order collides with develop. The stack-repair work owns the schema line, and this ADR does not add any `.sqm`.
+**Not claimed by this ADR:** the develop branch already has `21.sqm` (#394's motion default) and `databases/22.db`, so the open stack was renumbered by the coordinator to 22 (#553), 23 (#543), 24 (#588) and 25 (#563), which leaves develop's 21 alone. This ADR claims 26, and does not add any `.sqm`.
 
 ## Implementation plan
 
 Four issues, each a slice that one agent can build end to end:
 
-- **#642 Display Preferences export as a group.** Writes `25.sqm` (all of it, as above), the setter stamps, the stamp-free OS motion write, the restore rules for the group, the choice and the decisions, the `AppSettings.sq` comments, and `ExportShapeTest`. Nothing is pushed or pulled. Done when the migration, the backfill, restore and fresh-install tests pass and `backups/v1-export.json` still parses.
+- **#642 Display Preferences export as a group.** Writes `26.sqm` (all of it, as above), the setter stamps, the stamp-free OS motion write, the restore rules for the group, the choice and the decisions, the `AppSettings.sq` comments, and `ExportShapeTest`. Nothing is pushed or pulled. Done when the migration, the backfill, restore and fresh-install tests pass and `backups/v1-export.json` still parses.
 - **#643 Display Preferences sync.** Needs #642. `SyncTable.DISPLAY_PREFERENCES`, the one-element `SyncChangeSet.displayPreferences`, the Supabase table, `FakeSupabaseServer`, the pull-before-first-push rule, the merge in which first-run defaults yield, the pull that writes group columns only, and `docs/SYNC.md`. Tests: two devices; a fresh device never pushes; a first change on a new device does not carry defaults over the account's values; a pull onto a fresh device writes no device switch; and an unsent local edit newer than the pulled stamp survives.
 - **#644 Muted Genres sync (#385).** Needs #642's tables. The decision repository and the effective-set rule, the marker written on the first change, the one-time conversion, `SyncChangeSet.mutedGenres` and `.mutedGenreChoices`, `SyncTable.MUTED_GENRE` and `MUTED_GENRE_CHOICE`, the Supabase tables, `FakeSupabaseServer`, and the export. The regression test is the one above: A unmutes Talk, a fresh B mutes Horror, and A keeps Talk unmuted after both sync. A second: a later change to the code's defaults does not reach a device that chose.
 - **#645 Delete all data on a signed-in device.** A bug in code the slices do not touch. The owner decides the behaviour.
 
-**Verification each slice carries:** `verifyMigrations` for the `25.sqm` chain; a conversion test from each starting state (never chose, `''`, a custom list, the defaults exactly); `SyncChangeSetShapeTest` with its expected names updated; `ExportShapeTest`; `backups/v1-export.json` still parsing; and the fresh-device tests. The sync stack's pgTAP and live `scripts/sync/verify-*.sh` checks have still not been run against the owner's project (#88), and the new tables inherit that gap.
+**Verification each slice carries:** `verifyMigrations` for the `26.sqm` chain; a conversion test from each starting state (never chose, `''`, a custom list, the defaults exactly); `SyncChangeSetShapeTest` with its expected names updated; `ExportShapeTest`; `backups/v1-export.json` still parsing; and the fresh-device tests. The sync stack's pgTAP and live `scripts/sync/verify-*.sh` checks have still not been run against the owner's project (#88), and the new tables inherit that gap.
 
 **Landing and Play listing.** Nothing here is a user-visible feature that the store listing describes. Slice #642 changes restore behaviour, so its PR should say whether it needs `no-landing`.
 
