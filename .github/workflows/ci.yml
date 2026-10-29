@@ -122,7 +122,7 @@ jobs:
         run: |
           deno fmt --check
           deno lint
-          deno check */index.ts
+          deno check ./*/index.ts
           deno test --allow-net=jsr.io
 
   build:
