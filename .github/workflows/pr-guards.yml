@@ -6,9 +6,15 @@ name: PR guards
 #
 # Each job runs only for the base branch it guards; a skipped job counts as
 # passing for a ruleset's required checks.
+#
+# release/* and hotfix/* are PR bases too (ADR 0030): a fix for a version in
+# flight is a PR into its release branch. The repo-wide policy checks must run
+# there, so the file's unconditional job (`release-tooling`) runs on every base,
+# and every base-scoped job names its base in `if:` so it is skipped elsewhere.
+# scripts/ci/test/pr_guards_test.rb holds that line.
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'release/**', 'hotfix/**' ]
     types: [ opened, synchronize, reopened, edited, labeled, unlabeled ]
 
 concurrency:
@@ -81,6 +87,12 @@ jobs:
 
   # The release scripts and the rollout policy decide what reaches users, and
   # nothing else exercises them until a real release runs. Seconds to run.
+  #
+  # This job runs on PRs into main, develop, release/* and hotfix/* alike. Every
+  # step in it is repo-wide: the pin and permission checks (#311, #481, #482)
+  # police the whole tree whatever the base, and the script tests do not read
+  # the base at all. So none is skipped per base. Its name is a required check on
+  # the develop and main rulesets (owner-setup.sh), so it stays as it is.
   release-tooling:
     name: Release tooling tests
     runs-on: ubuntu-24.04
@@ -129,3 +141,7 @@ jobs:
       # merge requirement, and the App Store Connect client against a fake transport.
       - name: iOS staged train (ADR 0033)
         run: ruby fastlane/test/ios_train_test.rb && ruby fastlane/test/ios_promote_test.rb && ruby fastlane/test/app_store_connect_test.rb && ruby fastlane/test/release_stages_test.rb
+      # The guards above are keyed on their base, and this file's own shape is what
+      # keeps that true on the PRs that now reach it (#522).
+      - name: PR guards run on the bases they are for (#522)
+        run: ruby scripts/ci/test/pr_guards_test.rb

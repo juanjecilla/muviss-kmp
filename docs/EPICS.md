@@ -386,7 +386,7 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 - **Muted Genres apply**; an explicit in-session choice beats a standing mute.
 - Offline: backlog only, and the screen says so. No implicit learning in v1.
 
-**Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage.
+**Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage. Raised by the #404 research (`docs/research/next-pick-ai.md`, rules stay for v1): #594 measure the on-device Gemma option (the remainder of #404), #595 make `PickRanker` suspend and enforce its output in `PickEngine`.
 
 **Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
 
@@ -465,6 +465,7 @@ runs standing in where they could. What that did and did not buy:
 
 ### 2026-10-17
 - **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `20.sqm` (schema v21, fixture `21.db`) because Muted Genres took `18.sqm` and tick animations `19.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
+- **OS reduce-motion default** (#394): a fresh install turns animations off when the OS asks for less motion, once per install; `21.sqm` (schema v22, fixture `22.db`) adds `appSettings.motionDefaultApplied`, marked on every existing row, because keying the default to the introduction let a deep-link launch's later Settings choice be overwritten.
 
 
 - **iOS, EPIC 35 and #411 (the owner runbook).** The owner runbook is RELEASING.md section 9; `scripts/release/apple-setup.sh --verify` checks the names CI reads. Raised by the iOS work and not done in it, each with its issue: #412 (parity leftovers from the audit), #414 (widget Undo, colours and crash reporting on a device), #415 (iPad share sheet and file picker, #186), #416 (`topViewController` uses the deprecated `keyWindow`, which can be nil on multi-scene iPad), #417 (background refresh KEEP and pending list on a device), #422 (the shared Sentry release string, now split per platform), #423 (the App Store support URL has no page), #424 (verify `PrivacyInfo.xcprivacy` against Xcode's report), #425 (StoreShot device-class screenshots), #428 (the release dSYM's Kotlin line tables and the Sentry framework dSYM), #429 (ADR 0033's Apple assumptions on the first live run), #430 (Play's Sunday complete closes the release issue while iOS is still ramping), #431 (no iosTest coverage for the iOS Sentry namespace). Not verified on a device: #240, #186, #324, #322, #388, #114, #92, #23. Nothing here was run against a live Apple account.
