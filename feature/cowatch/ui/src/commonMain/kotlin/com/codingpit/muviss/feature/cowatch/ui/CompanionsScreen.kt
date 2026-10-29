@@ -31,8 +31,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.share.TextSharer
 import com.codingpit.muviss.core.designsystem.share.rememberTextSharer
@@ -92,6 +95,10 @@ fun CompanionsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val copiedMessage = stringResource(Res.string.invite_copied)
+    // The snackbar's measured height, so the end of the list clears a message that wraps and not only
+    // the one-line case (#474, #475, #568).
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
 
     Scaffold(
         topBar = {
@@ -100,10 +107,21 @@ fun CompanionsScreen(
                 navigationIcon = { TextButton(onClick = onBack) { Text(stringResource(Res.string.action_back)) } },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                snackbarHostState,
+                Modifier
+                    .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                    .testTag(COMPANIONS_SNACKBAR_TAG),
+            )
+        },
     ) { padding ->
+        val bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight)
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(MuvissSpacing.l),
+            modifier = Modifier.fillMaxSize().testTag(COMPANIONS_LIST_TAG)
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(start = MuvissSpacing.l, top = MuvissSpacing.l, end = MuvissSpacing.l, bottom = bottomPadding),
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l),
         ) {
             Text(stringResource(Res.string.companions_intro), style = MaterialTheme.typography.bodyMedium)
@@ -295,3 +313,9 @@ const val PASTE_CODE_FIELD_TAG = "companions-paste-code-field"
 
 /** Identifies a Companion's rename field, for tests. */
 const val RENAME_FIELD_TAG = "companions-rename-field"
+
+/** Identifies the scrolling Companions column, for tests. */
+const val COMPANIONS_LIST_TAG = "companions-list"
+
+/** Identifies the copied-link snackbar, for tests (#568). */
+const val COMPANIONS_SNACKBAR_TAG = "companions-snackbar"
