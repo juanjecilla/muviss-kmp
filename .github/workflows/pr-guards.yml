@@ -6,9 +6,15 @@ name: PR guards
 #
 # Each job runs only for the base branch it guards; a skipped job counts as
 # passing for a ruleset's required checks.
+#
+# release/* and hotfix/* are PR bases too (ADR 0030): a fix for a version in
+# flight is a PR into its release branch. The repo-wide policy checks must run
+# there, so the file's unconditional job (`release-tooling`) runs on every base,
+# and every base-scoped job names its base in `if:` so it is skipped elsewhere.
+# scripts/ci/test/pr_guards_test.rb holds that line.
 on:
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'release/**', 'hotfix/**' ]
     types: [ opened, synchronize, reopened, edited, labeled, unlabeled ]
 
 concurrency:
@@ -25,7 +31,7 @@ jobs:
   main-source-guard:
     name: PRs into main come from release/* or hotfix/*
     if: github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Check the head branch
@@ -39,13 +45,13 @@ jobs:
               exit 1 ;;
           esac
 
-  # The release notes are written on the release branch, and the train seeds
-  # them with a draft marker. Merging into main promotes the RC to production
-  # with whatever notes it carries, so a draft must not get that far.
+  # The train writes the release notes (scripts/release/release-notes.sh), and
+  # merging into main promotes the RC to production with whatever notes it
+  # carries: a hand-made draft, or notes over Play's limit, must not get that far.
   release-notes-guard:
     name: Release notes are final
     if: github.base_ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,7 +70,7 @@ jobs:
   landing-guard:
     name: Features reach the landing
     if: github.base_ref == 'develop'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,11 +85,69 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/release/landing-guard.sh
 
+  # actionlint (#581) over every workflow. A workflow typo or a shellcheck
+  # finding in a `run:` block is otherwise found only when that workflow runs,
+  # which for ship-release.yml is with release credentials. The job always runs,
+  # so a required check never sits pending; it does the work only when a
+  # workflow or the lint's config changed.
+  workflow-lint:
+    name: Workflows pass actionlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Did a workflow or the lint config change?
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- .github/workflows .github/actionlint.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Pinned by version and by the SHA-256 of the release tarball, both taken
+      # from rhysd/actionlint's published *_checksums.txt. To bump, change both
+      # together. Downloaded from the release, not `go install` (no Go toolchain
+      # to pin) and not a third-party action (nothing to trust but the checksum).
+      - name: Install actionlint
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/actionlint"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  $dir/actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf "$dir/actionlint.tar.gz" -C "$dir" actionlint
+          echo "$dir" >> "$GITHUB_PATH"
+      # actionlint runs shellcheck on every `run:` block. Fail here if the runner
+      # has none, rather than let actionlint skip those rules and pass.
+      - name: Lint the workflows
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          shellcheck --version
+          actionlint --version
+          actionlint
+
   # The release scripts and the rollout policy decide what reaches users, and
   # nothing else exercises them until a real release runs. Seconds to run.
+  #
+  # This job runs on PRs into main, develop, release/* and hotfix/* alike. Every
+  # step in it is repo-wide: the pin and permission checks (#311, #481, #482)
+  # police the whole tree whatever the base, and the script tests do not read
+  # the base at all. So none is skipped per base. Its name is a required check on
+  # the develop and main rulesets (owner-setup.sh), so it stays as it is.
   release-tooling:
     name: Release tooling tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -95,15 +159,29 @@ jobs:
       # fake a pin. Dependabot keeps the pins current.
       - name: Actions are pinned to commit SHAs
         run: ruby scripts/ci/test/check_action_pins_test.rb && ruby scripts/ci/check-action-pins.rb
+      # Runners are pinned too (#481): `-latest` moves on GitHub's date, and the
+      # lane that breaks is an unrelated PR's.
+      - name: Runner images are pinned
+        run: ruby scripts/ci/test/check_runner_pins_test.rb && ruby scripts/ci/check-runner-pins.rb
+      # Every workflow declares its own top-level `permissions:` (#482), so the
+      # least-privilege posture lives in the file and not in a repo setting.
+      - name: Workflows declare permissions
+        run: ruby scripts/ci/test/check_workflow_permissions_test.rb && ruby scripts/ci/check-workflow-permissions.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
+      # The R8 mapping assertion in ci.yml, proved red on generated fixtures (#486).
+      - name: CI check scripts go red on bad input
+        run: scripts/ci/test/check-r8-output-test.sh
+      # ci.yml's lane filter must fail open (#490): proved on throwaway repositories.
+      - name: CI lane filter fails open
+        run: scripts/ci/test/decide-lanes-test.sh
       # Play's field limits (title 30, short 80, full 4000 characters) on every
       # listing locale, on the PR that edits the copy rather than at the next
       # release cut (#76).
       - name: Play listing within limits
         run: scripts/store/check-listing.sh
       - name: Rollout ramp policy
-        run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb && for t in ops_bridge sentry_connector play_reviews; do ruby fastlane/test/${t}_test.rb || exit 1; done
+        run: ruby fastlane/test/play_rollout_test.rb && ruby fastlane/test/sentry_gate_test.rb && for t in ops_bridge sentry_connector play_reviews tally_feature_requests; do ruby fastlane/test/${t}_test.rb || exit 1; done
       - name: Staged release schedule and train plan (ADR 0030)
         run: ruby fastlane/test/release_stages_test.rb
       - name: Sunday promotion gates (ADR 0030)
@@ -115,3 +193,7 @@ jobs:
       # merge requirement, and the App Store Connect client against a fake transport.
       - name: iOS staged train (ADR 0033)
         run: ruby fastlane/test/ios_train_test.rb && ruby fastlane/test/ios_promote_test.rb && ruby fastlane/test/app_store_connect_test.rb && ruby fastlane/test/release_stages_test.rb
+      # The guards above are keyed on their base, and this file's own shape is what
+      # keeps that true on the PRs that now reach it (#522).
+      - name: PR guards run on the bases they are for (#522)
+        run: ruby scripts/ci/test/pr_guards_test.rb

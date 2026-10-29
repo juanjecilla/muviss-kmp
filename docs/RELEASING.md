@@ -280,6 +280,30 @@ fewer**, labelled `from-play-review` + `user-feedback`.
   no gems. Try it: Actions > "Play reviews" > Run workflow (dry run is on by default).
   Tests: `ruby fastlane/test/play_reviews_test.rb`. Never run against the live API.
 
+#### Feature requests and bug reports to issue (#448, #449, connectors #3 and #4)
+
+`.github/workflows/feature-requests.yml` opens one issue per completed submission of the in-app
+**Request a feature** form (section 13), labelled `from-feature-request` + `user-feedback`, and of
+the **Report a problem** form, labelled `from-bug-report` + `bug` + `user-feedback`.
+
+- **Hourly** (and by hand, dry by default). Polling rather than a Tally webhook: Tally's webhook
+  sends its own fixed JSON and cannot call GitHub's dispatch API, so it would need a hosted
+  receiver, which ADR 0028 rules out. Tally keeps every submission, so nothing is lost between runs.
+- **The respondent's email is never copied** (the repository goes public); the issue only says
+  whether one was left, and the owner replies from the Tally dashboard. The text goes in a code
+  fence, so an `@name` cannot ping anyone. The hidden fields (`version`, `platform`, `os`,
+  `locale`) are shown, sanitised, since a query parameter is anything someone types.
+- **Capped**: an empty submission is skipped and one run opens at most 10 issues, oldest first, so a
+  flood of junk costs an hour at a time. One issue per submission id; re-running opens nothing.
+- **No reverse mapping.** Closing the issue changes nothing in Tally.
+- **Secrets**: `TALLY_API_KEY` (Tally > Settings > API keys) and `TALLY_FEATURE_REQUEST_FORM_ID`
+  (the id `scripts/feedback/tally-form.sh create` printed); `TALLY_BUG_REPORT_FORM_ID` for the Bug
+  Report form. With the key or a form's id unset, that form's step does nothing. `scripts/release/owner-setup.sh` asks for both. Scheduled workflows only run from the
+  default branch, so nothing happens until this reaches `main`.
+- **Try it**: `DRY_RUN=1 TALLY_API_KEY=… TALLY_FEATURE_REQUEST_FORM_ID=… GITHUB_REPOSITORY=… GITHUB_TOKEN=… ruby fastlane/ops_bridge.rb sync tally-feature-requests`,
+  or Actions > "Feature requests" > Run workflow (dry run is on by default). Tests:
+  `ruby fastlane/test/tally_feature_requests_test.rb`, run by `pr-guards`.
+
 ## 5. Branches, the release train and CI (ADR 0025)
 
 ### The flow
@@ -346,8 +370,6 @@ the schedule, the gates and where a fix goes.
   - the newest RC is not the branch head (a commit landed after it was built),
     or that RC's `release-rc.yml` run did not succeed;
   - CI on the branch head is not green;
-  - the store notes still carry `DRAFT:` (or are missing), checked at the beta
-    step too, since testers see them;
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
   - another version is still on the beta track (one per stage). This is read from
@@ -369,6 +391,15 @@ the schedule, the gates and where a fix goes.
   linking the original. A forward PR that conflicts is still opened, empty, and
   stays open for a person; a forward PR into a release branch holds that
   version's promotion until it merges. Each push to a release branch is a new RC.
+  A hand edit to the release notes (`fastlane/release-notes/`), which exist only
+  on the release branch, makes git report a delete/modify conflict, which the
+  forward resolves by itself: it takes the notes as the release branch wrote
+  them and continues, so the PR carries them (#529) and nobody has to step in.
+  A notes file that both branches changed still opens as a conflict.
+  **CodeRabbit does not review a forward PR** (the App authored it, and it skips
+  App-authored PRs), so its approval has to come from a person: approve it, or
+  for a conflicting one resolve it and merge it by hand, as #528 did for #527
+  (#573).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
@@ -379,6 +410,38 @@ the schedule, the gates and where a fix goes.
 
 iOS walks the same three stages as Play, one week apart, on the same RC binary (ADR 0033).
 Its table, rules, lanes and the owner runbook are in section 9 ("9.4 The staged train for iOS").
+
+### Release notes
+
+The train writes them; nobody has to (`scripts/release/release-notes.sh`, run
+with no `--write` to preview). One file per listing locale,
+`fastlane/release-notes/vX.Y.Z/<locale>.txt`, within Play's 500 characters:
+
+- **What is in them.** The `feat` and `fix` subjects since the previous release,
+  features first, without issue references. Left out: infrastructure scopes
+  (`release`, `ci`, `build`, `ops`, `supabase`, ...), other platforms (`ios`,
+  `web`, `desktop`), and anything paid or remotely dark (sync, co-watch, the own
+  TMDB key), which never appear in public copy. Phrase a `feat`/`fix` subject
+  as something a user would recognise; it is the store text.
+  - **Opting a commit out.** A commit whose body ends in a `Notes: none` trailer
+    (key and value in any case, anywhere in the trailer block) is left out of
+    both the English list and the Spanish count. A `Notes: none` line in prose
+    above the last paragraph does not count. It is for a `feat` with nothing a
+    user can see yet; the version bump still follows the type, so this does not
+    stop a release being a minor one.
+- **Spanish (and any other non-English locale)** gets one sentence that counts
+  the changes ("Muviss 1.2.0 trae 3 novedades y 1 corrección de errores."): a
+  commit subject cannot be translated here.
+- **When.** `start-release.sh` writes them with the cut. Every push to the
+  release branch (`release-rc.yml`) writes them again first; when a merged fix
+  changed them it commits them as the release App and stops, and the run that
+  push starts tags and builds the commit that carries them. So the RC on Play,
+  the GitHub pre-release and the file in the repo always agree.
+- **Editing by hand is allowed, never required.** `.generated` records what the
+  script last wrote per locale; a file that no longer matches is a person's and
+  is kept from then on. A file that still starts with the old `DRAFT:` marker is
+  replaced. `release-notes-guard` still refuses a `DRAFT:` file on a PR into
+  `main`, which generated notes never carry.
 
 ### Cutting a release
 
@@ -391,14 +454,19 @@ scripts/release/start-release.sh 1.0.0 --dry-run  # checks only
 scripts/release/next-version.sh                   # what the train would cut
 ```
 
+The train's version (and the range its notes and changelog cover) starts at the
+previous release **including one still in flight**: with 1.2.0 in open beta and
+no `v1.2.0` tag yet, the next cut is 1.2.1 or 1.3.0, counted from where
+`release/1.2.0` left `develop`. `scripts/release/previous-release.sh` is that
+lookup (an RC tag or a `release/*` branch names a version in flight).
+
 It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
 only) a `release/*` branch is open. The train applies ADR 0030's stagger rule
 itself and passes `--stagger-checked`; a hand cut refuses while any release
 branch is open, unless you pass that flag after checking that none is still in
 internal. The branch starts with one commit:
-draft release notes for every listing locale, seeded from the `feat`/`fix`
-subjects since the last release, first line `DRAFT: …`, and this version's
+the release notes for every listing locale, and this version's
 section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
 uncapped). The changelog is generated, not edited: a fix merged into the
 release branch later is in the RC but not in that section.
@@ -407,8 +475,7 @@ Then:
 
 1. Install the RC from Play's internal track and run §8.
 2. Fix anything on the release branch (PRs into `release/x.y.z`). Each push is a new RC.
-3. Rewrite the notes for users in every locale and delete the `DRAFT:` line —
-   `release-notes-guard` fails the PR into `main` until you do.
+3. Nothing for the notes: they never hold a release (see **Release notes** below).
 4. Nothing, on the scheduled path: the Sunday step after the beta opens the PR
    `release/x.y.z → main` and merges it as the App (see **Staged releases**). To
    merge by hand instead, open that PR and **merge with a merge commit** — or
@@ -785,8 +852,8 @@ properties to the JVM a JavaExec forks.
 ### CI
 
 `.github/workflows/release.yml`'s `desktop-release` job runs a 3-entry OS
-matrix: `ubuntu-latest` → `packageDeb`, `macos-latest` → `packageDmg`,
-`windows-latest` → `packageMsi`. Each format can only be produced on its native
+matrix: `ubuntu-24.04` → `packageDeb`, `macos-15` → `packageDmg`,
+`windows-2025` → `packageMsi`. Each format can only be produced on its native
 OS (jpackage delegates to the OS's own packaging tool), which is why this is a
 matrix of jobs rather than one job running three tasks, and `fail-fast: false`
 keeps one broken leg from taking the other two down.
@@ -794,7 +861,7 @@ keeps one broken leg from taking the other two down.
 Windows/MSI used to be left out, on the grounds that it was the one leg nobody
 here could verify locally before merging. EPIC 23 put it in: nobody can verify
 it locally *either way*, and a CI run is better evidence than a reading of the
-config. WiX ships preinstalled on `windows-latest` per `actions/runner-images`.
+config. WiX ships preinstalled on `windows-2025` per `actions/runner-images`.
 What CI still cannot say is whether the resulting `.msi` installs and launches —
 that needs a Windows machine, and is issue #44.
 
@@ -811,6 +878,19 @@ every change), smoke-launches the packaged Linux binary under Xvfb, and runs
 
 Installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`) and, on a
 release, are attached to the GitHub Release (see §5).
+
+#### Runner images (#481)
+
+Every `runs-on:` names a specific image (`ubuntu-24.04`, `macos-15`,
+`windows-2025`), never `-latest`: GitHub is moving `ubuntu-latest` to Ubuntu 26
+on its own schedule, and a migration can break the Xvfb smoke launch, `verifyJlinkModules`
+or the iOS Kotlin/Native build on an unrelated PR. `pr-guards.yml`'s "Runner
+images are pinned" step (`scripts/ci/check-runner-pins.rb`) fails a floating
+label. Dependabot does not bump images, so the owner does, on a branch: change
+the label, let `ci.yml` run (it covers Linux, macOS and the packaged-binary
+smoke launch; `release.yml`'s Windows leg runs by `workflow_dispatch`), and merge
+only when it is green. GitHub announces a retiring image well ahead; watch
+`actions/runner-images` releases.
 
 ### Signing / notarization (manual follow-up, not attempted)
 
@@ -1024,7 +1104,7 @@ APPLE_ASC_KEY_ID=… APPLE_ASC_ISSUER_ID=… APPLE_ASC_P8_PATH=~/Downloads/AuthK
 
 ### 9.4 The staged train for iOS (ADR 0033)
 
-iOS walks the same three stages as Play, one week apart, on the **same RC binary**. Each platform has its own stage in the release issue's marker. Shared gates (release-blocker, a fix PR into the branch, CI, draft notes) hold both platforms. The iOS steps are skipped with a notice while the App Store Connect key is unset, and Play runs as before.
+iOS walks the same three stages as Play, one week apart, on the **same RC binary**. Each platform has its own stage in the release issue's marker. Shared gates (release-blocker, a fix PR into the branch, CI) hold both platforms. The iOS steps are skipped with a notice while the App Store Connect key is unset, and Play runs as before.
 
 | When | iOS step | What happens | Where |
 |---|---|---|---|
@@ -1360,3 +1440,29 @@ secret than the one in the APK — the point is rotation, not secrecy. Set it ba
 `docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
 (it exposes the device IP to ConfigCat and sends nothing about the user), so
 setting the secret needs no further copy change.
+
+## 13. Feature Request form (Tally) — EPIC 53 / issue #447
+
+The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0035. Owner steps, once:
+
+1. In Tally, create an API key (Settings > API keys). Run `read -rs TALLY_API_KEY && export TALLY_API_KEY` (bash or zsh) and paste the key at the silent prompt, so it never lands in your shell history. It stays with you; it never goes in the app or in CI.
+2. `scripts/feedback/tally-form.sh create` makes a **draft** from `scripts/feedback/tally-form.json` and prints the form id and `https://tally.so/r/<id>`. **First run, check the draft in the dashboard** (issue #450): the four hidden fields (`version`, `platform`, `os`, `locale`), the optional email, and that "Email me on each submission" is on. The script's block shapes were not verified against the live API, and the create response has no URL field, so the script derives it from the id.
+3. `scripts/feedback/tally-form.sh publish <id>` publishes it, sending the blocks along with the status (a status-only PATCH leaves the public page with no fields, only a Submit button). `update <id>` re-applies the checked-in definition as a draft after you edit the JSON, so run `publish` again afterwards.
+4. Turn it on, either way:
+   - **Compiled default:** `FEATURE_REQUEST_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets (needs a release).
+   - **ConfigCat** (no release needed): create two text settings in the product from §12 with exactly these keys: **`featureRequestProvider`**, default `tally`, and **`featureRequestUrl`**, default the published `https://tally.so/r/<id>`. A setting that does not exist falls back to the compiled default, and that default for the URL is blank, so until `featureRequestUrl` exists with a real URL the row stays hidden. ConfigCat will not save an empty text value; to keep the setting while the row is off, use a placeholder such as `none`.
+
+   Only an absolute `https://` URL shows the row. A blank value, a placeholder, a URL without its scheme or an `http://` one all hide it.
+5. Verify end to end: open the app, tap the row, and submit a test response; confirm the email arrives and `version`, `platform` and `locale` are filled. `os` is filled on Android, iOS and desktop only; the web app cannot read the OS version and leaves it empty.
+
+**Switching to Typeform** (the fallback, if Tally ever fails us): create the form by hand in Typeform with the same four **hidden fields** (`version`, `platform`, `os`, `locale`), turn on **Send email for new responses** in the form's notification settings (Typeform does not email responses by default) and confirm it with a test submission, then set ConfigCat `featureRequestProvider` = `typeform` and `featureRequestUrl` = its public URL. Typeform reads hidden fields from the URL fragment, so the provider key must change with the URL. Its free plan stops collecting after about 10 responses a month, so treat it as a stop-gap. `featureRequestProvider` = `off` hides the row whatever the URL is.
+
+Each response (of either form) reaches you by email. It also becomes a GitHub issue within the hour once its form's id is an Actions secret next to `TALLY_API_KEY`: `TALLY_FEATURE_REQUEST_FORM_ID` for feature requests, `TALLY_BUG_REPORT_FORM_ID` for bug reports (below). See 'Feature requests to issue' under the Ops Bridge.
+
+### Bug Report form (#449)
+
+A second row, **Report a problem**, sits under **Request a feature** in Settings > About and opens a second Tally form (`scripts/feedback/tally-bug-report.json`: what happened, what was expected, an optional email, the same four hidden fields). It follows the same rules: dark until its URL is set, the same provider switch (`featureRequestProvider`, which governs both rows; `off` hides both), no new data in the link. Because the switch is shared, **switching to Typeform moves both forms**: create the bug report form in Typeform too and set `bugReportUrl` to it in the same change, or clear `bugReportUrl` to hide the row. A Tally `bugReportUrl` left behind would still show the row, but its link would carry the four values in a fragment that Tally does not read.
+
+1. `TALLY_FORM_DEFINITION=scripts/feedback/tally-bug-report.json scripts/feedback/tally-form.sh create`, then `publish <id>` with the same variable set (publish re-sends the definition).
+2. `BUG_REPORT_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets, or the ConfigCat text setting **`bugReportUrl`**.
+3. Add the Actions secret `TALLY_BUG_REPORT_FORM_ID` so the Ops Bridge turns each report into an issue.

@@ -53,6 +53,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -181,6 +182,10 @@ fun TriageScreen(
         val result = snackbarHostState.showSnackbar(
             message = getString(Res.string.commit_failed_snackbar, failed.summary.title, failed.message.resolveAsync()),
             actionLabel = getString(Res.string.action_retry),
+            // Same as the Undo below: an action label makes Material3 default to
+            // Indefinite, and this one would then sit over the verdict buttons
+            // until it was tapped or dismissed.
+            duration = SnackbarDuration.Long,
         )
         if (result == SnackbarResult.ActionPerformed) viewModel.onRetryFailedCommit() else viewModel.onFailedCommitDismissed()
     }
@@ -509,7 +514,9 @@ private fun DeckArea(
                 TriageCardSurface(
                     summary = backing,
                     backing = true,
-                    modifier = Modifier.cardDepth(rememberDepth(depth.toFloat(), state.deckAnimations)),
+                    // The cards behind the top one are scenery: left in the semantics tree, TalkBack
+                    // walks through every poster in the stack before reaching the card that matters.
+                    modifier = Modifier.cardDepth(rememberDepth(depth.toFloat(), state.deckAnimations)).clearAndSetSemantics {},
                 )
             }
         }

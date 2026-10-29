@@ -30,8 +30,8 @@ commit "$r" "fix(search): x"
 expect_eq "fix bumps patch" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.0.1"
 commit "$r" "feat(triage): y"
 expect_eq "feat bumps minor" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.1.0"
-git -C "$r" tag -a v1.0.1-rc1 -m rc
-expect_eq "rc tags are not releases" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.1.0"
+git -C "$r" tag -a v1.0.1-rc1 -m rc; commit "$r" "fix(search): after the rc"
+expect_eq "a version in flight (its rc tag) bases the next one" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "1.0.2"
 commit "$r" "refactor(db)!: z"
 expect_eq "bang bumps major" "$(cd "$r" && "$SCRIPTS/next-version.sh" develop)" "2.0.0"
 r2="$(new_repo)"; commit "$r2" "chore: init"; git -C "$r2" tag -a v1.2.3 -m t
@@ -47,6 +47,24 @@ r4="$(new_repo)"; commit "$r4" "chore: init"; git -C "$r4" tag -a v1.0.0 -m t
 git -C "$r4" switch -q -c main; commit "$r4" "fix: release fix"; git -C "$r4" tag -a v1.1.0 -m t
 git -C "$r4" switch -q develop; commit "$r4" "fix: after"
 expect_eq "unreachable newest tag still bases the bump" "$(cd "$r4" && "$SCRIPTS/next-version.sh" develop)" "1.1.1"
+# Staged releases (ADR 0030): 1.2.0 is in beta with no final tag when the train
+# runs again. The next version follows it, from where its branch left develop.
+r8="$(new_repo)"; commit "$r8" "chore: init"; git -C "$r8" tag -a v1.1.0 -m t
+commit "$r8" "feat(lists): shipped in 1.2.0"; git -C "$r8" branch release/1.2.0
+git -C "$r8" switch -q release/1.2.0; commit "$r8" "fix(lists): a release fix"; git -C "$r8" tag -a v1.2.0-rc2 -m rc
+git -C "$r8" switch -q develop; commit "$r8" "fix(search): after the cut"
+expect_eq "a version in beta bases the next cut" "$(cd "$r8" && "$SCRIPTS/next-version.sh" develop)" "1.2.1"
+commit "$r8" "feat(triage): after the cut"
+expect_eq "a feature after the cut bumps past it" "$(cd "$r8" && "$SCRIPTS/next-version.sh" develop)" "1.3.0"
+git -C "$r8" tag -d v1.2.0-rc2 >/dev/null
+expect_eq "a release branch with no rc yet counts" "$(cd "$r8" && "$SCRIPTS/next-version.sh" develop)" "1.3.0"
+expect_eq "previous-release before a version skips newer ones" \
+  "$(cd "$r8" && "$SCRIPTS/previous-release.sh" develop 1.2.0 | cut -d' ' -f1)" "1.1.0"
+r9="$(new_repo)"; commit "$r9" "chore: init"; git -C "$r9" tag -a v1.1.0 -m t; git -C "$r9" branch release/1.2.0
+(cd "$r9" && "$SCRIPTS/next-version.sh" develop >/dev/null 2>&1); expect_eq "nothing since the cut exits 3" "$?" "3"
+# A release line with no common ancestor (a shallow clone) is an error, not "no release".
+git -C "$r9" switch -q --orphan release/1.3.0; commit "$r9" "chore: unrelated"; git -C "$r9" switch -q develop
+(cd "$r9" && "$SCRIPTS/next-version.sh" develop >/dev/null 2>&1); expect_eq "a failed lookup fails the version" "$?" "1"
 
 echo "landing-guard.sh"
 r="$(new_repo)"; commit "$r" "chore: init"; base="$(git -C "$r" rev-parse HEAD)"
@@ -75,7 +93,7 @@ echo "start-release.sh"
 origin="$(mktemp -d)"; git -C "$origin" init -q --bare -b develop
 r="$(new_repo)"
 mkdir -p "$r/scripts/release" "$r/scripts/store" "$r/fastlane/metadata/android/en-US" "$r/fastlane/metadata/android/es-ES"
-cp "$SCRIPTS/start-release.sh" "$r/scripts/release/"; cp "$REPO_ROOT/scripts/store/check-listing.sh" "$r/scripts/store/"
+cp "$SCRIPTS/start-release.sh" "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$r/scripts/release/"; cp "$REPO_ROOT/scripts/store/check-listing.sh" "$r/scripts/store/"
 for l in en-US es-ES; do echo T >"$r/fastlane/metadata/android/$l/title.txt"; echo S >"$r/fastlane/metadata/android/$l/short_description.txt"; echo F >"$r/fastlane/metadata/android/$l/full_description.txt"; done
 git -C "$r" add -A; commit "$r" "chore: init"
 git -C "$r" tag -a v1.0.0 -m t
@@ -85,8 +103,8 @@ git -C "$r" remote add origin "$origin"; git -C "$r" push -q origin develop --ta
 (cd "$r" && scripts/release/start-release.sh 1.1.0 >/dev/null 2>&1); expect_eq "cuts release/1.1.0" "$?" "0"
 git -C "$origin" rev-parse -q --verify refs/heads/release/1.1.0 >/dev/null && pass "branch pushed" || fail "branch pushed"
 seeded="$(git -C "$r" show release/1.1.0:fastlane/release-notes/v1.1.0/en-US.txt)"
-grep -q '^DRAFT:' <<<"$seeded" && pass "notes are marked draft" || fail "notes are marked draft"
-grep -q -- '- snooze a card' <<<"$seeded" && grep -q -- '- offline copy' <<<"$seeded" && ! grep -q noise <<<"$seeded" \
+! grep -q '^DRAFT:' <<<"$seeded" && pass "notes are final, not drafts" || fail "notes are final, not drafts: $seeded"
+grep -q -- '- Snooze a card' <<<"$seeded" && grep -q -- '- Offline copy' <<<"$seeded" && ! grep -q noise <<<"$seeded" \
   && pass "notes list feat/fix only" || fail "notes list feat/fix only: $seeded"
 log="$(git -C "$r" show release/1.1.0:CHANGELOG.md)"
 grep -q '^## 1.1.0 — ' <<<"$log" && pass "changelog gets a section for the version" || fail "changelog section: $log"
@@ -105,7 +123,7 @@ git -C "$r" push -q origin 'v1.0.0^{commit}:refs/heads/main'
 
 # A newer section goes above the older ones, and a breaking change says so.
 r5="$(new_repo)"
-mkdir -p "$r5/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r5/scripts/release/"
+mkdir -p "$r5/scripts/release"; cp "$SCRIPTS/start-release.sh" "$SCRIPTS/previous-release.sh" "$r5/scripts/release/"
 printf '# Changelog\n\nheader\n\n## 1.0.0 — 2026-10-07\n\nFirst release.\n' >"$r5/CHANGELOG.md"
 git -C "$r5" add -A; commit "$r5" "chore: init"; git -C "$r5" tag -a v1.0.0 -m t
 commit "$r5" "feat(sync)!: accounts"; commit "$r5" "feat: great news!"; commit "$r5" "chore: noise"
@@ -117,7 +135,7 @@ log5="$(git -C "$r5" show release/2.0.0:CHANGELOG.md)"
   && grep -q '^header$' <<<"$log5" && pass "new section above the old, header kept" || fail "section order: $log5"
 grep -q -- '^- \*\*sync\*\*: accounts (breaking)$' <<<"$log5" && pass "breaking change is marked" || fail "breaking: $log5"
 grep -q -- '^- great news!$' <<<"$log5" && pass "a ! in the subject is not breaking" || fail "subject bang: $log5"
-r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$r6/scripts/release/"
+r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$SCRIPTS/previous-release.sh" "$r6/scripts/release/"
 git -C "$r6" add -A; commit "$r6" "chore: init"; git -C "$r6" tag -a v1.0.0 -m t; commit "$r6" "ci: only"
 o6="$(mktemp -d)"; git -C "$o6" init -q --bare -b develop
 git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
@@ -230,6 +248,42 @@ expect_eq "and no PR is created for it" "$(grep -c 'pr create' "$FAKE_GH_LOG")" 
 expect_eq "and gets no PR or branch" "$(grep -c 'pr create' "$FAKE_GH_LOG")$(git -C "$fo" rev-parse --verify -q forward/pr-7-to-release-1.4.0 >/dev/null && echo pushed)" "0"
 ff bogus >/dev/null 2>&1; expect_eq "an unknown command is refused" "$?" "2"
 
+# #526/#527 (#529): a hand edit to the release notes exists only on the release
+# branch, so its cherry-pick onto develop is an add/delete conflict. The notes are
+# the fix, so the forward PR must carry them, not open empty.
+: >"$FAKE_GH_LOG"
+git -C "$f" switch -q -c release/1.5.0 develop; mkdir -p "$f/fastlane/release-notes/v1.5.0"
+echo "Generated notes." >"$f/fastlane/release-notes/v1.5.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "chore(release): cut the 1.5.0 notes"
+echo "Hand-written notes for 1.5.0." >"$f/fastlane/release-notes/v1.5.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 1.5.0 notes"
+NOTESSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.5.0; git -C "$f" switch -q develop
+expect_eq "a notes-only edit forwards to develop with its content" "$(ff forward 9 release/1.5.0 "$NOTESSHA" develop)" "forward #9 to develop: opened (clean)"
+expect_eq "the notes file is on the forward branch" "$(git -C "$fo" show forward/pr-9-to-develop:fastlane/release-notes/v1.5.0/en-US.txt)" "Hand-written notes for 1.5.0."
+expect_eq "its PR says the notes came with the fix" "$(grep -c 'release notes' "$FAKE_GH_LOG")" "1"
+expect_eq "and no conflict is recorded" "$(git -C "$fo" log --format=%s -n 1 forward/pr-9-to-develop)" "chore(release): hand-edit the 1.5.0 notes"
+
+# A notes edit that comes with a code conflict is still a person's job.
+git -C "$f" switch -q -c release/1.6.0 develop
+mkdir -p "$f/fastlane/release-notes/v1.6.0"; echo "Generated." >"$f/fastlane/release-notes/v1.6.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "chore(release): cut the 1.6.0 notes"
+echo fix2 >"$f/fix.txt"; echo "Notes." >"$f/fastlane/release-notes/v1.6.0/en-US.txt"
+git -C "$f" add -A; commit "$f" "fix: a code fix and its notes"
+MIXSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.6.0; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "a notes edit beside a code conflict still opens for a person" "$(ff forward 10 release/1.6.0 "$MIXSHA" release/1.3.0)" "forward #10 to release/1.3.0: opened (conflict)"
+expect_eq "the conflicting branch carries only the marker commit" "$(git -C "$fo" log --format=%s -n 1 forward/pr-10-to-release-1.3.0)" "chore(release): forward #10 to release/1.3.0 needs a person"
+
+# A notes file that both branches changed is not release-only: it is a real
+# conflict, and the release side must not overwrite the target's edit silently.
+git -C "$f" switch -q -c release/1.7.0 develop; mkdir -p "$f/fastlane/release-notes/v1.7.0"
+echo "Generated." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): cut the 1.7.0 notes"
+echo "Hand edit." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 1.7.0 notes"
+BOTHSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.7.0; git -C "$f" switch -q develop
+git -C "$f" switch -q -c release/1.8.0 develop; mkdir -p "$f/fastlane/release-notes/v1.7.0"
+echo "Their edit." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): the 1.8.0 branch edits the same notes"
+git -C "$f" push -q origin release/1.8.0; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "notes both sides changed still open for a person" "$(ff forward 11 release/1.7.0 "$BOTHSHA" release/1.8.0)" "forward #11 to release/1.8.0: opened (conflict)"
+
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'
@@ -290,6 +344,108 @@ expect_eq "the wizard asks for the Admin role and keeps Sign in with Apple out" 
 if command -v shellcheck >/dev/null 2>&1; then
   shellcheck "$SCRIPTS/apple-setup.sh" >/dev/null 2>&1 && pass "apple-setup.sh passes shellcheck" || fail "apple-setup.sh passes shellcheck"
 fi
+
+echo "release-notes.sh"
+r="$(new_repo)"
+mkdir -p "$r/scripts/release" "$r/fastlane/metadata/android/en-US" "$r/fastlane/metadata/android/es-ES"
+cp "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$r/scripts/release/"
+git -C "$r" add -A; commit "$r" "chore: init"; git -C "$r" tag -a v1.0.0 -m t
+commit "$r" "feat(settings): mute genres (#389)"
+commit "$r" "feat(onboarding): first-run introduction (EPIC 47) (#323)"
+commit "$r" "fix(search): offline copy #412"
+commit "$r" "feat(lists): #413 reorder a list"
+commit "$r" "fix(profile): a signed-out user is offered sign-in, not a paywall"
+commit "$r" "feat(cowatch): share the invite"
+commit "$r" "fix(release): the train skips a holiday"
+commit "$r" "fix(ios): widget undo"
+commit "$r" "feat(settings): bring your own TMDB key"
+git -C "$r" tag -a v1.1.0-rc1 -m rc
+rn() { (cd "$r" && scripts/release/release-notes.sh 1.1.0 "$@" 2>/dev/null); }
+out="$(rn)"
+grep -q -- '- Mute genres$' <<<"$out" && grep -q -- '- First-run introduction$' <<<"$out" && grep -q -- '- Reorder a list$' <<<"$out" && grep -q -- "- Offline copy$" <<<"$out" \
+  && pass "lists user-facing feat/fix, capitalised, without issue refs" || fail "user-facing items: $out"
+grep -qiE 'paywall|invite|holiday|widget|tmdb' <<<"$out" && fail "hides paid, dark, infra and other-platform work: $out" \
+  || pass "hides paid, dark, infra and other-platform work"
+[ "$(grep -n 'Mute genres' <<<"$out" | cut -d: -f1)" -lt "$(grep -n 'Offline copy' <<<"$out" | cut -d: -f1)" ] \
+  && pass "features come before fixes" || fail "features before fixes: $out"
+grep -q '^Muviss 1.1.0 trae 3 novedades y 1 corrección de errores.$' <<<"$out" \
+  && pass "Spanish counts what changed" || fail "Spanish line: $out"
+notes_dir="$r/fastlane/release-notes/v1.1.0"
+rn --write >/dev/null
+! grep -q DRAFT "$notes_dir/en-US.txt" && [ -f "$notes_dir/.generated" ] && pass "--write writes every locale and its ledger" || fail "--write"
+commit "$r" "fix(lists): keep the sort order"
+rn --write >/dev/null
+grep -q -- '- Keep the sort order' "$notes_dir/en-US.txt" && grep -q '2 correcciones' "$notes_dir/es-ES.txt" \
+  && pass "a later fix is picked up by the next run" || fail "regenerates: $(cat "$notes_dir"/*.txt)"
+echo "Hand-written notes." >"$notes_dir/en-US.txt"
+commit "$r" "fix(lists): another one"
+rn --write >/dev/null
+[ "$(cat "$notes_dir/en-US.txt")" = "Hand-written notes." ] && pass "notes a person edited are kept" || fail "kept: $(cat "$notes_dir/en-US.txt")"
+grep -q '3 correcciones' "$notes_dir/es-ES.txt" && pass "the untouched locale still follows the branch" || fail "es: $(cat "$notes_dir/es-ES.txt")"
+printf 'DRAFT: rewrite me\n- x\n' >"$notes_dir/en-US.txt"
+rn --write >/dev/null
+grep -q "^What's new in Muviss 1.1.0:" "$notes_dir/en-US.txt" && pass "an old DRAFT file is replaced" || fail "draft replaced"
+for i in $(seq 1 40); do commit "$r" "feat(lists): a fairly long feature description number $i that fills the notes"; done
+rn --write >/dev/null
+[ "$(wc -m <"$notes_dir/en-US.txt" | tr -d ' ')" -le 500 ] && tail -1 "$notes_dir/en-US.txt" | grep -q '^- Bug fixes and improvements.$' \
+  && pass "stays within Play's 500 characters" || fail "500 cap: $(wc -m <"$notes_dir/en-US.txt")"
+(cd "$r" && "$REPO_ROOT/scripts/release/check-release-notes.sh" 1.1.0 --final >/dev/null 2>&1 || true)
+cp "$SCRIPTS/check-release-notes.sh" "$r/scripts/release/"
+(cd "$r" && scripts/release/check-release-notes.sh 1.1.0 --final >/dev/null 2>&1); expect_eq "generated notes pass the main guard" "$?" "0"
+
+# A `Notes: none` trailer keeps a commit out of the notes and the Spanish count.
+# The trailer is read only from a body's last paragraph, in any case.
+t="$(new_repo)"
+mkdir -p "$t/scripts/release" "$t/fastlane/metadata/android/en-US" "$t/fastlane/metadata/android/es-ES"
+cp "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$t/scripts/release/"
+git -C "$t" add -A; commit "$t" "chore: init"; git -C "$t" tag -a v1.0.0 -m t
+commit "$t" "feat(lists): a visible feature"
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(settings): a store-invisible feature
+
+Notes: none
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(lists): a mid-body line is prose
+
+Notes: none
+
+This paragraph follows the line above, so the line is not a trailer.
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(triage): trailer above another trailer, any case
+
+Reviewed-by: someone
+notes: NONE
+Co-Authored-By: Someone <someone@example.com>
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+fix(search): an invisible fix is opted out too
+
+Notes: none
+MSG
+git -C "$t" commit -q --allow-empty -F - <<'MSG'
+feat(search): a trailer that is not one: Notes: none, really
+
+Notes: nothing
+MSG
+tn() { (cd "$t" && scripts/release/release-notes.sh 1.1.0 2>/dev/null); }
+out="$(tn)"
+# Listed: the plain feat, the prose mid-body feat, and the feat whose body has
+# only a non-"none" Notes line. Opted out: the Notes: none feat, the feat with
+# Notes: none among other trailers, and the fix.
+grep -q -- '^- A visible feature$' <<<"$out" && grep -q -- '^- A mid-body line is prose$' <<<"$out" \
+  && grep -q -- '^- A trailer that is not one: Notes: none, really$' <<<"$out" \
+  && pass "features without an opt-out trailer are listed" || fail "listed features: $out"
+grep -q -- 'store-invisible' <<<"$out" && fail "a Notes: none feat is listed: $out" \
+  || pass "a Notes: none feat is absent"
+grep -q -- 'another trailer' <<<"$out" && fail "Notes: none among other trailers is listed: $out" \
+  || pass "Notes: none among other trailers, in any case, is absent"
+grep -q -- 'invisible fix' <<<"$out" && fail "a Notes: none fix is listed: $out" \
+  || pass "a Notes: none fix is absent"
+grep -q '^Muviss 1.1.0 trae 3 novedades y mejoras.$' <<<"$out" \
+  && pass "Spanish count matches the English list (opted-out commits not counted)" \
+  || fail "Spanish count: $out"
 
 echo
 [ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }

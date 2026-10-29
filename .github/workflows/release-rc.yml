@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   tag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -49,8 +49,35 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app.outputs.token || github.token }}
 
+      # The notes follow the branch (scripts/release/release-notes.sh): a fix merged
+      # into it is in them before the RC is built. When they change, commit them
+      # and stop; that push (the release App's) starts the next run, which finds
+      # nothing to change and tags the commit that carries them. Text a person
+      # wrote is kept. Without the App the push would not start a run, so the
+      # notes are left as committed and this run goes on.
+      - name: Refresh the release notes
+        id: notes
+        if: steps.has-app.outputs.ok == 'true'
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          VERSION="${BRANCH#*/}"
+          scripts/release/release-notes.sh "$VERSION" --write
+          if [ -z "$(git status --porcelain fastlane/release-notes)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fastlane/release-notes
+          git commit -q -m "chore(release): refresh the $VERSION release notes"
+          git push origin "HEAD:$BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "### Release notes refreshed; the next run tags the candidate" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Tag the next release candidate
         id: next
+        if: steps.notes.outputs.changed != 'true'
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
@@ -79,6 +106,7 @@ jobs:
 
   build:
     needs: tag
+    if: needs.tag.outputs.tag != ''
     uses: ./.github/workflows/android-release-build.yml
     with:
       ref: ${{ needs.tag.outputs.tag }}
@@ -88,7 +116,8 @@ jobs:
 
   prerelease:
     needs: [tag, build]
-    runs-on: ubuntu-latest
+    if: needs.tag.outputs.tag != ''
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -138,7 +167,8 @@ jobs:
   # notice rather than failing the RC.
   ios:
     needs: tag
-    runs-on: macos-latest
+    if: needs.tag.outputs.tag != ''
+    runs-on: macos-15
     timeout-minutes: 75
     steps:
       - name: Check for the Apple credentials
@@ -211,7 +241,7 @@ jobs:
 
       - name: Set up Ruby
         if: steps.ready.outputs.ok == 'true'
-        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
         with:
           bundler-cache: true
 

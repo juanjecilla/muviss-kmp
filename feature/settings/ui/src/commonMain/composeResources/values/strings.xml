@@ -145,6 +145,8 @@
     <string name="tmdb_source_muviss">Muviss key</string>
     <string name="tmdb_source_yours">Your key</string>
     <string name="show_introduction">Show introduction again</string>
+    <string name="request_feature">Request a feature</string>
+    <string name="report_problem">Report a problem</string>
     <string name="muted_genres_title">Muted genres</string>
     <plurals name="muted_genres_count">
         <item quantity="one">%1$d muted</item>
@@ -158,6 +160,6 @@
     <string name="muted_genres_available">All genres</string>
     <string name="muted_genres_tv">TV shows</string>
     <string name="muted_genres_movies">Movies</string>
-    <string name="muted_genres_offline">Couldn\'t load the genre list. Your muted genres above still work.</string>
+    <string name="muted_genres_offline">Couldn't load the genre list. Your muted genres above still work.</string>
     <string name="muted_genres_retry">Retry</string>
 </resources>
