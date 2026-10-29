@@ -14,12 +14,12 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
 import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
+import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
 import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
 import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
 import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
-import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.onboarding.ui.OnboardingViewModel
 import com.codingpit.muviss.feature.profile.api.ProfileApi
