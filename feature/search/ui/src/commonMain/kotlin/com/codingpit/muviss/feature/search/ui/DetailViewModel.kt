@@ -179,6 +179,9 @@ class DetailViewModel(
                         rating = membership?.rating,
                         note = membership?.note,
                         revisitWillingness = membership?.revisitWillingness,
+                        // Derived by the library for this one title (ADR 0005), in the same read as membership.
+                        // Null for a title not in the library, so only a saved, completed title offers "What's next?".
+                        watchStatus = membership?.status,
                     )
                 }
             }
@@ -188,13 +191,6 @@ class DetailViewModel(
             .launchInReporting(viewModelScope)
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
-            .launchInReporting(viewModelScope)
-        // The derived status, read from the library's own answer (ADR 0005): nothing about it is stored here.
-        // Null for a title not in the library, so only a saved, completed title offers "What's next?".
-        collectionApi.observeSummaries()
-            .map { summaries -> summaries.firstOrNull { it.mediaId == mediaId }?.status }
-            .distinctUntilChanged()
-            .onEach { status -> _state.update { it.copy(watchStatus = status) } }
             .launchInReporting(viewModelScope)
         // Back online with an error page or a stale notice up: fetch again (#249).
         connectivity.reconnections()

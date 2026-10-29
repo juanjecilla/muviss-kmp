@@ -1,7 +1,6 @@
 package com.codingpit.muviss.feature.search.ui
 
 import com.codingpit.muviss.core.testing.FakeClock
-import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
@@ -24,8 +23,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Detail offers "What's next?" only on a Watched or Finished title (EPIC 51, #545). The status is read from
- * the library's own derived answer, never stored, so these tests drive the library and check what Detail sees.
+ * Detail offers "What's next?" only on a Watched or Finished title (EPIC 51, #545). The status is the
+ * library's own derived answer, read with the title's membership and never stored (#600). These tests
+ * drive the membership and check what Detail sees.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailNextPickStatusTest {
@@ -40,7 +40,7 @@ class DetailNextPickStatusTest {
 
     @Test
     fun a_watched_title_is_completed() {
-        val collection = FakeCollectionApi().apply { summaries.value = listOf(summary(WatchStatus.WATCHED)) }
+        val collection = FakeCollectionApi().apply { setStatus(mediaId, WatchStatus.WATCHED) }
 
         val vm = viewModel(collection)
 
@@ -50,21 +50,21 @@ class DetailNextPickStatusTest {
 
     @Test
     fun a_finished_title_is_completed() {
-        val collection = FakeCollectionApi().apply { summaries.value = listOf(summary(WatchStatus.FINISHED)) }
+        val collection = FakeCollectionApi().apply { setStatus(mediaId, WatchStatus.FINISHED) }
 
         assertTrue(viewModel(collection).state.value.completed)
     }
 
     @Test
     fun a_title_still_being_watched_is_not_completed() {
-        val collection = FakeCollectionApi().apply { summaries.value = listOf(summary(WatchStatus.WATCHING)) }
+        val collection = FakeCollectionApi().apply { setStatus(mediaId, WatchStatus.WATCHING) }
 
         assertFalse(viewModel(collection).state.value.completed)
     }
 
     @Test
     fun a_title_not_started_is_not_completed() {
-        val collection = FakeCollectionApi().apply { summaries.value = listOf(summary(WatchStatus.NOT_STARTED)) }
+        val collection = FakeCollectionApi().apply { setStatus(mediaId, WatchStatus.NOT_STARTED) }
 
         assertFalse(viewModel(collection).state.value.completed)
     }
@@ -79,16 +79,14 @@ class DetailNextPickStatusTest {
 
     @Test
     fun a_title_that_becomes_watched_while_open_is_completed_without_reopening() {
-        val collection = FakeCollectionApi().apply { summaries.value = listOf(summary(WatchStatus.WATCHING)) }
+        val collection = FakeCollectionApi().apply { setStatus(mediaId, WatchStatus.WATCHING) }
         val vm = viewModel(collection)
         assertFalse(vm.state.value.completed)
 
-        collection.summaries.value = listOf(summary(WatchStatus.WATCHED))
+        collection.setStatus(mediaId, WatchStatus.WATCHED)
 
         assertTrue(vm.state.value.completed)
     }
-
-    private fun summary(status: WatchStatus) = CollectionSummary(mediaId, "The Matrix", null, status)
 
     private fun viewModel(collection: FakeCollectionApi): DetailViewModel {
         val repo = FakeDetailRepo(details = MediaDetails(MediaSummary(mediaId, "The Matrix", year = 1999)))

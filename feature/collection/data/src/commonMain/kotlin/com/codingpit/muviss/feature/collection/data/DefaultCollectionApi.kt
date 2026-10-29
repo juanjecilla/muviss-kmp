@@ -31,7 +31,7 @@ internal class DefaultCollectionApi(
 ) : CollectionApi {
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = observeEntry(mediaId)
-        .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite, it.notificationsMuted, it.rating, it.note, it.revisitWillingness, it.coWatchPinned) } }
+        .map { entry -> entry?.let { CollectionMembership(it.mediaId, it.favorite, it.notificationsMuted, it.rating, it.note, it.revisitWillingness, it.coWatchPinned, it.status) } }
 
     override suspend fun savedDetails(mediaId: MediaId): MediaDetails? = observeEntry(mediaId).first()?.let { entry ->
         MediaDetails(
