@@ -11,7 +11,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Covers `21.sqm`: `appSettings.completionPromptShownAtEpochMs` (Next Pick, EPIC 51 #400).
+ * Covers `22.sqm`: `appSettings.completionPromptShownAtEpochMs` (Next Pick, EPIC 51 #400).
  *
  * What `verifyMigrations` cannot see: that an existing install reads "never shown" (null), so its first
  * Completion may open the sheet, and that the migration leaves neighbouring settings alone.
@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class CompletionPromptMigrationTest {
 
     // The one place this suite knows the migration's number; see the note in MutedGenresMigrationTest.
-    private val migratesFrom = 21L
+    private val migratesFrom = 22L
     private val producesVersion = migratesFrom + 1
 
     private val fixtures = File("src/commonMain/sqldelight/databases")
@@ -35,7 +35,7 @@ class CompletionPromptMigrationTest {
     }
 
     @Test
-    fun `21_sqm produced its own fixture`() {
+    fun `22_sqm produced its own fixture`() {
         assertTrue(MuvissDatabase.Schema.version >= producesVersion)
         assertTrue(fixtures.resolve("$producesVersion.db").exists(), "$producesVersion.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
     }
@@ -45,7 +45,7 @@ class CompletionPromptMigrationTest {
         val driver = oldDriver()
         runBlocking {
             val queries = MuvissDatabase(driver).appSettingsQueries
-            queries.ensureRow() // a v21 row, as an installed app has
+            queries.ensureRow() // a v22 row, as an installed app has
             queries.updateMutedGenresInSearch(true)
         }
         migrate(driver)
