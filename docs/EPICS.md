@@ -374,7 +374,9 @@ Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key 
 
 Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.md` (Completion, Pick Session, Next Pick, Taste Profile). Free, so the landing and the Play listing change in the PR that ships it.
 
-**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty, a quiet entry above the rows otherwise, #599), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+
+**Entry-point follow-ups.** #599 (Progress entry with titles) and #600 (Detail reads one title's status through its membership, not the whole library; `CollectionMembership.status`) are in the entry-point PR, stacked on #603. Open: #601 goldens for the entry points, #602 device and desktop runs (unverified until then), and #659 the duplicated outlined button (Progress keeps a private copy until it moves to `:core:designsystem`).
 
 **Migrations.** `22.sqm` (schema v23, fixture `23.db`), #400: `appSettings.completionPromptShownAtEpochMs`, per device, the once-a-day mark. Claimed 2026-10-29 as `22.sqm`: #394 had taken `21.sqm` on develop. #403 claims `23.sqm` and #588 (Taste Profile) `24.sqm`, stacked in that order, so #563 (review prompt) takes `25.sqm`.
 
