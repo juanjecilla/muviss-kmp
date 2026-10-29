@@ -110,6 +110,79 @@ module ReleaseStages
     match && JSON.parse(match[1])
   end
 
+  class MarkerConflict < StandardError; end
+
+  # Saves a writer's `state` as the issue's marker and keeps `issue["body"]` in step with what was
+  # written, so the next save merges against it (see write_marker).
+  def save(github, issue, state)
+    written = write_marker(github, issue["number"], base: parse(issue["body"]), mine: state)
+    issue["body"] = render(written)
+  end
+
+  # Writes this writer's change to the marker (#623). The body is rewritten whole, so a writer that
+  # read it before another writer landed would put its stale copy back; no precondition exists on an
+  # issue body to refuse that. Instead each write starts from the body as it is now and applies only
+  # what this writer changed: `base` is the marker it read, `mine` is what it wants. The write is then
+  # read back, and merged and written again if another write replaced it. Returns the state written.
+  #
+  # What remains: a write that lands between this writer's fresh read and its own PATCH is overwritten,
+  # and the read back cannot tell, because it shows this writer's state. The window is those two calls.
+  # The REST API documents no precondition on an issue update, so only a lock would close it (#623's
+  # follow-up, docs/EPICS.md). docs/RELEASING.md (staged releases) records the same window.
+  def write_marker(github, number, base:, mine:, attempts: 3)
+    attempts.times do
+      fresh = read_marker(github.issue_body(number), number)
+      merged = merge_marker(base, mine, fresh)
+      github.update_issue(number, render(merged))
+      readback = read_marker(github.issue_body(number), number)
+      return merged if merge_marker(base, mine, readback) == normalize(readback)
+    end
+    raise MarkerConflict, "the marker of issue ##{number} kept changing under the write; nothing was recorded"
+  end
+
+  def read_marker(body, number)
+    parse(body) || raise(MarkerConflict, "issue ##{number} has no readable marker to merge into")
+  rescue JSON::ParserError
+    raise MarkerConflict, "the marker of issue ##{number} is not valid JSON; nothing was recorded"
+  end
+
+  # The marker that results from writing `mine` (changed from `base`) onto `fresh`: every field this
+  # writer did not change keeps its value in `fresh`. Two fields never move backwards: the stage only
+  # advances, and the TestFlight record only moves to a newer RC.
+  def merge_marker(base, mine, fresh)
+    merge_value(normalize(base), normalize(mine), normalize(fresh))
+  end
+
+  # A hand-edited or older marker may lack iOS keys; comparing defaulted copies keeps an unchanged
+  # default from counting as a change this writer made.
+  def normalize(state)
+    return state unless state.is_a?(Hash) && state[IOS_KEY].is_a?(Hash)
+
+    state.merge(IOS_KEY => with_ios_defaults(state[IOS_KEY]))
+  end
+
+  def merge_value(base, mine, fresh)
+    return fresh if mine == base
+    return mine unless mine.is_a?(Hash) && base.is_a?(Hash) && fresh.is_a?(Hash)
+
+    merged = (base.keys | mine.keys | fresh.keys).to_h { |key| [key, merge_value(base[key], mine[key], fresh[key])] }
+    keep_furthest(merged, fresh)
+  end
+
+  def keep_furthest(merged, fresh)
+    stage = fresh["stage"]
+    if STAGES.include?(stage) && STAGES.include?(merged["stage"]) && STAGES.index(stage) > STAGES.index(merged["stage"])
+      merged = merged.merge("stage" => stage)
+    end
+    return merged unless rc_number(fresh["testflight_rc"]) > rc_number(merged["testflight_rc"])
+
+    merged.merge("testflight_rc" => fresh["testflight_rc"])
+  end
+
+  def rc_number(tag)
+    tag.to_s[/-rc(\d+)\z/, 1].to_i
+  end
+
   def stage_of(body)
     parse(body)&.fetch("stage", nil)
   end

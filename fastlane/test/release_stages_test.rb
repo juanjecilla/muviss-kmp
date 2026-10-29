@@ -199,6 +199,113 @@ class ReleaseStagesTest < Minitest::Test
     assert_includes body, "Latest iOS RC: v1.1.0-rc1."
   end
 
+  # ---- marker writes (#623) ----------------------------------------------
+
+  # An issue body another writer changes: `after_write` runs after each write lands, before any read back.
+  class MarkerIssue
+    attr_accessor :body, :after_write, :writes
+
+    def initialize(body)
+      @body = body
+      @writes = 0
+    end
+
+    def issue_body(_number) = @body
+
+    def update_issue(_number, body)
+      @writes += 1
+      @body = body
+      @after_write&.call(self)
+    end
+  end
+
+  def base_state
+    ReleaseStages.new_state("1.1.0", MONDAY.iso8601)
+  end
+
+  # The writer read base_state, then changed it to `mine`; the issue may have moved on since.
+  def write(issue, mine, attempts: 3)
+    ReleaseStages.write_marker(issue, 7, base: base_state, mine: mine, attempts: attempts)
+  end
+
+  def test_a_write_keeps_what_another_writer_changed_since_it_read
+    issue = MarkerIssue.new(ReleaseStages.render(base_state.merge("stage" => "beta", "beta_done_on" => "2026-10-18")))
+    mine = base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.1.0-rc3"))
+
+    write(issue, mine)
+
+    state = ReleaseStages.parse(issue.body)
+    assert_equal "beta", state["stage"]
+    assert_equal "2026-10-18", state["beta_done_on"]
+    assert_equal "v1.1.0-rc3", state["ios"]["testflight_rc"]
+  end
+
+  def test_a_stale_writer_does_not_move_the_stage_back
+    issue = MarkerIssue.new(ReleaseStages.render(base_state.merge("stage" => "production")))
+    write(issue, base_state.merge("holds" => ["a hold"]))
+
+    state = ReleaseStages.parse(issue.body)
+    assert_equal "production", state["stage"]
+    assert_equal ["a hold"], state["holds"], "its own change still lands"
+  end
+
+  def test_a_writer_that_moves_the_stage_forward_is_not_held_back_by_an_older_fresh_body
+    issue = MarkerIssue.new(ReleaseStages.render(base_state))
+    write(issue, base_state.merge("stage" => "beta"))
+
+    assert_equal "beta", ReleaseStages.parse(issue.body)["stage"]
+  end
+
+  def test_a_late_testflight_record_does_not_replace_a_newer_rc
+    fresh = base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.1.0-rc3"))
+    issue = MarkerIssue.new(ReleaseStages.render(fresh))
+    mine = base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.1.0-rc2"))
+
+    write(issue, mine)
+
+    assert_equal "v1.1.0-rc3", ReleaseStages.parse(issue.body)["ios"]["testflight_rc"]
+  end
+
+  def test_a_marker_with_no_ios_ramp_key_keeps_the_ramp_the_ramp_job_wrote
+    # A hand-edited marker lacks the ramp object. Its defaults must not count as a change from this writer.
+    lacking = base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.tap { |t| t.delete("ramp") })
+    paused = base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.merge(
+      "ramp" => { "phased_state" => "paused", "paused_by" => "brake", "paused_on" => "2026-10-20", "paused_days" => 0 },
+    ))
+    issue = MarkerIssue.new(ReleaseStages.render(paused))
+    # The writer's track comes through ios_of, so its ramp is the default object rather than absent.
+    mine = lacking.merge("holds" => ["x"], ReleaseStages::IOS_KEY => ReleaseStages.ios_of(lacking))
+
+    ReleaseStages.write_marker(issue, 7, base: ReleaseStages.parse(ReleaseStages.render(lacking)), mine: mine)
+
+    assert_equal "brake", ReleaseStages.parse(issue.body)["ios"]["ramp"]["paused_by"]
+  end
+
+  def test_a_write_overwritten_before_its_read_back_is_written_again
+    issue = MarkerIssue.new(ReleaseStages.render(base_state))
+    issue.after_write = lambda { |i|
+      next unless i.writes == 1
+
+      i.body = ReleaseStages.render(base_state.merge("holds" => ["a foreign hold"]))
+    }
+
+    write(issue, base_state.merge("stage" => "beta"))
+
+    state = ReleaseStages.parse(issue.body)
+    assert_equal 2, issue.writes
+    assert_equal "beta", state["stage"]
+    assert_equal ["a foreign hold"], state["holds"]
+  end
+
+  def test_a_write_that_never_lands_says_so_rather_than_claiming_success
+    issue = MarkerIssue.new(ReleaseStages.render(base_state))
+    issue.after_write = ->(i) { i.body = ReleaseStages.render(base_state.merge("holds" => ["again"])) }
+
+    error = assert_raises(ReleaseStages::MarkerConflict) { write(issue, base_state.merge("stage" => "beta"), attempts: 2) }
+    assert_includes error.message, "nothing was recorded"
+    assert_equal 2, issue.writes
+  end
+
   def test_the_marker_round_trips_with_the_ios_track
     state = ReleaseStages.new_state("1.1.0", "2026-10-12")
     state["ios"]["ramp"] = { "phased_state" => "PAUSED", "paused_by" => "gate", "paused_on" => "2026-10-26", "paused_days" => 3 }

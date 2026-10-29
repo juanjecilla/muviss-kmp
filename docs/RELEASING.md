@@ -402,6 +402,16 @@ the schedule, the gates and where a fix goes.
   App-authored PRs), so its approval has to come from a person: approve it, or
   for a conflicting one resolve it and merge it by hand, as #528 did for #527
   (#573).
+- **The marker is written by several workflows.** The release RC job's TestFlight
+  record (`release_promote.rb record-testflight`), the Sunday step, the ramp, the
+  brake and the manual merge (`record-production`) all rewrite the issue body. Each
+  write starts from the body as it is now and applies only its own change
+  (`ReleaseStages.write_marker`), reads the body back, and writes again if its change
+  was replaced. A stage never moves backwards, and the TestFlight record never moves
+  to an older RC. What remains: a write that lands between a writer's fresh read and
+  its own write is overwritten, and the read back cannot see it. That window is two
+  API calls. The REST API takes no precondition on an issue update, so only a lock
+  would close it (a follow-up, see `docs/EPICS.md`).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);

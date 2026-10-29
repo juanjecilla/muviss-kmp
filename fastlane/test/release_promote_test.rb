@@ -67,9 +67,24 @@ class FakeGitHub
     true
   end
 
+  # A write another workflow lands at the next marker read or write, once (#623):
+  # the interleaving the marker writers must survive. It runs before that read or write.
+  attr_accessor :foreign_write
+
+  def issue_body(number)
+    fire_foreign_write
+    @issues.find { |i| i["number"] == number }["body"]
+  end
+
   def update_issue(number, body)
     @calls << [:update_issue, number]
+    fire_foreign_write
     @issues.find { |i| i["number"] == number }["body"] = body
+  end
+
+  def fire_foreign_write
+    hook, @foreign_write = @foreign_write, nil
+    hook&.call(self)
   end
 
   def comment(number, body)
@@ -550,6 +565,47 @@ class ReleasePromotionTest < Minitest::Test
 
   def test_record_testflight_rejects_a_tag_that_is_not_an_rc
     assert_raises(ArgumentError) { record_testflight("v1.0.0") }
+  end
+
+  # #623: the RC job and the Sunday step each read the marker, then write it back whole. When
+  # the other lands between a writer's read and its write, neither change may be lost.
+  def test_a_testflight_record_does_not_undo_a_sunday_step_that_landed_after_its_read
+    sunday = ReleaseStages.new_state("1.1.0", CUT).merge("stage" => "beta", "beta_done_on" => "2026-10-18",
+                                                         "rc_tag" => "v1.1.0-rc3")
+    @github.foreign_write = ->(gh) { gh.issues.find { |i| i["title"] == "Release 1.1.0" }["body"] = ReleaseStages.render(sunday) }
+
+    record_testflight("v1.1.0-rc3")
+
+    state = state_of("1.1.0")
+    assert_equal "beta", state["stage"], "a stale RC write must not move the version back to internal"
+    assert_equal "2026-10-18", state["beta_done_on"]
+    assert_equal "v1.1.0-rc3", state["ios"]["testflight_rc"]
+  end
+
+  def test_a_sunday_step_keeps_a_testflight_record_that_landed_after_its_read
+    foreign_testflight("v1.1.0-rc3")
+
+    run_on(SUNDAY_BETA)
+
+    state = state_of("1.1.0")
+    assert_equal "beta", state["stage"], "the promotion itself still happens"
+    assert_equal "v1.1.0-rc3", state["ios"]["testflight_rc"], "a stale Sunday write must not erase the upload"
+  end
+
+  def test_a_late_testflight_record_never_replaces_a_newer_upload
+    foreign_testflight("v1.1.0-rc3")
+
+    record_testflight("v1.1.0-rc2")
+
+    assert_equal "v1.1.0-rc3", state_of("1.1.0")["ios"]["testflight_rc"]
+  end
+
+  def foreign_testflight(tag)
+    @github.foreign_write = lambda { |gh|
+      issue = gh.issues.find { |i| i["title"] == "Release 1.1.0" }
+      state = ReleaseStages.parse(issue["body"])
+      issue["body"] = ReleaseStages.render(state.merge(ReleaseStages::IOS_KEY => state[ReleaseStages::IOS_KEY].merge("testflight_rc" => tag)))
+    }
   end
 
   def record_testflight(tag)
