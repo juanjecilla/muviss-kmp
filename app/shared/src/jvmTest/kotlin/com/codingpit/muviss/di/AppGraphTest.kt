@@ -25,8 +25,8 @@ import com.codingpit.muviss.feature.onboarding.ui.OnboardingViewModel
 import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
-import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
 import com.codingpit.muviss.feature.settings.api.TasteProfileApi
+import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher

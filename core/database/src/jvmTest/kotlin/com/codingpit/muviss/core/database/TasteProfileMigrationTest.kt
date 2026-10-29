@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Covers `21.sqm`, which EPIC 51 (#402, Taste Profile) ships: the `tasteProfile`
+ * Covers `24.sqm`, which EPIC 51 (#402, Taste Profile) ships: the `tasteProfile`
  * table. `verifyMigrations` proves the `.sqm` reproduces the `.sq`; this suite
  * proves what an upgraded person would notice: nothing is invented for them,
  * their settings are untouched, and an item written after the upgrade round-trips
@@ -18,9 +18,9 @@ import kotlin.test.assertTrue
  */
 class TasteProfileMigrationTest {
 
-    // `21.sqm` is named for the version it migrates FROM. If it is renumbered
+    // `24.sqm` is named for the version it migrates FROM. If it is renumbered
     // (see its header), change this constant and rename the file.
-    private val migratesFrom = 21L
+    private val migratesFrom = 24L
     private val producesVersion = migratesFrom + 1
 
     private val fixtures = File("src/commonMain/sqldelight/databases")
