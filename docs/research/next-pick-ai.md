@@ -7,7 +7,7 @@ All web sources were retrieved **2026-10-27**. Source numbers are in the list at
 ## Verdict
 
 - **v1 stays rules-only** (ADR 0032). Nothing here changes that.
-- **On-device Gemma 4 is the only option worth measuring.** Its licence is now Apache-2.0 (resolved below), LiteRT-LM has a stable Kotlin API for Android and JVM desktop, and the published numbers are fast enough to be worth a test. Its real blocker is delivery: the E2B model file is about 2.6 GB, more than Play's per-asset-pack limit and far more than the base module allows.
+- **On-device Gemma 4 is the only option worth measuring.** Its licence is now Apache-2.0 (resolved below), LiteRT-LM has a stable Kotlin API for Android and JVM desktop, and the published numbers are fast enough to be worth a test. Its real blocker is delivery: the E2B model file is about 2.6 GB, more than one Play asset pack or the base module can hold. Whether split asset packs can carry it, or whether Android AI Core makes our own copy unnecessary on supported phones, is open (see Delivery).
 - **Web is rules-only.** LiteRT-LM's web API is an early preview in JavaScript, not Kotlin/Wasm.
 - **Remote recommendation service: reject for v1.** It needs data we do not have (other users), a sign-in path we do not have for free users, and a privacy-policy change, and it conflicts with ADR 0032 (free, offline) and ADR 0019 (paid gate).
 - **Cloud LLM: reject for v1.** A built-in key is a bill we pay and an extractable secret (ADR 0027 and ADR 0026). A user-supplied key is possible later, but it is a new consent flow. Per-session cost is tiny, so cost is not the reason.
@@ -30,7 +30,7 @@ Runtime status comes from the LiteRT-LM overview [S1] and the MediaPipe LLM Infe
 
 | Target | Runtime and status | Model and file size | Published performance (vendor, not measured by us) | Verdict |
 |---|---|---|---|---|
-| **Android** | LiteRT-LM Kotlin: stable [S1]. MediaPipe LLM Inference: maintenance-only, "New features and optimizations will be focused on LiteRT-LM" [S2] | Gemma 4 E2B `.litertlm`: 2,583 MB CPU/GPU, 2,722 MB NPU variant [S3]. Gemma 3 1B int4 `.litertlm`: about 529 MB [S7] | Galaxy S26 Ultra, Gemma 4 E2B: GPU decode 52.1 tok/s, time to first token 0.3 s; CPU decode 46.9 tok/s, first token 1.8 s [S3] | **Viable to measure.** Size is the blocker (see Delivery). Minimum device for the GPU path is not stated [UNVERIFIED] |
+| **Android** | LiteRT-LM Kotlin: stable [S1]. MediaPipe LLM Inference: maintenance-only, "New features and optimizations will be focused on LiteRT-LM" [S2] | Gemma 4 E2B `.litertlm`: 2,583 MB CPU/GPU, 2,722 MB NPU variant [S3]. Gemma 3 1B int4 `.litertlm`: about 529 MB [S7] | Galaxy S26 Ultra, Gemma 4 E2B: GPU decode 52.1 tok/s, time to first token 0.3 s; CPU decode 46.9 tok/s, first token 1.8 s [S3] | **Viable to measure.** Size is the blocker (see Delivery). Minimum device for the GPU path is not stated [UNVERIFIED]. The same card says that on supported devices Gemma 4 is available through **Android AI Core as Gemini Nano**, "the recommended path for production applications" [S3]: no model file of ours to ship. Which devices qualify, how an app reaches the model, and whether it accepts our prompt were not researched [UNVERIFIED], so AI Core is the first thing #594 checks and LiteRT-LM stays the fallback for every other phone |
 | **iOS** | LiteRT-LM Swift: early preview [S1]. MediaPipe: maintenance-only [S2] | Same Gemma 4 E2B file [S3] | iPhone 17 Pro, Gemma 4 E2B: GPU decode 56.5 tok/s, first token 0.3 s; CPU decode 25.0 tok/s [S3] | Viable, but needs a Swift bridge on an early-preview API, and the iOS app must be built with it. Apple's own on-device model is a separate option (below) |
 | **Desktop (JVM)** | LiteRT-LM Kotlin for JVM desktop tools: stable [S1] | Same Gemma 4 E2B file [S3] | Published for RTX 4090 GPU (decode 143.4 tok/s) and M4 Max CPU/GPU (41.6 and 160.2 tok/s) [S3] | **Most feasible target.** No mobile store size cap. Packaging with the native libraries is `[UNVERIFIED]` |
 | **Web** | LiteRT-LM JavaScript: early preview [S1]. Kotlin/Wasm is not listed | Web-specific E2B file 2,008 MB [S3] | M4 Max WebGPU, E2B: decode 73 tok/s, first token 1.09 s [S3] | **Not for v1.** The app is web-deferred, and a JS interop actual would be needed. Stays rules-only |
@@ -41,9 +41,13 @@ Apple's Foundation Models framework runs the on-device model behind Apple Intell
 
 ### Model size and store delivery
 
-- Gemma 4 E2B's CPU file is 2,583 MB [S3]. Play's individual asset-pack limit is 1.5 GB, and the base module limit is 500 MB, both measured on compressed size [S13]. The model cannot ship in the APK or as an asset pack.
+- Gemma 4 E2B's CPU file is 2,583 MB on disk [S3]. Play's individual asset-pack limit is 1.5 GB, and the base module limit is 500 MB, both measured on compressed download size, with 30 GB cumulative for on-demand packs [S13]. The model cannot ship in the APK or as **one** asset pack.
 - Gemma 3 1B's file is about 529 MB [S7], which is also above the base module limit.
-- So every model here must be **downloaded at run time from a host we would have to run or pay for.** That brings in a network call and a privacy statement (the download reveals the IP address, as the ConfigCat decision already records in ADR 0026), and a hosting cost that is not priced here `[UNVERIFIED]`.
+- That does not by itself force a host of our own. Three delivery paths are open, and none was tested here `[UNVERIFIED]`:
+  1. **Android AI Core** on supported phones (see the Android row): the system holds the model, so nothing is ours to deliver.
+  2. **Split Play asset packs.** Two or more on-demand packs under 1.5 GB each, reassembled into one file on the device. This stays inside Play's cumulative limit and needs no server, but it doubles the storage while reassembling, and whether LiteRT-LM can read the parts in place was not checked. iOS has no equivalent cap check here (On-Demand Resources was not researched).
+  3. **A download from a host we run or pay for.** That brings in a network call and a privacy statement (the download reveals the IP address, as the ConfigCat decision already records in ADR 0026), and a hosting cost that is not priced here.
+- Desktop has no store size cap, so the question is only about the phones.
 - Play's size-limit figures conflict across sources. The primary page [S13] says 500 MB for the base module, and a search snippet said 200 MB [unresolved]. The conclusion does not change at either number.
 
 ### Latency and battery
@@ -100,7 +104,7 @@ The Gemma Terms of Use [S6] require the downstream user to pass the restrictions
 - A cached system prompt is priced at $0.01 per million tokens for cache hits [S11], which lowers the input share further.
 - Sonnet 5.5 input is $2 per million [S11], about 20 times Haiku's input rate. The Haiku choice is the one that makes cost negligible.
 
-Cost is not the reason to reject this. A cent per hundred sessions is affordable. The reasons are key custody and privacy.
+Cost is not the reason to reject this. Three cents per hundred sessions is affordable. The reasons are key custody and privacy.
 
 **Privacy.** The prompt carries titles, ratings and genres, which are personal. Anthropic's commercial terms say "Anthropic may not train models on Customer Content from Services" [S12]. The terms state no retention period for API inputs and outputs and point to a DPA that was not read [S12]. A cloud call would be a data-egress feature that `docs/PRIVACY.md` must describe, and it would need an opt-in.
 
@@ -124,7 +128,7 @@ The seam is `fun interface PickRanker` in `feature/nextpick/domain/.../PickRanke
 **Amendments, filed as #595:**
 
 - `PickRanker.rank` becomes `suspend`. `RuleBasedRanker` changes only its modifier.
-- `PickEngine` keeps only picks whose id is in the gathered pool, drops duplicates by id, applies `limit`, and on an exception or a `withTimeout` expiry falls back to `RuleBasedRanker`.
+- `PickEngine` keeps only picks whose id is in the gathered pool, rebinds each accepted pick to the canonical candidate from that pool (a `RankedPick` carries a whole `PickCandidate`, so an id check alone would still let a ranker swap the summary, source or library status), drops duplicates by id, applies `limit`, and on an exception or a `withTimeout` expiry falls back to `RuleBasedRanker`.
 - Reasons stay rules-only, with no free-text variant, until a measured model ranker needs a generated line.
 
 ## Spike plan (#404)
@@ -138,7 +142,7 @@ The seam is `fun interface PickRanker` in `feature/nextpick/domain/.../PickRanke
 ## Recommendation
 
 1. **Keep v1 rules-only** (ADR 0032 stands).
-2. **Measure Gemma 4 E2B on Android, then on desktop, with #594.** Adopt it only if it clearly beats the rules baseline on the 30-item set and there is a delivery path for about 2.6 GB that our privacy and store policy accept. Otherwise close #404 as "rules are enough".
+2. **Measure Gemma 4 E2B on Android, then on desktop, with #594.** Adopt it only if it clearly beats the rules baseline on the 30-item set and there is a delivery path for about 2.6 GB that our privacy and store policy accept (AI Core, split asset packs or a host, in that order of preference). Otherwise close #404 as "rules are enough".
 3. **Reject the remote recommendation service for v1.** It needs pooled data, a sign-in path and a privacy change, and it conflicts with ADR 0032 and ADR 0019.
 4. **Reject the cloud LLM for v1.** Key custody and egress outweigh a very small per-session cost.
 5. **Amend the seam before any ranker lands (#595).** The shape is right. The enforcement is missing.
