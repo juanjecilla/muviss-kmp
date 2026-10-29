@@ -53,6 +53,16 @@ class OnboardingGoldenTest {
 
     @Test fun import_page_dark() = runComposeUiTest { golden("onboarding-import-dark", state(OnboardingPage.IMPORT), true) }
 
+    @Test fun device_backup() = runComposeUiTest { golden("onboarding-device-backup", state(OnboardingPage.DEVICE_BACKUP), false) }
+
+    @Test fun device_backup_dark() = runComposeUiTest { golden("onboarding-device-backup-dark", state(OnboardingPage.DEVICE_BACKUP).copy(deviceBackupEnabled = true), true) }
+
+    @Test
+    fun device_backup_in_spanish() = runComposeUiTest {
+        Locale.setDefault(Locale.forLanguageTag("es-ES"))
+        golden("onboarding-device-backup-es", state(OnboardingPage.DEVICE_BACKUP), false)
+    }
+
     @Test fun notifications() = runComposeUiTest { golden("onboarding-notifications", state(OnboardingPage.NOTIFICATIONS), false) }
 
     @Test fun notifications_dark() = runComposeUiTest { golden("onboarding-notifications-dark", state(OnboardingPage.NOTIFICATIONS), true) }

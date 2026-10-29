@@ -18,9 +18,11 @@ const IMPORT = 'import initSqlJs from "sql.js";';
 
 // An IndexedDB whose `put` fails when `failing` is true as it settles, and
 // whose transaction only aborts (as a full quota does) when `aborting` is. With
-// `hold`, each put waits until the test releases it, to make writes overlap.
+// `throwing`, `put` itself throws synchronously instead, as a DataCloneError
+// does. With `hold`, each put waits until the test releases it, to make writes
+// overlap.
 function fakeIndexedDb() {
-  const fake = { failing: false, aborting: false, puts: [], holds: [] };
+  const fake = { failing: false, aborting: false, throwing: false, puts: [], holds: [] };
   fake.open = () => {
     const req = {};
     queueMicrotask(() => {
@@ -30,6 +32,7 @@ function fakeIndexedDb() {
           const tx = {
             objectStore: () => ({
               put: (bytes) => {
+                if (fake.throwing) throw new Error("DataCloneError");
                 const settle = () => {
                   if (fake.aborting) {
                     tx.error = new Error("QuotaExceededError");
@@ -93,6 +96,19 @@ test("a failed put is announced, and the next successful write clears it", async
   assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true });
 
   indexedDB.failing = false;
+  await run("saveSnapshot()");
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false });
+  assert.equal(indexedDB.puts.length, 1);
+});
+
+test("a put that throws synchronously is a failed write, and the next good one clears it", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+
+  indexedDB.throwing = true;
+  await run("saveSnapshot()");
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true });
+
+  indexedDB.throwing = false;
   await run("saveSnapshot()");
   assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false });
   assert.equal(indexedDB.puts.length, 1);
