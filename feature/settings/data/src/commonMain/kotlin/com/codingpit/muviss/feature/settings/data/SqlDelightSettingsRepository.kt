@@ -16,6 +16,7 @@ import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.core.database.MediaListQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.database.ProfileQueries
+import com.codingpit.muviss.core.database.TasteProfileQueries
 import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.core.database.TriageSnoozeQueries
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -39,6 +40,7 @@ import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
 import com.codingpit.muviss.core.database.Profile as ProfileRow
+import com.codingpit.muviss.core.database.TasteProfile as TasteProfileRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
 
@@ -167,6 +169,7 @@ class SqlDelightSettingsRepository(
             listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
             settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
+            tasteProfile = exportQueries.tasteProfile.selectAll().awaitAsList().map { it.toExport() },
         )
         json.encodeToString(export)
     }
@@ -224,6 +227,14 @@ class SqlDelightSettingsRepository(
         seasonNumber = seasonNumber.toInt(),
         episodeNumber = episodeNumber.toInt(),
         seen = seen,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun TasteProfileRow.toExport(): TasteProfileItemExport = TasteProfileItemExport(
+        id = id,
+        kind = kind,
+        value = itemValue,
+        label = label,
         updatedAtEpochMs = updatedAtEpochMs,
     )
 
@@ -290,4 +301,5 @@ class ExportQueries(database: MuvissDatabase) {
     val snoozes: TriageSnoozeQueries = database.triageSnoozeQueries
     val lists: MediaListQueries = database.mediaListQueries
     val profile: ProfileQueries = database.profileQueries
+    val tasteProfile: TasteProfileQueries = database.tasteProfileQueries
 }

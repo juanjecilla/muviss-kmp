@@ -378,6 +378,8 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 **Migrations.** `22.sqm` (schema v23, fixture `23.db`), #400: `appSettings.completionPromptShownAtEpochMs`, per device, the once-a-day mark. Claimed 2026-10-29 as `22.sqm`: #394 had taken `21.sqm` on develop. #403 claims `23.sqm` and #588 (Taste Profile) `24.sqm`, stacked in that order, so #563 (review prompt) takes `25.sqm`.
 
+**Follow-ups filed 2026-10-29 (EPIC 51 review of the draft stack):** #656 the once-a-day What's next? rule and snooze dates use UTC days; the repo has no time zone seam yet (the snooze half of #551 is done in #543). #657 the Pick Session does not read Settings' session length and result mode (placeholder `NextPickSettings` still bound to defaults). #552 (session length default) is settled by #403 moving the enum to `SessionLength` with `DEFAULT = STANDARD`. #557 (result-format copy) stays open until Top Picks and Deck ship (#401) and the Deck handoff exists.
+
 **Decisions.**
 - Rules + TMDB + local history; no model in v1. A ranker seam keeps an AI option open (`docs/research/next-pick-ai.md`, spike #404).
 - Questions: source (my list / something new / either), format + time, mood to genre sets, anchor, era + services, company, commitment, rewatch OK. All skippable; Quick (up to 2) / Standard (up to 4) / No questions in Settings; a filled Taste Profile shortens it.
@@ -391,6 +393,8 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 **Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage. Raised by the #404 research (`docs/research/next-pick-ai.md`, rules stay for v1): #594 measure the on-device Gemma option (the remainder of #404), #595 make `PickRanker` suspend and enforce its output in `PickEngine`.
 
 **Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
+
+**Taste Profile (#402), `24.sqm` (schema v25, fixture `25.db`).** A synced `tasteProfile` table, one row per liked item keyed `KIND:value` with soft deletes, so two devices adding different items both keep them. Synced (`SyncChangeSet.tasteProfileItems`, `taste_profile` in Supabase `20261027000000`) and exported as a defaulted `tasteProfile` field that does not bump the format version, so older builds still read the file. Settings > Your taste is the editor. A genre is liked or muted, never both (`TasteRules`). Scoped out: the onboarding page (#583), the engine's rules (#584), a regional services catalogue (#585), pgTAP (#586) and the goldens and device walk (#587). `21.sqm` also collides with #543, #553 and #563 until the merge queue renumbers.
 
 ## EPIC 52 — Tick animations — issue #391
 

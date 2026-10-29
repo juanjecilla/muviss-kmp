@@ -115,6 +115,7 @@ enum class SyncTable(val cursorKey: String) {
     TRIAGE_DECISION("triageDecision"),
     TRIAGE_SNOOZE("triageSnooze"),
     EPISODE_PLAY("episodePlay"),
+    TASTE_PROFILE("tasteProfile"),
 }
 
 /**
