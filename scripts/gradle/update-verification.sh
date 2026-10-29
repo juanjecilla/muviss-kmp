@@ -20,7 +20,9 @@ if [ "${1:-}" = "--prune" ]; then
 fi
 
 case "$(uname -s)" in
-  Darwin) ios_tasks=(iosSimulatorArm64Test linkReleaseFrameworkIosSimulatorArm64) ;;
+  # iosArm64 too: Xcode's build resolves the device klibs and their resource zips (#497).
+  Darwin) ios_tasks=(iosSimulatorArm64Test linkReleaseFrameworkIosSimulatorArm64
+    compileKotlinIosArm64 iosArm64ResolveResourcesFromDependencies linkDebugFrameworkIosArm64) ;;
   *) ios_tasks=() ;;
 esac
 
