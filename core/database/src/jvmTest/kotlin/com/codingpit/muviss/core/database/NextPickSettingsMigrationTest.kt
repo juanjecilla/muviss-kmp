@@ -11,7 +11,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Covers `21.sqm`: the three Next Pick settings on `appSettings` (EPIC 51, #403).
+ * Covers `23.sqm`: the three Next Pick settings on `appSettings` (EPIC 51, #403).
  *
  * What `verifyMigrations` cannot see: that an install which already has the app comes out with the
  * prompt on, Standard and One Pick (the column DEFAULTs, with no UPDATE), and that a fresh row matches.
@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class NextPickSettingsMigrationTest {
 
     // The one place this suite knows the migration's number; see the note in DeviceBackupMigrationTest.
-    private val migratesFrom = 21L
+    private val migratesFrom = 23L
     private val producesVersion = migratesFrom + 1
 
     private val fixtures = File("src/commonMain/sqldelight/databases")
@@ -35,7 +35,7 @@ class NextPickSettingsMigrationTest {
     }
 
     @Test
-    fun `21_sqm produced its own fixture`() {
+    fun `23_sqm produced its own fixture`() {
         assertTrue(MuvissDatabase.Schema.version >= producesVersion)
         assertTrue(fixtures.resolve("$producesVersion.db").exists(), "$producesVersion.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
     }
@@ -45,7 +45,7 @@ class NextPickSettingsMigrationTest {
         val driver = oldDriver()
         runBlocking {
             val queries = MuvissDatabase(driver).appSettingsQueries
-            queries.ensureRow() // a v21 row, as an installed app has
+            queries.ensureRow() // a v23 row, as an installed app has
             queries.updateMutedGenresInSearch(true)
         }
         migrate(driver)
