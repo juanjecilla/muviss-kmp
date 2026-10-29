@@ -139,7 +139,8 @@ CREATE TABLE appSettings (
     mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
-    motionDefaultApplied INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    motionDefaultApplied INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    completionPromptShownAtEpochMs INTEGER
 );
 
 selectSettings:
@@ -237,6 +238,11 @@ UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch WHERE id = 0;
 
 updateDeviceBackupEnabled:
 UPDATE appSettings SET deviceBackupEnabled = :deviceBackupEnabled WHERE id = 0;
+
+-- `completionPromptShownAtEpochMs` was added in `22.sqm` (Next Pick, EPIC 51 #400). The last time the
+-- "What's next?" sheet was shown on this device; null means never. Per device, not synced, not exported.
+updateCompletionPromptShownAt:
+UPDATE appSettings SET completionPromptShownAtEpochMs = :shownAtEpochMs WHERE id = 0;
 
 -- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
 deleteRow:
