@@ -202,15 +202,10 @@ fun registerComposeResourcesCheck(
         val archive =
             dir.get().asFile.listFiles { f -> f.extension == extension }?.singleOrNull()
                 ?: error("Expected exactly one .$extension in ${dir.get().asFile}")
-        val present =
+        val missing =
             ZipFile(archive).use { zip ->
-                zip.entries().asSequence()
-                    .map { it.name }
-                    .filter { it.startsWith(entryPrefix) }
-                    .map { it.removePrefix(entryPrefix).substringBefore('/') }
-                    .toSet()
+                ArtifactChecks.missingComposeResources(zip.entries().asSequence().map { it.name }, entryPrefix, expected)
             }
-        val missing = expected - present
         check(missing.isEmpty()) {
             "${archive.name} has no Compose Resources for: ${missing.joinToString()}. " +
                 "Is `androidResources.enable = true` still set in muviss.kmp.compose?"
@@ -264,10 +259,7 @@ tasks.register("verifyReleaseExceptionClasses") {
     inputs.file(mapping)
     inputs.property("canaries", canaries)
     doLast {
-        val classes = mapping.get().asFile.useLines { lines ->
-            lines.filter { !it.startsWith(" ") && it.contains(" -> ") }.map { it.substringBefore(" -> ") }.toSet()
-        }
-        val merged = canaries.filterNot { it in classes }
+        val merged = mapping.get().asFile.useLines { lines -> ArtifactChecks.mergedCanaries(lines, canaries) }
         check(merged.isEmpty()) { "R8 merged these exceptions away; Sentry would name them after another class: ${merged.joinToString()}" }
         logger.lifecycle("R8 kept all ${canaries.size} exception canaries as classes of their own")
     }

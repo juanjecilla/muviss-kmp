@@ -10,6 +10,11 @@
 # forward PR into a release/* branch is a fix in flight, so it holds that
 # version's promotion (release-promote.yml) until it merges.
 #
+# The release notes (fastlane/release-notes/) exist only on the release branch,
+# so a hand edit to them conflicts on develop as delete/modify. Those notes are
+# the fix, so they are taken as the release branch wrote them, and the PR is
+# not empty (#529).
+#
 #   forward-fix.sh targets SOURCE_BRANCH                       newer open release/* branches, then develop
 #   forward-fix.sh forward PR SOURCE_BRANCH MERGE_SHA TARGET   open the forward PR into TARGET
 #   forward-fix.sh all PR SOURCE_BRANCH MERGE_SHA              every target, one PR each
@@ -45,6 +50,25 @@ targets() {
   echo develop
 }
 
+# Resolves a cherry-pick whose only conflicts are release-only notes that the
+# target does not have (DU: deleted by us, modified by them), taking the picked
+# side. Any other conflict, including a notes file both sides changed, returns
+# non-zero and leaves the index for the caller to abort.
+resolve_release_notes() {
+  local unmerged code path
+  unmerged="$(git status --porcelain | grep -E '^(UU|AA|DD|AU|UA|UD|DU) ' || true)"
+  [ -n "$unmerged" ] || return 1
+  while read -r code path; do
+    if [ "$code" != DU ] || [[ "$path" != fastlane/release-notes/* ]]; then
+      return 1
+    fi
+  done <<<"$unmerged"
+  while read -r code path; do
+    git checkout --theirs -- "$path" || return 1
+    git add -- "$path" || return 1
+  done <<<"$unmerged"
+}
+
 # The cherry-pick of a merge commit needs its first parent as the base.
 pick_args() {
   local sha="$1" parents
@@ -55,7 +79,7 @@ pick_args() {
 forward() {
   local pr="$1" source="$2" sha="$3" target="$4"
   local branch="forward/pr-$pr-to-${target//\//-}"
-  local existing body title status="clean" flags
+  local existing body title status="clean" flags notes=""
 
   existing="$(gh pr list --repo "$GH_REPO" --head "$branch" --state open --json number --jq '.[0].number // ""')"
   if [ -n "$existing" ]; then
@@ -70,6 +94,8 @@ forward() {
   # shellcheck disable=SC2086
   if git cherry-pick $flags "$sha" >/dev/null 2>&1; then
     :
+  elif resolve_release_notes && GIT_EDITOR=true git cherry-pick --continue >/dev/null 2>&1; then
+    notes="yes"
   elif [ -z "$(git ls-files -u)" ] && git diff --cached --quiet && git diff --quiet; then
     # Nothing conflicts and nothing changed: the target already has the fix
     # (it also landed there some other way). A PR would be empty, and on a
@@ -91,6 +117,11 @@ forward() {
 
   title="chore(release): forward #$pr to $target"
   body="Forwards #$pr, merged into \`$source\`, so \`$target\` gets the same fix (ADR 0030). The original is #$pr."
+  if [ -n "$notes" ]; then
+    body="$body
+
+**Release notes.** \`$source\` changed its release notes, which exist only on the release branch. They came with the fix as written there (#529)."
+  fi
   if [ "$status" = "conflict" ]; then
     body="$body
 
