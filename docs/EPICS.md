@@ -378,6 +378,8 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 **Migrations.** `22.sqm` (schema v23, fixture `23.db`), #400: `appSettings.completionPromptShownAtEpochMs`, per device, the once-a-day mark. Claimed 2026-10-29 as `22.sqm`: #394 had taken `21.sqm` on develop. #403 claims `23.sqm` and #588 (Taste Profile) `24.sqm`, stacked in that order, so #563 (review prompt) takes `25.sqm`.
 
+**Follow-ups filed 2026-10-29 (EPIC 51 review of the draft stack):** #656 the once-a-day What's next? rule and snooze dates use UTC days; the repo has no time zone seam yet (the snooze half of #551 is done in #543). #657 the Pick Session does not read Settings' session length and result mode (placeholder `NextPickSettings` still bound to defaults). #552 (session length default) is settled by #403 moving the enum to `SessionLength` with `DEFAULT = STANDARD`. #557 (result-format copy) stays open until Top Picks and Deck ship (#401) and the Deck handoff exists.
+
 **Decisions.**
 - Rules + TMDB + local history; no model in v1. A ranker seam keeps an AI option open (`docs/research/next-pick-ai.md`, spike #404).
 - Questions: source (my list / something new / either), format + time, mood to genre sets, anchor, era + services, company, commitment, rewatch OK. All skippable; Quick (up to 2) / Standard (up to 4) / No questions in Settings; a filled Taste Profile shortens it.
