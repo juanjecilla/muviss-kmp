@@ -28,8 +28,8 @@ kotlin {
 // license outside the allow-list below — bump the list deliberately if a new
 // one shows up. The Settings > About > Licenses screen does *not* read this
 // task's output live (see feature/settings/domain's OssLicenses.kt for why);
-// re-run `licenseeAndroidRelease` and regenerate that file when dependencies
-// change.
+// `regenerateOssLicenses` rewrites that file from the report, and
+// `verifyOssLicenses` (wired into `check`, below) fails when it has fallen behind.
 // -----------------------------------------------------------------------
 licensee {
     allow("Apache-2.0")
@@ -95,6 +95,106 @@ dependencies {
     testImplementation(libs.kotlin.testJunit)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutinesTest)
+}
+
+// -----------------------------------------------------------------------
+// About > Licenses coverage (#562). OssLicenses.kt is checked in, so it can
+// drift from the licensee report as dependencies move. Both tasks read the
+// release variant's report (the one the APK ships):
+//   verifyOssLicenses      fails, in `check`, when the report lists an artifact
+//                          the list has no entry for.
+//   regenerateOssLicenses  rewrites the generated entries from the report and
+//                          keeps the hand-written tail (the bundled font).
+// The logic lives in an `object`, not in script functions, so the task actions
+// do not capture the build script (configuration cache).
+// -----------------------------------------------------------------------
+object OssLicensesList {
+    private const val LIST_HEADER = "val ossLicenses: List<OssLicense> = listOf("
+    private const val MANUAL_TAIL = "    // Not a Maven dependency"
+
+    // Anchored at the start of a line, so an entry that is commented out does not count as listed.
+    private val entryKey = Regex("""^\s*OssLicense\("((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"""", RegexOption.MULTILINE)
+
+    private fun kotlinString(value: String): String = "\"" +
+        value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("$", "\\$")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r") +
+        "\""
+
+    @Suppress("UNCHECKED_CAST")
+    fun artifacts(report: File): List<Map<String, Any?>> = (groovy.json.JsonSlurper().parse(report) as List<*>).map { it as Map<String, Any?> }
+
+    fun keysIn(source: String): Set<String> = entryKey.findAll(source).map { "${it.groupValues[1]}:${it.groupValues[2]}" }.toSet()
+
+    fun missing(report: File, source: File): List<String> {
+        val listed = keysIn(source.readText())
+        return artifacts(report).map { "${it["groupId"]}:${it["artifactId"]}" }.distinct().filter { it !in listed }.sorted()
+    }
+
+    fun regenerate(report: File, source: File) {
+        val text = source.readText()
+        require(LIST_HEADER in text && MANUAL_TAIL in text) { "$source lost its generated-list markers; restore them before regenerating" }
+        val entries =
+            artifacts(report)
+                .sortedWith(compareBy({ it["groupId"] as String }, { it["artifactId"] as String }))
+                .map { artifact ->
+                    // licensee can report both collections for one artifact; count them together.
+                    val licenses = ((artifact["spdxLicenses"] as? List<*>).orEmpty()) + ((artifact["unknownLicenses"] as? List<*>).orEmpty())
+                    require(licenses.size == 1) { "${artifact["groupId"]}:${artifact["artifactId"]} has ${licenses.size} licences; decide how to show it" }
+                    val license = licenses.single() as Map<*, *>
+                    val url = license["url"] as String?
+                    // licensee allows both names to be null: fall back to the coordinates and the licence's id or URL.
+                    val coordinates = "${artifact["groupId"]}:${artifact["artifactId"]}"
+                    val artifactName = artifact["name"] as String? ?: coordinates
+                    val licenseName = license["name"] as String? ?: license["identifier"] as String? ?: url ?: "Unknown licence"
+                    "    OssLicense(${kotlinString(artifact["groupId"] as String)}, ${kotlinString(artifact["artifactId"] as String)}, " +
+                        "${kotlinString(artifactName)}, ${kotlinString(licenseName)}, " +
+                        "${url?.let { kotlinString(it) } ?: "null"}),"
+                }
+        val head = text.substringBefore(LIST_HEADER) + LIST_HEADER + "\n"
+        source.writeText(head + entries.joinToString("\n") + "\n" + text.substring(text.indexOf(MANUAL_TAIL)))
+    }
+}
+
+val ossLicensesReport = layout.buildDirectory.file("reports/licensee/androidRelease/artifacts.json")
+val ossLicensesSource =
+    rootProject.layout.projectDirectory.file("feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt")
+
+val verifyOssLicenses = tasks.register("verifyOssLicenses") {
+    group = "verification"
+    description = "Fails if licensee's release report lists an artifact that About > Licenses has no entry for (#562)."
+    dependsOn("licenseeAndroidRelease")
+    inputs.file(ossLicensesReport)
+    inputs.file(ossLicensesSource)
+    val report = ossLicensesReport.get().asFile
+    val source = ossLicensesSource.asFile
+    doLast {
+        val missing = OssLicensesList.missing(report, source)
+        check(missing.isEmpty()) {
+            "OssLicenses.kt has no entry for ${missing.size} artifact(s) in the licensee report: ${missing.joinToString()}. " +
+                "Run ./gradlew :app:androidApp:regenerateOssLicenses and commit the result."
+        }
+        logger.lifecycle("About > Licenses lists every artifact in the licensee report")
+    }
+}
+
+tasks.named("check") {
+    dependsOn(verifyOssLicenses)
+}
+
+tasks.register("regenerateOssLicenses") {
+    group = "help"
+    description = "Rewrites feature/settings/domain's OssLicenses.kt from the licensee release report (#562)."
+    dependsOn("licenseeAndroidRelease")
+    val report = ossLicensesReport.get().asFile
+    val source = ossLicensesSource.asFile
+    doLast {
+        OssLicensesList.regenerate(report, source)
+        logger.lifecycle("Regenerated $source from $report")
+    }
 }
 
 // -----------------------------------------------------------------------

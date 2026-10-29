@@ -645,13 +645,23 @@ this app's primary target, see CLAUDE.md) and writes its
 into `feature/settings/ui`'s Licenses screen without an app→feature dependency
 inversion would need either a cross-module generated-resource pipeline or
 Compose Multiplatform's raw-resource mechanism, either well beyond this
-epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a
-**generated-once, checked-in** `List<OssLicense>` produced from that same
-`artifacts.json` (253 entries as of this pass). Regenerate it by re-running
-`:app:androidApp:licenseeAndroidRelease` and re-deriving the list from the
-refreshed `artifacts.json` whenever dependencies change meaningfully — it
-will silently go stale otherwise, unlike the build-time gate above, which
-never can.
+epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a **checked-in**
+`List<OssLicense>` generated from that same `artifacts.json`. To refresh it
+after a dependency change:
+
+```bash
+./gradlew :app:androidApp:regenerateOssLicenses   # runs licenseeAndroidRelease, then rewrites OssLicenses.kt
+git diff feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt
+```
+
+Commit the rewritten file with the dependency change. The generated entries
+come from the report's name and licence exactly as licensee gives them; the
+hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
+not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
+when the report lists an artifact with no entry, so a dependency that moves
+without a regeneration breaks CI rather than under-reporting on the About
+screen (#562). It checks for missing entries only, so it does not notice an
+entry left behind after its artifact is gone; the regeneration removes those.
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
