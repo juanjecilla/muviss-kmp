@@ -115,7 +115,14 @@ object OssLicensesList {
     // Anchored at the start of a line, so an entry that is commented out does not count as listed.
     private val entryKey = Regex("""^\s*OssLicense\("((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"""", RegexOption.MULTILINE)
 
-    private fun kotlinString(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+    private fun kotlinString(value: String): String = "\"" +
+        value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("$", "\\$")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r") +
+        "\""
 
     @Suppress("UNCHECKED_CAST")
     fun artifacts(report: File): List<Map<String, Any?>> = (groovy.json.JsonSlurper().parse(report) as List<*>).map { it as Map<String, Any?> }
