@@ -8,7 +8,7 @@
     <string name="widget_no_catalog_body">Episode details are downloaded the first time you open the app.</string>
     <string name="widget_undo">Undo</string>
     <string name="widget_seen">Seen</string>
-    <string name="widget_marked_seen">Marked seen</string>
+    <string name="widget_marked_episode">Marked %1$s ✓</string>
     <string name="widget_open_to_load">Open to load episodes</string>
     <string name="notification_tap_to_open">Tap to open Muviss</string>
     <string name="notification_episode_out">%1$s is out</string>

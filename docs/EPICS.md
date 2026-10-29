@@ -396,7 +396,9 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tickAnimations`, default on, per device, not synced). It narrows `animationsEnabled` the way `triageDeckAnimations` does: `FeatureFlags.tickAnimationsActive` is the AND, and the haptic is never gated. The milestone also changes the snackbar copy, so with motion off it is still said. Both pre-existing tick pops used to ignore the master switch; they honour it now. Outcome is decided in `ProgressViewModel.tick` (Progress, after the list settles) and `DetailViewModel.toggleEpisodeSeen` (Detail, at the tap).
 
-**Not done, deliberately:** the widgets (#393), the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
+**Widgets (#393).** The home-screen widgets confirm a tick in text: the row's Undo state names the episode it marked ("Marked S1 · E3 ✓", `widget_marked_episode` / `xcstrings` `Marked %@ ✓`). It is deliberately not gated by `tickAnimationsActive`: it is copy, not motion, and Glance has no animation to gate. The line lasts as long as Undo does (until the next refresh). Device verification: #653. Scoped out (haptic, a timed revert, a row tint): #654.
+
+**Not done, deliberately:** the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
 
 **Not verified by any test:** the haptic, and how the sweep and burst feel on a device. Tests assert presence and absence under a hand-driven clock (`ProgressTickFeedbackTest`), not the look.
 
