@@ -111,7 +111,9 @@ dependencies {
 object OssLicensesList {
     private const val LIST_HEADER = "val ossLicenses: List<OssLicense> = listOf("
     private const val MANUAL_TAIL = "    // Not a Maven dependency"
-    private val entryKey = Regex("""OssLicense\("((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"""")
+
+    // Anchored at the start of a line, so an entry that is commented out does not count as listed.
+    private val entryKey = Regex("""^\s*OssLicense\("((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"""", RegexOption.MULTILINE)
 
     private fun kotlinString(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
 
@@ -132,12 +134,17 @@ object OssLicensesList {
             artifacts(report)
                 .sortedWith(compareBy({ it["groupId"] as String }, { it["artifactId"] as String }))
                 .map { artifact ->
-                    val licenses = (artifact["spdxLicenses"] as? List<*>) ?: (artifact["unknownLicenses"] as? List<*>) ?: emptyList<Any?>()
+                    // licensee can report both collections for one artifact; count them together.
+                    val licenses = ((artifact["spdxLicenses"] as? List<*>).orEmpty()) + ((artifact["unknownLicenses"] as? List<*>).orEmpty())
                     require(licenses.size == 1) { "${artifact["groupId"]}:${artifact["artifactId"]} has ${licenses.size} licences; decide how to show it" }
                     val license = licenses.single() as Map<*, *>
                     val url = license["url"] as String?
+                    // licensee allows both names to be null: fall back to the coordinates and the licence's id or URL.
+                    val coordinates = "${artifact["groupId"]}:${artifact["artifactId"]}"
+                    val artifactName = artifact["name"] as String? ?: coordinates
+                    val licenseName = license["name"] as String? ?: license["identifier"] as String? ?: url ?: "Unknown licence"
                     "    OssLicense(${kotlinString(artifact["groupId"] as String)}, ${kotlinString(artifact["artifactId"] as String)}, " +
-                        "${kotlinString(artifact["name"] as String)}, ${kotlinString(license["name"] as String)}, " +
+                        "${kotlinString(artifactName)}, ${kotlinString(licenseName)}, " +
                         "${url?.let { kotlinString(it) } ?: "null"}),"
                 }
         val head = text.substringBefore(LIST_HEADER) + LIST_HEADER + "\n"
