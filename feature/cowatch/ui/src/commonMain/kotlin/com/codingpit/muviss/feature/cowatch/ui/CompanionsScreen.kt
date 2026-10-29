@@ -31,12 +31,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.share.TextSharer
 import com.codingpit.muviss.core.designsystem.share.rememberTextSharer
 import com.codingpit.muviss.core.designsystem.text.resolve
@@ -97,8 +96,7 @@ fun CompanionsScreen(
     val copiedMessage = stringResource(Res.string.invite_copied)
     // The snackbar's measured height, so the end of the list clears a message that wraps and not only
     // the one-line case (#474, #475, #568).
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     Scaffold(
         topBar = {
@@ -111,17 +109,16 @@ fun CompanionsScreen(
             SnackbarHost(
                 snackbarHostState,
                 Modifier
-                    .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                    .measureSnackbarHeight(snackbarClearance)
                     .testTag(COMPANIONS_SNACKBAR_TAG),
             )
         },
     ) { padding ->
-        val bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight)
         Column(
             modifier = Modifier.fillMaxSize().testTag(COMPANIONS_LIST_TAG)
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(start = MuvissSpacing.l, top = MuvissSpacing.l, end = MuvissSpacing.l, bottom = bottomPadding),
+                .padding(start = MuvissSpacing.l, top = MuvissSpacing.l, end = MuvissSpacing.l, bottom = snackbarClearance.bottomPadding),
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.l),
         ) {
             Text(stringResource(Res.string.companions_intro), style = MaterialTheme.typography.bodyMedium)

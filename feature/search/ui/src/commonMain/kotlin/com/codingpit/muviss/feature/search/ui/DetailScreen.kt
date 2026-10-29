@@ -83,8 +83,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -104,6 +102,8 @@ import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.RatingRow
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
@@ -192,8 +192,7 @@ fun DetailScreen(
     var tickedEpisode by remember { mutableStateOf<EpisodeId?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     // The snackbar's measured height, so the list's end clears a wrapped message too.
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     // A bulk mark parks its undo in state; this turns it into the snackbar and
     // clears it once acted on, so it can't reappear on the next recomposition.
@@ -226,7 +225,7 @@ fun DetailScreen(
                 )
                 // At least the usual allowance, so the end does not jump when a one-line
                 // snackbar appears; more when a long title or a large font wraps it.
-                val bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight)
+                val bottomPadding = snackbarClearance.bottomPadding
                 if (maxWidth >= EXPANDED_BREAKPOINT) {
                     DetailExpanded(state, viewModel, callbacks, bottomPadding)
                 } else {
@@ -252,7 +251,7 @@ fun DetailScreen(
             snackbarHostState,
             Modifier
                 .align(Alignment.BottomCenter)
-                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .measureSnackbarHeight(snackbarClearance)
                 .testTag(DETAIL_SNACKBAR_TAG),
         )
     }

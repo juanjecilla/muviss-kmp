@@ -63,8 +63,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -81,6 +79,8 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
@@ -197,8 +197,7 @@ private fun WatchNextScreen(
     // one's timeout (#613, the same mechanism as #569's triage fix).
     var tickSnackbar by remember { mutableStateOf<TickSnackbar?>(null) }
     // The snackbar's measured height, so the list's end clears a wrapped message too.
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     // One-tap tick with undo (design doc, Motion + Progress screen): tick
     // persists immediately; the snackbar's Undo reverts it via the VM. The
@@ -265,7 +264,7 @@ private fun WatchNextScreen(
         SnackbarHost(
             snackbarHostState,
             Modifier
-                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .measureSnackbarHeight(snackbarClearance)
                 .semantics { testTag = WATCH_NEXT_SNACKBAR_TAG },
         )
     }) { padding ->
@@ -292,7 +291,7 @@ private fun WatchNextScreen(
                         animate = state.animateTicks,
                         // At least the usual allowance, so the end does not jump when a one-line
                         // snackbar appears; more when a long title or a large font wraps it.
-                        bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight),
+                        bottomPadding = snackbarClearance.bottomPadding,
                         onTick = onTick,
                         onOpenDetail = onOpenDetail,
                     )
