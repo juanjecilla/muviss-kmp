@@ -18,8 +18,10 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.TestSafeAreaInsets
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.profile.domain.ObserveLastSyncedAtUseCase
 import com.codingpit.muviss.feature.profile.domain.ObserveProfileStatsUseCase
@@ -108,7 +110,9 @@ class ProfileSnackbarTest {
         CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
             MuvissTheme(darkTheme = false) {
                 Box(Modifier.size(width, WINDOW_HEIGHT)) {
-                    ProfileScreen(viewModel, onOpenRewatch = {}, onOpenCompanions = null)
+                    ScreenInsets(insets = TestSafeAreaInsets) {
+                        ProfileScreen(viewModel, onOpenRewatch = {}, onOpenCompanions = null)
+                    }
                 }
             }
         }

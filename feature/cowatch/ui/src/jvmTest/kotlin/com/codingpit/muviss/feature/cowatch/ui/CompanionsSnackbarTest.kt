@@ -15,7 +15,9 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.TestSafeAreaInsets
 import com.codingpit.muviss.feature.cowatch.api.CompanionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -82,7 +84,9 @@ class CompanionsSnackbarTest {
     private fun CompanionsUnderTest(viewModel: CompanionsViewModel, sharer: FakeTextSharer) {
         MuvissTheme(darkTheme = false) {
             Box(Modifier.size(WINDOW_WIDTH, WINDOW_HEIGHT)) {
-                CompanionsScreen(viewModel, onBack = {}, onOpenShortlist = {}, textSharer = sharer)
+                ScreenInsets(insets = TestSafeAreaInsets) {
+                    CompanionsScreen(viewModel, onBack = {}, onOpenShortlist = {}, textSharer = sharer)
+                }
             }
         }
     }
