@@ -463,6 +463,9 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-29
+- **About > Licenses coverage** (#562, stacked: #617, #616): `verifyOssLicenses` now fails both ways, on an artifact the Android release report lists with no entry and on an entry for an artifact the report no longer lists; the comparison is `build-logic`'s `OssLicensesList`, unit-tested there. Raised and not done: #615, the list is generated from the Android release graph only, so desktop, iOS and web runtime artifacts are not compared.
+
 ### 2026-10-17
 - **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `20.sqm` (schema v21, fixture `21.db`) because Muted Genres took `18.sqm` and tick animations `19.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
 - **OS reduce-motion default** (#394): a fresh install turns animations off when the OS asks for less motion, once per install; `21.sqm` (schema v22, fixture `22.db`) adds `appSettings.motionDefaultApplied`, marked on every existing row, because keying the default to the introduction let a deep-link launch's later Settings choice be overwritten.

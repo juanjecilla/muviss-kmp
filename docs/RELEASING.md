@@ -658,10 +658,12 @@ Commit the rewritten file with the dependency change. The generated entries
 come from the report's name and licence exactly as licensee gives them; the
 hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
 not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
-when the report lists an artifact with no entry, so a dependency that moves
-without a regeneration breaks CI rather than under-reporting on the About
-screen (#562). It checks for missing entries only, so it does not notice an
-entry left behind after its artifact is gone; the regeneration removes those.
+when the report lists an artifact with no entry (missing), or when an entry
+names an artifact the report no longer lists (stale), so a dependency that moves
+without a regeneration breaks CI rather than under-reporting or over-reporting
+on the About screen (#562, #616). Its failure message names both lists and the
+regenerate command. The comparison lives in build-logic's `OssLicensesList`
+(unit-tested in `build-logic/src/test`).
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
