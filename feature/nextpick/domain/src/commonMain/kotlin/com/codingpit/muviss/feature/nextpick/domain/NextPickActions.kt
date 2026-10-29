@@ -14,6 +14,6 @@ interface NextPickActions {
     /** Records a Skip, so the title also leaves the Discover deck. */
     suspend fun notForMe(summary: MediaSummary)
 
-    /** Snoozes the title for a week, the default Snooze period. */
+    /** Snoozes the title for the person's `triageSnoozePeriod` (a week by default), as the deck does. */
     suspend fun snooze(summary: MediaSummary)
 }
