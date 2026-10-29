@@ -6,6 +6,9 @@
     <string name="nextpick_step">Pregunta %1$d de %2$d</string>
     <string name="nextpick_offline">Estás sin conexión, así que solo se busca en tu lista.</string>
     <string name="nextpick_q_source">¿De dónde debería salir?</string>
+    <string name="nextpick_q_anchor">¿Algo parecido a lo que acabas de terminar?</string>
+    <string name="nextpick_anchor_like">Algo parecido</string>
+    <string name="nextpick_anchor_unlike">Algo distinto</string>
     <string name="nextpick_source_mine">De mi lista</string>
     <string name="nextpick_source_new">Algo nuevo</string>
     <string name="nextpick_source_either">Cualquiera</string>

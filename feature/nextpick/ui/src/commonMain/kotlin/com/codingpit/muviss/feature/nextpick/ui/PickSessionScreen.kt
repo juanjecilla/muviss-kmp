@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.feature.nextpick.api.PickAnchor
 import com.codingpit.muviss.feature.nextpick.api.PickCommitment
 import com.codingpit.muviss.feature.nextpick.api.PickCompany
 import com.codingpit.muviss.feature.nextpick.api.PickEra
@@ -37,6 +38,8 @@ import com.codingpit.muviss.feature.nextpick.api.PickSource
 import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
 import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.Res
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_anchor_like
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_anchor_unlike
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_back
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_commitment_ended
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_commitment_limited
@@ -56,6 +59,7 @@ import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_moo
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_mood_thoughtful
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_no_pick
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_offline
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_q_anchor
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_q_commitment
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_q_company
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_q_era
@@ -76,6 +80,7 @@ import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_tim
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_time_evening
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_time_quick
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_title
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -141,7 +146,7 @@ private fun AskingBody(state: PickSessionUiState.Asking, onAnswer: (PickAnswer) 
         if (state.offline) Text(stringResource(Res.string.nextpick_offline), style = MaterialTheme.typography.bodyMedium)
         Text(stringResource(questionTitle(state.question)), style = MaterialTheme.typography.titleLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            optionsFor(state.question).forEach { option ->
+            optionsFor(state.question, state.anchor).forEach { option ->
                 FilterChip(selected = false, onClick = { onAnswer(option.answer) }, label = { Text(stringResource(option.label)) })
             }
         }
@@ -168,7 +173,7 @@ private fun questionTitle(question: PickQuestion): StringResource = when (questi
     PickQuestion.SOURCE -> Res.string.nextpick_q_source
     PickQuestion.FORMAT_AND_TIME -> Res.string.nextpick_q_format
     PickQuestion.MOOD -> Res.string.nextpick_q_mood
-    PickQuestion.ANCHOR -> Res.string.nextpick_q_format
+    PickQuestion.ANCHOR -> Res.string.nextpick_q_anchor
     PickQuestion.ERA_AND_SERVICES -> Res.string.nextpick_q_era
     PickQuestion.COMPANY -> Res.string.nextpick_q_company
     PickQuestion.COMMITMENT -> Res.string.nextpick_q_commitment
@@ -177,9 +182,10 @@ private fun questionTitle(question: PickQuestion): StringResource = when (questi
 
 /**
  * The chips each question offers, as complete answers. Each chip is one [PickAnswer], so a question's
- * answer is never split across two taps. ANCHOR is never asked in v1 (see the context reader).
+ * answer is never split across two taps. ANCHOR is only asked when a Completion opened the session, so
+ * [anchor] is set whenever it is shown (#548).
  */
-private fun optionsFor(question: PickQuestion): List<Option> = when (question) {
+private fun optionsFor(question: PickQuestion, anchor: MediaId?): List<Option> = when (question) {
     PickQuestion.SOURCE -> listOf(
         Option(Res.string.nextpick_source_mine, PickAnswer.Source(PickSource.MY_LIST)),
         Option(Res.string.nextpick_source_new, PickAnswer.Source(PickSource.SOMETHING_NEW)),
@@ -224,5 +230,8 @@ private fun optionsFor(question: PickQuestion): List<Option> = when (question) {
         Option(Res.string.nextpick_rewatch_no, PickAnswer.Rewatch(false)),
     )
 
-    PickQuestion.ANCHOR -> emptyList()
+    PickQuestion.ANCHOR -> listOfNotNull(
+        anchor?.let { Option(Res.string.nextpick_anchor_like, PickAnswer.Anchor(PickAnchor(it, like = true))) },
+        anchor?.let { Option(Res.string.nextpick_anchor_unlike, PickAnswer.Anchor(PickAnchor(it, like = false))) },
+    )
 }

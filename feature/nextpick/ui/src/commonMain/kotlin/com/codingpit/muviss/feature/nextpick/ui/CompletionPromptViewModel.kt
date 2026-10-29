@@ -6,6 +6,7 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptPolicy
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
+import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,18 +32,26 @@ class CompletionPromptViewModel(
     private val _visible = MutableStateFlow(false)
     val visible: StateFlow<Boolean> = _visible.asStateFlow()
 
+    private val _anchor = MutableStateFlow<MediaId?>(null)
+
+    /**
+     * The title the visible sheet is about: the Completion that opened it (#548). Kept after the sheet is
+     * dismissed, so "What's next?" can still start the session from it; set only when the sheet is shown.
+     */
+    val anchor: StateFlow<MediaId?> = _anchor.asStateFlow()
+
     private val onboardingDone = MutableStateFlow(false)
 
     init {
         viewModelScope.launchReporting { onboardingCompleted.collect { onboardingDone.value = it } }
-        viewModelScope.launchReporting { completions.collect { onCompletion() } }
+        viewModelScope.launchReporting { completions.collect { onCompletion(it.mediaId) } }
     }
 
     fun dismiss() {
         _visible.value = false
     }
 
-    private suspend fun onCompletion() {
+    private suspend fun onCompletion(completed: MediaId) {
         val now = clock.nowEpochMs()
         val allowed = CompletionPromptPolicy.shouldShow(
             nowEpochMs = now,
@@ -52,6 +61,7 @@ class CompletionPromptViewModel(
         )
         if (!allowed) return
         store.markShown(now)
+        _anchor.value = completed
         _visible.value = true
     }
 }

@@ -108,11 +108,23 @@ class PickEngine(
             .distinctBy { it.candidate.id }
     }
 
+    /**
+     * One copy per title. The library's copy wins (it carries what the person said about it), then a copy
+     * TMDB offered because of the anchor, which is what [RuleBasedRanker] credits; `/discover` is last.
+     */
     private fun List<PickCandidate>.merged(): List<PickCandidate> = groupBy { it.id }.values.map { copies ->
-        copies.firstOrNull { it.source == CandidateSource.BACKLOG } ?: copies.first()
+        copies.minBy { sourcePriority(it.source) }
+    }
+
+    private fun sourcePriority(source: CandidateSource): Int = when (source) {
+        CandidateSource.BACKLOG -> 0
+        CandidateSource.RECOMMENDED, CandidateSource.SIMILAR -> 1
+        CandidateSource.DISCOVER -> 2
     }
 
     private fun allowed(c: PickCandidate, criteria: PickCriteria, excluded: Set<MediaId>, muted: MutedGenres): Boolean {
+        // The title the person just finished is never the answer to "more like it" or "something else".
+        if (c.id == criteria.anchor?.mediaId) return false
         if (c.id in excluded || muted.hides(c.summary)) return false
         val inLibrary = c.libraryStatus != null
         return when (c.libraryStatus) {

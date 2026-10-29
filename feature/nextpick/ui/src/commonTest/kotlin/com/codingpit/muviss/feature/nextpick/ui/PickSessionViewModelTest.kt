@@ -2,10 +2,17 @@ package com.codingpit.muviss.feature.nextpick.ui
 
 import com.codingpit.muviss.feature.nextpick.api.PickSource
 import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
+import com.codingpit.muviss.feature.nextpick.domain.PickCandidates
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
+import com.codingpit.muviss.feature.nextpick.domain.PickEngine
+import com.codingpit.muviss.feature.nextpick.domain.PickExclusions
+import com.codingpit.muviss.feature.nextpick.domain.PickHistory
+import com.codingpit.muviss.feature.nextpick.domain.PickHistoryReader
+import com.codingpit.muviss.feature.nextpick.domain.PickMuting
 import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
 import com.codingpit.muviss.feature.nextpick.domain.PickSessionLength
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -30,6 +37,8 @@ class PickSessionViewModelTest {
         context: PickContext,
         actions: RecordingNextPickActions = RecordingNextPickActions(),
     ) = PickSessionViewModel(context = { context }, engine = engineOver(pool), actions = actions)
+
+    private fun viewModelFromCompletion(anchor: MediaId, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"))) = PickSessionViewModel(context = { PickContext(length = PickSessionLength.QUICK, online = true, hasBacklog = true) }, engine = engineOver(pool), actions = RecordingNextPickActions(), anchor = anchor)
 
     @Test
     fun online_session_opens_on_the_first_question_out_of_the_standard_length() {
@@ -111,5 +120,45 @@ class PickSessionViewModelTest {
         assertTrue(wentBack)
         assertEquals(PickQuestion.SOURCE, assertIs<PickSessionUiState.Asking>(viewModel.state.value).question)
         assertEquals(false, viewModel.back())
+    }
+
+    @Test
+    fun a_session_opened_from_a_completion_asks_about_that_title_first() {
+        // Given a session opened from the title just finished
+        val finished = MediaId.tmdbTv("1399")
+
+        // When it opens
+        val asking = assertIs<PickSessionUiState.Asking>(viewModelFromCompletion(finished).state.value)
+
+        // Then the anchor question comes first, and it is about that title
+        assertEquals(PickQuestion.ANCHOR, asking.question)
+        assertEquals(finished, asking.anchor)
+    }
+
+    @Test
+    fun another_takes_the_next_pick_from_one_gather_and_does_not_query_the_sources_again() {
+        // Given a pool of three, and a counting source that only records how often it is asked
+        var gathers = 0
+        val pool = listOf(candidate("1"), candidate("2"), candidate("3"))
+        val engine = PickEngine(
+            sources = listOf(
+                PickCandidates { _, _ ->
+                    gathers++
+                    pool
+                },
+            ),
+            exclusions = PickExclusions { emptySet() },
+            history = PickHistoryReader { PickHistory() },
+            muting = PickMuting { MutedGenres.NONE },
+        )
+        val viewModel = PickSessionViewModel(context = { PickContext(length = PickSessionLength.NONE) }, engine = engine, actions = RecordingNextPickActions())
+
+        // When the person asks for another pick twice
+        viewModel.another()
+        viewModel.another()
+
+        // Then every pick came from the one gather that the first pick made
+        assertEquals(1, gathers)
+        assertIs<PickSessionUiState.Result>(viewModel.state.value)
     }
 }
