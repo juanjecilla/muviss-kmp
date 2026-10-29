@@ -6,6 +6,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.models)
+            api(libs.kotlinx.coroutinesCore)
         }
     }
 }

@@ -109,6 +109,12 @@
 -- mark rather than `onboardingCompleted`, because a deep-link launch skips the
 -- introduction and leaves Settings reachable before it is done.
 --
+-- `completionPromptEnabled`, `nextPickSessionLength` and `nextPickResultMode` were added in
+-- `23.sqm` (EPIC 51, #403, Next Pick). Per device and NOT synced, like every preference above.
+-- The prompt switches the "What's next?" sheet after a Completion on or off. The two enums are
+-- `SessionLength` and `ResultMode` in `:feature:nextpick:api`, read and written through
+-- `NextPickPreferences`; the stored value is the enum's name and a value written by a newer build
+-- falls back to the default.
 -- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
 -- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
 -- is already true on every install that exists — folding the snooze hint into
@@ -140,7 +146,10 @@ CREATE TABLE appSettings (
     tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     motionDefaultApplied INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
-    completionPromptShownAtEpochMs INTEGER
+    completionPromptShownAtEpochMs INTEGER,
+    completionPromptEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    nextPickSessionLength TEXT NOT NULL DEFAULT 'STANDARD',
+    nextPickResultMode TEXT NOT NULL DEFAULT 'ONE_PICK'
 );
 
 selectSettings:
@@ -243,6 +252,15 @@ UPDATE appSettings SET deviceBackupEnabled = :deviceBackupEnabled WHERE id = 0;
 -- "What's next?" sheet was shown on this device; null means never. Per device, not synced, not exported.
 updateCompletionPromptShownAt:
 UPDATE appSettings SET completionPromptShownAtEpochMs = :shownAtEpochMs WHERE id = 0;
+
+updateCompletionPromptEnabled:
+UPDATE appSettings SET completionPromptEnabled = :completionPromptEnabled WHERE id = 0;
+
+updateNextPickSessionLength:
+UPDATE appSettings SET nextPickSessionLength = :nextPickSessionLength WHERE id = 0;
+
+updateNextPickResultMode:
+UPDATE appSettings SET nextPickResultMode = :nextPickResultMode WHERE id = 0;
 
 -- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
 deleteRow:

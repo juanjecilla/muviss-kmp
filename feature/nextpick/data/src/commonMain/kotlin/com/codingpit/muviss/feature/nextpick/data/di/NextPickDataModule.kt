@@ -31,7 +31,7 @@ import org.koin.dsl.module
  */
 val nextPickDataModule: Module = module {
     single<NextPickSettings> { DefaultNextPickSettings }
-    single<CompletionPromptStore> { AppSettingsCompletionPromptStore(get<MuvissDatabase>().appSettingsQueries, get()) }
+    single<CompletionPromptStore> { AppSettingsCompletionPromptStore(get<MuvissDatabase>().appSettingsQueries, get(), get()) }
 
     single {
         val collection: () -> CollectionApi = { get() }
@@ -53,7 +53,7 @@ val nextPickDataModule: Module = module {
     single<PickContextSource> { NextPickContextReader(get(), { get<CollectionApi>() }, get()) }
 
     single<NextPickActions> {
-        DefaultNextPickActions({ get<CollectionApi>() }, { get<TriageApi>() }, get(), get())
+        DefaultNextPickActions({ get<CollectionApi>() }, { get<TriageApi>() }, get(), get(), get())
     }
 }
 

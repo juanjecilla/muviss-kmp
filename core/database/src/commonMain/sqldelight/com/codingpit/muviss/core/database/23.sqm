@@ -1,0 +1,19 @@
+-- Next Pick settings (EPIC 51, #403). The filename is the version this migrates FROM:
+-- 23.sqm takes a v23 database to v24, after Next Pick's completion prompt `22.sqm` (#400).
+--
+-- NUMBERING: the number a branch takes is whatever is free when it merges
+-- (`verifyMigrations` cannot see a collision); renumber and regenerate the
+-- fixture if another migration landed first. Claimed at 23 on 2026-10-29: `21.sqm` is
+-- #394 and `22.sqm` is #400 on develop's chain, and this branch was written against 21.
+-- #588 (Taste Profile) takes `24.sqm`, stacked on this branch.
+--
+-- Three per-device preferences on the singleton row, appended last. None syncs
+-- or is in the data export. Each DEFAULT is the answer for a fresh install and for
+-- every existing one, so no `UPDATE` is needed (ADR 0031's pattern):
+--   completionPromptEnabled: whether finishing a title offers "What's next?" (on).
+--   nextPickSessionLength:   Quick, Standard or No questions (Standard).
+--   nextPickResultMode:      One Pick, Top Picks or Deck (One Pick).
+-- The enum defaults are pinned by `NextPickPreferencesTest` in :feature:settings:data.
+ALTER TABLE appSettings ADD COLUMN completionPromptEnabled INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE appSettings ADD COLUMN nextPickSessionLength TEXT NOT NULL DEFAULT 'STANDARD';
+ALTER TABLE appSettings ADD COLUMN nextPickResultMode TEXT NOT NULL DEFAULT 'ONE_PICK';

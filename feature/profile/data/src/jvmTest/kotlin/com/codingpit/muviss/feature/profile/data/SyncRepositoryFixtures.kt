@@ -24,6 +24,7 @@ internal class FakeFeatureFlags(automaticSync: Boolean = false) : FeatureFlags {
     override val byokEnabled: Flow<Boolean> = flowOf(false)
     override val triageSnoozePeriod: Flow<SnoozePeriod> = flowOf(SnoozePeriod.DEFAULT)
     override val triageSnoozePlacement: Flow<SnoozePlacement> = flowOf(SnoozePlacement.DEFAULT)
+    override val completionPromptEnabled: Flow<Boolean> = flowOf(true)
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = Unit
 
@@ -40,6 +41,8 @@ internal class FakeFeatureFlags(automaticSync: Boolean = false) : FeatureFlags {
     override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = Unit
 
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = Unit
+
+    override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
 }
 
 /** A coordinator that watches nothing (no dirty rows, never enabled), for tests that are not about it. */
