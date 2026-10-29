@@ -7,9 +7,16 @@ import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
 import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidate
+import com.codingpit.muviss.feature.nextpick.domain.PickCandidates
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
+import com.codingpit.muviss.feature.nextpick.domain.PickEngine
+import com.codingpit.muviss.feature.nextpick.domain.PickExclusions
+import com.codingpit.muviss.feature.nextpick.domain.PickHistory
+import com.codingpit.muviss.feature.nextpick.domain.PickHistoryReader
+import com.codingpit.muviss.feature.nextpick.domain.PickMuting
 import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +53,8 @@ class PickSessionViewModelTest {
         actions = actions,
         settings = FixedSettings(mode),
     )
+
+    private fun viewModelFromCompletion(anchor: MediaId, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"))) = PickSessionViewModel(context = { PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true) }, engine = engineOver(pool), actions = RecordingNextPickActions(), anchor = anchor)
 
     @Test
     fun online_session_opens_on_the_first_question_out_of_the_standard_length() {
@@ -317,6 +326,63 @@ class PickSessionViewModelTest {
         // When it opens
         // Then it shows Failed, whose Retry is reachable, rather than Loading forever
         assertIs<PickSessionUiState.Failed>(viewModel.state.value)
+    }
+
+    @Test
+    fun a_session_opened_from_a_completion_asks_about_that_title_first() {
+        // Given a session opened from the title just finished
+        val finished = MediaId.tmdbTv("1399")
+
+        // When it opens
+        val asking = assertIs<PickSessionUiState.Asking>(viewModelFromCompletion(finished).state.value)
+
+        // Then the anchor question comes first, and it is about that title
+        assertEquals(PickQuestion.ANCHOR, asking.question)
+        assertEquals(finished, asking.anchor)
+    }
+
+    @Test
+    fun another_takes_the_next_pick_from_one_gather_and_does_not_query_the_sources_again() {
+        // Given a pool of three, and a counting source that only records how often it is asked
+        var gathers = 0
+        val pool = listOf(candidate("1"), candidate("2"), candidate("3"))
+        val engine = PickEngine(
+            sources = listOf(
+                PickCandidates { _, _ ->
+                    gathers++
+                    pool
+                },
+            ),
+            exclusions = PickExclusions { emptySet() },
+            history = PickHistoryReader { PickHistory() },
+            muting = PickMuting { MutedGenres.NONE },
+        )
+        val viewModel = PickSessionViewModel(context = { PickContext(length = SessionLength.NONE) }, engine = engine, actions = RecordingNextPickActions())
+
+        // When the person asks for another pick twice
+        viewModel.another()
+        viewModel.another()
+
+        // Then every pick came from the one gather that the first pick made
+        assertEquals(1, gathers)
+        assertIs<PickSessionUiState.Result>(viewModel.state.value)
+    }
+
+    @Test
+    fun top_picks_keeps_drawing_new_titles_once_the_first_gather_is_used_up() {
+        // Given Top Picks over thirty titles, more than one gather keeps
+        val viewModel = viewModel((1..30).map { candidate("$it") }, noQuestions, mode = NextPickResultMode.TOP_PICKS)
+        val drawn = assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.map { it.candidate.id }.toMutableList()
+
+        // When the person asks for another five times, past the twenty the first gather held
+        repeat(5) {
+            viewModel.another()
+            drawn += assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.map { it.candidate.id }
+        }
+
+        // Then all thirty were drawn, each once
+        assertEquals(30, drawn.size)
+        assertEquals(30, drawn.toSet().size)
     }
 
     private fun PickSessionViewModel.onePick() = assertIs<PickSessionUiState.Result>(state.value).picks.first()

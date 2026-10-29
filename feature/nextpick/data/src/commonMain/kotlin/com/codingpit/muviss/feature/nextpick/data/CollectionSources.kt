@@ -44,13 +44,19 @@ internal class CollectionBacklogCandidates(private val collection: () -> Collect
 }
 
 /**
- * The library's own history as the ranker reads it. Only the day is used: genre averages need genre ids
- * (see [CollectionBacklogCandidates]), so [PickHistory.genreRatings] stays empty until they exist.
+ * The library's own history as the ranker reads it. The day, and the title of the anchor (#548), are read
+ * from the library, so no request is made for them. Genre averages and the anchor's genre overlap need genre
+ * ids, which the library does not store (it keeps names): [PickHistory.genreRatings] and
+ * [PickHistory.anchorGenreIds] stay empty until it does (see [CollectionBacklogCandidates]).
  */
-internal class CollectionHistoryReader(private val clock: AppClock) : PickHistoryReader {
-    override suspend fun read(criteria: PickCriteria): PickHistory = PickHistory(
-        todayEpochDay = clock.nowEpochMs().floorDiv(MS_PER_DAY),
-    )
+internal class CollectionHistoryReader(
+    private val clock: AppClock,
+    private val collection: () -> CollectionApi,
+) : PickHistoryReader {
+    override suspend fun read(criteria: PickCriteria): PickHistory {
+        val anchorTitle = criteria.anchor?.let { collection().savedDetails(it.mediaId)?.summary?.title }
+        return PickHistory(anchorTitle = anchorTitle, todayEpochDay = clock.nowEpochMs().floorDiv(MS_PER_DAY))
+    }
 
     private companion object {
         const val MS_PER_DAY = 86_400_000L

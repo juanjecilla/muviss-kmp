@@ -413,7 +413,7 @@ private fun MuvissScaffold(
                 // trigger is a hot flow, so it must be collecting when a tick finishes a title.
                 CompletionSheetHost(
                     viewModel = koinViewModel<CompletionPromptViewModel>(),
-                    onWhatsNext = { navController.navigate(NextPickRoute) },
+                    onWhatsNext = { anchor -> navController.navigate(NextPickRoute(anchor?.toString())) },
                 )
                 NavHost(
                     navController = navController,
