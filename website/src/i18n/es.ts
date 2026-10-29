@@ -63,7 +63,7 @@ export const es: Dictionary = {
       { icon: "repeat", title: "Historial de revisionados", body: "¿La has visto tres veces? Muviss recuerda cada visionado y cuándo fue." },
       { icon: "star", title: "Puntuaciones y notas", body: "Puntúa títulos y guarda una nota privada en cada uno." },
       { icon: "bell", title: "Avisos de nuevos episodios", body: "Te avisa cuando sale un episodio nuevo de una serie que sigues, solo si lo activas. Desactivado hasta que lo hagas.", platforms: "Android · iOS" },
-      { icon: "widget", title: "Widgets", body: "Tu siguiente episodio en la pantalla de inicio, con marcar y deshacer.", platforms: "Android · iOS" },
+      { icon: "widget", title: "Widgets", body: "Tu siguiente episodio en la pantalla de inicio, con marcar (que te dice qué episodio has marcado) y deshacer.", platforms: "Android · iOS" },
       { icon: "import", title: "Importa", body: "Trae tu historial desde Trakt, TV Time o un archivo CSV." },
       { icon: "export", title: "Copia y restaura", body: "Tus datos son tuyos: haz una copia en un archivo, restáurala en cualquier dispositivo o bórralo todo." },
       { icon: "export", title: "Copia del dispositivo", body: "Opcionalmente, deja que la copia de iCloud o Google incluya tu biblioteca, para que un teléfono nuevo siga por donde lo dejaste. Desactivada hasta que la actives.", platforms: "Android · iOS" },

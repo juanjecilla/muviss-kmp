@@ -110,7 +110,13 @@ private struct WatchNextRowView: View {
     }
 
     private var subtitle: String {
-        if isJustTicked { return String(localized: "Marked seen") }
+        if isJustTicked {
+            // Names the episode the tick wrote, not the one the row now points at.
+            if let ticked = justTicked, let label = IosWidgetBridge.shared.tickedLabel(episodeId: ticked) {
+                return String(localized: "Marked \(label) ✓")
+            }
+            return String(localized: "Marked seen")
+        }
         guard let label = row.episodeLabel else { return String(localized: "Open to load episodes") }
         guard let name = row.episodeName else { return label }
         return "\(label) · \(name)"

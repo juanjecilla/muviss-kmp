@@ -95,6 +95,14 @@ object IosWidgetBridge : KoinComponent {
     /** Records a tick from the widget so its row offers Undo. Set after the write, see `TickEpisodeIntent`. */
     fun markJustTicked(episodeId: String) = undoMarker.markJustTicked(episodeId)
 
+    /**
+     * "S2 · E5" for the episode the widget just ticked, so its confirmation can
+     * name what was marked. Null when [episodeId] does not parse. The format
+     * matches [watchNextRows] and the Android widget's row label.
+     */
+    fun tickedLabel(episodeId: String): String? = runCatching { EpisodeId.parse(episodeId) }.getOrNull()
+        ?.let { "S${it.seasonNumber} · E${it.episodeNumber}" }
+
     /** Drops the Undo marker. Called by the Undo intent, and by the app's refresh on every write. */
     fun clearJustTicked() = undoMarker.clear()
 
