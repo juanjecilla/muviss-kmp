@@ -109,4 +109,65 @@ class OssLicensesListTest {
         assertFailsWith<IllegalArgumentException> { OssLicensesList.drift(report("a" to "x"), broken) }
         assertFailsWith<IllegalArgumentException> { OssLicensesList.regenerate(report("a" to "x"), broken) }
     }
+
+    // --- regenerate's handling of one licensee artifact record (#616 CodeRabbit fixes) ---
+
+    /** Regenerates a source whose only generated entry is [artifactJson], returning the rewritten source. */
+    private fun regeneratedFrom(artifactJson: String): String =
+        OssLicensesList.regenerate("[$artifactJson]", source(entry("seed", "entry")))
+
+    @Test
+    fun a_licence_listed_only_under_unknown_licences_is_kept() {
+        // Fix 2: licensee can report the licence under unknownLicenses; it must not be dropped as "no licence".
+        val out = regeneratedFrom(
+            """{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[],"unknownLicenses":[{"name":"Custom Licence","url":"https://example.com/l"}]}""",
+        )
+        assertContains(out, """OssLicense("g", "a", "A", "Custom Licence", "https://example.com/l"),""")
+    }
+
+    @Test
+    fun a_licence_split_across_both_collections_is_still_one_licence_and_refused_when_it_is_two() {
+        // Fix 2: the size check counts both collections together, so two licences are refused rather than one being shown.
+        assertFailsWith<IllegalArgumentException> {
+            regeneratedFrom(
+                """{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[{"name":"MIT"}],"unknownLicenses":[{"name":"Custom"}]}""",
+            )
+        }
+    }
+
+    @Test
+    fun a_null_artifact_name_falls_back_to_group_and_artifact() {
+        // Fix 3.
+        val out = regeneratedFrom("""{"groupId":"g","artifactId":"a","name":null,"spdxLicenses":[{"name":"MIT","url":"https://x"}],"unknownLicenses":[]}""")
+        assertContains(out, """OssLicense("g", "a", "g:a", "MIT", "https://x"),""")
+    }
+
+    @Test
+    fun a_null_licence_name_falls_back_to_its_identifier() {
+        // Fix 3.
+        val out = regeneratedFrom("""{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[{"name":null,"identifier":"MIT","url":"https://x"}],"unknownLicenses":[]}""")
+        assertContains(out, """OssLicense("g", "a", "A", "MIT", "https://x"),""")
+    }
+
+    @Test
+    fun a_licence_with_no_name_or_identifier_falls_back_to_its_url() {
+        // Fix 3.
+        val out = regeneratedFrom("""{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[{"name":null,"identifier":null,"url":"https://x"}],"unknownLicenses":[]}""")
+        assertContains(out, """OssLicense("g", "a", "A", "https://x", "https://x"),""")
+    }
+
+    @Test
+    fun a_licence_with_nothing_at_all_is_unknown_and_has_no_url() {
+        // Fix 3: the last fallback, and a null url is written as the Kotlin null literal.
+        val out = regeneratedFrom("""{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[{"name":null,"identifier":null,"url":null}],"unknownLicenses":[]}""")
+        assertContains(out, """OssLicense("g", "a", "A", "Unknown licence", null),""")
+    }
+
+    @Test
+    fun line_breaks_and_dollar_signs_in_generated_strings_are_escaped() {
+        // Fix 4: a raw newline or CR in the source would split the generated Kotlin string literal and break compilation.
+        val out = regeneratedFrom("""{"groupId":"g","artifactId":"a","name":"a\nb\rc${'$'}d","spdxLicenses":[{"name":"MIT","url":"https://x"}],"unknownLicenses":[]}""")
+        assertContains(out, "\"a\\nb\\rc\\\$d\"")
+        assertFalse(out.contains("a\nb"))
+    }
 }
