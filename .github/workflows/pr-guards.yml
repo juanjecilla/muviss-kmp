@@ -85,6 +85,58 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/release/landing-guard.sh
 
+  # actionlint (#581) over every workflow. A workflow typo or a shellcheck
+  # finding in a `run:` block is otherwise found only when that workflow runs,
+  # which for ship-release.yml is with release credentials. The job always runs,
+  # so a required check never sits pending; it does the work only when a
+  # workflow or the lint's config changed.
+  workflow-lint:
+    name: Workflows pass actionlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Did a workflow or the lint config change?
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- .github/workflows .github/actionlint.yaml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Pinned by version and by the SHA-256 of the release tarball, both taken
+      # from rhysd/actionlint's published *_checksums.txt. To bump, change both
+      # together. Downloaded from the release, not `go install` (no Go toolchain
+      # to pin) and not a third-party action (nothing to trust but the checksum).
+      - name: Install actionlint
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/actionlint"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  $dir/actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf "$dir/actionlint.tar.gz" -C "$dir" actionlint
+          echo "$dir" >> "$GITHUB_PATH"
+      # actionlint runs shellcheck on every `run:` block. Fail here if the runner
+      # has none, rather than let actionlint skip those rules and pass.
+      - name: Lint the workflows
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          shellcheck --version
+          actionlint --version
+          actionlint
+
   # The release scripts and the rollout policy decide what reaches users, and
   # nothing else exercises them until a real release runs. Seconds to run.
   #

@@ -11,7 +11,7 @@ require "date"
 WORKFLOW = File.expand_path("../../../.github/workflows/pr-guards.yml", __dir__)
 
 # Jobs that run on every PR base. Each one is a repo-wide policy or tooling check.
-REPO_WIDE_JOBS = %w[release-tooling].freeze
+REPO_WIDE_JOBS = %w[workflow-lint release-tooling].freeze
 
 # Jobs that guard one base. The base is named in `if:`, so they skip elsewhere.
 BASE_SCOPED_JOBS = {
