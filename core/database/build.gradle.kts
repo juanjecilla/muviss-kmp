@@ -3,6 +3,19 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+// One source of truth for SQL.js (#618): the web worker's own package.json.
+// The worker imports `sql.js` from there, and the webpack copy of
+// `sql-wasm.wasm` resolves it from the same install, so the Kotlin/JS build
+// must declare the same version. Declaring it here as a literal is what let
+// Dependabot bump the worker to 1.15.1 -> 1.15.2 (#631) while this file said
+// 1.10.3, and it can never drift now: Dependabot bumps package.json, and this
+// reads it. The lock update still travels with the bump (see
+// core/database/src/webWorker/README.md).
+val sqlJsVersion: String = Regex(""""sql\.js"\s*:\s*"([^"]+)"""")
+    .find(File(rootDir, "core/database/src/webWorker/package.json").readText())
+    ?.groupValues?.get(1)
+    ?: error("core/database/src/webWorker/package.json declares no sql.js dependency")
+
 sqldelight {
     databases {
         create("MuvissDatabase") {
@@ -110,13 +123,15 @@ kotlin {
         // that loads with a 200 and then hangs forever with no console error.
         //
         // `sql.js` stays declared here as well as in the local package.json:
-        // this is what puts it in the target's own yarn resolution.
+        // this is what puts it in the target's own yarn resolution. Its
+        // version is `sqlJsVersion`, read from that package.json (#618), so
+        // the two cannot disagree.
         jsMain.dependencies {
-            implementation(npm("sql.js", "1.10.3"))
+            implementation(npm("sql.js", sqlJsVersion))
             implementation(npm("muviss-sqljs-worker", File(rootDir, "core/database/src/webWorker")))
         }
         wasmJsMain.dependencies {
-            implementation(npm("sql.js", "1.10.3"))
+            implementation(npm("sql.js", sqlJsVersion))
             implementation(npm("muviss-sqljs-worker", File(rootDir, "core/database/src/webWorker")))
         }
     }
