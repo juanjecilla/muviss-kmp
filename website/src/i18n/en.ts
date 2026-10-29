@@ -57,7 +57,7 @@ export const en = {
     lede: "Everything here is free — no paywall on the basics.",
     items: [
       { icon: "search", title: "Search & discover", body: "Any movie or show from TMDB, plus For you, Popular now and browsing by genre." },
-      { icon: "tv", title: "What's next?", body: "Finished something? A short set of questions finds your next pick, from your list or from new titles, and says why it was chosen. Offline, it picks from your list." },
+      { icon: "tv", title: "What's next?", body: "Finished something? A short set of questions finds your next pick, from your list or from new titles, and says why it was chosen. Offline, it picks from your list. Choose how many questions it asks, or turn the prompt off, in Settings." },
       { icon: "search", title: "Mute what you don't watch", body: "Talk shows, news and reality TV are left out of Discover and your triage deck by default. Pick any genres to mute in Settings, or show them again with one tap." },
       { icon: "tv", title: "Where to watch", body: "See which streaming, rental and purchase services carry a title in your region." },
       { icon: "grid", title: "Your library", body: "Filter by status or favourites, sort by date added, rating or title." },
