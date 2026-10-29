@@ -18,10 +18,6 @@ name: Gradle verification metadata
 # which is how the file is first filled in and how it is repaired by hand.
 on:
   workflow_dispatch:
-  # TEMPORARY (remove before merge): lets this branch fill the file in before the
-  # workflow exists on develop, which `workflow_dispatch` needs.
-  push:
-    branches: [ build/gradle-dependency-verification ]
   pull_request:
     branches: [ develop ]
     paths:
