@@ -63,4 +63,9 @@
     <string name="nextpick_sheet_body">¿Quieres una sugerencia para lo próximo que veas?</string>
     <string name="nextpick_sheet_whats_next">¿Qué sigue?</string>
     <string name="nextpick_sheet_not_now">Ahora no</string>
+    <string name="nextpick_add_title">Añadir %1$s</string>
+    <string name="nextpick_not_for_me_title">No me interesa: %1$s</string>
+    <string name="nextpick_snooze_title">Posponer %1$s</string>
+    <string name="nextpick_open_deck">Revisar las nuevas</string>
+    <string name="nextpick_deck_none">Aquí solo se pueden revisar los títulos que aún no tienes. Sin conexión no hay ninguno, así que se muestran como lista.</string>
 </resources>

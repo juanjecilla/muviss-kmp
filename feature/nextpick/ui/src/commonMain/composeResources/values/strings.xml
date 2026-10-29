@@ -64,4 +64,9 @@
     <string name="nextpick_sheet_body">Want a suggestion for what to watch next?</string>
     <string name="nextpick_sheet_whats_next">What\'s next?</string>
     <string name="nextpick_sheet_not_now">Not now</string>
+    <string name="nextpick_add_title">Add %1$s</string>
+    <string name="nextpick_not_for_me_title">Not for me: %1$s</string>
+    <string name="nextpick_snooze_title">Snooze %1$s</string>
+    <string name="nextpick_open_deck">Swipe through the new ones</string>
+    <string name="nextpick_deck_none">Only titles you do not have yet can be swiped here. Offline there are none, so the picks are shown as a list.</string>
 </resources>

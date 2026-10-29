@@ -76,6 +76,7 @@ import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_tim
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_time_evening
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_time_quick
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_title
+import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -89,8 +90,8 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun PickSessionScreen(
     viewModel: PickSessionViewModel,
-    presentation: PickPresentation,
     onLeave: () -> Unit,
+    onOpenDeck: (List<MediaSummary>) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Scaffold(
@@ -114,13 +115,14 @@ fun PickSessionScreen(
 
                 is PickSessionUiState.Asking -> AskingBody(current, onAnswer = viewModel::answer, onSkip = viewModel::skipQuestion)
 
-                is PickSessionUiState.Result -> presentation.Content(
+                is PickSessionUiState.Result -> presentationFor(current.mode).Content(
                     state = current,
                     callbacks = PickResultCallbacks(
                         onAdd = viewModel::add,
                         onNotForMe = viewModel::notForMe,
                         onSnooze = viewModel::snooze,
                         onAnother = viewModel::another,
+                        onOpenDeck = { onOpenDeck(viewModel.deckSeeds()) },
                     ),
                     modifier = Modifier.fillMaxSize(),
                 )
