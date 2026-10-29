@@ -463,6 +463,10 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-29
+- **Display Preferences and Muted Genres across devices** (ADR 0036, glossary: Display Preferences, Device Switch). A decision record and no code: the verdict for every `appSettings` column, the group as one synced row with one stamp, Muted Genres as per-genre decisions over the defaults (amends ADR 0031's #385 note), and the wire shape. Built as four issues: #642 export the group with a stamp (writes `25.sqm`, the owner's fixed number; develop's schema line already ends at `21.sqm` (#394), so the open stack's 21-to-24 order needs the stack-repair renumbering first); #643 sync the group (needs #642); #644 sync Muted Genres, which implements #385 (needs #642's table); #645 **bug**: Delete all data on a signed-in device is undone by the next sync (owner decision needed).
+- **Open for the owner** (ADR 0036, "Calls the owner still has to confirm"): motion, tick and triage choices now sync, reversing `AppSettings.sq`'s comments and #391; no separate "ever chosen" marker; co-watch's two switches stay per device; snooze period and placement sync.
+
 ### 2026-10-17
 - **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `20.sqm` (schema v21, fixture `21.db`) because Muted Genres took `18.sqm` and tick animations `19.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
 - **OS reduce-motion default** (#394): a fresh install turns animations off when the OS asks for less motion, once per install; `21.sqm` (schema v22, fixture `22.db`) adds `appSettings.motionDefaultApplied`, marked on every existing row, because keying the default to the introduction let a deep-link launch's later Settings choice be overwritten.
