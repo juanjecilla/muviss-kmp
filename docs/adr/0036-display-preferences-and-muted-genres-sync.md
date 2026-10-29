@@ -4,7 +4,7 @@
 
 Muted Genres (ADR 0031) is a set stored as one `;`-joined string. Synced as one column, last-write-wins on the whole string would lose one device's change to the other's, which is why ADR 0031 and #385 wanted one row per genre. Its defaults also have to stay out of the sync: a fresh device that pushed "Talk, News and Reality are muted" would re-mute titles another device had deliberately unmuted.
 
-This records what crosses the device boundary, how each of the two groups replicates, and the plan. Where the owner's brief and a design constraint disagree, the ADR says so and the choice is listed under "Calls the owner still has to confirm".
+This records what crosses the device boundary, how each of the two groups replicates, and the plan. Every open call was confirmed by the owner on 2026-10-29; the list is at the end of the ADR.
 
 ## Decision
 
@@ -47,7 +47,7 @@ The export follows the same split: the Display Preferences and the Muted Genres 
 
 The Display Preferences replicate as **one row per account**, with one `updatedAtEpochMs` stamp, set by any member's change. The row wins on last-write-wins against another device's stamp, under the same rules as every table: a clean local copy takes the server's, and unsent edits are kept unless the pulled stamp is newer.
 
-Per-field last-write-wins was rejected. It would need ten stamps and ten rows for settings people change together. Two costs remain, and the owner should accept them knowingly:
+Per-field last-write-wins was rejected. It would need ten stamps and ten rows for settings people change together. Two costs remain, both accepted by the owner on 2026-10-29:
 
 1. **An unsent edit to one member can be lost to another device's group.** If device A has an unsent change to `language` and device B pushes a newer `theme` first, A's push is discarded as older, and its `language` edit is replaced by B's group. Only offline edits reach this, because a clean device always takes the server copy.
 2. **A new device's first change must not carry its defaults over the account.** Without a rule, the group is one row, so one change would push nine defaults with a fresh stamp over the account's real choices. The rule is in the next subsection.
@@ -126,7 +126,7 @@ So "mute nothing" is the marker plus tombstones for the defaults. A device that 
 - The pinned lists change deliberately: `SyncChangeSetShapeTest` (three new elements), `ExportShapeTest` (the new fields), and `FakeSupabaseServer` (three schemas).
 - **The engine gains one table-specific order.** The two singleton tables pull before their first push. That is the only ordering exception in the cycle, and #643 makes it explicit and tests it.
 - **No new `FeatureFlags` member.** Sync's existing gates apply, so no fake changes. If one were ever added it would have to be implemented by `AppSettingsFeatureFlags`, `core/testing`'s `FakeFeatureFlags`, and four test-local fakes: `SettingsViewModelTest`, `TriageUiTestFixtures`, the profile `SyncRepositoryFixtures`, and `CrashReportsSettingTest`'s `NoFlags`.
-- **Delete all data does not yet stay deleted on a signed-in device.** Its erase does not sign out, so the next sync adopts the account and pulls from cursor zero. This was already true for the library, and it now extends to these settings. Recorded in #645; it is not fixed here.
+- **Delete all data does not yet stay deleted on a signed-in device.** Its erase does not sign out, so the next sync adopts the account and pulls from cursor zero. This was already true for the library, and it now extends to these settings. Decided in #645 as option (a): the erase signs out and clears the sync owner, so the next sign-in starts clean; the server copy is untouched, and signing back in re-downloads it. This ADR does not implement it.
 - ADR 0031's note on #385 is superseded; the rest of ADR 0031 stands.
 - Tick animations (#391) now sync; the decision above reverses its "per device, not synced" for the motion switches.
 
@@ -151,17 +151,21 @@ Four issues, each a slice that one agent can build end to end:
 - **#642 Display Preferences export as a group.** Writes `26.sqm` (all of it, as above), the setter stamps, the stamp-free OS motion write, the restore rules for the group, the choice and the decisions, the `AppSettings.sq` comments, and `ExportShapeTest`. Nothing is pushed or pulled. Done when the migration, the backfill, restore and fresh-install tests pass and `backups/v1-export.json` still parses.
 - **#643 Display Preferences sync.** Needs #642. `SyncTable.DISPLAY_PREFERENCES`, the one-element `SyncChangeSet.displayPreferences`, the Supabase table, `FakeSupabaseServer`, the pull-before-first-push rule, the merge in which first-run defaults yield, the pull that writes group columns only, and `docs/SYNC.md`. Tests: two devices; a fresh device never pushes; a first change on a new device does not carry defaults over the account's values; a pull onto a fresh device writes no device switch; and an unsent local edit newer than the pulled stamp survives.
 - **#644 Muted Genres sync (#385).** Needs #642's tables. The decision repository and the effective-set rule, the marker written on the first change, the one-time conversion, `SyncChangeSet.mutedGenres` and `.mutedGenreChoices`, `SyncTable.MUTED_GENRE` and `MUTED_GENRE_CHOICE`, the Supabase tables, `FakeSupabaseServer`, and the export. The regression test is the one above: A unmutes Talk, a fresh B mutes Horror, and A keeps Talk unmuted after both sync. A second: a later change to the code's defaults does not reach a device that chose.
-- **#645 Delete all data on a signed-in device.** A bug in code the slices do not touch. The owner decides the behaviour.
+- **#645 Delete all data on a signed-in device.** A bug in code the slices do not touch. Decided: option (a), erase locally, sign out and clear the sync owner; the server copy is untouched. Spec and done-when in the issue.
+
+**Sequencing.** Slice #642 starts only after #553, #543 and #588 have merged; it writes `26.sqm`, and #563 takes `25`. #643 and #644 follow #642. #645 is independent of the schema work, but its erase changes the sync owner, so it lands after #643 if both touch the same tests.
 
 **Verification each slice carries:** `verifyMigrations` for the `26.sqm` chain; a conversion test from each starting state (never chose, `''`, a custom list, the defaults exactly); `SyncChangeSetShapeTest` with its expected names updated; `ExportShapeTest`; `backups/v1-export.json` still parsing; and the fresh-device tests. The sync stack's pgTAP and live `scripts/sync/verify-*.sh` checks have still not been run against the owner's project (#88), and the new tables inherit that gap.
 
-**Landing and Play listing.** Nothing here is a user-visible feature that the store listing describes. Slice #642 changes restore behaviour, so its PR should say whether it needs `no-landing`.
+**Landing and Play listing.** Nothing here is a user-visible feature that the store listing describes. Slice #642 changes restore behaviour, so its PR should say whether it needs `no-landing`. #645 changes what Delete all data does, and the behaviour is free and user-visible, so its PR goes through the landing check: `website/src/i18n/en.ts` and `es.ts` and, if the listing describes erasing, `fastlane/metadata/android/*/full_description.txt`.
 
-## Calls the owner still has to confirm
+## Confirmed by the owner (2026-10-29)
 
-1. **Motion, tick, triage and snooze choices now sync**, reversing the comments in `AppSettings.sq` and #391's "not synced".
-2. **The group's two costs** (above): an unsent edit to one member can be lost to another device's group, and a person who returns a member to its default on one device yields to the account's value. Per-field stamps would remove both, at ten stamps.
-3. **Co-watch's two switches stay per device** (`coWatchPoolListId`, `coWatchIncludeSeen`).
-4. **Snooze period and placement sync** with the deck. The `AppSettings.sq` comment for them (`12.sqm`) says per device.
-5. **A device whose legacy string equals the defaults never chooses**, so it keeps following future defaults. Accepted, as above.
-6. **#645's behaviour** for Delete all data on a signed-in device.
+1. **Motion, tick, triage control scheme, and snooze period and placement sync.** This reverses the per-device comments in `AppSettings.sq` (on `12.sqm` and the motion and tick columns) and #391's "not synced".
+2. **Cost 1, accepted:** an unsent edit to one member can be lost to another device's group, because the group is one row with one stamp.
+3. **Cost 2, accepted:** a person who deliberately returns a member to its default on one device yields to the account's value on the merge.
+4. **`coWatchPoolListId` and `coWatchIncludeSeen` stay Device Switches.**
+5. **`language` and `region` sync with the group.** Accepted edge, the traveller case: a tablet kept in another country takes the account's language and region on every sync, so its TMDB region follows the account rather than its location until the person changes it on that device, and that change then syncs to every device.
+6. **A legacy muted string equal to the defaults never chooses, and follows future defaults.** Accepted.
+7. **#645 is decided: option (a).** Delete all data on a signed-in device erases locally, signs out and clears the sync owner (`syncState.ownerAccountId`). The dialog says the synced copy is untouched, and signing back in re-downloads it. There is no server delete. The spec and tests are in #645.
+8. **Sequencing.** Slice #642 starts only after #553, #543 and #588 have merged, because it writes `26.sqm` and #563 takes `25`. #643 and #644 follow #642.
