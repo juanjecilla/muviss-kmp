@@ -53,7 +53,7 @@ val nextPickDataModule: Module = module {
     single<PickContextSource> { NextPickContextReader(get(), { get<CollectionApi>() }, get()) }
 
     single<NextPickActions> {
-        DefaultNextPickActions({ get<CollectionApi>() }, { get<TriageApi>() }, get(), get())
+        DefaultNextPickActions({ get<CollectionApi>() }, { get<TriageApi>() }, get(), get(), get())
     }
 }
 
