@@ -386,7 +386,7 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 - **Muted Genres apply**; an explicit in-session choice beats a standing mute.
 - Offline: backlog only, and the screen says so. No implicit learning in v1.
 
-**Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage.
+**Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage. Raised by the #404 research (`docs/research/next-pick-ai.md`, rules stay for v1): #594 measure the on-device Gemma option (the remainder of #404), #595 make `PickRanker` suspend and enforce its output in `PickEngine`.
 
 **Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
 
