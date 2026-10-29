@@ -463,6 +463,11 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-29
+- **Tick snackbar race** (#613, fixed): the newest tick's Undo takes the slot through a keyed effect, as #569 did for triage. No test fails on the old code, because the window is a real-thread lookup the Compose clock cannot schedule. Raised: **#650**, a deterministic test that does fail before the fix.
+- **`CompletionDetector` lock** — **#649**: the detector's `Mutex` is held across the tick write, and `CompletionDetector.None` is a shared singleton, so one stuck save blocks every later tick and leaks into later tests. Found by #613's held-save test, which was dropped.
+- **Snackbar clearance helper** (#610): `SnackbarClearance` and `measureSnackbarHeight` in `:core:designsystem` replace seven copies. Device verification of the clearance is **#611**, still open.
+
 ### 2026-10-17
 - **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `20.sqm` (schema v21, fixture `21.db`) because Muted Genres took `18.sqm` and tick animations `19.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.
 - **OS reduce-motion default** (#394): a fresh install turns animations off when the OS asks for less motion, once per install; `21.sqm` (schema v22, fixture `22.db`) adds `appSettings.motionDefaultApplied`, marked on every existing row, because keying the default to the introduction let a deep-link launch's later Settings choice be overwritten.
