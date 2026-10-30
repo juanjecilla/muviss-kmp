@@ -320,6 +320,17 @@ DEVSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
 : >"$FAKE_GH_LOG"; expect_eq "a notes file forwards to develop, any version" "$(ff forward 22 release/2.5.0 "$DEVSHA" develop)" "forward #22 to develop: opened (clean)"
 expect_eq "with its content" "$(git -C "$fo" show forward/pr-22-to-develop:fastlane/release-notes/v2.5.0/de-DE.txt)" "Dev locale."
 
+# A rename of another version's notes lists both paths, so the target's copy of the
+# old one is put back rather than deleted.
+git -C "$f" switch -q release/2.6.0; mkdir -p "$f/fastlane/release-notes/v2.5.0"
+echo "Target copy." >"$f/fastlane/release-notes/v2.5.0/fr-FR.txt"; git -C "$f" add -A; commit "$f" "chore(release): a 2.5.0 locale on the 2.6.0 line"
+git -C "$f" push -q origin release/2.6.0
+git -C "$f" switch -q -c side25mv release/2.6.0; git -C "$f" mv fastlane/release-notes/v2.5.0/fr-FR.txt fastlane/release-notes/v2.5.0/fr-CA.txt
+commit "$f" "chore(release): rename a 2.5.0 locale"; MVSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; out="$(ff forward 23 release/2.5.0 "$MVSHA" release/2.6.0 2>/dev/null)"
+expect_eq "a renamed other-version note forwards nothing" "$out" "forward #23 to release/2.6.0: nothing left once the other version's release notes are skipped"
+expect_eq "and the target keeps the old path" "$(git -C "$fo" show release/2.6.0:fastlane/release-notes/v2.5.0/fr-FR.txt)" "Target copy."
+
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'

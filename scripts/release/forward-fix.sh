@@ -77,7 +77,7 @@ skip_other_version_notes() {
       echo "skipped v$version notes for $target" >&2
       SKIPPED_NOTES="$SKIPPED_NOTES $version"
     fi
-  done < <(git diff --name-only "$sha^1" "$sha" | grep -E '^fastlane/release-notes/v[^/]+/' || true)
+  done < <(git diff --no-renames --name-only "$sha^1" "$sha" | grep -E '^fastlane/release-notes/v[^/]+/' || true)
   return 0
 }
 

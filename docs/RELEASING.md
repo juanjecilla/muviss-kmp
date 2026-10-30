@@ -395,7 +395,9 @@ the schedule, the gates and where a fix goes.
   on the release branch, makes git report a delete/modify conflict, which the
   forward resolves by itself: it takes the notes as the release branch wrote
   them and continues, so the PR carries them (#529) and nobody has to step in.
-  A notes file that both branches changed still opens as a conflict.
+  A notes file that both branches changed still opens as a conflict when the
+  target may receive it (develop, or that version's own line). Another version's
+  notes never conflict: the target keeps its copy and nothing is forwarded (below).
   **CodeRabbit does not review a forward PR** (the App authored it, and it skips
   App-authored PRs), so its approval has to come from a person: approve it, or
   for a conflicting one resolve it and merge it by hand, as #528 did for #527
