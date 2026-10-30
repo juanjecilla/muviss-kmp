@@ -485,6 +485,78 @@ class ReleasePromotionTest < Minitest::Test
     assert issue_for("1.0.0")["closed"]
   end
 
+  # #604: the iOS RC job uploaded the RC to TestFlight internal, but its external-beta step is held. Play
+  # reaches 100% in the meantime, and iOS can still advance, so the issue stays open.
+  def test_complete_leaves_the_issue_open_when_ios_uploaded_to_testflight_internal
+    ios = ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+
+    issue = issue_for("1.0.0")
+    refute issue["closed"], "iOS has a TestFlight upload, so the issue waits for iOS"
+    assert_equal "done", ReleaseStages.stage_of(issue["body"]), "Play's own track is done"
+    assert(@github.calls.any? { |kind, _number, body| kind == :comment && body.include?("iOS phased release is still on its own track") })
+  end
+
+  def test_complete_closes_when_ios_has_no_testflight_upload_recorded
+    ios = ReleaseStages.new_ios_state
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+
+    assert issue_for("1.0.0")["closed"]
+  end
+
+  def test_record_testflight_writes_the_upload_on_the_ios_track_and_nothing_else
+    ios = ReleaseStages.new_ios_state
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    record_testflight("v1.0.0-rc2")
+
+    track = ReleaseStages.parse(issue_for("1.0.0")["body"])["ios"]
+    assert_equal "v1.0.0-rc2", track["testflight_rc"]
+    assert_nil track["rc_tag"], "the external-beta tag is not the TestFlight upload"
+    assert_equal "production", ReleaseStages.parse(issue_for("1.0.0")["body"])["stage"]
+    assert_empty @github.calls.select { |kind, *| kind == :comment }, "one comment per RC would be noise"
+  end
+
+  def test_record_testflight_is_a_no_op_when_the_tag_is_already_recorded
+    ios = ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.0.0-rc2")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    record_testflight("v1.0.0-rc2")
+
+    assert_empty @github.calls.select { |kind, *| kind == :update_issue }
+  end
+
+  def test_record_testflight_leaves_a_marker_without_an_ios_track_alone
+    # A cut from before ADR 0033 has no iOS object at all (add_version always gives one).
+    state = ReleaseStages.new_state("1.0.0", CUT).merge("stage" => "production", "production_started_on" => "2026-10-08")
+    state.delete(ReleaseStages::IOS_KEY)
+    @github.issues << { "number" => 300, "title" => ReleaseStages.title("1.0.0"), "body" => ReleaseStages.render(state) }
+
+    record_testflight("v1.0.0-rc2")
+
+    assert_empty @github.calls.select { |kind, *| kind == :update_issue }
+    assert_includes @out.string, "has no iOS track"
+  end
+
+  def test_record_testflight_for_an_unknown_version_says_so
+    record_testflight("v9.9.9-rc1")
+
+    assert_includes @out.string, "no release issue for 9.9.9"
+  end
+
+  def test_record_testflight_rejects_a_tag_that_is_not_an_rc
+    assert_raises(ArgumentError) { record_testflight("v1.0.0") }
+  end
+
+  def record_testflight(tag)
+    ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                         today: Date.new(2026, 10, 12), apply: true, out: @out).record_testflight(tag)
+  end
+
   def test_complete_closes_when_ios_already_finished_or_was_superseded
     done = ReleaseStages.new_ios_state.merge("stage" => "done", "rc_tag" => "v1.0.0-rc1")
     add_version("1.0.0", "production", "ios" => done)

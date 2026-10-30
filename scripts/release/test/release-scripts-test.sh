@@ -271,10 +271,12 @@ echo fix2 >"$f/fix.txt"; echo "Notes." >"$f/fastlane/release-notes/v1.6.0/en-US.
 git -C "$f" add -A; commit "$f" "fix: a code fix and its notes"
 MIXSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.6.0; git -C "$f" switch -q develop
 : >"$FAKE_GH_LOG"; expect_eq "a notes edit beside a code conflict still opens for a person" "$(ff forward 10 release/1.6.0 "$MIXSHA" release/1.3.0)" "forward #10 to release/1.3.0: opened (conflict)"
+expect_eq "its PR says to keep the other version's notes out of the resolution" "$(grep -c 'leave them out too' "$FAKE_GH_LOG")" "1"
 expect_eq "the conflicting branch carries only the marker commit" "$(git -C "$fo" log --format=%s -n 1 forward/pr-10-to-release-1.3.0)" "chore(release): forward #10 to release/1.3.0 needs a person"
 
-# A notes file that both branches changed is not release-only: it is a real
-# conflict, and the release side must not overwrite the target's edit silently.
+# A notes file that both branches changed must not be overwritten by the release
+# side. Since #575 another version's notes never reach a line, so the target keeps
+# its own edit and nothing is left to forward.
 git -C "$f" switch -q -c release/1.7.0 develop; mkdir -p "$f/fastlane/release-notes/v1.7.0"
 echo "Generated." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): cut the 1.7.0 notes"
 echo "Hand edit." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 1.7.0 notes"
@@ -282,7 +284,62 @@ BOTHSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/1.7.
 git -C "$f" switch -q -c release/1.8.0 develop; mkdir -p "$f/fastlane/release-notes/v1.7.0"
 echo "Their edit." >"$f/fastlane/release-notes/v1.7.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): the 1.8.0 branch edits the same notes"
 git -C "$f" push -q origin release/1.8.0; git -C "$f" switch -q develop
-: >"$FAKE_GH_LOG"; expect_eq "notes both sides changed still open for a person" "$(ff forward 11 release/1.7.0 "$BOTHSHA" release/1.8.0)" "forward #11 to release/1.8.0: opened (conflict)"
+: >"$FAKE_GH_LOG"; expect_eq "notes both sides changed keep the target's edit" "$(ff forward 11 release/1.7.0 "$BOTHSHA" release/1.8.0 2>/dev/null)" "forward #11 to release/1.8.0: nothing left once the other version's release notes are skipped"
+expect_eq "and the target's notes are untouched" "$(git -C "$fo" show release/1.8.0:fastlane/release-notes/v1.7.0/en-US.txt)" "Their edit."
+
+# #575: release notes belong to their own version's line. A notes edit to
+# vX.Y.Z forwards to develop and to release/X.Y.Z, and is left out of any other
+# release line, so no stray vX.Y.Z/ directory lands there.
+: >"$FAKE_GH_LOG"
+git -C "$f" switch -q -c release/2.5.0 develop; mkdir -p "$f/fastlane/release-notes/v2.5.0"
+echo "Generated." >"$f/fastlane/release-notes/v2.5.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): cut the 2.5.0 notes"
+echo "Hand-written." >"$f/fastlane/release-notes/v2.5.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 2.5.0 notes"
+NOTES25="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/2.5.0
+git -C "$f" switch -q -c side25 develop; mkdir -p "$f/fastlane/release-notes/v2.5.0"
+echo "Added locale." >"$f/fastlane/release-notes/v2.5.0/es-ES.txt"; git -C "$f" add -A; commit "$f" "chore(release): add a 2.5.0 locale"
+ADDSHA="$(git -C "$f" rev-parse HEAD)"
+git -C "$f" switch -q develop; git -C "$f" switch -q -c release/2.6.0 develop; git -C "$f" push -q origin release/2.6.0; git -C "$f" switch -q develop
+out="$(ff forward 19 release/2.5.0 "$NOTES25" release/2.6.0 2>&1)"
+expect_eq "an older version's notes skip a newer line" "$(grep -c 'skipped v2.5.0 notes for release/2.6.0' <<<"$out")" "1"
+expect_eq "and the forward is not opened for them" "$(tail -n 1 <<<"$out")" "forward #19 to release/2.6.0: nothing left once the other version's release notes are skipped"
+expect_eq "with no PR and no branch" "$(grep -c 'pr create' "$FAKE_GH_LOG")$(git -C "$fo" rev-parse --verify -q forward/pr-19-to-release-2.6.0 >/dev/null && echo pushed)" "0"
+: >"$FAKE_GH_LOG"; out="$(ff forward 20 release/2.5.0 "$ADDSHA" release/2.6.0 2>&1)"
+expect_eq "a notes file added cleanly is skipped too" "$(tail -n 1 <<<"$out")" "forward #20 to release/2.6.0: nothing left once the other version's release notes are skipped"
+expect_eq "and still no PR" "$(grep -c 'pr create' "$FAKE_GH_LOG")" "0"
+
+git -C "$f" switch -q -c side26 develop; mkdir -p "$f/fastlane/release-notes/v2.6.0"
+echo "Own notes." >"$f/fastlane/release-notes/v2.6.0/en-US.txt"; git -C "$f" add -A; commit "$f" "chore(release): add the 2.6.0 notes"
+OWNSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "a version's own notes forward to its line" "$(ff forward 21 release/2.5.0 "$OWNSHA" release/2.6.0)" "forward #21 to release/2.6.0: opened (clean)"
+expect_eq "the own notes file is on the forward branch" "$(git -C "$fo" show forward/pr-21-to-release-2.6.0:fastlane/release-notes/v2.6.0/en-US.txt)" "Own notes."
+expect_eq "its PR says what was left out: nothing" "$(grep -c 'Left out' "$FAKE_GH_LOG")" "0"
+
+git -C "$f" switch -q -c side25dev develop; mkdir -p "$f/fastlane/release-notes/v2.5.0"
+echo "Dev locale." >"$f/fastlane/release-notes/v2.5.0/de-DE.txt"; git -C "$f" add -A; commit "$f" "chore(release): add a 2.5.0 locale on develop"
+DEVSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; expect_eq "a notes file forwards to develop, any version" "$(ff forward 22 release/2.5.0 "$DEVSHA" develop)" "forward #22 to develop: opened (clean)"
+expect_eq "with its content" "$(git -C "$fo" show forward/pr-22-to-develop:fastlane/release-notes/v2.5.0/de-DE.txt)" "Dev locale."
+
+# A rename of another version's notes lists both paths, so the target's copy of the
+# old one is put back rather than deleted.
+git -C "$f" switch -q release/2.6.0; mkdir -p "$f/fastlane/release-notes/v2.5.0"
+echo "Target copy." >"$f/fastlane/release-notes/v2.5.0/fr-FR.txt"; git -C "$f" add -A; commit "$f" "chore(release): a 2.5.0 locale on the 2.6.0 line"
+git -C "$f" push -q origin release/2.6.0
+git -C "$f" switch -q -c side25mv release/2.6.0; git -C "$f" mv fastlane/release-notes/v2.5.0/fr-FR.txt fastlane/release-notes/v2.5.0/fr-CA.txt
+commit "$f" "chore(release): rename a 2.5.0 locale"; MVSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; out="$(ff forward 23 release/2.5.0 "$MVSHA" release/2.6.0 2>/dev/null)"
+expect_eq "a renamed other-version note forwards nothing" "$out" "forward #23 to release/2.6.0: nothing left once the other version's release notes are skipped"
+expect_eq "and the target keeps the old path" "$(git -C "$fo" show release/2.6.0:fastlane/release-notes/v2.5.0/fr-FR.txt)" "Target copy."
+
+# The other way round: the target renamed the note and the source edits the old path.
+# git carries the edit onto the renamed file, which the source commit never names.
+BEFOREMV="$(git -C "$f" rev-parse release/2.6.0)"
+git -C "$f" switch -q release/2.6.0; git -C "$f" mv fastlane/release-notes/v2.5.0/fr-FR.txt fastlane/release-notes/v2.5.0/fr-CA.txt
+commit "$f" "chore(release): the 2.6.0 line renames a 2.5.0 locale"; git -C "$f" push -q origin release/2.6.0
+git -C "$f" switch -q -c side25ed "$BEFOREMV"; echo "Source edit." >"$f/fastlane/release-notes/v2.5.0/fr-FR.txt"
+git -C "$f" add -A; commit "$f" "chore(release): edit a 2.5.0 locale"; EDSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; out="$(ff forward 24 release/2.5.0 "$EDSHA" release/2.6.0 2>/dev/null)"
+expect_eq "an edit carried onto a note the target renamed forwards nothing" "$out" "forward #24 to release/2.6.0: nothing left once the other version's release notes are skipped"
 
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
