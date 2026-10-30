@@ -112,10 +112,14 @@ module ReleaseStages
 
   class MarkerConflict < StandardError; end
 
-  # Saves a writer's `state` as the issue's marker and keeps `issue["body"]` in step with what was
+  # Saves a writer's `state` as the issue's marker and keeps `state` and `issue["body"]` in step with what was
   # written, so the next save merges against it (see write_marker).
   def save(github, issue, state)
     written = write_marker(github, issue["number"], base: parse(issue["body"]), mine: state)
+    # The caller keeps using `state` (a second save after the store call, say). Left as it was, it
+    # lacks what another writer added before this one, and the next save would read that as this
+    # writer removing it.
+    state.replace(written)
     issue["body"] = render(written)
   end
 

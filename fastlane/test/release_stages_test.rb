@@ -240,6 +240,23 @@ class ReleaseStagesTest < Minitest::Test
     assert_equal "v1.1.0-rc3", state["ios"]["testflight_rc"]
   end
 
+  def test_a_second_save_keeps_what_another_writer_added_before_the_first
+    issue = MarkerIssue.new(ReleaseStages.render(base_state))
+    record = { "number" => 7, "body" => issue.body }
+    state = base_state.merge("holds" => ["a hold"])
+    # Another writer lands between this writer's read and its first save.
+    issue.body = ReleaseStages.render(base_state.merge("beta_done_on" => "2026-10-18"))
+
+    ReleaseStages.save(issue, record, state)
+    state["stage"] = "beta"
+    ReleaseStages.save(issue, record, state)
+
+    written = ReleaseStages.parse(issue.body)
+    assert_equal "2026-10-18", written["beta_done_on"], "the second save does not undo it"
+    assert_equal "beta", written["stage"]
+    assert_equal ["a hold"], written["holds"]
+  end
+
   def test_a_stale_writer_does_not_move_the_stage_back
     issue = MarkerIssue.new(ReleaseStages.render(base_state.merge("stage" => "production")))
     write(issue, base_state.merge("holds" => ["a hold"]))
