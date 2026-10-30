@@ -40,6 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
@@ -135,7 +137,22 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
         }
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    // The snackbar's measured height, so the end of the list clears a message that wraps (a long
+    // message, a large font) and not only the one-line case (#474, #475, #567).
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(
+                snackbarHostState,
+                Modifier
+                    .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                    .testTag(PROFILE_SNACKBAR_TAG),
+            )
+        },
+    ) { padding ->
+        val bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight)
         if (state.loading) {
             Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
@@ -155,10 +172,10 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
         Column(
             Modifier
                 .fillMaxSize()
+                .testTag(PROFILE_LIST_TAG)
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(MuvissSpacing.l)
-                .padding(bottom = MuvissSpacing.bottomContent),
+                .padding(start = MuvissSpacing.l, top = MuvissSpacing.l, end = MuvissSpacing.l, bottom = bottomPadding),
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
         ) {
             IdentitySection(
@@ -427,3 +444,9 @@ private fun CompanionsRow(onOpenCompanions: () -> Unit) {
         )
     }
 }
+
+/** Identifies the scrolling profile column, for tests. */
+const val PROFILE_LIST_TAG = "profile_list"
+
+/** Identifies the sync-message snackbar, for tests (#567). */
+const val PROFILE_SNACKBAR_TAG = "profile_snackbar"

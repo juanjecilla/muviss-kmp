@@ -8,9 +8,13 @@ import com.codingpit.muviss.feature.nextpick.api.PickRuntime
 /**
  * The seam an AI ranker would replace (ADR 0032, spike #404): criteria and candidates in, an ordered
  * list with reasons out. Sources, filters, exclusions and the screens do not change when it does.
+ *
+ * It is suspending because a model call takes seconds. [PickEngine] does not trust its output: picks
+ * outside the candidates, excluded titles and repeated ids are dropped, and a failure or a timeout
+ * falls back to [RuleBasedRanker].
  */
 fun interface PickRanker {
-    fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick>
+    suspend fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick>
 }
 
 /**
@@ -22,7 +26,7 @@ class RuleBasedRanker : PickRanker {
 
     private class Term(val score: Double, val reason: PickReason)
 
-    override fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick> = candidates
+    override suspend fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick> = candidates
         .map { candidate ->
             val terms = termsFor(criteria, candidate, history)
             val best = terms.maxByOrNull { it.score }?.takeIf { it.score > 0 }
