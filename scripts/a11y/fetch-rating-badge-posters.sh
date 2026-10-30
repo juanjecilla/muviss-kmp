@@ -46,20 +46,27 @@ else
   exit 2
 fi
 
-case "$dest" in
-  "$(git rev-parse --show-toplevel 2>/dev/null || echo /nonexistent)"*)
-    echo "refusing to write fixtures inside the repo: $dest" >&2
-    exit 2
-    ;;
-esac
-
 for tool in curl jq; do
   command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 2; }
 done
 
-mkdir -p "$dest"
+# Licensed posters must never land in the repo. Compare canonical paths, so a relative
+# destination (`poster-cache`) or a symlink cannot slip past the check.
+created=""
+[[ -d "$dest" ]] || { mkdir -p "$dest"; created=1; }
+dest="$(cd "$dest" && pwd -P)"
+if repo="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  repo="$(cd "$repo" && pwd -P)"
+  if [[ "$dest" == "$repo" || "$dest" == "$repo"/* ]]; then
+    [[ -n "$created" ]] && rmdir "$dest" 2>/dev/null
+    echo "refusing to write fixtures inside the repo: $dest" >&2
+    exit 2
+  fi
+fi
+
 listing="$(mktemp)"
-trap 'rm -f "$listing"' EXIT
+partial=""
+trap 'rm -f "$listing" ${partial:+"$partial"}' EXIT
 
 fetched=0
 page=1
@@ -71,7 +78,12 @@ while (( fetched < count && page <= 20 )); do
     (( fetched < count )) || break
     target="$dest/${id}.jpg"
     if [[ ! -s "$target" ]]; then
-      curl -fsS "https://image.tmdb.org/t/p/w500${poster_path}" -o "$target"
+      # Into a temporary file first: a transfer that fails half way must not leave a
+      # non-empty file that the next run would keep as a fixture.
+      partial="$target.part"
+      curl -fsS "https://image.tmdb.org/t/p/w500${poster_path}" -o "$partial"
+      mv "$partial" "$target"
+      partial=""
       echo "fetched ${id}.jpg (${list} p${page})"
     fi
     fetched=$((fetched + 1))
