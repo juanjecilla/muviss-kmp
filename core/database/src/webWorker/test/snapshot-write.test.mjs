@@ -158,3 +158,33 @@ test("an aborted transaction is a failed write, and does not block the next one"
   assert.equal(announced.at(-1).lastWriteFailed, false);
   assert.deepEqual(indexedDB.puts, ["snapshot 2"]);
 });
+
+// #637: sql.js 1.15.2 throws from export() inside an open write transaction. A
+// snapshot that comes due then must wait for the transaction, not fail.
+test("a snapshot due inside a transaction waits for it instead of failing", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  run(
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  await run("saveSnapshot()");
+  assert.equal(indexedDB.puts.length, 0, "nothing exported mid-transaction");
+  assert.equal(announced.length, 0, "and no unsaved-changes banner");
+
+  run('onModuleReady.call({ data: { action: "end_transaction", id: 2 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
+  assert.equal(announced.length, 0);
+});
+
+test("a snapshot due inside a rolled-back transaction is still taken", async () => {
+  const { indexedDB, run } = loadWorker();
+  run("db.exec = () => []; postMessage = () => {};");
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  await run("saveSnapshot()");
+  run('onModuleReady.call({ data: { action: "rollback_transaction", id: 2 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
+});

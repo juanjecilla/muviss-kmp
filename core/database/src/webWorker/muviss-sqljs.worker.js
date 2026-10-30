@@ -47,6 +47,12 @@ let lastPersistence = null;
 // True from a failed snapshot write until the next one succeeds. Reported on the
 // persistence channel so the banner can say the last changes are not saved (#292).
 let lastWriteFailed = false;
+// True between `begin_transaction` and its `end_`/`rollback_transaction`. A
+// SQLDelight transaction spans several messages, so the debounce (or a `flush`)
+// can come due inside one, and sql.js 1.15.2 throws from `export()` during an
+// open write transaction (#637). A snapshot due then is kept pending (`dirty`)
+// and taken once the transaction is over.
+let inTransaction = false;
 
 // --- IndexedDB -------------------------------------------------------------
 
@@ -95,6 +101,10 @@ function saveSnapshot() {
 
 async function writeSnapshot() {
   if (!isWriter || !db) return;
+  if (inTransaction) {
+    dirty = true;
+    return;
+  }
   try {
     const bytes = db.export();
     const idb = await openStore();
@@ -269,22 +279,26 @@ function onModuleReady() {
       if (isMutation(data.sql)) markDirty();
       return postMessage({ id: data.id, results });
     }
-    case "begin_transaction":
-      return postMessage({
-        id: data.id,
-        results: db.exec("BEGIN TRANSACTION;"),
-      });
+    case "begin_transaction": {
+      const results = db.exec("BEGIN TRANSACTION;");
+      inTransaction = true;
+      return postMessage({ id: data.id, results });
+    }
     case "end_transaction": {
       const results = db.exec("END TRANSACTION;");
+      inTransaction = false;
       // One snapshot per committed transaction, not per statement inside it.
       markDirty();
       return postMessage({ id: data.id, results });
     }
-    case "rollback_transaction":
-      return postMessage({
-        id: data.id,
-        results: db.exec("ROLLBACK TRANSACTION;"),
-      });
+    case "rollback_transaction": {
+      const results = db.exec("ROLLBACK TRANSACTION;");
+      inTransaction = false;
+      // A snapshot that came due during the transaction still owes the writes
+      // committed before it.
+      if (dirty) markDirty();
+      return postMessage({ id: data.id, results });
+    }
     // Ours, not SQLDelight's: posted by the main thread on `pagehide`, since a
     // worker cannot observe the page going away. Best-effort — the browser may
     // kill the tab before IndexedDB commits, which is what bounds the loss
