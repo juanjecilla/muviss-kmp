@@ -391,6 +391,15 @@ the schedule, the gates and where a fix goes.
   linking the original. A forward PR that conflicts is still opened, empty, and
   stays open for a person; a forward PR into a release branch holds that
   version's promotion until it merges. Each push to a release branch is a new RC.
+  A hand edit to the release notes (`fastlane/release-notes/`), which exist only
+  on the release branch, makes git report a delete/modify conflict, which the
+  forward resolves by itself: it takes the notes as the release branch wrote
+  them and continues, so the PR carries them (#529) and nobody has to step in.
+  A notes file that both branches changed still opens as a conflict.
+  **CodeRabbit does not review a forward PR** (the App authored it, and it skips
+  App-authored PRs), so its approval has to come from a person: approve it, or
+  for a conflicting one resolve it and merge it by hand, as #528 did for #527
+  (#573).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
@@ -414,6 +423,12 @@ with no `--write` to preview). One file per listing locale,
   `web`, `desktop`), and anything paid or remotely dark (sync, co-watch, the own
   TMDB key), which never appear in public copy. Phrase a `feat`/`fix` subject
   as something a user would recognise; it is the store text.
+  - **Opting a commit out.** A commit whose body ends in a `Notes: none` trailer
+    (key and value in any case, anywhere in the trailer block) is left out of
+    both the English list and the Spanish count. A `Notes: none` line in prose
+    above the last paragraph does not count. It is for a `feat` with nothing a
+    user can see yet; the version bump still follows the type, so this does not
+    stop a release being a minor one.
 - **Spanish (and any other non-English locale)** gets one sentence that counts
   the changes ("Muviss 1.2.0 trae 3 novedades y 1 corrección de errores."): a
   commit subject cannot be translated here.
@@ -634,13 +649,23 @@ this app's primary target, see CLAUDE.md) and writes its
 into `feature/settings/ui`'s Licenses screen without an app→feature dependency
 inversion would need either a cross-module generated-resource pipeline or
 Compose Multiplatform's raw-resource mechanism, either well beyond this
-epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a
-**generated-once, checked-in** `List<OssLicense>` produced from that same
-`artifacts.json` (253 entries as of this pass). Regenerate it by re-running
-`:app:androidApp:licenseeAndroidRelease` and re-deriving the list from the
-refreshed `artifacts.json` whenever dependencies change meaningfully — it
-will silently go stale otherwise, unlike the build-time gate above, which
-never can.
+epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a **checked-in**
+`List<OssLicense>` generated from that same `artifacts.json`. To refresh it
+after a dependency change:
+
+```bash
+./gradlew :app:androidApp:regenerateOssLicenses   # runs licenseeAndroidRelease, then rewrites OssLicenses.kt
+git diff feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt
+```
+
+Commit the rewritten file with the dependency change. The generated entries
+come from the report's name and licence exactly as licensee gives them; the
+hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
+not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
+when the report lists an artifact with no entry, so a dependency that moves
+without a regeneration breaks CI rather than under-reporting on the About
+screen (#562). It checks for missing entries only, so it does not notice an
+entry left behind after its artifact is gone; the regeneration removes those.
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
