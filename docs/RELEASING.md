@@ -395,7 +395,9 @@ the schedule, the gates and where a fix goes.
   on the release branch, makes git report a delete/modify conflict, which the
   forward resolves by itself: it takes the notes as the release branch wrote
   them and continues, so the PR carries them (#529) and nobody has to step in.
-  A notes file that both branches changed still opens as a conflict.
+  A notes file that both branches changed still opens as a conflict when the
+  target may receive it (develop, or that version's own line). Another version's
+  notes never conflict: the target keeps its copy and nothing is forwarded (below).
   **CodeRabbit does not review a forward PR** (the App authored it, and it skips
   App-authored PRs), so its approval has to come from a person: approve it, or
   for a conflicting one resolve it and merge it by hand, as #528 did for #527
@@ -442,6 +444,12 @@ with no `--write` to preview). One file per listing locale,
   is kept from then on. A file that still starts with the old `DRAFT:` marker is
   replaced. `release-notes-guard` still refuses a `DRAFT:` file on a PR into
   `main`, which generated notes never carry.
+- **Forwarded notes.** A notes edit in a fix forwards to develop and to its own
+  version's release line only. On any other release line `forward-fix.sh` leaves
+  those notes out and logs `skipped vX.Y.Z notes for release/A.B.C`, so no stray
+  `vX.Y.Z/` directory lands there (#575). When that line already has its own copy
+  of those notes, it keeps it. A forward that conflicts on code says in its PR
+  which notes were left out, so the person resolving it leaves them out too.
 
 ### Cutting a release
 
