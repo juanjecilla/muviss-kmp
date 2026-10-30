@@ -55,7 +55,7 @@ done
 created=""
 [[ -d "$dest" ]] || { mkdir -p "$dest"; created=1; }
 dest="$(cd "$dest" && pwd -P)"
-if repo="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+if repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)"; then
   repo="$(cd "$repo" && pwd -P)"
   if [[ "$dest" == "$repo" || "$dest" == "$repo"/* ]]; then
     [[ -n "$created" ]] && rmdir "$dest" 2>/dev/null
