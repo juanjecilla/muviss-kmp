@@ -237,3 +237,18 @@ test("a stalled write keeps one export waiting, the newest", async () => {
   await done;
   assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 6"]);
 });
+
+test("a failed export keeps the good copy waiting and still reports the failure", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  indexedDB.hold = true;
+  const done = run("saveSnapshot()"); // snapshot 1, stalls
+  await new Promise((r) => setTimeout(r, 10));
+  run("saveSnapshot()"); // snapshot 2 waits
+  run("db.export = () => { throw new Error('export failed'); }; saveSnapshot()");
+  indexedDB.holds.shift()();
+  await new Promise((r) => setTimeout(r, 10));
+  indexedDB.holds.shift()();
+  await done;
+  assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 2"]);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
+});

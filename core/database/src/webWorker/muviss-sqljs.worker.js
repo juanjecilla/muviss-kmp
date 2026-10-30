@@ -117,7 +117,9 @@ function saveSnapshot() {
   } catch (e) {
     exportError = e;
   }
-  waiting = { bytes, exportError };
+  // A failed export keeps the good copy already waiting: it is still written, and
+  // the failure is reported after it, since the newest changes are not in it.
+  waiting = exportError && waiting?.bytes ? { bytes: waiting.bytes, exportError } : { bytes, exportError };
   if (!saving) {
     saving = true;
     saveChain = (async () => {
@@ -134,33 +136,41 @@ function saveSnapshot() {
 
 async function writeSnapshot(bytes, exportError) {
   try {
+    if (bytes) await putSnapshot(bytes);
     if (exportError) throw exportError;
-    const idb = await openStore();
-    await new Promise((resolve, reject) => {
-      const tx = idb.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(bytes, KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      // A full quota aborts the transaction rather than failing the request,
-      // and may fire only `abort`. Unhandled, this promise never settles and
-      // every later snapshot waits behind it in `saveChain`.
-      tx.onabort = () => reject(tx.error ?? new DOMException("snapshot write aborted", "AbortError"));
-    });
     if (lastWriteFailed) {
       lastWriteFailed = false;
       announce();
     }
   } catch (e) {
-    // A failed snapshot must not fail the query that triggered it: the write
-    // is already committed in memory and the tab keeps working. Losing it on
-    // reload is the pre-EPIC-24 behaviour, not a new failure — but the person
-    // using it should be told (#292): a full origin quota or a window that
-    // evicts storage looks exactly like a working tab otherwise.
-    console.warn("[muviss] could not write the snapshot", e);
-    if (!lastWriteFailed) {
-      lastWriteFailed = true;
-      announce();
-    }
+    reportFailedWrite(e);
+  }
+}
+
+async function putSnapshot(bytes) {
+  const idb = await openStore();
+  await new Promise((resolve, reject) => {
+    const tx = idb.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(bytes, KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    // A full quota aborts the transaction rather than failing the request,
+    // and may fire only `abort`. Unhandled, this promise never settles and
+    // every later snapshot waits behind it in `saveChain`.
+    tx.onabort = () => reject(tx.error ?? new DOMException("snapshot write aborted", "AbortError"));
+  });
+}
+
+function reportFailedWrite(e) {
+  // A failed snapshot must not fail the query that triggered it: the write
+  // is already committed in memory and the tab keeps working. Losing it on
+  // reload is the pre-EPIC-24 behaviour, not a new failure — but the person
+  // using it should be told (#292): a full origin quota or a window that
+  // evicts storage looks exactly like a working tab otherwise.
+  console.warn("[muviss] could not write the snapshot", e);
+  if (!lastWriteFailed) {
+    lastWriteFailed = true;
+    announce();
   }
 }
 
