@@ -134,11 +134,11 @@ test("writes run in order, so an older write cannot clear a newer failure", asyn
   assert.equal(indexedDB.holds.length, 1, "the newer write started before the older one finished");
 
   indexedDB.holds.shift()(); // the older write succeeds
-  await older;
+  await new Promise((r) => setTimeout(r, 10));
   indexedDB.failing = true;
   await new Promise((r) => setTimeout(r, 10));
   indexedDB.holds.shift()(); // the newer write fails
-  await newer;
+  await Promise.all([older, newer]);
 
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
   assert.equal(announced.at(-1).lastWriteFailed, true);
@@ -157,4 +157,98 @@ test("an aborted transaction is a failed write, and does not block the next one"
   await settled(run("saveSnapshot()"));
   assert.equal(announced.at(-1).lastWriteFailed, false);
   assert.deepEqual(indexedDB.puts, ["snapshot 2"]);
+});
+
+// #637: sql.js 1.15.2 throws from export() inside an open write transaction. A
+// snapshot that comes due then must wait for the transaction, not fail.
+test("a snapshot due inside a transaction waits for it instead of failing", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  run(
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  await run("saveSnapshot()");
+  assert.equal(indexedDB.puts.length, 0, "nothing exported mid-transaction");
+  assert.equal(announced.length, 0, "and no unsaved-changes banner");
+
+  run('onModuleReady.call({ data: { action: "end_transaction", id: 2 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
+  assert.equal(announced.length, 0);
+});
+
+test("a snapshot due inside a rolled-back transaction is still taken", async () => {
+  const { indexedDB, run } = loadWorker();
+  run("db.exec = () => []; postMessage = () => {};");
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  await run("saveSnapshot()");
+  run('onModuleReady.call({ data: { action: "rollback_transaction", id: 2 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
+});
+
+test("changes committed before a transaction are saved before it opens", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  run(
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 1", id: 1 } })');
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 2 } })');
+  // The page goes away here, mid-transaction: the earlier write must already be on its way.
+  await run("saveChain");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
+  assert.equal(announced.length, 0);
+});
+
+test("a save queued behind a slow one still holds the changes made before a transaction", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  run(
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  indexedDB.hold = true;
+  const first = run("saveSnapshot()"); // a slow write in flight
+  await new Promise((r) => setTimeout(r, 10));
+  const second = run("saveSnapshot()"); // the debounce fires again: queued behind it
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  indexedDB.holds.shift()();
+  await new Promise((r) => setTimeout(r, 10));
+  indexedDB.holds.shift()();
+  await Promise.all([first, second]);
+  assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 2"]);
+  assert.equal(announced.length, 0);
+});
+
+test("a stalled write keeps one export waiting, the newest", async () => {
+  const { indexedDB, run } = loadWorker();
+  indexedDB.hold = true;
+  const done = run("saveSnapshot()"); // stalls
+  await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 5; i++) run("saveSnapshot()"); // five more debounces meanwhile
+  assert.equal(run("waiting.bytes"), "snapshot 6", "only the newest export is kept");
+  indexedDB.holds.shift()();
+  await new Promise((r) => setTimeout(r, 10));
+  indexedDB.holds.shift()();
+  await done;
+  assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 6"]);
+});
+
+test("a failed export keeps the good copy waiting and still reports the failure", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  indexedDB.hold = true;
+  const done = run("saveSnapshot()"); // snapshot 1, stalls
+  await new Promise((r) => setTimeout(r, 10));
+  run("saveSnapshot()"); // snapshot 2 waits
+  run("db.export = () => { throw new Error('export failed'); }; saveSnapshot()");
+  indexedDB.holds.shift()();
+  await new Promise((r) => setTimeout(r, 10));
+  indexedDB.holds.shift()();
+  await done;
+  assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 2"]);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
 });
