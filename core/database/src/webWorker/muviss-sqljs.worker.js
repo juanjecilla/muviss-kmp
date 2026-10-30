@@ -94,19 +94,20 @@ async function loadSnapshot() {
 // newest: its outcome is the one the flag reports.
 let saveChain = Promise.resolve();
 
-function saveSnapshot() {
-  saveChain = saveChain.then(writeSnapshot);
+// `bytes`, when given, were exported already (see `begin_transaction`).
+function saveSnapshot(bytes) {
+  saveChain = saveChain.then(() => writeSnapshot(bytes));
   return saveChain;
 }
 
-async function writeSnapshot() {
+async function writeSnapshot(exported) {
   if (!isWriter || !db) return;
-  if (inTransaction) {
+  if (!exported && inTransaction) {
     dirty = true;
     return;
   }
   try {
-    const bytes = db.export();
+    const bytes = exported ?? db.export();
     const idb = await openStore();
     await new Promise((resolve, reject) => {
       const tx = idb.transaction(STORE, "readwrite");
@@ -280,6 +281,17 @@ function onModuleReady() {
       return postMessage({ id: data.id, results });
     }
     case "begin_transaction": {
+      // Changes committed before this transaction cannot be exported once it is
+      // open, and the page may go away before it ends. Export them now, while
+      // export() still works, so a pagehide mid-transaction loses nothing older.
+      if (dirty && isWriter) {
+        if (debounceTimer !== null) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        dirty = false;
+        saveSnapshot(db.export());
+      }
       const results = db.exec("BEGIN TRANSACTION;");
       inTransaction = true;
       return postMessage({ id: data.id, results });

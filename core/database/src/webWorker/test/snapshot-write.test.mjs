@@ -188,3 +188,18 @@ test("a snapshot due inside a rolled-back transaction is still taken", async () 
   await run("flush()");
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
 });
+
+test("changes committed before a transaction are saved before it opens", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  run(
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 1", id: 1 } })');
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 2 } })');
+  // The page goes away here, mid-transaction: the earlier write must already be on its way.
+  await run("saveChain");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
+  assert.equal(announced.length, 0);
+});
