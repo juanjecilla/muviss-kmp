@@ -77,7 +77,11 @@ skip_other_version_notes() {
       echo "skipped v$version notes for $target" >&2
       SKIPPED_NOTES="$SKIPPED_NOTES $version"
     fi
-  done < <(git diff --no-renames --name-only "$sha^1" "$sha" | grep -E '^fastlane/release-notes/v[^/]+/' || true)
+  # The source commit's paths, plus what the pick changed against the target: git can carry
+  # an edit onto a file the target renamed, which the source commit never names. No rename
+  # detection, so both sides of a rename are listed and put back.
+  done < <({ git diff --no-renames --name-only "$sha^1" "$sha"; git diff --no-renames --name-only "origin/$target"; } \
+    | grep -E '^fastlane/release-notes/v[^/]+/' | sort -u || true)
   return 0
 }
 

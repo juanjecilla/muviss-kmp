@@ -331,6 +331,16 @@ commit "$f" "chore(release): rename a 2.5.0 locale"; MVSHA="$(git -C "$f" rev-pa
 expect_eq "a renamed other-version note forwards nothing" "$out" "forward #23 to release/2.6.0: nothing left once the other version's release notes are skipped"
 expect_eq "and the target keeps the old path" "$(git -C "$fo" show release/2.6.0:fastlane/release-notes/v2.5.0/fr-FR.txt)" "Target copy."
 
+# The other way round: the target renamed the note and the source edits the old path.
+# git carries the edit onto the renamed file, which the source commit never names.
+BEFOREMV="$(git -C "$f" rev-parse release/2.6.0)"
+git -C "$f" switch -q release/2.6.0; git -C "$f" mv fastlane/release-notes/v2.5.0/fr-FR.txt fastlane/release-notes/v2.5.0/fr-CA.txt
+commit "$f" "chore(release): the 2.6.0 line renames a 2.5.0 locale"; git -C "$f" push -q origin release/2.6.0
+git -C "$f" switch -q -c side25ed "$BEFOREMV"; echo "Source edit." >"$f/fastlane/release-notes/v2.5.0/fr-FR.txt"
+git -C "$f" add -A; commit "$f" "chore(release): edit a 2.5.0 locale"; EDSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; out="$(ff forward 24 release/2.5.0 "$EDSHA" release/2.6.0 2>/dev/null)"
+expect_eq "an edit carried onto a note the target renamed forwards nothing" "$out" "forward #24 to release/2.6.0: nothing left once the other version's release notes are skipped"
+
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'
