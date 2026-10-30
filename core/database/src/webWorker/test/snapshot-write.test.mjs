@@ -134,11 +134,11 @@ test("writes run in order, so an older write cannot clear a newer failure", asyn
   assert.equal(indexedDB.holds.length, 1, "the newer write started before the older one finished");
 
   indexedDB.holds.shift()(); // the older write succeeds
-  await older;
+  await new Promise((r) => setTimeout(r, 10));
   indexedDB.failing = true;
   await new Promise((r) => setTimeout(r, 10));
   indexedDB.holds.shift()(); // the newer write fails
-  await newer;
+  await Promise.all([older, newer]);
 
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
   assert.equal(announced.at(-1).lastWriteFailed, true);
@@ -217,10 +217,23 @@ test("a save queued behind a slow one still holds the changes made before a tran
   const second = run("saveSnapshot()"); // the debounce fires again: queued behind it
   run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
   indexedDB.holds.shift()();
-  await first;
   await new Promise((r) => setTimeout(r, 10));
   indexedDB.holds.shift()();
-  await second;
+  await Promise.all([first, second]);
   assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 2"]);
   assert.equal(announced.length, 0);
+});
+
+test("a stalled write keeps one export waiting, the newest", async () => {
+  const { indexedDB, run } = loadWorker();
+  indexedDB.hold = true;
+  const done = run("saveSnapshot()"); // stalls
+  await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 5; i++) run("saveSnapshot()"); // five more debounces meanwhile
+  assert.equal(run("waiting.bytes"), "snapshot 6", "only the newest export is kept");
+  indexedDB.holds.shift()();
+  await new Promise((r) => setTimeout(r, 10));
+  indexedDB.holds.shift()();
+  await done;
+  assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 6"]);
 });

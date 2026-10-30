@@ -89,14 +89,20 @@ async function loadSnapshot() {
 // Snapshot writes run one at a time, in order. The debounce timer does not wait
 // for the write it starts, so two could overlap, and a slow older write that
 // succeeded after a newer one failed (a full quota) would clear the warning
-// while the newest changes were not saved. Chained, the last one to finish is
-// the newest: its outcome is the one the flag reports.
+// while the newest changes were not saved. One at a time, the last one to finish
+// is the newest: its outcome is the one the flag reports.
 //
-// The database is exported when a write is queued, not when its turn comes: by
+// The database is exported when a save is asked for, not when its turn comes: by
 // then a transaction may be open, and sql.js 1.15.2 cannot export during one
-// (#637). A snapshot asked for inside a transaction is not queued at all; it
-// stays pending (`dirty`) and the transaction's end or rollback asks again.
+// (#637). A save asked for inside a transaction exports nothing; it stays
+// pending (`dirty`) and the transaction's end or rollback asks again.
+//
+// While a write is in flight, at most one export waits behind it, and a newer
+// one replaces it: every export is the whole database, so the newest holds
+// everything the older one did, and a stalled IndexedDB cannot pile copies up.
 let saveChain = Promise.resolve();
+let saving = false;
+let waiting = null; // { bytes, exportError } for the next write, or null
 
 function saveSnapshot() {
   if (!isWriter || !db) return saveChain;
@@ -111,7 +117,18 @@ function saveSnapshot() {
   } catch (e) {
     exportError = e;
   }
-  saveChain = saveChain.then(() => writeSnapshot(bytes, exportError));
+  waiting = { bytes, exportError };
+  if (!saving) {
+    saving = true;
+    saveChain = (async () => {
+      while (waiting) {
+        const next = waiting;
+        waiting = null;
+        await writeSnapshot(next.bytes, next.exportError);
+      }
+      saving = false;
+    })();
+  }
   return saveChain;
 }
 
@@ -294,7 +311,7 @@ function onModuleReady() {
       // Changes committed before this transaction cannot be exported once it is
       // open, and the page may go away before it ends. Export them now, while
       // export() still works, so a pagehide mid-transaction loses nothing older.
-      // A save already queued exported when it was queued (see saveSnapshot).
+      // A save already waiting exported when it was asked for (see saveSnapshot).
       if (dirty && isWriter) {
         if (debounceTimer !== null) {
           clearTimeout(debounceTimer);
