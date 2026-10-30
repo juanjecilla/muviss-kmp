@@ -6,6 +6,10 @@ import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** One way of finding candidates: the library's backlog, TMDB's discover, its recommendations. Each decides from [PickCriteria.source] and [PickContext.online] whether it has anything to say. */
 fun interface PickCandidates {
@@ -46,6 +50,9 @@ data class PickResult(val picks: List<RankedPick>, val offline: Boolean)
  *   inside it.
  * - The same title from two sources is one candidate, and the library's copy wins because it carries
  *   what the person has said about it.
+ * - The ranker's output is enforced here, not trusted (ADR 0032): only picks for titles in the pool
+ *   are kept, each id once, and a ranker that throws, times out or returns nothing usable is replaced
+ *   by [RuleBasedRanker]'s result. Nothing about that fallback is shown to the person.
  *
  * Nothing here reaches the network or the database: sources and readers are handed in.
  */
@@ -57,14 +64,48 @@ class PickEngine(
     private val ranker: PickRanker = RuleBasedRanker(),
 ) {
 
+    private val fallback = RuleBasedRanker()
+
     suspend fun pick(criteria: PickCriteria, context: PickContext, limit: Int = DEFAULT_LIMIT): PickResult {
         val excluded = exclusions.excluded()
         val muted = effectiveMuting(criteria, muting.current())
         val pool = sources.flatMap { it.gather(criteria, context) }
             .merged()
             .filter { allowed(it, criteria, excluded, muted) }
-        val ranked = ranker.rank(criteria, pool, history.read(criteria)).take(limit)
+        val ownHistory = history.read(criteria)
+        val ranked = rankOrFallBack(criteria, pool, ownHistory, excluded).take(limit)
         return PickResult(ranked, offline = !context.online)
+    }
+
+    /**
+     * The ranker's picks, enforced against [pool]. When it fails, times out, or leaves nothing usable,
+     * the rules' order over the same pool. A cancellation of the caller is rethrown, never swallowed.
+     */
+    private suspend fun rankOrFallBack(
+        criteria: PickCriteria,
+        pool: List<PickCandidate>,
+        history: PickHistory,
+        excluded: Set<MediaId>,
+    ): List<RankedPick> {
+        val enforced = attempt(criteria, pool, history)?.let { enforce(it, pool, excluded) }
+        return enforced?.takeIf { it.isNotEmpty() } ?: fallback.rank(criteria, pool, history)
+    }
+
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // Any ranker failure means "use the rules", never an error on screen.
+    private suspend fun attempt(criteria: PickCriteria, pool: List<PickCandidate>, history: PickHistory): List<RankedPick>? = try {
+        withTimeoutOrNull(RANKER_TIMEOUT) { ranker.rank(criteria, pool, history) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Keeps only picks for titles in [pool] and not in [excluded], each id once, using the pool's own copy of the candidate. */
+    private fun enforce(ranked: List<RankedPick>, pool: List<PickCandidate>, excluded: Set<MediaId>): List<RankedPick> {
+        val byId = pool.associateBy { it.id }
+        return ranked
+            .mapNotNull { pick -> byId[pick.candidate.id]?.takeIf { it.id !in excluded }?.let { RankedPick(it, pick.score, pick.reason) } }
+            .distinctBy { it.candidate.id }
     }
 
     private fun List<PickCandidate>.merged(): List<PickCandidate> = groupBy { it.id }.values.map { copies ->
@@ -93,5 +134,8 @@ class PickEngine(
 
     companion object {
         const val DEFAULT_LIMIT = 5
+
+        /** How long a ranker may take before the rules answer instead. A model call that is slower than this is not worth the wait. */
+        private val RANKER_TIMEOUT: Duration = 5.seconds
     }
 }

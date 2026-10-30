@@ -61,7 +61,9 @@ updates:
           - "*"
 
   # The landing (muvissapp.com) and the web database worker, which is a local
-  # npm package bundled into the web app (CLAUDE.md, "Web + DB").
+  # npm package bundled into the web app (CLAUDE.md, "Web + DB"). The worker
+  # directory is lockless by decision (#589): its bumps land with the
+  # kotlin-js-store locks, see core/database/src/webWorker/README.md.
   - package-ecosystem: npm
     directories:
       - /website
