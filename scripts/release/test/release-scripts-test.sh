@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$SCRIPTS/../.." && pwd)"
 failures=0
 pass() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; failures=$((failures + 1)); }
-expect_eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1: expected '$3', got '$2'"; }
+expect_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: expected '$3', got '$2'"; fi; }
 
 new_repo() {
   local dir
@@ -101,25 +101,25 @@ commit "$r" "feat(triage): snooze a card"; commit "$r" "docs: noise"; commit "$r
 git -C "$r" remote add origin "$origin"; git -C "$r" push -q origin develop --tags
 (cd "$r" && scripts/release/start-release.sh 1.0.0 >/dev/null 2>&1); expect_eq "refuses a version not newer than the last" "$?" "1"
 (cd "$r" && scripts/release/start-release.sh 1.1.0 >/dev/null 2>&1); expect_eq "cuts release/1.1.0" "$?" "0"
-git -C "$origin" rev-parse -q --verify refs/heads/release/1.1.0 >/dev/null && pass "branch pushed" || fail "branch pushed"
+if git -C "$origin" rev-parse -q --verify refs/heads/release/1.1.0 >/dev/null; then pass "branch pushed"; else fail "branch pushed"; fi
 seeded="$(git -C "$r" show release/1.1.0:fastlane/release-notes/v1.1.0/en-US.txt)"
-! grep -q '^DRAFT:' <<<"$seeded" && pass "notes are final, not drafts" || fail "notes are final, not drafts: $seeded"
-grep -q -- '- Snooze a card' <<<"$seeded" && grep -q -- '- Offline copy' <<<"$seeded" && ! grep -q noise <<<"$seeded" \
-  && pass "notes list feat/fix only" || fail "notes list feat/fix only: $seeded"
+if ! grep -q '^DRAFT:' <<<"$seeded"; then pass "notes are final, not drafts"; else fail "notes are final, not drafts: $seeded"; fi
+if grep -q -- '- Snooze a card' <<<"$seeded" && grep -q -- '- Offline copy' <<<"$seeded" && ! grep -q noise <<<"$seeded"; then
+  pass "notes list feat/fix only"; else fail "notes list feat/fix only: $seeded"; fi
 log="$(git -C "$r" show release/1.1.0:CHANGELOG.md)"
-grep -q '^## 1.1.0 — ' <<<"$log" && pass "changelog gets a section for the version" || fail "changelog section: $log"
-grep -q -- '^- \*\*triage\*\*: snooze a card$' <<<"$log" && grep -q -- '^- \*\*search\*\*: offline copy$' <<<"$log" \
-  && ! grep -q noise <<<"$log" && pass "changelog lists feat/fix with their scope" || fail "changelog items: $log"
-[ "$(grep -n '### Features' <<<"$log" | cut -d: -f1)" -lt "$(grep -n '### Fixes' <<<"$log" | cut -d: -f1)" ] \
-  && pass "features come before fixes" || fail "features come before fixes"
+if grep -q '^## 1.1.0 — ' <<<"$log"; then pass "changelog gets a section for the version"; else fail "changelog section: $log"; fi
+if grep -q -- '^- \*\*triage\*\*: snooze a card$' <<<"$log" && grep -q -- '^- \*\*search\*\*: offline copy$' <<<"$log" \
+  && ! grep -q noise <<<"$log"; then pass "changelog lists feat/fix with their scope"; else fail "changelog items: $log"; fi
+if [ "$(grep -n '### Features' <<<"$log" | cut -d: -f1)" -lt "$(grep -n '### Fixes' <<<"$log" | cut -d: -f1)" ]; then
+  pass "features come before fixes"; else fail "features come before fixes"; fi
 git -C "$r" switch -q develop
 (cd "$r" && scripts/release/start-release.sh 1.2.0 >/dev/null 2>&1); expect_eq "refuses a second release while one is open" "$?" "1"
 (cd "$r" && scripts/release/start-release.sh 1.2.0 --stagger-checked >/dev/null 2>&1); expect_eq "--stagger-checked lets the train's cut through" "$?" "0"
 git -C "$r" switch -q develop
 git -C "$r" push -q origin 'v1.0.0^{commit}:refs/heads/main'
 (cd "$r" && scripts/release/start-release.sh 1.0.1 --hotfix >/dev/null 2>&1); expect_eq "a hotfix jumps the queue" "$?" "0"
-[ "$(git -C "$origin" rev-parse 'hotfix/1.0.1^')" = "$(git -C "$origin" rev-parse 'v1.0.0^{commit}')" ] \
-  && pass "hotfix is cut from main" || fail "hotfix is cut from main"
+if [ "$(git -C "$origin" rev-parse 'hotfix/1.0.1^')" = "$(git -C "$origin" rev-parse 'v1.0.0^{commit}')" ]; then
+  pass "hotfix is cut from main"; else fail "hotfix is cut from main"; fi
 
 # A newer section goes above the older ones, and a breaking change says so.
 r5="$(new_repo)"
@@ -131,17 +131,17 @@ o5="$(mktemp -d)"; git -C "$o5" init -q --bare -b develop
 git -C "$r5" remote add origin "$o5"; git -C "$r5" push -q origin develop --tags
 (cd "$r5" && scripts/release/start-release.sh 2.0.0 >/dev/null 2>&1); expect_eq "cuts release/2.0.0" "$?" "0"
 log5="$(git -C "$r5" show release/2.0.0:CHANGELOG.md)"
-[ "$(grep -n '^## 2.0.0' <<<"$log5" | cut -d: -f1)" -lt "$(grep -n '^## 1.0.0' <<<"$log5" | cut -d: -f1)" ] \
-  && grep -q '^header$' <<<"$log5" && pass "new section above the old, header kept" || fail "section order: $log5"
-grep -q -- '^- \*\*sync\*\*: accounts (breaking)$' <<<"$log5" && pass "breaking change is marked" || fail "breaking: $log5"
-grep -q -- '^- great news!$' <<<"$log5" && pass "a ! in the subject is not breaking" || fail "subject bang: $log5"
+if [ "$(grep -n '^## 2.0.0' <<<"$log5" | cut -d: -f1)" -lt "$(grep -n '^## 1.0.0' <<<"$log5" | cut -d: -f1)" ] \
+  && grep -q '^header$' <<<"$log5"; then pass "new section above the old, header kept"; else fail "section order: $log5"; fi
+if grep -q -- '^- \*\*sync\*\*: accounts (breaking)$' <<<"$log5"; then pass "breaking change is marked"; else fail "breaking: $log5"; fi
+if grep -q -- '^- great news!$' <<<"$log5"; then pass "a ! in the subject is not breaking"; else fail "subject bang: $log5"; fi
 r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$SCRIPTS/previous-release.sh" "$r6/scripts/release/"
 git -C "$r6" add -A; commit "$r6" "chore: init"; git -C "$r6" tag -a v1.0.0 -m t; commit "$r6" "ci: only"
 o6="$(mktemp -d)"; git -C "$o6" init -q --bare -b develop
 git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
 (cd "$r6" && scripts/release/start-release.sh 1.0.1 >/dev/null 2>&1)
-grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)" \
-  && pass "a release with no feat/fix says so" || fail "maintenance-only section"
+if grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)"; then
+  pass "a release with no feat/fix says so"; else fail "maintenance-only section"; fi
 
 echo "release-issue.sh (ADR 0030)"
 # A fake gh: records every call, answers the reads the script makes.
@@ -157,7 +157,8 @@ esac
 exit 0
 FAKEGH
 chmod +x "$fakebin/gh"
-export GH_REPO=muviss/test FAKE_GH_LOG="$(mktemp)"
+FAKE_GH_LOG="$(mktemp)"
+export GH_REPO=muviss/test FAKE_GH_LOG
 r7="$(new_repo)"; mkdir -p "$r7/scripts/release" "$r7/fastlane"
 cp "$SCRIPTS/release-issue.sh" "$r7/scripts/release/"; cp "$REPO_ROOT/fastlane/release_stages.rb" "$r7/fastlane/"
 # The script finds its repo root from its own path, so every call runs the copy
@@ -215,7 +216,8 @@ esac
 exit 0
 FAKEGH
 chmod +x "$ffbin/gh"
-export FAKE_GH_LOG="$(mktemp)" GH_REPO=muviss/test
+FAKE_GH_LOG="$(mktemp)"
+export FAKE_GH_LOG GH_REPO=muviss/test
 f="$(new_repo)"; mkdir -p "$f/scripts/release"; cp "$SCRIPTS/forward-fix.sh" "$f/scripts/release/"
 echo base >"$f/a.txt"; git -C "$f" add -A; commit "$f" "chore: init"
 fo="$(mktemp -d)"; git -C "$fo" init -q --bare -b develop; git -C "$f" remote add origin "$fo"
@@ -356,7 +358,8 @@ esac
 exit 0
 FAKEGH
 chmod +x "$mbin/gh"
-export FAKE_GH_LOG="$(mktemp)" GH_REPO=muviss/test
+FAKE_GH_LOG="$(mktemp)"
+export FAKE_GH_LOG GH_REPO=muviss/test
 ms() { PATH="$mbin:$PATH" "$SCRIPTS/milestone.sh" "$@"; }
 : >"$FAKE_GH_LOG"; ms 12 release/1.1.0 >/dev/null
 expect_eq "a new milestone is created" "$(grep -c 'api -X POST repos/muviss/test/milestones' "$FAKE_GH_LOG")" "1"
@@ -385,7 +388,8 @@ esac
 exit 0
 FAKEGH
 chmod +x "$abin/gh"
-export FAKE_GH_LOG="$(mktemp)"
+FAKE_GH_LOG="$(mktemp)"
+export FAKE_GH_LOG
 av="$(mktemp -d)"; mkdir -p "$av/scripts/release"; cp "$SCRIPTS/apple-setup.sh" "$av/scripts/release/"
 ALL_SECRETS='APP_STORE_CONNECT_KEY_ID\nAPP_STORE_CONNECT_ISSUER_ID\nAPP_STORE_CONNECT_KEY_P8\nSENTRY_AUTH_TOKEN\nSENTRY_ORG\nSENTRY_PROJECT\n'
 ALL_VARS='APPLE_TEAM_ID\nTESTFLIGHT_EXTERNAL_GROUPS\n'
@@ -399,7 +403,7 @@ expect_eq "verify refuses when gh is not signed in" "$(FAKE_AUTH=1 verify "$ALL_
 expect_eq "verify reads names only: no set, no value" "$(grep -c -E 'secret set|variable set' "$FAKE_GH_LOG")" "0"
 expect_eq "the wizard asks for the Admin role and keeps Sign in with Apple out" "$(grep -c 'Access: Admin' "$SCRIPTS/apple-setup.sh")$(grep -c 'Do NOT tick Sign in with Apple' "$SCRIPTS/apple-setup.sh")" "11"
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck "$SCRIPTS/apple-setup.sh" >/dev/null 2>&1 && pass "apple-setup.sh passes shellcheck" || fail "apple-setup.sh passes shellcheck"
+  if shellcheck "$SCRIPTS/apple-setup.sh" >/dev/null 2>&1; then pass "apple-setup.sh passes shellcheck"; else fail "apple-setup.sh passes shellcheck"; fi
 fi
 
 echo "release-notes.sh"
@@ -419,33 +423,32 @@ commit "$r" "feat(settings): bring your own TMDB key"
 git -C "$r" tag -a v1.1.0-rc1 -m rc
 rn() { (cd "$r" && scripts/release/release-notes.sh 1.1.0 "$@" 2>/dev/null); }
 out="$(rn)"
-grep -q -- '- Mute genres$' <<<"$out" && grep -q -- '- First-run introduction$' <<<"$out" && grep -q -- '- Reorder a list$' <<<"$out" && grep -q -- "- Offline copy$" <<<"$out" \
-  && pass "lists user-facing feat/fix, capitalised, without issue refs" || fail "user-facing items: $out"
-grep -qiE 'paywall|invite|holiday|widget|tmdb' <<<"$out" && fail "hides paid, dark, infra and other-platform work: $out" \
-  || pass "hides paid, dark, infra and other-platform work"
-[ "$(grep -n 'Mute genres' <<<"$out" | cut -d: -f1)" -lt "$(grep -n 'Offline copy' <<<"$out" | cut -d: -f1)" ] \
-  && pass "features come before fixes" || fail "features before fixes: $out"
-grep -q '^Muviss 1.1.0 trae 3 novedades y 1 corrección de errores.$' <<<"$out" \
-  && pass "Spanish counts what changed" || fail "Spanish line: $out"
+if grep -q -- '- Mute genres$' <<<"$out" && grep -q -- '- First-run introduction$' <<<"$out" && grep -q -- '- Reorder a list$' <<<"$out" && grep -q -- "- Offline copy$" <<<"$out"; then
+  pass "lists user-facing feat/fix, capitalised, without issue refs"; else fail "user-facing items: $out"; fi
+if grep -qiE 'paywall|invite|holiday|widget|tmdb' <<<"$out"; then fail "hides paid, dark, infra and other-platform work: $out"; else pass "hides paid, dark, infra and other-platform work"; fi
+if [ "$(grep -n 'Mute genres' <<<"$out" | cut -d: -f1)" -lt "$(grep -n 'Offline copy' <<<"$out" | cut -d: -f1)" ]; then
+  pass "features come before fixes"; else fail "features before fixes: $out"; fi
+if grep -q '^Muviss 1.1.0 trae 3 novedades y 1 corrección de errores.$' <<<"$out"; then
+  pass "Spanish counts what changed"; else fail "Spanish line: $out"; fi
 notes_dir="$r/fastlane/release-notes/v1.1.0"
 rn --write >/dev/null
-! grep -q DRAFT "$notes_dir/en-US.txt" && [ -f "$notes_dir/.generated" ] && pass "--write writes every locale and its ledger" || fail "--write"
+if ! grep -q DRAFT "$notes_dir/en-US.txt" && [ -f "$notes_dir/.generated" ]; then pass "--write writes every locale and its ledger"; else fail "--write"; fi
 commit "$r" "fix(lists): keep the sort order"
 rn --write >/dev/null
-grep -q -- '- Keep the sort order' "$notes_dir/en-US.txt" && grep -q '2 correcciones' "$notes_dir/es-ES.txt" \
-  && pass "a later fix is picked up by the next run" || fail "regenerates: $(cat "$notes_dir"/*.txt)"
+if grep -q -- '- Keep the sort order' "$notes_dir/en-US.txt" && grep -q '2 correcciones' "$notes_dir/es-ES.txt"; then
+  pass "a later fix is picked up by the next run"; else fail "regenerates: $(cat "$notes_dir"/*.txt)"; fi
 echo "Hand-written notes." >"$notes_dir/en-US.txt"
 commit "$r" "fix(lists): another one"
 rn --write >/dev/null
-[ "$(cat "$notes_dir/en-US.txt")" = "Hand-written notes." ] && pass "notes a person edited are kept" || fail "kept: $(cat "$notes_dir/en-US.txt")"
-grep -q '3 correcciones' "$notes_dir/es-ES.txt" && pass "the untouched locale still follows the branch" || fail "es: $(cat "$notes_dir/es-ES.txt")"
+if [ "$(cat "$notes_dir/en-US.txt")" = "Hand-written notes." ]; then pass "notes a person edited are kept"; else fail "kept: $(cat "$notes_dir/en-US.txt")"; fi
+if grep -q '3 correcciones' "$notes_dir/es-ES.txt"; then pass "the untouched locale still follows the branch"; else fail "es: $(cat "$notes_dir/es-ES.txt")"; fi
 printf 'DRAFT: rewrite me\n- x\n' >"$notes_dir/en-US.txt"
 rn --write >/dev/null
-grep -q "^What's new in Muviss 1.1.0:" "$notes_dir/en-US.txt" && pass "an old DRAFT file is replaced" || fail "draft replaced"
+if grep -q "^What's new in Muviss 1.1.0:" "$notes_dir/en-US.txt"; then pass "an old DRAFT file is replaced"; else fail "draft replaced"; fi
 for i in $(seq 1 40); do commit "$r" "feat(lists): a fairly long feature description number $i that fills the notes"; done
 rn --write >/dev/null
-[ "$(wc -m <"$notes_dir/en-US.txt" | tr -d ' ')" -le 500 ] && tail -1 "$notes_dir/en-US.txt" | grep -q '^- Bug fixes and improvements.$' \
-  && pass "stays within Play's 500 characters" || fail "500 cap: $(wc -m <"$notes_dir/en-US.txt")"
+if [ "$(wc -m <"$notes_dir/en-US.txt" | tr -d ' ')" -le 500 ] && tail -1 "$notes_dir/en-US.txt" | grep -q '^- Bug fixes and improvements.$'; then
+  pass "stays within Play's 500 characters"; else fail "500 cap: $(wc -m <"$notes_dir/en-US.txt")"; fi
 (cd "$r" && "$REPO_ROOT/scripts/release/check-release-notes.sh" 1.1.0 --final >/dev/null 2>&1 || true)
 cp "$SCRIPTS/check-release-notes.sh" "$r/scripts/release/"
 (cd "$r" && scripts/release/check-release-notes.sh 1.1.0 --final >/dev/null 2>&1); expect_eq "generated notes pass the main guard" "$?" "0"
@@ -491,18 +494,14 @@ out="$(tn)"
 # Listed: the plain feat, the prose mid-body feat, and the feat whose body has
 # only a non-"none" Notes line. Opted out: the Notes: none feat, the feat with
 # Notes: none among other trailers, and the fix.
-grep -q -- '^- A visible feature$' <<<"$out" && grep -q -- '^- A mid-body line is prose$' <<<"$out" \
-  && grep -q -- '^- A trailer that is not one: Notes: none, really$' <<<"$out" \
-  && pass "features without an opt-out trailer are listed" || fail "listed features: $out"
-grep -q -- 'store-invisible' <<<"$out" && fail "a Notes: none feat is listed: $out" \
-  || pass "a Notes: none feat is absent"
-grep -q -- 'another trailer' <<<"$out" && fail "Notes: none among other trailers is listed: $out" \
-  || pass "Notes: none among other trailers, in any case, is absent"
-grep -q -- 'invisible fix' <<<"$out" && fail "a Notes: none fix is listed: $out" \
-  || pass "a Notes: none fix is absent"
-grep -q '^Muviss 1.1.0 trae 3 novedades y mejoras.$' <<<"$out" \
-  && pass "Spanish count matches the English list (opted-out commits not counted)" \
-  || fail "Spanish count: $out"
+if grep -q -- '^- A visible feature$' <<<"$out" && grep -q -- '^- A mid-body line is prose$' <<<"$out" \
+  && grep -q -- '^- A trailer that is not one: Notes: none, really$' <<<"$out"; then
+  pass "features without an opt-out trailer are listed"; else fail "listed features: $out"; fi
+if grep -q -- 'store-invisible' <<<"$out"; then fail "a Notes: none feat is listed: $out"; else pass "a Notes: none feat is absent"; fi
+if grep -q -- 'another trailer' <<<"$out"; then fail "Notes: none among other trailers is listed: $out"; else pass "Notes: none among other trailers, in any case, is absent"; fi
+if grep -q -- 'invisible fix' <<<"$out"; then fail "a Notes: none fix is listed: $out"; else pass "a Notes: none fix is absent"; fi
+if grep -q '^Muviss 1.1.0 trae 3 novedades y mejoras.$' <<<"$out"; then
+  pass "Spanish count matches the English list (opted-out commits not counted)"; else fail "Spanish count: $out"; fi
 
 echo
-[ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
+if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
