@@ -170,6 +170,9 @@ jobs:
     if: needs.tag.outputs.tag != ''
     runs-on: macos-15
     timeout-minutes: 75
+    outputs:
+      # Set only once the TestFlight upload succeeded; `record-testflight` reads it (#604).
+      uploaded: ${{ steps.uploaded.outputs.uploaded }}
     steps:
       - name: Check for the Apple credentials
         id: ready
@@ -263,6 +266,12 @@ jobs:
           APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
         run: bundle exec fastlane ios beta
 
+      # Before the dSYM upload, so a Sentry failure after a good upload does not hide it from the record job.
+      - name: Note the TestFlight upload
+        id: uploaded
+        if: steps.ready.outputs.ok == 'true'
+        run: echo "uploaded=true" >> "$GITHUB_OUTPUT"
+
       - name: Upload dSYMs to Sentry
         if: steps.ready.outputs.ok == 'true' && steps.ready.outputs.sentry == 'true'
         env:
@@ -276,3 +285,35 @@ jobs:
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: echo "### iOS candidate \`$TAG\` uploaded to TestFlight (internal)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Records the TestFlight upload on the release issue's iOS track (#604), so
+  # ReleasePromotion#ios_still_ramping? keeps the issue open at Play's 100% while
+  # iOS's external-beta step is held. Its own job, with issues: write, so the
+  # macOS job's build tooling never holds that token. A failure here does not
+  # fail the candidate: the run's conclusion is what release_promote's gates read
+  # (ADR 0030), and a marker write must not hold Play. The marker then keeps
+  # today's behaviour, which is the only cost.
+  record-testflight:
+    needs: [tag, ios]
+    if: always() && needs.tag.outputs.tag != '' && needs.ios.outputs.uploaded == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+
+      - name: Record the TestFlight upload on the release issue
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: ruby fastlane/release_promote.rb record-testflight "$TAG"
