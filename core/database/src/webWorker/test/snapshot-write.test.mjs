@@ -203,3 +203,24 @@ test("changes committed before a transaction are saved before it opens", async (
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
   assert.equal(announced.length, 0);
 });
+
+test("a save queued behind a slow one still holds the changes made before a transaction", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  run(
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  indexedDB.hold = true;
+  const first = run("saveSnapshot()"); // a slow write in flight
+  await new Promise((r) => setTimeout(r, 10));
+  const second = run("saveSnapshot()"); // the debounce fires again: queued behind it
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  indexedDB.holds.shift()();
+  await first;
+  await new Promise((r) => setTimeout(r, 10));
+  indexedDB.holds.shift()();
+  await second;
+  assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 2"]);
+  assert.equal(announced.length, 0);
+});
