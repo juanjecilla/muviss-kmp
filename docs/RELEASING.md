@@ -680,12 +680,14 @@ when the report lists an artifact with no entry (missing), or when an entry
 names an artifact the report no longer lists (stale), or lists one artifact
 twice (the Licenses screen keys its rows by artifact), so an artifact added or
 removed without a regeneration breaks CI rather than under-reporting or
-over-reporting on the About screen (#562, #616). It compares `group:artifact`
-coordinates only: a version bump that changes an artifact's name or licence
-still passes, so regenerate after every dependency update, not only when CI
-fails. Its failure message names both lists and the
-regenerate command. The comparison lives in build-logic's `OssLicensesList`
-(unit-tested in `build-logic/src/test`).
+over-reporting on the About screen (#562, #616). It also fails when an entry's
+name, licence or licence URL differs from the report at the same coordinates
+(a version bump that changes what the artifact says it is licensed under,
+#666). Each entry is compared with the text the generator writes for that
+artifact, fallbacks included, so the check and `regenerateOssLicenses` cannot
+disagree. Its failure message names every list and the regenerate command. The
+comparison lives in build-logic's `OssLicensesList` (unit-tested in
+`build-logic/src/test`).
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
