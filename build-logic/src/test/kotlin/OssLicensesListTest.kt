@@ -65,6 +65,12 @@ class OssLicensesListTest {
     }
 
     @Test
+    fun a_block_commented_entry_does_not_count_as_listed() {
+        val drift = OssLicensesList.drift(report("a" to "x"), source(entry("a", "x"), "    /*", entry("c", "gone"), "    */"))
+        assertTrue(drift.isEmpty)
+    }
+
+    @Test
     fun the_hand_written_font_entry_is_not_reported_as_stale() {
         // It is not a Maven artifact, so the report never lists it; it must sit outside the comparison.
         val drift = OssLicensesList.drift(report("a" to "x"), source(entry("a", "x")))

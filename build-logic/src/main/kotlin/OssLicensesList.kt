@@ -9,6 +9,8 @@ object OssLicensesList {
     private const val MANUAL_TAIL = "    // Not a Maven dependency"
 
     // Anchored at the start of a line, so an entry that is commented out does not count as listed.
+    // An entry inside /* ... */ is not listed, any more than one behind `//` (which `^\s*` already skips).
+    private val blockComment = Regex("""/\*[\s\S]*?\*/""")
     private val entryKey = Regex("""^\s*OssLicense\("((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"""", RegexOption.MULTILINE)
 
     /** Artifacts the list has no entry for, entries naming an artifact the report no longer lists, and artifacts listed twice. All sorted. */
@@ -39,7 +41,7 @@ object OssLicensesList {
     // In order and with repeats: a set would hide a coordinate listed twice, which the Licenses screen's lazy
     // list cannot show (both rows would share one key).
     private fun listedEntries(source: String): List<String> =
-        entryKey.findAll(generatedSection(source)).map { "${it.groupValues[1]}:${it.groupValues[2]}" }.toList()
+        entryKey.findAll(generatedSection(source).replace(blockComment, "")).map { "${it.groupValues[1]}:${it.groupValues[2]}" }.toList()
 
     private fun generatedSection(source: String): String {
         require(LIST_HEADER in source && MANUAL_TAIL in source) {
