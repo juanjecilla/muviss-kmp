@@ -28,6 +28,10 @@ The lock for this package lives in the Kotlin/JS install, not here:
 - Dependabot's npm entry for this directory (`.github/dependabot.yml`) bumps
   `package.json`, and the `kotlin-js-store` locks move with it in the same PR
   (for example #537). That is the update path; there is no lockfile to bump.
+- The Kotlin/JS build reads the version it installs from this `package.json`
+  (`sqlJsVersion` in `core/database/build.gradle.kts`, #618), so the two cannot
+  disagree. Do not put a `sql.js` version literal back in the Gradle file.
+  Regenerating the locks after a bump is still manual (#638).
 
 ## Running its Node test
 

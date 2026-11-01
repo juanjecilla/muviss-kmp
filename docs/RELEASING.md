@@ -395,11 +395,23 @@ the schedule, the gates and where a fix goes.
   on the release branch, makes git report a delete/modify conflict, which the
   forward resolves by itself: it takes the notes as the release branch wrote
   them and continues, so the PR carries them (#529) and nobody has to step in.
-  A notes file that both branches changed still opens as a conflict.
+  A notes file that both branches changed still opens as a conflict when the
+  target may receive it (develop, or that version's own line). Another version's
+  notes never conflict: the target keeps its copy and nothing is forwarded (below).
   **CodeRabbit does not review a forward PR** (the App authored it, and it skips
   App-authored PRs), so its approval has to come from a person: approve it, or
   for a conflicting one resolve it and merge it by hand, as #528 did for #527
   (#573).
+- **The marker is written by several workflows.** The release RC job's TestFlight
+  record (`release_promote.rb record-testflight`), the Sunday step, the ramp, the
+  brake and the manual merge (`record-production`) all rewrite the issue body. Each
+  write starts from the body as it is now and applies only its own change
+  (`ReleaseStages.write_marker`), reads the body back, and writes again if its change
+  was replaced. A stage never moves backwards, and the TestFlight record never moves
+  to an older RC. What remains: a write that lands between a writer's fresh read and
+  its own write is overwritten, and the read back cannot see it. That window is two
+  API calls. The REST API takes no precondition on an issue update, so only a lock
+  would close it (a follow-up, see `docs/EPICS.md`).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
@@ -442,6 +454,12 @@ with no `--write` to preview). One file per listing locale,
   is kept from then on. A file that still starts with the old `DRAFT:` marker is
   replaced. `release-notes-guard` still refuses a `DRAFT:` file on a PR into
   `main`, which generated notes never carry.
+- **Forwarded notes.** A notes edit in a fix forwards to develop and to its own
+  version's release line only. On any other release line `forward-fix.sh` leaves
+  those notes out and logs `skipped vX.Y.Z notes for release/A.B.C`, so no stray
+  `vX.Y.Z/` directory lands there (#575). When that line already has its own copy
+  of those notes, it keeps it. A forward that conflicts on code says in its PR
+  which notes were left out, so the person resolving it leaves them out too.
 
 ### Cutting a release
 
@@ -645,13 +663,23 @@ this app's primary target, see CLAUDE.md) and writes its
 into `feature/settings/ui`'s Licenses screen without an app→feature dependency
 inversion would need either a cross-module generated-resource pipeline or
 Compose Multiplatform's raw-resource mechanism, either well beyond this
-epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a
-**generated-once, checked-in** `List<OssLicense>` produced from that same
-`artifacts.json` (253 entries as of this pass). Regenerate it by re-running
-`:app:androidApp:licenseeAndroidRelease` and re-deriving the list from the
-refreshed `artifacts.json` whenever dependencies change meaningfully — it
-will silently go stale otherwise, unlike the build-time gate above, which
-never can.
+epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a **checked-in**
+`List<OssLicense>` generated from that same `artifacts.json`. To refresh it
+after a dependency change:
+
+```bash
+./gradlew :app:androidApp:regenerateOssLicenses   # runs licenseeAndroidRelease, then rewrites OssLicenses.kt
+git diff feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt
+```
+
+Commit the rewritten file with the dependency change. The generated entries
+come from the report's name and licence exactly as licensee gives them; the
+hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
+not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
+when the report lists an artifact with no entry, so a dependency that moves
+without a regeneration breaks CI rather than under-reporting on the About
+screen (#562). It checks for missing entries only, so it does not notice an
+entry left behind after its artifact is gone; the regeneration removes those.
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth

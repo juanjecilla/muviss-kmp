@@ -82,3 +82,8 @@ vendor/bundle/
 # supabase-dev GitHub environment and the owner's Keychain.
 .env
 .env.*
+
+# Poster fixtures for the opt-in RatingBadge contrast test (#592). Licensed
+# artwork: keep it out of the repo. The docs point at a folder outside the tree;
+# this rule stops a copy placed here from being committed.
+/poster-fixtures/
