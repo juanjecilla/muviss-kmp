@@ -677,7 +677,8 @@ come from the report's name and licence exactly as licensee gives them; the
 hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
 not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
 when the report lists an artifact with no entry (missing), or when an entry
-names an artifact the report no longer lists (stale), so an artifact added or
+names an artifact the report no longer lists (stale), or lists one artifact
+twice (the Licenses screen keys its rows by artifact), so an artifact added or
 removed without a regeneration breaks CI rather than under-reporting or
 over-reporting on the About screen (#562, #616). It compares `group:artifact`
 coordinates only: a version bump that changes an artifact's name or licence

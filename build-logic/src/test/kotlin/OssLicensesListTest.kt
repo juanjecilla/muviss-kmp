@@ -55,6 +55,16 @@ class OssLicensesListTest {
     }
 
     @Test
+    fun an_artifact_listed_twice_is_duplicated_even_though_the_sets_match() {
+        val drift = OssLicensesList.drift(report("a" to "x"), source(entry("a", "x"), entry("a", "x")))
+        assertEquals(listOf("a:x"), drift.duplicated)
+        assertEquals(emptyList(), drift.missing)
+        assertEquals(emptyList(), drift.stale)
+        assertFalse(drift.isEmpty)
+        assertContains(OssLicensesList.failureMessage(drift), "listed more than once: a:x")
+    }
+
+    @Test
     fun the_hand_written_font_entry_is_not_reported_as_stale() {
         // It is not a Maven artifact, so the report never lists it; it must sit outside the comparison.
         val drift = OssLicensesList.drift(report("a" to "x"), source(entry("a", "x")))

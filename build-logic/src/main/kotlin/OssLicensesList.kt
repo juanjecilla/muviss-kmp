@@ -11,9 +11,9 @@ object OssLicensesList {
     // Anchored at the start of a line, so an entry that is commented out does not count as listed.
     private val entryKey = Regex("""^\s*OssLicense\("((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"""", RegexOption.MULTILINE)
 
-    /** Artifacts the list has no entry for, and entries naming an artifact the report no longer lists. Both sorted. */
-    data class Drift(val missing: List<String>, val stale: List<String>) {
-        val isEmpty: Boolean get() = missing.isEmpty() && stale.isEmpty()
+    /** Artifacts the list has no entry for, entries naming an artifact the report no longer lists, and artifacts listed twice. All sorted. */
+    data class Drift(val missing: List<String>, val stale: List<String>, val duplicated: List<String> = emptyList()) {
+        val isEmpty: Boolean get() = missing.isEmpty() && stale.isEmpty() && duplicated.isEmpty()
     }
 
     private fun kotlinString(value: String): String = "\"" +
@@ -34,10 +34,12 @@ object OssLicensesList {
         artifacts(reportJson).map { "${it["groupId"]}:${it["artifactId"]}" }.toSet()
 
     /** The generated section of [source] (between the list header and the hand-written tail), by `group:artifact`. */
-    fun listedKeys(source: String): Set<String> {
-        val generated = generatedSection(source)
-        return entryKey.findAll(generated).map { "${it.groupValues[1]}:${it.groupValues[2]}" }.toSet()
-    }
+    fun listedKeys(source: String): Set<String> = listedEntries(source).toSet()
+
+    // In order and with repeats: a set would hide a coordinate listed twice, which the Licenses screen's lazy
+    // list cannot show (both rows would share one key).
+    private fun listedEntries(source: String): List<String> =
+        entryKey.findAll(generatedSection(source)).map { "${it.groupValues[1]}:${it.groupValues[2]}" }.toList()
 
     private fun generatedSection(source: String): String {
         require(LIST_HEADER in source && MANUAL_TAIL in source) {
@@ -48,10 +50,12 @@ object OssLicensesList {
 
     fun drift(reportJson: String, source: String): Drift {
         val reported = reportedKeys(reportJson)
-        val listed = listedKeys(source)
+        val entries = listedEntries(source)
+        val listed = entries.toSet()
         return Drift(
             missing = (reported - listed).sorted(),
             stale = (listed - reported).sorted(),
+            duplicated = entries.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted(),
         )
     }
 
@@ -63,6 +67,9 @@ object OssLicensesList {
             }
             if (drift.stale.isNotEmpty()) {
                 add("${drift.stale.size} entry(ies) for artifact(s) the licensee report no longer lists: ${drift.stale.joinToString()}")
+            }
+            if (drift.duplicated.isNotEmpty()) {
+                add("${drift.duplicated.size} artifact(s) listed more than once: ${drift.duplicated.joinToString()}")
             }
         }
         return "OssLicenses.kt is out of step with the licensee release report: ${parts.joinToString("; ")}. " +
