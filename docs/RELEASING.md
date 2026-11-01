@@ -677,9 +677,12 @@ come from the report's name and licence exactly as licensee gives them; the
 hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
 not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
 when the report lists an artifact with no entry (missing), or when an entry
-names an artifact the report no longer lists (stale), so a dependency that moves
-without a regeneration breaks CI rather than under-reporting or over-reporting
-on the About screen (#562, #616). Its failure message names both lists and the
+names an artifact the report no longer lists (stale), so an artifact added or
+removed without a regeneration breaks CI rather than under-reporting or
+over-reporting on the About screen (#562, #616). It compares `group:artifact`
+coordinates only: a version bump that changes an artifact's name or licence
+still passes, so regenerate after every dependency update, not only when CI
+fails. Its failure message names both lists and the
 regenerate command. The comparison lives in build-logic's `OssLicensesList`
 (unit-tested in `build-logic/src/test`).
 
