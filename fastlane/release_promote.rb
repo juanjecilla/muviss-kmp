@@ -180,9 +180,9 @@ class ReleasePromotion
       # iOS has its own track (ADR 0033); `complete_ios` in ios_promote.rb closes the issue when it finishes.
       # Comment first: if it fails, nothing is recorded and tomorrow's run tries again.
       @github.comment(issue["number"], "#{version} reached 100% of production on Play. The iOS phased release is still on its own track; this issue closes when it finishes.")
-      @github.update_issue(issue["number"], ReleaseStages.render(state))
+      ReleaseStages.save(@github, issue, state)
     else
-      @github.update_issue(issue["number"], ReleaseStages.render(state))
+      ReleaseStages.save(@github, issue, state)
       @github.close_issue(issue["number"], "#{version} reached 100% of production. Closed.")
     end
   end
@@ -202,7 +202,7 @@ class ReleasePromotion
     return if track["testflight_rc"] == tag
 
     state = state.merge(ReleaseStages::IOS_KEY => track.merge("testflight_rc" => tag))
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    ReleaseStages.save(@github, issue, state)
     @out.puts "recorded #{tag} on the iOS track of #{version}"
   end
 
@@ -214,7 +214,7 @@ class ReleasePromotion
     return if %w[production done].include?(state["stage"])
 
     state = state.merge("stage" => ReleaseStages::PRODUCTION, "production_started_on" => @today.iso8601, "holds" => [])
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    ReleaseStages.save(@github, issue, state)
     @github.comment(issue["number"], "Promoted to production at 20% by release.yml (a manual merge, outside the Sunday step).")
   end
 
@@ -383,7 +383,7 @@ class ReleasePromotion
   end
 
   def persist(issue, state, comment)
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    ReleaseStages.save(@github, issue, state)
     @github.comment(issue["number"], comment)
   end
 end
@@ -465,6 +465,10 @@ module ReleasePromotionAdapters
 
     def merge(pr, head_sha)
       gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--match-head-commit", head_sha)
+    end
+
+    def issue_body(number)
+      gh("issue", "view", number.to_s, "--repo", @repo, "--json", "body", "--jq", ".body")
     end
 
     def update_issue(number, body)
