@@ -9,6 +9,7 @@ import com.codingpit.muviss.feature.nextpick.data.AnchorCandidates
 import com.codingpit.muviss.feature.nextpick.data.AppSettingsCompletionPromptStore
 import com.codingpit.muviss.feature.nextpick.data.CollectionBacklogCandidates
 import com.codingpit.muviss.feature.nextpick.data.CollectionHistoryReader
+import com.codingpit.muviss.feature.nextpick.data.CrashPickRankerReporter
 import com.codingpit.muviss.feature.nextpick.data.DefaultNextPickActions
 import com.codingpit.muviss.feature.nextpick.data.DiscoverSource
 import com.codingpit.muviss.feature.nextpick.data.NextPickContextReader
@@ -20,6 +21,7 @@ import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
 import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
+import com.codingpit.muviss.feature.nextpick.domain.PickRankerReporter
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import org.koin.core.module.Module
@@ -32,6 +34,7 @@ import org.koin.dsl.module
  */
 val nextPickDataModule: Module = module {
     single<NextPickSettings> { DefaultNextPickSettings }
+    single<PickRankerReporter> { CrashPickRankerReporter() }
     single<CompletionPromptStore> { AppSettingsCompletionPromptStore(get<MuvissDatabase>().appSettingsQueries, get(), get()) }
 
     single {
@@ -51,6 +54,7 @@ val nextPickDataModule: Module = module {
             exclusions = TriageExclusions(triage),
             history = CollectionHistoryReader(clock, collection),
             muting = SettingsMuting(settings),
+            reporter = get(),
         )
     }
 
