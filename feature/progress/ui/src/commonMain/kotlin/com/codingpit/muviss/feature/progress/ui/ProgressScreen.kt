@@ -235,12 +235,16 @@ private fun WatchNextScreen(
 
     tickSnackbar?.let { request ->
         LaunchedEffect(request) {
+            // Resolve first: these calls suspend, and a refresh-failed message registered during
+            // them would otherwise take the slot and queue the tick behind it.
+            val message = request.message.resolveAsync()
+            val undoLabel = getString(Res.string.action_undo)
             // A refresh-failed message may be up; the tick takes its slot. A previous tick's snackbar
             // needs no dismissing: this effect was cancelled when the newer request arrived.
             snackbarHostState.currentSnackbarData?.dismiss()
             val result = snackbarHostState.showSnackbar(
-                message = request.message.resolveAsync(),
-                actionLabel = getString(Res.string.action_undo),
+                message = message,
+                actionLabel = undoLabel,
                 // Material3 defaults to Indefinite whenever an action label is given.
                 duration = SnackbarDuration.Short,
             )
