@@ -267,15 +267,13 @@ scripts/a11y/fetch-rating-badge-posters.sh "$HOME/muviss-posters" 60 popular
 scripts/a11y/fetch-rating-badge-posters.sh "$HOME/muviss-posters" 60 top_rated
 ```
 
-Then run the test with the folder's absolute path. **Always pass `--rerun`.**
-Gradle does not treat the variable as an input. After a run without it, a run
-with it reports `:core:designsystem:jvmTest UP-TO-DATE`, the poster test does
-not run, and the build stays green. Checked on 2026-10-28: a skipped run, then
-a run with the variable and no `--rerun`, left the report at `skipped="1"`.
+Then run the test with the folder's absolute path. `MUVISS_POSTER_DIR` is a
+declared input of every `jvmTest` task (`muviss.kmp.library`, #629), so setting
+it re-runs the test after a skipped run; no `--rerun` is needed.
 
 ```bash
 MUVISS_POSTER_DIR="$HOME/muviss-posters" \
-  ./gradlew :core:designsystem:jvmTest --tests '*RatingBadgePosterFixturesTest*' --rerun
+  ./gradlew :core:designsystem:jvmTest --tests '*RatingBadgePosterFixturesTest*'
 ```
 
 The per-poster table is in the test's standard output, in

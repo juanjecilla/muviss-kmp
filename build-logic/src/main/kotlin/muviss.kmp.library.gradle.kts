@@ -104,3 +104,15 @@ kotlin.targets.matching { it.platformType != KotlinPlatformType.common }.configu
         }
     }
 }
+
+// Env-gated tests (`assumeTrue` on an environment variable) report SKIPPED. An
+// environment variable is not a Gradle task input unless it is declared, so a
+// later run that sets it reported UP-TO-DATE and never ran the test (#629). Each
+// variable below is an input: setting, changing or unsetting it re-runs the task.
+// Add a new env-gated test's variable here.
+val envGatedTestVariables = listOf("MUVISS_POSTER_DIR", "MUVISS_KSAFE_LIVE", "MUVISS_RECORD_GOLDENS")
+tasks.withType<Test>().configureEach {
+    envGatedTestVariables.forEach { name ->
+        inputs.property("env.$name", providers.environmentVariable(name).orElse(""))
+    }
+}
