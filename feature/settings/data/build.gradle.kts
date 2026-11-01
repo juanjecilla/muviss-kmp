@@ -11,6 +11,7 @@ kotlin {
             implementation(projects.core.common)
             implementation(projects.core.database)
             implementation(projects.core.network)
+            implementation(projects.core.sync)
             implementation(projects.feature.collection.api)
             implementation(projects.feature.progress.api)
             implementation(libs.koin.core)

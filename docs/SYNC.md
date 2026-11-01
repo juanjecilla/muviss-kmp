@@ -476,6 +476,17 @@ other devices' real edits.
 - **An interrupted first sync** re-downloads from the start, since no cursor
   moves until everything drained.
 
+## Delete all data on a signed-in device (#645)
+
+Settings > Delete all data signs out first, then erases everything locally,
+including `syncState.ownerAccountId` and the persisted session (`syncAccount`).
+The sign-out comes before the erase, so no sync cycle can pull the library back
+in between. The server copy is untouched: there is no server delete. Signing in
+again is a first sync, which downloads the account's copy. A sign-out the server
+does not confirm (offline) still ends the session locally, and the erase
+proceeds. Until a real device and a real Supabase project have run this path,
+it rests on `LocalDataEraserTest` alone.
+
 ## Automatic sync (EPIC 40, ADR 0021)
 
 Off by default, and per device. Three layers must all pass, all enforced inside

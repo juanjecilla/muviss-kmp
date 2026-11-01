@@ -6,6 +6,7 @@ import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
+import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
 import kotlinx.coroutines.withContext
 
@@ -24,6 +25,7 @@ import kotlinx.coroutines.withContext
  * they are told explicitly once everything is gone (#317), the same push
  * `SqlDelightProgressRepository` makes after every progress write.
  */
+@Suppress("LongParameterList") // one Koin binding per dependency; a parameter object would only rename them
 class SqlDelightLocalDataEraser(
     private val database: MuvissDatabase,
     private val dispatchers: AppDispatchers,
@@ -31,11 +33,20 @@ class SqlDelightLocalDataEraser(
     private val secrets: SecretStore,
     private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
     private val widgetRefresher: WidgetRefresher,
+    private val syncBackend: SyncBackend,
 ) : LocalDataEraser {
 
+    // Signs out first, so once the erase starts nothing can pull the library back (#645).
     // Under the Device Backup lock: a toggle tapped before this cannot recreate the row after it.
     override suspend fun deleteAllData() = withContext(dispatchers.io) {
+        signOut()
         deviceBackupWrites.erase { eraseEverything() }
+    }
+
+    // Never fails the erase: a sign-out the server could not confirm still ends the session locally
+    // (SupabaseSyncBackend does that itself), and the session row is cleared below regardless.
+    private suspend fun signOut() {
+        runCatching { syncBackend.signOut() }
     }
 
     private suspend fun eraseEverything() {
@@ -62,6 +73,8 @@ class SqlDelightLocalDataEraser(
             // Whose library this was, and how far it had pulled.
             database.syncCursorQueries.deleteAll()
             database.syncStateQueries.deleteRow()
+            // The persisted session: a restart must not restore it when the remote sign-out failed.
+            database.syncAccountQueries.clearSession()
         }
         // The Own TMDB Key (EPIC 46) is not in the database. `clear` also drops the copy the
         // provider holds in memory, so the next request is Muviss's; `clearAll` then wipes the

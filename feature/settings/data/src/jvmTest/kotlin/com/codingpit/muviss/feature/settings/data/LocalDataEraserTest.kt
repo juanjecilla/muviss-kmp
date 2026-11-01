@@ -6,7 +6,18 @@ import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.common.widget.WidgetRefresher
+import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
+import com.codingpit.muviss.core.sync.NoOpSyncBackend
+import com.codingpit.muviss.core.sync.OAuthProvider
+import com.codingpit.muviss.core.sync.SyncBackend
+import com.codingpit.muviss.core.sync.SyncBackendId
+import com.codingpit.muviss.core.sync.SyncChangeSet
+import com.codingpit.muviss.core.sync.SyncCursor
+import com.codingpit.muviss.core.sync.SyncPage
+import com.codingpit.muviss.core.sync.SyncSession
+import com.codingpit.muviss.core.sync.SyncTable
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import io.ktor.client.HttpClient
@@ -14,6 +25,8 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -57,7 +70,14 @@ class LocalDataEraserTest {
         secrets.put("something-else", "x")
 
         var widgetRefreshes = 0
-        SqlDelightLocalDataEraser(database, dispatchers, ownKey, secrets) { widgetRefreshes++ }.deleteAllData()
+        SqlDelightLocalDataEraser(
+            database,
+            dispatchers,
+            ownKey,
+            secrets,
+            widgetRefresher = WidgetRefresher { widgetRefreshes++ },
+            syncBackend = NoOpSyncBackend(),
+        ).deleteAllData()
 
         val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
         assertTrue(export.collection.isEmpty() && export.progress.isEmpty() && export.plays.isEmpty())
@@ -93,9 +113,85 @@ class LocalDataEraserTest {
 
         // The tap parks at the hop to io; Delete all data then runs to completion before it lands.
         launch(start = CoroutineStart.UNDISPATCHED) { repository.setDeviceBackupEnabled(true) }
-        SqlDelightLocalDataEraser(database, dispatchers, ownKey, secrets, writes) {}.deleteAllData()
+        SqlDelightLocalDataEraser(
+            database,
+            dispatchers,
+            ownKey,
+            secrets,
+            writes,
+            widgetRefresher = WidgetRefresher {},
+            syncBackend = NoOpSyncBackend(),
+        ).deleteAllData()
         advanceUntilIdle()
 
         assertEquals(null, database.appSettingsQueries.selectSettings().awaitAsOneOrNull())
+    }
+
+    @Test
+    fun `erasing while signed in signs out before anything is erased and clears the owner`() = runTest {
+        val database = inMemoryDatabase()
+        signedIn(database)
+        var ownerWhenSigningOut: String? = null
+        val backend = RecordingSyncBackend {
+            ownerWhenSigningOut = database.syncStateQueries.selectState().awaitAsOneOrNull()?.ownerAccountId
+        }
+
+        eraser(database, backend).deleteAllData()
+
+        assertEquals(1, backend.signOuts)
+        assertEquals("account-1", ownerWhenSigningOut, "the owner is still there at sign-out, so the erase has not started yet")
+        assertEquals(null, database.syncStateQueries.selectState().awaitAsOneOrNull(), "the owner is cleared with the rest of the sync state")
+        assertEquals(null, database.syncAccountQueries.selectAccount().awaitAsOne().userId, "the persisted session is gone")
+    }
+
+    @Test
+    fun `a sign-out that fails offline still erases everything and clears the session`() = runTest {
+        val database = inMemoryDatabase()
+        signedIn(database)
+        database.mediaListQueries.upsertList("list-1", "Rainy day", 1L, 1L, false, false)
+        val backend = RecordingSyncBackend(failure = IllegalStateException("offline"))
+
+        eraser(database, backend).deleteAllData()
+
+        assertEquals(1, backend.signOuts)
+        assertEquals(0, database.mediaListQueries.selectAllListsForExport().awaitAsList().size, "the library is erased although the server did not confirm the sign-out")
+        assertEquals(null, database.syncStateQueries.selectState().awaitAsOneOrNull())
+        assertEquals(null, database.syncAccountQueries.selectAccount().awaitAsOne().userId, "a restart must not restore the session")
+    }
+
+    private fun eraser(database: MuvissDatabase, backend: SyncBackend) = SqlDelightLocalDataEraser(
+        database,
+        dispatchers,
+        OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) })),
+        InMemorySecretStore(),
+        widgetRefresher = WidgetRefresher {},
+        syncBackend = backend,
+    )
+
+    private suspend fun signedIn(database: MuvissDatabase) {
+        database.syncStateQueries.ensureRow()
+        database.syncStateQueries.setOwner("account-1")
+        database.syncAccountQueries.ensureRow()
+        database.syncAccountQueries.saveSession("SUPABASE", "account-1", null, "token", "refresh", 1L)
+    }
+
+    /** Records each sign-out; [failure] makes it throw, as a backend would on a local failure. */
+    private class RecordingSyncBackend(
+        private val failure: Throwable? = null,
+        private val onSignOut: suspend () -> Unit = {},
+    ) : SyncBackend {
+        var signOuts = 0
+        override val id = SyncBackendId.SUPABASE
+        override val session: Flow<SyncSession?> = flowOf(null)
+        override suspend fun signInAnonymously(): Result<SyncSession> = Result.failure(UnsupportedOperationException())
+        override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String> = Result.failure(UnsupportedOperationException())
+        override suspend fun completeOAuth(authCode: String): Result<SyncSession> = Result.failure(UnsupportedOperationException())
+        override suspend fun signOut() {
+            onSignOut()
+            signOuts++
+            failure?.let { throw it }
+        }
+        override suspend fun push(changes: SyncChangeSet): Result<Unit> = Result.success(Unit)
+        override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit> = Result.success(Unit)
     }
 }

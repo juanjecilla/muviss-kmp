@@ -85,7 +85,7 @@ val settingsDataModule: Module = module {
     factory { LoadGenresUseCase(get()) }
     single<SettingsApi> { DefaultSettingsApi(get(), get(), get(), get()) }
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
-    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get()) }
+    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get(), get()) }
     single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
     factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }

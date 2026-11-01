@@ -107,7 +107,7 @@
     <string name="delete_all">Delete all data</string>
     <string name="delete_all_value">Start over on this device</string>
     <string name="delete_all_question">Delete everything?</string>
-    <string name="delete_all_body">Your library, watch history, lists, triage decisions, profile and settings are deleted from this device. This can't be undone, so export a backup first if you might want them back.</string>
+    <string name="delete_all_body">Your library, watch history, lists, triage decisions, profile and settings are deleted from this device. If you sync, you are signed out here, and the copy in your account is kept: signing in again brings it back. This can't be undone, so export a backup first if you might want them back.</string>
     <string name="delete_all_confirm">Delete everything</string>
     <string name="delete_all_done">Everything was deleted from this device.</string>
     <plurals name="backup_titles">

@@ -107,7 +107,7 @@
     <string name="delete_all">Borrar todos los datos</string>
     <string name="delete_all_value">Empezar de cero en este dispositivo</string>
     <string name="delete_all_question">¿Borrar todo?</string>
-    <string name="delete_all_body">Tu biblioteca, historial, listas, decisiones de triaje, perfil y ajustes se borran de este dispositivo. No se puede deshacer, así que exporta antes una copia si quizá los quieras recuperar.</string>
+    <string name="delete_all_body">Tu biblioteca, historial, listas, decisiones de triaje, perfil y ajustes se borran de este dispositivo. Si usas la sincronización, se cierra tu sesión aquí y la copia de tu cuenta se conserva: al volver a iniciar sesión, se recupera. No se puede deshacer, así que exporta antes una copia si quizá los quieras recuperar.</string>
     <string name="delete_all_confirm">Borrar todo</string>
     <string name="delete_all_done">Se ha borrado todo de este dispositivo.</string>
     <plurals name="backup_titles">
