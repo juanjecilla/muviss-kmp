@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptPolicy
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
 import kotlinx.coroutines.CancellationException
@@ -63,6 +64,7 @@ class CompletionPromptViewModel(
             lastShownEpochMs = store.lastShownAtEpochMs(),
             enabled = store.enabled.first(),
             onboardingCompleted = onboardingDone.value,
+            localDayOf = clock::localEpochDayOf,
         )
         if (!allowed) return
         store.markShown(now)

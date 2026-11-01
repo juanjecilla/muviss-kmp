@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.triage.domain
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
+import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -159,7 +160,7 @@ class LoadDeckUseCase(
         // no question left to ask, so it is retired rather than shown — and
         // retired *soft*, so the tombstone reaches the other devices instead of
         // their copy being pushed back.
-        val due = snoozes.due(clock.todayEpochDay())
+        val due = snoozes.due(clock.localTodayEpochDay())
         val (overtaken, returning) = due.partition { it.mediaId in settled }
         overtaken.forEach { snoozes.unsnooze(it.mediaId) }
 
@@ -192,15 +193,16 @@ class SnoozeUseCase(
     }
 
     /** The due date a stored [SnoozePeriod] implies. Null for ASK_EACH_TIME, which has no duration. */
-    fun dueDateFor(period: SnoozePeriod): Long? = period.days?.let { clock.todayEpochDay() + it }
+    fun dueDateFor(period: SnoozePeriod): Long? = period.days?.let { clock.localTodayEpochDay() + it }
 
     /**
-     * Today, as an epoch day — the one clock read the custom date picker needs
+     * Today in the person's zone, as an epoch day — the one clock read the custom date picker needs
      * to bound its earliest selectable day. [dueDateFor] keeps the *durations*
      * out of the UI; this keeps "what day is it" out too, so the picker still
-     * never reads a clock of its own and cannot offer yesterday.
+     * never reads a clock of its own and cannot offer yesterday. Local, like
+     * [dueDateFor]: a due day and the picker's floor must count the same days.
      */
-    fun todayEpochDay(): Long = clock.todayEpochDay()
+    fun todayEpochDay(): Long = clock.localTodayEpochDay()
 }
 
 /** Takes a Snooze back — undo, the Snoozed screen, and the Detail banner all call this. */
