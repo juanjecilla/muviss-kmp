@@ -3,6 +3,7 @@ package com.codingpit.muviss.core.designsystem.text
 import com.codingpit.muviss.core.designsystem.generated.resources.Res
 import com.codingpit.muviss.core.designsystem.generated.resources.error_not_found
 import com.codingpit.muviss.core.designsystem.generated.resources.error_offline
+import com.codingpit.muviss.core.designsystem.generated.resources.error_own_key_rejected
 import com.codingpit.muviss.core.designsystem.generated.resources.error_rate_limited
 import com.codingpit.muviss.core.designsystem.generated.resources.error_unauthorized
 import com.codingpit.muviss.core.designsystem.generated.resources.error_unknown
@@ -20,8 +21,16 @@ import com.codingpit.muviss.models.MetadataError
 fun Throwable.toUiText(fallback: UiText): UiText = when (this) {
     is MetadataError.RateLimited -> UiText.Resource(Res.string.error_rate_limited)
     is MetadataError.Unauthorized -> UiText.Resource(Res.string.error_unauthorized)
+    is MetadataError.OwnKeyRejected -> OwnKeyRejectedText
     is MetadataError.NotFound -> UiText.Resource(Res.string.error_not_found)
     is MetadataError.Offline -> UiText.Resource(Res.string.error_offline)
     is MetadataError.Unknown -> UiText.Resource(Res.string.error_unknown)
     else -> fallback
 }
+
+/**
+ * The copy for a rejected Own TMDB Key (ADR 0027). A named value rather than an
+ * inline resource so `ErrorState` can recognise it and offer the way to fix it
+ * (#321) without every view model carrying a typed error beside its `UiText`.
+ */
+val OwnKeyRejectedText: UiText = UiText.Resource(Res.string.error_own_key_rejected)

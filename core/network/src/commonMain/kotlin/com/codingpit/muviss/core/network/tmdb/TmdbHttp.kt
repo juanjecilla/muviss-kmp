@@ -49,7 +49,7 @@ internal class TmdbRetryPolicy(
  * - [HttpCache] when [cached], in memory and per client: it honours TMDB's own
  *   `Cache-Control`/`ETag`, dies with the process, and is a client-side plugin,
  *   so it behaves the same on OkHttp, Darwin and Js. It can throw
- *   `InvalidCacheStateException` on a 304 whose entry it cannot find; see
+ *   `InvalidCacheStateException` on a 304 whose entry it cannot find (Ktor 3.6 no longer throws it for a Vary mismatch); see
  *   `TmdbProvider.request` for the uncached retry.
  *
  * The Supabase client is *not* derived through this, and must not be.

@@ -5,6 +5,8 @@ import com.codingpit.muviss.core.billing.EntitlementProvider
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
 import com.codingpit.muviss.core.sync.SyncAvailability
@@ -86,6 +88,7 @@ internal class SyncApp(
         modules(
             appModules + module {
                 single { database }
+                single<SecretStore> { InMemorySecretStore() }
                 single<AppClock> { clock }
                 single<AppDispatchers> {
                     object : AppDispatchers {

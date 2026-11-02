@@ -1,6 +1,8 @@
 package com.codingpit.muviss.core.common.flags
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * Which drag scheme the triage deck uses (ADR 0010).
@@ -83,8 +85,11 @@ enum class SnoozePlacement {
 /**
  * Seam for runtime feature flags.
  *
- * The only implementation today reads the local `appSettings` row, so every
- * flag is a per-device preference the user sets in Settings. It is declared as
+ * The only implementation reads the local `appSettings` row, so almost every
+ * flag is a per-device preference the user sets in Settings. [byokEnabled] is
+ * the exception: it is served by
+ * [RemoteConfig][com.codingpit.muviss.core.common.remoteconfig.RemoteConfig]
+ * and is read-only here. It is declared as
  * an interface here — rather than being folded into `SettingsApi` — so that a
  * remote configuration source can be bound in its place later without any
  * caller changing, exactly as `MetadataProvider` (ADR 0001) and `SyncBackend`
@@ -117,6 +122,17 @@ interface FeatureFlags {
     val triageDeckAnimations: Flow<Boolean>
 
     /**
+     * The feedback a tick plays — the row highlight and slide on Progress, the
+     * row flash and season pulse on Detail, and the milestone burst (EPIC 52).
+     *
+     * Narrows [animationsEnabled] like [triageDeckAnimations] does: readers
+     * take the AND of the two, which is [tickAnimationsActive]. The haptic is
+     * not governed by either; it is direct feedback, not an animation. Per
+     * device and never synced.
+     */
+    val tickAnimations: Flow<Boolean>
+
+    /**
      * Whether this device may sync without being asked (EPIC 40, ADR 0021).
      * Off by default. Per device and never synced: it is a statement about
      * *this* device's battery and data plan, not about the library.
@@ -138,11 +154,20 @@ interface FeatureFlags {
     /** Where a due Snooze re-enters the deck. Per device, like the period. */
     val triageSnoozePlacement: Flow<SnoozePlacement>
 
+    /**
+     * Whether the app *offers* to take an Own TMDB Key (EPIC 46). Served by
+     * Remote Config, so there is no setter, and it governs the entry UI only: a
+     * stored key keeps being used when this turns off (ADR 0027).
+     */
+    val byokEnabled: Flow<Boolean>
+
     suspend fun setTriageControlScheme(scheme: TriageControlScheme)
 
     suspend fun setAnimationsEnabled(enabled: Boolean)
 
     suspend fun setTriageDeckAnimations(enabled: Boolean)
+
+    suspend fun setTickAnimations(enabled: Boolean)
 
     suspend fun setSyncAutomatically(enabled: Boolean)
 
@@ -150,3 +175,7 @@ interface FeatureFlags {
 
     suspend fun setTriageSnoozePlacement(placement: SnoozePlacement)
 }
+
+/** [FeatureFlags.tickAnimations] narrowed by the master [FeatureFlags.animationsEnabled]: the value readers act on. */
+val FeatureFlags.tickAnimationsActive: Flow<Boolean>
+    get() = combine(animationsEnabled, tickAnimations) { app, tick -> app && tick }.distinctUntilChanged()

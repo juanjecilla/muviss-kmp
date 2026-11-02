@@ -35,11 +35,19 @@ licensee {
     allow("Apache-2.0")
     allow("MIT")
     // EPIC 22: `androidx.glance:glance-appwidget-external-protobuf` is
-    // Glance's repackaged protobuf and the only BSD-3-Clause artifact in the
-    // graph. Permissive, attribution-only, no Play Store implication — added
+    // Glance's repackaged protobuf, and (EPIC 46) KSafe's DataStore brings the
+    // same thing as `androidx.datastore:datastore-preferences-external-protobuf`
+    // — the only BSD-3-Clause artifacts in the graph. Permissive, attribution-only, no Play Store implication — added
     // deliberately rather than by widening the list to "anything permissive".
     allow("BSD-3-Clause")
     allowUrl("https://opensource.org/license/mit")
+    // EPIC 45: ConfigCat's Kotlin SDK and its one non-Kotlin-stdlib dependency
+    // (kotlin-semver) are MIT, but their POMs name the licence by the URL of
+    // the LICENSE file on GitHub instead of an SPDX id. Checked against each
+    // repository's licence file, and pinned to exactly these two URLs rather
+    // than allowing "any raw.githubusercontent.com".
+    allowUrl("https://raw.githubusercontent.com/configcat/kotlin-sdk/main/LICENSE")
+    allowUrl("https://raw.githubusercontent.com/z4kn4fein/kotlin-semver/main/LICENSE")
 }
 
 dependencies {
@@ -62,6 +70,7 @@ dependencies {
     implementation(projects.core.sync)
     // TmdbFailureTrace: the debug-only logcat trace of swallowed TMDB failures (#177).
     implementation(projects.core.network)
+    implementation(projects.core.secrets)
     implementation(libs.koin.core)
     implementation(libs.kotlinx.coroutinesCore)
     implementation(libs.androidx.work.runtimeKtx)
@@ -120,27 +129,37 @@ val hasReleaseSigningConfig =
 
 // -----------------------------------------------------------------------
 // Versioning derived from git (MuvissVersion in build-logic, shared with
-// :core:common and :app:desktopApp): versionCode is the commit count on HEAD,
-// versionName the latest reachable tag or a dev label.
+// :core:common and :app:desktopApp): versionCode is `major·1e6 + minor·1e4 +
+// patch·100 + rcN` on an exact release tag, else the commit count on HEAD
+// (ADR 0030); versionName is the latest reachable tag or a dev label.
 // -----------------------------------------------------------------------
 // A release build without git would ship versionCode 1, which Play rejects as a
 // downgrade after the first upload (#77) — fail instead. Debug and test builds
 // keep the fallback so a source-only archive still compiles.
+// Only this project's release outputs count (#271). A qualified name (`:app:
+// shared:linkReleaseFramework...`, `:app:desktopApp:packageReleaseDmg`) runs in
+// its own project and says nothing about this one, so a shallow clone can run
+// it; an unqualified one (`bundleRelease`) runs in every project that has it,
+// this one included.
 val isReleaseInvocation =
     gradle.startParameter.taskNames.any { name ->
-        name.contains("Release", ignoreCase = true) || name.substringAfterLast(':').startsWith("bundle")
+        val qualified = name.contains(':')
+        val ownTask = !qualified || name.removePrefix(":").startsWith(project.path.removePrefix(":") + ":")
+        val local = name.substringAfterLast(':')
+        ownTask && (local.contains("Release", ignoreCase = true) || local.startsWith("bundle"))
     }
 
 // A shallow clone counts only the commits it fetched (often 1), which is the
-// same downgrade with extra steps.
+// same downgrade with extra steps. The release formula does not read the count,
+// but an untagged release build falls back to it.
 if (isReleaseInvocation && muvissVersion.isShallowCheckout) {
-    error("versionCode comes from `git rev-list --count HEAD`, which is wrong in a shallow clone. Use fetch-depth: 0.")
+    error("versionCode comes from git (the release tag, or `git rev-list --count HEAD`), which is wrong in a shallow clone. Use fetch-depth: 0.")
 }
 
 val gitVersionCode: Int =
     muvissVersion.codeOrNull
         ?: if (isReleaseInvocation) {
-            error("versionCode comes from `git rev-list --count HEAD`, and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
+            error("versionCode comes from git (the release tag, or `git rev-list --count HEAD`), and git is unavailable. Release builds need a full git checkout (fetch-depth: 0 in CI).")
         } else {
             1
         }

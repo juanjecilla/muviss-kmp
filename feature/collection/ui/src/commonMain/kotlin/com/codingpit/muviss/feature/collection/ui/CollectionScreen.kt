@@ -43,7 +43,6 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
@@ -235,7 +234,7 @@ private fun LibraryScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     when {
                         state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
-                        state.error != null -> ErrorState(state.error!!.resolve(), onRetry = { viewModel.refresh() })
+                        state.error != null -> ErrorState(state.error!!, onRetry = { viewModel.refresh() })
                         state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter, state.typeFilter, onOpenSearch)
                         else -> CollectionGrid(state.visibleEntries, onOpenDetail)
                     }

@@ -9,6 +9,12 @@
 
     <!-- %1$d season number, %2$d episode number. -->
     <string name="tick_snackbar">Marked S%1$dE%2$d seen</string>
+    <!-- %1$d season number. A tick that finishes a season, when a later one has aired. -->
+    <string name="tick_snackbar_season_done">Season %1$d finished</string>
+    <!-- %1$s show title. A tick after which nothing aired is left unseen. -->
+    <string name="tick_snackbar_caught_up">Caught up on %1$s</string>
+    <!-- Sweeps over a row after its tick. %1$d season, %2$d episode. -->
+    <string name="tick_row_confirmation">S%1$dE%2$d seen</string>
     <string name="watch_next_empty_title">Nothing to watch next</string>
     <string name="watch_next_empty_body">Add a show to your Library and start watching to see it here.</string>
     <!-- %1$d season, %2$d episode, %3$s episode name. -->

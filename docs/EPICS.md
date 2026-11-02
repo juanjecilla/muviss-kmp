@@ -285,11 +285,19 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | 11 | EPIC 41 Co-watch: a Shortlist of what two Companions can watch together (**blocked on EPIC 32**; needs ADR 0022, `11.sqm` — collides with EPIC 28, see the claims note) | #118 |
 | 11 | EPIC 42 Snooze: postponing a triage decision (ADR 0023, `12.sqm`) | #135 |
 | 11 | EPIC 44 Invite links: `https://muvissapp.com/invite#…` opens Watch together with the code prefilled (verified App Links / Universal Links; iOS blocked on TEAM_ID; needs an ADR on the fragment) | #185 |
+| 11 | EPIC 45 Remote config via ConfigCat behind `FeatureFlags`, split from #29 (ADR 0026) | #297 |
+| 11 | EPIC 46 Bring your own TMDB key: user → remote → built-in, never a silent fallback (ADR 0027; KSafe spike for secure storage) | #298 |
+| 11 | EPIC 47 First-run onboarding; notifications become opt-in, Notification Nudge, cold Android prompt removed | #299 |
+| — | EPIC 48 Ops Bridge: tool connectors as GitHub Actions (ADR 0028); connector #1 is Sentry → GitHub (#300) | #301 |
 | 12 | EPIC 33 Store assets: fastlane metadata as listing source, `StoreShot` screenshots and feature graphic (public-domain films + fictional shows), privacy URL via GitHub Pages at the public flip (ADR 0024) | #76 |
 | 12 | EPIC 34 Android to Google Play: fastlane `supply`, tag → internal, dispatch → production; local-only v1 (ADR 0024) | #77 |
 | 13 | EPIC 35 iOS to TestFlight and the App Store: fastlane + App Store Connect API key, local-only v1 (ADR 0024) | #78 |
 | 13 | EPIC 36 Desktop on a GitHub Release: notarised DMG, **unsigned** MSI for v1 (signing is #179), DEB (ADR 0024) | #79 |
 | 13 | EPIC 37 Web to production — **deferred 2026-10-04**, see "Web is deferred" | #80 |
+| — | EPIC 49 Lapsed-account data retention: what keeping a lapsed account's server rows costs, and whether to purge (ADR 0019) | #257 |
+| — | EPIC 50 Staged releases: a week on internal, a week on open beta, then production automatically; milestone + release issue per version, fixes forward-propagate, `versionCode` from the version (ADR 0030) | #342 |
+| — | EPIC 51 What's next?: a Pick Session after a Completion (and from Discover, Progress, Library, Detail) that ends in a Next Pick; Taste Profile; rules over the user's own history behind a ranker seam (ADR 0032) | #396 |
+| — | EPIC 52 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`19.sqm`) | #391 |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.
@@ -350,6 +358,49 @@ Stand up a second free-tier project dedicated to dev/verification; decide and do
 
 Top priority alongside #66 — every RLS/migration verification task in the backlog is unsafe to fully automate without this existing first. Done means a second project exists, is documented in `docs/SYNC.md` alongside the existing verification log, and at least one of #88/#100/#129 has been re-run against it end-to-end before anything is promoted to prod.
 
+## EPICs 45–48 — remote config, BYOK, onboarding, Ops Bridge (added 2026-10-10)
+
+From one grilling session. The details, testing and parity sections are in each issue.
+
+- **EPIC 45 (#297) — Remote config.** ConfigCat behind the existing `FeatureFlags` seam, compiled defaults offline, no user object (ADR 0026). Split from #29, which now covers analytics only. First keys: `byokEnabled` and `tmdbFallbackReadToken`, so our TMDB credential can be rotated without a release.
+- **EPIC 46 (#298) — Own TMDB Key.** Not a rate-limit fix (TMDB limits per IP, and each device calls from its own); it is insurance against our key being revoked, and user control. Precedence user → remote → built-in, skipping only absent levels; a rejected user key is reported, never silently replaced (ADR 0027). Storage is KSafe on all six targets: Android Keystore, iOS Keychain, and on desktop the OS credential store (DPAPI / Keychain / Secret Service) with a software-key fallback where none is reachable; the browser has no OS store, so on web the key is encrypted with key material the browser holds. Threat model: those last two stop casual copying (a synced folder, a backup, a screenshot of a file), not someone who can already read the user's profile; accepted because a TMDB key is free, read-only and revocable at themoviedb.org, and web is deferred. A packaged desktop build needs KSafe's JDK modules for OS custody — check it on the DMG/MSI/DEB. Never synced or exported. Remote parts depend on EPIC 45.
+- **EPIC 47 (#299) — Onboarding.** Skippable from page 1, first run only (the migration marks upgraded installs done), notifications **off** for fresh installs only, `MainActivity`'s cold prompt deleted, a one-time Notification Nudge on the first saved TV show, "Show introduction again" in Settings. Takes the next free `.sqm`. The TMDB-key page arrives with EPIC 46.
+- **EPIC 48 (#301) — Ops Bridge.** Source → item → sink connectors as scheduled GitHub Actions (ADR 0028), never called "sync". Connector #1, Sentry crash → GitHub issue with close-resolves, is the standalone task #300; a hosted service and n8n/Zapier are recorded as future options.
+
+Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key is used, so EPIC 32 (#75) also needs a TMDB commercial licence (#302).
+
+## EPIC 51 — What's next? — issue #396
+
+Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.md` (Completion, Pick Session, Next Pick, Taste Profile). Free, so the landing and the Play listing change in the PR that ships it.
+
+**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+
+**Decisions.**
+- Rules + TMDB + local history; no model in v1. A ranker seam keeps an AI option open (`docs/research/next-pick-ai.md`, spike #404).
+- Questions: source (my list / something new / either), format + time, mood to genre sets, anchor, era + services, company, commitment, rewatch OK. All skippable; Quick (up to 2) / Standard (up to 4) / No questions in Settings; a filled Taste Profile shortens it.
+- Result modes: **One Pick** (default, with "another"), **Top Picks** (3-5), **Deck** (Triage through a session-seeded `DeckSource`). Pluggable so other formats can be tried; the default can come from Remote Config. Not called "Shortlist", which is co-watch's.
+- Actions reuse existing writes: Add = CollectionEntry, Not for me = TriageDecision Skip, Not now = Snooze. No pick log. Session answers are not stored.
+- **Completion is a user tick only** — never import, sync pull, restore or bulk mark. At most one prompt a day, Settings switch.
+- **Taste Profile** is explicit, synced and exported: liked genres, formats, services, languages, usual company. Dislikes are **Muted Genres** (ADR 0031), not a second list.
+- **Muted Genres apply**; an explicit in-session choice beats a standing mute.
+- Offline: backlog only, and the screen says so. No implicit learning in v1.
+
+**Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage.
+
+**Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
+
+## EPIC 52 — Tick animations — issue #391
+
+**`19.sqm`.** A tick on the Progress tab played a button pop and a snackbar, then the row snapped to the next episode, so it was easy to miss. Now the row confirms it (a sweep with "S1E3 seen", the episode line slides, the bar fills, a caught-up row fades out), a Milestone (a season finished, or nothing aired left unseen) adds a hand-drawn burst over the list, and Detail gets a lighter version (row wash, count and bar animate, the season checkbox pulses once, a burst only when a single tick catches the show up — bulk marks never burst).
+
+Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tickAnimations`, default on, per device, not synced). It narrows `animationsEnabled` the way `triageDeckAnimations` does: `FeatureFlags.tickAnimationsActive` is the AND, and the haptic is never gated. The milestone also changes the snackbar copy, so with motion off it is still said. Both pre-existing tick pops used to ignore the master switch; they honour it now. Outcome is decided in `ProgressViewModel.tick` (Progress, after the list settles) and `DetailViewModel.toggleEpisodeSeen` (Detail, at the tap).
+
+**Not done, deliberately:** the widgets (#393), the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
+
+**Not verified by any test:** the haptic, and how the sweep and burst feel on a device. Tests assert presence and absence under a hand-driven clock (`ProgressTickFeedbackTest`), not the look.
+
+---
+
 ## Sequencing
 
 Wave 0 first (nothing else runs without CI; EPIC 43 belongs here too — every live-project verification task depends on it existing before it can run safely). Wave 10 in parallel; start EPIC 32's ADR at the same time because it is the long pole. Wave 11 after the wave-10 network and migration work lands (EPIC 30 needs EPIC 27's `MetadataError`; EPIC 30 and EPIC 26 share a migration). Waves 12-13 need Wave 0 accounts and certificates. Wave 14 is the public flip.
@@ -386,14 +437,35 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+### 2026-10-17
+
+- **Muted Genres built** (ADR 0031, glossary: Muted Genre): talk, news and reality TV are left out of the triage deck, Discover, For you and More like this by default; any TMDB genre can be muted in Settings, Onboarding offers four, and a "Show muted" chip lifts it per session. `18.sqm`, `19.db`. Raised and not done: #385 (sync it across devices), #386 (titles with no genres, e.g. award shows: closed as a documented limit, `type` does not catch them either), #387 (stored genre names keep the language they were muted in: fixed here, names resolve from the catalogue), #388 (verify on a device, per target; nothing was run on one).
+
+### 2026-10-14
+
+- v1.1.0 shipped. #363/#364 (the owner's Settings > About test crashes, a pre-1.0 dev build) closed as completed, #71 (EPIC 38) closed: every item merged. #151 (EPIC 43) stays open for the live re-run of #88/#100/#129 against dev.
+- #198 is owner-only now: the Sentry scrubbing rule for `$user.geo.**`, then the docs revert (see the issue).
+- #340 → #368 (the release bundle and its verify tasks run in PR CI's `build` job); #335 → the HttpCache fallback has a regression guard again (the engine throws `InvalidCacheStateException`, since Ktor 3.6 offers no way to make `HttpCache` lose an entry).
+
+### 2026-10-12
+
+- **#300 built** (`.github/workflows/sentry-issues.yml`): an hourly run opens one `from-sentry` issue per new unhandled production crash, and closing it as completed resolves the crash in the next release (a close as "not planned" or duplicate does not). Needs `event:write` on `SENTRY_AUTH_TOKEN`.
+- **EPIC 48 (#301) built**: the Ops Bridge (`fastlane/ops_bridge/`, README says how to add a connector). #300's script is refactored onto its source / item / sink shape, and connector #2 opens an issue per Play review of 3 stars or fewer (daily; the Reviews API keeps one week; no reviewer name). Owner step: tick *Reply to reviews* for the Play service account.
+
 ### 2026-10-10
 
-- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 45 (#257). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
+- Planning session (grilled): order of work is **v1 hardening → EPIC 38 → EPIC 43 → EPIC 32 → store epics**. EPIC 32's decisions are ADR 0019 (#270): subscription, RevenueCat → Edge Function mirror, `sync_until` claim, sign-out keeps / account switch asks, Google + Apple + GitHub, Android and iOS gain sync together. Lapsed-account retention cost is EPIC 49 (#257; first filed as EPIC 45, renumbered when remote config took 45). Desktop DMG, MSI and DEB ship together once notarisation exists; the owner is enrolling in the Apple Developer Program (`scripts/release/apple-setup.sh`, #272).
 - #197 verified on an emulator against the v1.0.0 AAB and closed; its misleading copy is #258 (#266). #34, #40 closed — #163 had already shipped the icons. #222 folded into EPIC 32.
 - EPIC 25: npm lockfiles tracked and gated (#259), debug-signed AAB refused (#260), Kotlin/Native tests and the release framework on the iOS lane (#262 — it found 43 iOS tests that failed on a Spanish-language Mac).
 - EPIC 38: repo files + Dependabot (#261), `:server` removed (#263), `MuvissVersion` + catalog SDK levels (#264), generated CHANGELOG (#265), Kover (#268), shared fakes (#269), goldens in both themes 41 → 76 (#278).
 - EPIC 32 in flight, all dark: account-switch dialog (#276), server entitlement + claim + deletion on the local stack only (#283; hosted rollout order is #282), client half (#279).
 - Found: #267, #271, #273, #274, #275, #277, #280, #281.
+- EPICs 45–48 filed (#297, #298, #299, #301) with ADRs 0026–0028; Sentry → GitHub connector #300.
+- **EPIC 45 (#297) built, dark until the owner creates the ConfigCat product** (`docs/RELEASING.md` §12): `RemoteConfig` seam, `:core:remoteconfig`, `16.sqm` config cache, per-request `TmdbCredentialSource`. Takes `16.sqm`; EPIC 47 (#299) therefore takes `17.sqm`.
+- **EPIC 46 (#298) built, dark until `byokEnabled` is flipped**: `SecretStore` + `:core:secrets` (KSafe), `OwnTmdbKey` with shape detection and validation against TMDB, `MetadataError.OwnKeyRejected`, Settings > TMDB data source, scrubber shapes. Landing and Play copy wait for the flag (they would advertise a row nobody can see yet).
+- **EPIC 47 (#299) built**: `:feature:onboarding`, `17.sqm`, notifications off for fresh installs only and asked at the moment of turning them on (`NotificationPermissionRequester`; the Android and iOS cold prompts are gone), the Notification Nudge on Detail, "Show introduction again" in Settings. ADR 0030. The TMDB key page appears only while `byokEnabled`.
+- #302 — TMDB commercial licence needed before any paid tier (blocks #75).
+- #29 narrowed to analytics; remote flags moved to EPIC 45.
 
 ### 2026-10-08
 

@@ -191,7 +191,7 @@ private class CountingDeckSource(private val pages: List<List<MediaSummary>>) : 
     var pageCalls = 0
         private set
 
-    override suspend fun page(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> {
+    override suspend fun page(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
         pageCalls++
         return Result.success(PagedResult(pages.getOrNull(page - 1).orEmpty(), page = page, totalPages = pages.size))
     }

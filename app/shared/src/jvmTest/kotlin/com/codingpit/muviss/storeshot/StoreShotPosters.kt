@@ -3,8 +3,11 @@ package com.codingpit.muviss.storeshot
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Color
+import org.jetbrains.skia.Color4f
+import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Font
 import org.jetbrains.skia.FontMgr
+import org.jetbrains.skia.Gradient
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Paint
 import org.jetbrains.skia.Point
@@ -50,7 +53,9 @@ internal object StoreShotPosters {
         val canvas = Canvas(bitmap)
 
         val background = Paint().apply {
-            shader = Shader.makeLinearGradient(Point(0f, 0f), Point(WIDTH.toFloat(), HEIGHT.toFloat()), intArrayOf(dark.toInt(), mix(dark, light).toInt()))
+            // Skiko 0.150 (Compose 1.12) takes a Gradient rather than an IntArray of colours (#334).
+            val colors = Gradient.Colors(arrayOf(Color4f(dark.toInt()), Color4f(mix(dark, light).toInt())), null, FilterTileMode.CLAMP)
+            shader = Shader.makeLinearGradient(Point(0f, 0f), Point(WIDTH.toFloat(), HEIGHT.toFloat()), Gradient(colors))
         }
         canvas.drawRect(Rect.makeWH(WIDTH.toFloat(), HEIGHT.toFloat()), background)
 

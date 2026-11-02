@@ -86,7 +86,7 @@ class SyncSectionTest {
         var unlocked = false
         setContent {
             SyncSectionUnderTest(
-                SyncUiState(account = SyncAccountState.Locked(email = null), automaticSyncAvailable = true),
+                SyncUiState(account = SyncAccountState.Locked(email = "person@example.com"), automaticSyncAvailable = true),
                 SyncSectionActions(onUnlockClicked = { unlocked = true }),
             )
         }
@@ -101,6 +101,16 @@ class SyncSectionTest {
     @Test
     fun a_lapsed_subscriber_keeps_sign_out() = runComposeUiTest {
         setContent { SyncSectionUnderTest(SyncUiState(account = SyncAccountState.Locked(email = "person@example.com"))) }
+        waitForIdle()
+
+        onNodeWithTag(SYNC_SIGN_OUT_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun a_locked_account_without_an_email_still_offers_sign_out() = runComposeUiTest {
+        // Locked is always a signed-in account (#286); a provider that shared no
+        // email must not hide the only way out of it.
+        setContent { SyncSectionUnderTest(SyncUiState(account = SyncAccountState.Locked(email = null))) }
         waitForIdle()
 
         onNodeWithTag(SYNC_SIGN_OUT_TAG).assertIsDisplayed()

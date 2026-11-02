@@ -21,6 +21,7 @@ internal data class TmdbResultDto(
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("first_air_date") val firstAirDate: String? = null,
     @SerialName("vote_average") val voteAverage: Double? = null,
+    @SerialName("genre_ids") val genreIds: List<Int> = emptyList(),
 )
 
 @Serializable
@@ -29,7 +30,7 @@ internal data class TmdbExternalIdsDto(
 )
 
 @Serializable
-internal data class TmdbGenreDto(val name: String)
+internal data class TmdbGenreDto(val name: String, val id: Int? = null)
 
 @Serializable
 internal data class TmdbMovieDetailDto(

@@ -45,7 +45,6 @@ import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.dateText
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.action_cancel
@@ -90,7 +89,7 @@ fun EpisodeDetailScreen(
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(MuvissSpacing.xl))
 
             state.error != null -> ErrorState(
-                message = state.error!!.resolve(),
+                message = state.error!!,
                 onRetry = viewModel::load,
                 modifier = Modifier.align(Alignment.Center),
             )

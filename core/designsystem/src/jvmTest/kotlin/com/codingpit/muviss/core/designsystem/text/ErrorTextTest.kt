@@ -38,6 +38,13 @@ class ErrorTextTest {
     }
 
     @Test
+    fun `a rejected own key says whose key and where to fix it`() = runTest {
+        val text = MetadataError.OwnKeyRejected().toUiText(UiText.Raw("fallback")).resolveAsync()
+        assertEquals(MetadataError.OwnKeyRejected().userMessage, text)
+        assertEquals(false, text == MetadataError.Unauthorized().userMessage, "it must not read as Muviss's own fault")
+    }
+
+    @Test
     fun `anything else is the fallback, never its message`() = runTest {
         val leaky = IllegalStateException("https://api.themoviedb.org/3?api_key=SECRET")
         assertEquals("fallback", leaky.toUiText(UiText.Raw("fallback")).resolveAsync())

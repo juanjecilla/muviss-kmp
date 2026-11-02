@@ -23,7 +23,7 @@ private class FixedTotalPagesProvider(private val totalPages: Int) : MetadataPro
 
     override suspend fun details(id: MediaId): MediaDetails = error("unused")
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = totalPages)
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = totalPages)
 }
 
 class TmdbDeckSourceTest {

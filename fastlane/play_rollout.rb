@@ -32,4 +32,19 @@ module PlayRollout
 
     goal >= 1.0 ? [COMPLETED, nil] : [IN_PROGRESS, goal]
   end
+
+  # Codes below this predate ADR 0030's formula (they were commit counts).
+  FORMULA_FLOOR = 1_000_000
+
+  # The release tag a production versionCode was built for (the inverse of
+  # scripts/release/version-code.sh), or nil for a code from before the
+  # formula. With several versions in flight the newest tag is not always the
+  # one in production: a newer version can be tagged while Play still rolls
+  # out the older one, so the ramp must time and close the release Play has.
+  def tag_for(version_code)
+    code = Integer(version_code, exception: false)
+    return nil if code.nil? || code < FORMULA_FLOOR
+
+    "v#{code / 1_000_000}.#{code / 10_000 % 100}.#{code / 100 % 100}"
+  end
 end

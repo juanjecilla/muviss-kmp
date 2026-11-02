@@ -1,19 +1,35 @@
 import SwiftUI
+import UIKit
 import WidgetKit
 import Shared
 
-/// The same amber as the app. These are `MuvissPalette`'s literals
-/// (core/designsystem's Color.kt), duplicated here because a widget extension
-/// renders SwiftUI and cannot read a Compose `ColorScheme`. `MuvissPaletteTest`
-/// is what keeps the Kotlin side from drifting; if these ever need to change,
-/// they change in both places.
+/// The widget's colours, read from `MuvissPalette` through `IosWidgetPalette`
+/// (app/shared), so this file carries no literals and cannot drift from the
+/// app or from the Android widget. Each colour follows the system appearance:
+/// the dynamic `UIColor` asks the trait collection WidgetKit hands it, which is
+/// how a widget follows light and dark mode.
 enum MuvissWidgetColors {
-    static let background = Color(red: 0x14 / 255, green: 0x12 / 255, blue: 0x0E / 255)
-    static let surface = Color(red: 0x21 / 255, green: 0x1E / 255, blue: 0x18 / 255)
-    static let onSurface = Color(red: 0xE9 / 255, green: 0xE2 / 255, blue: 0xD4 / 255)
-    static let onSurfaceVariant = Color(red: 0xCF / 255, green: 0xC6 / 255, blue: 0xB4 / 255)
-    static let primary = Color(red: 0xFF / 255, green: 0xCB / 255, blue: 0x6B / 255)
-    static let onPrimary = Color(red: 0x43 / 255, green: 0x2C / 255, blue: 0x00 / 255)
+    static let background = role(IosWidgetPalette.shared.BACKGROUND)
+    static let surface = role(IosWidgetPalette.shared.SURFACE)
+    static let onSurface = role(IosWidgetPalette.shared.ON_SURFACE)
+    static let onSurfaceVariant = role(IosWidgetPalette.shared.ON_SURFACE_VARIANT)
+    static let primary = role(IosWidgetPalette.shared.PRIMARY)
+    static let onPrimary = role(IosWidgetPalette.shared.ON_PRIMARY)
+
+    private static func role(_ name: String) -> Color {
+        Color(uiColor: UIColor { traits in
+            let argb = UInt32(bitPattern: IosWidgetBridge.shared.colorArgb(
+                role: name,
+                dark: traits.userInterfaceStyle == .dark
+            ))
+            return UIColor(
+                red: CGFloat((argb >> 16) & 0xFF) / 255,
+                green: CGFloat((argb >> 8) & 0xFF) / 255,
+                blue: CGFloat(argb & 0xFF) / 255,
+                alpha: CGFloat((argb >> 24) & 0xFF) / 255
+            )
+        })
+    }
 }
 
 struct WatchNextView: View {

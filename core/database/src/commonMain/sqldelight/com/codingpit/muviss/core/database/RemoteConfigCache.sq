@@ -1,0 +1,33 @@
+-- The last config ConfigCat served, kept so a cold start can read it before
+-- any network (EPIC 45, ADR 0026).
+--
+-- Cache, not user data, the same distinction ADR 0015 draws for `episode`:
+-- nobody here authored it, ConfigCat is the only source of truth, and a newer
+-- download replaces a row wholesale. It therefore has no `isDirty` /
+-- `updatedAtEpochMs` / soft delete and is absent from `SyncChangeSet` and the
+-- data export — see `ExportShapeTest` and `SyncChangeSetShapeTest`.
+--
+-- It exists because ConfigCat's own default cache is empty on Android and the
+-- JVM, so without this table "the last good config survives a restart" would
+-- hold on iOS and web only. That matters most when our built-in TMDB
+-- credential has been revoked: the rotated token must apply to the first
+-- request after a cold start, not after the first successful fetch.
+--
+-- `key` is the SDK's own cache key, opaque to us. "Delete all data" deletes
+-- these rows outright (`deleteAll`): there is nothing to tell another device.
+CREATE TABLE remoteConfigCache (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+selectByKey:
+SELECT value
+FROM remoteConfigCache
+WHERE key = ?;
+
+upsert:
+INSERT OR REPLACE INTO remoteConfigCache(key, value)
+VALUES (?, ?);
+
+deleteAll:
+DELETE FROM remoteConfigCache;

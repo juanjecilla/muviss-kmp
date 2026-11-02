@@ -99,6 +99,7 @@ internal object TmdbMapper {
         posterUrl = imageUrl(posterPath),
         overview = overview,
         rating = voteAverage,
+        genreIds = genreIds.map { it.toString() },
     )
 
     /** Maps a `/search/multi` page, dropping non movie/tv rows (e.g. people). */
@@ -144,6 +145,7 @@ internal object TmdbMapper {
                 posterUrl = imageUrl(dto.posterPath),
                 overview = dto.overview,
                 rating = dto.voteAverage,
+                genreIds = dto.genres.mapNotNull { it.id?.toString() },
             ),
             anchors = MediaAnchors(imdbId = dto.externalIds?.imdbId),
             genres = dto.genres.map { it.name },
@@ -164,6 +166,7 @@ internal object TmdbMapper {
                 posterUrl = imageUrl(dto.posterPath),
                 overview = dto.overview,
                 rating = dto.voteAverage,
+                genreIds = dto.genres.mapNotNull { it.id?.toString() },
             ),
             anchors = MediaAnchors(imdbId = dto.externalIds?.imdbId),
             genres = dto.genres.map { it.name },

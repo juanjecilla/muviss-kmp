@@ -7,8 +7,10 @@ import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
@@ -31,6 +33,7 @@ import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
 class AppSettingsFeatureFlags(
     private val queries: AppSettingsQueries,
     private val dispatchers: AppDispatchers,
+    remoteConfig: RemoteConfig,
 ) : FeatureFlags {
 
     override val triageControlScheme: Flow<TriageControlScheme> = settings()
@@ -39,6 +42,8 @@ class AppSettingsFeatureFlags(
     override val animationsEnabled: Flow<Boolean> = settings().map { row -> row?.animationsEnabled ?: true }
 
     override val triageDeckAnimations: Flow<Boolean> = settings().map { row -> row?.triageDeckAnimations ?: true }
+
+    override val tickAnimations: Flow<Boolean> = settings().map { row -> row?.tickAnimations ?: true }
 
     // Off when the row is missing: a read that loses a race with `ensureRow`
     // must not look like the person asked for background sync.
@@ -52,6 +57,9 @@ class AppSettingsFeatureFlags(
 
     override val triageSnoozePlacement: Flow<SnoozePlacement> = settings()
         .map { row -> SnoozePlacement.fromStored(row?.triageSnoozePlacement) }
+
+    // Not a column: served to every install, so nothing local can write it.
+    override val byokEnabled: Flow<Boolean> = remoteConfig.values.map { it.byokEnabled }.distinctUntilChanged()
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = withContext(dispatchers.io) {
         ensureRow()
@@ -68,6 +76,12 @@ class AppSettingsFeatureFlags(
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageDeckAnimations(enabled)
+        Unit
+    }
+
+    override suspend fun setTickAnimations(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateTickAnimations(enabled)
         Unit
     }
 
@@ -89,7 +103,7 @@ class AppSettingsFeatureFlags(
         Unit
     }
 
-    // Both motion flags default to true when the row is somehow missing: the
+    // The motion flags default to true when the row is somehow missing: the
     // app has always animated, and a read that loses a race with `ensureRow`
     // must not look like the user asked for motion to stop.
     private fun settings(): Flow<AppSettingsRow?> = queries.selectSettings()

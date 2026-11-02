@@ -1,0 +1,15 @@
+-- EPIC 45 (#297, remote config through ConfigCat). The filename is the
+-- version this migrates FROM: 16.sqm takes a v16 database to v17, after
+-- EPIC 28's index-only `15.sqm`.
+--
+-- NUMBERING: EPIC 47 (#299) needs a migration too and was told to take
+-- `17.sqm` on the assumption this one merges first. Whichever of the two
+-- merges second renumbers and regenerates its fixture; `verifyMigrations`
+-- cannot see that collision.
+--
+-- One new cache table — see `RemoteConfigCache.sq` for why it carries no sync
+-- columns.
+CREATE TABLE remoteConfigCache (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);

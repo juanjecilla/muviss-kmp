@@ -31,8 +31,12 @@ interface MetadataProvider {
 
     suspend fun details(id: MediaId): MediaDetails
 
-    /** Popularity-sorted browse for [type], optionally narrowed to one of [genres]' ids. */
-    suspend fun discover(type: MediaType, page: Int = 1, genreId: String? = null): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
+    /**
+     * Popularity-sorted browse for [type], optionally narrowed to one of [genres]' ids. [excludedGenreIds]
+     * (this [type]'s ids only) are left out server-side, so a page is not thinned after the fact; an id
+     * equal to [genreId] is ignored, because choosing a genre explicitly wins over muting it.
+     */
+    suspend fun discover(type: MediaType, page: Int = 1, genreId: String? = null, excludedGenreIds: Set<String> = emptySet()): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
 
     /** Localized genre list for [type], used to populate discover's filter chips. */
     suspend fun genres(type: MediaType): List<Genre> = emptyList()

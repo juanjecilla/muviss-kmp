@@ -30,11 +30,14 @@ import coil3.asImage
 import coil3.compose.AsyncImagePreviewHandler
 import coil3.compose.LocalAsyncImagePreviewHandler
 import com.codingpit.muviss.MuvissApp
+import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
+import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.profile.domain.ProfileRepository
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.domain.AppTheme
@@ -91,10 +94,9 @@ class StoreShotTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
             runBlocking { seed(koin, catalog, today) }
-            // en-US only until EPIC 31 (#74) translates the feature screens: a Spanish
-            // shot would show mostly English copy. Play falls back to the default
-            // language's screenshots for the es-ES listing.
-            for ((locale, dark) in listOf("en-US" to false, "en-US" to true)) {
+            // Play takes the light set per listing locale; the dark English set is the
+            // landing's (see write()). Spanish since EPIC 31 (#74) localized the screens.
+            for ((locale, dark) in listOf("en-US" to false, "en-US" to true, "es-ES" to false)) {
                 runBlocking { koin.get<SettingsRepository>().setTheme(if (dark) AppTheme.DARK else AppTheme.LIGHT) }
                 Locale.setDefault(Locale.forLanguageTag(locale))
                 shoot(catalog, locale, dark)
@@ -112,6 +114,7 @@ class StoreShotTest {
             modules(
                 appModules + module {
                     single { DatabaseDriverFactory(directory) }
+                    single<SecretStore> { InMemorySecretStore() }
                     // Overrides networkModule's TmdbProvider: nothing reaches TMDB.
                     single<MetadataProvider> { catalog.provider() }
                     // The release build's gate: sync and co-watch are paid and
@@ -148,6 +151,8 @@ class StoreShotTest {
         seasons(c.glassHarbor).first().episodes.take(3).forEach { progress.recordPlay(it.id) }
         progress.recordPlay(EpisodeId(c.paperMoons.id, 1, 1))
 
+        // A fresh database starts on the introduction (EPIC 47); the store images show the app itself.
+        koin.get<OnboardingApi>().markCompleted()
         koin.get<ProfileRepository>().setDisplayName("Alex")
         collection.setFavorite(c.lighthouse.id, true)
         collection.setFavorite(c.glassHarbor.id, true)
@@ -170,7 +175,7 @@ class StoreShotTest {
                 MuvissApp()
             }
         }
-        val nav = NAV.getValue(locale.substringBefore('-'))
+        val nav = COPY.getValue(locale.substringBefore('-'))
         val shots = mutableListOf<Pair<String, java.awt.image.BufferedImage>>()
         fun capture(name: String) {
             // A dialog or popup is a second root: onRoot() would throw, and a
@@ -187,12 +192,12 @@ class StoreShotTest {
             shots += name to onRoot().captureToImage().toAwtImage()
         }
 
-        settle { onAllNodes(hasText("Fill your library")).fetchSemanticsNodes().isNotEmpty() }
+        settle { onAllNodes(hasText(nav.fillLibrary)).fetchSemanticsNodes().isNotEmpty() }
         capture("discover")
 
         tab(nav.library)
-        settle { onAllNodes(hasText("Watching", substring = true) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
-        onAllNodes(hasText("Watching", substring = true) and hasClickAction())[0].performClick()
+        settle { onAllNodes(hasText(nav.watching, substring = true) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasText(nav.watching, substring = true) and hasClickAction())[0].performClick()
         settle { onAllNodes(hasContentDescription(catalog.lighthouse.summary.title)).fetchSemanticsNodes().isNotEmpty() }
         capture("library")
 
@@ -210,10 +215,10 @@ class StoreShotTest {
             onAllNodes(hasTestTag("seasonHeader2"))[0].performClick()
         }
         settle { onAllNodes(hasTestTag("seasonEpisodes2")).fetchSemanticsNodes().isNotEmpty() }
-        // "Seasons (2)" just under the floating back button, ticks below it.
+        // nav.seasonsTwo just under the floating back button, ticks below it.
         detailList.performScrollToKey("seasonsHeader")
         waitForIdle()
-        bringToTop("Seasons (2)", marginPx = 150f)
+        bringToTop(nav.seasonsTwo, marginPx = 150f)
         capture("detail-seasons")
 
         tab(nav.progress)
@@ -221,26 +226,26 @@ class StoreShotTest {
         capture("watch-next")
 
         tab(nav.profile)
-        settle { onAllNodes(hasText("Stats")).fetchSemanticsNodes().isNotEmpty() }
+        settle { onAllNodes(hasText(nav.stats)).fetchSemanticsNodes().isNotEmpty() }
         // The identity block is the top half; the store shot is the numbers and charts.
-        onAllNodes(hasText("Stats"))[0].performScrollTo()
-        bringToTop("Stats", marginPx = 60f)
+        onAllNodes(hasText(nav.stats))[0].performScrollTo()
+        bringToTop(nav.stats, marginPx = 60f)
         capture("profile-stats")
 
         tab(nav.search)
-        settle { onAllNodes(hasText("Fill your library")).fetchSemanticsNodes().isNotEmpty() }
-        onAllNodes(hasText("Fill your library"))[0].performClick()
-        onAllNodes(hasText("Got it")).fetchSemanticsNodes().firstOrNull()?.let { onAllNodes(hasText("Got it"))[0].performClick() }
+        settle { onAllNodes(hasText(nav.fillLibrary)).fetchSemanticsNodes().isNotEmpty() }
+        onAllNodes(hasText(nav.fillLibrary))[0].performClick()
+        onAllNodes(hasText(nav.gotIt)).fetchSemanticsNodes().firstOrNull()?.let { onAllNodes(hasText(nav.gotIt))[0].performClick() }
         // The Discover intro, the triage tutorial and the snooze hint each
-        // say "Got it", and they can arrive one after another: dismiss until
+        // say nav.gotIt, and they can arrive one after another: dismiss until
         // none is left, not just until the card is there (#231).
         // The last match is the topmost root: a dialog over the hint takes
         // the click, the hint under it would not.
         settle {
-            val gotIt = onAllNodes(hasText("Got it"))
+            val gotIt = onAllNodes(hasText(nav.gotIt))
             gotIt.fetchSemanticsNodes().size.takeIf { it > 0 }?.let { gotIt[it - 1].performClick() }
             onAllNodes(hasTestTag("triage-card")).fetchSemanticsNodes().isNotEmpty() &&
-                onAllNodes(hasText("Got it")).fetchSemanticsNodes().isEmpty()
+                onAllNodes(hasText(nav.gotIt)).fetchSemanticsNodes().isEmpty()
         }
         capture("triage")
 
@@ -313,16 +318,28 @@ class StoreShotTest {
         }
     }
 
-    private class Nav(val search: String, val library: String, val progress: String, val profile: String)
+    /** The on-screen text the script finds its way by, per language: the nav labels plus what it waits for or taps. */
+    @Suppress("LongParameterList") // A row of a translation table: one field per string, nothing to group.
+    private class Copy(
+        val search: String,
+        val library: String,
+        val progress: String,
+        val profile: String,
+        val fillLibrary: String,
+        val watching: String,
+        val seasonsTwo: String,
+        val stats: String,
+        val gotIt: String,
+    )
 
     private companion object {
         const val WIDTH_PX = 1080
         const val HEIGHT_PX = 1920
         const val DENSITY = 2.625f
         const val DAY_MS = 86_400_000L
-        val NAV = mapOf(
-            "en" to Nav("Search", "Library", "Progress", "Profile"),
-            "es" to Nav("Buscar", "Biblioteca", "Progreso", "Perfil"),
+        val COPY = mapOf(
+            "en" to Copy("Search", "Library", "Progress", "Profile", "Fill your library", "Watching", "Seasons (2)", "Stats", "Got it"),
+            "es" to Copy("Buscar", "Biblioteca", "Progreso", "Perfil", "Llena tu biblioteca", "Viendo", "Temporadas (2)", "Estadísticas", "Entendido"),
         )
         val PLAY_ORDER = listOf("library", "detail-seasons", "watch-next", "triage", "profile-stats", "discover")
         val SITE_NAMES = setOf("detail-seasons", "library", "watch-next", "triage", "profile-stats")

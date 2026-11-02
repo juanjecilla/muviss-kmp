@@ -35,7 +35,7 @@ class TmdbSearchRepository(
 
     override suspend fun details(id: MediaId): Result<MediaDetails> = runOnIo { registry.forId(id).details(id) }
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?): Result<PagedResult<MediaSummary>> = runOnIo { registry.require(SourceId.TMDB).discover(type, page, genreId) }
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = runOnIo { registry.require(SourceId.TMDB).discover(type, page, genreId, excludedGenreIds) }
 
     override suspend fun genres(type: MediaType): Result<List<Genre>> = runOnIo { registry.require(SourceId.TMDB).genres(type) }
 

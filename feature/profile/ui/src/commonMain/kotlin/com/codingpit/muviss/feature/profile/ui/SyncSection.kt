@@ -162,11 +162,9 @@ private fun AccountContent(sync: SyncUiState, account: SyncAccountState, actions
             Hint(stringResource(Res.string.sync_pitch))
             Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = actions.onUnlockClicked, modifier = Modifier.testTag(SYNC_UNLOCK_TAG)) { Text(stringResource(Res.string.sync_unlock)) }
-                // A lapsed subscriber is still signed in; without this
-                // the paywall would be the only thing they can reach.
-                if (account.email != null) {
-                    TextButton(onClick = actions.onSignOutClicked, enabled = !sync.syncing, modifier = Modifier.testTag(SYNC_SIGN_OUT_TAG)) { Text(stringResource(Res.string.sign_out)) }
-                }
+                // Locked is always signed in (#286); without this the paywall
+                // would be the only thing a lapsed subscriber can reach.
+                TextButton(onClick = actions.onSignOutClicked, enabled = !sync.syncing, modifier = Modifier.testTag(SYNC_SIGN_OUT_TAG)) { Text(stringResource(Res.string.sign_out)) }
             }
         }
 

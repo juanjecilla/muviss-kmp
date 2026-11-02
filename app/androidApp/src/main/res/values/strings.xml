@@ -17,10 +17,6 @@
     <string name="notification_show_out">%1$s is out</string>
     <string name="channel_new_episodes">New episodes</string>
     <string name="channel_new_episodes_description">Alerts when a saved show has a new episode out</string>
-    <string name="permission_title">Know when new episodes are out?</string>
-    <string name="permission_body">Muviss can tell you when a show you follow has a new episode. Nothing else, and you can change it in Settings.</string>
-    <string name="permission_allow">Allow</string>
-    <string name="permission_not_now">Not now</string>
     <plurals name="notification_summary_title">
         <item quantity="one">%1$d show has new episodes</item>
         <item quantity="other">%1$d shows have new episodes</item>

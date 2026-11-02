@@ -1,0 +1,87 @@
+name: Release promote
+
+# The Sunday step of the staged releases (ADR 0030). Every version in flight is
+# checked: a version in internal is promoted to open beta, and one in beta,
+# once it has had a full week there, is merged into main (release.yml tags it)
+# and promoted from beta to production at 20% by this same run, before any
+# newer version takes the beta track. Each step runs only when every gate
+# passes (fastlane/release_promote.rb); a held version says why on its
+# "Release X.Y.Z" issue and is retried next Sunday. A promotion that fails
+# after its merge is retried alone, without merging again.
+#
+# The production step needs no approval: the gates and the crash gate that
+# holds the ramp are what stand in for it (ADR 0030). `play-promote.yml` halts.
+#
+# Dispatch it to see every decision first: dry_run defaults to true, and a
+# dry run changes nothing, on GitHub or in Play.
+on:
+  schedule:
+    - cron: '0 10 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Evaluate every gate and print what would happen; change nothing'
+        type: boolean
+        default: true
+      version:
+        description: 'Only this version (X.Y.Z); blank = every version in flight'
+        type: string
+        default: ''
+
+# Shared with the daily ramp, so a Sunday step and a rollout change never edit
+# the production release at the same time.
+concurrency:
+  group: play-promote
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # GITHUB_TOKEN cannot do this job: the PR it opens runs no checks, and the
+      # merge it makes would not start release.yml.
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # The App's token stays in the checkout: the fetch below needs it when
+          # the repository is private.
+          token: ${{ steps.app.outputs.token }}
+
+      # Every release branch and tag: the gates read the RC tags and branch heads.
+      - name: Fetch the release branches and tags
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: git fetch --prune --tags --force origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1.328.0
+        with:
+          bundler-cache: true
+
+      - name: Promote what is due, when every gate passes
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          # The same release status release.yml uses, for the beta step and a
+          # retried production promotion.
+          PLAY_RELEASE_STATUS: ${{ vars.PLAY_RELEASE_STATUS || 'draft' }}
+          # The crash gate (#193, ADR 0030): a step waits while Sentry shows a new
+          # unhandled issue in the build, or cannot be asked.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          # Only a scheduled run, or a dispatch with dry_run unticked, acts.
+          DRY_RUN: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) && 'false' || 'true' }}
+          VERSION: ${{ inputs.version }}
+        run: ruby fastlane/release_promote.rb run

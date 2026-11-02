@@ -2,6 +2,7 @@ package com.codingpit.muviss.core.designsystem.component
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,8 +21,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,12 +43,17 @@ import com.codingpit.muviss.core.designsystem.generated.resources.a11y_mark_watc
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import org.jetbrains.compose.resources.stringResource
 
+/** How long a row's "just ticked" wash takes to fade. */
+private const val FLASH_MILLIS = 600
+
 /**
  * Episode list row: 16:9 still thumb, title + "S2 · E1" subtitle, trailing
  * seen-toggle. States per the design doc — unseen (outline circle), seen
  * (sage check circle), next-up (2dp amber left rule + raised background).
  * Toggling to seen plays the tick animation (scale 0.6→1.15→1.0) with a
- * haptic tick; undo/snackbar behavior belongs to the caller.
+ * haptic tick, and the row washes with a brief tint that fades (EPIC 52);
+ * undo/snackbar behavior belongs to the caller. [animate] false skips both the
+ * pop and the tint but never the haptic.
  *
  * [secondaryActionLabel]/[onSecondaryAction] render a small text action
  * before the toggle (e.g. Detail's "Catch up" = mark-previous-seen).
@@ -62,8 +70,24 @@ fun EpisodeRow(
     onClick: (() -> Unit)? = null,
     secondaryActionLabel: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
+    animate: Boolean = true,
 ) {
     val ruleColor = MaterialTheme.colorScheme.primary
+    val flashColor = MaterialTheme.colorScheme.tertiaryContainer
+    // A wash that fades, from the moment this row goes from unseen to seen. Not on
+    // first composition, so a seen row scrolling in does not flash.
+    val flash = remember { Animatable(0f) }
+    var wasSeen by remember { mutableStateOf(seen) }
+    LaunchedEffect(seen, animate) {
+        if (!seen || !animate) {
+            // An undo mid-fade cancels the animation; without this the row kept its tint.
+            flash.snapTo(0f)
+        } else if (!wasSeen) {
+            flash.snapTo(1f)
+            flash.animateTo(0f, tween(FLASH_MILLIS))
+        }
+        wasSeen = seen
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -77,6 +101,8 @@ fun EpisodeRow(
                     Modifier
                 },
             )
+            // After the next-up background, which is opaque and would otherwise hide the wash.
+            .drawBehind { if (flash.value > 0f) drawRect(flashColor.copy(alpha = flash.value)) }
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(8.dp),
     ) {
@@ -108,7 +134,7 @@ fun EpisodeRow(
                 Text(secondaryActionLabel, style = MaterialTheme.typography.labelMedium)
             }
         }
-        SeenToggle(seen = seen, onToggle = onToggle, label = "$title $subtitle")
+        SeenToggle(seen = seen, onToggle = onToggle, label = "$title $subtitle", animate = animate)
     }
 }
 
@@ -117,6 +143,7 @@ private fun SeenToggle(
     seen: Boolean,
     onToggle: () -> Unit,
     label: String,
+    animate: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -131,15 +158,17 @@ private fun SeenToggle(
         }
         if (seen) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            scale.snapTo(0.6f)
-            scale.animateTo(
-                targetValue = 1f,
-                animationSpec = keyframes {
-                    durationMillis = 200
-                    1.15f at 120
-                    1f at 200
-                },
-            )
+            if (animate) {
+                scale.snapTo(0.6f)
+                scale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = keyframes {
+                        durationMillis = 200
+                        1.15f at 120
+                        1f at 200
+                    },
+                )
+            }
         }
     }
     val description = stringResource(if (seen) Res.string.a11y_mark_unwatched else Res.string.a11y_mark_watched, label)

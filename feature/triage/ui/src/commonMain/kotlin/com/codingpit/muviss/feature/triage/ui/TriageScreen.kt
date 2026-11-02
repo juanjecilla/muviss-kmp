@@ -69,7 +69,6 @@ import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.label
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
@@ -87,6 +86,7 @@ import com.codingpit.muviss.feature.triage.ui.generated.resources.commit_failed_
 import com.codingpit.muviss.feature.triage.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.triage.ui.generated.resources.filter_all
 import com.codingpit.muviss.feature.triage.ui.generated.resources.filter_movies
+import com.codingpit.muviss.feature.triage.ui.generated.resources.filter_show_muted
 import com.codingpit.muviss.feature.triage.ui.generated.resources.filter_tv
 import com.codingpit.muviss.feature.triage.ui.generated.resources.got_it
 import com.codingpit.muviss.feature.triage.ui.generated.resources.how_it_works
@@ -229,6 +229,9 @@ fun TriageScreen(
                     genres = state.genresForFilter,
                     onTypeChange = viewModel::onTypeFilterChange,
                     onGenreChange = viewModel::onGenreFilterChange,
+                    showMuted = state.showMuted,
+                    mutedAvailable = state.hasMuted,
+                    onShowMutedToggled = viewModel::onShowMutedToggled,
                 )
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -240,12 +243,12 @@ fun TriageScreen(
 
                         state.loading || (state.refilling && state.topCard == null) -> CircularProgressIndicator()
 
-                        state.error != null -> ErrorState(state.error?.resolve().orEmpty(), viewModel::retry)
+                        state.error != null -> ErrorState(state.error!!, viewModel::retry)
 
                         state.topCard == null && state.keepLookingAvailable -> KeepLooking(viewModel::onKeepLooking)
 
                         state.topCard == null -> EmptyDeck(
-                            filtered = state.filter != DeckFilter(),
+                            filtered = state.filter.isNarrowed,
                             onClearFilters = viewModel::onClearFilters,
                             onOpenSkipped = onOpenSkipped,
                         )
@@ -420,6 +423,9 @@ private fun TriageHeader(
     }
 }
 
+/** Test tag of the chip that lifts muting for the session (ADR 0031). */
+const val SHOW_MUTED_CHIP_TAG = "showMutedChip"
+
 @Composable
 private fun DeckFilterBar(
     selectedType: MediaType?,
@@ -427,6 +433,9 @@ private fun DeckFilterBar(
     genres: List<Genre>,
     onTypeChange: (MediaType?) -> Unit,
     onGenreChange: (String?) -> Unit,
+    showMuted: Boolean,
+    mutedAvailable: Boolean,
+    onShowMutedToggled: () -> Unit,
 ) {
     Column {
         Row(
@@ -436,6 +445,14 @@ private fun DeckFilterBar(
             FilterChip(selected = selectedType == null, onClick = { onTypeChange(null) }, label = { Text(stringResource(Res.string.filter_all)) })
             FilterChip(selected = selectedType == MediaType.MOVIE, onClick = { onTypeChange(MediaType.MOVIE) }, label = { Text(stringResource(Res.string.filter_movies)) })
             FilterChip(selected = selectedType == MediaType.TV, onClick = { onTypeChange(MediaType.TV) }, label = { Text(stringResource(Res.string.filter_tv)) })
+        }
+        // Its own row: with "Ver silenciados" a fourth chip does not fit beside All, Movies and TV on a
+        // 360dp phone, and a row that scrolls would hide the one chip that is new.
+        // Selected = muted genres are shown again, so the chip reads as "this filter is lifted".
+        if (mutedAvailable) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = MuvissSpacing.l)) {
+                FilterChip(selected = showMuted, onClick = onShowMutedToggled, label = { Text(stringResource(Res.string.filter_show_muted)) }, modifier = Modifier.testTag(SHOW_MUTED_CHIP_TAG))
+            }
         }
         // Genre ids differ between the movie and TV catalogues, so chips only
         // appear once one of the two is picked.

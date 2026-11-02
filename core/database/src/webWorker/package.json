@@ -4,6 +4,6 @@
   "private": true,
   "main": "muviss-sqljs.worker.js",
   "dependencies": {
-    "sql.js": "1.10.3"
+    "sql.js": "1.14.2"
   }
 }

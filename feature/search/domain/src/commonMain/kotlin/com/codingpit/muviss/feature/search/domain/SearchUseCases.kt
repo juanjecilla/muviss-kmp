@@ -31,7 +31,12 @@ class MediaDetailUseCase(private val repository: SearchRepository) {
 
 /** Popularity-sorted browse backing the Search tab's discover carousels and genre drill-down. */
 class DiscoverMediaUseCase(private val repository: SearchRepository) {
-    suspend operator fun invoke(type: MediaType, page: Int = 1, genreId: String? = null): Result<PagedResult<MediaSummary>> = repository.discover(type, page, genreId)
+    suspend operator fun invoke(
+        type: MediaType,
+        page: Int = 1,
+        genreId: String? = null,
+        excludedGenreIds: Set<String> = emptySet(),
+    ): Result<PagedResult<MediaSummary>> = repository.discover(type, page, genreId, excludedGenreIds)
 }
 
 /** Loads the localized genre list backing the discover chip rows. */

@@ -94,7 +94,9 @@ class MuvissAppController internal constructor(
      */
     fun navigateTo(destination: MuvissDestination) {
         navController.navigate(destination.route) {
-            popUpTo(navController.graph.startDestinationId) { saveState = true }
+            // Search by name, not the graph's start destination: on a first run that is the introduction,
+            // which is gone from the back stack by the time any tab can be tapped (EPIC 47).
+            popUpTo<SearchRoute> { saveState = true }
             launchSingleTop = true
             restoreState = true
         }

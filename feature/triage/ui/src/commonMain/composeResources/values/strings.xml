@@ -23,6 +23,7 @@
     <string name="filter_all">All</string>
     <string name="filter_movies">Movies</string>
     <string name="filter_tv">TV</string>
+    <string name="filter_show_muted">Show muted</string>
     <string name="type_movie">Movie</string>
     <string name="type_tv">TV</string>
     <!-- %1$s is a verdict label, e.g. Skip. -->

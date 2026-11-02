@@ -1,0 +1,14 @@
+-- Muted Genres (ADR 0031). The filename is the version this migrates FROM: 18.sqm
+-- takes a v18 database to v19, after EPIC 47's `17.sqm`.
+--
+-- NUMBERING: the number a branch takes is whatever is free when it merges
+-- (`verifyMigrations` cannot see a collision); renumber and regenerate the
+-- fixture if another migration landed first.
+--
+-- Two per-device preferences on the singleton row, appended last. Neither syncs.
+-- No `UPDATE`: SQLite fills an added column's DEFAULT into every existing row, which
+-- is exactly the backfill wanted: an upgraded install starts with Talk, News and
+-- Reality muted, the same as a fresh one (and, unlike onboarding, there is no
+-- "existing installs skip it" rule to undo).
+ALTER TABLE appSettings ADD COLUMN mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality';
+ALTER TABLE appSettings ADD COLUMN mutedGenresInSearch INTEGER NOT NULL DEFAULT 0;

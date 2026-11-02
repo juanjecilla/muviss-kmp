@@ -39,6 +39,7 @@ private class FakeProvider(
     override val source: SourceId = SourceId.TMDB
     var lastWatchProvidersRegion: String? = null
     var lastDiscoverGenreId: String? = null
+    var lastDiscoverExcluded: Set<String> = emptySet()
     var lastRecommendationsPage: Int? = null
     var lastSimilarPage: Int? = null
 
@@ -51,8 +52,9 @@ private class FakeProvider(
 
     override suspend fun details(id: MediaId): MediaDetails = MediaDetails(MediaSummary(id, "Title"))
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?): PagedResult<MediaSummary> {
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> {
         lastDiscoverGenreId = genreId
+        lastDiscoverExcluded = excludedGenreIds
         return PagedResult(discoverResults, page = page, totalPages = page + 1)
     }
 
@@ -128,6 +130,14 @@ class TmdbSearchRepositoryTest {
         assertTrue(result.isSuccess)
         assertEquals(listOf(summary), result.getOrThrow().items)
         assertEquals("878", provider.lastDiscoverGenreId)
+    }
+
+    @Test
+    fun discover_forwards_the_muted_genre_ids_to_the_provider() = runTest {
+        val provider = FakeProvider()
+        repo(provider).discover(MediaType.TV, page = 1, genreId = null, excludedGenreIds = setOf("10767", "10763"))
+
+        assertEquals(setOf("10767", "10763"), provider.lastDiscoverExcluded)
     }
 
     @Test

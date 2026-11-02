@@ -25,8 +25,18 @@ object CrashScrubber {
 
     private val bearer = Regex("""\bBearer\s+[A-Za-z0-9._~+/=-]+""", RegexOption.IGNORE_CASE)
 
-    fun scrub(text: String): String = bearer
-        .replace(keyed.replace(text) { m -> m.groupValues[1] + m.groupValues[2] + REDACTED }) { "Bearer $REDACTED" }
+    // A credential with no name in front of it, by shape alone (EPIC 46): an Own TMDB Key is typed by a
+    // person, so it can turn up in text that never says `api_key` — a validation message, a copied
+    // log line. A v4 read token is a JWT; a v3 key is 32 hex characters. The hex run also matches a
+    // dashless UUID or an MD5, and losing those is the price of being sure about the key.
+    private val jwt = Regex("""\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
+    private val hex32 = Regex("""\b[0-9a-fA-F]{32}\b""")
+
+    fun scrub(text: String): String {
+        val named = bearer
+            .replace(keyed.replace(text) { m -> m.groupValues[1] + m.groupValues[2] + REDACTED }) { "Bearer $REDACTED" }
+        return hex32.replace(jwt.replace(named, REDACTED), REDACTED)
+    }
 
     /** For the SDK's nullable fields. */
     fun scrubOrNull(text: String?): String? = text?.let(::scrub)

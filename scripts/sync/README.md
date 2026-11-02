@@ -23,7 +23,8 @@ MUVISS_SUPABASE_TARGET=prod MUVISS_I_MEAN_PROD=yes scripts/sync/sync-status.sh  
 
 They no longer read the CLI's linked project. Prod's migrations are applied
 by the Supabase GitHub integration when a release merges into `main`; dev's
-by hand for now (`supabase db push` from a worktree linked to dev, #151).
+by `.github/workflows/supabase-dev.yml` on every push to `develop` that
+touches `supabase/`. See `docs/SYNC.md`, "Dev and prod projects".
 
 Two things break these more often than any bug:
 

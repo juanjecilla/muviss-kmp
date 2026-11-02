@@ -40,6 +40,7 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
             // grows the back stack and Back unwinds it one title at a time.
             onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
             onOpenEpisode = { episodeId -> navController.navigate(EpisodeDetailRoute(episodeId.toString())) },
+            nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
         )
     }
     composable<EpisodeDetailRoute> { entry ->

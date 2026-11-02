@@ -1,0 +1,23 @@
+-- EPIC 47 (#299, first-run onboarding). The filename is the version this
+-- migrates FROM: 17.sqm takes a v17 database to v18, after EPIC 45's
+-- `16.sqm` (the remote-config cache).
+--
+-- NUMBERING: the number a branch takes is whatever is free when it merges
+-- (`verifyMigrations` cannot see a collision); renumber and regenerate the
+-- fixture if another migration landed first.
+--
+-- Two per-device flags on the singleton row, appended last like every other
+-- `ALTER TABLE ADD COLUMN` in this chain. Neither syncs.
+ALTER TABLE appSettings ADD COLUMN onboardingCompleted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE appSettings ADD COLUMN notificationNudgeDismissed INTEGER NOT NULL DEFAULT 0;
+
+-- A migration only ever runs on an install that already has the app, so none
+-- of them should be shown the introduction. The row may not exist yet (nothing
+-- has had to read settings since an early build), and `UPDATE` alone would then
+-- skip it and leave `ensureRow` to create it later as a fresh install's. So the
+-- row is created first, with what such an install has always behaved as:
+-- notifications on, onboarding done.
+INSERT OR IGNORE INTO appSettings(id, theme, language, region, notificationsEnabled)
+VALUES (0, 'SYSTEM', '', 'US', 1);
+
+UPDATE appSettings SET onboardingCompleted = 1;

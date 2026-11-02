@@ -32,6 +32,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -209,6 +210,25 @@ class CoreSyncRepositoryAutomaticTest {
         rig.repository.signOut()
 
         assertEquals(SyncAccountState.SignedOut, rig.repository.observeAccount().first())
+    }
+
+    @Test
+    fun signing_out_on_purpose_never_passes_through_an_expired_session() = runTest {
+        val rig = Rig(this)
+        dirtyRow(rig.database)
+        rig.backend.failure = SyncSessionExpiredException()
+        rig.repository.syncNow()
+        val seen = mutableListOf<SyncAccountState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            rig.repository.observeAccount().collect { seen += it }
+        }
+        runCurrent()
+
+        rig.repository.signOut()
+        runCurrent()
+
+        assertFalse(SyncAccountState.SessionExpired in seen, "seen: $seen")
+        assertEquals(SyncAccountState.SignedOut, seen.last())
     }
 
     @Test

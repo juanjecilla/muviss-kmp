@@ -39,4 +39,15 @@ class PlayRolloutTest < Minitest::Test
   def test_same_fraction_is_a_no_op
     assert_nil PlayRollout.next_step(status: "inProgress", fraction: 0.2, age_days: 1)
   end
+
+  def test_tag_for_inverts_the_version_code_formula
+    assert_equal "v1.1.0", PlayRollout.tag_for(1_010_004)
+    assert_equal "v2.13.7", PlayRollout.tag_for(2_130_799)
+    assert_equal "v1.0.0", PlayRollout.tag_for("1000001")
+  end
+
+  def test_tag_for_a_code_from_before_the_formula_is_unknown
+    assert_nil PlayRollout.tag_for(187)
+    assert_nil PlayRollout.tag_for(nil)
+  end
 end

@@ -28,7 +28,6 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.triage.ui.generated.resources.Res
 import com.codingpit.muviss.feature.triage.ui.generated.resources.action_back
@@ -57,7 +56,7 @@ fun SkippedScreen(
         when {
             state.loading -> CircularProgressIndicator(Modifier.padding(MuvissSpacing.xl))
 
-            state.error != null -> ErrorState(state.error?.resolve().orEmpty(), onRetry = viewModel::retry)
+            state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
 
             state.titles.isEmpty() -> EmptyState(
                 icon = MuvissIcons.Skip,

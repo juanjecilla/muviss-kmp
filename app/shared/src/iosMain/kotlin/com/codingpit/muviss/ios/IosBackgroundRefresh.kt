@@ -20,6 +20,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGTask
+import platform.BackgroundTasks.BGTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSDate
 import platform.Foundation.NSError
@@ -65,15 +66,28 @@ object IosBackgroundRefresh : KoinComponent {
     }
 
     /**
-     * Submits (or re-submits) the next run ~12h out — the same
-     * [REPEAT_INTERVAL_SECONDS] Android's `NewEpisodesScheduler` uses.
-     * Submitting again with the same identifier replaces any still-pending
-     * request rather than erroring, so calling this both at every launch
-     * and after every run (see [handle]) is intentional and idempotent,
-     * mirroring `NewEpisodesScheduler`'s `ExistingPeriodicWorkPolicy.KEEP`.
+     * Submits the next run ~12h out (the same interval Android's
+     * `NewEpisodesScheduler` uses) unless one is already pending.
+     *
+     * Called at every launch, so it must *keep* a pending request rather than
+     * replace it: replacing pushes the run 12h further out each time the app is
+     * opened. The decision is [IosBackgroundRefreshSchedule.shouldSubmit]; the
+     * pending list arrives asynchronously, so the submit happens in its callback.
+     */
+    fun scheduleNext() {
+        BGTaskScheduler.sharedScheduler.getPendingTaskRequestsWithCompletionHandler { requests ->
+            val pending = requests.orEmpty().mapNotNull { (it as? BGTaskRequest)?.identifier }
+            if (IosBackgroundRefreshSchedule.shouldSubmit(pending, TASK_ID, keepExisting = true)) submitNext()
+        }
+    }
+
+    /**
+     * Submits the request for the run after this one, unconditionally. The run has
+     * just consumed its request, so there is nothing to keep, and a failed or stale
+     * pending query must not leave the app with nothing scheduled.
      */
     @OptIn(ExperimentalForeignApi::class)
-    fun scheduleNext() {
+    private fun submitNext() {
         val request = BGAppRefreshTaskRequest(identifier = TASK_ID)
         request.earliestBeginDate =
             NSDate(timeIntervalSinceReferenceDate = NSDate().timeIntervalSinceReferenceDate + REPEAT_INTERVAL_SECONDS)
@@ -124,7 +138,7 @@ object IosBackgroundRefresh : KoinComponent {
                     }
                 }
             }
-            scheduleNext()
+            submitNext()
             task.setTaskCompletedWithSuccess(!expired)
         }
     }

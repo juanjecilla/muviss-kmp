@@ -143,7 +143,7 @@ private fun DetailUnderTest(darkTheme: Boolean) {
     val viewModel = DetailViewModel(
         severance,
         MediaDetailUseCase(repo),
-        DetailPeers(collection, progress, FakeTriageApi()),
+        DetailPeers(collection, progress, FakeTriageApi(), FakeMutingApi()),
         WatchProvidersUseCase(repo),
         MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
         FixedClock(),

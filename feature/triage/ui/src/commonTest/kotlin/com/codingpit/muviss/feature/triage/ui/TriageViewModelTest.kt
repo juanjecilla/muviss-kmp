@@ -7,9 +7,11 @@ import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -454,5 +456,90 @@ class TriageViewModelTest {
 
         assertEquals(listOf(filmB.id), harness.collection.added)
         assertTrue(harness.repository.decisions.value.getValue(filmB.id).resolved)
+    }
+
+    private val talk = GenreKey(MediaType.TV, "10767")
+    private val mutedTalk = MutedGenres(setOf(talk))
+    private val kimmel = show("20").copy(genreIds = listOf("10767", "35"))
+    private val drama = show("21").copy(genreIds = listOf("18"))
+
+    @Test
+    fun `muted genres are asked of the source and keep their titles out of the first deck`() = runTest {
+        val harness = TriageHarness(tv = listOf(kimmel, drama), muted = mutedTalk)
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama.id), vm.state.value.cards.map { it.id })
+        assertTrue(vm.state.value.hasMuted)
+    }
+
+    @Test
+    fun `the first deck is never loaded unmuted and then reloaded`() = runTest {
+        val harness = TriageHarness(tv = listOf(kimmel, drama), muted = mutedTalk)
+        harness.viewModel()
+        advanceUntilIdle()
+
+        // Loading before the setting arrived would flash exactly the shows the user muted.
+        assertTrue(harness.source.tvExcludedRequests.isNotEmpty())
+        assertTrue(harness.source.tvExcludedRequests.all { it == setOf("10767") })
+    }
+
+    @Test
+    fun `the show muted chip brings the muted titles back and toggling again hides them`() = runTest {
+        val harness = TriageHarness(tv = listOf(kimmel, drama), muted = mutedTalk)
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        vm.onShowMutedToggled()
+        advanceUntilIdle()
+        val shown = vm.state.value.cards.map { it.id }.toSet()
+        assertTrue(vm.state.value.showMuted)
+
+        vm.onShowMutedToggled()
+        advanceUntilIdle()
+
+        assertEquals(setOf(kimmel.id, drama.id), shown)
+        assertEquals(listOf(drama.id), vm.state.value.cards.map { it.id })
+        assertFalse(vm.state.value.showMuted)
+    }
+
+    @Test
+    fun `changing the muted genres in Settings reloads the deck from the first page`() = runTest {
+        val harness = TriageHarness(tv = listOf(kimmel, drama))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+        assertEquals(setOf(kimmel.id, drama.id), vm.state.value.cards.map { it.id }.toSet())
+
+        harness.settings.configured.value = mutedTalk
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama.id), vm.state.value.cards.map { it.id })
+    }
+
+    @Test
+    fun `muting alone does not make the empty deck offer to clear filters`() = runTest {
+        val vm = TriageHarness(tv = emptyList(), muted = mutedTalk).viewModel()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.filter.isNarrowed)
+    }
+
+    @Test
+    fun `switching type keeps muting and clearing filters keeps it too`() = runTest {
+        val vm = TriageHarness(tv = listOf(drama), muted = mutedTalk).viewModel()
+        advanceUntilIdle()
+
+        vm.onTypeFilterChange(MediaType.TV)
+        assertEquals(mutedTalk, vm.state.value.filter.muted)
+        vm.onClearFilters()
+        assertEquals(mutedTalk, vm.state.value.filter.muted)
+    }
+
+    @Test
+    fun `the chip is not offered when nothing is muted`() = runTest {
+        val vm = TriageHarness(tv = listOf(drama)).viewModel()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.hasMuted)
     }
 }

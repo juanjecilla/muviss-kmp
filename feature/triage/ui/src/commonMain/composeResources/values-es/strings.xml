@@ -23,6 +23,7 @@
     <string name="filter_all">Todo</string>
     <string name="filter_movies">Películas</string>
     <string name="filter_tv">Series</string>
+    <string name="filter_show_muted">Ver silenciados</string>
     <string name="type_movie">Película</string>
     <string name="type_tv">Serie</string>
     <!-- %1$s is a verdict label, e.g. Skip. -->

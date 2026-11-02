@@ -1,0 +1,6 @@
+What's new in Muviss 1.2.0:
+- Confirm a tick with a row sweep, milestone burst and a setting
+- Muted Genres keep talk, news and reality TV out of suggestions
+- First-run introduction, notifications opt-in
+- Delete all data refreshes the home-screen widgets
+- Bug fixes and improvements.

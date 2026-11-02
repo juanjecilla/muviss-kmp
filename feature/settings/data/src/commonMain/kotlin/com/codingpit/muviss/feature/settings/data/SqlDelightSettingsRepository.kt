@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
@@ -18,10 +19,15 @@ import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.core.database.TriageSnoozeQueries
 import com.codingpit.muviss.feature.settings.domain.AppSettings
 import com.codingpit.muviss.feature.settings.domain.AppTheme
+import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
+import com.codingpit.muviss.feature.settings.domain.MutedGenresCodec
 import com.codingpit.muviss.feature.settings.domain.SettingsRepository
+import com.codingpit.muviss.models.GenreKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
@@ -59,6 +65,7 @@ class SqlDelightSettingsRepository(
 ) : SettingsRepository {
 
     private val json = Json { prettyPrint = true }
+    private val mutedGenresLock = Mutex()
 
     override fun observeSettings(): Flow<AppSettings> = settingsQueries.selectSettings()
         .asFlow()
@@ -96,6 +103,23 @@ class SqlDelightSettingsRepository(
         Unit
     }
 
+    override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = withContext(dispatchers.io) {
+        // Read-modify-write on one column: serialized so two quick taps cannot drop one of them.
+        mutedGenresLock.withLock {
+            ensureRow()
+            val current = MutedGenresCodec.decode(settingsQueries.selectSettings().awaitAsOne().mutedGenres)
+            val updated = current.filterNot { it.key == key } + if (muted) listOf(MutedGenreEntry(key, name)) else emptyList()
+            settingsQueries.updateMutedGenres(MutedGenresCodec.encode(updated))
+        }
+        Unit
+    }
+
+    override suspend fun setMutedGenresInSearch(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        settingsQueries.updateMutedGenresInSearch(enabled)
+        Unit
+    }
+
     override suspend fun exportData(): String = withContext(dispatchers.io) {
         val export = MuvissDataExport(
             formatVersion = MuvissDataExport.CURRENT_FORMAT_VERSION,
@@ -121,6 +145,8 @@ class SqlDelightSettingsRepository(
         region = region,
         notificationsEnabled = notificationsEnabled,
         crashReportsEnabled = crashReportsEnabled,
+        mutedGenres = MutedGenresCodec.decode(mutedGenres),
+        mutedGenresInSearch = mutedGenresInSearch,
     )
 
     private fun CollectionEntryRow.toExport(): CollectionEntryExport = CollectionEntryExport(

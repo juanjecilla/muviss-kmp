@@ -32,9 +32,11 @@ sealed interface SyncAccountState {
      * a locked one renders the row and a way to buy it, because that is a
      * step the user can actually take.
      *
-     * [email] is non-null when a lapsed subscriber is still signed in, so the
-     * screen can keep offering sign-out rather than trapping them behind the
-     * paywall with no way out of the account.
+     * Only ever a signed-in account (#286): signed out, the user is shown
+     * [SignedOut], because an entitlement bought on another device can only
+     * be found by signing in, so the screen always offers sign-out from here
+     * rather than trapping a lapsed subscriber behind the paywall. [email] is
+     * null only when the provider shared none.
      */
     data class Locked(val email: String?) : SyncAccountState
 

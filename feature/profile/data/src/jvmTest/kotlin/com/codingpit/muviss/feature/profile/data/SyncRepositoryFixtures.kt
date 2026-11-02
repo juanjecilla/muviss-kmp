@@ -19,7 +19,9 @@ internal class FakeFeatureFlags(automaticSync: Boolean = false) : FeatureFlags {
     override val triageControlScheme: Flow<TriageControlScheme> = flowOf(TriageControlScheme.DEFAULT)
     override val animationsEnabled: Flow<Boolean> = flowOf(true)
     override val triageDeckAnimations: Flow<Boolean> = flowOf(true)
+    override val tickAnimations: Flow<Boolean> = flowOf(true)
     override val syncAutomatically: Flow<Boolean> = automaticSyncState
+    override val byokEnabled: Flow<Boolean> = flowOf(false)
     override val triageSnoozePeriod: Flow<SnoozePeriod> = flowOf(SnoozePeriod.DEFAULT)
     override val triageSnoozePlacement: Flow<SnoozePlacement> = flowOf(SnoozePlacement.DEFAULT)
 
@@ -28,6 +30,8 @@ internal class FakeFeatureFlags(automaticSync: Boolean = false) : FeatureFlags {
     override suspend fun setAnimationsEnabled(enabled: Boolean) = Unit
 
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = Unit
+
+    override suspend fun setTickAnimations(enabled: Boolean) = Unit
 
     override suspend fun setSyncAutomatically(enabled: Boolean) {
         automaticSyncState.value = enabled

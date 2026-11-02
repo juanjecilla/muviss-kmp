@@ -52,6 +52,24 @@ class CrashScrubberTest {
     }
 
     @Test
+    fun an_own_tmdb_key_is_removed_by_shape_even_with_no_name_in_front_of_it() {
+        // EPIC 46: the user types it, so it can appear anywhere.
+        val v4 = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJhYmMifQ.c2lnbmF0dXJl"
+        val scrubbed = CrashScrubber.scrub("rejected [$tmdbKey] and also $v4 for the user")
+
+        assertFalse(scrubbed.contains(tmdbKey), scrubbed)
+        assertFalse(scrubbed.contains("eyJhbGci"), scrubbed)
+        assertEquals("rejected [[redacted]] and also [redacted] for the user", scrubbed)
+    }
+
+    @Test
+    fun a_shorter_or_longer_hex_run_is_not_mistaken_for_a_key() {
+        val sha1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+        assertEquals("commit $sha1", CrashScrubber.scrub("commit $sha1"))
+        assertEquals("id abc123", CrashScrubber.scrub("id abc123"))
+    }
+
+    @Test
     fun text_with_nothing_secret_in_it_is_returned_unchanged() {
         val message = "Unable to resolve host api.themoviedb.org: no address associated with hostname"
 

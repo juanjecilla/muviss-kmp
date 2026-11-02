@@ -41,7 +41,7 @@ kotlin {
         browser()
     }
 
-    androidLibrary {
+    android {
         namespace = moduleNamespace
         compileSdk = sdkLevel("android-compileSdk")
         minSdk = sdkLevel("android-minSdk")

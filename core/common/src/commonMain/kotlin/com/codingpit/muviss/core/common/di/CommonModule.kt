@@ -11,6 +11,7 @@ import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.common.connectivity.DefaultConnectivityMonitor
 import com.codingpit.muviss.core.common.locale.DefaultSystemLocale
 import com.codingpit.muviss.core.common.locale.SystemLocale
+import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
@@ -21,6 +22,8 @@ import org.koin.dsl.module
 val commonModule: Module = module {
     // Android overrides this from MuvissApplication (EPIC 30, #73).
     single<SystemNotificationSettings> { SystemNotificationSettings.None }
+    // Android and iOS bind a real one from their host (EPIC 47); everywhere else nothing needs asking.
+    single<NotificationPermissionRequester> { NotificationPermissionRequester.Granted }
     single<AppDispatchers> { DefaultAppDispatchers() }
     single<AppClock> { SystemClock() }
     single { AppVersion.current }
