@@ -138,8 +138,10 @@ Names are verbs, ids are strings, results are small. Use the glossary: **WatchNe
 - All writes are idempotent. Writes mark rows dirty; if automatic sync is on, `SyncCoordinator` pushes them later (safe).
 - Exceptions: use `androidx.appfunctions` types (`AppFunctionInvalidArgumentException`, `AppFunctionElementNotFoundException`, `AppFunctionLimitExceededException`, …). Map `MetadataError` (`RateLimited`, `Unauthorized`,
   `OwnKeyRejected`, `NotFound`, `Offline`, `Unknown`) to fixed, agent-readable text with a recovery hint ("try again later", "the user must fix the TMDB key in Settings"). Never `e.message`.
-- Do not take `LocalDate`/`LocalTime` inputs. alpha10 could not deserialize `java.time` inputs (our demo hit `Unable to deserialize class java.time.LocalTime`, verified on a device 2026-10-11; release notes say it was
-  fixed in alpha13 and again in beta01 for desugaring apps). If a date is needed, use epoch day or an ISO string. Beware `todayEpochDay` semantics: the in-flight branch `fix/656-local-day` changes the local-day rules.
+- Prefer not to take `LocalDate`/`LocalTime` inputs. alpha10 could not deserialize `java.time` inputs at all (`Unable to deserialize class java.time.LocalTime`, verified on a device 2026-10-11). On **beta01 a `LocalTime`
+  input works only as an object with all four fields** `{"hour": 14, "minute": 30, "second": 0, "nanoOfSecond": 0}`; the string `"14:30"` and a partial object are rejected with code 1001 (tested on a Pixel 9 Pro, Android 17,
+  2026-11-02, scratch function). An agent filling that object is more error-prone than one string, so for dates use an epoch day or an ISO string you parse and validate yourself. Release notes (checked 2026-11-02): alpha13 added
+  `java.time` support in `AppFunctionData`, beta01 fixed desugaring apps (Muviss uses desugaring? check before relying on it). Beware `todayEpochDay` semantics: the in-flight branch `fix/656-local-day` changes the local-day rules.
 - Agents need no login: every function above works signed-out and offline except `searchTitles` and `addToLibrary` (network). Sync and co-watch are paid and gated off in release builds: out of scope.
 - Run all work on `Dispatchers.IO`; AppFunction implementations run on the main thread by default (docs, checked 2026-11-02).
 
