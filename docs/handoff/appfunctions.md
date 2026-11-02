@@ -193,7 +193,7 @@ Private repo `juanjecilla/DevfestOurense26` (checked 2026-11-02; ask the owner f
 1. Landing / Play listing: **`no-landing`** + `Notes: none` + an issue for later copy (recommended), or write en/es copy now?
 2. ADR: **yes, 0036** ("AppFunctions are an inbound adapter in the Android app; safe surface only; agent ticks are silent").
 3. Search access: use `MetadataProviderRegistry` directly from the adapter (recommended; `SearchApi` is an empty interface), or widen `SearchApi` first?
-4. Should a tracking GitHub issue be opened for this feature now? (the repo rules ask for one for anything not done in the session). Not created by the author of this document.
+4. ~~Tracking issue~~ opened 2026-11-02: https://github.com/juanjecilla/muviss-kmp/issues/701 (labels `enhancement`, `epic`). When the branch opens, add it to `docs/EPICS.md` with the ADR number and link both ways (AGENTS.md).
 
 ## References (all checked 2026-11-02)
 
