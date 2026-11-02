@@ -23,9 +23,11 @@ Kotlin warnings are errors in **main** source (`muviss.kmp.library`, #485), on e
 concrete target of the library and Compose modules. The host modules apply neither
 convention and still only warn: `:app:androidApp`, `:app:desktopApp`, `:app:webApp` and
 `:app:baselineprofile`. Test source still warns (`runComposeUiTest` v2, #492), and the
-`iosMain` metadata compilation is skipped: its KLIB loader warnings are library skew
-between Compose's and Google's `androidx` artifacts, not our code (#493, #670). Fix the warning, or `@Suppress` it at the
-narrowest scope with a comment; `-PallowWarnings` is for a local experiment only.
+`iosMain` metadata compilation is skipped: its KLIB loader warnings come from libraries,
+not our code (#493, #670). Two causes: version skew between Compose's and Google's
+`androidx` artifacts, and a klib name, `runtime`, shared by `app.cash.sqldelight:runtime`
+and `androidx.compose.runtime:runtime`, which no version alignment can change. Fix the
+warning, or `@Suppress` it at the narrowest scope with a comment; `-PallowWarnings` is for a local experiment only.
 
 After a rebase, add `--rerun-tasks`: Gradle will call a suite up to date from
 before the merge, and CI's clean checkout will not.
