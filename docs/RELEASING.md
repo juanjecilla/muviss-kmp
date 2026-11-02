@@ -395,11 +395,23 @@ the schedule, the gates and where a fix goes.
   on the release branch, makes git report a delete/modify conflict, which the
   forward resolves by itself: it takes the notes as the release branch wrote
   them and continues, so the PR carries them (#529) and nobody has to step in.
-  A notes file that both branches changed still opens as a conflict.
+  A notes file that both branches changed still opens as a conflict when the
+  target may receive it (develop, or that version's own line). Another version's
+  notes never conflict: the target keeps its copy and nothing is forwarded (below).
   **CodeRabbit does not review a forward PR** (the App authored it, and it skips
   App-authored PRs), so its approval has to come from a person: approve it, or
   for a conflicting one resolve it and merge it by hand, as #528 did for #527
   (#573).
+- **The marker is written by several workflows.** The release RC job's TestFlight
+  record (`release_promote.rb record-testflight`), the Sunday step, the ramp, the
+  brake and the manual merge (`record-production`) all rewrite the issue body. Each
+  write starts from the body as it is now and applies only its own change
+  (`ReleaseStages.write_marker`), reads the body back, and writes again if its change
+  was replaced. A stage never moves backwards, and the TestFlight record never moves
+  to an older RC. What remains: a write that lands between a writer's fresh read and
+  its own write is overwritten, and the read back cannot see it. That window is two
+  API calls. The REST API takes no precondition on an issue update, so only a lock
+  would close it (a follow-up, see `docs/EPICS.md`).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
   **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
@@ -442,6 +454,12 @@ with no `--write` to preview). One file per listing locale,
   is kept from then on. A file that still starts with the old `DRAFT:` marker is
   replaced. `release-notes-guard` still refuses a `DRAFT:` file on a PR into
   `main`, which generated notes never carry.
+- **Forwarded notes.** A notes edit in a fix forwards to develop and to its own
+  version's release line only. On any other release line `forward-fix.sh` leaves
+  those notes out and logs `skipped vX.Y.Z notes for release/A.B.C`, so no stray
+  `vX.Y.Z/` directory lands there (#575). When that line already has its own copy
+  of those notes, it keeps it. A forward that conflicts on code says in its PR
+  which notes were left out, so the person resolving it leaves them out too.
 
 ### Cutting a release
 
@@ -530,6 +548,46 @@ branches, RC tags), **Pull requests** write (back-merge, forward and release
 PRs, merging), **Issues** write (the release issues, milestones, and the
 blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
 It is a bypass actor on the `main` ruleset (see **Branch protection**).
+
+### Dependabot's worker bumps (#638)
+
+Dependabot bumps `core/database/src/webWorker/package.json` (sql.js), but it
+cannot run Gradle, so the two `kotlin-js-store` locks stayed stale and every
+bump failed `kotlinStoreYarnLock` (#631). `.github/workflows/dependabot-worker-locks.yml`
+regenerates them (`./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock`)
+and pushes the result onto the Dependabot branch, so the bump arrives green.
+
+It is two jobs, split by secrets:
+
+- `regenerate` has no secrets and read-only permissions. It checks out the PR
+  head, runs the Gradle tasks (which execute the PR's build scripts), and
+  uploads the two lock files.
+- `push` holds the release App's token, scoped to this repository and to
+  `contents: write` only. It executes no repository code: it
+  downloads the artifact outside the workspace, accepts only the two lock paths
+  as regular files with yarn's lockfile header, copies them in, and commits.
+
+Both jobs run only when Dependabot both opened the PR and triggered the run,
+on a `dependabot/npm_and_yarn/` branch of this repository. The author check
+says who opened the PR. The actor check skips the run that the App's own push
+triggers.
+
+Dependabot-triggered runs read **Dependabot** secrets, not Actions secrets, so
+`RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must also be set under Settings >
+Secrets and variables > **Dependabot**. The `push` job fails with that message
+when they are missing.
+
+The push is made with the App's token because a push by `GITHUB_TOKEN` starts no
+workflow run, and CI would never run on the lock commit.
+
+**Dependabot stops rebasing or updating a PR after a push by someone else**, and
+this workflow's push is one. A bump that later needs a rebase will not get one
+on its own. Close the PR and let the next weekly run open a fresh one, which
+this workflow then covers; a maintainer can also rebase the branch by hand.
+
+Not yet verified live: the workflow is written and shape-tested
+(`scripts/ci/test/dependabot_worker_locks_test.rb`) but has not run on a real
+Dependabot bump. Follow-up #667 checks the next one.
 
 ### Shared build
 
@@ -645,13 +703,29 @@ this app's primary target, see CLAUDE.md) and writes its
 into `feature/settings/ui`'s Licenses screen without an app→feature dependency
 inversion would need either a cross-module generated-resource pipeline or
 Compose Multiplatform's raw-resource mechanism, either well beyond this
-epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a
-**generated-once, checked-in** `List<OssLicense>` produced from that same
-`artifacts.json` (253 entries as of this pass). Regenerate it by re-running
-`:app:androidApp:licenseeAndroidRelease` and re-deriving the list from the
-refreshed `artifacts.json` whenever dependencies change meaningfully — it
-will silently go stale otherwise, unlike the build-time gate above, which
-never can.
+epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a **checked-in**
+`List<OssLicense>` generated from that same `artifacts.json`. To refresh it
+after a dependency change:
+
+```bash
+./gradlew :app:androidApp:regenerateOssLicenses   # runs licenseeAndroidRelease, then rewrites OssLicenses.kt
+git diff feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt
+```
+
+Commit the rewritten file with the dependency change. The generated entries
+come from the report's name and licence exactly as licensee gives them; the
+hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
+not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
+when the report lists an artifact with no entry (missing), or when an entry
+names an artifact the report no longer lists (stale), or lists one artifact
+twice (the Licenses screen keys its rows by artifact), so an artifact added or
+removed without a regeneration breaks CI rather than under-reporting or
+over-reporting on the About screen (#562, #616). It compares `group:artifact`
+coordinates only: a version bump that changes an artifact's name or licence
+still passes, so regenerate after every dependency update, not only when CI
+fails. Its failure message names both lists and the
+regenerate command. The comparison lives in build-logic's `OssLicensesList`
+(unit-tested in `build-logic/src/test`).
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth

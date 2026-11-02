@@ -12,7 +12,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CompletionDetectorTest {
 
@@ -107,5 +109,72 @@ class CompletionDetectorTest {
 
         assertEquals(listOf(Completion(show, CompletionKind.CAUGHT_UP)), seen)
         collecting.cancel()
+    }
+
+    @Test
+    fun a_parked_write_does_not_block_a_tick_on_another_title() = runTest {
+        val other = MediaId.tmdbTv("3")
+        val detector = CompletionDetector { WatchStatus.WATCHING }
+        // Never completed: the save stays open for the whole test, as a stuck database call would.
+        val parked = CompletableDeferred<Unit>()
+        backgroundScope.launch { detector.around(show, seen = true) { parked.await() } }
+        testScheduler.runCurrent()
+
+        var wrote = false
+        detector.around(other, seen = true) { wrote = true }
+        assertTrue(wrote)
+    }
+
+    @Test
+    fun a_parked_write_does_not_block_a_second_tick_on_the_same_title() = runTest {
+        val detector = CompletionDetector { WatchStatus.WATCHING }
+        val parked = CompletableDeferred<Unit>()
+        backgroundScope.launch { detector.around(show, seen = true) { parked.await() } }
+        testScheduler.runCurrent()
+
+        var wrote = false
+        detector.around(show, seen = true) { wrote = true }
+        assertTrue(wrote)
+    }
+
+    @Test
+    fun two_overlapping_ticks_released_in_reverse_order_still_emit_one_completion() = runTest {
+        var unseen = 2
+        val detector = CompletionDetector {
+            yield()
+            if (unseen == 0) WatchStatus.WATCHED else WatchStatus.WATCHING
+        }
+        val seen = mutableListOf<Completion>()
+        val collecting = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { detector.completions.toList(seen) }
+
+        val gateFirst = CompletableDeferred<Unit>()
+        val gateSecond = CompletableDeferred<Unit>()
+        val first = launch {
+            detector.around(show, seen = true) {
+                gateFirst.await()
+                unseen--
+            }
+        }
+        val second = launch {
+            detector.around(show, seen = true) {
+                gateSecond.await()
+                unseen--
+            }
+        }
+        testScheduler.runCurrent()
+
+        // The later tick lands first, so the earlier one's after-read is the one that must see the move.
+        gateSecond.complete(Unit)
+        second.join()
+        gateFirst.complete(Unit)
+        first.join()
+
+        assertEquals(listOf(Completion(show, CompletionKind.CAUGHT_UP)), seen)
+        collecting.cancel()
+    }
+
+    @Test
+    fun none_is_not_a_shared_detector() {
+        assertNotSame(CompletionDetector.None, CompletionDetector.None)
     }
 }
