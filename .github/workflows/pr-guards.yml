@@ -197,3 +197,7 @@ jobs:
       # keeps that true on the PRs that now reach it (#522).
       - name: PR guards run on the bases they are for (#522)
         run: ruby scripts/ci/test/pr_guards_test.rb
+      # The Dependabot lock job (#638) keeps the PR-code job secret-free and the
+      # token job free of repository code. That split is the workflow's shape.
+      - name: Dependabot worker-lock workflow keeps its secret split (#638)
+        run: ruby scripts/ci/test/dependabot_worker_locks_test.rb

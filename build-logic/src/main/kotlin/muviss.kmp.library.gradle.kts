@@ -107,3 +107,21 @@ kotlin.targets.configureEach {
         }
     }
 }
+
+// Env-gated tests (`assumeTrue` on an environment variable) report SKIPPED. An
+// environment variable is not a Gradle task input unless it is declared, so a
+// later run that sets it reported UP-TO-DATE and never ran the test (#629). Each
+// variable below is an input: setting, changing or unsetting it re-runs the task.
+// While one is set, the task is also never up to date and never restored from the
+// build cache: what these tests read lies outside Gradle's view (the files in
+// MUVISS_POSTER_DIR, the OS keychain behind MUVISS_KSAFE_LIVE, the goldens
+// MUVISS_RECORD_GOLDENS writes), so an unchanged value proves nothing about it.
+// Add a new env-gated test's variable here.
+val envGatedTestVariables = listOf("MUVISS_POSTER_DIR", "MUVISS_KSAFE_LIVE", "MUVISS_RECORD_GOLDENS")
+tasks.withType<Test>().configureEach {
+    val values = envGatedTestVariables.map { name -> name to providers.environmentVariable(name).orElse("") }
+    values.forEach { (name, value) -> inputs.property("env.$name", value) }
+    val anySet = providers.provider { values.any { (_, value) -> value.get().isNotEmpty() } }
+    outputs.upToDateWhen { !anySet.get() }
+    outputs.cacheIf("no env-gated test variable is set") { !anySet.get() }
+}
