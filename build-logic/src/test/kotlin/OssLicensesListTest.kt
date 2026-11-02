@@ -89,7 +89,7 @@ class OssLicensesListTest {
         val message = OssLicensesList.failureMessage(OssLicensesList.Drift(missing = listOf("b:y"), stale = listOf("c:gone")))
         assertContains(message, "b:y")
         assertContains(message, "c:gone")
-        assertContains(message, "no entry for 1 artifact(s)")
+        assertContains(message, "the list has no entry for 1 artifact(s) the licensee report lists")
         assertContains(message, "no longer lists: c:gone")
         assertContains(message, "./gradlew :app:androidApp:regenerateOssLicenses")
     }

@@ -65,7 +65,7 @@ object OssLicensesList {
     fun failureMessage(drift: Drift): String {
         val parts = buildList {
             if (drift.missing.isNotEmpty()) {
-                add("no entry for ${drift.missing.size} artifact(s) in the licensee report: ${drift.missing.joinToString()}")
+                add("the list has no entry for ${drift.missing.size} artifact(s) the licensee report lists: ${drift.missing.joinToString()}")
             }
             if (drift.stale.isNotEmpty()) {
                 add("${drift.stale.size} entry(ies) for artifact(s) the licensee report no longer lists: ${drift.stale.joinToString()}")
