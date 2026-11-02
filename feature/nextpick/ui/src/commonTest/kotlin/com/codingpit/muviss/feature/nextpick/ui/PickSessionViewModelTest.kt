@@ -188,6 +188,27 @@ class PickSessionViewModelTest {
     }
 
     @Test
+    fun start_again_cannot_write_a_title_whose_first_write_is_still_in_flight() {
+        // Given Adds still in flight on both picks, and the person started again
+        val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
+        val viewModel = viewModel(listOf(candidate("1", "First"), candidate("2", "Second")), noQuestions, actions)
+        val first = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id
+        viewModel.add()
+        viewModel.another()
+        viewModel.add()
+        viewModel.start()
+        assertEquals(first, assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id)
+
+        // When they tap Add on the first title again before its write lands
+        viewModel.add()
+        actions.hold?.complete(Unit)
+
+        // Then each title was written once
+        assertEquals(2, actions.added.size)
+        assertEquals(actions.added.toSet().size, actions.added.size)
+    }
+
+    @Test
     fun a_failed_write_says_so_and_can_be_tried_again() {
         // Given writes that fail
         val actions = RecordingNextPickActions().apply { fail = true }
