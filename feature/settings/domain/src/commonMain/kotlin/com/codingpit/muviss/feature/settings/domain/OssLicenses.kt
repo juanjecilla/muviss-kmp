@@ -16,7 +16,8 @@ data class OssLicense(
  * and docs/RELEASING.md "OSS licenses"). Regenerate with
  * `./gradlew :app:androidApp:regenerateOssLicenses` (#562); `check` runs
  * `verifyOssLicenses`, which fails when the report lists an artifact with no
- * entry here. There is no live Gradle wiring from that report into this KMP
+ * entry here, or an entry here names an artifact the report no longer lists
+ * (#616). There is no live Gradle wiring from that report into this KMP
  * module (the report only covers the Android dependency graph; Android is this
  * app's primary target, see CLAUDE.md). The hand-written tail below the
  * generated entries is kept by the regeneration.
