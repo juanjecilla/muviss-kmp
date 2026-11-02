@@ -5,13 +5,18 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
+import java.sql.DriverManager
+import java.sql.SQLException
+import java.util.Properties
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -68,15 +73,50 @@ class DatabaseFactoryJvmTest {
             }.onFailure(failures::add)
         }
         val second = thread {
-            firstHasRead.await()
-            runCatching { readThenWrite {} }.onFailure(failures::add)
+            runCatching {
+                check(firstHasRead.await(WAIT_SECONDS, TimeUnit.SECONDS)) { "the first transaction never read" }
+                readThenWrite {}
+            }.onFailure(failures::add)
         }
-        first.join()
-        second.join()
+        first.join(WAIT_SECONDS * 1_000)
+        second.join(WAIT_SECONDS * 1_000)
+        assertFalse(first.isAlive || second.isAlive, "a transaction was still running after $WAIT_SECONDS s")
 
         assertEquals(emptyList(), failures.map { it.message })
         val rows = driver.executeQuery(null, "SELECT count(*) FROM tick;", { QueryResult.Value(if (it.next().value) it.getLong(0) else null) }, 0).value
         assertEquals(2L, rows)
+        driver.close()
+    }
+
+    /**
+     * `BEGIN IMMEDIATE` can fail where a deferred `BEGIN` could not: SQLITE_BUSY once another
+     * writer holds the lock past the busy timeout. SQLDelight records the transaction before it
+     * begins, so a failed begin must not leave it behind: the thread's next transaction would
+     * count as nested, skip its own `BEGIN`, and run in autocommit, so throwing out of it would
+     * keep its writes.
+     */
+    @Test
+    fun `a transaction that could not begin leaves the next one able to roll back`() {
+        val file = java.io.File(createTempDirectory("muviss-db-test").toFile(), "busy.db")
+        val url = "jdbc:sqlite:${file.absolutePath}"
+        val driver = ImmediateTransactionSqliteDriver(url, Properties().apply { setProperty("busy_timeout", "100") })
+        driver.execute(null, "CREATE TABLE tick (n INTEGER NOT NULL);", 0)
+        val transacter = object : TransacterImpl(driver) {}
+
+        DriverManager.getConnection(url).use { other ->
+            other.createStatement().use { it.execute("BEGIN IMMEDIATE") }
+            assertFailsWith<SQLException> { transacter.transaction {} }
+            other.createStatement().use { it.execute("ROLLBACK") }
+        }
+        assertFailsWith<IllegalStateException> {
+            transacter.transaction {
+                driver.execute(null, "INSERT INTO tick (n) VALUES (1);", 0)
+                error("roll back")
+            }
+        }
+
+        val rows = driver.executeQuery(null, "SELECT count(*) FROM tick;", { QueryResult.Value(if (it.next().value) it.getLong(0) else null) }, 0).value
+        assertEquals(0L, rows)
         driver.close()
     }
 
@@ -187,4 +227,8 @@ class DatabaseFactoryJvmTest {
         parameters = 0,
         binders = null,
     ).value
+
+    private companion object {
+        const val WAIT_SECONDS = 10L
+    }
 }

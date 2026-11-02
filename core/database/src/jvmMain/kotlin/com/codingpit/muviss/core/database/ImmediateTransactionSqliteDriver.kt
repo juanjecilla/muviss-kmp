@@ -5,6 +5,7 @@ import app.cash.sqldelight.driver.jdbc.ConnectionManager
 import app.cash.sqldelight.driver.jdbc.JdbcDriver
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 import java.util.Properties
 
 /**
@@ -31,9 +32,14 @@ internal class ImmediateTransactionSqliteDriver(private val url: String, private
     private val transactions = ThreadLocal<ConnectionManager.Transaction?>()
     private val connections = ThreadLocal<Connection?>()
 
+    /** Ending the outermost transaction closes its connection, as `ThreadedConnectionManager` does. */
     override var transaction: ConnectionManager.Transaction?
         get() = transactions.get()
-        set(value) = transactions.set(value)
+        set(value) {
+            val previous = transactions.get()
+            transactions.set(value)
+            if (value == null && previous != null) closeConnection(previous.connection)
+        }
 
     override fun getConnection(): Connection = connections.get() ?: DriverManager.getConnection(url, properties).also(connections::set)
 
@@ -45,8 +51,20 @@ internal class ImmediateTransactionSqliteDriver(private val url: String, private
         }
     }
 
+    /**
+     * Unlike a deferred `BEGIN`, this can fail: SQLITE_BUSY once another writer holds the lock past
+     * the busy timeout. `JdbcDriver.newTransaction` records the transaction *before* calling this,
+     * so a failure here would leave it on the thread: the next transaction would count as nested,
+     * skip its `BEGIN`, and run in autocommit, where a rollback undoes nothing. Clearing it also
+     * closes the connection.
+     */
     override fun Connection.beginTransaction() {
-        prepareStatement("BEGIN IMMEDIATE TRANSACTION").use { it.execute() }
+        try {
+            prepareStatement("BEGIN IMMEDIATE TRANSACTION").use { it.execute() }
+        } catch (e: SQLException) {
+            transaction = null
+            throw e
+        }
     }
 
     override fun Connection.endTransaction() {
