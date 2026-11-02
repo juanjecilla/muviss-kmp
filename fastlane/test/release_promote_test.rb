@@ -237,6 +237,14 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal [], state["holds"]
   end
 
+  def test_a_monday_beta_step_is_stamped_with_the_sunday_and_production_follows_a_week_later
+    outcomes = run_on(Date.new(2026, 10, 19))
+    assert_equal :done, outcome_for(outcomes, "1.1.0").status
+    state = state_of("1.1.0")
+    assert_equal "2026-10-18", state["beta_done_on"]
+    assert_equal "2026-10-25", state["production_on"]
+  end
+
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
     outcomes = run_on(SUNDAY_BETA, apply: false)
     assert_equal :would_do, outcome_for(outcomes, "1.1.0").status

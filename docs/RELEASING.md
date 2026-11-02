@@ -378,6 +378,12 @@ the schedule, the gates and where a fix goes.
     Play itself before merging, that beta's newest build is the RC (#349);
   - for production: the version has not had its full week on beta. A held beta
     step pushes production back with it.
+- **A beta step run by hand early in the week keeps the cadence.** Promoted on a
+  Monday or Tuesday (a Sunday held on its gates, then dispatched), it is recorded
+  as the Sunday before, so production stays due the Sunday a week later. Counted
+  as the Monday, production would fall due a day after the Sunday cron and cost
+  the whole train a week (1.2.0 → 1.4.0, November 2026). Later in the week the
+  step counts as the day it ran. `release_promote.rb` also writes `production_on`.
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
   rollout (the ramp leaves a halted release alone until `resume`). A
   `release-blocker` issue or PR in the milestone holds the next Sunday step. The

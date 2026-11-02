@@ -327,7 +327,9 @@ class ReleasePromotion
       problem = act("promote #{rc} to open beta") { @play.promote_to_beta(facts[:rc_code]) }
       return [problem, state] if problem
 
-      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => @today.iso8601, "rc_tag" => rc, "holds" => [])
+      done = ReleaseStages.beta_done_day(@today)
+      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => done.iso8601,
+                          "production_on" => ReleaseStages.production_on(done).iso8601, "rc_tag" => rc, "holds" => [])
       persist(issue, state, "Promoted #{rc} (versionCode #{facts[:rc_code]}) from internal to open beta.")
       [nil, state]
     else
