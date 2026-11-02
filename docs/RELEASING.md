@@ -549,6 +549,46 @@ PRs, merging), **Issues** write (the release issues, milestones, and the
 blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
 It is a bypass actor on the `main` ruleset (see **Branch protection**).
 
+### Dependabot's worker bumps (#638)
+
+Dependabot bumps `core/database/src/webWorker/package.json` (sql.js), but it
+cannot run Gradle, so the two `kotlin-js-store` locks stayed stale and every
+bump failed `kotlinStoreYarnLock` (#631). `.github/workflows/dependabot-worker-locks.yml`
+regenerates them (`./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock`)
+and pushes the result onto the Dependabot branch, so the bump arrives green.
+
+It is two jobs, split by secrets:
+
+- `regenerate` has no secrets and read-only permissions. It checks out the PR
+  head, runs the Gradle tasks (which execute the PR's build scripts), and
+  uploads the two lock files.
+- `push` holds the release App's token, scoped to this repository and to
+  `contents: write` only. It executes no repository code: it
+  downloads the artifact outside the workspace, accepts only the two lock paths
+  as regular files with yarn's lockfile header, copies them in, and commits.
+
+Both jobs run only when Dependabot both opened the PR and triggered the run,
+on a `dependabot/npm_and_yarn/` branch of this repository. The author check
+says who opened the PR. The actor check skips the run that the App's own push
+triggers.
+
+Dependabot-triggered runs read **Dependabot** secrets, not Actions secrets, so
+`RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must also be set under Settings >
+Secrets and variables > **Dependabot**. The `push` job fails with that message
+when they are missing.
+
+The push is made with the App's token because a push by `GITHUB_TOKEN` starts no
+workflow run, and CI would never run on the lock commit.
+
+**Dependabot stops rebasing or updating a PR after a push by someone else**, and
+this workflow's push is one. A bump that later needs a rebase will not get one
+on its own. Close the PR and let the next weekly run open a fresh one, which
+this workflow then covers; a maintainer can also rebase the branch by hand.
+
+Not yet verified live: the workflow is written and shape-tested
+(`scripts/ci/test/dependabot_worker_locks_test.rb`) but has not run on a real
+Dependabot bump. Follow-up #667 checks the next one.
+
 ### Shared build
 
 `android-release-build.yml` (`workflow_call`) checks out full history
