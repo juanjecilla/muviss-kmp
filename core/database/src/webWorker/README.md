@@ -31,7 +31,9 @@ The lock for this package lives in the Kotlin/JS install, not here:
 - The Kotlin/JS build reads the version it installs from this `package.json`
   (`sqlJsVersion` in `core/database/build.gradle.kts`, #618), so the two cannot
   disagree. Do not put a `sql.js` version literal back in the Gradle file.
-  Regenerating the locks after a bump is still manual (#638).
+  Dependabot's bump is followed by `.github/workflows/dependabot-worker-locks.yml`,
+  which regenerates both locks and pushes them onto the branch (#638; see
+  `docs/RELEASING.md` "Dependabot's worker bumps").
 
 ## Running its Node test
 

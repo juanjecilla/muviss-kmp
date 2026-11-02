@@ -47,7 +47,7 @@ internal fun createFileDriver(directory: File): SqlDriver = synchronized(createL
     databaseFile.parentFile?.mkdirs()
     val isNewDatabase = !databaseFile.exists()
 
-    val driver = JdbcSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}")
+    val driver = ImmediateTransactionSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}")
     // `.synchronous()` bridges `MuvissDatabase.Schema` (now
     // `SqlSchema<QueryResult.AsyncValue<Unit>>`, see `core/database`'s
     // `build.gradle.kts` on `generateAsync`) back to the synchronous shape
@@ -101,7 +101,7 @@ private val createLock = Any()
 // against an already-current database — harmless while there are no `.sqm`
 // files yet, but silently wrong (e.g. a repeated `ALTER TABLE ADD COLUMN`
 // would fail outright) the moment the first real migration ships.
-private fun JdbcSqliteDriver.userVersion(): Long = executeQuery(
+private fun SqlDriver.userVersion(): Long = executeQuery(
     identifier = null,
     sql = "PRAGMA user_version;",
     mapper = { cursor -> QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L) },
@@ -109,7 +109,7 @@ private fun JdbcSqliteDriver.userVersion(): Long = executeQuery(
     binders = null,
 ).value
 
-private fun JdbcSqliteDriver.setUserVersion(version: Long) {
+private fun SqlDriver.setUserVersion(version: Long) {
     execute(identifier = null, sql = "PRAGMA user_version = $version;", parameters = 0, binders = null)
 }
 
