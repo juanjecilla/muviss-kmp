@@ -245,6 +245,12 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal "2026-10-25", state["production_on"]
   end
 
+  def test_a_gh_refusal_shows_its_first_line_with_credentials_and_urls_removed
+    err = "X-Access-Token ghs_abcdefghijklmnop1234 see https://api.github.com/x?key=abc\nPull request is not mergeable"
+    failed = ReleasePromotionAdapters::Shell::Failed.new("gh exited 1", ReleasePromotionAdapters::Shell::Failed.reason_of(err))
+    assert_equal "X-Access-Token [removed] see [removed]", failed.reason
+  end
+
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
     outcomes = run_on(SUNDAY_BETA, apply: false)
     assert_equal :would_do, outcome_for(outcomes, "1.1.0").status

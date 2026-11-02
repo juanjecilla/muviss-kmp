@@ -368,7 +368,8 @@ class ReleasePromotion
     yield
     nil
   rescue StandardError => e
-    "could not #{what} (#{e.class})"
+    detail = e.respond_to?(:reason) && !e.reason.to_s.empty? ? ": #{e.reason}" : ""
+    "could not #{what} (#{e.class}#{detail})"
   end
 
   def hold!(issue, state, reasons)
@@ -393,9 +394,29 @@ end
 # The real adapters. Each shells out; none prints its arguments on failure.
 module ReleasePromotionAdapters
   class Shell
+    # A failed command. `reason` is the first line of its stderr with anything
+    # shaped like a credential removed: GitHub's refusals ("Pull request is not
+    # mergeable", "Required status check ...") are the one message worth
+    # showing, and they carry no URL or key. Other errors stay class-only (act).
+    class Failed < RuntimeError
+      TOKEN = /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|[A-Za-z0-9_\-]{32,}|https?:\/\/\S+/.freeze
+
+      attr_reader :reason
+
+      def initialize(message, reason)
+        super(message)
+        @reason = reason
+      end
+
+      def self.reason_of(err)
+        line = err.to_s.lines.map(&:strip).find { |l| !l.empty? }
+        line.to_s.gsub(TOKEN, "[removed]")[0, 200]
+      end
+    end
+
     def self.capture(*cmd, stdin: nil, env: {})
       out, err, status = Open3.capture3(env, *cmd, stdin_data: stdin.to_s)
-      raise "#{cmd.first} exited #{status.exitstatus}" unless status.success?
+      raise Failed.new("#{cmd.first} exited #{status.exitstatus}", Failed.reason_of(err)) unless status.success?
 
       out.strip
     end
