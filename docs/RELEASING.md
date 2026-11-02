@@ -562,9 +562,15 @@ It is two jobs, split by secrets:
 - `regenerate` has no secrets and read-only permissions. It checks out the PR
   head, runs the Gradle tasks (which execute the PR's build scripts), and
   uploads the two lock files.
-- `push` holds the release App's token. It executes no repository code: it
+- `push` holds the release App's token, scoped to this repository and to
+  `contents: write` only. It executes no repository code: it
   downloads the artifact outside the workspace, accepts only the two lock paths
   as regular files with yarn's lockfile header, copies them in, and commits.
+
+Both jobs run only when Dependabot both opened the PR and triggered the run,
+on a `dependabot/npm_and_yarn/` branch of this repository. The author check
+says who opened the PR. The actor check skips the run that the App's own push
+triggers.
 
 Dependabot-triggered runs read **Dependabot** secrets, not Actions secrets, so
 `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must also be set under Settings >

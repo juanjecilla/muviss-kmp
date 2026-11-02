@@ -11,6 +11,8 @@ require "date"
 
 WORKFLOW = File.expand_path("../../../.github/workflows/dependabot-worker-locks.yml", __dir__)
 GATE_ACTOR = "github.actor == 'dependabot[bot]'"
+# The actor alone is whoever triggered this run; the author is who opened the PR.
+GATE_AUTHOR = "github.event.pull_request.user.login == 'dependabot[bot]'"
 GATE_BRANCH = "startsWith(github.head_ref, 'dependabot/npm_and_yarn/')"
 GATE_REPO = "github.event.pull_request.head.repo.full_name == github.repository"
 
@@ -46,10 +48,10 @@ class DependabotWorkerLocksTest < Minitest::Test
     refute triggers.key?("pull_request_target"), "a pull_request_target trigger would hand the App token to fork code"
   end
 
-  def test_both_jobs_are_gated_on_dependabot_branch_and_same_repo
+  def test_both_jobs_are_gated_on_dependabot_author_branch_and_same_repo
     [regenerate, push].each do |job|
       cond = job.fetch("if")
-      [GATE_ACTOR, GATE_BRANCH, GATE_REPO].each { |g| assert_includes cond, g }
+      [GATE_ACTOR, GATE_AUTHOR, GATE_BRANCH, GATE_REPO].each { |g| assert_includes cond, g }
     end
   end
 
@@ -68,6 +70,14 @@ class DependabotWorkerLocksTest < Minitest::Test
     assert_match(/secrets\.RELEASE_APP_ID/, YAML.dump(push))
     assert_match(/secrets\.RELEASE_APP_PRIVATE_KEY/, YAML.dump(push))
     assert(push.fetch("steps").any? { |s| s["uses"].to_s.start_with?("actions/create-github-app-token@") })
+  end
+
+  def test_the_app_token_is_scoped_to_this_repository_and_contents_write
+    mint = push.fetch("steps").find { |s| s["uses"].to_s.start_with?("actions/create-github-app-token@") }
+    inputs = mint.fetch("with")
+    assert_equal "${{ github.event.repository.name }}", inputs.fetch("repositories")
+    assert_equal "write", inputs.fetch("permission-contents")
+    assert_equal ["permission-contents"], inputs.keys.grep(/\Apermission-/), "the token gets no other permission"
   end
 
   def test_the_push_job_runs_no_repository_code
