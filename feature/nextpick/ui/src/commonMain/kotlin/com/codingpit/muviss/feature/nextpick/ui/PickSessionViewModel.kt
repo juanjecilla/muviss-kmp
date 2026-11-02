@@ -29,8 +29,11 @@ sealed interface PickSessionUiState {
         val canGoBack: Boolean,
     ) : PickSessionUiState
 
-    /** The pick, with [outcome] once the person has added, refused or snoozed it. */
-    data class Result(val pick: RankedPick, val offline: Boolean, val outcome: PickOutcome?) : PickSessionUiState
+    /**
+     * The pick, with [outcome] once the person has added, refused or snoozed it. [actionFailed] when the
+     * last of those writes failed; the actions stay available to try again.
+     */
+    data class Result(val pick: RankedPick, val offline: Boolean, val outcome: PickOutcome?, val actionFailed: Boolean = false) : PickSessionUiState
 
     /** The rules found nothing that fits; the screen says so and offers to start again. */
     data class NoPick(val offline: Boolean) : PickSessionUiState
@@ -61,6 +64,7 @@ class PickSessionViewModel(
     private val previous = ArrayDeque<PickSession>()
     private val shown = mutableSetOf<MediaId>()
     private var current: RankedPick? = null
+    private var acting = false
 
     init {
         start()
@@ -70,7 +74,14 @@ class PickSessionViewModel(
     fun start() {
         viewModelScope.launchReporting {
             _state.value = PickSessionUiState.Loading
-            val read = context()
+            val read = try {
+                context()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) { // As in pickNext: Failed offers Retry, and the reporter still gets it.
+                _state.value = PickSessionUiState.Failed
+                throw failure
+            }
             readContext = read
             session = PickSession.start(read)
             previous.clear()
@@ -151,12 +162,33 @@ class PickSessionViewModel(
         }
     }
 
+    /**
+     * One write per pick: a second tap, or another action, while a write is in flight or after it landed is
+     * ignored. The outcome is applied only if the screen still shows that pick, so a write that ends after
+     * "Another" cannot bring the old pick back.
+     */
     private fun act(outcome: PickOutcome, write: suspend (RankedPick) -> Unit) {
-        val pick = current ?: return
-        val offline = (_state.value as? PickSessionUiState.Result)?.offline ?: false
+        val shown = _state.value as? PickSessionUiState.Result ?: return
+        if (acting || shown.outcome != null) return
+        val pick = shown.pick
+        acting = true
         viewModelScope.launchReporting {
-            write(pick)
-            _state.value = PickSessionUiState.Result(pick, offline, outcome)
+            try {
+                write(pick)
+                updateResultFor(pick) { it.copy(outcome = outcome, actionFailed = false) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) { // Shown, then rethrown for the crash reporter.
+                updateResultFor(pick) { it.copy(actionFailed = true) }
+                throw failure
+            } finally {
+                acting = false
+            }
         }
+    }
+
+    private fun updateResultFor(pick: RankedPick, change: (PickSessionUiState.Result) -> PickSessionUiState.Result) {
+        val now = _state.value
+        if (now is PickSessionUiState.Result && now.pick == pick) _state.value = change(now)
     }
 }

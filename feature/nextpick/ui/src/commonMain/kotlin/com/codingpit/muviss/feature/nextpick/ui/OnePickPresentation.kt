@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.nextpick.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
 import com.codingpit.muviss.feature.nextpick.domain.PickReason
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.Res
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_action_failed
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_add
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_another
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_not_for_me
@@ -64,6 +66,7 @@ object OnePickPresentation : PickPresentation {
             Text(stringResource(reasonText(pick.reason)), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(16.dp))
             state.outcome?.let { Text(stringResource(outcomeText(it)), style = MaterialTheme.typography.bodyLarge) }
+            if (state.actionFailed) Text(stringResource(Res.string.nextpick_action_failed), style = MaterialTheme.typography.bodyMedium)
             if (state.outcome == null) ActionRow(callbacks)
             TextButton(onClick = callbacks.onAnother) { Text(stringResource(Res.string.nextpick_another)) }
         }
@@ -71,7 +74,12 @@ object OnePickPresentation : PickPresentation {
 
     @Composable
     private fun ActionRow(callbacks: PickResultCallbacks) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        // Wraps: the Spanish labels or a large font scale put Snooze past the edge of a phone.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Button(onClick = callbacks.onAdd) { Text(stringResource(Res.string.nextpick_add)) }
             OutlinedButton(onClick = callbacks.onNotForMe) { Text(stringResource(Res.string.nextpick_not_for_me)) }
             OutlinedButton(onClick = callbacks.onSnooze) { Text(stringResource(Res.string.nextpick_snooze)) }

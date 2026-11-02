@@ -106,4 +106,20 @@ class CompletionPromptViewModelTest {
         assertFalse(viewModel.visible.value)
         assertTrue(store.marks.isEmpty())
     }
+
+    @Test
+    fun a_failed_store_read_does_not_stop_later_prompts() {
+        // Given a store whose first read fails
+        val store = FakePromptStore(failingReads = 1)
+        val completions = MutableSharedFlow<Completion>(extraBufferCapacity = 4)
+        val viewModel = CompletionPromptViewModel(completions, flowOf(true), store, FixedClock(noon))
+
+        // When a completion meets that failure, and a second completion follows
+        completions.tryEmit(finished)
+        assertFalse(viewModel.visible.value)
+        completions.tryEmit(finished)
+
+        // Then the second one still opens the sheet
+        assertTrue(viewModel.visible.value)
+    }
 }

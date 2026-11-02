@@ -15,6 +15,7 @@ import com.codingpit.muviss.feature.nextpick.domain.PickCandidate
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidates
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import kotlinx.coroutines.flow.first
 
 /**
@@ -24,6 +25,10 @@ import kotlinx.coroutines.flow.first
  *
  * A result the library already holds is annotated with its status, so the engine can tell "something
  * new" from a title the person is watching or has finished.
+ *
+ * A failed request ([MetadataError]: rate limited, unauthorized, an offline race) means "no catalogue
+ * candidates" when the person said either is fine: the library can still answer, and one failed call must
+ * not end the session. For "something new" there is nothing else to ask, so the failure stands.
  */
 internal class DiscoverSource(
     private val metadata: MetadataProvider,
@@ -36,7 +41,12 @@ internal class DiscoverSource(
         val statuses = collection().observeSummaries().first().associate { it.mediaId to it.status }
         val types = listOfNotNull(criteria.type).ifEmpty { listOf(MediaType.MOVIE, MediaType.TV) }
         return types.flatMap { type ->
-            metadata.discoverFiltered(type, page = 1, filters = filtersFor(criteria, type)).items.map { summary ->
+            val page = try {
+                metadata.discoverFiltered(type, page = 1, filters = filtersFor(criteria, type))
+            } catch (failure: MetadataError) {
+                if (criteria.source == PickSource.EITHER) return@flatMap emptyList() else throw failure
+            }
+            page.items.map { summary ->
                 PickCandidate(
                     summary = summary,
                     source = CandidateSource.DISCOVER,

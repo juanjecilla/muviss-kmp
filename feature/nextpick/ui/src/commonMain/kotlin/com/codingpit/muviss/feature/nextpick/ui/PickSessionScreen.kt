@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.nextpick.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -140,7 +141,8 @@ private fun AskingBody(state: PickSessionUiState.Asking, onAnswer: (PickAnswer) 
         Text(stringResource(Res.string.nextpick_step, state.step, state.total), style = MaterialTheme.typography.labelLarge)
         if (state.offline) Text(stringResource(Res.string.nextpick_offline), style = MaterialTheme.typography.bodyMedium)
         Text(stringResource(questionTitle(state.question)), style = MaterialTheme.typography.titleLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Wraps: a question has up to five chips, which do not fit one line on a phone.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             optionsFor(state.question).forEach { option ->
                 FilterChip(selected = false, onClick = { onAnswer(option.answer) }, label = { Text(stringResource(option.label)) })
             }

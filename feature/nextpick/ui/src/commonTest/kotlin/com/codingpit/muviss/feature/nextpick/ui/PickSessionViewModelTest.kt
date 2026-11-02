@@ -6,6 +6,7 @@ import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
 import com.codingpit.muviss.feature.nextpick.domain.PickSessionLength
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -14,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -111,5 +113,89 @@ class PickSessionViewModelTest {
         assertTrue(wentBack)
         assertEquals(PickQuestion.SOURCE, assertIs<PickSessionUiState.Asking>(viewModel.state.value).question)
         assertEquals(false, viewModel.back())
+    }
+
+    private val noQuestions = PickContext(length = PickSessionLength.NONE, online = true, hasBacklog = true)
+
+    @Test
+    fun a_second_tap_while_the_add_is_in_flight_writes_once() {
+        // Given a pick whose Add is still being written
+        val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
+        val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
+        viewModel.add()
+
+        // When the person taps Add again, and then Not for me, before the write lands
+        viewModel.add()
+        viewModel.notForMe()
+        actions.hold?.complete(Unit)
+
+        // Then only the first action was written
+        assertEquals(listOf(MediaId.tmdbMovie("7")), actions.added)
+        assertEquals(emptyList(), actions.refused)
+        assertEquals(PickOutcome.ADDED, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcome)
+    }
+
+    @Test
+    fun an_action_after_the_outcome_is_ignored() {
+        // Given a pick the person already added
+        val actions = RecordingNextPickActions()
+        val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
+        viewModel.add()
+
+        // When they also tap Snooze
+        viewModel.snooze()
+
+        // Then nothing more is written
+        assertEquals(emptyList(), actions.snoozed)
+    }
+
+    @Test
+    fun a_write_that_lands_after_another_does_not_bring_the_old_pick_back() {
+        // Given an Add still in flight on the first of two picks
+        val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
+        val viewModel = viewModel(listOf(candidate("1", "First"), candidate("2", "Second")), noQuestions, actions)
+        val first = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.title
+        viewModel.add()
+
+        // When the person asks for another, and only then does the write land
+        viewModel.another()
+        actions.hold?.complete(Unit)
+
+        // Then the screen keeps the new pick, with no outcome yet
+        val shown = assertIs<PickSessionUiState.Result>(viewModel.state.value)
+        assertTrue(shown.pick.candidate.summary.title != first)
+        assertEquals(null, shown.outcome)
+    }
+
+    @Test
+    fun a_failed_write_says_so_and_can_be_tried_again() {
+        // Given writes that fail
+        val actions = RecordingNextPickActions().apply { fail = true }
+        val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
+
+        // When the person adds the pick
+        viewModel.add()
+
+        // Then the screen says it failed and has no outcome, so the actions are still there
+        val failed = assertIs<PickSessionUiState.Result>(viewModel.state.value)
+        assertTrue(failed.actionFailed)
+        assertEquals(null, failed.outcome)
+
+        // And a second try, once writes work, lands
+        actions.fail = false
+        viewModel.add()
+        val added = assertIs<PickSessionUiState.Result>(viewModel.state.value)
+        assertEquals(PickOutcome.ADDED, added.outcome)
+        assertFalse(added.actionFailed)
+    }
+
+    @Test
+    fun a_context_that_cannot_be_read_ends_in_failed_not_a_spinner() {
+        // Given a session whose context read throws
+        val viewModel = PickSessionViewModel(context = { error("no settings") }, engine = engineOver(emptyList()), actions = RecordingNextPickActions())
+
+        // When it opens
+        // Then it shows Failed, whose Retry is reachable, rather than Loading forever
+        assertIs<PickSessionUiState.Failed>(viewModel.state.value)
     }
 }

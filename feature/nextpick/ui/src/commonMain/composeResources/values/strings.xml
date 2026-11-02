@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- English is the default locale: every key lives here first. values-es mirrors it. -->
 <resources>
-    <string name="nextpick_title">What\'s next?</string>
+    <string name="nextpick_title">What's next?</string>
     <string name="nextpick_back">Back</string>
     <string name="nextpick_skip">Skip</string>
     <string name="nextpick_step">Question %1$d of %2$d</string>
-    <string name="nextpick_offline">You\'re offline, so only your list is searched.</string>
+    <string name="nextpick_offline">You're offline, so only your list is searched.</string>
     <string name="nextpick_q_source">Where should it come from?</string>
     <string name="nextpick_source_mine">From my list</string>
     <string name="nextpick_source_new">Something new</string>
@@ -42,8 +42,9 @@
     <string name="nextpick_not_for_me">Not for me</string>
     <string name="nextpick_snooze">Snooze</string>
     <string name="nextpick_outcome_added">Added to your list</string>
-    <string name="nextpick_outcome_not_for_me">Won\'t be suggested again</string>
+    <string name="nextpick_outcome_not_for_me">Won't be suggested again</string>
     <string name="nextpick_outcome_snoozed">Snoozed for a week</string>
+    <string name="nextpick_action_failed">Couldn't save that. Try again.</string>
     <string name="nextpick_no_pick">Nothing fits these answers yet.</string>
     <string name="nextpick_start_again">Start again</string>
     <string name="nextpick_failed">Something went wrong. Try again.</string>
@@ -62,6 +63,6 @@
     <string name="nextpick_reason_fits">Fits what you asked</string>
     <string name="nextpick_sheet_title">Finished something?</string>
     <string name="nextpick_sheet_body">Want a suggestion for what to watch next?</string>
-    <string name="nextpick_sheet_whats_next">What\'s next?</string>
+    <string name="nextpick_sheet_whats_next">What's next?</string>
     <string name="nextpick_sheet_not_now">Not now</string>
 </resources>

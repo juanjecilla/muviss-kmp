@@ -43,6 +43,7 @@
     <string name="nextpick_outcome_added">Añadida a tu lista</string>
     <string name="nextpick_outcome_not_for_me">No volverá a sugerirse</string>
     <string name="nextpick_outcome_snoozed">Pospuesta una semana</string>
+    <string name="nextpick_action_failed">No se ha podido guardar. Inténtalo de nuevo.</string>
     <string name="nextpick_no_pick">Nada encaja con estas respuestas todavía.</string>
     <string name="nextpick_start_again">Empezar de nuevo</string>
     <string name="nextpick_failed">Algo salió mal. Inténtalo de nuevo.</string>

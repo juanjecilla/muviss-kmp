@@ -3,9 +3,11 @@ package com.codingpit.muviss.feature.nextpick.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptPolicy
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +37,19 @@ class CompletionPromptViewModel(
 
     init {
         viewModelScope.launchReporting { onboardingCompleted.collect { onboardingDone.value = it } }
-        viewModelScope.launchReporting { completions.collect { onCompletion() } }
+        // Per completion, not per collection: a failed store read would otherwise end the collect, and with it
+        // every later prompt for as long as this app-root ViewModel lives.
+        viewModelScope.launchReporting {
+            completions.collect {
+                try {
+                    onCompletion()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) {
+                    CrashReporter.recordException(failure)
+                }
+            }
+        }
     }
 
     fun dismiss() {
