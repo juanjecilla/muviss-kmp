@@ -369,7 +369,12 @@ the schedule, the gates and where a fix goes.
   - an open PR into `release/X.Y.Z` (a fix in flight);
   - the newest RC is not the branch head (a commit landed after it was built),
     or that RC's `release-rc.yml` run did not succeed;
-  - CI on the branch head is not green;
+  - CI on the branch head is not green. Judged per check name: the newest
+    finished run that was not cancelled decides, so the duplicate runs the
+    release PR starts on the same commit (cancelled by concurrency, or still
+    running) neither hold nor clear a version (#699). The Sunday merge does
+    **not** wait for the release PR's own checks: the release App's bypass skips
+    them, and the branch head's CI, which ran on the push, is the gate (#351);
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
   - another version is still on the beta track (one per stage). This is read from

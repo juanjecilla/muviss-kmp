@@ -20,6 +20,26 @@ require_relative "release_stages"
 require_relative "sentry_gate"
 
 module ReleaseGates
+  GREEN = %w[success skipped neutral].freeze
+
+  # Is the commit's CI green? `runs` are check runs as {"id","name","status",
+  # "conclusion"}. Judged per check name, because the same commit carries
+  # duplicates: the push run, and the runs the release PR starts when the
+  # Sunday step opens it. A run cancelled by concurrency says nothing (#699),
+  # and a duplicate still in progress does not unsay a completed one. A name is
+  # green when its newest completed, non-cancelled run is. A name with no such
+  # run (only running or cancelled ones) is not: it has not finished passing.
+  # No runs at all is not green: "we could not look" is not "nothing is wrong".
+  def self.checks_green?(runs)
+    return false if runs.empty?
+
+    runs.group_by { |r| r["name"] }.all? do |_, same|
+      done = same.select { |r| r["status"] == "completed" && r["conclusion"] != "cancelled" }
+      latest = done.max_by { |r| r["id"].to_i }
+      latest && GREEN.include?(latest["conclusion"])
+    end
+  end
+
   BRANCH_PREFIX = "release/".freeze
 
   module_function
@@ -462,11 +482,9 @@ module ReleasePromotionAdapters
     end
 
     def checks_green?(sha)
-      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?per_page=100", "--jq", ".check_runs[] | \"\\(.status) \\(.conclusion)\"")
-      lines = rows.lines.map(&:strip).reject(&:empty?)
-      return false if lines.empty?
-
-      lines.all? { |row| row.start_with?("completed ") && %w[success skipped neutral].include?(row.split.last) }
+      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?per_page=100", "--jq",
+                ".check_runs[] | {id, name, status, conclusion}")
+      ReleaseGates.checks_green?(rows.lines.map(&:strip).reject(&:empty?).map { |line| JSON.parse(line) })
     end
 
     def release_pr(version)

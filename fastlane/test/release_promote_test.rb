@@ -280,6 +280,37 @@ class ReleasePromotionTest < Minitest::Test
     assert_nil failed.reason
     assert_equal "sh exited 1", failed.message
     assert_equal "could not run it (ReleasePromotionAdapters::Shell::Failed)", ReleasePromotion.allocate.send(:act, "run it") { raise failed }
+=======
+  def run_row(id, name, status, conclusion) = { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion }
+
+  def test_ci_is_green_when_every_name_passed
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "success"), run_row(2, "ios", "completed", "skipped")])
+  end
+
+  def test_ci_is_not_green_with_no_runs_at_all
+    refute ReleaseGates.checks_green?([])
+  end
+
+  def test_a_cancelled_duplicate_beside_a_pass_does_not_hold_the_version
+    runs = [run_row(1, "PR guards", "completed", "success"), run_row(2, "PR guards", "completed", "cancelled")]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_duplicate_still_running_does_not_unsay_a_completed_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "in_progress", nil)]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_name_that_only_ever_ran_cancelled_or_running_is_not_green
+    refute ReleaseGates.checks_green?([run_row(1, "build", "completed", "cancelled")])
+    refute ReleaseGates.checks_green?([run_row(1, "build", "queued", nil)])
+  end
+
+  def test_the_newest_finished_run_decides_when_a_rerun_fails_after_a_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "completed", "failure")]
+    refute ReleaseGates.checks_green?(runs)
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "failure"), run_row(2, "build", "completed", "success")])
+>>>>>>> dc1a562c (fix(release): judge CI per check name, so the release PR's duplicate runs cannot hold a version (#699))
   end
 
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
