@@ -268,8 +268,10 @@ scripts/a11y/fetch-rating-badge-posters.sh "$HOME/muviss-posters" 60 top_rated
 ```
 
 Then run the test with the folder's absolute path. `MUVISS_POSTER_DIR` is a
-declared input of every `jvmTest` task (`muviss.kmp.library`, #629), so setting
-it re-runs the test after a skipped run; no `--rerun` is needed.
+declared input of every `jvmTest` task (`muviss.kmp.library`, #629), and while
+it is set the task is never up to date or restored from the build cache. So
+setting it re-runs the test after a skipped run, and so does editing the
+fixtures in the same folder; no `--rerun` is needed.
 
 ```bash
 MUVISS_POSTER_DIR="$HOME/muviss-posters" \
