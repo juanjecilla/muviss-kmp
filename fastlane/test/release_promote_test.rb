@@ -251,6 +251,37 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal "X-Access-Token [removed] see [removed]", failed.reason
   end
 
+  # The real adapters, with the process boundary replaced.
+  def with_shell(result)
+    calls = []
+    shell = ReleasePromotionAdapters::Shell
+    original = shell.method(:capture)
+    shell.define_singleton_method(:capture) do |*cmd, **opts|
+      calls << cmd
+      raise result if result.is_a?(Exception)
+
+      result
+    end
+    yield calls
+  ensure
+    shell.define_singleton_method(:capture, original)
+  end
+
+  def test_the_sunday_merge_asks_the_server_so_the_apps_bypass_can_apply
+    with_shell("") do |calls|
+      ReleasePromotionAdapters::GitHub.new(repo: "o/r", token: "t").merge(691, "abc123")
+      assert_equal [["gh", "pr", "merge", "691", "--repo", "o/r", "--merge", "--admin", "--match-head-commit", "abc123"]], calls
+    end
+  end
+
+  def test_a_failing_command_other_than_gh_exposes_none_of_its_stderr
+    shell = ReleasePromotionAdapters::Shell
+    failed = assert_raises(shell::Failed) { shell.capture("sh", "-c", "echo sa@proj.iam.gserviceaccount.com >&2; exit 1") }
+    assert_nil failed.reason
+    assert_equal "sh exited 1", failed.message
+    assert_equal "could not run it (ReleasePromotionAdapters::Shell::Failed)", ReleasePromotion.allocate.send(:act, "run it") { raise failed }
+  end
+
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
     outcomes = run_on(SUNDAY_BETA, apply: false)
     assert_equal :would_do, outcome_for(outcomes, "1.1.0").status

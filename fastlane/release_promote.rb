@@ -401,7 +401,7 @@ module ReleasePromotionAdapters
     class Failed < RuntimeError
       TOKEN = /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|[A-Za-z0-9_\-]{32,}|https?:\/\/\S+/.freeze
 
-      attr_reader :reason
+      attr_reader :reason # nil unless the command was gh
 
       def initialize(message, reason)
         super(message)
@@ -416,7 +416,13 @@ module ReleasePromotionAdapters
 
     def self.capture(*cmd, stdin: nil, env: {})
       out, err, status = Open3.capture3(env, *cmd, stdin_data: stdin.to_s)
-      raise Failed.new("#{cmd.first} exited #{status.exitstatus}", Failed.reason_of(err)) unless status.success?
+      unless status.success?
+        # Only gh: its refusals are the message worth showing. A fastlane lane's
+        # stderr (Play, App Store Connect) can name accounts and keys, so those
+        # stay class-only.
+        reason = cmd.first == "gh" ? Failed.reason_of(err) : nil
+        raise Failed.new("#{cmd.first} exited #{status.exitstatus}", reason)
+      end
 
       out.strip
     end
