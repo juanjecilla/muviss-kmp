@@ -280,7 +280,8 @@ class ReleasePromotionTest < Minitest::Test
     assert_nil failed.reason
     assert_equal "sh exited 1", failed.message
     assert_equal "could not run it (ReleasePromotionAdapters::Shell::Failed)", ReleasePromotion.allocate.send(:act, "run it") { raise failed }
-=======
+  end
+
   def run_row(id, name, status, conclusion) = { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion }
 
   def test_ci_is_green_when_every_name_passed
@@ -310,7 +311,6 @@ class ReleasePromotionTest < Minitest::Test
     runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "completed", "failure")]
     refute ReleaseGates.checks_green?(runs)
     assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "failure"), run_row(2, "build", "completed", "success")])
->>>>>>> dc1a562c (fix(release): judge CI per check name, so the release PR's duplicate runs cannot hold a version (#699))
   end
 
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
