@@ -374,7 +374,11 @@ the schedule, the gates and where a fix goes.
     release PR starts on the same commit (cancelled by concurrency, or still
     running) neither hold nor clear a version (#699). The Sunday merge does
     **not** wait for the release PR's own checks: the release App's bypass skips
-    them, and the branch head's CI, which ran on the push, is the gate (#351);
+    them, and the branch head's CI, which ran on the push, is the gate (#351).
+    Some `main` checks run only on PR events (`Release notes are final`, `PRs
+    into main come from release/*`, `Release tooling tests`), so on the Sunday
+    path they are skipped too; generated notes never carry `DRAFT:`, and
+    nothing on that path reads the notes;
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
   - another version is still on the beta track (one per stage). This is read from

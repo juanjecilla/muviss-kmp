@@ -29,6 +29,8 @@ module ReleaseGates
   # and a duplicate still in progress does not unsay a completed one. A name is
   # green when its newest completed, non-cancelled run is. A name with no such
   # run (only running or cancelled ones) is not: it has not finished passing.
+  # Names are matched across workflows, so two jobs sharing a name would mask
+  # each other; release-rc's job is `build / build`, distinct from ci's `build`.
   # No runs at all is not green: "we could not look" is not "nothing is wrong".
   def self.checks_green?(runs)
     return false if runs.empty?
