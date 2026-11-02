@@ -1,9 +1,13 @@
 package com.codingpit.muviss.core.database
 
+import app.cash.sqldelight.TransacterImpl
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +33,50 @@ class DatabaseFactoryJvmTest {
         // Schema was created: a query against a real table succeeds with no rows yet.
         assertEquals(null, database.appSettingsQueries.selectSettings().executeAsOneOrNull())
 
+        driver.close()
+    }
+
+    /**
+     * The file driver gives each thread its own connection, and two ticks on two IO threads
+     * each run a read-then-write transaction (`playCountOf`, then `insertPlay`). Deferred,
+     * both take a read lock first; whichever writes second then cannot upgrade without a
+     * deadlock, so SQLite answers SQLITE_BUSY at once instead of waiting, and that tick is
+     * rolled back. `BEGIN IMMEDIATE` makes the second transaction wait at its start instead.
+     */
+    @Test
+    fun `two read-then-write transactions on two threads both commit`() {
+        val directory = createTempDirectory("muviss-db-test").toFile()
+        val driver = createFileDriver(directory)
+        driver.execute(null, "CREATE TABLE tick (n INTEGER NOT NULL);", 0)
+        val transacter = object : TransacterImpl(driver) {}
+        val firstHasRead = CountDownLatch(1)
+        val failures = CopyOnWriteArrayList<Throwable>()
+
+        fun readThenWrite(afterRead: () -> Unit) {
+            transacter.transaction {
+                driver.executeQuery(null, "SELECT count(*) FROM tick;", { QueryResult.Value(it.next().value) }, 0)
+                afterRead()
+                driver.execute(null, "INSERT INTO tick (n) VALUES (1);", 0)
+            }
+        }
+        val first = thread {
+            runCatching {
+                readThenWrite {
+                    firstHasRead.countDown()
+                    Thread.sleep(300)
+                }
+            }.onFailure(failures::add)
+        }
+        val second = thread {
+            firstHasRead.await()
+            runCatching { readThenWrite {} }.onFailure(failures::add)
+        }
+        first.join()
+        second.join()
+
+        assertEquals(emptyList(), failures.map { it.message })
+        val rows = driver.executeQuery(null, "SELECT count(*) FROM tick;", { QueryResult.Value(if (it.next().value) it.getLong(0) else null) }, 0).value
+        assertEquals(2L, rows)
         driver.close()
     }
 
@@ -118,7 +166,7 @@ class DatabaseFactoryJvmTest {
     fun `create stamps PRAGMA user_version so reopening does not re-run migrate`() {
         val directory = createTempDirectory("muviss-db-test").toFile()
 
-        val firstDriver = createFileDriver(directory) as JdbcSqliteDriver
+        val firstDriver = createFileDriver(directory)
         assertEquals(MuvissDatabase.Schema.version, firstDriver.userVersion())
         firstDriver.close()
 
@@ -127,12 +175,12 @@ class DatabaseFactoryJvmTest {
         // again, which would replay every `.sqm` file against a database
         // that already has those columns/tables (and blow up on the first
         // non-idempotent statement, e.g. `ALTER TABLE ADD COLUMN`).
-        val secondDriver = createFileDriver(directory) as JdbcSqliteDriver
+        val secondDriver = createFileDriver(directory)
         assertEquals(MuvissDatabase.Schema.version, secondDriver.userVersion())
         secondDriver.close()
     }
 
-    private fun JdbcSqliteDriver.userVersion(): Long = executeQuery(
+    private fun SqlDriver.userVersion(): Long = executeQuery(
         identifier = null,
         sql = "PRAGMA user_version;",
         mapper = { cursor -> QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L) },
