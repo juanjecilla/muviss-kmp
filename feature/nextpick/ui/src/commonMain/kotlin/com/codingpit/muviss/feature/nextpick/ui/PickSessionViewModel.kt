@@ -64,7 +64,7 @@ class PickSessionViewModel(
     private val previous = ArrayDeque<PickSession>()
     private val shown = mutableSetOf<MediaId>()
     private var current: RankedPick? = null
-    private var acting = false
+    private var acting: RankedPick? = null
 
     init {
         start()
@@ -163,15 +163,15 @@ class PickSessionViewModel(
     }
 
     /**
-     * One write per pick: a second tap, or another action, while a write is in flight or after it landed is
-     * ignored. The outcome is applied only if the screen still shows that pick, so a write that ends after
+     * One write per pick: a second tap, or another action, on a pick whose write is in flight or landed is
+     * ignored. A write in flight for an older pick does not block the one shown now. The outcome is applied only if the screen still shows that pick, so a write that ends after
      * "Another" cannot bring the old pick back.
      */
     private fun act(outcome: PickOutcome, write: suspend (RankedPick) -> Unit) {
         val shown = _state.value as? PickSessionUiState.Result ?: return
-        if (acting || shown.outcome != null) return
         val pick = shown.pick
-        acting = true
+        if (acting == pick || shown.outcome != null) return
+        acting = pick
         viewModelScope.launchReporting {
             try {
                 write(pick)
@@ -182,7 +182,7 @@ class PickSessionViewModel(
                 updateResultFor(pick) { it.copy(actionFailed = true) }
                 throw failure
             } finally {
-                acting = false
+                if (acting == pick) acting = null
             }
         }
     }

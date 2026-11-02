@@ -168,6 +168,26 @@ class PickSessionViewModelTest {
     }
 
     @Test
+    fun a_write_in_flight_on_an_older_pick_does_not_block_the_new_one() {
+        // Given an Add still in flight on the first of two picks, and the person moved on to the second
+        val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
+        val viewModel = viewModel(listOf(candidate("1", "First"), candidate("2", "Second")), noQuestions, actions)
+        val first = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id
+        viewModel.add()
+        viewModel.another()
+        val second = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id
+
+        // When they tap Not for me on the second before the first write lands
+        viewModel.notForMe()
+        actions.hold?.complete(Unit)
+
+        // Then both writes happened, and the second pick shows its own outcome
+        assertEquals(listOf(first), actions.added)
+        assertEquals(listOf(second), actions.refused)
+        assertEquals(PickOutcome.NOT_FOR_ME, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcome)
+    }
+
+    @Test
     fun a_failed_write_says_so_and_can_be_tried_again() {
         // Given writes that fail
         val actions = RecordingNextPickActions().apply { fail = true }
