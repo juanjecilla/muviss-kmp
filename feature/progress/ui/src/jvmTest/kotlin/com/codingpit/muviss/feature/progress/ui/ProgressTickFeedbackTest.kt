@@ -199,8 +199,10 @@ class ProgressTickFeedbackTest {
 
     @Test
     fun an_older_tick_whose_message_resolves_last_does_not_replace_the_newer_snackbar() = runComposeUiTest {
-        // The older tick's message is the first one looked up, and its lookup is held open. The newer
-        // tick's lookup returns at once, so its snackbar is up before the older one could ever show.
+        // The older tick's message is the first one looked up, and its lookup is held open until the
+        // newer tick's snackbar is on screen. Only then is the older lookup released, so it resolves
+        // strictly last, the order #650 is about.
+        val olderStarted = CompletableDeferred<Unit>()
         val olderLookup = CompletableDeferred<Unit>()
         var lookups = 0
         setContent {
@@ -208,7 +210,10 @@ class ProgressTickFeedbackTest {
                 seasons = listOf(season(1, 3)),
                 alreadySeen = 0,
                 resolveTickMessage = { message ->
-                    if (lookups++ == 0) olderLookup.await()
+                    if (lookups++ == 0) {
+                        olderStarted.complete(Unit)
+                        olderLookup.await()
+                    }
                     message.resolveAsync()
                 },
             )
@@ -216,6 +221,9 @@ class ProgressTickFeedbackTest {
 
         tapTick()
         tapTick()
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Marked S1E2 seen").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(olderStarted.isCompleted, "the older tick never looked its message up")
+        assertTrue(olderLookup.isActive, "the older lookup finished before the newer snackbar showed")
         olderLookup.complete(Unit)
         mainClock.advanceTimeBy(500)
 
