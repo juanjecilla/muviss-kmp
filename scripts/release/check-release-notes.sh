@@ -1,8 +1,9 @@
 #!/bin/bash
 # Checks Play release notes for one version: one file per listing locale at
 # fastlane/release-notes/v<version>/<locale>.txt, within Play's 500 characters.
-# With --final, also refuses the draft marker the release train seeds them with
-# (start-release.sh): merging into main promotes to production with these notes.
+# With --final, also refuses a hand-made `DRAFT:` file (the train writes final
+# notes itself, so generated ones never carry the marker). Only the PR guard
+# uses this; the Sunday promotion never reads the notes and never holds on them.
 #
 # Usage: scripts/release/check-release-notes.sh 1.2.0 [--final]
 set -euo pipefail

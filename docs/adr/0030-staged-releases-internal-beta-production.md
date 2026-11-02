@@ -19,7 +19,7 @@ ADR 0025 gave each release a Monday cut, an internal RC, and a hand-merged PR in
 - an open issue or PR in the version's milestone labelled `release-blocker`;
 - an open PR into its `release/X.Y.Z` branch (a fix in flight);
 - the Sentry crash gate (ADR 0025's, `fastlane/sentry_gate.rb`) finds an unhandled issue first seen in that build;
-- the store notes still carry the `DRAFT:` marker (beta testers see them too, so this is checked at the beta step, not only at production);
+- ~~the store notes still carry the `DRAFT:` marker~~ — removed 2026-10-26, see the amendment below: the train writes the notes and the Sunday steps never read them;
 - the branch head is not the newest RC (a commit landed after the last candidate was built), or that RC's build or Play upload did not succeed;
 - CI on the branch head is not green;
 - for production: the version has not had its full week on beta (a held beta step pushes production back with it).
