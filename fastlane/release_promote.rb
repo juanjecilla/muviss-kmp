@@ -487,7 +487,12 @@ module ReleasePromotionAdapters
     end
 
     def merge(pr, head_sha)
-      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--match-head-commit", head_sha)
+      # --admin does not make this an admin merge: the token is the release
+      # App's, a bypass actor on the main ruleset (ADR 0030), and the server
+      # decides. Without it gh refuses client-side whenever the PR is BLOCKED
+      # for want of the approval the App is exempt from ("the base branch policy
+      # prohibits the merge"), before asking the server at all.
+      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--admin", "--match-head-commit", head_sha)
     end
 
     def issue_body(number)
