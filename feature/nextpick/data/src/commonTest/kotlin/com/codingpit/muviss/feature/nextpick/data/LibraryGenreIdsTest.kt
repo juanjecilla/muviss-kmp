@@ -26,6 +26,24 @@ class LibraryGenreIdsTest {
     }
 
     @Test
+    fun a_catalogue_fetched_across_a_language_change_is_not_kept_for_the_old_language() = runTest {
+        var language = "en-US"
+        var calls = 0
+        val resolver = LibraryGenreIds(liveCatalogue = {
+            calls++
+            // The request reads the locale as it is sent: the person switched to Spanish meanwhile.
+            language = "es-ES"
+            listOf(Genre("35", "Comedia"))
+        }, language = { language })
+
+        resolver.index(MediaType.MOVIE, online = true)
+        language = "en-US"
+        resolver.index(MediaType.MOVIE, online = true)
+
+        assertEquals(2, calls)
+    }
+
+    @Test
     fun failed_live_fetch_is_not_memoised_and_falls_back_to_the_bundled_names() = runTest {
         var calls = 0
         val resolver = LibraryGenreIds(liveCatalogue = {

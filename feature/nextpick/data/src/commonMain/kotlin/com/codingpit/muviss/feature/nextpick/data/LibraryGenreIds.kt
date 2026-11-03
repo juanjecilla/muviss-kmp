@@ -12,7 +12,8 @@ import kotlinx.coroutines.sync.withLock
  *
  * Lookup order per [MediaType], first hit wins:
  * 1. the live catalogue in the current language, when the device is online. Memoised per language and
- *    type for the life of the process; a failed fetch is not memoised, so the next pick retries.
+ *    type for the life of the process; a failed fetch is not memoised, so the next pick retries, and
+ *    neither is one the language changed under.
  * 2. [BundledGenreNames], en-US and es-ES, which need no network at all.
  *
  * Matching trims and ignores case. A name in neither list maps to nothing and is dropped: the title is
@@ -38,7 +39,9 @@ internal class LibraryGenreIds(
             .onFailure { if (it is CancellationException) throw it }
             .getOrNull()
             ?: return emptyList()
-        mutex.withLock { fetched[key] = genres }
+        // The catalogue request reads the locale itself, so a language change mid-fetch returns the new
+        // language's names. Use them for this pick, but never store them under the old language's key.
+        if (language() == key.first) mutex.withLock { fetched[key] = genres }
         return genres
     }
 }
