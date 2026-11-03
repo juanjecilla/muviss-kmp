@@ -162,8 +162,8 @@
     <string name="muted_genres_movies">Movies</string>
     <string name="muted_genres_offline">Couldn't load the genre list. Your muted genres above still work.</string>
     <string name="muted_genres_retry">Retry</string>
-    <string name="section_next_pick">What\'s next?</string>
-    <string name="next_pick_prompt">Offer What\'s next after finishing</string>
+    <string name="section_next_pick">What's next?</string>
+    <string name="next_pick_prompt">Offer What's next after finishing</string>
     <string name="next_pick_prompt_body">After you finish a movie or a show, suggest a few questions that end in one pick. At most once a day.</string>
     <string name="next_pick_length">Questions</string>
     <string name="length_quick">Quick (up to 2)</string>

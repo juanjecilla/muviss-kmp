@@ -115,7 +115,7 @@ class PickSessionViewModelTest {
         assertEquals(false, viewModel.back())
     }
 
-    private val noQuestions = PickContext(length = PickSessionLength.NONE, online = true, hasBacklog = true)
+    private val noQuestions = PickContext(length = SessionLength.NONE, online = true, hasBacklog = true)
 
     @Test
     fun a_second_tap_while_the_add_is_in_flight_writes_once() {
