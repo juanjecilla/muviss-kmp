@@ -21,6 +21,17 @@ class ReleaseStagesTest < Minitest::Test
     assert_equal Date.new(2026, 10, 26), ReleaseStages.production_on(Date.new(2026, 10, 19))
   end
 
+  def test_a_beta_step_run_by_hand_early_in_the_week_counts_as_the_sunday_before
+    assert_equal Date.new(2026, 10, 25), ReleaseStages.beta_done_day(Date.new(2026, 10, 26)) # Monday
+    assert_equal Date.new(2026, 10, 25), ReleaseStages.beta_done_day(Date.new(2026, 10, 27)) # Tuesday
+    assert_equal Date.new(2026, 11, 1), ReleaseStages.production_on(ReleaseStages.beta_done_day(Date.new(2026, 10, 26)))
+  end
+
+  def test_a_sunday_beta_step_and_a_late_week_one_keep_their_own_day
+    assert_equal Date.new(2026, 10, 25), ReleaseStages.beta_done_day(Date.new(2026, 10, 25))
+    assert_equal Date.new(2026, 10, 29), ReleaseStages.beta_done_day(Date.new(2026, 10, 29)) # Thursday
+  end
+
   def test_schedule_names_the_three_dates
     assert_equal(
       { "cut_on" => "2026-10-12", "beta_on" => "2026-10-18", "production_on" => "2026-10-25" },
