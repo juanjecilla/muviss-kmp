@@ -484,7 +484,7 @@ module ReleasePromotionAdapters
     end
 
     def checks_green?(sha)
-      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?per_page=100", "--jq",
+      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?filter=all&per_page=100", "--jq",
                 ".check_runs[] | {id, name, status, conclusion}")
       ReleaseGates.checks_green?(rows.lines.map(&:strip).reject(&:empty?).map { |line| JSON.parse(line) })
     end

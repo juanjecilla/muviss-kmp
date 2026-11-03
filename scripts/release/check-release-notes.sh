@@ -2,8 +2,9 @@
 # Checks Play release notes for one version: one file per listing locale at
 # fastlane/release-notes/v<version>/<locale>.txt, within Play's 500 characters.
 # With --final, also refuses a hand-made `DRAFT:` file (the train writes final
-# notes itself, so generated ones never carry the marker). Only the PR guard
-# uses this; the Sunday promotion never reads the notes and never holds on them.
+# notes itself, so generated ones never carry the marker). The PR guard and the
+# manual Ship release workflow run it; the Sunday promotion never reads the notes
+# and never holds on them.
 #
 # Usage: scripts/release/check-release-notes.sh 1.2.0 [--final]
 set -euo pipefail
