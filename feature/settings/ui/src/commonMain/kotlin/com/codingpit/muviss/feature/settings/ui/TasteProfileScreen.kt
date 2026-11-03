@@ -10,6 +10,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -26,6 +27,7 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_format
 import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_format_movie
 import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_format_series
 import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_genres_offline
+import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_genres_retry
 import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_muted_hint
 import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_profile_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_profile_title
@@ -39,6 +41,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 const val TASTE_PROFILE_LIST_TAG = "tasteProfileList"
+const val TASTE_GENRES_RETRY_TAG = "tasteGenresRetry"
 
 /** Test tag of one chip, `tasteOption-<KIND>-<value>`, so a test can find and tap a specific item. */
 fun tasteOptionTag(option: TasteOption): String = "tasteOption-${option.item.id}"
@@ -46,12 +49,12 @@ fun tasteOptionTag(option: TasteOption): String = "tasteOption-${option.item.id}
 @Composable
 fun TasteProfileScreen(viewModel: TasteProfileViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    TasteProfileContent(state = state, onToggle = viewModel::onToggle)
+    TasteProfileContent(state = state, onToggle = viewModel::onToggle, onRetryGenres = viewModel::retryGenres)
 }
 
 /** Stateless so screenshots and tests render exactly what ships. */
 @Composable
-fun TasteProfileContent(state: TasteProfileUiState, onToggle: (TasteOption) -> Unit) {
+fun TasteProfileContent(state: TasteProfileUiState, onToggle: (TasteOption) -> Unit, onRetryGenres: () -> Unit = {}) {
     if (state.loading) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
@@ -73,7 +76,14 @@ fun TasteProfileContent(state: TasteProfileUiState, onToggle: (TasteOption) -> U
         chipSection(Res.string.taste_section_genres_movies, state.movieGenres, onToggle)
         chipSection(Res.string.taste_section_genres_tv, state.tvGenres, onToggle)
         if (state.genresFailed) {
-            item { Text(stringResource(Res.string.taste_genres_offline), style = MaterialTheme.typography.bodyMedium) }
+            item {
+                Column {
+                    Text(stringResource(Res.string.taste_genres_offline), style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = onRetryGenres, modifier = Modifier.testTag(TASTE_GENRES_RETRY_TAG)) {
+                        Text(stringResource(Res.string.taste_genres_retry))
+                    }
+                }
+            }
         }
         if (state.movieGenres.any { it.muted } || state.tvGenres.any { it.muted }) {
             item { Text(stringResource(Res.string.taste_muted_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -113,7 +123,8 @@ private fun TasteChip(option: TasteOption, onToggle: (TasteOption) -> Unit) {
     FilterChip(
         selected = option.liked,
         // A muted genre is disabled, not hidden: the person can see why it is not on offer (ADR 0031).
-        enabled = !option.muted,
+        // One liked before it was muted stays enabled, or nothing could ever unlike it.
+        enabled = !option.muted || option.liked,
         onClick = { onToggle(option) },
         label = { Text(label) },
         modifier = Modifier.testTag(tasteOptionTag(option)),

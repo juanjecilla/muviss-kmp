@@ -177,10 +177,11 @@
     <!-- EPIC 51 (#402): Taste Profile. -->
     <string name="taste_profile_title">Tus gustos</string>
     <string name="taste_profile_row_hint">Géneros, formatos, servicios, idiomas</string>
-    <string name="taste_profile_body">Lo que te gusta, para que las sugerencias se acerquen a ello. Todo es opcional y puedes cambiarlo cuando quieras.</string>
+    <string name="taste_profile_body">Lo que te gusta, guardado aquí para las sugerencias. Todo es opcional y puedes cambiarlo cuando quieras.</string>
     <string name="taste_section_genres_movies">Géneros de películas que te gustan</string>
     <string name="taste_section_genres_tv">Géneros de series que te gustan</string>
     <string name="taste_genres_offline">Los géneros aparecen cuando tengas conexión.</string>
+    <string name="taste_genres_retry">Reintentar</string>
     <string name="taste_muted_hint">Los géneros que silenciaste en Contenido no están aquí: un género se gusta o se silencia, nunca las dos cosas.</string>
     <string name="taste_section_formats">Lo que ves</string>
     <string name="taste_section_services">Servicios que usas</string>

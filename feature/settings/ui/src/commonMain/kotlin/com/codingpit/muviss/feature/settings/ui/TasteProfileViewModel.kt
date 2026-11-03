@@ -81,6 +81,11 @@ class TasteProfileViewModel(
         viewModelScope.launchReporting { api.setLiked(option.item, liked = !option.liked) }
     }
 
+    /** Asks TMDB for the genres again, after a failed load: the offline line promises they appear once online. */
+    fun retryGenres() {
+        viewModelScope.launchReporting { loadCatalog() }
+    }
+
     private suspend fun loadCatalog() {
         val movies = loadGenres(MediaType.MOVIE)
         val tv = loadGenres(MediaType.TV)

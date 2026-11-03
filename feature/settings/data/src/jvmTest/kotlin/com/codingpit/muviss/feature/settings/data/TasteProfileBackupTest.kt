@@ -12,7 +12,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -130,7 +129,7 @@ class TasteProfileBackupTest {
 
         assertTrue(database.tasteProfileQueries.selectAll().awaitAsList().isEmpty())
         assertNull(database.tasteProfileQueries.selectById("missing").awaitAsOneOrNull())
-        assertFalse(exporter(database).exportData().contains("\"tasteProfile\":[{"))
+        assertTrue(Json.decodeFromString<MuvissDataExport>(exporter(database).exportData()).tasteProfile.isEmpty())
     }
 
     private companion object {

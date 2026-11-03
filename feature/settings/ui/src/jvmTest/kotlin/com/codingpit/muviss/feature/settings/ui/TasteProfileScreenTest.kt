@@ -20,6 +20,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The Taste Profile editor's rendering and its one rule the person can see: a muted genre is
@@ -78,5 +79,30 @@ class TasteProfileScreenTest {
         onNodeWithTag(tasteOptionTag(action)).performClick()
 
         assertEquals(true, tapped?.liked, "the chip reports what it is now; the ViewModel flips it")
+    }
+
+    @Test
+    fun a_genre_liked_before_it_was_muted_stays_enabled_so_it_can_be_unliked() = runComposeUiTest {
+        val likedThenMuted = talk.copy(liked = true)
+        var tapped: TasteOption? = null
+        setContent { MuvissTheme(darkTheme = false) { TasteProfileContent(state(likedThenMuted), onToggle = { tapped = it }) } }
+
+        onNodeWithTag(tasteOptionTag(likedThenMuted)).assertIsEnabled().performClick()
+
+        assertEquals(likedThenMuted, tapped)
+    }
+
+    @Test
+    fun a_failed_genre_load_offers_a_retry() = runComposeUiTest {
+        var retried = false
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                TasteProfileContent(state().copy(genresFailed = true), onToggle = {}, onRetryGenres = { retried = true })
+            }
+        }
+
+        onNodeWithTag(TASTE_GENRES_RETRY_TAG).performClick()
+
+        assertTrue(retried)
     }
 }

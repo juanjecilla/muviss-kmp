@@ -112,4 +112,18 @@ class TasteProfileViewModelTest {
 
         assertTrue(vm.state.first { s -> s.tvGenres.any { it.muted } }.tvGenres.single { it.item.value == "tv:10767" }.muted)
     }
+
+    @Test
+    fun a_retry_after_a_failed_load_brings_the_genres_in() = runTest {
+        val catalog = FakeCatalog(MetadataError.Offline())
+        val (vm, _) = viewModel(FakeTasteApi(), emptySet(), catalog)
+        assertTrue(vm.state.first { !it.loading }.genresFailed)
+
+        catalog.failure = null
+        vm.retryGenres()
+
+        val state = vm.state.value
+        assertFalse(state.genresFailed)
+        assertEquals(listOf("movie:28"), state.movieGenres.map { it.item.value })
+    }
 }

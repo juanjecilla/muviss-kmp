@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.settings.data
 
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.testing.FakeClock
@@ -82,5 +83,15 @@ class SqlDelightTasteProfileRepositoryTest {
         val items = repository.observe().first()
 
         assertEquals(listOf("Español"), items.map { it.label })
+    }
+
+    @Test
+    fun a_taste_edit_waiting_to_push_counts_as_a_pending_change() = runTest {
+        val database = inMemoryDatabase()
+        val repository = SqlDelightTasteProfileRepository(database.tasteProfileQueries, dispatchers, FakeClock(7_000L))
+
+        repository.setLiked(netflix, liked = true)
+
+        assertEquals(1L, database.syncStateQueries.countDirtyRows().awaitAsOne())
     }
 }
