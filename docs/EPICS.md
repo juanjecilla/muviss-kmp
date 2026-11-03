@@ -376,6 +376,8 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 **What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
 
+**Migrations.** `22.sqm` (schema v23, fixture `23.db`), #400: `appSettings.completionPromptShownAtEpochMs`, per device, the once-a-day mark. Claimed 2026-10-29 as `22.sqm`: #394 had taken `21.sqm` on develop. #403 claims `23.sqm` and #588 (Taste Profile) `24.sqm`, stacked in that order, so #563 (review prompt) takes `25.sqm`.
+
 **Decisions.**
 - Rules + TMDB + local history; no model in v1. A ranker seam keeps an AI option open (`docs/research/next-pick-ai.md`, spike #404).
 - Questions: source (my list / something new / either), format + time, mood to genre sets, anchor, era + services, company, commitment, rewatch OK. All skippable; Quick (up to 2) / Standard (up to 4) / No questions in Settings; a filled Taste Profile shortens it.
