@@ -20,6 +20,28 @@ require_relative "release_stages"
 require_relative "sentry_gate"
 
 module ReleaseGates
+  GREEN = %w[success skipped neutral].freeze
+
+  # Is the commit's CI green? `runs` are check runs as {"id","name","status",
+  # "conclusion"}. Judged per check name, because the same commit carries
+  # duplicates: the push run, and the runs the release PR starts when the
+  # Sunday step opens it. A run cancelled by concurrency says nothing (#699),
+  # and a duplicate still in progress does not unsay a completed one. A name is
+  # green when its newest completed, non-cancelled run is. A name with no such
+  # run (only running or cancelled ones) is not: it has not finished passing.
+  # Names are matched across workflows, so two jobs sharing a name would mask
+  # each other; release-rc's job is `build / build`, distinct from ci's `build`.
+  # No runs at all is not green: "we could not look" is not "nothing is wrong".
+  def self.checks_green?(runs)
+    return false if runs.empty?
+
+    runs.group_by { |r| r["name"] }.all? do |_, same|
+      done = same.select { |r| r["status"] == "completed" && r["conclusion"] != "cancelled" }
+      latest = done.max_by { |r| r["id"].to_i }
+      latest && GREEN.include?(latest["conclusion"])
+    end
+  end
+
   BRANCH_PREFIX = "release/".freeze
 
   module_function
@@ -327,7 +349,9 @@ class ReleasePromotion
       problem = act("promote #{rc} to open beta") { @play.promote_to_beta(facts[:rc_code]) }
       return [problem, state] if problem
 
-      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => @today.iso8601, "rc_tag" => rc, "holds" => [])
+      done = ReleaseStages.beta_done_day(@today)
+      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => done.iso8601,
+                          "production_on" => ReleaseStages.production_on(done).iso8601, "rc_tag" => rc, "holds" => [])
       persist(issue, state, "Promoted #{rc} (versionCode #{facts[:rc_code]}) from internal to open beta.")
       [nil, state]
     else
@@ -366,7 +390,8 @@ class ReleasePromotion
     yield
     nil
   rescue StandardError => e
-    "could not #{what} (#{e.class})"
+    detail = e.respond_to?(:reason) && !e.reason.to_s.empty? ? ": #{e.reason}" : ""
+    "could not #{what} (#{e.class}#{detail})"
   end
 
   def hold!(issue, state, reasons)
@@ -391,9 +416,35 @@ end
 # The real adapters. Each shells out; none prints its arguments on failure.
 module ReleasePromotionAdapters
   class Shell
+    # A failed command. `reason` is the first line of its stderr with anything
+    # shaped like a credential removed: GitHub's refusals ("Pull request is not
+    # mergeable", "Required status check ...") are the one message worth
+    # showing, and they carry no URL or key. Other errors stay class-only (act).
+    class Failed < RuntimeError
+      TOKEN = /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|[A-Za-z0-9_\-]{32,}|https?:\/\/\S+/.freeze
+
+      attr_reader :reason # nil unless the command was gh
+
+      def initialize(message, reason)
+        super(message)
+        @reason = reason
+      end
+
+      def self.reason_of(err)
+        line = err.to_s.lines.map(&:strip).find { |l| !l.empty? }
+        line.to_s.gsub(TOKEN, "[removed]")[0, 200]
+      end
+    end
+
     def self.capture(*cmd, stdin: nil, env: {})
       out, err, status = Open3.capture3(env, *cmd, stdin_data: stdin.to_s)
-      raise "#{cmd.first} exited #{status.exitstatus}" unless status.success?
+      unless status.success?
+        # Only gh: its refusals are the message worth showing. A fastlane lane's
+        # stderr (Play, App Store Connect) can name accounts and keys, so those
+        # stay class-only.
+        reason = cmd.first == "gh" ? Failed.reason_of(err) : nil
+        raise Failed.new("#{cmd.first} exited #{status.exitstatus}", reason)
+      end
 
       out.strip
     end
@@ -433,11 +484,9 @@ module ReleasePromotionAdapters
     end
 
     def checks_green?(sha)
-      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?per_page=100", "--jq", ".check_runs[] | \"\\(.status) \\(.conclusion)\"")
-      lines = rows.lines.map(&:strip).reject(&:empty?)
-      return false if lines.empty?
-
-      lines.all? { |row| row.start_with?("completed ") && %w[success skipped neutral].include?(row.split.last) }
+      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?filter=all&per_page=100", "--jq",
+                ".check_runs[] | {id, name, status, conclusion}")
+      ReleaseGates.checks_green?(rows.lines.map(&:strip).reject(&:empty?).map { |line| JSON.parse(line) })
     end
 
     def release_pr(version)
@@ -464,7 +513,12 @@ module ReleasePromotionAdapters
     end
 
     def merge(pr, head_sha)
-      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--match-head-commit", head_sha)
+      # --admin does not make this an admin merge: the token is the release
+      # App's, a bypass actor on the main ruleset (ADR 0030), and the server
+      # decides. Without it gh refuses client-side whenever the PR is BLOCKED
+      # for want of the approval the App is exempt from ("the base branch policy
+      # prohibits the merge"), before asking the server at all.
+      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--admin", "--match-head-commit", head_sha)
     end
 
     def issue_body(number)

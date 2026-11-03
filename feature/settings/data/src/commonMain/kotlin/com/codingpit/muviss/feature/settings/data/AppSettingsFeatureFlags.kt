@@ -58,6 +58,10 @@ class AppSettingsFeatureFlags(
     override val triageSnoozePlacement: Flow<SnoozePlacement> = settings()
         .map { row -> SnoozePlacement.fromStored(row?.triageSnoozePlacement) }
 
+    // Off only when the row is missing would hide the prompt from a person who never turned it off; the column's own
+    // DEFAULT is on, and so is this fallback, so a read that loses a race with `ensureRow` shows the same answer.
+    override val completionPromptEnabled: Flow<Boolean> = settings().map { row -> row?.completionPromptEnabled ?: true }
+
     // Not a column: served to every install, so nothing local can write it.
     override val byokEnabled: Flow<Boolean> = remoteConfig.values.map { it.byokEnabled }.distinctUntilChanged()
 
@@ -100,6 +104,12 @@ class AppSettingsFeatureFlags(
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageSnoozePlacement(placement.name)
+        Unit
+    }
+
+    override suspend fun setCompletionPromptEnabled(enabled: Boolean) = withContext(dispatchers.io) {
+        ensureRow()
+        queries.updateCompletionPromptEnabled(enabled)
         Unit
     }
 

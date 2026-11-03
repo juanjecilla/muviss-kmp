@@ -7,8 +7,10 @@ import kotlinx.coroutines.flow.Flow
  * in the app, at most once a day, never before onboarding is done, and only while the Settings switch
  * (#403, [CompletionPromptStore.enabled]) is on. Pure, so every rule is testable without a screen.
  *
- * A "day" is a UTC day here: the stored timestamp is epoch milliseconds, and the boundary only has to
- * be consistent, not local midnight.
+ * A "day" is the person's local day, read through [localDayOf] (see `localEpochDayOf` in `:core:common`).
+ * It used to be a UTC day, which let someone who finished a title at 23:50 local see the sheet again at
+ * 00:10 local. [lastShownEpochMs] is an instant, so a value stored before this rule needs no migration:
+ * it is bucketed under the local day like any other.
  */
 object CompletionPromptPolicy {
 
@@ -19,13 +21,12 @@ object CompletionPromptPolicy {
         lastShownEpochMs: Long?,
         enabled: Boolean,
         onboardingCompleted: Boolean,
+        localDayOf: (epochMs: Long) -> Long,
     ): Boolean {
         if (!enabled || !onboardingCompleted) return false
         val last = lastShownEpochMs ?: return true
-        return dayOf(nowEpochMs) > dayOf(last)
+        return localDayOf(nowEpochMs) > localDayOf(last)
     }
-
-    private fun dayOf(epochMs: Long): Long = epochMs.floorDiv(DAY_MS)
 }
 
 /**
