@@ -14,6 +14,7 @@ kotlin {
             implementation(projects.core.sync)
             implementation(projects.feature.collection.api)
             implementation(projects.feature.progress.api)
+            implementation(projects.feature.nextpick.api)
             implementation(libs.koin.core)
             implementation(libs.kotlinx.coroutinesCore)
             implementation(libs.kotlinx.serializationJson)

@@ -57,6 +57,7 @@ class SqlDelightBackupRestorer(
                 backup.plays.forEach { tally.count(restorePlay(it)) }
                 backup.triage.forEach { tally.count(restoreTriageDecision(it)) }
                 backup.snoozes.forEach { tally.count(restoreSnooze(it)) }
+                backup.tasteProfile.forEach { tally.count(restoreTasteProfileItem(it)) }
                 backup.lists.forEach { tally.count(restoreList(it)) }
                 backup.listEntries.forEach { tally.count(restoreListEntry(it)) }
                 backup.profile?.let { restoreProfile(it) }
@@ -190,6 +191,26 @@ class SqlDelightBackupRestorer(
             overview = row.overview,
             snoozedAtEpochMs = row.snoozedAtEpochMs,
             dueAtEpochDay = row.dueAtEpochDay,
+            updatedAtEpochMs = row.updatedAtEpochMs,
+            isDirty = true,
+            deleted = false,
+        )
+        return true
+    }
+
+    /**
+     * Per-row last-write-wins on the item's stamp, like every other row here. A
+     * restored item is written dirty so the next sync carries it to the account, and
+     * a local tombstone newer than the file keeps the item removed.
+     */
+    private suspend fun restoreTasteProfileItem(row: TasteProfileItemExport): Boolean {
+        val local = database.tasteProfileQueries.selectById(row.id).awaitAsOneOrNull()
+        if (!wins(row.updatedAtEpochMs, local?.updatedAtEpochMs)) return false
+        database.tasteProfileQueries.upsert(
+            id = row.id,
+            kind = row.kind,
+            itemValue = row.value,
+            label = row.label,
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
             deleted = false,

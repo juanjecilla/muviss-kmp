@@ -2,7 +2,9 @@ package com.codingpit.muviss.feature.settings.ui.di
 
 import com.codingpit.muviss.feature.settings.ui.ImportViewModel
 import com.codingpit.muviss.feature.settings.ui.MutedGenresViewModel
+import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
 import com.codingpit.muviss.feature.settings.ui.SettingsViewModel
+import com.codingpit.muviss.feature.settings.ui.TasteProfileViewModel
 import com.codingpit.muviss.feature.settings.ui.TmdbKeyViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModelOf
@@ -12,5 +14,7 @@ val settingsUiModule: Module = module {
     viewModelOf(::SettingsViewModel)
     viewModelOf(::ImportViewModel)
     viewModelOf(::MutedGenresViewModel)
+    viewModelOf(::TasteProfileViewModel)
     viewModelOf(::TmdbKeyViewModel)
+    viewModelOf(::NextPickSettingsViewModel)
 }

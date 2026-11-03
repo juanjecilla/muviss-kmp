@@ -255,7 +255,9 @@ Business plan; this runs on any plan, with the token the Play ramp's crash gate
   set for the mapping upload and the gate). With no token the workflow does nothing.
 - **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
   what it would open). Tests: `ruby fastlane/test/sentry_connector_test.rb` and `ops_bridge_test.rb`, run by `pr-guards`.
-  Nothing here has been run against a live Sentry project (#328).
+  Partly run against the live project on 2026-10-14 (#328): a dry run listed the existing
+  issues and the crash gate answered for a real release. Not yet run live: opening an issue,
+  close-to-resolve and the regressed-reopen path; #328 tracks them.
 
 #### Play reviews to issue (EPIC 48, connector #2)
 
@@ -369,7 +371,16 @@ the schedule, the gates and where a fix goes.
   - an open PR into `release/X.Y.Z` (a fix in flight);
   - the newest RC is not the branch head (a commit landed after it was built),
     or that RC's `release-rc.yml` run did not succeed;
-  - CI on the branch head is not green;
+  - CI on the branch head is not green. Judged per check name: the newest
+    finished run that was not cancelled decides, so the duplicate runs the
+    release PR starts on the same commit (cancelled by concurrency, or still
+    running) neither hold nor clear a version (#699). The Sunday merge does
+    **not** wait for the release PR's own checks: the release App's bypass skips
+    them, and the branch head's CI, which ran on the push, is the gate (#351).
+    Some `main` checks run only on PR events (`Release notes are final`, `PRs
+    into main come from release/*`, `Release tooling tests`), so on the Sunday
+    path they are skipped too; generated notes never carry `DRAFT:`, and
+    nothing on that path reads the notes;
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
   - another version is still on the beta track (one per stage). This is read from
@@ -378,6 +389,12 @@ the schedule, the gates and where a fix goes.
     Play itself before merging, that beta's newest build is the RC (#349);
   - for production: the version has not had its full week on beta. A held beta
     step pushes production back with it.
+- **A beta step run by hand early in the week keeps the cadence.** Promoted on a
+  Monday or Tuesday (a Sunday held on its gates, then dispatched), it is recorded
+  as the Sunday before, so production stays due the Sunday a week later. Counted
+  as the Monday, production would fall due a day after the Sunday cron and cost
+  the whole train a week (1.2.0 → 1.4.0, November 2026). Later in the week the
+  step counts as the day it ran. `release_promote.rb` also writes `production_on`.
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
   rollout (the ramp leaves a halted release alone until `resume`). A
   `release-blocker` issue or PR in the milestone holds the next Sunday step. The
@@ -414,7 +431,8 @@ the schedule, the gates and where a fix goes.
   would close it (a follow-up, see `docs/EPICS.md`).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
-  **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
+  **Pull requests**, **Issues** and **Workflows** write, **Actions** read (the RC
+  run check) and **Checks** read (the branch head's check runs);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
   refused (the step then holds, with that reason).
 
@@ -546,8 +564,53 @@ ruleset will refuse them), and the train fails.
 Its permissions (ADR 0030): **Contents** write (train branches, forward
 branches, RC tags), **Pull requests** write (back-merge, forward and release
 PRs, merging), **Issues** write (the release issues, milestones, and the
-blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
+blocked-train issue), **Workflows** write (train and back-merge branches carry
+`.github/workflows` changes), **Actions** read (the Sunday step checks the RC's
+run), and **Checks** read (it reads the branch head's check runs before
+promoting). An App set up before the last two were listed keeps working until a
+Sunday holds with "could not be read"; `owner-setup.sh` asks for them as its own
+step.
 It is a bypass actor on the `main` ruleset (see **Branch protection**).
+
+### Dependabot's worker bumps (#638)
+
+Dependabot bumps `core/database/src/webWorker/package.json` (sql.js), but it
+cannot run Gradle, so the two `kotlin-js-store` locks stayed stale and every
+bump failed `kotlinStoreYarnLock` (#631). `.github/workflows/dependabot-worker-locks.yml`
+regenerates them (`./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock`)
+and pushes the result onto the Dependabot branch, so the bump arrives green.
+
+It is two jobs, split by secrets:
+
+- `regenerate` has no secrets and read-only permissions. It checks out the PR
+  head, runs the Gradle tasks (which execute the PR's build scripts), and
+  uploads the two lock files.
+- `push` holds the release App's token, scoped to this repository and to
+  `contents: write` only. It executes no repository code: it
+  downloads the artifact outside the workspace, accepts only the two lock paths
+  as regular files with yarn's lockfile header, copies them in, and commits.
+
+Both jobs run only when Dependabot both opened the PR and triggered the run,
+on a `dependabot/npm_and_yarn/` branch of this repository. The author check
+says who opened the PR. The actor check skips the run that the App's own push
+triggers.
+
+Dependabot-triggered runs read **Dependabot** secrets, not Actions secrets, so
+`RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must also be set under Settings >
+Secrets and variables > **Dependabot**. The `push` job fails with that message
+when they are missing.
+
+The push is made with the App's token because a push by `GITHUB_TOKEN` starts no
+workflow run, and CI would never run on the lock commit.
+
+**Dependabot stops rebasing or updating a PR after a push by someone else**, and
+this workflow's push is one. A bump that later needs a rebase will not get one
+on its own. Close the PR and let the next weekly run open a fresh one, which
+this workflow then covers; a maintainer can also rebase the branch by hand.
+
+Not yet verified live: the workflow is written and shape-tested
+(`scripts/ci/test/dependabot_worker_locks_test.rb`) but has not run on a real
+Dependabot bump. Follow-up #667 checks the next one.
 
 ### Shared build
 
@@ -676,10 +739,18 @@ Commit the rewritten file with the dependency change. The generated entries
 come from the report's name and licence exactly as licensee gives them; the
 hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
 not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
-when the report lists an artifact with no entry, so a dependency that moves
-without a regeneration breaks CI rather than under-reporting on the About
-screen (#562). It checks for missing entries only, so it does not notice an
-entry left behind after its artifact is gone; the regeneration removes those.
+when the report lists an artifact with no entry (missing), or when an entry
+names an artifact the report no longer lists (stale), or lists one artifact
+twice (the Licenses screen keys its rows by artifact), so an artifact added or
+removed without a regeneration breaks CI rather than under-reporting or
+over-reporting on the About screen (#562, #616). It also fails when an entry's
+name, licence or licence URL differs from the report at the same coordinates
+(a version bump that changes what the artifact says it is licensed under,
+#666). Each entry is compared with the text the generator writes for that
+artifact, fallbacks included, so the check and `regenerateOssLicenses` cannot
+disagree. Its failure message names every list and the regenerate command. The
+comparison lives in build-logic's `OssLicensesList` (unit-tested in
+`build-logic/src/test`).
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth

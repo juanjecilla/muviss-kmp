@@ -1,0 +1,14 @@
+-- Next Pick's completion prompt (EPIC 51, #400, ADR 0032). The filename is the version this migrates FROM:
+-- 22.sqm takes a v22 database to v23, after the reduce-motion default's `21.sqm` (#394).
+--
+-- NUMBERING: the number a branch takes is whatever is free when it merges
+-- (`verifyMigrations` cannot see a collision); renumber and regenerate the
+-- fixture if another migration landed first. Claimed at 22 on 2026-10-29, when #394's
+-- `21.sqm` had already landed on develop (this branch was written against 21). #403 is
+-- 23.sqm and #588 is 24.sqm, stacked in that order.
+--
+-- One per-device timestamp: when the "What's next?" sheet was last shown. It caps the
+-- prompt at once a day (EPIC 51). Null is "never shown", which is also what every existing
+-- install reads as, so no UPDATE is needed. Per device and NOT synced or exported: a prompt
+-- is a fact about this phone's day, not the library.
+ALTER TABLE appSettings ADD COLUMN completionPromptShownAtEpochMs INTEGER;
