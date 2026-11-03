@@ -18,9 +18,11 @@ import com.codingpit.muviss.models.MediaType
  * `details(id)`, which for a show costs several requests. The cost is that
  * [overview] is frozen in whatever TMDB language was active at the time.
  *
- * [dueAtEpochDay] is an epoch DAY, compared against the same `today` the
- * progress use cases already take, so a title comes back for the whole of its
- * due date in the device's own reckoning rather than at an instant.
+ * [dueAtEpochDay] is an epoch DAY on the person's **local** calendar
+ * (`localTodayEpochDay`), so a title comes back for the whole of its due date
+ * rather than at an instant. Rows written before that rule were counted on the
+ * UTC day; each is at most one day off, once, and only for a Snooze in flight
+ * at the upgrade (#656).
  */
 data class TriageSnooze(
     val mediaId: MediaId,

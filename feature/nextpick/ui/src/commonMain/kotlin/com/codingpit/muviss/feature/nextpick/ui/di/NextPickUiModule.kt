@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.nextpick.ui.di
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
 import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
+import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
 import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
@@ -17,7 +18,12 @@ import org.koin.dsl.module
 val nextPickUiModule: Module = module {
     viewModel {
         val context: PickContextSource = get()
-        PickSessionViewModel(context = { context.read() }, engine = get<PickEngine>(), actions = get<NextPickActions>())
+        PickSessionViewModel(
+            context = { context.read() },
+            engine = get<PickEngine>(),
+            actions = get<NextPickActions>(),
+            settings = get<NextPickSettings>(),
+        )
     }
     viewModel {
         CompletionPromptViewModel(

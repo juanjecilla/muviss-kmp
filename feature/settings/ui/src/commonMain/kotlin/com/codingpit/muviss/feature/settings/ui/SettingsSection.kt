@@ -22,9 +22,11 @@ fun NavGraphBuilder.settingsSection(
             // must not depend on (ADR 0004) — the app shell owns both graphs
             // and hands the navigation down, same as progressSection does.
             onOpenMutedGenres = { navController.navigate(MutedGenresRoute) },
+            onOpenTasteProfile = { navController.navigate(TasteProfileRoute) },
             onOpenTriage = onOpenTriage,
             onReplayIntroduction = onReplayIntroduction,
             tmdbKey = koinViewModel<TmdbKeyViewModel>(),
+            nextPick = koinViewModel<NextPickSettingsViewModel>(),
         )
     }
     composable<LicensesRoute> {
@@ -32,6 +34,9 @@ fun NavGraphBuilder.settingsSection(
     }
     composable<MutedGenresRoute> {
         MutedGenresScreen(koinViewModel<MutedGenresViewModel>())
+    }
+    composable<TasteProfileRoute> {
+        TasteProfileScreen(koinViewModel<TasteProfileViewModel>())
     }
     composable<ImportRoute> {
         val viewModel = koinViewModel<ImportViewModel>()

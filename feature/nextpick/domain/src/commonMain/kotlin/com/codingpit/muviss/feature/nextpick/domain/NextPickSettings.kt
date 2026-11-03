@@ -1,11 +1,20 @@
 package com.codingpit.muviss.feature.nextpick.domain
 
+import com.codingpit.muviss.feature.nextpick.api.SessionLength
+
 /**
- * How a Pick Session's result is presented (EPIC 51, #401 adds Top Picks and Deck). Lives beside the
- * settings seam rather than in `:api`, which #403 owns; a presentation is a UI choice, not a contract
- * a peer needs.
+ * How a Pick Session's result is presented (EPIC 51, ADR 0032). The engine's output is the same for every
+ * mode; a mode only decides how much of it one screen draws. The values are spelled as #543's `ResultMode`
+ * so that its persisted choice maps across by name.
+ *
+ * [pickCount] is how many picks one screen draws from the engine's ranked list: One Pick draws the first and
+ * "another" steps down the list; Top Picks and Deck draw the top [PickEngine.DEFAULT_LIMIT].
  */
-enum class NextPickResultMode { ONE_PICK, }
+enum class NextPickResultMode(val pickCount: Int) {
+    ONE_PICK(1),
+    TOP_PICKS(PickEngine.DEFAULT_LIMIT),
+    DECK(PickEngine.DEFAULT_LIMIT),
+}
 
 /**
  * The session length and result mode the person chose (EPIC 51, #403). Until #403 lands, Next Pick
@@ -13,8 +22,8 @@ enum class NextPickResultMode { ONE_PICK, }
  * the whole of #403's wiring here.
  */
 interface NextPickSettings {
-    /** The length the session opens with. Default: [PickSessionLength.STANDARD]. */
-    val length: PickSessionLength
+    /** The length the session opens with. Default: [SessionLength.STANDARD]. */
+    val length: SessionLength
 
     /** Which presentation shows the result. Default: [NextPickResultMode.ONE_PICK]. */
     val mode: NextPickResultMode
@@ -22,6 +31,6 @@ interface NextPickSettings {
 
 /** The defaults until #403. */
 object DefaultNextPickSettings : NextPickSettings {
-    override val length: PickSessionLength = PickSessionLength.STANDARD
+    override val length: SessionLength = SessionLength.STANDARD
     override val mode: NextPickResultMode = NextPickResultMode.ONE_PICK
 }

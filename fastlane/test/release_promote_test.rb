@@ -237,6 +237,82 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal [], state["holds"]
   end
 
+  def test_a_monday_beta_step_is_stamped_with_the_sunday_and_production_follows_a_week_later
+    outcomes = run_on(Date.new(2026, 10, 19))
+    assert_equal :done, outcome_for(outcomes, "1.1.0").status
+    state = state_of("1.1.0")
+    assert_equal "2026-10-18", state["beta_done_on"]
+    assert_equal "2026-10-25", state["production_on"]
+  end
+
+  def test_a_gh_refusal_shows_its_first_line_with_credentials_and_urls_removed
+    err = "X-Access-Token ghs_abcdefghijklmnop1234 see https://api.github.com/x?key=abc\nPull request is not mergeable"
+    failed = ReleasePromotionAdapters::Shell::Failed.new("gh exited 1", ReleasePromotionAdapters::Shell::Failed.reason_of(err))
+    assert_equal "X-Access-Token [removed] see [removed]", failed.reason
+  end
+
+  # The real adapters, with the process boundary replaced.
+  def with_shell(result)
+    calls = []
+    shell = ReleasePromotionAdapters::Shell
+    original = shell.method(:capture)
+    shell.define_singleton_method(:capture) do |*cmd, **opts|
+      calls << cmd
+      raise result if result.is_a?(Exception)
+
+      result
+    end
+    yield calls
+  ensure
+    shell.define_singleton_method(:capture, original)
+  end
+
+  def test_the_sunday_merge_asks_the_server_so_the_apps_bypass_can_apply
+    with_shell("") do |calls|
+      ReleasePromotionAdapters::GitHub.new(repo: "o/r", token: "t").merge(691, "abc123")
+      assert_equal [["gh", "pr", "merge", "691", "--repo", "o/r", "--merge", "--admin", "--match-head-commit", "abc123"]], calls
+    end
+  end
+
+  def test_a_failing_command_other_than_gh_exposes_none_of_its_stderr
+    shell = ReleasePromotionAdapters::Shell
+    failed = assert_raises(shell::Failed) { shell.capture("sh", "-c", "echo sa@proj.iam.gserviceaccount.com >&2; exit 1") }
+    assert_nil failed.reason
+    assert_equal "sh exited 1", failed.message
+    assert_equal "could not run it (ReleasePromotionAdapters::Shell::Failed)", ReleasePromotion.allocate.send(:act, "run it") { raise failed }
+  end
+
+  def run_row(id, name, status, conclusion) = { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion }
+
+  def test_ci_is_green_when_every_name_passed
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "success"), run_row(2, "ios", "completed", "skipped")])
+  end
+
+  def test_ci_is_not_green_with_no_runs_at_all
+    refute ReleaseGates.checks_green?([])
+  end
+
+  def test_a_cancelled_duplicate_beside_a_pass_does_not_hold_the_version
+    runs = [run_row(1, "PR guards", "completed", "success"), run_row(2, "PR guards", "completed", "cancelled")]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_duplicate_still_running_does_not_unsay_a_completed_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "in_progress", nil)]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_name_that_only_ever_ran_cancelled_or_running_is_not_green
+    refute ReleaseGates.checks_green?([run_row(1, "build", "completed", "cancelled")])
+    refute ReleaseGates.checks_green?([run_row(1, "build", "queued", nil)])
+  end
+
+  def test_the_newest_finished_run_decides_when_a_rerun_fails_after_a_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "completed", "failure")]
+    refute ReleaseGates.checks_green?(runs)
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "failure"), run_row(2, "build", "completed", "success")])
+  end
+
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
     outcomes = run_on(SUNDAY_BETA, apply: false)
     assert_equal :would_do, outcome_for(outcomes, "1.1.0").status
