@@ -371,7 +371,16 @@ the schedule, the gates and where a fix goes.
   - an open PR into `release/X.Y.Z` (a fix in flight);
   - the newest RC is not the branch head (a commit landed after it was built),
     or that RC's `release-rc.yml` run did not succeed;
-  - CI on the branch head is not green;
+  - CI on the branch head is not green. Judged per check name: the newest
+    finished run that was not cancelled decides, so the duplicate runs the
+    release PR starts on the same commit (cancelled by concurrency, or still
+    running) neither hold nor clear a version (#699). The Sunday merge does
+    **not** wait for the release PR's own checks: the release App's bypass skips
+    them, and the branch head's CI, which ran on the push, is the gate (#351).
+    Some `main` checks run only on PR events (`Release notes are final`, `PRs
+    into main come from release/*`, `Release tooling tests`), so on the Sunday
+    path they are skipped too; generated notes never carry `DRAFT:`, and
+    nothing on that path reads the notes;
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
   - another version is still on the beta track (one per stage). This is read from
@@ -380,6 +389,12 @@ the schedule, the gates and where a fix goes.
     Play itself before merging, that beta's newest build is the RC (#349);
   - for production: the version has not had its full week on beta. A held beta
     step pushes production back with it.
+- **A beta step run by hand early in the week keeps the cadence.** Promoted on a
+  Monday or Tuesday (a Sunday held on its gates, then dispatched), it is recorded
+  as the Sunday before, so production stays due the Sunday a week later. Counted
+  as the Monday, production would fall due a day after the Sunday cron and cost
+  the whole train a week (1.2.0 → 1.4.0, November 2026). Later in the week the
+  step counts as the day it ran. `release_promote.rb` also writes `production_on`.
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
   rollout (the ramp leaves a halted release alone until `resume`). A
   `release-blocker` issue or PR in the milestone holds the next Sunday step. The
@@ -416,7 +431,8 @@ the schedule, the gates and where a fix goes.
   would close it (a follow-up, see `docs/EPICS.md`).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
-  **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
+  **Pull requests**, **Issues** and **Workflows** write, **Actions** read (the RC
+  run check) and **Checks** read (the branch head's check runs);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
   refused (the step then holds, with that reason).
 
@@ -548,7 +564,12 @@ ruleset will refuse them), and the train fails.
 Its permissions (ADR 0030): **Contents** write (train branches, forward
 branches, RC tags), **Pull requests** write (back-merge, forward and release
 PRs, merging), **Issues** write (the release issues, milestones, and the
-blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
+blocked-train issue), **Workflows** write (train and back-merge branches carry
+`.github/workflows` changes), **Actions** read (the Sunday step checks the RC's
+run), and **Checks** read (it reads the branch head's check runs before
+promoting). An App set up before the last two were listed keeps working until a
+Sunday holds with "could not be read"; `owner-setup.sh` asks for them as its own
+step.
 It is a bypass actor on the `main` ruleset (see **Branch protection**).
 
 ### Dependabot's worker bumps (#638)

@@ -75,7 +75,7 @@ do_app() {
   say "workflows (GITHUB_TOKEN's do not). Create a private GitHub App:"
   say "  name: muviss-release   homepage: https://github.com/$REPO   webhook: off"
   say "  repository permissions: Contents RW, Pull requests RW, Issues RW,"
-  say "                          Workflows RW, Metadata R"
+  say "                          Workflows RW, Actions R, Checks R, Metadata R"
   say "  where can it be installed: only this account"
   say "Then: generate a private key (.pem), and install the App on $REPO only."
   open_url "https://github.com/settings/apps/new"
@@ -87,6 +87,20 @@ do_app() {
   gh secret set RELEASE_APP_PRIVATE_KEY --repo "$REPO" <"$pem"
   gh variable set RELEASE_APP_ID --repo "$REPO" --body "$app_id"   # the rulesets need it unmasked
   say "Delete the .pem from your downloads once it is in a password manager."
+}
+
+# An App created before Actions/Checks were on the list keeps its secrets, so
+# check_app passes; the Sunday gate then holds with "could not be read". Ask
+# once, and only the owner can see the App's permissions.
+check_app_perms() { marked app-read-perms; }
+do_app_perms() {
+  say "The Sunday promotion reads the RC's workflow run and the branch head's check"
+  say "runs with the App's token. On the App's page → Permissions & events, set:"
+  say "  Actions: Read-only   Checks: Read-only"
+  say "Save, then accept the new permissions on the installation (Settings →"
+  say "Applications → muviss-release → Review request). Skip if both are set."
+  open_url "https://github.com/settings/apps/muviss-release/permissions"
+  wait_enter && mark app-read-perms
 }
 
 # --- 5. rulesets ---------------------------------------------------------------
@@ -270,6 +284,7 @@ step "develop is the default branch"                       check_develop    do_d
 step "the no-landing label exists"                         check_labels     do_labels
 step "CodeRabbit is installed"                             check_coderabbit do_coderabbit
 step "the muviss-release GitHub App's secrets are set"      check_app        do_app
+step "the release App can read Actions and Checks"         check_app_perms  do_app_perms
 step "rulesets protect main, develop and v* tags"          check_rulesets   do_rulesets
 step "the production environment needs your approval"      check_env        do_env
 step "the release keystore secrets are set"                check_keystore   do_keystore

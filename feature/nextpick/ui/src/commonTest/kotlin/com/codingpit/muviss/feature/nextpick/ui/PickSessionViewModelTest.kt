@@ -1,10 +1,10 @@
 package com.codingpit.muviss.feature.nextpick.ui
 
 import com.codingpit.muviss.feature.nextpick.api.PickSource
+import com.codingpit.muviss.feature.nextpick.api.SessionLength
 import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
-import com.codingpit.muviss.feature.nextpick.domain.PickSessionLength
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +36,7 @@ class PickSessionViewModelTest {
     @Test
     fun online_session_opens_on_the_first_question_out_of_the_standard_length() {
         // Given an online person with a backlog and the standard length
-        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = PickSessionLength.STANDARD, online = true, hasBacklog = true))
+        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = SessionLength.STANDARD, online = true, hasBacklog = true))
 
         // When the session opens
         val state = viewModel.state.value
@@ -51,7 +51,7 @@ class PickSessionViewModelTest {
     @Test
     fun offline_session_never_asks_where_the_pick_comes_from() {
         // Given the person is offline
-        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = PickSessionLength.QUICK, online = false, hasBacklog = true))
+        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = SessionLength.QUICK, online = false, hasBacklog = true))
 
         // When the session opens
         val asking = assertIs<PickSessionUiState.Asking>(viewModel.state.value)
@@ -64,7 +64,7 @@ class PickSessionViewModelTest {
     @Test
     fun answering_every_question_ends_in_a_pick_for_the_person_to_act_on() {
         // Given a quick session over a pool with one title
-        val viewModel = viewModel(listOf(candidate("1", "Dune")), PickContext(length = PickSessionLength.QUICK, online = true, hasBacklog = true))
+        val viewModel = viewModel(listOf(candidate("1", "Dune")), PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true))
 
         // When the person answers the source question and skips the next
         viewModel.answer(PickAnswer.Source(PickSource.EITHER))
@@ -79,7 +79,7 @@ class PickSessionViewModelTest {
     @Test
     fun an_empty_pool_says_nothing_fits_rather_than_inventing_a_pick() {
         // Given a session over nothing at all
-        val viewModel = viewModel(emptyList(), PickContext(length = PickSessionLength.NONE, online = true, hasBacklog = true))
+        val viewModel = viewModel(emptyList(), PickContext(length = SessionLength.NONE, online = true, hasBacklog = true))
 
         // When the session has no questions and no candidates
         // Then it says nothing fits
@@ -90,7 +90,7 @@ class PickSessionViewModelTest {
     fun add_records_the_outcome_and_calls_the_add_action_once() {
         // Given a session that ended in a pick
         val actions = RecordingNextPickActions()
-        val viewModel = viewModel(listOf(candidate("7")), PickContext(length = PickSessionLength.NONE, online = true, hasBacklog = true), actions)
+        val viewModel = viewModel(listOf(candidate("7")), PickContext(length = SessionLength.NONE, online = true, hasBacklog = true), actions)
 
         // When the person adds it
         viewModel.add()
@@ -103,7 +103,7 @@ class PickSessionViewModelTest {
     @Test
     fun back_steps_to_the_previous_question_and_reports_false_on_the_first() {
         // Given a session that has moved past its first question
-        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = PickSessionLength.STANDARD, online = true, hasBacklog = true))
+        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = SessionLength.STANDARD, online = true, hasBacklog = true))
         viewModel.answer(PickAnswer.Source(PickSource.MY_LIST))
 
         // When the person goes back
@@ -115,7 +115,7 @@ class PickSessionViewModelTest {
         assertEquals(false, viewModel.back())
     }
 
-    private val noQuestions = PickContext(length = PickSessionLength.NONE, online = true, hasBacklog = true)
+    private val noQuestions = PickContext(length = SessionLength.NONE, online = true, hasBacklog = true)
 
     @Test
     fun a_second_tap_while_the_add_is_in_flight_writes_once() {
