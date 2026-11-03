@@ -3,7 +3,7 @@ package com.codingpit.muviss.feature.nextpick.data
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
-import com.codingpit.muviss.core.common.todayEpochDay
+import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
@@ -34,7 +34,7 @@ internal class DefaultNextPickActions(
 
     override suspend fun snooze(summary: MediaSummary) {
         val period = flags.triageSnoozePeriod.first()
-        triage().snooze(summary, dueAtEpochDay = snoozeDueEpochDay(period, clock.todayEpochDay()))
+        triage().snooze(summary, dueAtEpochDay = snoozeDueEpochDay(period, clock.localTodayEpochDay()))
     }
 }
 

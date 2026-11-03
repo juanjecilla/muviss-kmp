@@ -389,6 +389,7 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 - **Taste Profile** is explicit, synced and exported: liked genres, formats, services, languages, usual company. Dislikes are **Muted Genres** (ADR 0031), not a second list.
 - **Muted Genres apply**; an explicit in-session choice beats a standing mute.
 - Offline: backlog only, and the screen says so. No implicit learning in v1.
+- **Day basis (#656).** The once-a-day rule and Snooze due days count the person's **local** day (`localTodayEpochDay`, `:core:common`). Aired comparisons still count UTC days and move together in #675, because the stored aired count and the `seen <= aired` invariant depend on them. A Snooze due day written before #656 is at most one day off, once.
 
 **Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage. Raised by the #404 research (`docs/research/next-pick-ai.md`, rules stay for v1): #594 measure the on-device Gemma option (the remainder of #404), #595 make `PickRanker` suspend and enforce its output in `PickEngine`.
 
