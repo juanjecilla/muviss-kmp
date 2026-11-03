@@ -5,6 +5,9 @@ import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Maps the genre *names* a library snapshot stores back to TMDB ids (#547, ADR 0031, ADR 0032), so Muted
@@ -13,7 +16,7 @@ import kotlinx.coroutines.sync.withLock
  * Lookup order per [MediaType], first hit wins:
  * 1. the live catalogue in the current language, when the device is online. Memoised per language and
  *    type for the life of the process; a failed fetch is not memoised, so the next pick retries, and
- *    neither is one the language changed under.
+ *    neither is one the language changed under. The fetch is bounded by [LIVE_LOOKUP_TIMEOUT].
  * 2. [BundledGenreNames], en-US and es-ES, which need no network at all.
  *
  * Matching trims and ignores case. A name in neither list maps to nothing and is dropped: the title is
@@ -22,6 +25,7 @@ import kotlinx.coroutines.sync.withLock
 internal class LibraryGenreIds(
     private val liveCatalogue: suspend (MediaType) -> List<Genre>,
     private val language: () -> String,
+    private val liveTimeout: Duration = LIVE_LOOKUP_TIMEOUT,
 ) {
     private val mutex = Mutex()
     private val fetched = mutableMapOf<Pair<String, MediaType>, List<Genre>>()
@@ -35,7 +39,9 @@ internal class LibraryGenreIds(
     private suspend fun liveFor(type: MediaType): List<Genre> {
         val key = language() to type
         mutex.withLock { fetched[key]?.let { return it } }
-        val genres = runCatching { liveCatalogue(type) }
+        // Online is not answering: a slow TMDB must not hold a pick (even a "my list" one) behind a genre list
+        // the bundled names already cover. A timed-out fetch is not memoised, like a failed one.
+        val genres = runCatching { withTimeoutOrNull(liveTimeout) { liveCatalogue(type) } }
             .onFailure { if (it is CancellationException) throw it }
             .getOrNull()
             ?: return emptyList()
@@ -45,6 +51,9 @@ internal class LibraryGenreIds(
         return genres
     }
 }
+
+/** How long a pick waits for the live genre list before using the bundled names alone. */
+internal val LIVE_LOOKUP_TIMEOUT: Duration = 3.seconds
 
 /** Genre names of one type, in lookup order. Built once per pick, then asked per candidate. */
 internal class GenreNameIndex(genres: List<Genre>) {

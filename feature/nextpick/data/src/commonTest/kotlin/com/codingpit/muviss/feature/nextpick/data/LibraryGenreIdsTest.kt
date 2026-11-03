@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.nextpick.data
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,6 +41,21 @@ class LibraryGenreIdsTest {
         language = "en-US"
         resolver.index(MediaType.MOVIE, online = true)
 
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun a_live_catalogue_that_never_answers_falls_back_to_the_bundled_names_and_is_asked_again() = runTest {
+        var calls = 0
+        val resolver = LibraryGenreIds(liveCatalogue = {
+            calls++
+            awaitCancellation()
+        }, language = { "en-US" })
+
+        val ids = resolver.index(MediaType.MOVIE, online = true).idsOf(listOf("Comedy"))
+        resolver.index(MediaType.MOVIE, online = true)
+
+        assertEquals(listOf("35"), ids)
         assertEquals(2, calls)
     }
 
