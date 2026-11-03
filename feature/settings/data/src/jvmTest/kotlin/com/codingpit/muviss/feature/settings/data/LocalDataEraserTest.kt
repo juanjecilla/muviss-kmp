@@ -15,6 +15,7 @@ import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
 import com.codingpit.muviss.core.sync.SyncCursor
+import com.codingpit.muviss.core.sync.SyncIdleLock
 import com.codingpit.muviss.core.sync.SyncPage
 import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncTable
@@ -33,6 +34,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -159,13 +161,48 @@ class LocalDataEraserTest {
         assertEquals(null, database.syncAccountQueries.selectAccount().awaitAsOne().userId, "a restart must not restore the session")
     }
 
-    private fun eraser(database: MuvissDatabase, backend: SyncBackend) = SqlDelightLocalDataEraser(
+    @Test
+    fun `the sign-out and the erase both run with no sync in flight`() = runTest {
+        val database = inMemoryDatabase()
+        signedIn(database)
+        val events = mutableListOf<String>()
+        val idle = object : SyncIdleLock {
+            override suspend fun runIdle(block: suspend () -> Unit) {
+                events += "idle"
+                block()
+                events += "released"
+            }
+        }
+        val backend = RecordingSyncBackend { events += "sign-out" }
+
+        eraser(database, backend, idle).deleteAllData()
+
+        assertEquals(listOf("idle", "sign-out", "released"), events)
+        assertEquals(null, database.syncStateQueries.selectState().awaitAsOneOrNull(), "erased inside the lock")
+    }
+
+    @Test
+    fun `an erase whose caller is cancelled during sign-out still finishes`() = runTest {
+        val database = inMemoryDatabase()
+        signedIn(database)
+        database.mediaListQueries.upsertList("list-1", "Rainy day", 1L, 1L, false, false)
+        val backend = RecordingSyncBackend { throw CancellationException("screen closed") }
+
+        val erase = launch { eraser(database, backend).deleteAllData() }
+        erase.join()
+
+        assertEquals(0, database.mediaListQueries.selectAllListsForExport().awaitAsList().size, "a closed screen does not leave a half-erased library")
+        assertEquals(null, database.syncAccountQueries.selectAccount().awaitAsOne().userId)
+    }
+
+    private fun eraser(database: MuvissDatabase, backend: SyncBackend, idle: SyncIdleLock = SyncIdleLock.None) = SqlDelightLocalDataEraser(
         database,
         dispatchers,
         OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) })),
         InMemorySecretStore(),
         widgetRefresher = WidgetRefresher {},
         syncBackend = backend,
+        syncIdle = idle,
     )
 
     private suspend fun signedIn(database: MuvissDatabase) {

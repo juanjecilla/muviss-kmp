@@ -7,7 +7,8 @@ package com.codingpit.muviss.feature.settings.domain
  * so the app afterwards is a fresh install's.
  *
  * It is local, and a signed-in sync account is signed out first (#645): the
- * session ends before anything is erased, so no sync can pull the library back.
+ * session ends before anything is erased, and both wait for any sync cycle already in flight,
+ * so no sync can pull the library back.
  * The server copy is untouched; signing in again is a first sync and brings
  * it back. Sync is off in release builds (ADR 0018).
  */

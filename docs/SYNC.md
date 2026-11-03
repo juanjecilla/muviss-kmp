@@ -485,8 +485,11 @@ other devices' real edits.
 
 Settings > Delete all data signs out first, then erases everything locally,
 including `syncState.ownerAccountId` and the persisted session (`syncAccount`).
-The sign-out comes before the erase, so no sync cycle can pull the library back
-in between. The server copy is untouched: there is no server delete. Signing in
+The sign-out comes before the erase, and both run through `SyncIdleLock`
+(`SyncEngine`'s cycle mutex): they wait for a cycle already in flight, and none
+starts until the erase is done, so no sync can pull the library back in between.
+The sign-out holds the session's refresh lock, so a refresh in flight cannot
+save a new session after it. Once started the erase is non-cancellable. The server copy is untouched: there is no server delete. Signing in
 again is a first sync, which downloads the account's copy. A sign-out the server
 does not confirm (offline) still ends the session locally, and the erase
 proceeds. Until a real device and a real Supabase project have run this path,
