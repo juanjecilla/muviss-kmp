@@ -96,7 +96,7 @@ val settingsDataModule: Module = module {
     factory { LoadGenresUseCase(get()) }
     single<SettingsApi> { DefaultSettingsApi(get(), get(), get(), get()) }
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
-    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get()) }
+    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get(), get(), get()) }
     single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
     single<TasteProfileRepository> { SqlDelightTasteProfileRepository(get<MuvissDatabase>().tasteProfileQueries, get(), get()) }
     factory { ObserveTasteProfileUseCase(get(), mutedGenreKeys(get())) }

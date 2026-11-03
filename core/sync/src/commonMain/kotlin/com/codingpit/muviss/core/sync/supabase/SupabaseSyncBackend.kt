@@ -108,7 +108,9 @@ internal class SupabaseSyncBackend(
         session
     }.onFailure { pendingVerifier = null }
 
-    override suspend fun signOut() {
+    // Under the refresh lock: a refresh already in flight would otherwise finish after this and
+    // persist() its new session, signing the device back in after the person chose to leave (#645).
+    override suspend fun signOut() = refreshMutex.withLock {
         ensureRestored()
         sessionState.value?.let { current -> runCatching { auth.signOut(current.accessToken) } }
         sessionState.value = null
