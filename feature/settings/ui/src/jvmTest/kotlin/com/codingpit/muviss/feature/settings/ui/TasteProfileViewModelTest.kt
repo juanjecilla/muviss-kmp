@@ -126,4 +126,25 @@ class TasteProfileViewModelTest {
         assertFalse(state.genresFailed)
         assertEquals(listOf("movie:28"), state.movieGenres.map { it.item.value })
     }
+
+    @Test
+    fun a_liked_genre_stays_on_offer_offline_so_it_can_be_unliked() = runTest {
+        val action = TasteItem(TasteKind.GENRE, "movie:28", "Action")
+        val api = FakeTasteApi().apply { liked.value = listOf(action) }
+        val (vm, _) = viewModel(api, emptySet(), FakeCatalog(MetadataError.Offline()))
+
+        val state = vm.state.first { !it.loading }
+
+        assertTrue(state.genresFailed)
+        assertEquals(listOf(action to true), state.movieGenres.map { it.item to it.liked })
+        assertTrue(state.tvGenres.isEmpty())
+    }
+
+    @Test
+    fun a_liked_genre_tmdb_also_returns_is_offered_once() = runTest {
+        val api = FakeTasteApi().apply { liked.value = listOf(TasteItem(TasteKind.GENRE, "movie:28", "Action")) }
+        val (vm, _) = viewModel(api, emptySet(), FakeCatalog())
+
+        assertEquals(listOf("movie:28"), vm.state.first { !it.loading }.movieGenres.map { it.item.value })
+    }
 }

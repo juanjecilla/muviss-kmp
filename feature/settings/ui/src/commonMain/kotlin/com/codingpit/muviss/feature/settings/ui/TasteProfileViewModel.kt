@@ -52,6 +52,7 @@ class TasteProfileViewModel(
     val state: StateFlow<TasteProfileUiState> = _state.asStateFlow()
 
     private var liked: Set<String> = emptySet()
+    private var likedItems: List<TasteItem> = emptyList()
     private var muted: Set<GenreKey> = emptySet()
     private var movieCatalog: List<Genre> = emptyList()
     private var tvCatalog: List<Genre> = emptyList()
@@ -62,6 +63,7 @@ class TasteProfileViewModel(
         api.observe()
             .onEach { items ->
                 liked = items.mapTo(linkedSetOf()) { it.id }
+                likedItems = items
                 publish()
             }
             .catch { publish() }
@@ -111,9 +113,16 @@ class TasteProfileViewModel(
         }
     }
 
-    private fun genreOptions(type: MediaType, catalog: List<Genre>): List<TasteOption> = catalog
-        .map { TasteRules.genreItem(type, it.id, it.name) }
-        .map { item -> option(item) }
+    /**
+     * TMDB's genres for [type], plus any liked genre it did not return. Offline the catalogue is
+     * empty, and a liked genre must still show (with its stored label) so it can be unliked.
+     */
+    private fun genreOptions(type: MediaType, catalog: List<Genre>): List<TasteOption> {
+        val offered = catalog.map { TasteRules.genreItem(type, it.id, it.name) }
+        val offeredIds = offered.mapTo(hashSetOf()) { it.id }
+        val savedOnly = likedItems.filter { TasteRules.genreKeyOf(it)?.type == type && it.id !in offeredIds }
+        return (offered + savedOnly).map { item -> option(item) }
+    }
 
     private fun fixedOptions(items: List<TasteItem>): List<TasteOption> = items.map { option(it) }
 

@@ -58,7 +58,7 @@ UPDATE syncState
 SET lastOutcome = NULL, lastError = NULL, consecutiveFailures = 0
 WHERE id = 0;
 
--- Rows waiting to be sent, across all seven synced tables (soft-deleted ones
+-- Rows waiting to be sent, across every synced table (`SyncTable`; `PendingChangeCountTest` fails when one is missing) (soft-deleted ones
 -- included: a tombstone is a write like any other). Observed by the change
 -- push and by the Profile status line ("4 changes waiting"). A pull writes clean
 -- rows, so it never raises this.
@@ -69,6 +69,7 @@ SELECT
     (SELECT COUNT(*) FROM mediaList WHERE isDirty = 1) +
     (SELECT COUNT(*) FROM listEntry WHERE isDirty = 1) +
     (SELECT COUNT(*) FROM triageDecision WHERE isDirty = 1) +
+    (SELECT COUNT(*) FROM triageSnooze WHERE isDirty = 1) +
     (SELECT COUNT(*) FROM episodePlay WHERE isDirty = 1) +
     (SELECT COUNT(*) FROM tasteProfile WHERE isDirty = 1);
 
