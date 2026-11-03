@@ -32,7 +32,7 @@ class NextPickGoldenTest {
                 GoldenSurface { TopPicksPresentation.Content(state(NextPickResultMode.TOP_PICKS), noop, Modifier.fillMaxSize()) }
             }
         }
-        assertMatchesGolden("nextpick-top-picks")
+        assertMatchesGolden("nextpick-top-picks", tolerance = NEXT_PICK_TOLERANCE)
     }
 
     @Test
@@ -42,7 +42,7 @@ class NextPickGoldenTest {
                 GoldenSurface { TopPicksPresentation.Content(state(NextPickResultMode.TOP_PICKS), noop, Modifier.fillMaxSize()) }
             }
         }
-        assertMatchesGolden("nextpick-top-picks-dark")
+        assertMatchesGolden("nextpick-top-picks-dark", tolerance = NEXT_PICK_TOLERANCE)
     }
 
     @Test
@@ -52,6 +52,15 @@ class NextPickGoldenTest {
                 GoldenSurface { DeckPresentation.Content(state(NextPickResultMode.DECK), noop, Modifier.fillMaxSize()) }
             }
         }
-        assertMatchesGolden("nextpick-deck")
+        assertMatchesGolden("nextpick-deck", tolerance = NEXT_PICK_TOLERANCE)
     }
 }
+
+/**
+ * Wider than the 0.5% default: a pick card is title, reason and button text over a
+ * poster-less frame, and Linux rasterises the bundled font heavier than macOS.
+ * Measured on `ubuntu-latest` against the macOS recording (#558): 0.917% top picks
+ * light, 0.887% dark, 1.087% deck; 0% on macOS. About 1.8x the worst, and still
+ * far below what a moved or missing row costs.
+ */
+private const val NEXT_PICK_TOLERANCE = 0.02
