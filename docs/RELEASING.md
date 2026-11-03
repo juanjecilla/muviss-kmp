@@ -255,7 +255,9 @@ Business plan; this runs on any plan, with the token the Play ramp's crash gate
   set for the mapping upload and the gate). With no token the workflow does nothing.
 - **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
   what it would open). Tests: `ruby fastlane/test/sentry_connector_test.rb` and `ops_bridge_test.rb`, run by `pr-guards`.
-  Nothing here has been run against a live Sentry project (#328).
+  Partly run against the live project on 2026-10-14 (#328): a dry run listed the existing
+  issues and the crash gate answered for a real release. Not yet run live: opening an issue,
+  close-to-resolve and the regressed-reopen path; #328 tracks them.
 
 #### Play reviews to issue (EPIC 48, connector #2)
 
