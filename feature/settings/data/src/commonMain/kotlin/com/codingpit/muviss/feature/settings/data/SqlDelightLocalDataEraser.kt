@@ -48,6 +48,7 @@ class SqlDelightLocalDataEraser(
             database.mediaListQueries.deleteAllEntries()
             database.triageDecisionQueries.deleteAll()
             database.triageSnoozeQueries.deleteAll()
+            database.tasteProfileQueries.deleteAll()
             database.profileQueries.deleteRow()
             database.appSettingsQueries.deleteRow()
             // Co-watch's local copies (EPIC 41).
