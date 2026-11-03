@@ -48,6 +48,14 @@ module ReleaseStages
     beta_done_on + 7
   end
 
+  # The day a beta step counts as done. A step run by hand on the Monday or
+  # Tuesday after a held Sunday counts as that Sunday's, so production stays
+  # due on the Sunday a week later, not on a Monday the Sunday cron misses and
+  # that costs the whole train a week. Later in the week it counts as today.
+  def beta_done_day(today)
+    today.wday <= 2 ? today - today.wday : today
+  end
+
   def schedule(cut_on)
     cut = to_date(cut_on)
     beta = beta_on(cut)
