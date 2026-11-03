@@ -75,7 +75,7 @@ do_app() {
   say "workflows (GITHUB_TOKEN's do not). Create a private GitHub App:"
   say "  name: muviss-release   homepage: https://github.com/$REPO   webhook: off"
   say "  repository permissions: Contents RW, Pull requests RW, Issues RW,"
-  say "                          Workflows RW, Metadata R"
+  say "                          Workflows RW, Actions R, Checks R, Metadata R"
   say "  where can it be installed: only this account"
   say "Then: generate a private key (.pem), and install the App on $REPO only."
   open_url "https://github.com/settings/apps/new"

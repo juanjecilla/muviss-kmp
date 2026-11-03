@@ -431,7 +431,8 @@ the schedule, the gates and where a fix goes.
   would close it (a follow-up, see `docs/EPICS.md`).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
-  **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
+  **Pull requests** and **Issues** write, **Actions** read (the RC run check) and
+  **Checks** read (the branch head's check runs);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
   refused (the step then holds, with that reason).
 
@@ -563,7 +564,8 @@ ruleset will refuse them), and the train fails.
 Its permissions (ADR 0030): **Contents** write (train branches, forward
 branches, RC tags), **Pull requests** write (back-merge, forward and release
 PRs, merging), **Issues** write (the release issues, milestones, and the
-blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
+blocked-train issue), **Actions** read (the Sunday step checks the RC's run), and
+**Checks** read (it reads the branch head's check runs before promoting).
 It is a bypass actor on the `main` ruleset (see **Branch protection**).
 
 ### Dependabot's worker bumps (#638)
