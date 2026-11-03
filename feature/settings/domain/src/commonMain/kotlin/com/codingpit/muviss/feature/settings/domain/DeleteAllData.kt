@@ -6,9 +6,11 @@ package com.codingpit.muviss.feature.settings.domain
  * lists, triage, snoozes, profile — along with every setting and every cache,
  * so the app afterwards is a fresh install's.
  *
- * It is local. A signed-in sync account stays signed in and its server copy
- * is untouched; the sync cursors are forgotten, so the next sync is a first
- * one and brings that copy back. Sync is off in release builds (ADR 0018).
+ * It is local, and a signed-in sync account is signed out first (#645): the
+ * session ends before anything is erased, and both wait for any sync cycle already in flight,
+ * so no sync can pull the library back.
+ * The server copy is untouched; signing in again is a first sync and brings
+ * it back. Sync is off in release builds (ADR 0018).
  */
 interface LocalDataEraser {
     suspend fun deleteAllData()

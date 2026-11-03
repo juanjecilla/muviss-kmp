@@ -48,6 +48,14 @@ data class MuvissDataExport(
     val profile: ProfileExport? = null,
     /** The look-and-feel and triage preferences (#392). Defaulted like every field since v1; older builds ignore it. */
     val settings: SettingsExport? = null,
+    /**
+     * The Taste Profile (EPIC 51, #402): what the person likes. Defaulted, so a file
+     * from before it existed has none. Deliberately NOT a format-version bump: an
+     * older build reads its unknown key as nothing (`ignoreUnknownKeys`), whereas a
+     * bumped version would make it refuse the whole file as "newer". Live items only;
+     * a removed item is simply absent, as a removed snooze is.
+     */
+    val tasteProfile: List<TasteProfileItemExport> = emptyList(),
 ) {
     companion object {
         const val CURRENT_FORMAT_VERSION: Int = 2
@@ -133,6 +141,16 @@ data class ListEntryExport(
     val listId: String,
     val mediaId: String,
     val addedAtEpochMs: Long,
+    val updatedAtEpochMs: Long,
+)
+
+/** One Taste Profile item (EPIC 51, #402). [id] is the derived `kind:value` key the row is stored under. */
+@Serializable
+data class TasteProfileItemExport(
+    val id: String,
+    val kind: String,
+    val value: String,
+    val label: String,
     val updatedAtEpochMs: Long,
 )
 

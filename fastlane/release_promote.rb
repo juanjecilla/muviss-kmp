@@ -6,6 +6,7 @@
 #   ruby fastlane/release_promote.rb run                       DRY_RUN=false acts; anything else only prints
 #   ruby fastlane/release_promote.rb complete X.Y.Z            the ramp reached 100%: close the release issue
 #   ruby fastlane/release_promote.rb record-production X.Y.Z   release.yml promoted it (the manual path)
+#   ruby fastlane/release_promote.rb record-testflight vX.Y.Z-rcN   the iOS RC job uploaded it to TestFlight internal (#604)
 #
 # ReleaseGates is pure. ReleasePromotion decides and acts through four adapters
 # (GitHub, git, Play, Sentry) that the tests replace with fakes; the real ones
@@ -19,6 +20,28 @@ require_relative "release_stages"
 require_relative "sentry_gate"
 
 module ReleaseGates
+  GREEN = %w[success skipped neutral].freeze
+
+  # Is the commit's CI green? `runs` are check runs as {"id","name","status",
+  # "conclusion"}. Judged per check name, because the same commit carries
+  # duplicates: the push run, and the runs the release PR starts when the
+  # Sunday step opens it. A run cancelled by concurrency says nothing (#699),
+  # and a duplicate still in progress does not unsay a completed one. A name is
+  # green when its newest completed, non-cancelled run is. A name with no such
+  # run (only running or cancelled ones) is not: it has not finished passing.
+  # Names are matched across workflows, so two jobs sharing a name would mask
+  # each other; release-rc's job is `build / build`, distinct from ci's `build`.
+  # No runs at all is not green: "we could not look" is not "nothing is wrong".
+  def self.checks_green?(runs)
+    return false if runs.empty?
+
+    runs.group_by { |r| r["name"] }.all? do |_, same|
+      done = same.select { |r| r["status"] == "completed" && r["conclusion"] != "cancelled" }
+      latest = done.max_by { |r| r["id"].to_i }
+      latest && GREEN.include?(latest["conclusion"])
+    end
+  end
+
   BRANCH_PREFIX = "release/".freeze
 
   module_function
@@ -179,11 +202,30 @@ class ReleasePromotion
       # iOS has its own track (ADR 0033); `complete_ios` in ios_promote.rb closes the issue when it finishes.
       # Comment first: if it fails, nothing is recorded and tomorrow's run tries again.
       @github.comment(issue["number"], "#{version} reached 100% of production on Play. The iOS phased release is still on its own track; this issue closes when it finishes.")
-      @github.update_issue(issue["number"], ReleaseStages.render(state))
+      ReleaseStages.save(@github, issue, state)
     else
-      @github.update_issue(issue["number"], ReleaseStages.render(state))
+      ReleaseStages.save(@github, issue, state)
       @github.close_issue(issue["number"], "#{version} reached 100% of production. Closed.")
     end
+  end
+
+  # The iOS RC job uploaded this RC to TestFlight internal (#604). Only the marker's iOS track changes:
+  # no comment, because every RC push would add one. A re-run for the same tag changes nothing.
+  def record_testflight(tag)
+    version = tag[/\Av(\d+\.\d+\.\d+)-rc\d+\z/, 1]
+    raise ArgumentError, "expected vX.Y.Z-rcN, got #{tag.inspect}" unless version
+
+    issue, state = find(version)
+    return @out.puts("no release issue for #{version}; nothing to record") unless issue
+    return @out.puts("the release issue for #{version} has no readable marker; nothing to record") unless state
+
+    track = ReleaseStages.ios_of(state)
+    return @out.puts("#{version} has no iOS track (cut before ADR 0033); nothing to record") unless track
+    return if track["testflight_rc"] == tag
+
+    state = state.merge(ReleaseStages::IOS_KEY => track.merge("testflight_rc" => tag))
+    ReleaseStages.save(@github, issue, state)
+    @out.puts "recorded #{tag} on the iOS track of #{version}"
   end
 
   # release.yml promoted the version itself (the manual path): record it.
@@ -194,20 +236,22 @@ class ReleasePromotion
     return if %w[production done].include?(state["stage"])
 
     state = state.merge("stage" => ReleaseStages::PRODUCTION, "production_started_on" => @today.iso8601, "holds" => [])
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    ReleaseStages.save(@github, issue, state)
     @github.comment(issue["number"], "Promoted to production at 20% by release.yml (a manual merge, outside the Sunday step).")
   end
 
   private
 
-  # iOS is on the train for this version when it has an RC or has left its first stage, and has neither
-  # finished nor been superseded. A version that never reached TestFlight is not waiting on iOS (#430).
+  # iOS is on the train for this version when it has an RC, a TestFlight upload, or has left its first stage,
+  # and has neither finished nor been superseded. A version that never reached TestFlight is not waiting on
+  # iOS (#430). An upload counts even while its external-beta step is held (#604): that is the case where
+  # iOS can still advance after Play is done.
   def ios_still_ramping?(state)
     track = ReleaseStages.ios_of(state)
     return false unless track
     return false if track["stage"] == ReleaseStages::DONE || track["superseded_on"]
 
-    !track["rc_tag"].nil? || track["stage"] != ReleaseStages::INTERNAL
+    !track["rc_tag"].nil? || !track["testflight_rc"].nil? || track["stage"] != ReleaseStages::INTERNAL
   end
 
   def live_records
@@ -305,7 +349,9 @@ class ReleasePromotion
       problem = act("promote #{rc} to open beta") { @play.promote_to_beta(facts[:rc_code]) }
       return [problem, state] if problem
 
-      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => @today.iso8601, "rc_tag" => rc, "holds" => [])
+      done = ReleaseStages.beta_done_day(@today)
+      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => done.iso8601,
+                          "production_on" => ReleaseStages.production_on(done).iso8601, "rc_tag" => rc, "holds" => [])
       persist(issue, state, "Promoted #{rc} (versionCode #{facts[:rc_code]}) from internal to open beta.")
       [nil, state]
     else
@@ -344,7 +390,8 @@ class ReleasePromotion
     yield
     nil
   rescue StandardError => e
-    "could not #{what} (#{e.class})"
+    detail = e.respond_to?(:reason) && !e.reason.to_s.empty? ? ": #{e.reason}" : ""
+    "could not #{what} (#{e.class}#{detail})"
   end
 
   def hold!(issue, state, reasons)
@@ -361,7 +408,7 @@ class ReleasePromotion
   end
 
   def persist(issue, state, comment)
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    ReleaseStages.save(@github, issue, state)
     @github.comment(issue["number"], comment)
   end
 end
@@ -369,9 +416,35 @@ end
 # The real adapters. Each shells out; none prints its arguments on failure.
 module ReleasePromotionAdapters
   class Shell
+    # A failed command. `reason` is the first line of its stderr with anything
+    # shaped like a credential removed: GitHub's refusals ("Pull request is not
+    # mergeable", "Required status check ...") are the one message worth
+    # showing, and they carry no URL or key. Other errors stay class-only (act).
+    class Failed < RuntimeError
+      TOKEN = /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|[A-Za-z0-9_\-]{32,}|https?:\/\/\S+/.freeze
+
+      attr_reader :reason # nil unless the command was gh
+
+      def initialize(message, reason)
+        super(message)
+        @reason = reason
+      end
+
+      def self.reason_of(err)
+        line = err.to_s.lines.map(&:strip).find { |l| !l.empty? }
+        line.to_s.gsub(TOKEN, "[removed]")[0, 200]
+      end
+    end
+
     def self.capture(*cmd, stdin: nil, env: {})
       out, err, status = Open3.capture3(env, *cmd, stdin_data: stdin.to_s)
-      raise "#{cmd.first} exited #{status.exitstatus}" unless status.success?
+      unless status.success?
+        # Only gh: its refusals are the message worth showing. A fastlane lane's
+        # stderr (Play, App Store Connect) can name accounts and keys, so those
+        # stay class-only.
+        reason = cmd.first == "gh" ? Failed.reason_of(err) : nil
+        raise Failed.new("#{cmd.first} exited #{status.exitstatus}", reason)
+      end
 
       out.strip
     end
@@ -411,11 +484,9 @@ module ReleasePromotionAdapters
     end
 
     def checks_green?(sha)
-      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?per_page=100", "--jq", ".check_runs[] | \"\\(.status) \\(.conclusion)\"")
-      lines = rows.lines.map(&:strip).reject(&:empty?)
-      return false if lines.empty?
-
-      lines.all? { |row| row.start_with?("completed ") && %w[success skipped neutral].include?(row.split.last) }
+      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?filter=all&per_page=100", "--jq",
+                ".check_runs[] | {id, name, status, conclusion}")
+      ReleaseGates.checks_green?(rows.lines.map(&:strip).reject(&:empty?).map { |line| JSON.parse(line) })
     end
 
     def release_pr(version)
@@ -442,7 +513,16 @@ module ReleasePromotionAdapters
     end
 
     def merge(pr, head_sha)
-      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--match-head-commit", head_sha)
+      # --admin does not make this an admin merge: the token is the release
+      # App's, a bypass actor on the main ruleset (ADR 0030), and the server
+      # decides. Without it gh refuses client-side whenever the PR is BLOCKED
+      # for want of the approval the App is exempt from ("the base branch policy
+      # prohibits the merge"), before asking the server at all.
+      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--admin", "--match-head-commit", head_sha)
+    end
+
+    def issue_body(number)
+      gh("issue", "view", number.to_s, "--repo", @repo, "--json", "body", "--jq", ".body")
     end
 
     def update_issue(number, body)
@@ -536,11 +616,15 @@ if __FILE__ == $PROGRAM_NAME
     if (summary = ENV["GITHUB_STEP_SUMMARY"])
       File.open(summary, "a") { |f| outcomes.each { |o| f.puts "- #{o.version}: #{o.status}#{o.step ? " (#{o.step})" : ''}#{o.reasons.empty? ? '' : " — #{o.reasons.join('; ')}"}" } }
     end
-  when "complete", "record-production"
+  when "complete", "record-production", "record-testflight"
     promotion = ReleasePromotion.new(github: github, git: nil, play: nil, sentry: nil, today: Date.today, apply: true)
-    command == "complete" ? promotion.complete(args.fetch(0)) : promotion.record_production(args.fetch(0))
+    case command
+    when "complete" then promotion.complete(args.fetch(0))
+    when "record-production" then promotion.record_production(args.fetch(0))
+    else promotion.record_testflight(args.fetch(0))
+    end
   else
-    warn "usage: release_promote.rb run | complete X.Y.Z | record-production X.Y.Z"
+    warn "usage: release_promote.rb run | complete X.Y.Z | record-production X.Y.Z | record-testflight vX.Y.Z-rcN"
     exit 2
   end
 end

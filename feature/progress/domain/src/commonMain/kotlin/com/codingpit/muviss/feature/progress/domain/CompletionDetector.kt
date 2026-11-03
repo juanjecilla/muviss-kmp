@@ -33,10 +33,12 @@ fun interface TitleStatusSource {
  * the plain use cases and so cannot emit, which is what "never a Completion" means here.
  *
  * Status is compared before and after the write, synchronously: [WatchStatus] is derived, so the
- * second read already sees the tick. The read, write, read runs under one lock: two quick taps on a
- * show's last two episodes would otherwise both read Watching before either write, both read Watched
- * after, and emit two Completions for one. Ticks are hand-made and short, so one lock for every title
- * costs nothing a person could notice.
+ * second read already sees the tick. The lock covers only those reads, never the write: a save that
+ * never returns (a stuck database call) must not stop every later tick, for every title. Two taps
+ * that interleave on one title (the last two episodes of a show) would both read Watching before
+ * either write and both read Watched after, so each detection checks whether another tick finished
+ * between its own before-read and after-read. If one did, its after-status stands in for the before,
+ * and only the first tick to land can emit.
  *
  * Detection never blocks the tick. A status that cannot be read (the derivation throws for a title
  * whose stored counts break `WatchProgress`'s invariant, and the source derives the whole library)
@@ -44,7 +46,14 @@ fun interface TitleStatusSource {
  */
 class CompletionDetector(private val statuses: TitleStatusSource) {
 
+    /** Guards [generation] and [lastAfter] and the two reads; never held across a write. */
     private val lock = Mutex()
+
+    /** Bumped by every detection that finished its after-read, per title. */
+    private val generation = mutableMapOf<MediaId, Long>()
+
+    /** The status the most recent finished detection saw after its write, per title. */
+    private val lastAfter = mutableMapOf<MediaId, WatchStatus?>()
 
     private val emitted = MutableSharedFlow<Completion>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -53,13 +62,17 @@ class CompletionDetector(private val statuses: TitleStatusSource) {
 
     /** Runs [write], then emits a [Completion] if it moved the title of [mediaId] to Watched or Finished. */
     suspend fun around(mediaId: MediaId, seen: Boolean, write: suspend () -> Unit) {
-        // Unticking can never complete a title, so it skips the two reads.
+        // Unticking can never complete a title, so it skips the reads.
         if (!seen) return write()
+        val (before, myGeneration) = lock.withLock { statusOrNull(mediaId) to (generation[mediaId] ?: 0L) }
+        write()
         lock.withLock {
-            val before = statusOrNull(mediaId)
-            write()
             val after = statusOrNull(mediaId)
-            completionOf(mediaId, before, after)?.let(emitted::tryEmit)
+            val intervening = (generation[mediaId] ?: 0L) != myGeneration
+            val effectiveBefore = if (intervening) lastAfter[mediaId] else before
+            completionOf(mediaId, effectiveBefore, after)?.let(emitted::tryEmit)
+            generation[mediaId] = (generation[mediaId] ?: 0L) + 1
+            lastAfter[mediaId] = after
         }
     }
 
@@ -75,8 +88,12 @@ class CompletionDetector(private val statuses: TitleStatusSource) {
     companion object {
         private const val BUFFER = 8
 
-        /** Detects nothing. For tests and previews that tick without a library behind them. */
-        val None = CompletionDetector { null }
+        /**
+         * Detects nothing. For tests and previews that tick without a library behind them. A getter, not
+         * a shared instance: each use gets its own detector and its own lock.
+         */
+        val None: CompletionDetector
+            get() = CompletionDetector { null }
 
         /**
          * The Completion, if any, that moving from [before] to [after] is. Only a move *into* Watched

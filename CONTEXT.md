@@ -196,7 +196,7 @@ A MediaItem Muviss offers at the end of a Pick Session, always with the reason i
 _Avoid_: recommendation (it implies a model that learned the user; this is the user's own answers over their own history), suggestion (Muted Genre uses it for the broader class), WatchNext (that is what the user is part-way through), Shortlist (that is what Companions could watch together).
 
 **Taste Profile**:
-What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre. Belongs to the account like the rest of the user's data (synced and exported).
+What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre, and a genre is liked or muted, never both; when both are recorded (a like from another device or a backup), the Muted Genre wins until it is unmuted. Belongs to the account like the rest of the user's data (synced and exported).
 _Avoid_: preferences, settings (those are per-device switches); taste, interests; algorithm; disliked genres (that is a Muted Genre).
 
 ### Release train
