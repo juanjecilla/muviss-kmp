@@ -55,6 +55,14 @@ internal class FakeTriageApi(initial: Map<MediaId, TriageVerdict> = emptyMap()) 
         decisions.value = decisions.value - mediaId
     }
 
+    override suspend fun skip(summary: com.codingpit.muviss.models.MediaSummary) {
+        decisions.value = decisions.value + (summary.id to TriageVerdict.SKIP)
+    }
+
+    override suspend fun snooze(summary: com.codingpit.muviss.models.MediaSummary, dueAtEpochDay: Long) {
+        snoozes.value = snoozes.value + (summary.id to dueAtEpochDay)
+    }
+
     val snoozes = MutableStateFlow<Map<MediaId, Long>>(emptyMap())
     val unsnoozed = mutableListOf<MediaId>()
 

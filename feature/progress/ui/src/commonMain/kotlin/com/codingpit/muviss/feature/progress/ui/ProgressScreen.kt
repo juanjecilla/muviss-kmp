@@ -169,9 +169,11 @@ fun ProgressScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WatchNextScreen(
+internal fun WatchNextScreen(
     viewModel: ProgressViewModel,
     onOpenDetail: (MediaId) -> Unit,
+    // Test seam: the lookup that turns a tick's message into text. Production resolves it as is.
+    resolveTickMessage: suspend (UiText) -> String = { it.resolveAsync() },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -236,7 +238,7 @@ private fun WatchNextScreen(
         LaunchedEffect(request) {
             // Resolve first: these calls suspend, and a refresh-failed message registered during
             // them would otherwise take the slot and queue the tick behind it.
-            val message = request.message.resolveAsync()
+            val message = resolveTickMessage(request.message)
             val undoLabel = getString(Res.string.action_undo)
             // A refresh-failed message may be up; the tick takes its slot. A previous tick's snackbar
             // needs no dismissing: this effect was cancelled when the newer request arrived.

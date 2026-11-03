@@ -1,21 +1,59 @@
 /**
- * The decisions behind About > Licenses coverage (#562, #616), apart from the Gradle task wiring so a test can
+ * The decisions behind About > Licenses coverage (#562, #616, #666), apart from the Gradle task wiring so a test can
  * build the red case from literals. `OssLicenses.kt` is checked in and generated from licensee's release report;
- * this compares the two in both directions and rewrites the generated part. The hand-written tail below the
- * generated entries (the bundled font, which is not a Maven artifact) is outside every comparison.
+ * this compares the two in both directions, compares what each entry says, and rewrites the generated part. The
+ * hand-written tail below the generated entries (the bundled font, which is not a Maven artifact) is outside every
+ * comparison.
  */
 object OssLicensesList {
     private const val LIST_HEADER = "val ossLicenses: List<OssLicense> = listOf("
     private const val MANUAL_TAIL = "    // Not a Maven dependency"
 
-    // Anchored at the start of a line, so an entry that is commented out does not count as listed.
-    // An entry inside /* ... */ is not listed, any more than one behind `//` (which `^\s*` already skips).
+    // The five arguments of an entry, each as Kotlin source (a quoted literal, or `null` for the URL). Anchored at
+    // the start of a line, so an entry that is commented out does not count as listed.
+    private val entryRegex = Regex(
+        """^\s*OssLicense\(("(?:[^"\\]|\\.)*"),\s*("(?:[^"\\]|\\.)*"),\s*("(?:[^"\\]|\\.)*"),\s*("(?:[^"\\]|\\.)*"),\s*("(?:[^"\\]|\\.)*"|null)\)""",
+        RegexOption.MULTILINE,
+    )
+    // An entry inside /* ... */ is not listed either, any more than one behind `//` (which `^\s*` already skips).
     private val blockComment = Regex("""/\*[\s\S]*?\*/""")
-    private val entryKey = Regex("""^\s*OssLicense\("((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"""", RegexOption.MULTILINE)
 
-    /** Artifacts the list has no entry for, entries naming an artifact the report no longer lists, and artifacts listed twice. All sorted. */
-    data class Drift(val missing: List<String>, val stale: List<String>, val duplicated: List<String> = emptyList()) {
-        val isEmpty: Boolean get() = missing.isEmpty() && stale.isEmpty() && duplicated.isEmpty()
+    /**
+     * One entry as it appears in the file: the five arguments as written, Kotlin source text, so [key] is the
+     * coordinates as the file spells them and [arguments] compare exactly against what the generator writes.
+     */
+    private class Listed(val arguments: List<String>) {
+        val key: String get() = "${arguments[0].removeSurrounding("\"")}:${arguments[1].removeSurrounding("\"")}"
+    }
+
+    /**
+     * One entry as the generator writes it from the report. [arguments] is the single place the generated text is
+     * built: [regenerate] renders it and [drift] compares a listed entry against it, so the check cannot disagree
+     * with the generator about a name, a licence or a URL.
+     */
+    private data class Written(val group: String, val artifact: String, val name: String, val licence: String, val url: String?) {
+        val key: String get() = "$group:$artifact"
+        val arguments: List<String>
+            get() = listOf(
+                kotlinString(group),
+                kotlinString(artifact),
+                kotlinString(name),
+                kotlinString(licence),
+                url?.let { kotlinString(it) } ?: "null",
+            )
+    }
+
+    /**
+     * Artifacts the list has no entry for, entries naming an artifact the report no longer lists, artifacts listed
+     * twice, and entries whose name, licence or licence URL differ from the report. All sorted.
+     */
+    data class Drift(
+        val missing: List<String>,
+        val stale: List<String>,
+        val duplicated: List<String> = emptyList(),
+        val changed: List<String> = emptyList(),
+    ) {
+        val isEmpty: Boolean get() = missing.isEmpty() && stale.isEmpty() && duplicated.isEmpty() && changed.isEmpty()
     }
 
     private fun kotlinString(value: String): String = "\"" +
@@ -36,12 +74,14 @@ object OssLicensesList {
         artifacts(reportJson).map { "${it["groupId"]}:${it["artifactId"]}" }.toSet()
 
     /** The generated section of [source] (between the list header and the hand-written tail), by `group:artifact`. */
-    fun listedKeys(source: String): Set<String> = listedEntries(source).toSet()
+    fun listedKeys(source: String): Set<String> = listedEntries(source).map { it.key }.toSet()
 
     // In order and with repeats: a set would hide a coordinate listed twice, which the Licenses screen's lazy
     // list cannot show (both rows would share one key).
-    private fun listedEntries(source: String): List<String> =
-        entryKey.findAll(generatedSection(source).replace(blockComment, "")).map { "${it.groupValues[1]}:${it.groupValues[2]}" }.toList()
+    private fun listedEntries(source: String): List<Listed> =
+        entryRegex.findAll(generatedSection(source).replace(blockComment, "")).map { match ->
+            Listed(match.groupValues.drop(1))
+        }.toList()
 
     private fun generatedSection(source: String): String {
         require(LIST_HEADER in source && MANUAL_TAIL in source) {
@@ -50,14 +90,42 @@ object OssLicensesList {
         return source.substring(source.indexOf(LIST_HEADER) + LIST_HEADER.length, source.indexOf(MANUAL_TAIL))
     }
 
+    /** What the generator writes for each artifact in the report, sorted by coordinates. */
+    private fun written(reportJson: String): List<Written> =
+        artifacts(reportJson)
+            .sortedWith(compareBy({ it["groupId"] as String }, { it["artifactId"] as String }))
+            .map { artifact ->
+                // licensee can report both collections for one artifact; count them together.
+                val licenses = ((artifact["spdxLicenses"] as? List<*>).orEmpty()) + ((artifact["unknownLicenses"] as? List<*>).orEmpty())
+                require(licenses.size == 1) { "${artifact["groupId"]}:${artifact["artifactId"]} has ${licenses.size} licences; decide how to show it" }
+                val license = licenses.single() as Map<*, *>
+                val url = license["url"] as String?
+                // licensee allows both names to be null: fall back to the coordinates and the licence's id or URL.
+                val coordinates = "${artifact["groupId"]}:${artifact["artifactId"]}"
+                Written(
+                    group = artifact["groupId"] as String,
+                    artifact = artifact["artifactId"] as String,
+                    name = artifact["name"] as String? ?: coordinates,
+                    licence = license["name"] as String? ?: license["identifier"] as String? ?: url ?: "Unknown licence",
+                    url = url,
+                )
+            }
+
     fun drift(reportJson: String, source: String): Drift {
-        val reported = reportedKeys(reportJson)
+        val reported = written(reportJson)
+        val reportedKeys = reported.map { it.key }.toSet()
+        val reportedByKey = reported.associateBy { it.key }
         val entries = listedEntries(source)
-        val listed = entries.toSet()
+        val listed = entries.map { it.key }.toSet()
         return Drift(
-            missing = (reported - listed).sorted(),
-            stale = (listed - reported).sorted(),
-            duplicated = entries.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted(),
+            missing = (reportedKeys - listed).sorted(),
+            stale = (listed - reportedKeys).sorted(),
+            duplicated = entries.groupingBy { it.key }.eachCount().filterValues { it > 1 }.keys.sorted(),
+            changed = entries
+                .filter { entry -> reportedByKey[entry.key]?.let { it.arguments != entry.arguments } == true }
+                .map { it.key }
+                .distinct()
+                .sorted(),
         )
     }
 
@@ -73,6 +141,9 @@ object OssLicensesList {
             if (drift.duplicated.isNotEmpty()) {
                 add("${drift.duplicated.size} artifact(s) listed more than once: ${drift.duplicated.joinToString()}")
             }
+            if (drift.changed.isNotEmpty()) {
+                add("${drift.changed.size} entry(ies) whose name, licence or licence URL differs from the licensee report: ${drift.changed.joinToString()}")
+            }
         }
         return "OssLicenses.kt is out of step with the licensee release report: ${parts.joinToString("; ")}. " +
             "Run ./gradlew :app:androidApp:regenerateOssLicenses and commit the result."
@@ -80,23 +151,7 @@ object OssLicensesList {
 
     /** [source] with its generated entries rewritten from [reportJson]; the hand-written tail is kept as it was. */
     fun regenerate(reportJson: String, source: String): String {
-        val entries =
-            artifacts(reportJson)
-                .sortedWith(compareBy({ it["groupId"] as String }, { it["artifactId"] as String }))
-                .map { artifact ->
-                    // licensee can report both collections for one artifact; count them together.
-                    val licenses = ((artifact["spdxLicenses"] as? List<*>).orEmpty()) + ((artifact["unknownLicenses"] as? List<*>).orEmpty())
-                    require(licenses.size == 1) { "${artifact["groupId"]}:${artifact["artifactId"]} has ${licenses.size} licences; decide how to show it" }
-                    val license = licenses.single() as Map<*, *>
-                    val url = license["url"] as String?
-                    // licensee allows both names to be null: fall back to the coordinates and the licence's id or URL.
-                    val coordinates = "${artifact["groupId"]}:${artifact["artifactId"]}"
-                    val artifactName = artifact["name"] as String? ?: coordinates
-                    val licenseName = license["name"] as String? ?: license["identifier"] as String? ?: url ?: "Unknown licence"
-                    "    OssLicense(${kotlinString(artifact["groupId"] as String)}, ${kotlinString(artifact["artifactId"] as String)}, " +
-                        "${kotlinString(artifactName)}, ${kotlinString(licenseName)}, " +
-                        "${url?.let { kotlinString(it) } ?: "null"}),"
-                }
+        val entries = written(reportJson).map { "    OssLicense(${it.arguments.joinToString(", ")})," }
         generatedSection(source) // fails loudly, before anything is written, if the markers are gone
         val head = source.substringBefore(LIST_HEADER) + LIST_HEADER + "\n"
         return head + entries.joinToString("\n") + "\n" + source.substring(source.indexOf(MANUAL_TAIL))

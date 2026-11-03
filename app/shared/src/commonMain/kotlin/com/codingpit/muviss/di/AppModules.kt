@@ -11,6 +11,8 @@ import com.codingpit.muviss.feature.collection.data.di.collectionDataModule
 import com.codingpit.muviss.feature.collection.ui.di.collectionUiModule
 import com.codingpit.muviss.feature.cowatch.data.di.coWatchDataModule
 import com.codingpit.muviss.feature.cowatch.ui.di.coWatchUiModule
+import com.codingpit.muviss.feature.nextpick.data.di.nextPickDataModule
+import com.codingpit.muviss.feature.nextpick.ui.di.nextPickUiModule
 import com.codingpit.muviss.feature.onboarding.data.di.onboardingDataModule
 import com.codingpit.muviss.feature.onboarding.ui.di.onboardingUiModule
 import com.codingpit.muviss.feature.profile.data.di.profileDataModule
@@ -59,4 +61,6 @@ val appModules: List<Module> =
         coWatchUiModule,
         onboardingDataModule,
         onboardingUiModule,
+        nextPickDataModule,
+        nextPickUiModule,
     )

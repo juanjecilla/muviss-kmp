@@ -376,6 +376,8 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 **What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
 
+**Migrations.** `22.sqm` (schema v23, fixture `23.db`), #400: `appSettings.completionPromptShownAtEpochMs`, per device, the once-a-day mark. Claimed 2026-10-29 as `22.sqm`: #394 had taken `21.sqm` on develop. #403 claims `23.sqm` and #588 (Taste Profile) `24.sqm`, stacked in that order, so #563 (review prompt) takes `25.sqm`.
+
 **Decisions.**
 - Rules + TMDB + local history; no model in v1. A ranker seam keeps an AI option open (`docs/research/next-pick-ai.md`, spike #404).
 - Questions: source (my list / something new / either), format + time, mood to genre sets, anchor, era + services, company, commitment, rewatch OK. All skippable; Quick (up to 2) / Standard (up to 4) / No questions in Settings; a filled Taste Profile shortens it.
@@ -465,7 +467,7 @@ runs standing in where they could. What that did and did not buy:
 
 - **Sentry MUVISS-4 (`InvisibleActionTrampolineActivity`, "List adapter activity trampoline invoked without specifying target intent") has no trigger in the current home-screen widget** — #630 (no fix PR: Glance 1.1.1 and 1.2.0 both throw the same guard, and the non-lazy `MuvissWidget` never builds that intent). Root cause and the release it came from are open in #635; the device and Sentry check is #636.
 ### 2026-10-29
-- **Tick snackbar race** (#613, fixed): the newest tick's Undo takes the slot through a keyed effect, as #569 did for triage. No test fails on the old code, because the window is a real-thread lookup the Compose clock cannot schedule. Raised: **#650**, a deterministic test that does fail before the fix.
+- **Tick snackbar race** (#613, fixed): the newest tick's Undo takes the slot through a keyed effect, as #569 did for triage. No test fails on the old code, because the window is a real-thread lookup the Compose clock cannot schedule. Raised as **#650**, now covered: the message lookup is injectable (`WatchNextScreen`'s `resolveTickMessage`), and `an_older_tick_whose_message_resolves_last_does_not_replace_the_newer_snackbar` fails on the pre-#613 logic.
 - **`CompletionDetector` lock** (#649, fixed in its PR): the `Mutex` now covers only the status reads, never the write, and `CompletionDetector.None` is a getter, so each use gets its own detector. Found by #613's held-save test, which was dropped.
 - **Snackbar clearance helper** (#610): `SnackbarClearance` and `measureSnackbarHeight` in `:core:designsystem` replace seven copies. Device verification of the clearance is **#611**, still open.
 - **sql.js unified at 1.15.2** (#618, Dependabot #631): the worker's `package.json` is the one declaration; the Kotlin/JS build reads it (`sqlJsVersion`), so Dependabot can no longer move the worker without the build following. The worker now defers a snapshot that comes due inside a transaction (#637, in the same PR), since 1.15.2 throws from `export()` during one. #638: `dependabot-worker-locks.yml` regenerates the kotlin-js-store locks on Dependabot's worker bumps and pushes them with the release App's token, split into a secret-free job that runs the build and a token job that runs no repo code. Not yet run live; #667 verifies it on the next bump.

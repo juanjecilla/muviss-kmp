@@ -104,6 +104,7 @@ kotlin {
             implementation(projects.feature.triage.ui)
             implementation(projects.feature.cowatch.ui)
             implementation(projects.feature.onboarding.ui)
+            implementation(projects.feature.nextpick.ui)
 
             // Feature data (Koin modules)
             implementation(projects.feature.search.data)
@@ -114,6 +115,7 @@ kotlin {
             implementation(projects.feature.triage.data)
             implementation(projects.feature.cowatch.data)
             implementation(projects.feature.onboarding.data)
+            implementation(projects.feature.nextpick.data)
             // The shell asks onboarding whether the introduction has been seen (its contract only).
             implementation(projects.feature.onboarding.api)
 
@@ -141,6 +143,8 @@ kotlin {
         // be assembled and checked (see `AppGraphTest`).
         jvmTest.dependencies {
             implementation(libs.kotlin.test)
+            // EPIC 51 (#400): AppGraphTest names Next Pick's domain contracts to prove they resolve.
+            implementation(projects.feature.nextpick.domain)
             implementation(libs.sqldelight.sqliteDriver)
             // The automatic-sync suites (EPIC 40) run the real Koin graph, the
             // real SyncEngine and the real Supabase backend over
