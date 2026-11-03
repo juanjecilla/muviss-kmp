@@ -123,8 +123,8 @@ private fun TasteChip(option: TasteOption, onToggle: (TasteOption) -> Unit) {
     FilterChip(
         selected = option.liked,
         // A muted genre is disabled, not hidden: the person can see why it is not on offer (ADR 0031).
-        // One liked before it was muted stays enabled, or nothing could ever unlike it.
-        enabled = !option.muted || option.liked,
+        // It never reads as liked: ObserveTasteProfileUseCase drops a like on a muted genre.
+        enabled = !option.muted,
         onClick = { onToggle(option) },
         label = { Text(label) },
         modifier = Modifier.testTag(tasteOptionTag(option)),

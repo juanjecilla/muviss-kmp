@@ -57,6 +57,8 @@ import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import com.codingpit.muviss.feature.settings.domain.TasteProfileRepository
 import com.codingpit.muviss.feature.settings.domain.TraktImportParser
 import com.codingpit.muviss.feature.settings.domain.TvTimeImportParser
+import com.codingpit.muviss.models.GenreKey
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.createdAtStart
@@ -97,13 +99,8 @@ val settingsDataModule: Module = module {
     single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get()) }
     single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
     single<TasteProfileRepository> { SqlDelightTasteProfileRepository(get<MuvissDatabase>().tasteProfileQueries, get(), get()) }
-    factory { ObserveTasteProfileUseCase(get()) }
-    factory {
-        SetTasteItemUseCase(
-            get(),
-            get<SettingsRepository>().observeSettings().map { settings -> settings.mutedGenres.mapTo(linkedSetOf()) { it.key } },
-        )
-    }
+    factory { ObserveTasteProfileUseCase(get(), mutedGenreKeys(get())) }
+    factory { SetTasteItemUseCase(get(), mutedGenreKeys(get())) }
     single<TasteProfileApi> { DefaultTasteProfileApi(get(), get()) }
     factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }
@@ -135,3 +132,5 @@ val settingsDataModule: Module = module {
     factory { ApplyImportUseCase(get(), get(), get()) }
     factory { ImportActions(get(), get(), get()) }
 }
+
+private fun mutedGenreKeys(settings: SettingsRepository): Flow<Set<GenreKey>> = settings.observeSettings().map { it.mutedGenres.mapTo(linkedSetOf()) { entry -> entry.key } }

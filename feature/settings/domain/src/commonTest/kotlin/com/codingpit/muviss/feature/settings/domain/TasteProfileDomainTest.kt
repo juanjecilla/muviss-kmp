@@ -104,4 +104,20 @@ class TasteProfileDomainTest {
         assertEquals(emptySet(), muted.first())
         assertTrue(useCase(action, liked = true))
     }
+
+    @Test
+    fun a_like_on_a_genre_muted_now_is_not_observed_and_returns_when_unmuted() = runTest {
+        val stored = object : TasteProfileRepository {
+            override fun observe(): Flow<List<TasteItem>> = flowOf(listOf(action, netflix))
+            override suspend fun setLiked(item: TasteItem, liked: Boolean) = Unit
+        }
+        val muted = MutableStateFlow(setOf(GenreKey(MediaType.MOVIE, "28")))
+        val observe = ObserveTasteProfileUseCase(stored, muted)
+
+        assertEquals(listOf(netflix), observe().first(), "a like that came in by sync or restore while muted")
+
+        muted.value = emptySet()
+
+        assertEquals(listOf(action, netflix), observe().first(), "the row was kept, so unmuting brings it back")
+    }
 }

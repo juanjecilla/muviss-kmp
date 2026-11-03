@@ -6,6 +6,7 @@ import com.codingpit.muviss.feature.settings.api.TasteKind
 import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 
 /** Persistence for the Taste Profile. Implemented by `:feature:settings:data` over `tasteProfile`. */
@@ -83,9 +84,19 @@ object TasteCatalog {
     ).map { (code, name) -> TasteItem(TasteKind.LANGUAGE, code, name) }
 }
 
-/** Every liked item, live. */
-class ObserveTasteProfileUseCase(private val repository: TasteProfileRepository) {
-    operator fun invoke(): Flow<List<TasteItem>> = repository.observe()
+/**
+ * Every liked item, live, less any genre that is muted now. A Muted Genre wins at read time: a
+ * like can arrive without passing [SetTasteItemUseCase] (pulled from a device where the genre is
+ * not muted, restored from a backup, or liked before the mute), and the row is kept rather than
+ * deleted, so it is the other device's preference left alone, and unmuting brings the like back.
+ */
+class ObserveTasteProfileUseCase(
+    private val repository: TasteProfileRepository,
+    private val mutedGenres: Flow<Set<GenreKey>>,
+) {
+    operator fun invoke(): Flow<List<TasteItem>> = combine(repository.observe(), mutedGenres) { items, muted ->
+        items.filter { item -> TasteRules.canLike(item, muted) }
+    }
 }
 
 /**

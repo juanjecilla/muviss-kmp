@@ -7,11 +7,17 @@ import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.feature.settings.domain.ObserveTasteProfileUseCase
+import com.codingpit.muviss.models.GenreKey
+import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -130,6 +136,21 @@ class TasteProfileBackupTest {
         assertTrue(database.tasteProfileQueries.selectAll().awaitAsList().isEmpty())
         assertNull(database.tasteProfileQueries.selectById("missing").awaitAsOneOrNull())
         assertTrue(Json.decodeFromString<MuvissDataExport>(exporter(database).exportData()).tasteProfile.isEmpty())
+    }
+
+    @Test
+    fun `a restored like on a genre muted here is kept but not reported as liked`() = runTest {
+        val source = inMemoryDatabase()
+        write(source, ACTION, updatedAt = 1_000L)
+        val backup = exporter(source).exportData()
+
+        val here = inMemoryDatabase()
+        restorer(here).restore(backup)
+        val repository = SqlDelightTasteProfileRepository(here.tasteProfileQueries, dispatchers, FakeClock(2_000L))
+        val observe = ObserveTasteProfileUseCase(repository, flowOf(setOf(GenreKey(MediaType.MOVIE, "28"))))
+
+        assertTrue(observe().first().isEmpty(), "muted here wins over the backup's like")
+        assertFalse(here.tasteProfileQueries.selectById(ACTION).awaitAsOneOrNull()!!.deleted, "the like is kept for when it is unmuted")
     }
 
     private companion object {
