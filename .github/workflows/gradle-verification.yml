@@ -11,6 +11,11 @@ name: Gradle verification metadata
 # (docs/RELEASING.md "Dependency verification"). The release App pushes, because a
 # push with GITHUB_TOKEN would not start CI on the new commit.
 #
+# Split by secrets, as dependabot-worker-locks.yml is (#497's review): the three legs
+# (gradle-verification-leg.yml) run the branch's build and hold no secrets; the push job
+# holds the App's token, scoped to contents: write, and runs no repository code. A
+# Gradle plugin that planted a git hook in a leg's checkout never meets the token.
+#
 # One OS after another (macOS, Linux, Windows): some artifacts are picked by the host
 # (aapt2, Skiko's runtime, the Kotlin/Native toolchain) and the iOS lanes only run on
 # macOS, so each OS adds its own checksums and keeps the others'. This repository is
@@ -35,23 +40,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  regenerate:
-    name: Regenerate checksums (${{ matrix.os }})
+  macos:
     if: >-
-      (github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(deps): checksums for')) || github.event_name == 'workflow_dispatch' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
-    strategy:
-      max-parallel: 1
-      fail-fast: true
-      matrix:
-        include:
-          - os: macos-15
-          - os: ubuntu-24.04
-          - os: windows-2025
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
-    defaults:
-      run:
-        shell: bash
+      github.event_name == 'workflow_dispatch' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
+    uses: ./.github/workflows/gradle-verification-leg.yml
+    permissions:
+      contents: read
+    with:
+      os: macos-15
+      ref: ${{ github.head_ref || github.ref_name }}
+
+  linux:
+    needs: macos
+    uses: ./.github/workflows/gradle-verification-leg.yml
+    permissions:
+      contents: read
+    with:
+      os: ubuntu-24.04
+      ref: ${{ github.head_ref || github.ref_name }}
+      sha: ${{ needs.macos.outputs.sha }}
+      previous: macos-15
+
+  windows:
+    needs: [ macos, linux ]
+    uses: ./.github/workflows/gradle-verification-leg.yml
+    permissions:
+      contents: read
+    with:
+      os: windows-2025
+      ref: ${{ github.head_ref || github.ref_name }}
+      sha: ${{ needs.macos.outputs.sha }}
+      previous: ubuntu-24.04
+
+  push:
+    name: Commit the checksums to the branch
+    needs: [ macos, windows ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # Declared for the reader; the write is made with the App's token below.
+      contents: read
     steps:
       - name: Mint a release App token
         id: app
@@ -59,58 +87,72 @@ jobs:
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          # Only what the push needs, not every permission the installation holds.
+          permission-contents: write
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download the metadata
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          name: verification-metadata-windows-2025
+          # Outside the workspace, so nothing from the artifact lands beside the checkout.
+          path: ${{ runner.temp }}/metadata
+
+      # The commit the legs built, so a branch that moved meanwhile rejects the push below.
+      - name: Check out the commit the legs built
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.macos.outputs.sha }}
+          fetch-depth: 1
           token: ${{ steps.app.outputs.token }}
-          # versionCode is a commit count; a shallow clone fails the build on purpose.
-          fetch-depth: 0
-          # Nothing before the push needs git credentials, and a persisted token would still be sent
-          # (expired) with the push: checkout v7 keeps it outside the local extraheader key, so the
-          # unset that run 41818756666 tried missed it and the push failed authentication.
-          persist-credentials: false
 
-      - name: Set up JDK 21 (Corretto)
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: corretto
-          java-version: '21'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-
-      # The metadata is generated from the PR's own build files, which Dependabot
-      # wrote; nothing here runs code a contributor chose, and the commit is only
-      # pushed back to Dependabot's branch.
-      - name: Regenerate gradle/verification-metadata.xml
-        run: scripts/gradle/update-verification.sh
-
-      # An App token lives one hour and a macOS leg can run two, so the token minted at the start
-      # is dead by now (run 41802527229 regenerated everything, then got 401 here). Mint a fresh one.
-      - name: Mint a token for the push
-        id: push-app
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-
-      - name: Commit the new checksums
+      # Exactly one regular file of sane size that is Gradle's metadata; anything else
+      # fails before a byte is copied into the checkout.
+      - name: Accept only gradle/verification-metadata.xml
         env:
-          SLUG: ${{ steps.push-app.outputs.app-slug }}
-          GH_TOKEN: ${{ steps.push-app.outputs.token }}
-          BRANCH: ${{ github.head_ref || github.ref_name }}
-          REPO: ${{ github.repository }}
+          SRC: ${{ runner.temp }}/metadata
         run: |
+          set -euo pipefail
+          cd "$SRC"
+          if [ -n "$(find . -mindepth 1 ! -type f ! -type d -print)" ]; then
+            echo "::error::the artifact holds a link or special file; refusing it"
+            exit 1
+          fi
+          got=$(find . -type f | sed 's|^\./||' | sort)
+          if [ "$got" != "verification-metadata.xml" ]; then
+            echo "::error::the artifact must hold exactly verification-metadata.xml; it holds:"
+            echo "$got"
+            exit 1
+          fi
+          size=$(wc -c < verification-metadata.xml)
+          if [ "$size" -gt 20971520 ]; then
+            echo "::error::verification-metadata.xml is ${size} bytes, over the 20 MiB ceiling"
+            exit 1
+          fi
+          if ! head -c 4096 verification-metadata.xml | grep -q '<verification-metadata'; then
+            echo "::error::the file is not Gradle's verification metadata"
+            exit 1
+          fi
+
+      - name: Commit and push
+        env:
+          SRC: ${{ runner.temp }}/metadata
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cp "$SRC/verification-metadata.xml" gradle/verification-metadata.xml
           if git diff --quiet -- gradle/verification-metadata.xml; then
-            echo "Checksums already cover this bump." >> "$GITHUB_STEP_SUMMARY"
+            echo "Checksums already cover this branch." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
           git config user.name "${SLUG}[bot]"
           git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
           git add gradle/verification-metadata.xml
-          git commit -m "chore(deps): checksums for ${{ matrix.os }} (gradle/verification-metadata.xml)"
-          # Push with the fresh token; checkout persisted none (persist-credentials: false).
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"
+          git -c core.hooksPath=/dev/null commit -m "chore(deps): checksums for macOS, Linux and Windows (gradle/verification-metadata.xml)"
+          # Not forced: if the branch moved since the legs checked it out, the push is
+          # rejected and the run is repeated on the new head.
+          git -c core.hooksPath=/dev/null push origin "HEAD:refs/heads/${BRANCH}"
           git diff --stat HEAD~1 -- gradle/verification-metadata.xml >> "$GITHUB_STEP_SUMMARY"

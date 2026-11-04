@@ -638,13 +638,20 @@ ivy repository, so it is an ordinary artifact to Gradle).
   Gradle wrapper (the wrapper has its own SHA-256 in `gradle-wrapper.properties`),
   and GitHub Actions (pinned to commit SHAs).
 - **Regenerating:** `scripts/gradle/update-verification.sh` resolves every
-  configuration (`scripts/gradle/resolve-all.init.gradle.kts`) and runs every CI lane,
-  on macOS because the iOS lanes only resolve there. It only adds; `--prune` starts
-  from nothing so stale entries go. A lane CI adds that resolves something new belongs
+  configuration (`scripts/gradle/resolve-all.init.gradle.kts`) and runs every CI lane.
+  Run it on **all three** hosts in turn, macOS, then Linux, then Windows, each starting
+  from the file the previous one wrote: some artifacts are chosen by the host (aapt2,
+  Skiko's runtime, the Kotlin/Native toolchain), and the iOS lanes only resolve on
+  macOS. It only adds; `--prune` starts from nothing so stale entries go, which makes
+  the three-host order mandatory after a prune: a macOS-only prune drops the Linux and
+  Windows checksums and fails those lanes. By hand, the easy way is
+  `gh workflow run gradle-verification.yml --ref <branch>`, which runs the three legs. A lane CI adds that resolves something new belongs
   in that script, or CI fails on a missing checksum.
 - **A Dependabot bump** regenerates the file by itself:
   `.github/workflows/gradle-verification.yml` runs the script on `dependabot/gradle/*`
   PRs and pushes the new checksums as a commit, so a reviewer reads the added lines.
+  The legs that run the build hold no secrets; a separate job with an App token
+  scoped to `contents: write` commits the result and runs no repository code.
   **Owner setup, once:** copy `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` into
   Settings → Secrets and variables → **Dependabot** (Dependabot-triggered runs cannot
   read the Actions secrets). Without them the PR stays red until someone runs the
