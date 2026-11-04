@@ -108,7 +108,8 @@ So "mute nothing" is the marker plus tombstones for the defaults. A device that 
 - Restore of the group takes the backup's group when its stamp is newer than the local one. A null local stamp loses to any backup stamp, and ties keep local. The restored group is dirty with the **backup's** stamp, not the current time, so it reaches the account and still loses to anything newer there.
 - Restore of the choice takes the backup's marker when the device has none, and otherwise keeps the newer stamp.
 - Restore of decisions merges per row on `updatedAtEpochMs`, ties keep local, and restored rows are dirty.
-- A v2 file has none of the new fields. It restores as it does today: the group field by field over defaults, and its string through the same conversion.
+- Both kinds of file say `formatVersion: 2`, so restore keys on the fields, not the version. A file that carries the new fields (`displayPreferencesUpdatedAtEpochMs`, `mutedGenreChoice`, `mutedGenres`) restores through the rules above, whatever else it holds. A **legacy** v2 file has none of them and restores as it does today: the group field by field over defaults, and its string through the same conversion.
+- A legacy restore has no stamp to carry, so it takes the backfill's rule: when any restored member differs from its first-run value, the group is stamped `0` and marked dirty, exactly as `26.sqm` does for an upgraded install. Without that it would stay unstamped and clean, never reach the account, and the next pull would replace it. Stamp `0` loses to any real change already on the account, so the restore fills an empty account and overrides nothing newer.
 
 ## Considered and rejected
 
