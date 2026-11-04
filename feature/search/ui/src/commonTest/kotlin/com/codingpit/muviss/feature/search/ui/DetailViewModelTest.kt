@@ -32,6 +32,7 @@ import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
+import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,9 +95,13 @@ internal class FakeCollectionApi : CollectionApi {
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = membership
 
-    /** The library as Detail reads it for a title's derived status (EPIC 51, #545). Empty unless a test sets it. */
-    val summaries = MutableStateFlow<List<CollectionSummary>>(emptyList())
-    override fun observeSummaries(): Flow<List<CollectionSummary>> = summaries
+    /** Detail must never read the whole library for one title's status (#600); a call here is a regression. */
+    override fun observeSummaries(): Flow<List<CollectionSummary>> = error("Detail reads one title's membership, never the whole library (#600)")
+
+    /** Sets the derived status Detail sees on the title's own membership (EPIC 51, #545). */
+    fun setStatus(mediaId: MediaId, status: WatchStatus) {
+        membership.value = (membership.value ?: CollectionMembership(mediaId, favorite = false)).copy(status = status)
+    }
 
     override suspend fun add(details: MediaDetails) {
         added += details.summary.id

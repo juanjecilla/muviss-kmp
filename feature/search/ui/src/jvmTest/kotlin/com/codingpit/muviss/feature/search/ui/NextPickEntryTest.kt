@@ -8,7 +8,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
-import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
@@ -128,7 +127,7 @@ private fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?)
     val mediaId = MediaId.tmdbMovie("603")
     val repo = FakeDetailRepo(details = MediaDetails(MediaSummary(mediaId, "The Matrix", year = 1999)))
     val collection = FakeCollectionApi()
-    if (status != null) collection.summaries.value = listOf(CollectionSummary(mediaId, "The Matrix", null, status))
+    if (status != null) collection.setStatus(mediaId, status)
     val viewModel = DetailViewModel(
         mediaId,
         MediaDetailUseCase(repo),
