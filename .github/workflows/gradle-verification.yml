@@ -134,6 +134,73 @@ jobs:
             exit 1
           fi
 
+      # Branch-controlled Gradle code ran in the legs with --write-verification-metadata, so it
+      # could have written a well-formed file that trusts everything (a match-all rule, verification
+      # off). Only checksum additions under the checked-out policy are accepted: the root and
+      # <configuration> unchanged, every existing checksum kept as it was, and new entries shaped
+      # exactly as Gradle writes them (component > artifact > sha256, no also-trust, no keys).
+      # Python's standard library is a runner tool, not repository code.
+      - name: Accept only checksum additions under the current policy
+        env:
+          SRC: ${{ runner.temp }}/metadata
+        run: |
+          python3 - "$SRC/verification-metadata.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          old_path, new_path = "gradle/verification-metadata.xml", sys.argv[1]
+          NS = "{https://schema.gradle.org/dependency-verification}"
+
+
+          def fail(msg):
+              print(f"::error::{msg}")
+              sys.exit(1)
+
+
+          def load(path):
+              try:
+                  return ET.parse(path).getroot()
+              except ET.ParseError as e:
+                  fail(f"{path} is not well-formed XML: {e}")
+
+
+          old, new = load(old_path), load(new_path)
+          if old.tag != new.tag or old.attrib != new.attrib:
+              fail("the root element changed")
+          kids = [c.tag for c in new]
+          if kids != [NS + "configuration", NS + "components"]:
+              fail(f"top-level elements must be configuration then components, got {kids}")
+          canon = lambda e: ET.canonicalize(ET.tostring(e), strip_text=True)
+          if canon(old.find(NS + "configuration")) != canon(new.find(NS + "configuration")):
+              fail("<configuration> changed: the verification policy is not the bot's to edit")
+
+
+          def entries(root, strict):
+              out = {}
+              for comp in root.find(NS + "components"):
+                  if comp.tag != NS + "component" or set(comp.attrib) != {"group", "name", "version"}:
+                      if strict:
+                          fail(f"unexpected component entry {comp.tag} {dict(comp.attrib)}")
+                      continue
+                  for art in comp:
+                      if strict and (art.tag != NS + "artifact" or set(art.attrib) != {"name"}):
+                          fail(f"unexpected entry under {dict(comp.attrib)}: {art.tag} {dict(art.attrib)}")
+                      for sum_ in art:
+                          if strict and (sum_.tag != NS + "sha256" or not set(sum_.attrib) <= {"value", "origin"} or "value" not in sum_.attrib or len(sum_)):
+                              fail(f"unexpected checksum entry under {dict(comp.attrib)} {art.get('name')}: {sum_.tag} {dict(sum_.attrib)}")
+                          key = (comp.get("group"), comp.get("name"), comp.get("version"), art.get("name"), sum_.tag)
+                          out.setdefault(key, set()).add(sum_.get("value"))
+              return out
+
+
+          before, after = entries(old, strict=False), entries(new, strict=True)
+          for key, values in before.items():
+              if after.get(key) != values:
+                  fail(f"an existing checksum was removed or changed: {key}")
+          added = sum(len(v) for k, v in after.items() if k not in before)
+          print(f"ok: configuration unchanged, every existing checksum kept, {added} added")
+          PY
+
       - name: Commit and push
         env:
           SRC: ${{ runner.temp }}/metadata

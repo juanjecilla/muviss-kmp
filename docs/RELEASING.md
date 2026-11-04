@@ -651,7 +651,11 @@ ivy repository, so it is an ordinary artifact to Gradle).
   `.github/workflows/gradle-verification.yml` runs the script on `dependabot/gradle/*`
   PRs and pushes the new checksums as a commit, so a reviewer reads the added lines.
   The legs that run the build hold no secrets; a separate job with an App token
-  scoped to `contents: write` commits the result and runs no repository code.
+  scoped to `contents: write` commits the result and runs no repository code. It
+  commits only checksum **additions**: the `<configuration>` block (the verification
+  policy) must be unchanged, every existing checksum kept, and each new entry shaped
+  as Gradle writes it, so a build that tried to write a trust-all rule fails the job.
+  Removing stale entries is a person's job (`--prune`, by hand, in a reviewed PR).
   **Owner setup, once:** copy `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` into
   Settings → Secrets and variables → **Dependabot** (Dependabot-triggered runs cannot
   read the Actions secrets). Without them the PR stays red until someone runs the
