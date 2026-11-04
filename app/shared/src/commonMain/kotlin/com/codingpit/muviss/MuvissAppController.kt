@@ -93,12 +93,20 @@ class MuvissAppController internal constructor(
         internal set
 
     /**
+     * Whether the `NavHost` has set its graph. The desktop menu bar is composed in the Window's composition and
+     * is live while `MuvissApp` still reads the start route, before any graph exists; navigating then throws.
+     * A click in that window does nothing, the same as a click on a disabled item.
+     */
+    private val graphReady: Boolean get() = navController.currentBackStackEntry != null
+
+    /**
      * Opens the Pick Session (EPIC 51, #545) from any destination, as the entry points in each feature do.
      *
      * Not [navigateTo]: the session is not a tab, so it must not pop to Search or save and restore a
      * tab's back stack. `launchSingleTop` stops a repeated chord from stacking sessions.
      */
     fun openNextPick() {
+        if (!graphReady) return
         navController.navigate(NextPickRoute) { launchSingleTop = true }
     }
 
@@ -112,6 +120,7 @@ class MuvissAppController internal constructor(
      * duplicate.
      */
     fun navigateTo(destination: MuvissDestination) {
+        if (!graphReady) return
         navController.navigate(destination.route) {
             // Search by name, not the graph's start destination: on a first run that is the introduction,
             // which is gone from the back stack by the time any tab can be tapped (EPIC 47).
