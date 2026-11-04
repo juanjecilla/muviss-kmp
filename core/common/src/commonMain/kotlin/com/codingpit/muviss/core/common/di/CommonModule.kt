@@ -14,6 +14,7 @@ import com.codingpit.muviss.core.common.locale.SystemLocale
 import com.codingpit.muviss.core.common.motion.SystemMotionPreference
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
+import com.codingpit.muviss.core.common.review.ReviewPrompter
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import org.koin.core.module.Module
@@ -27,6 +28,8 @@ val commonModule: Module = module {
     single<NotificationPermissionRequester> { NotificationPermissionRequester.Granted }
     // Android and iOS bind the OS's reduce-motion signal from their host (#394); elsewhere there is none.
     single<SystemMotionPreference> { SystemMotionPreference.None }
+    // The store review sheet (#410): Android and iOS bind the real prompter from their host; desktop and web never ask.
+    single<ReviewPrompter> { ReviewPrompter.None }
     single<AppDispatchers> { DefaultAppDispatchers() }
     single<AppClock> { SystemClock() }
     single { AppVersion.current }

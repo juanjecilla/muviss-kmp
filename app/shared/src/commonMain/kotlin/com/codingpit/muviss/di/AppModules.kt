@@ -63,4 +63,5 @@ val appModules: List<Module> =
         onboardingUiModule,
         nextPickDataModule,
         nextPickUiModule,
+        reviewPromptModule,
     )

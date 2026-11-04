@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.core.common.review.ReviewLedger
 import com.codingpit.muviss.feature.progress.api.Completion
 import com.codingpit.muviss.feature.progress.api.CompletionKind
 import com.codingpit.muviss.models.EpisodeId
@@ -44,7 +45,11 @@ fun interface TitleStatusSource {
  * whose stored counts break `WatchProgress`'s invariant, and the source derives the whole library)
  * reads as unknown, which detects nothing, and the write still happens.
  */
-class CompletionDetector(private val statuses: TitleStatusSource) {
+class CompletionDetector(
+    private val statuses: TitleStatusSource,
+    /** Counts every hand tick that marks something seen, for the store-review guardrail (#410). Never fails the tick. */
+    private val ledger: ReviewLedger = ReviewLedger.None,
+) {
 
     /** Guards [generation] and [lastAfter] and the two reads; never held across a write. */
     private val lock = Mutex()
@@ -68,12 +73,18 @@ class CompletionDetector(private val statuses: TitleStatusSource) {
         write()
         lock.withLock {
             val after = statusOrNull(mediaId)
+            countTickOrIgnore()
             val intervening = (generation[mediaId] ?: 0L) != myGeneration
             val effectiveBefore = if (intervening) lastAfter[mediaId] else before
             completionOf(mediaId, effectiveBefore, after)?.let(emitted::tryEmit)
             generation[mediaId] = (generation[mediaId] ?: 0L) + 1
             lastAfter[mediaId] = after
         }
+    }
+
+    /** Counting is a side channel: a failure to count must never fail the tick, but cancellation still propagates. */
+    private suspend fun countTickOrIgnore() {
+        runCatching { ledger.countTick() }.onFailure { if (it is CancellationException) throw it }
     }
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // Any failure to read means "unknown", never a failed tick.
@@ -93,7 +104,7 @@ class CompletionDetector(private val statuses: TitleStatusSource) {
          * a shared instance: each use gets its own detector and its own lock.
          */
         val None: CompletionDetector
-            get() = CompletionDetector { null }
+            get() = CompletionDetector(TitleStatusSource { null })
 
         /**
          * The Completion, if any, that moving from [before] to [after] is. Only a move *into* Watched
