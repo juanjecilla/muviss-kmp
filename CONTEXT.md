@@ -105,6 +105,15 @@ _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user own
 **Muted Genre**:
 A genre the user has chosen to leave out of what Muviss suggests. A title is hidden from a suggestion when *any* of its genres is muted; a title that carries no genres is never hidden, because nothing says what it is. Muted by default: Talk, News and Reality, for every install. A genre is identified by its type as well as its id — a movie genre and a TV genre can share a number. Muting only ever narrows suggestions: it never touches the collection, progress, Watch Next, notifications or a Snoozed Title, and a title the user opens, searches for by name (unless they opted in) or picks a genre for is shown regardless. The "Show muted" chip lifts it for one session.
 _Avoid_: blocked, blacklisted, filtered out (a filter is something the user narrows by in the moment; muting is a standing preference); hidden (that suggests the title is gone from the collection).
+Once sync ships it belongs to the account like the rest of the user's choices: a set of decisions over the defaults, so a device that never chose and a device that chose to mute nothing are different (ADR 0036).
+
+**Display Preferences**:
+The choices about how the library looks, moves and reads, which the person expects to find the same on every device they sign in to: theme, language and region, the motion switches, the triage control and snooze choices, and whether Muted Genres also apply to typed search. They travel as one group, so they change together, and a backup carries them too. Belongs to the account (synced and exported; ADR 0036).
+_Avoid_: settings (that is the word for Device Switches); preferences on its own (Taste Profile means what the person likes, not how the app looks).
+
+**Device Switch**:
+A setting that describes this device or this install rather than the person: notification permission, background sync, crash reporting, device backup, the one-time introductions and their marks, and the co-watch defaults. Never synced or exported, and a restore or a pull never writes one (ADR 0036).
+_Avoid_: preference (a Display Preference when it belongs to the account); setting (too general to say whose it is).
 
 **Device Backup**:
 A per-device switch that lets the OS's own backup (iCloud or a device backup on iOS; Google's backup and device-to-device transfer on Android) include this device's library. Off by default: the library is left out of OS backups until the person turns it on, in the first-run introduction or in Settings. Muviss copies nothing itself: the copy the OS makes lives wherever that backup lives, which is the person's own iCloud or Google account, a computer they back their iPhone up to, or the new phone in a device-to-device transfer, never with Muviss. Muviss never offers KSafe's secrets, including the Own TMDB Key, to it: on Android they are excluded; on iOS they sit in the Keychain, which Muviss does not exclude, and whether an encrypted device backup carries them is not verified. Per-device, never synced, never in the data export (ADR 0034).
