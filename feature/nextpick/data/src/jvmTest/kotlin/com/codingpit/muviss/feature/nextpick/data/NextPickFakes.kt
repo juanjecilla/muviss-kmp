@@ -7,6 +7,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -83,31 +84,9 @@ internal class CountingMetadata(
         count("similar")
         return PagedResult(similarTitles, page = page, totalPages = 1)
     }
-}
 
-/** The library as the pick sources read it: only [observeSummaries] is used by a pick, the rest is unreachable. */
-internal class FakeLibrary(private val summaries: List<CollectionSummary> = emptyList()) : CollectionApi {
-    override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = flowOf(null)
-
-    override fun observeSummaries(): Flow<List<CollectionSummary>> = flowOf(summaries)
-
-    override suspend fun savedDetails(mediaId: MediaId): MediaDetails? = summaries.firstOrNull { it.mediaId == mediaId }?.let { MediaDetails(MediaSummary(it.mediaId, it.title)) }
-
-    override suspend fun add(details: MediaDetails) = error("a pick never adds")
-
-    override suspend fun remove(mediaId: MediaId) = error("a pick never removes")
-
-    override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = error("a pick never edits the library")
-
-    override suspend fun setNotificationsMuted(mediaId: MediaId, muted: Boolean) = error("a pick never edits the library")
-
-    override suspend fun setRating(mediaId: MediaId, rating: Int?) = error("a pick never edits the library")
-
-    override suspend fun setNote(mediaId: MediaId, note: String?) = error("a pick never edits the library")
-
-    override suspend fun setRevisitWillingness(mediaId: MediaId, willing: Boolean?) = error("a pick never edits the library")
-
-    override suspend fun setCoWatchPinned(mediaId: MediaId, pinned: Boolean) = error("a pick never edits the library")
-
-    override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("a pick never refreshes")
+    override suspend fun genres(type: MediaType): List<Genre> {
+        count("genres")
+        return emptyList()
+    }
 }

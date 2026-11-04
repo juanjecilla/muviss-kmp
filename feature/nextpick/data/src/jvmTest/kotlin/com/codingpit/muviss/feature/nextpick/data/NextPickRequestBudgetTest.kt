@@ -58,16 +58,24 @@ class NextPickRequestBudgetTest {
         return session.criteria
     }
 
-    private suspend fun pick(metadata: CountingMetadata, context: PickContext, vararg answers: PickAnswer): PickResult {
+    /** Wired as NextPickDataModule wires it, so the genre catalogue's requests are counted too (#547). */
+    private fun genreIdsOver(metadata: CountingMetadata) = LibraryGenreIds(liveCatalogue = { metadata.genres(it) }, language = { "en-US" })
+
+    private suspend fun pick(
+        metadata: CountingMetadata,
+        context: PickContext,
+        vararg answers: PickAnswer,
+        genreIds: LibraryGenreIds = genreIdsOver(metadata),
+    ): PickResult {
         val collection: () -> CollectionApi = { library }
         val engine = PickEngine(
             sources = listOf(
-                CollectionBacklogCandidates(collection),
+                CollectionBacklogCandidates(collection, genreIds),
                 DiscoverSource(metadata, collection, thisYear = { 2027 }),
                 AnchorCandidates(metadata, collection),
             ),
             exclusions = PickExclusions { emptySet() },
-            history = CollectionHistoryReader(clock, collection),
+            history = CollectionHistoryReader(clock, collection, connectivity(context.online), genreIds),
             muting = PickMuting { MutedGenres.NONE },
         )
         return engine.pick(criteriaFor(context, *answers), context)
@@ -79,8 +87,9 @@ class NextPickRequestBudgetTest {
 
         pick(metadata, standard(), PickAnswer.Anchor(PickAnchor(finished, like = true)))
 
-        assertEquals(mapOf("discover" to 2, "recommendations" to 1, "similar" to 1), metadata.requests)
-        assertEquals(4, metadata.total)
+        // The genre lists, one per format the library holds, are read once per process (see below).
+        assertEquals(mapOf("genres" to 2, "discover" to 2, "recommendations" to 1, "similar" to 1), metadata.requests)
+        assertEquals(6, metadata.total)
     }
 
     @Test
@@ -89,7 +98,7 @@ class NextPickRequestBudgetTest {
 
         pick(metadata, standard(), PickAnswer.Anchor(PickAnchor(finished, like = false)))
 
-        assertEquals(mapOf("discover" to 2), metadata.requests)
+        assertEquals(mapOf("genres" to 2, "discover" to 2), metadata.requests)
     }
 
     @Test
@@ -99,7 +108,7 @@ class NextPickRequestBudgetTest {
 
         pick(metadata, standard(), PickAnswer.Anchor(PickAnchor(finished, like = true)), PickAnswer.FormatAndTime(MediaType.MOVIE, null))
 
-        assertEquals(mapOf("discover" to 1), metadata.requests)
+        assertEquals(mapOf("genres" to 2, "discover" to 1), metadata.requests)
     }
 
     @Test
@@ -112,12 +121,16 @@ class NextPickRequestBudgetTest {
     }
 
     @Test
-    fun `my_list_costs_no_tmdb_requests_at_all`() = runTest {
+    fun `my_list_costs_only_the_genre_lists_and_only_on_the_first_pick`() = runTest {
         val metadata = CountingMetadata()
+        val genreIds = genreIdsOver(metadata)
+        val myList = arrayOf(PickAnswer.Source(PickSource.MY_LIST), PickAnswer.Anchor(PickAnchor(finished, like = true)))
 
-        val result = pick(metadata, standard(), PickAnswer.Source(PickSource.MY_LIST), PickAnswer.Anchor(PickAnchor(finished, like = true)))
+        val result = pick(metadata, standard(), *myList, genreIds = genreIds)
+        pick(metadata, standard(), *myList, genreIds = genreIds)
 
-        assertEquals(0, metadata.total)
+        // Mapping the library's genre names to ids (#547) reads each format's list once; no catalogue is asked.
+        assertEquals(mapOf("genres" to 2), metadata.requests)
         assertTrue(result.picks.all { it.candidate.summary.id == MediaId.tmdbMovie("1") }, "my list is the backlog only")
     }
 
