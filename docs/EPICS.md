@@ -374,7 +374,13 @@ Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key 
 
 Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.md` (Completion, Pick Session, Next Pick, Taste Profile). Free, so the landing and the Play listing change in the PR that ships it.
 
-**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty, a quiet entry above the rows otherwise, #599), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+
+**Entry-point follow-ups.** #599 (Progress entry with titles) and #600 (Detail reads one title's status through its membership, not the whole library; `CollectionMembership.status`) are in the entry-point PR, stacked on #603. Open: #601 goldens for the entry points, #602 device and desktop runs (unverified until then), and #659 the duplicated outlined button (Progress keeps a private copy until it moves to `:core:designsystem`).
+
+**Migrations.** `22.sqm` (schema v23, fixture `23.db`), #400: `appSettings.completionPromptShownAtEpochMs`, per device, the once-a-day mark. Claimed 2026-10-29 as `22.sqm`: #394 had taken `21.sqm` on develop. #403 claims `23.sqm` and #588 (Taste Profile) `24.sqm`, stacked in that order, so #563 (review prompt) takes `25.sqm`.
+
+**Follow-ups filed 2026-10-29 (EPIC 51 review of the draft stack):** #656 the once-a-day What's next? rule and snooze dates use UTC days; the repo has no time zone seam yet (the snooze half of #551 is done in #543). #657 the Pick Session does not read Settings' session length and result mode (placeholder `NextPickSettings` still bound to defaults). #552 (session length default) is settled by #403 moving the enum to `SessionLength` with `DEFAULT = STANDARD`. #557 (result-format copy) stays open until Top Picks and Deck ship (#401) and the Deck handoff exists.
 
 **Decisions.**
 - Rules + TMDB + local history; no model in v1. A ranker seam keeps an AI option open (`docs/research/next-pick-ai.md`, spike #404).
@@ -385,10 +391,15 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 - **Taste Profile** is explicit, synced and exported: liked genres, formats, services, languages, usual company. Dislikes are **Muted Genres** (ADR 0031), not a second list.
 - **Muted Genres apply**; an explicit in-session choice beats a standing mute.
 - Offline: backlog only, and the screen says so. No implicit learning in v1.
+- **Day basis (#656).** The once-a-day rule and Snooze due days count the person's **local** day (`localTodayEpochDay`, `:core:common`). Aired comparisons still count UTC days and move together in #675, because the stored aired count and the `seen <= aired` invariant depend on them. A Snooze due day written before #656 is at most one day off, once.
 
 **Sub-issues.** #397 Completion detection · #398 Pick Session domain · #399 pick engine · #400 UI, completion sheet, entry points · #401 result presentations · #402 Taste Profile · #403 Settings · #404 AI ranker spike · #405 follow-up: learn from outcomes · #406 follow-up: Taste Profile feeds For you and Triage. Raised by the #404 research (`docs/research/next-pick-ai.md`, rules stay for v1): #594 measure the on-device Gemma option (the remainder of #404), #595 make `PickRanker` suspend and enforce its output in `PickEngine`.
 
 **Order.** #397 and #398 first and in parallel; #399 needs #398; #402 can start with #398 (claim its `.sqm` number when the branch opens); #400, #401 and #403 after #399.
+
+**Taste Profile (#402), `24.sqm` (schema v25, fixture `25.db`).** A synced `tasteProfile` table, one row per liked item keyed `KIND:value` with soft deletes, so two devices adding different items both keep them. Synced (`SyncChangeSet.tasteProfileItems`, `taste_profile` in Supabase `20261027000000`) and exported as a defaulted `tasteProfile` field that does not bump the format version, so older builds still read the file. Settings > Your taste is the editor. A genre is liked or muted, never both (`TasteRules`). Scoped out: the onboarding page (#583), the engine's rules (#584), a regional services catalogue (#585), pgTAP (#586) and the goldens and device walk (#587).
+
+**#548 (candidate sources, closes #399's budget).** `RECOMMENDED` and `SIMILAR` are gathered for the anchor title only: `AnchorCandidates`, two page-1 requests, none for "something different", a format other than the anchor's, offline or "my list". A failed TMDB call is no candidates from that source, not a failed session. The anchor comes from the Completion sheet through `NextPickRoute(anchor)`. ANCHOR is asked **first** when a Completion opened the session, so a Quick session reaches it. "Another" is served from one gather. The request budget is pinned by `NextPickRequestBudgetTest`. Follow-ups, each with its own issue: #661 seed from `ForYouSeeding` when there is no anchor · #662 send the Muted Genres to `/discover` (`excludedGenreIds`) · #663 the streaming-services question and `onlyMyServices` · #664 entry points other than the Completion sheet pass no anchor. The anchor's genre overlap waits on #547 (the library stores genre names, not ids).
 
 ## EPIC 52 — Tick animations — issue #391
 
@@ -396,7 +407,9 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tickAnimations`, default on, per device, not synced). It narrows `animationsEnabled` the way `triageDeckAnimations` does: `FeatureFlags.tickAnimationsActive` is the AND, and the haptic is never gated. The milestone also changes the snackbar copy, so with motion off it is still said. Both pre-existing tick pops used to ignore the master switch; they honour it now. Outcome is decided in `ProgressViewModel.tick` (Progress, after the list settles) and `DetailViewModel.toggleEpisodeSeen` (Detail, at the tap).
 
-**Not done, deliberately:** the widgets (#393), the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
+**Widgets (#393).** The home-screen widgets confirm a tick in text: the row's Undo state names the episode it marked ("Marked S1 · E3 ✓", `widget_marked_episode` / `xcstrings` `Marked %@ ✓`). It is deliberately not gated by `tickAnimationsActive`: it is copy, not motion, and Glance has no animation to gate. The line lasts as long as Undo does: until the next refresh, which on Android includes the midnight one (`WidgetMidnightRefresh` goes through `AppWidgets.refresh()`, which clears the marker). On iOS the midnight timeline rebuild only re-reads the marker, so the confirmation stays until the app's next write refreshes the widgets (`IosWidgetRefresher`); the cross-process clear is unverified on a device (#414). Device verification: #653. Scoped out (haptic, a timed revert, a row tint): #654.
+
+**Not done, deliberately:** the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
 
 **Not verified by any test:** the haptic, and how the sweep and burst feel on a device. Tests assert presence and absence under a hand-driven clock (`ProgressTickFeedbackTest`), not the look.
 
@@ -462,6 +475,15 @@ runs standing in where they could. What that did and did not buy:
   Supabase project. The first real signal arrives when #66 is done.
 
 ## Cross-cutting / backlog
+
+- **Sentry MUVISS-4 (`InvisibleActionTrampolineActivity`, "List adapter activity trampoline invoked without specifying target intent") has no trigger in the current home-screen widget** — #630 (no fix PR: Glance 1.1.1 and 1.2.0 both throw the same guard, and the non-lazy `MuvissWidget` never builds that intent). Root cause and the release it came from are open in #635; the device and Sentry check is #636.
+### 2026-10-29
+- **Tick snackbar race** (#613, fixed): the newest tick's Undo takes the slot through a keyed effect, as #569 did for triage. No test fails on the old code, because the window is a real-thread lookup the Compose clock cannot schedule. Raised as **#650**, now covered: the message lookup is injectable (`WatchNextScreen`'s `resolveTickMessage`), and `an_older_tick_whose_message_resolves_last_does_not_replace_the_newer_snackbar` fails on the pre-#613 logic.
+- **`CompletionDetector` lock** (#649, fixed in its PR): the `Mutex` now covers only the status reads, never the write, and `CompletionDetector.None` is a getter, so each use gets its own detector. Found by #613's held-save test, which was dropped.
+- **Snackbar clearance helper** (#610): `SnackbarClearance` and `measureSnackbarHeight` in `:core:designsystem` replace seven copies. Device verification of the clearance is **#611**, still open.
+- **sql.js unified at 1.15.2** (#618, Dependabot #631): the worker's `package.json` is the one declaration; the Kotlin/JS build reads it (`sqlJsVersion`), so Dependabot can no longer move the worker without the build following. The worker now defers a snapshot that comes due inside a transaction (#637, in the same PR), since 1.15.2 throws from `export()` during one. #638: `dependabot-worker-locks.yml` regenerates the kotlin-js-store locks on Dependabot's worker bumps and pushes them with the release App's token, split into a secret-free job that runs the build and a token job that runs no repo code. Not yet run live; #667 verifies it on the next bump.
+- **Release marker race, residual window** (#647, follow-up to #623): the marker writes now re-read, merge and read back (`ReleaseStages.write_marker`), with stage and TestFlight monotonic. Two API calls remain unguarded, and the REST issue API has no precondition, so closing it needs a git-ref lock across every marker writer.
+- **About > Licenses coverage** (#562, stacked: #617, #616): `verifyOssLicenses` now fails both ways, on an artifact the Android release report lists with no entry and on an entry for an artifact the report no longer lists; the comparison is `build-logic`'s `OssLicensesList`, unit-tested there. Raised and not done: #615, the list is generated from the Android release graph only, so desktop, iOS and web runtime artifacts are not compared.
 
 ### 2026-10-17
 - **Device Backup** (EPIC #409 WS6, ADR 0034): an opt-in switch, off by default, that lets iCloud / Google's backup carry the library; `20.sqm` (schema v21, fixture `21.db`) because Muted Genres took `18.sqm` and tick animations `19.sqm`. Raised: device verification of the iOS exclusion and the Android agent #419; the Own TMDB Key's iOS Keychain backup behaviour #420; the stale CLAUDE.md migration note #421.

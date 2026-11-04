@@ -18,10 +18,13 @@ androidx-uiautomator = "2.4.0"
 composeMultiplatform = "1.12.2"
 junit = "4.13.2"
 kotlin = "2.4.21"
-kotlin-wrappers = "2026.10.5"
+kotlin-wrappers = "2026.10.6"
+# Pinned to the -0.6.x-compat line that io.ktor:ktor-openapi-schema already resolves (via
+# ktor-serialization-kotlinx-json). Plain 0.8.0 would upgrade that transitive graph for every consumer.
+kotlinx-datetime = "0.8.0-0.6.x-compat"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.12.0"
-ktor = "3.6.0"
+ktor = "3.6.1"
 material3 = "1.9.0"
 material3Adaptive = "1.2.0"
 
@@ -50,7 +53,7 @@ sentryCocoa = "9.29.2"
 # stamps `release`/`dist`. It is a build-time tool: it runs on the build machine
 # and is not part of the shipped app, so the `licensee` allow-list below does not
 # see it.
-sentryGradlePlugin = "6.24.0"
+sentryGradlePlugin = "6.25.0"
 licensee = "1.14.1"
 # Coverage report only, no threshold yet (EPIC 38, #71).
 kover = "0.9.11"
@@ -88,6 +91,7 @@ compose-materialIconsExtended = { module = "org.jetbrains.compose.material:mater
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 kotlinx-coroutinesSwing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutinesCore = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutinesTest = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }

@@ -67,9 +67,24 @@ class FakeGitHub
     true
   end
 
+  # A write another workflow lands at the next marker read or write, once (#623):
+  # the interleaving the marker writers must survive. It runs before that read or write.
+  attr_accessor :foreign_write
+
+  def issue_body(number)
+    fire_foreign_write
+    @issues.find { |i| i["number"] == number }["body"]
+  end
+
   def update_issue(number, body)
     @calls << [:update_issue, number]
+    fire_foreign_write
     @issues.find { |i| i["number"] == number }["body"] = body
+  end
+
+  def fire_foreign_write
+    hook, @foreign_write = @foreign_write, nil
+    hook&.call(self)
   end
 
   def comment(number, body)
@@ -220,6 +235,82 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal "2026-10-18", state["beta_done_on"]
     assert_equal "v1.1.0-rc3", state["rc_tag"]
     assert_equal [], state["holds"]
+  end
+
+  def test_a_monday_beta_step_is_stamped_with_the_sunday_and_production_follows_a_week_later
+    outcomes = run_on(Date.new(2026, 10, 19))
+    assert_equal :done, outcome_for(outcomes, "1.1.0").status
+    state = state_of("1.1.0")
+    assert_equal "2026-10-18", state["beta_done_on"]
+    assert_equal "2026-10-25", state["production_on"]
+  end
+
+  def test_a_gh_refusal_shows_its_first_line_with_credentials_and_urls_removed
+    err = "X-Access-Token ghs_abcdefghijklmnop1234 see https://api.github.com/x?key=abc\nPull request is not mergeable"
+    failed = ReleasePromotionAdapters::Shell::Failed.new("gh exited 1", ReleasePromotionAdapters::Shell::Failed.reason_of(err))
+    assert_equal "X-Access-Token [removed] see [removed]", failed.reason
+  end
+
+  # The real adapters, with the process boundary replaced.
+  def with_shell(result)
+    calls = []
+    shell = ReleasePromotionAdapters::Shell
+    original = shell.method(:capture)
+    shell.define_singleton_method(:capture) do |*cmd, **opts|
+      calls << cmd
+      raise result if result.is_a?(Exception)
+
+      result
+    end
+    yield calls
+  ensure
+    shell.define_singleton_method(:capture, original)
+  end
+
+  def test_the_sunday_merge_asks_the_server_so_the_apps_bypass_can_apply
+    with_shell("") do |calls|
+      ReleasePromotionAdapters::GitHub.new(repo: "o/r", token: "t").merge(691, "abc123")
+      assert_equal [["gh", "pr", "merge", "691", "--repo", "o/r", "--merge", "--admin", "--match-head-commit", "abc123"]], calls
+    end
+  end
+
+  def test_a_failing_command_other_than_gh_exposes_none_of_its_stderr
+    shell = ReleasePromotionAdapters::Shell
+    failed = assert_raises(shell::Failed) { shell.capture("sh", "-c", "echo sa@proj.iam.gserviceaccount.com >&2; exit 1") }
+    assert_nil failed.reason
+    assert_equal "sh exited 1", failed.message
+    assert_equal "could not run it (ReleasePromotionAdapters::Shell::Failed)", ReleasePromotion.allocate.send(:act, "run it") { raise failed }
+  end
+
+  def run_row(id, name, status, conclusion) = { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion }
+
+  def test_ci_is_green_when_every_name_passed
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "success"), run_row(2, "ios", "completed", "skipped")])
+  end
+
+  def test_ci_is_not_green_with_no_runs_at_all
+    refute ReleaseGates.checks_green?([])
+  end
+
+  def test_a_cancelled_duplicate_beside_a_pass_does_not_hold_the_version
+    runs = [run_row(1, "PR guards", "completed", "success"), run_row(2, "PR guards", "completed", "cancelled")]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_duplicate_still_running_does_not_unsay_a_completed_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "in_progress", nil)]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_name_that_only_ever_ran_cancelled_or_running_is_not_green
+    refute ReleaseGates.checks_green?([run_row(1, "build", "completed", "cancelled")])
+    refute ReleaseGates.checks_green?([run_row(1, "build", "queued", nil)])
+  end
+
+  def test_the_newest_finished_run_decides_when_a_rerun_fails_after_a_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "completed", "failure")]
+    refute ReleaseGates.checks_green?(runs)
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "failure"), run_row(2, "build", "completed", "success")])
   end
 
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
@@ -483,6 +574,119 @@ class ReleasePromotionTest < Minitest::Test
     promote_complete("1.0.0")
 
     assert issue_for("1.0.0")["closed"]
+  end
+
+  # #604: the iOS RC job uploaded the RC to TestFlight internal, but its external-beta step is held. Play
+  # reaches 100% in the meantime, and iOS can still advance, so the issue stays open.
+  def test_complete_leaves_the_issue_open_when_ios_uploaded_to_testflight_internal
+    ios = ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.0.0-rc1")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+
+    issue = issue_for("1.0.0")
+    refute issue["closed"], "iOS has a TestFlight upload, so the issue waits for iOS"
+    assert_equal "done", ReleaseStages.stage_of(issue["body"]), "Play's own track is done"
+    assert(@github.calls.any? { |kind, _number, body| kind == :comment && body.include?("iOS phased release is still on its own track") })
+  end
+
+  def test_complete_closes_when_ios_has_no_testflight_upload_recorded
+    ios = ReleaseStages.new_ios_state
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    promote_complete("1.0.0")
+
+    assert issue_for("1.0.0")["closed"]
+  end
+
+  def test_record_testflight_writes_the_upload_on_the_ios_track_and_nothing_else
+    ios = ReleaseStages.new_ios_state
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    record_testflight("v1.0.0-rc2")
+
+    track = ReleaseStages.parse(issue_for("1.0.0")["body"])["ios"]
+    assert_equal "v1.0.0-rc2", track["testflight_rc"]
+    assert_nil track["rc_tag"], "the external-beta tag is not the TestFlight upload"
+    assert_equal "production", ReleaseStages.parse(issue_for("1.0.0")["body"])["stage"]
+    assert_empty @github.calls.select { |kind, *| kind == :comment }, "one comment per RC would be noise"
+  end
+
+  def test_record_testflight_is_a_no_op_when_the_tag_is_already_recorded
+    ios = ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.0.0-rc2")
+    add_version("1.0.0", "production", "production_started_on" => "2026-10-08", "ios" => ios)
+
+    record_testflight("v1.0.0-rc2")
+
+    assert_empty @github.calls.select { |kind, *| kind == :update_issue }
+  end
+
+  def test_record_testflight_leaves_a_marker_without_an_ios_track_alone
+    # A cut from before ADR 0033 has no iOS object at all (add_version always gives one).
+    state = ReleaseStages.new_state("1.0.0", CUT).merge("stage" => "production", "production_started_on" => "2026-10-08")
+    state.delete(ReleaseStages::IOS_KEY)
+    @github.issues << { "number" => 300, "title" => ReleaseStages.title("1.0.0"), "body" => ReleaseStages.render(state) }
+
+    record_testflight("v1.0.0-rc2")
+
+    assert_empty @github.calls.select { |kind, *| kind == :update_issue }
+    assert_includes @out.string, "has no iOS track"
+  end
+
+  def test_record_testflight_for_an_unknown_version_says_so
+    record_testflight("v9.9.9-rc1")
+
+    assert_includes @out.string, "no release issue for 9.9.9"
+  end
+
+  def test_record_testflight_rejects_a_tag_that_is_not_an_rc
+    assert_raises(ArgumentError) { record_testflight("v1.0.0") }
+  end
+
+  # #623: the RC job and the Sunday step each read the marker, then write it back whole. When
+  # the other lands between a writer's read and its write, neither change may be lost.
+  def test_a_testflight_record_does_not_undo_a_sunday_step_that_landed_after_its_read
+    sunday = ReleaseStages.new_state("1.1.0", CUT).merge("stage" => "beta", "beta_done_on" => "2026-10-18",
+                                                         "rc_tag" => "v1.1.0-rc3")
+    @github.foreign_write = ->(gh) { gh.issues.find { |i| i["title"] == "Release 1.1.0" }["body"] = ReleaseStages.render(sunday) }
+
+    record_testflight("v1.1.0-rc3")
+
+    state = state_of("1.1.0")
+    assert_equal "beta", state["stage"], "a stale RC write must not move the version back to internal"
+    assert_equal "2026-10-18", state["beta_done_on"]
+    assert_equal "v1.1.0-rc3", state["ios"]["testflight_rc"]
+  end
+
+  def test_a_sunday_step_keeps_a_testflight_record_that_landed_after_its_read
+    foreign_testflight("v1.1.0-rc3")
+
+    run_on(SUNDAY_BETA)
+
+    state = state_of("1.1.0")
+    assert_equal "beta", state["stage"], "the promotion itself still happens"
+    assert_equal "v1.1.0-rc3", state["ios"]["testflight_rc"], "a stale Sunday write must not erase the upload"
+  end
+
+  def test_a_late_testflight_record_never_replaces_a_newer_upload
+    foreign_testflight("v1.1.0-rc3")
+
+    record_testflight("v1.1.0-rc2")
+
+    assert_equal "v1.1.0-rc3", state_of("1.1.0")["ios"]["testflight_rc"]
+  end
+
+  def foreign_testflight(tag)
+    @github.foreign_write = lambda { |gh|
+      issue = gh.issues.find { |i| i["title"] == "Release 1.1.0" }
+      state = ReleaseStages.parse(issue["body"])
+      issue["body"] = ReleaseStages.render(state.merge(ReleaseStages::IOS_KEY => state[ReleaseStages::IOS_KEY].merge("testflight_rc" => tag)))
+    }
+  end
+
+  def record_testflight(tag)
+    ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                         today: Date.new(2026, 10, 12), apply: true, out: @out).record_testflight(tag)
   end
 
   def test_complete_closes_when_ios_already_finished_or_was_superseded

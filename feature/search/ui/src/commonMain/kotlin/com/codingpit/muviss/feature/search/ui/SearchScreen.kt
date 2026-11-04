@@ -86,6 +86,8 @@ fun SearchScreen(
     onOpenTriage: () -> Unit,
     introVisible: Boolean = false,
     onIntroDismissed: () -> Unit = {},
+    /** The way into the Pick Session (EPIC 51). Null draws no entry. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -104,7 +106,15 @@ fun SearchScreen(
             }
 
             else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage, intro = DiscoverIntro(introVisible, onIntroDismissed), muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled))
+                SearchMode.DISCOVER -> DiscoverBrowse(
+                    state,
+                    onSelectGenre = viewModel::selectGenre,
+                    onOpenDetail = onOpenDetail,
+                    onOpenTriage = onOpenTriage,
+                    intro = DiscoverIntro(introVisible, onIntroDismissed),
+                    muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
+                    onOpenNextPick = onOpenNextPick,
+                )
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -204,6 +214,7 @@ private fun DiscoverBrowse(
     onOpenTriage: () -> Unit,
     intro: DiscoverIntro = DiscoverIntro(),
     muted: MutedChip = MutedChip(),
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     Column(
         Modifier
@@ -217,6 +228,8 @@ private fun DiscoverBrowse(
         // Triage's main entry point (ADR 0010). It leads the browse because
         // an empty or thin library is exactly the state it exists to fix.
         TriageEntryCard(onOpenTriage)
+        // The Pick Session (EPIC 51, #545): "What's next?" from Discover, beside the deck it is an alternative to.
+        onOpenNextPick?.let { NextPickEntryButton(onClick = it, modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG)) }
         // Muted Genres (ADR 0031): Popular and For you leave them out; this brings them back for the session.
         if (muted.available) {
             FilterChip(selected = muted.shown, onClick = muted.onToggle, label = { Text(stringResource(Res.string.show_muted)) }, modifier = Modifier.testTag(SHOW_MUTED_CHIP_TAG))

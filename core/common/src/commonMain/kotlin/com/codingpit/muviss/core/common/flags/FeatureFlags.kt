@@ -155,6 +155,13 @@ interface FeatureFlags {
     val triageSnoozePlacement: Flow<SnoozePlacement>
 
     /**
+     * Whether finishing a title (a Completion, EPIC 51) offers "What's next?" (#403). On by default. Per device and never
+     * synced: whether this device interrupts the person after a finish is not a fact about the library. The once-a-day
+     * cap belongs to the prompt itself (#400), not to this switch.
+     */
+    val completionPromptEnabled: Flow<Boolean>
+
+    /**
      * Whether the app *offers* to take an Own TMDB Key (EPIC 46). Served by
      * Remote Config, so there is no setter, and it governs the entry UI only: a
      * stored key keeps being used when this turns off (ADR 0027).
@@ -174,6 +181,8 @@ interface FeatureFlags {
     suspend fun setTriageSnoozePeriod(period: SnoozePeriod)
 
     suspend fun setTriageSnoozePlacement(placement: SnoozePlacement)
+
+    suspend fun setCompletionPromptEnabled(enabled: Boolean)
 }
 
 /** [FeatureFlags.tickAnimations] narrowed by the master [FeatureFlags.animationsEnabled]: the value readers act on. */
