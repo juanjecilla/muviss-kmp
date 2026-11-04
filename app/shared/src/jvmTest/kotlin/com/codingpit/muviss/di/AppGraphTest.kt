@@ -3,6 +3,9 @@ package com.codingpit.muviss.di
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.review.AskForReviewUseCase
+import com.codingpit.muviss.core.common.review.ReviewLedger
+import com.codingpit.muviss.core.common.review.ReviewPrompter
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
@@ -28,6 +31,7 @@ import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
 import com.codingpit.muviss.feature.triage.api.TriageApi
+import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -123,6 +127,13 @@ class AppGraphTest {
         // contract must resolve in both orders with the rest of the graph.
         assertNotNull(koin.get<OnboardingApi>())
         assertNotNull(koin.get<NotificationPermissionRequester>())
+        // #410: the store-review listener is started from MuvissApp; its ledger (settings), its
+        // prompter (commonModule's None here; Android and iOS bind their own) and its use case resolve
+        // here, and the progress detector needs the ledger to count ticks, so it must too.
+        assertNotNull(koin.get<ReviewLedger>())
+        assertNotNull(koin.get<ReviewPrompter>())
+        assertNotNull(koin.get<AskForReviewUseCase>())
+        assertNotNull(koin.get<ReviewPromptOnCompletion>())
         // EPIC 51 (#400): Next Pick's engine, its context source, actions and the sheet's memory resolve
         // through the peers' :api, in this graph's order.
         assertNotNull(koin.get<PickEngine>())
