@@ -33,7 +33,8 @@ koin = "4.2.2"
 sqldelight = "2.4.1"
 configcat = "5.1.0"
 # Play In-App Review (#410). Its POMs name the Play Core SDK terms, not an SPDX id, so
-# app/androidApp/build.gradle.kts allows that one URL, scoped to these artifacts.
+# app/androidApp/build.gradle.kts allows each artifact by exact coordinates and version
+# (allowDependency), not the licence URL: a version bump has to be allowed again by hand.
 playReview = "2.0.2"
 ksafe = "3.3.0"
 coil = "3.6.3"

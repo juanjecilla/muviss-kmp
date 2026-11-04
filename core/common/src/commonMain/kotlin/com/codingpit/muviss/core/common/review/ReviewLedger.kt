@@ -2,7 +2,7 @@ package com.codingpit.muviss.core.common.review
 
 /**
  * The per-device counters behind [ReviewPromptPolicy] (#410). Backed by `appSettings` columns
- * (`21.sqm`) in `:feature:settings:data`; a seam here so progress can count ticks without
+ * (`25.sqm`) in `:feature:settings:data`; a seam here so progress can count ticks without
  * depending on settings.
  */
 interface ReviewLedger {

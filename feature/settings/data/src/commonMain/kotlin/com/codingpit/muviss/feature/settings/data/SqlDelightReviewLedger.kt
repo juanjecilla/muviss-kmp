@@ -8,7 +8,7 @@ import com.codingpit.muviss.core.database.AppSettingsQueries
 import kotlinx.coroutines.withContext
 
 /**
- * [ReviewLedger] over the four `appSettings` review columns (`21.sqm`, #410). Per device, never
+ * [ReviewLedger] over the four `appSettings` review columns (`25.sqm`, #410). Per device, never
  * synced and never exported. Every write runs [AppSettingsQueries.ensureRow] first, the same as the
  * other settings writes, so a counter made after Delete all data starts a fresh row rather than
  * silently dropping the tick.
