@@ -52,9 +52,10 @@ internal class CollectionBacklogCandidates(
 }
 
 /**
- * The library's own history as the ranker reads it: the day, and genre affinity. A genre's rating is the
- * average of the person's ratings of the library titles that carry it, so it reads only what they rated
- * on purpose (ADR 0032). Genre names map to ids as [CollectionBacklogCandidates] maps them (#547).
+ * The library's own history as the ranker reads it: the day, genre affinity, and the anchor's title and genres
+ * (#548). A genre's rating is the average of the person's ratings of the library titles that carry it, so it
+ * reads only what they rated on purpose (ADR 0032). Genre names map to ids as [CollectionBacklogCandidates]
+ * maps them (#547). Everything is read from the library, so no request is made for the anchor.
  */
 internal class CollectionHistoryReader(
     private val clock: AppClock,
@@ -65,8 +66,11 @@ internal class CollectionHistoryReader(
 
     override suspend fun read(criteria: PickCriteria): PickHistory {
         val online = connectivity.isOnline.first()
-        val rated = collection().observeSummaries().first().mapNotNull { summary -> summary.rating?.let { summary to it } }
-        val indexes = rated.map { it.first.mediaId.type }.distinct().associateWith { genreIds.index(it, online) }
+        val library = collection().observeSummaries().first()
+        val anchor = criteria.anchor?.let { wanted -> library.firstOrNull { it.mediaId == wanted.mediaId } }
+        val rated = library.mapNotNull { summary -> summary.rating?.let { summary to it } }
+        val types = (rated.map { it.first.mediaId.type } + listOfNotNull(anchor?.mediaId?.type)).distinct()
+        val indexes = types.associateWith { genreIds.index(it, online) }
         val ratingsByGenre = rated
             .flatMap { (summary, rating) ->
                 indexes.getValue(summary.mediaId.type).idsOf(summary.genres).map { id -> id to rating.toDouble() }
@@ -75,6 +79,8 @@ internal class CollectionHistoryReader(
             .mapValues { (_, ratings) -> ratings.average() }
         return PickHistory(
             genreRatings = ratingsByGenre,
+            anchorGenreIds = anchor?.let { indexes.getValue(it.mediaId.type).idsOf(it.genres).toSet() }.orEmpty(),
+            anchorTitle = anchor?.title,
             todayEpochDay = clock.nowEpochMs().floorDiv(MS_PER_DAY),
         )
     }

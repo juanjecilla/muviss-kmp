@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.nextpick.data
 
+import com.codingpit.muviss.feature.nextpick.api.PickAnchor
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickMood
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
@@ -121,5 +122,18 @@ class LibraryTitlesInPickTest {
 
         assertEquals(7.0, history.genreRatings["35"])
         assertEquals(null, history.genreRatings["18"])
+    }
+
+    @Test
+    fun the_anchors_title_and_genres_are_read_from_the_library_for_its_overlap() = runTest {
+        val anchor = libraryTitle("9", "Finished", genres = listOf("Comedy", "Drama"))
+        val library = FakeLibrary(listOf(anchor))
+        val genreIds = LibraryGenreIds(liveCatalogue = noLiveCatalogue, language = { "en-US" })
+
+        val history = CollectionHistoryReader(FixedClock, { library }, connectivity(true), genreIds)
+            .read(PickCriteria(anchor = PickAnchor(anchor.mediaId, like = true)))
+
+        assertEquals("Finished", history.anchorTitle)
+        assertEquals(setOf("35", "18"), history.anchorGenreIds)
     }
 }

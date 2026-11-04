@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 
 /** The library as a list of summaries. Only [observeSummaries] is read by the code under test. */
-internal class FakeLibrary(summaries: List<CollectionSummary>) : CollectionApi {
+internal class FakeLibrary(summaries: List<CollectionSummary> = emptyList()) : CollectionApi {
     private val flow = MutableStateFlow(summaries)
     override fun observeSummaries(): Flow<List<CollectionSummary>> = flow
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")

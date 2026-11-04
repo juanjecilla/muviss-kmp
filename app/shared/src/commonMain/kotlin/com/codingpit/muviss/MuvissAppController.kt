@@ -107,7 +107,7 @@ class MuvissAppController internal constructor(
      */
     fun openNextPick() {
         if (!graphReady) return
-        navController.navigate(NextPickRoute) { launchSingleTop = true }
+        navController.navigate(NextPickRoute()) { launchSingleTop = true }
     }
 
     /**
