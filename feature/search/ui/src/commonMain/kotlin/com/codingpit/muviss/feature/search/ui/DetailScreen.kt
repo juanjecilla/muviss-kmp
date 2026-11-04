@@ -83,8 +83,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -104,6 +102,8 @@ import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.RatingRow
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
@@ -185,6 +185,8 @@ fun DetailScreen(
     onOpenEpisode: (EpisodeId) -> Unit = {},
     // Null where there is nothing to offer (most tests): Detail works without it.
     nudge: NotificationNudgeViewModel? = null,
+    /** "What's next?" (EPIC 51, #545), offered only on a Watched or Finished title. Null draws nothing. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
@@ -192,8 +194,7 @@ fun DetailScreen(
     var tickedEpisode by remember { mutableStateOf<EpisodeId?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     // The snackbar's measured height, so the list's end clears a wrapped message too.
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     // A bulk mark parks its undo in state; this turns it into the snackbar and
     // clears it once acted on, so it can't reappear on the next recomposition.
@@ -226,11 +227,11 @@ fun DetailScreen(
                 )
                 // At least the usual allowance, so the end does not jump when a one-line
                 // snackbar appears; more when a long title or a large font wraps it.
-                val bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight)
+                val bottomPadding = snackbarClearance.bottomPadding
                 if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(state, viewModel, callbacks, bottomPadding)
+                    DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
                 } else {
-                    DetailCompact(state, viewModel, callbacks, bottomPadding)
+                    DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
                 }
             }
         }
@@ -252,7 +253,7 @@ fun DetailScreen(
             snackbarHostState,
             Modifier
                 .align(Alignment.BottomCenter)
-                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .measureSnackbarHeight(snackbarClearance)
                 .testTag(DETAIL_SNACKBAR_TAG),
         )
     }
@@ -314,6 +315,13 @@ private class DetailCallbacks(
     val notificationNudge: (@Composable (title: String) -> Unit)? = null,
 )
 
+/** "What's next?" under the actions of a Watched or Finished title (EPIC 51, #545). Draws nothing otherwise. */
+@Composable
+private fun CompletedNextPickEntry(state: DetailUiState, onOpenNextPick: (() -> Unit)?) {
+    if (!state.completed || onOpenNextPick == null) return
+    NextPickEntryButton(onClick = onOpenNextPick, modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG))
+}
+
 /**
  * Compact (phone): backdrop hero with the poster overlapping into content.
  *
@@ -323,7 +331,13 @@ private class DetailCallbacks(
  * on screen is composed.
  */
 @Composable
-private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks, bottomPadding: Dp) {
+private fun DetailCompact(
+    state: DetailUiState,
+    viewModel: DetailViewModel,
+    callbacks: DetailCallbacks,
+    bottomPadding: Dp,
+    onOpenNextPick: (() -> Unit)?,
+) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     val inset = Modifier.padding(horizontal = MuvissSpacing.l)
@@ -333,7 +347,10 @@ private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, call
     ) {
         item(key = "hero", contentType = "hero") { DetailHero(details) }
         item(key = "actions", contentType = "actions") {
-            Box(inset.padding(top = MuvissSpacing.m)) { ActionRow(state, viewModel, callbacks.onAddToList) }
+            Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                ActionRow(state, viewModel, callbacks.onAddToList)
+                CompletedNextPickEntry(state, onOpenNextPick)
+            }
         }
         detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
         item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
@@ -343,7 +360,13 @@ private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, call
 
 /** Expanded (≥840dp): poster + actions pinned left, content right. */
 @Composable
-private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks, bottomPadding: Dp) {
+private fun DetailExpanded(
+    state: DetailUiState,
+    viewModel: DetailViewModel,
+    callbacks: DetailCallbacks,
+    bottomPadding: Dp,
+    onOpenNextPick: (() -> Unit)?,
+) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     // The body lines up with the title column beside the poster, as it did
@@ -378,6 +401,7 @@ private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, cal
                     ) {
                         Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
                         MetadataLine(details)
+                        CompletedNextPickEntry(state, onOpenNextPick)
                     }
                 }
             }

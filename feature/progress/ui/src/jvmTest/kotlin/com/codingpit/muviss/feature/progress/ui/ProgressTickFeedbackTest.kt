@@ -6,8 +6,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -16,6 +18,8 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
 import com.codingpit.muviss.core.designsystem.component.CELEBRATION_BURST_TAG
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
@@ -33,6 +37,7 @@ import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -136,6 +141,24 @@ class ProgressTickFeedbackTest {
     }
 
     @Test
+    fun undo_on_the_newest_tick_after_a_replaced_snackbar_reverts_only_that_tick() = runComposeUiTest {
+        val repository = FakeProgressRepository()
+        setContent { WatchNext(seasons = listOf(season(1, 3)), alreadySeen = 0, repository = repository) }
+
+        tapTick()
+        tapTick()
+        mainClock.advanceTimeBy(100)
+        onAllNodesWithText("Undo").assertCountEquals(1)
+        onNodeWithText("Undo").performClick()
+        mainClock.advanceTimeBy(100)
+
+        assertEquals(
+            listOf(EpisodeId(mini, 1, 1) to true, EpisodeId(mini, 1, 2) to true, EpisodeId(mini, 1, 2) to false),
+            repository.tickedEpisodes,
+        )
+    }
+
+    @Test
     fun an_undone_tick_can_be_ticked_again() = runComposeUiTest {
         val repository = FakeProgressRepository()
         setContent { WatchNext(seasons = listOf(season(1, 3)), alreadySeen = 0, repository = repository) }
@@ -172,6 +195,40 @@ class ProgressTickFeedbackTest {
 
         onNodeWithText("Marked S1E1 seen").assertDoesNotExist()
         onNodeWithText("Marked S1E2 seen").assertExists()
+    }
+
+    @Test
+    fun an_older_tick_whose_message_resolves_last_does_not_replace_the_newer_snackbar() = runComposeUiTest {
+        // The older tick's message is the first one looked up, and its lookup is held open until the
+        // newer tick's snackbar is on screen. Only then is the older lookup released, so it resolves
+        // strictly last, the order #650 is about.
+        val olderStarted = CompletableDeferred<Unit>()
+        val olderLookup = CompletableDeferred<Unit>()
+        var lookups = 0
+        setContent {
+            WatchNext(
+                seasons = listOf(season(1, 3)),
+                alreadySeen = 0,
+                resolveTickMessage = { message ->
+                    if (lookups++ == 0) {
+                        olderStarted.complete(Unit)
+                        olderLookup.await()
+                    }
+                    message.resolveAsync()
+                },
+            )
+        }
+
+        tapTick()
+        tapTick()
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Marked S1E2 seen").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(olderStarted.isCompleted, "the older tick never looked its message up")
+        assertTrue(olderLookup.isActive, "the older lookup finished before the newer snackbar showed")
+        olderLookup.complete(Unit)
+        mainClock.advanceTimeBy(500)
+
+        onNodeWithText("Marked S1E2 seen").assertExists()
+        onNodeWithText("Marked S1E1 seen").assertDoesNotExist()
     }
 
     @Test
@@ -242,6 +299,7 @@ private fun WatchNext(
     repository: FakeProgressRepository = FakeProgressRepository(),
     extraShows: Int = 0,
     title: String = "Mini",
+    resolveTickMessage: suspend (UiText) -> String = { it.resolveAsync() },
 ) {
     val extras = (1..extraShows).associate { MediaId.tmdbTv("9$it") to "Extra $it" }
     val collectionApi = FakeCollectionApi(
@@ -260,9 +318,7 @@ private fun WatchNext(
         cache,
         flags,
     )
-    val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
-    val upcoming = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))
     MuvissTheme(darkTheme = false) {
-        ProgressScreen(watchNextViewModel = watchNext, upcomingViewModel = upcoming, onOpenDetail = {}, onOpenCoWatch = null)
+        WatchNextScreen(viewModel = watchNext, onOpenDetail = {}, onOpenNextPick = null, resolveTickMessage = resolveTickMessage)
     }
 }

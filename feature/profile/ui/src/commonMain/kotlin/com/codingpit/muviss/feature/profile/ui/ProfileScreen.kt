@@ -40,8 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
@@ -53,6 +51,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.StatTile
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
@@ -139,20 +139,18 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
 
     // The snackbar's measured height, so the end of the list clears a message that wraps (a long
     // message, a large font) and not only the one-line case (#474, #475, #567).
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     Scaffold(
         snackbarHost = {
             SnackbarHost(
                 snackbarHostState,
                 Modifier
-                    .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                    .measureSnackbarHeight(snackbarClearance)
                     .testTag(PROFILE_SNACKBAR_TAG),
             )
         },
     ) { padding ->
-        val bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight)
         if (state.loading) {
             Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
@@ -175,7 +173,7 @@ fun ProfileScreen(viewModel: ProfileViewModel, onOpenRewatch: () -> Unit, onOpen
                 .testTag(PROFILE_LIST_TAG)
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(start = MuvissSpacing.l, top = MuvissSpacing.l, end = MuvissSpacing.l, bottom = bottomPadding),
+                .padding(start = MuvissSpacing.l, top = MuvissSpacing.l, end = MuvissSpacing.l, bottom = snackbarClearance.bottomPadding),
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
         ) {
             IdentitySection(
