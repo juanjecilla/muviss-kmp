@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.common.review.ReviewLedger
 import com.codingpit.muviss.feature.progress.api.Completion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -38,8 +39,12 @@ class ReviewPromptOnCompletion(
 ) {
     /** Starts listening in [scope]. The returned job ends with that scope, so leaving the composition stops it. */
     fun start(scope: CoroutineScope): Job = scope.launchReporting {
-        runCatching { ledger.stampInstalledIfUnknown(clock.nowEpochMs()) }.reportFailure()
+        // Collect first, stamp alongside: `completions` is hot, so a Completion made while the stamp
+        // was still being written would have had no collector and been lost. Each ask waits for the
+        // stamp, so the policy never reads a ledger that has not been stamped yet.
+        val stamped = async { runCatching { ledger.stampInstalledIfUnknown(clock.nowEpochMs()) }.reportFailure() }
         completions.collect {
+            stamped.await()
             runCatching { askForReview(recentlyFailed = standingFailure()) }.reportFailure()
         }
     }

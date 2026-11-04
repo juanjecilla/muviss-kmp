@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.common.review.ReviewRecord
 import com.codingpit.muviss.feature.progress.api.Completion
 import com.codingpit.muviss.feature.progress.api.CompletionKind
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -93,6 +94,37 @@ class ReviewPromptOnCompletionTest {
         assertEquals(1, prompts)
         assertNotNull(ledger.record.lastAskedAtEpochMs)
         assertEquals("1.4.0", ledger.record.lastAskedVersion)
+    }
+
+    @Test
+    fun a_completion_made_while_the_install_stamp_is_still_being_written_is_not_lost() = runTest {
+        val completions = MutableSharedFlow<Completion>(extraBufferCapacity = 8)
+        val stampWritten = CompletableDeferred<Unit>()
+        val memory = eligibleLedger()
+        // The stamp's write is held open, as a slow first database open would hold it.
+        val ledger = object : ReviewLedger by memory {
+            override suspend fun stampInstalledIfUnknown(nowEpochMs: Long) {
+                stampWritten.await()
+                memory.stampInstalledIfUnknown(nowEpochMs)
+            }
+        }
+        var prompts = 0
+        listener(
+            completions,
+            ledger,
+            ReviewPrompter {
+                prompts++
+                true
+            },
+        ).start(backgroundScope)
+        runCurrent()
+
+        completions.tryEmit(completion)
+        runCurrent()
+        stampWritten.complete(Unit)
+        runCurrent()
+
+        assertEquals(1, prompts)
     }
 
     @Test
