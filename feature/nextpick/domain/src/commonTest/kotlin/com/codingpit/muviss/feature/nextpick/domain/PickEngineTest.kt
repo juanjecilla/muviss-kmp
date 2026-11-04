@@ -44,6 +44,29 @@ class PickEngineTest {
         ranker = ranker,
     )
 
+    private fun reported(reporter: PickRankerReporter, ranker: PickRanker, vararg pool: PickCandidate) = PickEngine(
+        sources = listOf(PickCandidates { _, _ -> pool.toList() }),
+        exclusions = { emptySet() },
+        history = { PickHistory() },
+        muting = { MutedGenres.NONE },
+        ranker = ranker,
+        reporter = reporter,
+    )
+
+    /** Counts what [PickEngine] reports about a ranker that did not answer (#605). */
+    private class RecordingReporter : PickRankerReporter {
+        val failures = mutableListOf<String>()
+        var timeouts = 0
+
+        override fun failed(exceptionClass: String) {
+            failures += exceptionClass
+        }
+
+        override fun timedOut() {
+            timeouts++
+        }
+    }
+
     private val context = PickContext()
 
     private fun ids(result: PickResult) = result.picks.map { it.candidate.summary.id.toString() }
@@ -296,6 +319,52 @@ class PickEngineTest {
         val result = engine(*rulesPool, ranker = throwing).pick(PickCriteria(), context)
 
         assertEquals(rulesPicks(), result.picks)
+    }
+
+    @Test
+    fun a_ranker_that_throws_is_reported_once_by_class_name_and_never_by_message() = runTest {
+        val reporter = RecordingReporter()
+        val throwing = PickRanker { _, _, _ -> error("model crashed with the request text") }
+        val result = reported(reporter, throwing, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(listOf("IllegalStateException"), reporter.failures)
+        assertEquals(0, reporter.timeouts)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun a_ranker_that_times_out_is_reported_as_a_timeout_and_not_as_a_failure() = runTest {
+        val reporter = RecordingReporter()
+        val slow = PickRanker { _, _, _ ->
+            delay(1.hours)
+            emptyList()
+        }
+        val result = reported(reporter, slow, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(1, reporter.timeouts)
+        assertEquals(emptyList(), reporter.failures)
+    }
+
+    @Test
+    fun a_ranker_that_answers_reports_nothing() = runTest {
+        val reporter = RecordingReporter()
+        val result = reported(reporter, hostile { it }, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(emptyList(), reporter.failures)
+        assertEquals(0, reporter.timeouts)
+    }
+
+    @Test
+    fun a_cancelled_pick_reports_nothing() = runTest {
+        val reporter = RecordingReporter()
+        val cancelled = PickRanker { _, _, _ -> throw CancellationException("the screen went away") }
+
+        assertFailsWith<CancellationException> { reported(reporter, cancelled, *rulesPool).pick(PickCriteria(), context) }
+        assertEquals(emptyList(), reporter.failures)
+        assertEquals(0, reporter.timeouts)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

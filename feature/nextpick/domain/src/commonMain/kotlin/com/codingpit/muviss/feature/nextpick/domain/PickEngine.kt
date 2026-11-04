@@ -62,6 +62,7 @@ class PickEngine(
     private val history: PickHistoryReader,
     private val muting: PickMuting,
     private val ranker: PickRanker = RuleBasedRanker(),
+    private val reporter: PickRankerReporter = PickRankerReporter.Silent,
 ) {
 
     private val fallback = RuleBasedRanker()
@@ -91,12 +92,20 @@ class PickEngine(
         return enforced?.takeIf { it.isNotEmpty() } ?: fallback.rank(criteria, pool, history)
     }
 
+    /**
+     * Null when the ranker failed or timed out, and each of those is reported once through [reporter]
+     * (#605). `rank` returns a non-null list, so a null from [withTimeoutOrNull] can only be the timeout.
+     * A cancelled caller is rethrown before anything is reported.
+     */
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // Any ranker failure means "use the rules", never an error on screen.
     private suspend fun attempt(criteria: PickCriteria, pool: List<PickCandidate>, history: PickHistory): List<RankedPick>? = try {
-        withTimeoutOrNull(RANKER_TIMEOUT) { ranker.rank(criteria, pool, history) }
+        val ranked = withTimeoutOrNull(RANKER_TIMEOUT) { ranker.rank(criteria, pool, history) }
+        if (ranked == null) reporter.timedOut()
+        ranked
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        reporter.failed(e::class.simpleName ?: UNNAMED_EXCEPTION)
         null
     }
 
@@ -149,5 +158,8 @@ class PickEngine(
 
         /** How long a ranker may take before the rules answer instead. A model call that is slower than this is not worth the wait. */
         private val RANKER_TIMEOUT: Duration = 5.seconds
+
+        /** Reported when a failure's class has no simple name (an anonymous object, for instance). */
+        private const val UNNAMED_EXCEPTION = "UnnamedException"
     }
 }

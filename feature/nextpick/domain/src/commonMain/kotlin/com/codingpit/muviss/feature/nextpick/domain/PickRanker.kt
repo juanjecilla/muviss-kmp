@@ -18,6 +18,27 @@ fun interface PickRanker {
 }
 
 /**
+ * Where [PickEngine] reports a ranker that did not answer (#605): it failed, or it ran past
+ * [PickEngine]'s timeout. The person never sees either; a developer needs to know, because a broken
+ * ranker and a ranker with nothing to say look the same on screen.
+ *
+ * The failure is handed over as the exception's class name only. The message can carry request text
+ * or keys (EPIC 27), so it never leaves [PickEngine].
+ */
+interface PickRankerReporter {
+    fun failed(exceptionClass: String)
+
+    fun timedOut()
+
+    /** The default for code that has no crash reporter to hand, such as a test that does not care. */
+    data object Silent : PickRankerReporter {
+        override fun failed(exceptionClass: String) = Unit
+
+        override fun timedOut() = Unit
+    }
+}
+
+/**
  * Rules over the person's own data, no model (ADR 0032). A scored sum, each term named so the reason
  * for a pick is the term that contributed most. Weights are constants here and nowhere else: they are
  * a starting point to tune by looking at real picks, not a measured truth.
