@@ -13,7 +13,8 @@ import kotlinx.coroutines.flow.first
  * the platform monitor, the way Triage and Discover do, so the session can decide offline before asking
  * anything. The library answers "is there a backlog" and "is there anything to rewatch".
  *
- * [anchor] is null in v1: "more like X" needs TMDB recommendations, which the engine does not gather yet.
+ * The anchor is not read here: it is the title a Completion just finished, which only the ViewModel knows
+ * (the session is opened from it), so the ViewModel sets `anchorCandidate` on the context it is given.
  */
 internal class NextPickContextReader(
     private val connectivity: ConnectivityMonitor,

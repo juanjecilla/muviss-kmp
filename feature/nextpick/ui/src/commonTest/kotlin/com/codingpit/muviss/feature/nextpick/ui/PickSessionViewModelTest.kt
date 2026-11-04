@@ -2,10 +2,22 @@ package com.codingpit.muviss.feature.nextpick.ui
 
 import com.codingpit.muviss.feature.nextpick.api.PickSource
 import com.codingpit.muviss.feature.nextpick.api.SessionLength
+import com.codingpit.muviss.feature.nextpick.domain.CandidateSource
+import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
+import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
+import com.codingpit.muviss.feature.nextpick.domain.PickCandidate
+import com.codingpit.muviss.feature.nextpick.domain.PickCandidates
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
+import com.codingpit.muviss.feature.nextpick.domain.PickEngine
+import com.codingpit.muviss.feature.nextpick.domain.PickExclusions
+import com.codingpit.muviss.feature.nextpick.domain.PickHistory
+import com.codingpit.muviss.feature.nextpick.domain.PickHistoryReader
+import com.codingpit.muviss.feature.nextpick.domain.PickMuting
 import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MutedGenres
+import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -17,6 +29,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class PickSessionViewModelTest {
@@ -27,11 +40,21 @@ class PickSessionViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
+    private val noQuestions = PickContext(length = SessionLength.NONE, online = true, hasBacklog = true)
+
     private fun viewModel(
-        pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate>,
+        pool: List<PickCandidate>,
         context: PickContext,
         actions: RecordingNextPickActions = RecordingNextPickActions(),
-    ) = PickSessionViewModel(context = { context }, engine = engineOver(pool), actions = actions)
+        mode: NextPickResultMode = NextPickResultMode.ONE_PICK,
+    ) = PickSessionViewModel(
+        context = { context },
+        engine = engineOver(pool),
+        actions = actions,
+        settings = FixedSettings(mode),
+    )
+
+    private fun viewModelFromCompletion(anchor: MediaId, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"))) = PickSessionViewModel(context = { PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true) }, engine = engineOver(pool), actions = RecordingNextPickActions(), anchor = anchor)
 
     @Test
     fun online_session_opens_on_the_first_question_out_of_the_standard_length() {
@@ -70,16 +93,16 @@ class PickSessionViewModelTest {
         viewModel.answer(PickAnswer.Source(PickSource.EITHER))
         viewModel.skipQuestion()
 
-        // Then the session ends in the one title the pool had
+        // Then the session ends in the one title the pool had, with no outcome yet
         val result = assertIs<PickSessionUiState.Result>(viewModel.state.value)
-        assertEquals("Dune", result.pick.candidate.summary.title)
-        assertEquals(null, result.outcome)
+        assertEquals("Dune", result.picks.single().candidate.summary.title)
+        assertTrue(result.outcomes.isEmpty())
     }
 
     @Test
     fun an_empty_pool_says_nothing_fits_rather_than_inventing_a_pick() {
         // Given a session over nothing at all
-        val viewModel = viewModel(emptyList(), PickContext(length = SessionLength.NONE, online = true, hasBacklog = true))
+        val viewModel = viewModel(emptyList(), noQuestions)
 
         // When the session has no questions and no candidates
         // Then it says nothing fits
@@ -87,17 +110,32 @@ class PickSessionViewModelTest {
     }
 
     @Test
-    fun add_records_the_outcome_and_calls_the_add_action_once() {
+    fun add_records_the_outcome_for_that_title_and_calls_the_add_action_once() {
         // Given a session that ended in a pick
         val actions = RecordingNextPickActions()
-        val viewModel = viewModel(listOf(candidate("7")), PickContext(length = SessionLength.NONE, online = true, hasBacklog = true), actions)
+        val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
 
         // When the person adds it
-        viewModel.add()
+        viewModel.add(MediaId.tmdbMovie("7"))
 
-        // Then the Add action ran for that title and the screen knows the outcome
+        // Then the Add action ran for that title and the screen knows the outcome for it
         assertEquals(listOf(MediaId.tmdbMovie("7")), actions.added)
-        assertEquals(PickOutcome.ADDED, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcome)
+        assertEquals(PickOutcome.ADDED, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcomes[MediaId.tmdbMovie("7")])
+    }
+
+    @Test
+    fun a_second_tap_on_an_acted_row_does_nothing() {
+        // Given a title already refused
+        val actions = RecordingNextPickActions()
+        val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
+        viewModel.notForMe(MediaId.tmdbMovie("7"))
+
+        // When the same row is tapped again
+        viewModel.add(MediaId.tmdbMovie("7"))
+
+        // Then no second write happens
+        assertEquals(listOf(MediaId.tmdbMovie("7")), actions.refused)
+        assertTrue(actions.added.isEmpty())
     }
 
     @Test
@@ -115,38 +153,87 @@ class PickSessionViewModelTest {
         assertEquals(false, viewModel.back())
     }
 
-    private val noQuestions = PickContext(length = SessionLength.NONE, online = true, hasBacklog = true)
+    @Test
+    fun top_picks_draws_five_titles_in_the_engines_order() {
+        // Given a pool of seven titles
+        val pool = (1..7).map { candidate("$it") }
+
+        // When the session ends in Top Picks
+        val result = assertIs<PickSessionUiState.Result>(viewModel(pool, noQuestions, mode = NextPickResultMode.TOP_PICKS).state.value)
+
+        // Then five distinct titles are drawn, and they are the top of the same list One Pick starts from
+        assertEquals(NextPickResultMode.TOP_PICKS, result.mode)
+        assertEquals(5, result.picks.size)
+        assertEquals(5, result.picks.map { it.candidate.id }.toSet().size)
+        val onePick = assertIs<PickSessionUiState.Result>(viewModel(pool, noQuestions).state.value)
+        assertEquals(onePick.picks.single(), result.picks.first())
+    }
+
+    @Test
+    fun another_in_one_pick_steps_to_a_title_never_drawn_before() {
+        // Given a one-pick session over three titles
+        val pool = (1..3).map { candidate("$it") }
+        val viewModel = viewModel(pool, noQuestions)
+        val first = assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.single().candidate.id
+
+        // When the person asks for another, twice
+        viewModel.another()
+        val second = assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.single().candidate.id
+        viewModel.another()
+        val third = assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.single().candidate.id
+
+        // Then each one is new
+        assertEquals(3, setOf(first, second, third).size)
+    }
+
+    @Test
+    fun a_refused_row_in_top_picks_leaves_the_other_rows_actionable() {
+        // Given five picks on screen
+        val actions = RecordingNextPickActions()
+        val viewModel = viewModel((1..5).map { candidate("$it") }, noQuestions, actions, NextPickResultMode.TOP_PICKS)
+        val refused = assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.first().candidate.id
+
+        // When the first row is refused
+        viewModel.notForMe(refused)
+
+        // Then only that row carries an outcome, and only it was written
+        val result = assertIs<PickSessionUiState.Result>(viewModel.state.value)
+        assertEquals(mapOf(refused to PickOutcome.NOT_FOR_ME), result.outcomes)
+        assertEquals(listOf(refused), actions.refused)
+    }
+
+    @Test
+    fun deck_seeds_are_only_the_picks_the_library_does_not_hold() {
+        // Given a pool with one title already in the library and one not
+        val inLibrary = candidate("1", "In library").copy(libraryStatus = WatchStatus.NOT_STARTED, source = CandidateSource.BACKLOG)
+        val fresh = candidate("2", "Fresh")
+        val viewModel = viewModel(listOf(inLibrary, fresh), noQuestions, mode = NextPickResultMode.DECK)
+
+        // When the person opens the Deck
+        val seeds = viewModel.deckSeeds()
+
+        // Then only the title the library does not hold is handed to Triage, because Triage excludes the library
+        assertEquals(listOf(MediaId.tmdbMovie("2")), seeds.map { it.id })
+        assertNotEquals(inLibrary.id, seeds.single().id)
+    }
 
     @Test
     fun a_second_tap_while_the_add_is_in_flight_writes_once() {
         // Given a pick whose Add is still being written
         val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
         val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
-        viewModel.add()
+        val id = viewModel.onePick().candidate.id
+        viewModel.add(id)
 
         // When the person taps Add again, and then Not for me, before the write lands
-        viewModel.add()
-        viewModel.notForMe()
+        viewModel.add(id)
+        viewModel.notForMe(id)
         actions.hold?.complete(Unit)
 
         // Then only the first action was written
         assertEquals(listOf(MediaId.tmdbMovie("7")), actions.added)
         assertEquals(emptyList(), actions.refused)
-        assertEquals(PickOutcome.ADDED, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcome)
-    }
-
-    @Test
-    fun an_action_after_the_outcome_is_ignored() {
-        // Given a pick the person already added
-        val actions = RecordingNextPickActions()
-        val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
-        viewModel.add()
-
-        // When they also tap Snooze
-        viewModel.snooze()
-
-        // Then nothing more is written
-        assertEquals(emptyList(), actions.snoozed)
+        assertEquals(PickOutcome.ADDED, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcomes[id])
     }
 
     @Test
@@ -154,8 +241,8 @@ class PickSessionViewModelTest {
         // Given an Add still in flight on the first of two picks
         val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
         val viewModel = viewModel(listOf(candidate("1", "First"), candidate("2", "Second")), noQuestions, actions)
-        val first = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.title
-        viewModel.add()
+        val first = viewModel.onePick().candidate.id
+        viewModel.add(first)
 
         // When the person asks for another, and only then does the write land
         viewModel.another()
@@ -163,8 +250,8 @@ class PickSessionViewModelTest {
 
         // Then the screen keeps the new pick, with no outcome yet
         val shown = assertIs<PickSessionUiState.Result>(viewModel.state.value)
-        assertTrue(shown.pick.candidate.summary.title != first)
-        assertEquals(null, shown.outcome)
+        assertNotEquals(first, shown.picks.first().candidate.id)
+        assertEquals(emptyMap(), shown.outcomes)
     }
 
     @Test
@@ -172,19 +259,19 @@ class PickSessionViewModelTest {
         // Given an Add still in flight on the first of two picks, and the person moved on to the second
         val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
         val viewModel = viewModel(listOf(candidate("1", "First"), candidate("2", "Second")), noQuestions, actions)
-        val first = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id
-        viewModel.add()
+        val first = viewModel.onePick().candidate.id
+        viewModel.add(first)
         viewModel.another()
-        val second = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id
+        val second = viewModel.onePick().candidate.id
 
         // When they tap Not for me on the second before the first write lands
-        viewModel.notForMe()
+        viewModel.notForMe(second)
         actions.hold?.complete(Unit)
 
         // Then both writes happened, and the second pick shows its own outcome
         assertEquals(listOf(first), actions.added)
         assertEquals(listOf(second), actions.refused)
-        assertEquals(PickOutcome.NOT_FOR_ME, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcome)
+        assertEquals(PickOutcome.NOT_FOR_ME, assertIs<PickSessionUiState.Result>(viewModel.state.value).outcomes[second])
     }
 
     @Test
@@ -192,15 +279,15 @@ class PickSessionViewModelTest {
         // Given Adds still in flight on both picks, and the person started again
         val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }
         val viewModel = viewModel(listOf(candidate("1", "First"), candidate("2", "Second")), noQuestions, actions)
-        val first = assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id
-        viewModel.add()
+        val first = viewModel.onePick().candidate.id
+        viewModel.add(first)
         viewModel.another()
-        viewModel.add()
+        viewModel.add(viewModel.onePick().candidate.id)
         viewModel.start()
-        assertEquals(first, assertIs<PickSessionUiState.Result>(viewModel.state.value).pick.candidate.summary.id)
+        assertEquals(first, viewModel.onePick().candidate.id)
 
         // When they tap Add on the first title again before its write lands
-        viewModel.add()
+        viewModel.add(first)
         actions.hold?.complete(Unit)
 
         // Then each title was written once
@@ -213,21 +300,22 @@ class PickSessionViewModelTest {
         // Given writes that fail
         val actions = RecordingNextPickActions().apply { fail = true }
         val viewModel = viewModel(listOf(candidate("7")), noQuestions, actions)
+        val id = viewModel.onePick().candidate.id
 
         // When the person adds the pick
-        viewModel.add()
+        viewModel.add(id)
 
-        // Then the screen says it failed and has no outcome, so the actions are still there
+        // Then that row says it failed and has no outcome, so its actions are still there
         val failed = assertIs<PickSessionUiState.Result>(viewModel.state.value)
-        assertTrue(failed.actionFailed)
-        assertEquals(null, failed.outcome)
+        assertTrue(id in failed.failed)
+        assertEquals(null, failed.outcomes[id])
 
         // And a second try, once writes work, lands
         actions.fail = false
-        viewModel.add()
+        viewModel.add(id)
         val added = assertIs<PickSessionUiState.Result>(viewModel.state.value)
-        assertEquals(PickOutcome.ADDED, added.outcome)
-        assertFalse(added.actionFailed)
+        assertEquals(PickOutcome.ADDED, added.outcomes[id])
+        assertFalse(id in added.failed)
     }
 
     @Test
@@ -239,4 +327,67 @@ class PickSessionViewModelTest {
         // Then it shows Failed, whose Retry is reachable, rather than Loading forever
         assertIs<PickSessionUiState.Failed>(viewModel.state.value)
     }
+
+    @Test
+    fun a_session_opened_from_a_completion_asks_about_that_title_first() {
+        // Given a session opened from the title just finished
+        val finished = MediaId.tmdbTv("1399")
+
+        // When it opens
+        val asking = assertIs<PickSessionUiState.Asking>(viewModelFromCompletion(finished).state.value)
+
+        // Then the anchor question comes first, and it is about that title
+        assertEquals(PickQuestion.ANCHOR, asking.question)
+        assertEquals(finished, asking.anchor)
+    }
+
+    @Test
+    fun another_takes_the_next_pick_from_one_gather_and_does_not_query_the_sources_again() {
+        // Given a pool of three, and a counting source that only records how often it is asked
+        var gathers = 0
+        val pool = listOf(candidate("1"), candidate("2"), candidate("3"))
+        val engine = PickEngine(
+            sources = listOf(
+                PickCandidates { _, _ ->
+                    gathers++
+                    pool
+                },
+            ),
+            exclusions = PickExclusions { emptySet() },
+            history = PickHistoryReader { PickHistory() },
+            muting = PickMuting { MutedGenres.NONE },
+        )
+        val viewModel = PickSessionViewModel(context = { PickContext(length = SessionLength.NONE) }, engine = engine, actions = RecordingNextPickActions())
+
+        // When the person asks for another pick twice
+        viewModel.another()
+        viewModel.another()
+
+        // Then every pick came from the one gather that the first pick made
+        assertEquals(1, gathers)
+        assertIs<PickSessionUiState.Result>(viewModel.state.value)
+    }
+
+    @Test
+    fun top_picks_keeps_drawing_new_titles_once_the_first_gather_is_used_up() {
+        // Given Top Picks over thirty titles, more than one gather keeps
+        val viewModel = viewModel((1..30).map { candidate("$it") }, noQuestions, mode = NextPickResultMode.TOP_PICKS)
+        val drawn = assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.map { it.candidate.id }.toMutableList()
+
+        // When the person asks for another five times, past the twenty the first gather held
+        repeat(5) {
+            viewModel.another()
+            drawn += assertIs<PickSessionUiState.Result>(viewModel.state.value).picks.map { it.candidate.id }
+        }
+
+        // Then all thirty were drawn, each once
+        assertEquals(30, drawn.size)
+        assertEquals(30, drawn.toSet().size)
+    }
+
+    private fun PickSessionViewModel.onePick() = assertIs<PickSessionUiState.Result>(state.value).picks.first()
+}
+
+private class FixedSettings(override val mode: NextPickResultMode) : NextPickSettings {
+    override val length: SessionLength = SessionLength.NONE
 }

@@ -3,21 +3,30 @@ package com.codingpit.muviss.feature.nextpick.ui.di
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
 import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
+import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
 import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
 import com.codingpit.muviss.feature.nextpick.ui.PickSessionViewModel
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.models.MediaId
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 /** Next Pick's ViewModels (EPIC 51, #400). The sheet's ViewModel is hosted at the app root (see MuvissApp). */
 val nextPickUiModule: Module = module {
-    viewModel {
+    viewModel { params ->
         val context: PickContextSource = get()
-        PickSessionViewModel(context = { context.read() }, engine = get<PickEngine>(), actions = get<NextPickActions>())
+        PickSessionViewModel(
+            context = { context.read() },
+            engine = get<PickEngine>(),
+            actions = get<NextPickActions>(),
+            settings = get<NextPickSettings>(),
+            // The route carries the anchor as its MediaId string; no parameter means no Completion opened it.
+            anchor = params.getOrNull<String>()?.let { MediaId.parse(it) },
+        )
     }
     viewModel {
         CompletionPromptViewModel(
