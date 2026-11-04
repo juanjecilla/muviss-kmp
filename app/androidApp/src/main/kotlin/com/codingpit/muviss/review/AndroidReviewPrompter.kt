@@ -37,9 +37,13 @@ class AndroidReviewPrompter(context: Context) : ReviewPrompter {
     }
 
     override suspend fun prompt(): Boolean {
-        val host = activity ?: return false
+        // No Activity, no request: nothing is asked of Play for a sheet that could not be shown.
+        if (activity == null) return false
         return withContext(Dispatchers.Main.immediate) {
             val info = runCatching { manager.requestReview() }.reportFailure().getOrNull() ?: return@withContext false
+            // Read again after the suspension: a rotation during requestReview() replaces MainActivity,
+            // and Play wants the Activity that is showing now, not the one detached meanwhile.
+            val host = activity ?: return@withContext false
             runCatching { manager.launchReview(host, info) }.reportFailure().isSuccess
         }
     }
