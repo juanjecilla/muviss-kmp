@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -91,6 +93,7 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.action_undo
 import com.codingpit.muviss.feature.progress.ui.generated.resources.cowatch_entry
 import com.codingpit.muviss.feature.progress.ui.generated.resources.mark_watched_description
 import com.codingpit.muviss.feature.progress.ui.generated.resources.next_episode_of
+import com.codingpit.muviss.feature.progress.ui.generated.resources.next_pick_entry
 import com.codingpit.muviss.feature.progress.ui.generated.resources.progress_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_upcoming
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_watch_next
@@ -133,6 +136,8 @@ fun ProgressScreen(
     upcomingViewModel: UpcomingViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenCoWatch: (() -> Unit)?,
+    /** "What's next?" (EPIC 51, #545): offered as the empty Watch Next's way in. Null draws nothing. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     var selectedTab by remember { mutableStateOf(ProgressTab.WATCH_NEXT) }
 
@@ -161,7 +166,7 @@ fun ProgressScreen(
             }
         }
         when (selectedTab) {
-            ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail)
+            ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail, onOpenNextPick)
             ProgressTab.UPCOMING -> UpcomingScreen(upcomingViewModel, onOpenDetail)
         }
     }
@@ -172,6 +177,7 @@ fun ProgressScreen(
 internal fun WatchNextScreen(
     viewModel: ProgressViewModel,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenNextPick: (() -> Unit)?,
     // Test seam: the lookup that turns a tick's message into text. Production resolves it as is.
     resolveTickMessage: suspend (UiText) -> String = { it.resolveAsync() },
 ) {
@@ -253,10 +259,13 @@ internal fun WatchNextScreen(
         }
     }
 
+    // The "What's next?" header, when drawn, is the list's first item; the row that moved to the top is the one after it.
+    val firstRowIndex = if (onOpenNextPick != null) 1 else 0
+
     LaunchedEffect(scrollToTopTarget, state.items.firstOrNull()?.mediaId) {
         val target = scrollToTopTarget ?: return@LaunchedEffect
         if (state.items.firstOrNull()?.mediaId != target) return@LaunchedEffect
-        if (state.animateTicks) listState.animateScrollToItem(0) else listState.requestScrollToItem(0)
+        if (state.animateTicks) listState.animateScrollToItem(firstRowIndex) else listState.requestScrollToItem(firstRowIndex)
         scrollToTopTarget = null
     }
 
@@ -289,6 +298,9 @@ internal fun WatchNextScreen(
                         icon = MuvissIcons.WatchNext,
                         title = stringResource(Res.string.watch_next_empty_title),
                         body = stringResource(Res.string.watch_next_empty_body),
+                        // Nothing in progress to pick up, so the way into a Pick Session is the prominent one here (EPIC 51, #545).
+                        actionLabel = onOpenNextPick?.let { stringResource(Res.string.next_pick_entry) },
+                        onAction = onOpenNextPick,
                     )
 
                     else -> WatchNextList(
@@ -300,6 +312,7 @@ internal fun WatchNextScreen(
                         bottomPadding = snackbarClearance.bottomPadding,
                         onTick = onTick,
                         onOpenDetail = onOpenDetail,
+                        onOpenNextPick = onOpenNextPick,
                     )
                 }
                 // Over the list, not in a row: a show that is caught up leaves the list,
@@ -334,6 +347,7 @@ private fun WatchNextList(
     bottomPadding: Dp,
     onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenNextPick: (() -> Unit)?,
 ) {
     LazyColumn(
         state = listState,
@@ -347,6 +361,13 @@ private fun WatchNextList(
             bottom = bottomPadding,
         ),
     ) {
+        // A quiet entry above the rows, while there are titles to pick up (EPIC 51, #599). The empty state
+        // carries the prominent one, so the two never both show.
+        if (onOpenNextPick != null) {
+            item(key = WATCH_NEXT_NEXT_PICK_KEY, contentType = WATCH_NEXT_NEXT_PICK_KEY) {
+                NextPickButton(onClick = onOpenNextPick, modifier = Modifier.fillMaxWidth().testTag(WATCH_NEXT_NEXT_PICK_TAG))
+            }
+        }
         items(items, key = { it.mediaId.toString() }) { item ->
             WatchNextRow(
                 item,
@@ -359,6 +380,21 @@ private fun WatchNextList(
                     .semantics { testTag = WATCH_NEXT_ROW_TAG },
             )
         }
+    }
+}
+
+/** The "What's next?" entry above a non-empty Watch Next (EPIC 51, #599). */
+const val WATCH_NEXT_NEXT_PICK_TAG = "watchNextNextPick"
+private const val WATCH_NEXT_NEXT_PICK_KEY = "nextPick"
+
+/**
+ * The same outlined button Discover and a finished title's Detail use for "What's next?" (EPIC 51, #545),
+ * kept private here: the entry lives in `:feature:search:ui`, which this module may not depend on.
+ */
+@Composable
+private fun NextPickButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    OutlinedButton(onClick = onClick, modifier = modifier.heightIn(min = 48.dp)) {
+        Text(stringResource(Res.string.next_pick_entry), style = MaterialTheme.typography.labelLarge)
     }
 }
 

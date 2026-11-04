@@ -374,7 +374,9 @@ Found on the way: a paid tier makes Muviss a commercial TMDB user whoever's key 
 
 Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.md` (Completion, Pick Session, Next Pick, Taste Profile). Free, so the landing and the Play listing change in the PR that ships it.
 
-**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+**What.** After a **Completion** (movie Watched; show Finished or caught up) the app offers "What's next?": a short adaptive Pick Session that ends in a **Next Pick** with a reason. Also reachable from Discover, Progress (prominent when WatchNext is empty, a quiet entry above the rows otherwise, #599), Library, Detail of a completed title, a desktop shortcut and the widget's empty state.
+
+**Entry-point follow-ups.** #599 (Progress entry with titles) and #600 (Detail reads one title's status through its membership, not the whole library; `CollectionMembership.status`) are in the entry-point PR, stacked on #603. Open: #601 goldens for the entry points, #602 device and desktop runs (unverified until then), and #659 the duplicated outlined button (Progress keeps a private copy until it moves to `:core:designsystem`).
 
 **Migrations.** `22.sqm` (schema v23, fixture `23.db`), #400: `appSettings.completionPromptShownAtEpochMs`, per device, the once-a-day mark. Claimed 2026-10-29 as `22.sqm`: #394 had taken `21.sqm` on develop. #403 claims `23.sqm` and #588 (Taste Profile) `24.sqm`, stacked in that order, so #563 (review prompt) takes `25.sqm`.
 
@@ -405,7 +407,9 @@ Added 2026-10-17 from a grilling session. **ADR 0032**; vocabulary in `CONTEXT.m
 
 Controlled by Settings > Appearance > "Animate episode ticks" (`appSettings.tickAnimations`, default on, per device, not synced). It narrows `animationsEnabled` the way `triageDeckAnimations` does: `FeatureFlags.tickAnimationsActive` is the AND, and the haptic is never gated. The milestone also changes the snackbar copy, so with motion off it is still said. Both pre-existing tick pops used to ignore the master switch; they honour it now. Outcome is decided in `ProgressViewModel.tick` (Progress, after the list settles) and `DetailViewModel.toggleEpisodeSeen` (Detail, at the tap).
 
-**Not done, deliberately:** the widgets (#393), the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
+**Widgets (#393).** The home-screen widgets confirm a tick in text: the row's Undo state names the episode it marked ("Marked S1 · E3 ✓", `widget_marked_episode` / `xcstrings` `Marked %@ ✓`). It is deliberately not gated by `tickAnimationsActive`: it is copy, not motion, and Glance has no animation to gate. The line lasts as long as Undo does: until the next refresh, which on Android includes the midnight one (`WidgetMidnightRefresh` goes through `AppWidgets.refresh()`, which clears the marker). On iOS the midnight timeline rebuild only re-reads the marker, so the confirmation stays until the app's next write refreshes the widgets (`IosWidgetRefresher`); the cross-process clear is unverified on a device (#414). Device verification: #653. Scoped out (haptic, a timed revert, a row tint): #654.
+
+**Not done, deliberately:** the OS reduce-motion setting (#394), syncing display preferences (#392 — `appSettings` is in neither sync nor export).
 
 **Not verified by any test:** the haptic, and how the sweep and burst feel on a device. Tests assert presence and absence under a hand-driven clock (`ProgressTickFeedbackTest`), not the look.
 
