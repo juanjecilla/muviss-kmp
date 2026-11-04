@@ -16,6 +16,7 @@ import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.core.database.MediaListQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.database.ProfileQueries
+import com.codingpit.muviss.core.database.TasteProfileQueries
 import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.core.database.TriageSnoozeQueries
 import com.codingpit.muviss.feature.settings.domain.AppSettings
@@ -39,6 +40,7 @@ import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
 import com.codingpit.muviss.core.database.Profile as ProfileRow
+import com.codingpit.muviss.core.database.TasteProfile as TasteProfileRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
 
@@ -166,14 +168,18 @@ class SqlDelightSettingsRepository(
             lists = exportQueries.lists.selectAllListsForExport().awaitAsList().map { it.toExport() },
             listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
+            settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
+            tasteProfile = exportQueries.tasteProfile.selectAll().awaitAsList().map { it.toExport() },
         )
         json.encodeToString(export)
     }
 
     private suspend fun ensureRow() = withContext(dispatchers.io) { settingsQueries.ensureRow() }
 
+    // A restored backup from a newer build can store a theme this one does not know; it is kept
+    // as is (a later build reads it again) and shown as the system theme meanwhile, never thrown.
     private fun AppSettingsRow.toDomain(): AppSettings = AppSettings(
-        theme = AppTheme.valueOf(theme),
+        theme = AppTheme.entries.firstOrNull { it.name == theme } ?: AppTheme.SYSTEM,
         language = language,
         region = region,
         notificationsEnabled = notificationsEnabled,
@@ -224,6 +230,14 @@ class SqlDelightSettingsRepository(
         updatedAtEpochMs = updatedAtEpochMs,
     )
 
+    private fun TasteProfileRow.toExport(): TasteProfileItemExport = TasteProfileItemExport(
+        id = id,
+        kind = kind,
+        value = itemValue,
+        label = label,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
+
     private fun EpisodePlayRow.toExport(): EpisodePlayExport = EpisodePlayExport(
         episodeId = episodeId,
         mediaId = mediaId,
@@ -257,6 +271,20 @@ class SqlDelightSettingsRepository(
         updatedAtEpochMs = updatedAtEpochMs,
     )
 
+    private fun AppSettingsRow.toExport(): SettingsExport = SettingsExport(
+        theme = theme,
+        language = language,
+        region = region,
+        animationsEnabled = animationsEnabled,
+        triageDeckAnimations = triageDeckAnimations,
+        tickAnimations = tickAnimations,
+        triageControlScheme = triageControlScheme,
+        triageSnoozePeriod = triageSnoozePeriod,
+        triageSnoozePlacement = triageSnoozePlacement,
+        mutedGenres = mutedGenres,
+        mutedGenresInSearch = mutedGenresInSearch,
+    )
+
     private fun ProfileRow.toExport(): ProfileExport = ProfileExport(displayName = displayName, avatarId = avatarId)
 }
 
@@ -273,4 +301,5 @@ class ExportQueries(database: MuvissDatabase) {
     val snoozes: TriageSnoozeQueries = database.triageSnoozeQueries
     val lists: MediaListQueries = database.mediaListQueries
     val profile: ProfileQueries = database.profileQueries
+    val tasteProfile: TasteProfileQueries = database.tasteProfileQueries
 }

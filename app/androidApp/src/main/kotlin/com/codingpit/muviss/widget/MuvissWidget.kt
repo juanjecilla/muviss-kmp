@@ -227,8 +227,19 @@ private fun WidgetButton(label: String, onClick: Action) {
     )
 }
 
+/**
+ * The line under the title. The row that was just ticked names the episode it
+ * marked, so the confirmation says what happened rather than only that
+ * something did.
+ *
+ * This is copy, not motion, so it is deliberately not gated by
+ * `FeatureFlags.tickAnimationsActive` (EPIC 52): with "Animate episode ticks"
+ * off the widget still says what was marked, as the milestone snackbar does.
+ * Glance has no animation to gate in any case. The line lasts exactly as long
+ * as Undo does, until the next refresh clears the marker (`GlanceWidgetRefresher`).
+ */
 private fun WidgetRow.subtitle(context: Context): String = when {
-    undoable != null -> context.getString(R.string.widget_marked_seen)
+    tickedLabel != null -> context.getString(R.string.widget_marked_episode, tickedLabel)
     episodeLabel == null -> context.getString(R.string.widget_open_to_load)
     episodeName != null -> "$episodeLabel · $episodeName"
     else -> episodeLabel

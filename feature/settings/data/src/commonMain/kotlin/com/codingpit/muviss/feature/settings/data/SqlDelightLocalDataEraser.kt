@@ -6,7 +6,10 @@ import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
+import com.codingpit.muviss.core.sync.SyncBackend
+import com.codingpit.muviss.core.sync.SyncIdleLock
 import com.codingpit.muviss.feature.settings.domain.LocalDataEraser
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 /**
@@ -24,6 +27,7 @@ import kotlinx.coroutines.withContext
  * they are told explicitly once everything is gone (#317), the same push
  * `SqlDelightProgressRepository` makes after every progress write.
  */
+@Suppress("LongParameterList") // one Koin binding per dependency; a parameter object would only rename them
 class SqlDelightLocalDataEraser(
     private val database: MuvissDatabase,
     private val dispatchers: AppDispatchers,
@@ -31,11 +35,26 @@ class SqlDelightLocalDataEraser(
     private val secrets: SecretStore,
     private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
     private val widgetRefresher: WidgetRefresher,
+    private val syncBackend: SyncBackend,
+    private val syncIdle: SyncIdleLock = SyncIdleLock.None,
 ) : LocalDataEraser {
 
+    // Signs out first, so once the erase starts nothing can pull the library back (#645), and does
+    // both with no sync cycle in flight: one already running could otherwise apply a pulled page
+    // after the erase. Non-cancellable once started: the person confirmed it, and a screen closed
+    // mid-way must not leave the secrets or the Own TMDB key behind.
     // Under the Device Backup lock: a toggle tapped before this cannot recreate the row after it.
-    override suspend fun deleteAllData() = withContext(dispatchers.io) {
-        deviceBackupWrites.erase { eraseEverything() }
+    override suspend fun deleteAllData() = withContext(dispatchers.io + NonCancellable) {
+        syncIdle.runIdle {
+            signOut()
+            deviceBackupWrites.erase { eraseEverything() }
+        }
+    }
+
+    // Never fails the erase: a sign-out the server could not confirm still ends the session locally
+    // (SupabaseSyncBackend does that itself), and the session row is cleared below regardless.
+    private suspend fun signOut() {
+        runCatching { syncBackend.signOut() }
     }
 
     private suspend fun eraseEverything() {
@@ -48,6 +67,7 @@ class SqlDelightLocalDataEraser(
             database.mediaListQueries.deleteAllEntries()
             database.triageDecisionQueries.deleteAll()
             database.triageSnoozeQueries.deleteAll()
+            database.tasteProfileQueries.deleteAll()
             database.profileQueries.deleteRow()
             database.appSettingsQueries.deleteRow()
             // Co-watch's local copies (EPIC 41).
@@ -62,6 +82,8 @@ class SqlDelightLocalDataEraser(
             // Whose library this was, and how far it had pulled.
             database.syncCursorQueries.deleteAll()
             database.syncStateQueries.deleteRow()
+            // The persisted session: a restart must not restore it when the remote sign-out failed.
+            database.syncAccountQueries.clearSession()
         }
         // The Own TMDB Key (EPIC 46) is not in the database. `clear` also drops the copy the
         // provider holds in memory, so the next request is Muviss's; `clearAll` then wipes the

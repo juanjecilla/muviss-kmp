@@ -8,9 +8,34 @@ import com.codingpit.muviss.feature.nextpick.api.PickRuntime
 /**
  * The seam an AI ranker would replace (ADR 0032, spike #404): criteria and candidates in, an ordered
  * list with reasons out. Sources, filters, exclusions and the screens do not change when it does.
+ *
+ * It is suspending because a model call takes seconds. [PickEngine] does not trust its output: picks
+ * outside the candidates, excluded titles and repeated ids are dropped, and a failure or a timeout
+ * falls back to [RuleBasedRanker].
  */
 fun interface PickRanker {
-    fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick>
+    suspend fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick>
+}
+
+/**
+ * Where [PickEngine] reports a ranker that did not answer (#605): it failed, or it ran past
+ * [PickEngine]'s timeout. The person never sees either; a developer needs to know, because a broken
+ * ranker and a ranker with nothing to say look the same on screen.
+ *
+ * The failure is handed over as the exception's class name only. The message can carry request text
+ * or keys (EPIC 27), so it never leaves [PickEngine].
+ */
+interface PickRankerReporter {
+    fun failed(exceptionClass: String)
+
+    fun timedOut()
+
+    /** The default for code that has no crash reporter to hand, such as a test that does not care. */
+    data object Silent : PickRankerReporter {
+        override fun failed(exceptionClass: String) = Unit
+
+        override fun timedOut() = Unit
+    }
 }
 
 /**
@@ -22,7 +47,7 @@ class RuleBasedRanker : PickRanker {
 
     private class Term(val score: Double, val reason: PickReason)
 
-    override fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick> = candidates
+    override suspend fun rank(criteria: PickCriteria, candidates: List<PickCandidate>, history: PickHistory): List<RankedPick> = candidates
         .map { candidate ->
             val terms = termsFor(criteria, candidate, history)
             val best = terms.maxByOrNull { it.score }?.takeIf { it.score > 0 }

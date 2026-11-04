@@ -47,6 +47,12 @@ let lastPersistence = null;
 // True from a failed snapshot write until the next one succeeds. Reported on the
 // persistence channel so the banner can say the last changes are not saved (#292).
 let lastWriteFailed = false;
+// True between `begin_transaction` and its `end_`/`rollback_transaction`. A
+// SQLDelight transaction spans several messages, so the debounce (or a `flush`)
+// can come due inside one, and sql.js 1.15.2 throws from `export()` during an
+// open write transaction (#637). A snapshot due then is kept pending (`dirty`)
+// and taken once the transaction is over.
+let inTransaction = false;
 
 // --- IndexedDB -------------------------------------------------------------
 
@@ -83,46 +89,88 @@ async function loadSnapshot() {
 // Snapshot writes run one at a time, in order. The debounce timer does not wait
 // for the write it starts, so two could overlap, and a slow older write that
 // succeeded after a newer one failed (a full quota) would clear the warning
-// while the newest changes were not saved. Chained, each write exports the
-// database as it is when its turn comes, and the last one to finish is the
-// newest: its outcome is the one the flag reports.
+// while the newest changes were not saved. One at a time, the last one to finish
+// is the newest: its outcome is the one the flag reports.
+//
+// The database is exported when a save is asked for, not when its turn comes: by
+// then a transaction may be open, and sql.js 1.15.2 cannot export during one
+// (#637). A save asked for inside a transaction exports nothing; it stays
+// pending (`dirty`) and the transaction's end or rollback asks again.
+//
+// While a write is in flight, at most one export waits behind it, and a newer
+// one replaces it: every export is the whole database, so the newest holds
+// everything the older one did, and a stalled IndexedDB cannot pile copies up.
 let saveChain = Promise.resolve();
+let saving = false;
+let waiting = null; // { bytes, exportError } for the next write, or null
 
 function saveSnapshot() {
-  saveChain = saveChain.then(writeSnapshot);
+  if (!isWriter || !db) return saveChain;
+  if (inTransaction) {
+    dirty = true;
+    return saveChain;
+  }
+  let bytes = null;
+  let exportError = null;
+  try {
+    bytes = db.export();
+  } catch (e) {
+    exportError = e;
+  }
+  // A failed export keeps the good copy already waiting: it is still written, and
+  // the failure is reported after it, since the newest changes are not in it.
+  waiting = exportError && waiting?.bytes ? { bytes: waiting.bytes, exportError } : { bytes, exportError };
+  if (!saving) {
+    saving = true;
+    saveChain = (async () => {
+      while (waiting) {
+        const next = waiting;
+        waiting = null;
+        await writeSnapshot(next.bytes, next.exportError);
+      }
+      saving = false;
+    })();
+  }
   return saveChain;
 }
 
-async function writeSnapshot() {
-  if (!isWriter || !db) return;
+async function writeSnapshot(bytes, exportError) {
   try {
-    const bytes = db.export();
-    const idb = await openStore();
-    await new Promise((resolve, reject) => {
-      const tx = idb.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(bytes, KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      // A full quota aborts the transaction rather than failing the request,
-      // and may fire only `abort`. Unhandled, this promise never settles and
-      // every later snapshot waits behind it in `saveChain`.
-      tx.onabort = () => reject(tx.error ?? new DOMException("snapshot write aborted", "AbortError"));
-    });
+    if (bytes) await putSnapshot(bytes);
+    if (exportError) throw exportError;
     if (lastWriteFailed) {
       lastWriteFailed = false;
       announce();
     }
   } catch (e) {
-    // A failed snapshot must not fail the query that triggered it: the write
-    // is already committed in memory and the tab keeps working. Losing it on
-    // reload is the pre-EPIC-24 behaviour, not a new failure — but the person
-    // using it should be told (#292): a full origin quota or a window that
-    // evicts storage looks exactly like a working tab otherwise.
-    console.warn("[muviss] could not write the snapshot", e);
-    if (!lastWriteFailed) {
-      lastWriteFailed = true;
-      announce();
-    }
+    reportFailedWrite(e);
+  }
+}
+
+async function putSnapshot(bytes) {
+  const idb = await openStore();
+  await new Promise((resolve, reject) => {
+    const tx = idb.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(bytes, KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    // A full quota aborts the transaction rather than failing the request,
+    // and may fire only `abort`. Unhandled, this promise never settles and
+    // every later snapshot waits behind it in `saveChain`.
+    tx.onabort = () => reject(tx.error ?? new DOMException("snapshot write aborted", "AbortError"));
+  });
+}
+
+function reportFailedWrite(e) {
+  // A failed snapshot must not fail the query that triggered it: the write
+  // is already committed in memory and the tab keeps working. Losing it on
+  // reload is the pre-EPIC-24 behaviour, not a new failure — but the person
+  // using it should be told (#292): a full origin quota or a window that
+  // evicts storage looks exactly like a working tab otherwise.
+  console.warn("[muviss] could not write the snapshot", e);
+  if (!lastWriteFailed) {
+    lastWriteFailed = true;
+    announce();
   }
 }
 
@@ -269,22 +317,38 @@ function onModuleReady() {
       if (isMutation(data.sql)) markDirty();
       return postMessage({ id: data.id, results });
     }
-    case "begin_transaction":
-      return postMessage({
-        id: data.id,
-        results: db.exec("BEGIN TRANSACTION;"),
-      });
+    case "begin_transaction": {
+      // Changes committed before this transaction cannot be exported once it is
+      // open, and the page may go away before it ends. Export them now, while
+      // export() still works, so a pagehide mid-transaction loses nothing older.
+      // A save already waiting exported when it was asked for (see saveSnapshot).
+      if (dirty && isWriter) {
+        if (debounceTimer !== null) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        dirty = false;
+        saveSnapshot();
+      }
+      const results = db.exec("BEGIN TRANSACTION;");
+      inTransaction = true;
+      return postMessage({ id: data.id, results });
+    }
     case "end_transaction": {
       const results = db.exec("END TRANSACTION;");
+      inTransaction = false;
       // One snapshot per committed transaction, not per statement inside it.
       markDirty();
       return postMessage({ id: data.id, results });
     }
-    case "rollback_transaction":
-      return postMessage({
-        id: data.id,
-        results: db.exec("ROLLBACK TRANSACTION;"),
-      });
+    case "rollback_transaction": {
+      const results = db.exec("ROLLBACK TRANSACTION;");
+      inTransaction = false;
+      // A snapshot that came due during the transaction still owes the writes
+      // committed before it.
+      if (dirty) markDirty();
+      return postMessage({ id: data.id, results });
+    }
     // Ours, not SQLDelight's: posted by the main thread on `pagehide`, since a
     // worker cannot observe the page going away. Best-effort — the browser may
     // kill the tab before IndexedDB commits, which is what bounds the loss

@@ -2,27 +2,16 @@ package com.codingpit.muviss.feature.nextpick.domain
 
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickSource
+import com.codingpit.muviss.feature.nextpick.api.SessionLength
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
-
-/** How many questions a session may ask at most. The person picks it in Settings (#403). */
-enum class PickSessionLength(val maxQuestions: Int) {
-    /** Up to two: the default. */
-    QUICK(2),
-
-    /** Up to four. */
-    STANDARD(4),
-
-    /** Straight to a pick. */
-    NONE(0),
-}
 
 /**
  * What the session needs to know about the person and the moment to decide what is worth asking.
  * Everything here is read once when the session opens; nothing in it is stored back.
  */
 data class PickContext(
-    val length: PickSessionLength = PickSessionLength.QUICK,
+    val length: SessionLength = SessionLength.DEFAULT,
     /** False offline: only the library can answer, so the session says so and asks nothing about the catalogue. */
     val online: Boolean = true,
     /** Whether the library has anything unstarted to offer. Without it "my list" has no answer. */
@@ -79,7 +68,14 @@ class PickSession private constructor(
 
     private fun advance(next: PickCriteria, done: PickQuestion) = PickSession(context, next, shown + 1, settled + done)
 
-    private fun nextEligible(): PickQuestion? = PickQuestion.entries.firstOrNull { it !in settled && it !in context.answeredByProfile && isWorthAsking(it) }
+    private fun nextEligible(): PickQuestion? = askOrder().firstOrNull { it !in settled && it !in context.answeredByProfile && isWorthAsking(it) }
+
+    /**
+     * The catalogue order, except that a session opened from a Completion asks [PickQuestion.ANCHOR] first.
+     * Otherwise a Quick session (two questions) never reaches it, and the title just finished would be the
+     * one thing the person was never asked about (#548).
+     */
+    private fun askOrder(): List<PickQuestion> = if (context.anchorCandidate == null) PickQuestion.entries else listOf(PickQuestion.ANCHOR) + PickQuestion.entries.filter { it != PickQuestion.ANCHOR }
 
     private fun isWorthAsking(question: PickQuestion): Boolean = when (question) {
         PickQuestion.SOURCE -> context.online && context.hasBacklog

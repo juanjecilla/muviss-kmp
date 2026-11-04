@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -63,8 +65,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -81,7 +81,10 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
@@ -90,6 +93,7 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.action_undo
 import com.codingpit.muviss.feature.progress.ui.generated.resources.cowatch_entry
 import com.codingpit.muviss.feature.progress.ui.generated.resources.mark_watched_description
 import com.codingpit.muviss.feature.progress.ui.generated.resources.next_episode_of
+import com.codingpit.muviss.feature.progress.ui.generated.resources.next_pick_entry
 import com.codingpit.muviss.feature.progress.ui.generated.resources.progress_title
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_upcoming
 import com.codingpit.muviss.feature.progress.ui.generated.resources.tab_watch_next
@@ -132,6 +136,8 @@ fun ProgressScreen(
     upcomingViewModel: UpcomingViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenCoWatch: (() -> Unit)?,
+    /** "What's next?" (EPIC 51, #545): offered as the empty Watch Next's way in. Null draws nothing. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     var selectedTab by remember { mutableStateOf(ProgressTab.WATCH_NEXT) }
 
@@ -160,7 +166,7 @@ fun ProgressScreen(
             }
         }
         when (selectedTab) {
-            ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail)
+            ProgressTab.WATCH_NEXT -> WatchNextScreen(watchNextViewModel, onOpenDetail, onOpenNextPick)
             ProgressTab.UPCOMING -> UpcomingScreen(upcomingViewModel, onOpenDetail)
         }
     }
@@ -168,9 +174,12 @@ fun ProgressScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WatchNextScreen(
+internal fun WatchNextScreen(
     viewModel: ProgressViewModel,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenNextPick: (() -> Unit)?,
+    // Test seam: the lookup that turns a tick's message into text. Production resolves it as is.
+    resolveTickMessage: suspend (UiText) -> String = { it.resolveAsync() },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -191,9 +200,12 @@ private fun WatchNextScreen(
     // Undo. A failed tick shows nothing, so it never hides an older saved tick's Undo.
     var taps by remember { mutableStateOf(0) }
     var shownTap by remember { mutableStateOf(0) }
+    // The tick snackbar to show, if any. The effect below is keyed on it, so a newer tick's request
+    // cancels the effect that is showing an older one: the newer snackbar never waits out the older
+    // one's timeout (#613, the same mechanism as #569's triage fix).
+    var tickSnackbar by remember { mutableStateOf<TickSnackbar?>(null) }
     // The snackbar's measured height, so the list's end clears a wrapped message too.
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     // One-tap tick with undo (design doc, Motion + Progress screen): tick
     // persists immediately; the snackbar's Undo reverts it via the VM. The
@@ -205,13 +217,15 @@ private fun WatchNextScreen(
         scope.launch {
             val outcome = viewModel.tick(item) ?: return@launch
             if (outcome is TickOutcome.Failed) return@launch onFailed()
+            // From here to the request below nothing suspends, so the newest tap to get this far
+            // is the one that claims the snackbar, whatever order the outcomes arrived in.
             if (tap < shownTap) return@launch
             shownTap = tap
             val message = when (outcome) {
                 is TickOutcome.Failed -> return@launch
-                is TickOutcome.CaughtUp -> getString(Res.string.tick_snackbar_caught_up, item.title)
-                is TickOutcome.SeasonFinished -> getString(Res.string.tick_snackbar_season_done, outcome.season)
-                is TickOutcome.Plain -> getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
+                is TickOutcome.CaughtUp -> UiText.Resource(Res.string.tick_snackbar_caught_up, item.title)
+                is TickOutcome.SeasonFinished -> UiText.Resource(Res.string.tick_snackbar_season_done, outcome.season)
+                is TickOutcome.Plain -> UiText.Resource(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
             }
             // The tick made this the show most recently watched, so the list has put its row
             // first. Follow it: from further down, the row would otherwise slide off the top of
@@ -222,23 +236,36 @@ private fun WatchNextScreen(
             if (state.animateTicks && outcome !is TickOutcome.Plain) {
                 celebration = Celebration(outcome, item.title, ++tokens)
             }
-            // The newest tick takes the slot: showSnackbar queues, so N quick ticks would
-            // otherwise keep one on screen for N times its timeout.
+            tickSnackbar = TickSnackbar(tap, message, episode.id)
+        }
+    }
+
+    tickSnackbar?.let { request ->
+        LaunchedEffect(request) {
+            // Resolve first: these calls suspend, and a refresh-failed message registered during
+            // them would otherwise take the slot and queue the tick behind it.
+            val message = resolveTickMessage(request.message)
+            val undoLabel = getString(Res.string.action_undo)
+            // A refresh-failed message may be up; the tick takes its slot. A previous tick's snackbar
+            // needs no dismissing: this effect was cancelled when the newer request arrived.
             snackbarHostState.currentSnackbarData?.dismiss()
             val result = snackbarHostState.showSnackbar(
                 message = message,
-                actionLabel = getString(Res.string.action_undo),
+                actionLabel = undoLabel,
                 // Material3 defaults to Indefinite whenever an action label is given.
                 duration = SnackbarDuration.Short,
             )
-            if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
+            if (result == SnackbarResult.ActionPerformed) viewModel.untick(request.episodeId)
         }
     }
+
+    // The "What's next?" header, when drawn, is the list's first item; the row that moved to the top is the one after it.
+    val firstRowIndex = if (onOpenNextPick != null) 1 else 0
 
     LaunchedEffect(scrollToTopTarget, state.items.firstOrNull()?.mediaId) {
         val target = scrollToTopTarget ?: return@LaunchedEffect
         if (state.items.firstOrNull()?.mediaId != target) return@LaunchedEffect
-        if (state.animateTicks) listState.animateScrollToItem(0) else listState.requestScrollToItem(0)
+        if (state.animateTicks) listState.animateScrollToItem(firstRowIndex) else listState.requestScrollToItem(firstRowIndex)
         scrollToTopTarget = null
     }
 
@@ -252,7 +279,7 @@ private fun WatchNextScreen(
         SnackbarHost(
             snackbarHostState,
             Modifier
-                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .measureSnackbarHeight(snackbarClearance)
                 .semantics { testTag = WATCH_NEXT_SNACKBAR_TAG },
         )
     }) { padding ->
@@ -271,6 +298,9 @@ private fun WatchNextScreen(
                         icon = MuvissIcons.WatchNext,
                         title = stringResource(Res.string.watch_next_empty_title),
                         body = stringResource(Res.string.watch_next_empty_body),
+                        // Nothing in progress to pick up, so the way into a Pick Session is the prominent one here (EPIC 51, #545).
+                        actionLabel = onOpenNextPick?.let { stringResource(Res.string.next_pick_entry) },
+                        onAction = onOpenNextPick,
                     )
 
                     else -> WatchNextList(
@@ -279,9 +309,10 @@ private fun WatchNextScreen(
                         animate = state.animateTicks,
                         // At least the usual allowance, so the end does not jump when a one-line
                         // snackbar appears; more when a long title or a large font wraps it.
-                        bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight),
+                        bottomPadding = snackbarClearance.bottomPadding,
                         onTick = onTick,
                         onOpenDetail = onOpenDetail,
+                        onOpenNextPick = onOpenNextPick,
                     )
                 }
                 // Over the list, not in a row: a show that is caught up leaves the list,
@@ -299,6 +330,9 @@ private fun WatchNextScreen(
 /** A milestone being celebrated; [token] is new for each so a second one restarts the burst. */
 private data class Celebration(val outcome: TickOutcome, val title: String, val token: Int)
 
+/** A tick's Undo snackbar: [tap] is new for each tick, so every request is a new key. [episodeId] is what Undo reverts. */
+private data class TickSnackbar(val tap: Int, val message: UiText, val episodeId: EpisodeId)
+
 @Composable
 private fun Celebration.label(): String = when (outcome) {
     is TickOutcome.SeasonFinished -> stringResource(Res.string.tick_snackbar_season_done, outcome.season)
@@ -313,6 +347,7 @@ private fun WatchNextList(
     bottomPadding: Dp,
     onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
+    onOpenNextPick: (() -> Unit)?,
 ) {
     LazyColumn(
         state = listState,
@@ -326,6 +361,13 @@ private fun WatchNextList(
             bottom = bottomPadding,
         ),
     ) {
+        // A quiet entry above the rows, while there are titles to pick up (EPIC 51, #599). The empty state
+        // carries the prominent one, so the two never both show.
+        if (onOpenNextPick != null) {
+            item(key = WATCH_NEXT_NEXT_PICK_KEY, contentType = WATCH_NEXT_NEXT_PICK_KEY) {
+                NextPickButton(onClick = onOpenNextPick, modifier = Modifier.fillMaxWidth().testTag(WATCH_NEXT_NEXT_PICK_TAG))
+            }
+        }
         items(items, key = { it.mediaId.toString() }) { item ->
             WatchNextRow(
                 item,
@@ -338,6 +380,21 @@ private fun WatchNextList(
                     .semantics { testTag = WATCH_NEXT_ROW_TAG },
             )
         }
+    }
+}
+
+/** The "What's next?" entry above a non-empty Watch Next (EPIC 51, #599). */
+const val WATCH_NEXT_NEXT_PICK_TAG = "watchNextNextPick"
+private const val WATCH_NEXT_NEXT_PICK_KEY = "nextPick"
+
+/**
+ * The same outlined button Discover and a finished title's Detail use for "What's next?" (EPIC 51, #545),
+ * kept private here: the entry lives in `:feature:search:ui`, which this module may not depend on.
+ */
+@Composable
+private fun NextPickButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    OutlinedButton(onClick = onClick, modifier = modifier.heightIn(min = 48.dp)) {
+        Text(stringResource(Res.string.next_pick_entry), style = MaterialTheme.typography.labelLarge)
     }
 }
 

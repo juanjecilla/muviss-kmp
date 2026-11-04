@@ -11,18 +11,18 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Covers `21.sqm`: the four store-review counters on `appSettings` (#410).
+ * Covers `25.sqm`: the four store-review counters on `appSettings` (#410).
  *
- * The starting point is the v21 fixture, which is what `develop` ships today, so this is the upgrade a
- * real install takes, one migration step to v22. Its neighbours must come through untouched, and an upgraded install must start
+ * The starting point is the v25 fixture, which is what `develop` ships today, so this is the upgrade a
+ * real install takes, one migration step to v26. Its neighbours must come through untouched, and an upgraded install must start
  * unstamped (not eligible) with no ticks and no ask, so the prompt can never fire on the day of upgrade.
  *
- * NUMBERING: PR #543 and PR #553 also claim `21.sqm`; the merge queue renumbers whichever lands later.
+ * NUMBERING: first written as `21.sqm`, renumbered to `25.sqm` after the Taste Profile's `24.sqm` (#588).
  */
 class ReviewPromptMigrationTest {
 
     // The one place this suite knows the starting version; see the note in DeviceBackupMigrationTest.
-    private val startsFrom = 21L
+    private val startsFrom = 25L
 
     private val fixtures = File("src/commonMain/sqldelight/databases")
 

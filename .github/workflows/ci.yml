@@ -86,7 +86,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+      - uses: supabase/setup-cli@d239d1052f6f024a8d746d7e5aeddead63b9cb53 # v3.1.0
         with:
           version: latest
 
@@ -122,7 +122,7 @@ jobs:
         run: |
           deno fmt --check
           deno lint
-          deno check */index.ts
+          deno check ./*/index.ts
           deno test --allow-net=jsr.io
 
   build:
@@ -154,7 +154,7 @@ jobs:
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       - name: Spotless (format check)
         run: ./gradlew spotlessCheck --stacktrace
@@ -300,6 +300,9 @@ jobs:
       # every PR (debug-signed without the keystore, which is fine here) and
       # fails if R8 wrote no mapping or reported missing classes. The licence
       # allow-list (licensee) is part of `check`, which nothing ran either.
+      # verifyOssLicenses (#562, #616) fails when About > Licenses is missing an
+      # entry for an artifact the release report lists, or keeps one for an
+      # artifact the report no longer lists.
       #
       # The bundle and its two verify tasks are the RC's own command
       # (android-release-build.yml). They are here because the 1.1.0 RC failed
@@ -310,7 +313,7 @@ jobs:
       - name: Release build with R8, the release bundle, and the licence allow-list
         run: >
           ./gradlew :app:androidApp:assembleRelease :app:androidApp:licenseeAndroidRelease
-          :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources
+          :app:androidApp:verifyOssLicenses :app:androidApp:bundleRelease :app:androidApp:verifyReleaseBundleComposeResources
           :app:androidApp:verifyReleaseExceptionClasses --stacktrace
 
       # The assertion is a script so its red cases can be tested (#486):
@@ -381,7 +384,7 @@ jobs:
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       # Nothing in this repo configures the browser: `jsBrowserTest` uses the
       # Kotlin plugin's default karma + `karma-chrome-launcher`, which resolves
@@ -454,7 +457,7 @@ jobs:
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       # Three steps, because they fail on different things and until EPIC 23
       # only the first existed: desktop was compiled on every PR and never
@@ -602,7 +605,7 @@ jobs:
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       # The single most expensive thing in this file, and it was uncached.
       # `setup-gradle` above caches ~/.gradle; Kotlin/Native keeps its platform

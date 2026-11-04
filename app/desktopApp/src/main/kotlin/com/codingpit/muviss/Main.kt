@@ -221,10 +221,10 @@ fun main() {
  * the app's own composition — a `Flow` would not recompose this menu, since it
  * is composed in the Window's composition and not in the app's.
  *
- * Shortcuts are meta on macOS and ctrl everywhere else. Only two are bound:
- * Search and Settings are the two the issue named, and they are the two that
- * are genuinely reached often enough to be worth a chord. Quit gets one
- * because a desktop app without it feels broken.
+ * Shortcuts are meta on macOS and ctrl everywhere else. Three are bound: Search
+ * and Settings (the two destinations reached often enough to be worth a chord,
+ * #222) and What's next? (#545). Quit gets one because a desktop app without it
+ * feels broken.
  */
 @Composable
 private fun FrameWindowScope.MuvissMenuBar(
@@ -245,6 +245,16 @@ private fun FrameWindowScope.MuvissMenuBar(
                     onClick = { controller.navigateTo(destination) },
                 )
             }
+            Separator()
+            // Not a destination: the Pick Session is a session, not a tab, so it has no
+            // MuvissDestination.key to key its shortcut by. It gets its own binding below.
+            Item(
+                text = HostText.menuWhatsNext(),
+                // The introduction is full-screen and a session pushed over it has no way back.
+                enabled = !controller.showingOnboarding,
+                shortcut = nextPickShortcut,
+                onClick = controller::openNextPick,
+            )
         }
     }
 }
@@ -287,6 +297,13 @@ internal val viewShortcuts: Map<String, KeyShortcut> = mapOf(
     "search" to accelerator(Key.F),
     "settings" to accelerator(Key.Comma),
 )
+
+/**
+ * What's next? (#545), kept out of [viewShortcuts] on purpose: that map is keyed by
+ * [MuvissDestination.key] and asserted to hold exactly the destinations worth a chord, and the Pick
+ * Session is a session rather than one of the five tabs. Ctrl/Cmd+N.
+ */
+internal val nextPickShortcut: KeyShortcut = accelerator(Key.N)
 
 /**
  * The tray icon: the same artwork the installers use, loaded off the classpath

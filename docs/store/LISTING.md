@@ -33,8 +33,8 @@ Generated, not captured: a `StoreShot` mode of the golden harness renders
 seeded screens into `fastlane/metadata/android/<locale>/images/` (EPIC 33,
 #76). Seed data is an invented catalogue with generated art — no real TMDB
 posters in marketing material. The set, in display order: Library (mixed
-statuses), title detail with episode ticks, Progress (watch next), Triage,
-Profile stats, Search/Discover. See "Listing images" below.
+statuses), TV detail with episode ticks, movie detail (watched and rated),
+Progress (watch next), Triage, Profile stats, Search/Discover. See "Listing images" below.
 
 ## App Store (iOS) — EPIC 11 / issue #13
 
@@ -74,20 +74,18 @@ Reuse the same shot list/order as the Play screenshot set above —
 just captured at App Store Connect's required sizes instead of Play's
 single flexible size:
 
-- [ ] 6.9"/6.7" display (iPhone 16 Pro Max class) — required.
-- [ ] 6.5" display (iPhone 11 Pro Max/XS Max class) — required if no
-      6.9"/6.7" set is uploaded for older-device fallback; safest to
-      provide both.
-- [ ] iPad Pro 13"/12.9" — only needed if the App Store listing claims
-      iPad support (it does — `TARGETED_DEVICE_FAMILY = "1,2"` in
-      `project.pbxproj`).
+- [x] 6.9" display (1320×2868), rendered by StoreShot (#425).
+- [x] 6.5" display (1284×2778), same.
+- [x] iPad 13" (2064×2752): the navigation-rail layout, not a stretched phone one.
 
-None of these are captured yet — same "not blocking the first internal
-release" status as Play's screenshot checklist, but App Store Connect (unlike
-Play's internal testing track) **will refuse to submit for review** without
-at least the required iPhone set, so this blocks the App Store submission
-step specifically (TestFlight internal testing does not require
-screenshots — only the eventual public App Store listing does).
+The sets are `fastlane/screenshots/ios/<locale>/<class>_<n>_<shot>.png`, deliver's folder
+(`fastlane/Fastfile` uploads it when it exists), the same seven shots as Play's, light, en-US and es-ES.
+They are rendered, not captured on a device: look at them in App Store Connect's preview before
+submitting.
+
+App Store Connect (unlike Play's internal testing track) **refuses to submit for review**
+without at least the required iPhone set, so these block the public submission step; TestFlight
+internal testing does not need them.
 
 ## Listing images
 
@@ -103,4 +101,5 @@ screenshots — only the eventual public App Store listing does).
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-en.svg -o fastlane/metadata/android/en-US/images/featureGraphic.png
   FONTCONFIG_FILE=/tmp/fonts.conf rsvg-convert -w 1024 -h 500 -b '#14120E' docs/store/feature-graphic-es.svg -o fastlane/metadata/android/es-ES/images/featureGraphic.png
   ```
-- `phoneScreenshots/` — six 1080×1920 shots from StoreShot (`./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot`): the real app over an invented catalogue with generated posters, so no third-party artwork appears. One light set per listing locale (en-US, es-ES); the catalogue's titles and overviews are invented English in both, as a real TMDB title's would be untranslated if TMDB has no Spanish text. The dark English set goes to the landing.
+- `phoneScreenshots/` — seven 1080×1920 shots (Play allows eight) from StoreShot (`./gradlew :app:shared:jvmTest --tests '*StoreShotTest*' -Pstoreshot`): the real app over an invented catalogue with generated posters, so no third-party artwork appears. One light set per listing locale (en-US, es-ES); the catalogue's titles and overviews are invented English in both, as a real TMDB title's would be untranslated if TMDB has no Spanish text. The dark English set goes to the landing.
+- `sevenInchScreenshots/` and `tenInchScreenshots/` — the same seven shots at 1200×1920 and 1600×2560 (portrait, past the width where the navigation rail replaces the bottom bar), same render, light, both locales (#381). Play does not require them but ranks tablet-optimized apps higher. The landing keeps the phone set.

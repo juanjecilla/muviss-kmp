@@ -246,3 +246,32 @@ fun Project.linkSentryCocoaFramework() {
 
 // ADR 0004's dependency rule is part of `check`, not just a CI step (#483).
 tasks.named("check") { dependsOn("verifyModuleGraph") }
+
+// #598: Compose Resources shows `\'` as a literal backslash (Android's aapt would have unescaped
+// it), so an escaped apostrophe in any composeResources strings.xml is a shipped bug. Wired into
+// `check` next to verifyModuleGraph; the rendered text is pinned by ApostropheRenderingTest.
+tasks.register("verifyComposeStringEscapes") {
+    group = "verification"
+    description = "Fails when a composeResources strings.xml escapes an apostrophe with a backslash."
+    val root = rootDir
+    val strings = fileTree(root) {
+        include("**/composeResources/**/strings.xml")
+        exclude("**/build/**")
+    }
+    inputs.files(strings).withPropertyName("composeStrings").withPathSensitivity(PathSensitivity.RELATIVE)
+    doLast {
+        val offenders = strings.files.sortedBy { it.path }.flatMap { file ->
+            file.readLines().withIndex()
+                .filter { "\\'" in it.value }
+                .map { "${file.relativeTo(root)}:${it.index + 1}" }
+        }
+        if (offenders.isNotEmpty()) {
+            throw GradleException(
+                "Compose Resources would show the backslash in these strings (write a plain ' instead):\n" +
+                    offenders.joinToString("\n") { "  $it" },
+            )
+        }
+    }
+}
+
+tasks.named("check") { dependsOn("verifyComposeStringEscapes") }
