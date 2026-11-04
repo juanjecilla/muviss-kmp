@@ -2,7 +2,9 @@ package com.codingpit.muviss.feature.nextpick.data.di
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.civilDateOf
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.nextpick.data.AnchorCandidates
@@ -11,6 +13,7 @@ import com.codingpit.muviss.feature.nextpick.data.CollectionBacklogCandidates
 import com.codingpit.muviss.feature.nextpick.data.CollectionHistoryReader
 import com.codingpit.muviss.feature.nextpick.data.DefaultNextPickActions
 import com.codingpit.muviss.feature.nextpick.data.DiscoverSource
+import com.codingpit.muviss.feature.nextpick.data.LibraryGenreIds
 import com.codingpit.muviss.feature.nextpick.data.NextPickContextReader
 import com.codingpit.muviss.feature.nextpick.data.SettingsMuting
 import com.codingpit.muviss.feature.nextpick.data.TriageExclusions
@@ -39,18 +42,28 @@ val nextPickDataModule: Module = module {
         val triage: () -> TriageApi = { get() }
         val settings: () -> SettingsApi = { get() }
         val clock: AppClock = get()
+        val connectivity: ConnectivityMonitor = get()
+        val genreIds: LibraryGenreIds = get()
         val thisYear = { civilDateOf(clock.nowEpochMs().floorDiv(MS_PER_DAY)).year }
         val metadata: MetadataProvider = get()
         // Order is not priority: PickEngine merges one copy per title by source (backlog, then anchor, then discover).
         PickEngine(
             sources = listOf(
-                CollectionBacklogCandidates(collection),
+                CollectionBacklogCandidates(collection, genreIds),
                 DiscoverSource(metadata, collection, thisYear),
                 AnchorCandidates(metadata, collection),
             ),
             exclusions = TriageExclusions(triage),
-            history = CollectionHistoryReader(clock, collection),
+            history = CollectionHistoryReader(clock, collection, connectivity, genreIds),
             muting = SettingsMuting(settings),
+        )
+    }
+
+    // Library titles store genre names; this maps them to TMDB ids (#547). One instance, so the memo is shared.
+    single {
+        LibraryGenreIds(
+            liveCatalogue = { type -> get<MetadataProvider>().genres(type) },
+            language = { get<MetadataLocale>().language },
         )
     }
 
