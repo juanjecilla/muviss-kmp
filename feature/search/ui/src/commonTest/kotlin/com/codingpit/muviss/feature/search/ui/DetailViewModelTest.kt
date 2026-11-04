@@ -93,7 +93,10 @@ internal class FakeCollectionApi : CollectionApi {
     override suspend fun savedDetails(mediaId: MediaId): MediaDetails? = saved
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = membership
-    override fun observeSummaries(): Flow<List<CollectionSummary>> = error("not used")
+
+    /** The library as Detail reads it for a title's derived status (EPIC 51, #545). Empty unless a test sets it. */
+    val summaries = MutableStateFlow<List<CollectionSummary>>(emptyList())
+    override fun observeSummaries(): Flow<List<CollectionSummary>> = summaries
 
     override suspend fun add(details: MediaDetails) {
         added += details.summary.id

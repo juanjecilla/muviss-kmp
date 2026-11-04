@@ -319,6 +319,6 @@ private fun WatchNext(
         flags,
     )
     MuvissTheme(darkTheme = false) {
-        WatchNextScreen(viewModel = watchNext, onOpenDetail = {}, resolveTickMessage = resolveTickMessage)
+        WatchNextScreen(viewModel = watchNext, onOpenDetail = {}, onOpenNextPick = null, resolveTickMessage = resolveTickMessage)
     }
 }
