@@ -645,7 +645,9 @@ ivy repository, so it is an ordinary artifact to Gradle).
   macOS. It only adds; `--prune` starts from nothing so stale entries go, which makes
   the three-host order mandatory after a prune: a macOS-only prune drops the Linux and
   Windows checksums and fails those lanes. By hand, the easy way is
-  `gh workflow run gradle-verification.yml --ref <branch>`, which runs the three legs. A lane CI adds that resolves something new belongs
+  `gh workflow run gradle-verification.yml --ref <feature-branch>`, which runs the three
+  legs; it refuses `develop`, `main`, `release/*` and `hotfix/*`, because the push job's
+  App can bypass those branches' rulesets. Fix their checksums through a PR. A lane CI adds that resolves something new belongs
   in that script, or CI fails on a missing checksum.
 - **A Dependabot bump** regenerates the file by itself:
   `.github/workflows/gradle-verification.yml` runs the script on `dependabot/gradle/*`

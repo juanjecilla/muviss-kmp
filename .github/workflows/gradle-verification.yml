@@ -19,8 +19,9 @@ name: Gradle verification metadata
 # One OS after another (macOS, Linux, Windows): some artifacts are picked by the host
 # (aapt2, Skiko's runtime, the Kotlin/Native toolchain) and the iOS lanes only run on
 # macOS, so each OS adds its own checksums and keeps the others'. This repository is
-# public, so the minutes are free. `workflow_dispatch` does the same for any branch,
-# which is how the file is first filled in and how it is repaired by hand.
+# public, so the minutes are free. `workflow_dispatch` does the same for a feature
+# branch (never develop, main, release/* or hotfix/*), which is how the file is first
+# filled in and how it is repaired by hand.
 on:
   workflow_dispatch:
   pull_request:
@@ -41,8 +42,10 @@ concurrency:
 
 jobs:
   macos:
+    # A dispatch regenerates a feature branch only: the push job's App can bypass the
+    # rulesets on the protected branches, so a checksum commit there would skip review.
     if: >-
-      github.event_name == 'workflow_dispatch' || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
+      (github.event_name == 'workflow_dispatch' && github.ref_name != 'develop' && github.ref_name != 'main' && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/')) || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
     uses: ./.github/workflows/gradle-verification-leg.yml
     permissions:
       contents: read
