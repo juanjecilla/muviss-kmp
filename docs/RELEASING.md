@@ -621,6 +621,53 @@ TMDB and Sentry secrets, uploads the AAB as an artifact and, for RCs, runs
 `fastlane android internal`. `release.yml`'s dispatch path calls it without the
 upload to exercise the build.
 
+### Dependency verification (#480)
+
+`gradle/verification-metadata.xml` pins every artifact Gradle resolves by sha256, so
+a substituted jar on a permitted repository fails the build instead of shipping. It
+covers Maven Central, Google, the Gradle plugin portal and the Sentry Cocoa zip (an
+ivy repository, so it is an ordinary artifact to Gradle).
+
+- **Signatures: considered, not used.** Many Kotlin Multiplatform and Compose
+  artifacts publish no usable PGP key, so signature verification would be a long list
+  of `ignored-keys`, which is a weaker statement than a checksum, not a stronger one.
+  Checksums it is; revisit if the ecosystem signs consistently.
+- **Not covered, on purpose:** the Kotlin/Native toolchain (`~/.konan`, downloaded by
+  the Kotlin plugin outside dependency resolution), npm packages (pinned by
+  `kotlin-js-store/yarn.lock`, which CI already checks is current), the JDK and
+  Gradle wrapper (the wrapper has its own SHA-256 in `gradle-wrapper.properties`),
+  and GitHub Actions (pinned to commit SHAs).
+- **Regenerating:** `scripts/gradle/update-verification.sh` resolves every
+  configuration (`scripts/gradle/resolve-all.init.gradle.kts`) and runs every CI lane.
+  Run it on **all three** hosts in turn, macOS, then Linux, then Windows, each starting
+  from the file the previous one wrote: some artifacts are chosen by the host (aapt2,
+  Skiko's runtime, the Kotlin/Native toolchain), and the iOS lanes only resolve on
+  macOS. It only adds; `--prune` starts from nothing so stale entries go, which makes
+  the three-host order mandatory after a prune: a macOS-only prune drops the Linux and
+  Windows checksums and fails those lanes. By hand, the easy way is
+  `gh workflow run gradle-verification.yml --ref <feature-branch>`, which runs the three
+  legs; it refuses `develop`, `main`, `release/*` and `hotfix/*`, because the push job's
+  App can bypass those branches' rulesets. Fix their checksums through a PR. It is also
+  how a Dependabot PR that a maintainer reopened is regenerated: the automatic run
+  starts only for Dependabot's own events. A lane CI adds that resolves something new belongs
+  in that script, or CI fails on a missing checksum.
+- **A Dependabot bump** regenerates the file by itself:
+  `.github/workflows/gradle-verification.yml` runs the script on `dependabot/gradle/*`
+  PRs and pushes the new checksums as a commit, so a reviewer reads the added lines.
+  The legs that run the build hold no secrets; a separate job with an App token
+  scoped to `contents: write` commits the result and runs no repository code. It
+  commits only checksum **additions**: the `<configuration>` block (the verification
+  policy) must be unchanged, every existing checksum kept, and each new entry shaped
+  as Gradle writes it, so a build that tried to write a trust-all rule fails the job.
+  Removing stale entries is a person's job (`--prune`, by hand, in a reviewed PR).
+  **Owner setup, once:** copy `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` into
+  Settings → Secrets and variables → **Dependabot** (Dependabot-triggered runs cannot
+  read the Actions secrets). Without them the PR stays red until someone runs the
+  script and pushes.
+- **Proof it can fail:** `scripts/gradle/test/verification-test.sh` (a CI step) builds
+  a throwaway project with an unlisted dependency and expects "Dependency verification
+  failed".
+
 ### Publishing to Google Play (ADR 0024, EPIC 34 / #77)
 
 Wired in `android-release-build.yml` (`fastlane android internal`, from

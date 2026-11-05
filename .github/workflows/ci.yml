@@ -167,6 +167,12 @@ jobs:
       - name: Build-logic tests (versionCode formula)
         run: ./gradlew -p build-logic test --stacktrace
 
+      # gradle/verification-metadata.xml pins every resolved artifact by sha256
+      # (#480). This proves the mechanism can go red: a generated throwaway project
+      # with an unlisted dependency must fail on "Dependency verification failed".
+      - name: Dependency verification fails an unlisted artifact
+        run: scripts/gradle/test/verification-test.sh
+
       # ADR 0004's dependency rule over the declared project graph (#483):
       # peers through :api only, `ui -> domain <- data`, infrastructure below
       # features. Reads Gradle's graph, so an unused forbidden edge fails too.
