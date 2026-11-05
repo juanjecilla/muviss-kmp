@@ -45,9 +45,13 @@ jobs:
     # A dispatch regenerates a feature branch only: never a tag (the push would create a
     # branch named after it), and never a protected branch, whose rulesets the push job's
     # App can bypass, so a checksum commit there would skip review. A Dependabot PR only
-    # from this repository: a fork has no access to the App's secrets.
+    # from this repository: a fork has no access to the App's secrets. Both the author and
+    # the actor must be Dependabot, as in dependabot-worker-locks.yml: the actor check is what
+    # stops the App's own checksum push (a synchronize on Dependabot's PR) from starting
+    # another three-host run, and only a Dependabot-triggered run can read Dependabot secrets.
+    # A maintainer who reopens such a PR re-runs it with a dispatch on its branch.
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref_name != 'develop' && github.ref_name != 'main' && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/')) || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/') && github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref_name != 'develop' && github.ref_name != 'main' && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/')) || (github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/') && github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/gradle-verification-leg.yml
     permissions:
       contents: read

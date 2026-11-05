@@ -647,7 +647,9 @@ ivy repository, so it is an ordinary artifact to Gradle).
   Windows checksums and fails those lanes. By hand, the easy way is
   `gh workflow run gradle-verification.yml --ref <feature-branch>`, which runs the three
   legs; it refuses `develop`, `main`, `release/*` and `hotfix/*`, because the push job's
-  App can bypass those branches' rulesets. Fix their checksums through a PR. A lane CI adds that resolves something new belongs
+  App can bypass those branches' rulesets. Fix their checksums through a PR. It is also
+  how a Dependabot PR that a maintainer reopened is regenerated: the automatic run
+  starts only for Dependabot's own events. A lane CI adds that resolves something new belongs
   in that script, or CI fails on a missing checksum.
 - **A Dependabot bump** regenerates the file by itself:
   `.github/workflows/gradle-verification.yml` runs the script on `dependabot/gradle/*`
