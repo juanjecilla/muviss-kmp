@@ -42,10 +42,11 @@ concurrency:
 
 jobs:
   macos:
-    # A dispatch regenerates a feature branch only: the push job's App can bypass the
-    # rulesets on the protected branches, so a checksum commit there would skip review.
+    # A dispatch regenerates a feature branch only: never a tag (the push would create a
+    # branch named after it), and never a protected branch, whose rulesets the push job's
+    # App can bypass, so a checksum commit there would skip review.
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref_name != 'develop' && github.ref_name != 'main' && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/')) || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
+      (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref_name != 'develop' && github.ref_name != 'main' && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/')) || (github.actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/'))
     uses: ./.github/workflows/gradle-verification-leg.yml
     permissions:
       contents: read
