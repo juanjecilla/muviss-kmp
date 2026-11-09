@@ -21,26 +21,27 @@ import kotlin.test.Test
  * The sweep is captured at a fixed point on a paused clock, so the band sits in the same place on every
  * run. [the_reduced_motion_skeleton_is_a_flat_fill] is the switch from #394: no sweep, just the base tone.
  *
- * Tolerance is the default. The skeleton is flat tones and rounded shapes, so there are no glyphs to drift.
+ * The frame still carries text (the Triage card, the chip, the section headers), so it takes the tolerance the other
+ * Home goldens with text use, not the tighter default: a skeleton can't drift on its own, but its headers can.
  */
 class HomeSkeletonGoldenTest {
 
     @Test
     fun the_loading_home_shows_skeleton_rows_under_real_headers() = runComposeUiTest {
         loadingHome(darkTheme = false, animate = true)
-        assertMatchesGolden("home-skeleton")
+        assertMatchesGolden("home-skeleton", tolerance = HOME_TOLERANCE)
     }
 
     @Test
     fun the_loading_home_shows_skeleton_rows_under_real_headers_dark() = runComposeUiTest {
         loadingHome(darkTheme = true, animate = true)
-        assertMatchesGolden("home-skeleton-dark")
+        assertMatchesGolden("home-skeleton-dark", tolerance = HOME_TOLERANCE)
     }
 
     @Test
     fun the_reduced_motion_skeleton_is_a_flat_fill() = runComposeUiTest {
         loadingHome(darkTheme = false, animate = false)
-        assertMatchesGolden("home-skeleton-still")
+        assertMatchesGolden("home-skeleton-still", tolerance = HOME_TOLERANCE)
     }
 
     private fun ComposeUiTest.loadingHome(darkTheme: Boolean, animate: Boolean) {
@@ -50,6 +51,9 @@ class HomeSkeletonGoldenTest {
         waitForIdle()
     }
 }
+
+/** The tolerance of the Home goldens that carry text (see the class KDoc). */
+private const val HOME_TOLERANCE = 0.04
 
 /** About 0.7 of a sweep in: the highlight band is on the middle of the screen, not at an edge. */
 private const val FIXED_SWEEP_MILLIS = 700L
