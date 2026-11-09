@@ -252,6 +252,30 @@ class ProgressCollectionStatusIntegrationTest {
         }
     }
 
+    @Test
+    fun a_stored_count_from_before_the_local_day_rolled_over_does_not_crash_a_tick_after_it() = runTest {
+        // Stored at 05:00 UTC on day 149 (still day 149 for the person at UTC+10): the episode dated 150 has not aired.
+        // The person then ticks at 15:00 UTC on day 149, which is day 150 for them, with no snapshot refresh between.
+        val zoneClock = FakeClock(epochMsAtStartOfDay(149) + 5 * HOUR, utcOffsetMs = 10 * HOUR)
+        val db = inMemoryDatabase()
+        val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
+        val zoneProgress = RealSeenEpisodesProgressApi(SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, zoneClock, NoOpWidgetRefresher))
+        val zoneCollection = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, zoneClock)
+        val seasons = listOf(Season(1, "S1", listOf(episode(1, 1, airDay = 150))))
+        zoneCollection.upsertSnapshot(details(seasons, ProductionStatus.RETURNING))
+        zoneClock.advanceTo(epochMsAtStartOfDay(149) + 15 * HOUR)
+
+        zoneCollection.observeEntry(show).test {
+            awaitItem()
+
+            zoneProgress.markShowAiredSeen(seasons, zoneClock.todayEpochDay())
+
+            val entry = awaitItem()!!
+            assertTrue(entry.seenEpisodes <= entry.airedEpisodes, "seen ${entry.seenEpisodes} aired ${entry.airedEpisodes}")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
     private companion object {
         const val HOUR = 3_600_000L
     }
