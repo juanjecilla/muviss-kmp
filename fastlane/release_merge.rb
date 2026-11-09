@@ -1,0 +1,182 @@
+# Merging a release branch into main when git can only refuse it (#712).
+#
+# The Sunday step merges release/X.Y.Z into main with a merge commit. GitHub
+# refuses a merge it cannot create cleanly, and the only paths that conflict
+# between two release branches are generated files that each branch changed at
+# the same spot. For those, the result is known: the union of both sides'
+# version sections. ReleaseMerge builds that merge commit from git objects only,
+# so the caller decides whether to move main with it (release_promote.rb pushes
+# it as the release App; release_mergeability.rb never pushes at all).
+#
+# ALLOWED_CONFLICTS is the whole list. A conflict in any other path is not
+# resolved here, and the caller holds with the path named.
+require "open3"
+require "tmpdir"
+
+module ReleaseMerge
+  ALLOWED_CONFLICTS = %w[CHANGELOG.md].freeze
+
+  # A conflict this module will not guess at. The message names what it is.
+  class Unresolvable < StandardError; end
+
+  # A push that did not move main. Never retried with force.
+  class MainMoved < StandardError; end
+
+  # CHANGELOG.md: one `## X.Y.Z — date` section per version, under a header. The
+  # union keeps every version once, newest first. The header comes from main,
+  # unless the branch's is the one that points at docs/changelog/ (the frozen
+  # note, #711), which is the newer text. A version whose text differs on the two
+  # sides is refused: keeping one would drop the other.
+  module ChangelogUnion
+    HEADING = /\A## (\d+\.\d+\.\d+)\b/
+    FROZEN_NOTE = "docs/changelog".freeze
+
+    module_function
+
+    def merge(main, branch)
+      main_head, main_sections = split(main)
+      branch_head, branch_sections = split(branch)
+
+      by_version = {}
+      main_sections.each { |version, text| by_version[version] = text }
+      branch_sections.each do |version, text|
+        if by_version.key?(version)
+          raise Unresolvable, "#{version} has different text on each side of the merge" unless by_version[version] == text
+        else
+          by_version[version] = text
+        end
+      end
+
+      ordered = by_version.sort_by { |version, _| Gem::Version.new(version) }.reverse
+      header(main_head, branch_head) + ordered.map(&:last).join
+    end
+
+    def header(main_head, branch_head)
+      return main_head if main_head == branch_head
+      return branch_head if branch_head.include?(FROZEN_NOTE) && !main_head.include?(FROZEN_NOTE)
+
+      main_head
+    end
+
+    # [header text, [[version, section text], ...]] for one file.
+    def split(text)
+      head = +""
+      sections = []
+      text.each_line do |line|
+        if line.start_with?("## ")
+          match = HEADING.match(line)
+          raise Unresolvable, "a section heading names no version: #{line.strip.inspect}" unless match
+
+          version = match[1]
+          raise Unresolvable, "#{version} appears twice on one side" if sections.any? { |v, _| v == version }
+
+          sections << [version, +line]
+        elsif sections.empty?
+          head << line
+        else
+          sections.last[1] << line
+        end
+      end
+      [head, sections]
+    end
+  end
+
+  # Git plumbing for one repository. `dir` is the repository; nil is the working
+  # directory. Every method reads or writes objects only, except push_main and
+  # main_sha, which talk to origin.
+  class Repo
+    RESOLVERS = { "CHANGELOG.md" => ->(main, branch) { ChangelogUnion.merge(main, branch) } }.freeze
+
+    def initialize(dir: nil)
+      @dir = dir
+    end
+
+    # The paths a merge of `branch` into `main` would conflict on; [] when clean.
+    def conflicts(main, branch)
+      merge_tree(main, branch)[:conflicts]
+    end
+
+    # {conflicts:, commit:}. The commit is a two-parent merge (main first) whose
+    # tree is the clean merge, or, when every conflict is allow-listed, the same
+    # tree with each conflicted file replaced by its resolution. It is nil when a
+    # conflict is not allow-listed: nothing is guessed at for those. No ref moves.
+    def merge_commit(main, branch, message:)
+      merged = merge_tree(main, branch)
+      conflicts = merged[:conflicts]
+      return { conflicts: conflicts, commit: nil } unless (conflicts - ALLOWED_CONFLICTS).empty?
+
+      tree = conflicts.empty? ? merged[:tree] : resolved_tree(merged[:tree], main, branch, conflicts)
+      { conflicts: conflicts, commit: commit_tree(tree, [main, branch], message) }
+    end
+
+    # origin's main, fetched now. The merge is judged against this sha.
+    def main_sha
+      git("fetch", "--quiet", "origin", "main")
+      git("rev-parse", "origin/main")
+    end
+
+    # A plain push: git refuses it unless `sha` descends from main, so a main
+    # that moved is refused, never overwritten. `expected` is checked first, for
+    # a reason that names the move.
+    def push_main(sha, expected:)
+      remote = git("ls-remote", "origin", "refs/heads/main").split.first
+      raise MainMoved, "main is at #{remote}, not #{expected}" unless remote == expected
+
+      git("push", "--quiet", "origin", "#{sha}:refs/heads/main")
+    end
+
+    private
+
+    # `git merge-tree --write-tree` exits 0 when clean and 1 on conflicts; the
+    # first line of its output is the tree either way, then one conflicted path
+    # per line up to a blank line.
+    def merge_tree(main, branch)
+      out, _err, status = run("git", "merge-tree", "--write-tree", "--name-only", "--no-messages", main, branch)
+      raise "git merge-tree exited #{status.exitstatus}" unless [0, 1].include?(status.exitstatus)
+
+      lines = out.split("\n")
+      tree = lines.shift
+      { tree: tree, conflicts: lines.take_while { |line| !line.empty? } }
+    end
+
+    # The merge tree with each conflicted path replaced by its resolution. The
+    # index is a temporary file, so the repository's own index is not touched.
+    def resolved_tree(tree, main, branch, conflicts)
+      Dir.mktmpdir do |dir|
+        env = { "GIT_INDEX_FILE" => File.join(dir, "index") }
+        git("read-tree", tree, env: env)
+        conflicts.each do |path|
+          resolver = RESOLVERS.fetch(path) { raise Unresolvable, "no resolution for #{path}" }
+          text = resolver.call(show(main, path), show(branch, path))
+          blob = git("hash-object", "-w", "--stdin", stdin: text)
+          git("update-index", "--add", "--cacheinfo", "100644,#{blob},#{path}", env: env)
+        end
+        git("write-tree", env: env)
+      end
+    end
+
+    def commit_tree(tree, parents, message)
+      args = ["commit-tree", tree]
+      parents.each { |parent| args += ["-p", parent] }
+      git(*args, stdin: message)
+    end
+
+    # A file at a revision, or "" when that side does not have it.
+    def show(rev, path)
+      out, _err, status = run("git", "show", "#{rev}:#{path}")
+      status.success? ? out : ""
+    end
+
+    def git(*args, env: {}, stdin: nil)
+      out, _err, status = run("git", *args, env: env, stdin: stdin)
+      # Only the exit code is kept: git's stderr can carry remote URLs.
+      raise "git #{args.first} exited #{status.exitstatus}" unless status.success?
+
+      out.strip
+    end
+
+    def run(*cmd, env: {}, stdin: nil)
+      Open3.capture3(env, *cmd, chdir: @dir || Dir.pwd, stdin_data: stdin.to_s)
+    end
+  end
+end
