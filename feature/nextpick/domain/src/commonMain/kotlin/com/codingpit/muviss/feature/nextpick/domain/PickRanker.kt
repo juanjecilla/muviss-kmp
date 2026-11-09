@@ -4,6 +4,7 @@ import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickEra
 import com.codingpit.muviss.feature.nextpick.api.PickRuntime
+import com.codingpit.muviss.models.GenreKey
 
 /**
  * The seam an AI ranker would replace (ADR 0032, spike #404): criteria and candidates in, an ordered
@@ -67,6 +68,7 @@ class RuleBasedRanker : PickRanker {
         mood(criteria, c)?.let(::add)
         anchor(criteria, c, h)?.let(::add)
         genreAffinity(c, h)?.let(::add)
+        likedGenre(c, h)?.let(::add)
         if (c.favorite) add(Term(FAVORITE, PickReason.YourFavorite))
         c.addedAtEpochMs?.let { added -> if (c.source == CandidateSource.BACKLOG && h.todayEpochDay > 0) staleBacklog(added, h)?.let(::add) }
         c.summary.rating?.let { add(Term(((it - NEUTRAL_VOTE) / VOTE_SPREAD).coerceIn(-1.0, MAX_VOTE_BONUS), PickReason.HighlyRated(it))) }
@@ -99,6 +101,12 @@ class RuleBasedRanker : PickRanker {
         val best = rated.maxBy { it.second }
         val mean = rated.map { it.second }.average()
         return Term((mean - NEUTRAL_RATING) / RATING_SPREAD * AFFINITY, PickReason.YouRateTheseGenresHigh(best.first, best.second))
+    }
+
+    private fun likedGenre(c: PickCandidate, h: PickHistory): Term? {
+        if (h.likedGenres.isEmpty()) return null
+        val liked = c.summary.genreIds.any { GenreKey(c.summary.type, it) in h.likedGenres }
+        return if (liked) Term(LIKED_GENRE, PickReason.LikedGenre) else null
     }
 
     private fun staleBacklog(addedAtEpochMs: Long, h: PickHistory): Term? {
@@ -142,6 +150,7 @@ class RuleBasedRanker : PickRanker {
         const val NEUTRAL_RATING = 6.0
         const val RATING_SPREAD = 3.0
         const val FAVORITE = 2.0
+        const val LIKED_GENRE = 1.5
         const val STALE_DAYS = 90
         const val STALE_BONUS = 0.5
         const val DAY_MS = 86_400_000L

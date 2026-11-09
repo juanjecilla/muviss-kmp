@@ -38,6 +38,7 @@ import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_rea
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_reason_highly_rated
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_reason_language
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_reason_like
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_reason_liked_genre
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_reason_long_in_list
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_reason_mood
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_reason_rated
@@ -112,6 +113,7 @@ internal fun reasonText(reason: PickReason): StringResource = when (reason) {
     is PickReason.UnlikeAnchor -> Res.string.nextpick_reason_unlike
     is PickReason.YouRateTheseGenresHigh -> Res.string.nextpick_reason_rated
     PickReason.YourFavorite -> Res.string.nextpick_reason_favorite
+    PickReason.LikedGenre -> Res.string.nextpick_reason_liked_genre
     PickReason.LongInYourList -> Res.string.nextpick_reason_long_in_list
     is PickReason.HighlyRated -> Res.string.nextpick_reason_highly_rated
     is PickReason.FitsTime -> Res.string.nextpick_reason_time

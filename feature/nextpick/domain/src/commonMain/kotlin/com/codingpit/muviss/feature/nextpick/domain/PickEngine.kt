@@ -4,6 +4,7 @@ import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickSource
 import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.currentCoroutineContext
@@ -30,6 +31,19 @@ fun interface PickHistoryReader {
 /** The standing Muted Genres (ADR 0031), including the session chip that lifts them. */
 fun interface PickMuting {
     suspend fun current(): MutedGenres
+}
+
+/**
+ * [muted] without the genres a mood the person picked reads as, for either type: choosing beats muting
+ * (ADR 0031). Shared by the engine and by the discover source, so `/discover` never excludes a genre the
+ * engine would then show.
+ */
+fun effectiveMuting(criteria: PickCriteria, muted: MutedGenres): MutedGenres {
+    if (criteria.moods.isEmpty()) return muted
+    val chosen = listOf(MediaType.MOVIE, MediaType.TV).flatMap { type ->
+        MoodGenres.genreIds(criteria.moods, type).map { GenreKey(type, it) }
+    }.toSet()
+    return MutedGenres(muted.keys - chosen)
 }
 
 /**
@@ -70,11 +84,13 @@ class PickEngine(
 
     suspend fun pick(criteria: PickCriteria, context: PickContext, limit: Int = DEFAULT_LIMIT): PickResult {
         val excluded = exclusions.excluded()
-        val muted = effectiveMuting(criteria, muting.current())
+        val standing = muting.current()
+        val muted = effectiveMuting(criteria, standing)
         val pool = sources.flatMap { it.gather(criteria, context) }
             .merged()
             .filter { allowed(it, criteria, excluded, muted) }
-        val ownHistory = history.read(criteria)
+        // A genre liked and then muted does not shape a pick (#584, ADR 0031): the standing mute wins over a like.
+        val ownHistory = history.read(criteria).let { it.copy(likedGenres = it.likedGenres - standing.keys) }
         val ranked = rankOrFallBack(criteria, pool, ownHistory, excluded).take(limit)
         return PickResult(ranked, offline = !context.online)
     }
@@ -145,15 +161,6 @@ class PickEngine(
             WatchStatus.WATCHING -> false
             WatchStatus.WATCHED, WatchStatus.FINISHED -> inLibrary && criteria.rewatchOk == true && criteria.source != PickSource.SOMETHING_NEW
         }
-    }
-
-    /** [muted] without the genres a mood the person picked reads as, for either type: choosing beats muting. */
-    private fun effectiveMuting(criteria: PickCriteria, muted: MutedGenres): MutedGenres {
-        if (criteria.moods.isEmpty()) return muted
-        val chosen = listOf(com.codingpit.muviss.models.MediaType.MOVIE, com.codingpit.muviss.models.MediaType.TV).flatMap { type ->
-            MoodGenres.genreIds(criteria.moods, type).map { GenreKey(type, it) }
-        }.toSet()
-        return MutedGenres(muted.keys - chosen)
     }
 
     companion object {

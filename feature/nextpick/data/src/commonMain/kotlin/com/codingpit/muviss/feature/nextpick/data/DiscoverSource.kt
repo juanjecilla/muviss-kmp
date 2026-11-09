@@ -14,8 +14,12 @@ import com.codingpit.muviss.feature.nextpick.domain.MoodGenres
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidate
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidates
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
+import com.codingpit.muviss.feature.nextpick.domain.PickMuting
+import com.codingpit.muviss.feature.nextpick.domain.effectiveMuting
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.flow.first
 
 /**
@@ -26,6 +30,10 @@ import kotlinx.coroutines.flow.first
  * A result the library already holds is annotated with its status, so the engine can tell "something
  * new" from a title the person is watching or has finished.
  *
+ * The Muted Genres go to TMDB as `excludedGenreIds` (#662), so a muted-heavy catalogue still fills the page.
+ * A genre a mood picked is not excluded, as [effectiveMuting] says. "Only my services" (#663) goes as
+ * `watchProviderIds` with the region, which TMDB filters on its side, so no title is fetched to be checked.
+ *
  * A failed request ([MetadataError]: rate limited, unauthorized, an offline race) means "no catalogue
  * candidates" when the person said either is fine: the library can still answer, and one failed call must
  * not end the session. For "something new" there is nothing else to ask, so the failure stands.
@@ -34,15 +42,20 @@ internal class DiscoverSource(
     private val metadata: MetadataProvider,
     private val collection: () -> CollectionApi,
     private val thisYear: () -> Int,
+    private val muting: PickMuting,
+    private val taste: () -> TasteProfileApi,
+    private val region: () -> String,
 ) : PickCandidates {
 
     override suspend fun gather(criteria: PickCriteria, context: PickContext): List<PickCandidate> {
         if (!context.online || criteria.source == PickSource.MY_LIST) return emptyList()
         val statuses = collection().observeSummaries().first().associate { it.mediaId to it.status }
         val types = listOfNotNull(criteria.type).ifEmpty { listOf(MediaType.MOVIE, MediaType.TV) }
+        val muted = effectiveMuting(criteria, muting.current())
+        val services = if (criteria.onlyMyServices) serviceIds(taste()) else emptySet()
         return types.flatMap { type ->
             val page = try {
-                metadata.discoverFiltered(type, page = 1, filters = filtersFor(criteria, type))
+                metadata.discoverFiltered(type, page = 1, filters = filtersFor(criteria, type, muted, services))
             } catch (failure: MetadataError) {
                 if (criteria.source == PickSource.EITHER) return@flatMap emptyList() else throw failure
             }
@@ -56,12 +69,15 @@ internal class DiscoverSource(
         }
     }
 
-    private fun filtersFor(criteria: PickCriteria, type: MediaType): DiscoverFilters {
+    private fun filtersFor(criteria: PickCriteria, type: MediaType, muted: MutedGenres, services: Set<Int>): DiscoverFilters {
         val runtime = runtimeBounds(criteria.runtime)
         val era = eraBounds(criteria.era)
         val certification = criteria.company?.takeIf { it == PickCompany.FAMILY }?.let { FamilyCertifications.forRegion(null, type) }
         return DiscoverFilters(
             genreIds = MoodGenres.genreIds(criteria.moods, type),
+            excludedGenreIds = muted.forType(type),
+            watchProviderIds = services,
+            watchRegion = region().takeIf { services.isNotEmpty() },
             minRuntimeMinutes = runtime.first,
             maxRuntimeMinutes = runtime.second,
             originalLanguage = criteria.originalLanguage,
