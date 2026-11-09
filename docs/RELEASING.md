@@ -333,9 +333,9 @@ the schedule, the gates and where a fix goes.
 |---|---|---|
 | `ci.yml` | PRs into `develop`/`main`; pushes to `develop`, `main`, `release/**`, `hotfix/**` | build, tests, desktop, iOS, build-logic tests (versionCode) |
 | `pr-guards.yml` | PRs into `develop`/`main`, incl. retitle/relabel | `main-source-guard`, `release-notes-guard`, `landing-guard`, release tooling tests |
-| `release-train.yml` | nightly 23:00 UTC; acts on `RELEASE_TRAIN_DAY` (default `1`, Monday); dispatch | cut `release/<next>` if `develop` has new commits and no version is still in internal; create its milestone and "Release X.Y.Z" issue |
+| `release-train.yml` | nightly 23:00 UTC; the cut acts on `RELEASE_TRAIN_DAY` (default `1`, Monday), judged from the scheduled time, not the start (#714); dispatch | cut `release/<next>` if `develop` has new commits and no version is still in internal; create its milestone and "Release X.Y.Z" issue. The `mergeability` job runs every night, after the cut: each live release branch is merged onto main in memory, and a conflict git cannot resolve raises `release-blocker` (#713) |
 | `release-rc.yml` | push to `release/**`, `hotfix/**` | tag `vX.Y.Z-rcN`, build (`android-release-build.yml`), Play internal, pre-release |
-| `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App and promote beta → production (20%) |
+| `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App and promote beta → production (20%). A merge GitHub refuses over `CHANGELOG.md` alone is resolved by the union of both sides and pushed as the App (#712) |
 | `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, on a manual merge promote → production (20%), desktop installers, GitHub Release, back-merge PR |
 | `release-forward.yml` | a PR merged into `release/*` or `hotfix/*` | open the fix again into every newer `release/*` and `develop` |
 | `release-milestone.yml` | a PR opened into `release/*` or `hotfix/*` | milestone `X.Y.Z` on it |
@@ -395,6 +395,37 @@ the schedule, the gates and where a fix goes.
   as the Monday, production would fall due a day after the Sunday cron and cost
   the whole train a week (1.2.0 → 1.4.0, November 2026). Later in the week the
   step counts as the day it ran. `release_promote.rb` also writes `production_on`.
+- **Changelog conflicts resolve themselves; anything else holds.** `CHANGELOG.md`
+  is frozen history: each cut writes `docs/changelog/X.Y.Z.md` (#711), so the
+  release branches of versions in flight no longer edit the same lines. A
+  branch cut before that still does, and GitHub refuses its merge into `main` as
+  not mergeable. When the only conflict is `CHANGELOG.md`, the Sunday step builds
+  the merge itself: the union of both sides' version sections, each version once,
+  newest first, with main's header. It pushes that to main as the release App
+  with a plain push (never forced), then records the merge as usual. A main that
+  moved in the meantime holds the step, and the next Sunday retries. Any other
+  conflict holds before a PR is opened, and the hold names the paths
+  (`fastlane/release_merge.rb`, #712). A dry run says `would self-resolve`.
+- **The nightly check finds a conflict before the Sunday.** The `mergeability` job
+  of `release-train.yml` merges every live release branch onto main, in version
+  order, each one on top of the merges before it. It does this in memory and
+  pushes nothing. A branch that conflicts on anything except `CHANGELOG.md`
+  raises a `release-blocker` issue in its milestone, which holds the Sunday step,
+  and one comment on its "Release X.Y.Z" issue naming the paths. The run fails
+  visibly while any version is blocked. A fix clears the blocker and closes it,
+  and a rerun adds nothing (`fastlane/release_mergeability.rb`, #713).
+- **A scheduled run is judged by the time it was due.** GitHub can start a cron
+  hours late, past midnight. `release-train.yml` judges its train day from the
+  scheduled time, not the start (`scripts/release/train_day.rb`, #714).
+  `release-promote.yml` needs no such judgement: its due checks compare with `>=`,
+  and a beta step run on a Sunday, Monday or Tuesday counts as that Sunday
+  (`beta_done_day`), so a late run keeps the cadence (audited under #714).
+  Scheduled runs read their workflow files and scripts from the default branch,
+  which is `develop`, so a change to them takes effect on the first scheduled run
+  after it merges there.
+- **Ship release does not self-resolve yet.** Its manual merge (`ship-release.yml`)
+  still uses `gh pr merge`, so a `CHANGELOG.md` conflict there needs a hand
+  resolution on the branch (#717).
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
   rollout (the ramp leaves a halted release alone until `resume`). A
   `release-blocker` issue or PR in the milestone holds the next Sunday step. The
@@ -434,7 +465,9 @@ the schedule, the gates and where a fix goes.
   **Pull requests**, **Issues** and **Workflows** write, **Actions** read (the RC
   run check) and **Checks** read (the branch head's check runs);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
-  refused (the step then holds, with that reason).
+  refused (the step then holds, with that reason). A self-resolved merge (#712)
+  is a direct push to `main` rather than a merge, so that bypass has to cover
+  pushes as well. Not verified against the live ruleset yet (#716).
 
 ### iOS in the train
 
@@ -502,9 +535,10 @@ only) a `release/*` branch is open. The train applies ADR 0030's stagger rule
 itself and passes `--stagger-checked`; a hand cut refuses while any release
 branch is open, unless you pass that flag after checking that none is still in
 internal. The branch starts with one commit:
-the release notes for every listing locale, and this version's
-section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
-uncapped). The changelog is generated, not edited: a fix merged into the
+the release notes for every listing locale, and this version's section in
+`docs/changelog/X.Y.Z.md` (every `feat`/`fix` with its scope, uncapped).
+`CHANGELOG.md` is frozen history and nothing writes to it any more (#711).
+The changelog is generated, not edited: a fix merged into the
 release branch later is in the RC but not in that section.
 
 Then:
