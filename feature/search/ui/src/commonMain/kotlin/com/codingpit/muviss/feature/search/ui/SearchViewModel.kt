@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -81,6 +82,10 @@ data class SearchUiState(
     val showMuted: Boolean = false,
     /** Something is muted in Settings, so the chip has something to toggle. */
     val hasMuted: Boolean = false,
+    /** The library has a title to seed "For you" from, so its skeleton row belongs in the loading Home (#723). */
+    val hasForYouSeeds: Boolean = false,
+    /** The skeleton's sweep runs (the in-app animations switch, #394). False draws a flat fill. */
+    val animateSkeleton: Boolean = true,
 ) {
     val canLoadMoreResults: Boolean get() = resultsPage < resultsTotalPages
     val canLoadMoreGenreResults: Boolean get() = genrePage < genreTotalPages
@@ -103,6 +108,7 @@ class SearchViewModel(
     private val triageApi: TriageApi,
     private val settings: SettingsApi,
     connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
+    animateSkeleton: Flow<Boolean> = flowOf(true),
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchUiState())
@@ -162,8 +168,12 @@ class SearchViewModel(
             triageApi.observeSnoozedIds(),
             settings.observeMuting().map { it.effective }.distinctUntilChanged(),
         ) { library, decided, snoozed, muted -> Triple(library, decided + snoozed, muted) }
+            .onEach { (library, _, _) -> _state.update { it.copy(hasForYouSeeds = ForYouSeeding.selectSeeds(library).isNotEmpty()) } }
             .flatMapLatest { (library, decided, muted) -> forYouFlow(library, decided, muted) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
+            .launchInReporting(viewModelScope)
+        animateSkeleton
+            .onEach { animate -> _state.update { it.copy(animateSkeleton = animate) } }
             .launchInReporting(viewModelScope)
         // A failure shown while offline retries itself when the connection
         // comes back, rather than waiting for a tap on Retry (#249).
