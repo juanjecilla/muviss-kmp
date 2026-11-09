@@ -47,7 +47,11 @@ class NotificationNudgeViewModelTest {
 
     private class FakeSystem : SystemNotificationSettings {
         var opened = 0
-        override fun blocked(): Boolean = false
+
+        /** Notifications are off and the OS has stopped asking (#326). */
+        var refusedForGood = false
+        override fun blocked(): Boolean = refusedForGood
+        override fun canAskAgain(): Boolean = !refusedForGood
 
         override fun open() {
             opened++
@@ -110,5 +114,32 @@ class NotificationNudgeViewModelTest {
 
         assertEquals(1, onboarding.dismissed)
         assertEquals(false, vm.state.value.visible)
+    }
+
+    @Test
+    fun a_refusal_the_os_will_not_repeat_is_explained_at_once_without_asking_again() = runTest {
+        system.refusedForGood = true
+        val vm = viewModel()
+
+        assertEquals(true, vm.state.value.blocked, "offered and refused for good: say why, do not offer a tap that goes nowhere")
+        vm.turnOn()
+        assertEquals(0, onboarding.accepted, "the OS would answer no at once, so it is not asked")
+        assertEquals(true, vm.state.value.visible)
+    }
+
+    @Test
+    fun a_refusal_the_os_will_not_repeat_shows_nothing_when_the_nudge_is_not_due() = runTest {
+        system.refusedForGood = true
+        onboarding.offered.value = false
+
+        assertEquals(false, viewModel().state.value.visible)
+    }
+
+    @Test
+    fun a_refusal_that_can_still_be_asked_again_keeps_the_offer() = runTest {
+        system.refusedForGood = false
+
+        assertEquals(false, viewModel().state.value.blocked)
+        assertEquals(true, viewModel().state.value.offered)
     }
 }

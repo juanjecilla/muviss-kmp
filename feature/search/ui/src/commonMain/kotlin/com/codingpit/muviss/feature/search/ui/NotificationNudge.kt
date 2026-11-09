@@ -67,13 +67,23 @@ class NotificationNudgeViewModel(
     private val _state = MutableStateFlow(NotificationNudgeState())
     val state: StateFlow<NotificationNudgeState> = _state.asStateFlow()
 
+    /**
+     * Notifications are off and the OS will not ask again (#326): a request would answer "no" at once, so the
+     * nudge explains the blocked switch instead of offering a tap that goes nowhere.
+     */
+    private val refusedForGood: Boolean = system.blocked() && !system.canAskAgain()
+
     init {
         onboarding.observeNotificationNudge(mediaId)
-            .onEach { offered -> _state.update { it.copy(offered = offered) } }
+            .onEach { offered -> _state.update { it.copy(offered = offered, blocked = it.blocked || (offered && refusedForGood)) } }
             .launchInReporting(viewModelScope)
     }
 
     fun turnOn() {
+        if (refusedForGood) {
+            _state.update { it.copy(blocked = true) }
+            return
+        }
         viewModelScope.launchReporting {
             if (onboarding.acceptNotificationNudge() == NotificationNudgeResult.DENIED) {
                 _state.update { it.copy(blocked = true) }
