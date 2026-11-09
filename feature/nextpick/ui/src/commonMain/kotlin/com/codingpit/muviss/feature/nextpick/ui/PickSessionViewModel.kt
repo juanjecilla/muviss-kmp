@@ -3,10 +3,9 @@ package com.codingpit.muviss.feature.nextpick.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchReporting
-import com.codingpit.muviss.feature.nextpick.domain.DefaultNextPickSettings
+import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
 import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
-import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
@@ -14,12 +13,14 @@ import com.codingpit.muviss.feature.nextpick.domain.PickQuestion
 import com.codingpit.muviss.feature.nextpick.domain.PickResult
 import com.codingpit.muviss.feature.nextpick.domain.PickSession
 import com.codingpit.muviss.feature.nextpick.domain.RankedPick
+import com.codingpit.muviss.feature.nextpick.domain.presentation
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 
 /** What the screen shows. A pick is never a status: the three outcomes only say what the person did with it. */
@@ -72,7 +73,7 @@ class PickSessionViewModel(
     private val context: suspend () -> PickContext,
     private val engine: PickEngine,
     private val actions: NextPickActions,
-    private val settings: NextPickSettings = DefaultNextPickSettings,
+    private val preferences: NextPickPreferences,
     /** The title a Completion just finished, when the session was opened from one (#548). Null otherwise. */
     private val anchor: MediaId? = null,
 ) : ViewModel() {
@@ -83,7 +84,7 @@ class PickSessionViewModel(
     private var readContext: PickContext? = null
     private var session: PickSession? = null
     private val previous = ArrayDeque<PickSession>()
-    private var mode: NextPickResultMode = DefaultNextPickSettings.mode
+    private var mode: NextPickResultMode = NextPickResultMode.ONE_PICK
 
     /** Every title already drawn this session, so "another" and a refill never repeat one. */
     private val shown = mutableSetOf<MediaId>()
@@ -116,7 +117,7 @@ class PickSessionViewModel(
             }
             val opened = read.withAnchor()
             readContext = opened
-            mode = settings.mode
+            mode = preferences.resultMode.first().presentation()
             session = PickSession.start(opened)
             previous.clear()
             shown.clear()
