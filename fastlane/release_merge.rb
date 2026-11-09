@@ -109,6 +109,12 @@ module ReleaseMerge
       { conflicts: conflicts, commit: commit_tree(tree, [main, branch], message) }
     end
 
+    # The commit a ref names, or nil when there is no such ref.
+    def rev_parse(ref)
+      out, _err, status = run("git", "rev-parse", "--verify", "--quiet", "#{ref}^{commit}")
+      status.success? ? out.strip : nil
+    end
+
     # origin's main, fetched now. The merge is judged against this sha.
     def main_sha
       git("fetch", "--quiet", "origin", "main")

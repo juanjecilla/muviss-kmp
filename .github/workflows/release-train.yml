@@ -38,6 +38,49 @@ permissions:
   issues: write
 
 jobs:
+  # The nightly mergeability check (#713), on every night rather than the train
+  # day: a live release branch that stops merging into main is raised the night
+  # it happens, not a week later at the Sunday merge. It runs after the cut, so
+  # the branch cut tonight is checked too, and it fails visibly without touching
+  # the cut. The logic is fastlane/release_mergeability.rb.
+  mergeability:
+    needs: cut
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # Every branch, for the release/* heads; the check never pushes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      # The union merge the check builds is a commit, so it needs an identity.
+      - name: Commit as the release App
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
+
+      - name: Each live release branch still merges into main
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          scripts/release/release-issue.sh labels
+          ruby fastlane/release_mergeability.rb
+
   cut:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
