@@ -282,10 +282,14 @@ tasks.named("check") { dependsOn("verifyComposeStringEscapes") }
 // minimum for the packages whose fix is compatible with every range that
 // requests them (same major). serialize-javascript (6 -> 7), minimatch, glob and
 // diff are left out: the fix is a major bump their consumers do not accept.
+// brace-expansion is left out too: minimatch 3 asks for ^1.1.7 and minimatch 9
+// for ^2.0.2, and Yarn 1 cannot scope a resolution by range (it reads
+// "brace-expansion@^1.1.7" as a package name and fails the install), so one pin
+// would force a major on one of the two.
 // Build-time tooling only; none of it ships in the app bundle.
 val yarnSecurityPins = mapOf(
     "fast-uri" to "3.1.9",
-    "ws" to "8.22.0",
+    "ws" to "8.21.1",
     "qs" to "6.16.1",
     "follow-redirects" to "1.16.2",
     "js-yaml" to "4.3.2",
