@@ -101,6 +101,7 @@ kotlin {
             implementation(projects.feature.progress.ui)
             implementation(projects.feature.profile.ui)
             implementation(projects.feature.settings.ui)
+            implementation(projects.feature.triage.api)
             implementation(projects.feature.triage.ui)
             implementation(projects.feature.cowatch.ui)
             implementation(projects.feature.onboarding.ui)

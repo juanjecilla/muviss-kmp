@@ -21,7 +21,7 @@ data class NextPickRoute(val anchor: String? = null)
  * Registers the Pick Session. [navController] leaves the session by popping back (ADR: the shell pops to a
  * known route by name, never to the start destination, because on a first run that is the introduction).
  * [onOpenDeck] hands the Deck's titles to Triage; the app shell owns that handoff because Triage's deck is
- * reached through its own route, which this feature may not name (ADR 0004).
+ * reached through its own route, which this feature may not name (ADR 0004). The default does nothing, for previews.
  */
 fun NavGraphBuilder.nextPickSection(
     navController: NavController,

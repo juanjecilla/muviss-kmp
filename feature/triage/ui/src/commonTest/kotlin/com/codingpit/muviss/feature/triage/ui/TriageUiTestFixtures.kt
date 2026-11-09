@@ -23,6 +23,7 @@ import com.codingpit.muviss.feature.triage.domain.DeckCursorStore
 import com.codingpit.muviss.feature.triage.domain.DeckLanguage
 import com.codingpit.muviss.feature.triage.domain.DeckLoader
 import com.codingpit.muviss.feature.triage.domain.DeckResumption
+import com.codingpit.muviss.feature.triage.domain.DeckSeeds
 import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckGenresUseCase
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
@@ -32,6 +33,7 @@ import com.codingpit.muviss.feature.triage.domain.ObserveTutorialSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.RetryUnresolvedUseCase
 import com.codingpit.muviss.feature.triage.domain.SavedDeckCursor
+import com.codingpit.muviss.feature.triage.domain.SeededDeckFeed
 import com.codingpit.muviss.feature.triage.domain.SetSnoozeHintSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.SetTutorialSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.SnoozeActions
@@ -426,20 +428,38 @@ internal class TriageHarness(
     fun viewModel() = TriageViewModel(
         LoadDeckUseCase(DeckLoader(source), repository, snoozes, collection, clock, DeckResumption(cursors, DeckLanguage { "en-US" })),
         LoadDeckGenresUseCase(source),
-        TriageActions(
-            record = record,
-            undo = UndoDecisionUseCase(repository, collection, progress),
-            setTutorialSeen = SetTutorialSeenUseCase(preferences),
-            retryUnresolved = RetryUnresolvedUseCase(repository, record),
-            snoozing = SnoozeActions(
-                snooze = SnoozeUseCase(snoozes, clock),
-                unsnooze = UnsnoozeUseCase(snoozes),
-                setSnoozeHintSeen = SetSnoozeHintSeenUseCase(preferences),
-            ),
-        ),
-        TriageOnboarding(ObserveTutorialSeenUseCase(preferences), ObserveSnoozeHintSeenUseCase(preferences)),
+        actions(),
+        onboarding(),
         flags,
         analytics,
         settings,
     )
+
+    /**
+     * The deck Next Pick hands over (#554): the same screen model over a [SeededDeckFeed] of [seeds], sharing this
+     * harness's repository, collection and snoozes, so a swipe in it is visible to the catalogue deck as well.
+     */
+    fun seededViewModel(seeds: List<MediaSummary>): TriageViewModel = TriageViewModel(
+        SeededDeckFeed(DeckSeeds { seeds }, repository, snoozes, collection),
+        LoadDeckGenresUseCase(source),
+        actions(),
+        onboarding(),
+        flags,
+        analytics,
+        settings,
+    )
+
+    private fun actions() = TriageActions(
+        record = record,
+        undo = UndoDecisionUseCase(repository, collection, progress),
+        setTutorialSeen = SetTutorialSeenUseCase(preferences),
+        retryUnresolved = RetryUnresolvedUseCase(repository, record),
+        snoozing = SnoozeActions(
+            snooze = SnoozeUseCase(snoozes, clock),
+            unsnooze = UnsnoozeUseCase(snoozes),
+            setSnoozeHintSeen = SetSnoozeHintSeenUseCase(preferences),
+        ),
+    )
+
+    private fun onboarding() = TriageOnboarding(ObserveTutorialSeenUseCase(preferences), ObserveSnoozeHintSeenUseCase(preferences))
 }
