@@ -213,6 +213,6 @@ class ReleaseMergeabilityTest < Minitest::Test
     out, err, status = Open3.capture3("git", *args, chdir: @dir)
     raise "git #{args.join(' ')} failed: #{err}" unless status.success?
 
-    out.strip
+    out.force_encoding(Encoding::UTF_8).strip
   end
 end

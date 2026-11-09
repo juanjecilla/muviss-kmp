@@ -181,8 +181,12 @@ module ReleaseMerge
       out.strip
     end
 
+    # git hands back the changelog's bytes as they are, and it is UTF-8 (the
+    # section headings carry an em dash). Under a C locale Open3 would tag them
+    # US-ASCII, and matching a heading would raise on the first dash.
     def run(*cmd, env: {}, stdin: nil)
-      Open3.capture3(env, *cmd, chdir: @dir || Dir.pwd, stdin_data: stdin.to_s)
+      out, err, status = Open3.capture3(env, *cmd, chdir: @dir || Dir.pwd, stdin_data: stdin.to_s)
+      [out.force_encoding(Encoding::UTF_8), err, status]
     end
   end
 end
