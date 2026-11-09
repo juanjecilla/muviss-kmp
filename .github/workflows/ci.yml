@@ -262,8 +262,10 @@ jobs:
       # com.android.lint). JVM-only test helpers such as :core:testing are not
       # linted. Accessibility issues are errors; the
       # baseline holds only what predates lint being switched on (#164).
+      # :app:shared is not in that graph, so it is linted here too (#739); it
+      # is one more module in the same build, sharing the analysis above.
       - name: Android Lint
-        run: ./gradlew :app:androidApp:lintDebug --stacktrace
+        run: ./gradlew :app:androidApp:lintDebug :app:shared:lintAndroidMain --stacktrace
 
       - name: Upload the lint report
         if: failure()
