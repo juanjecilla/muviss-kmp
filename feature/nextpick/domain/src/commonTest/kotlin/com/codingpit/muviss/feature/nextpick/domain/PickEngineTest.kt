@@ -12,15 +12,19 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.WatchStatus
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.seconds
 
 class PickEngineTest {
 
@@ -57,6 +61,7 @@ class PickEngineTest {
     private class RecordingReporter : PickRankerReporter {
         val failures = mutableListOf<String>()
         var timeouts = 0
+        val unusable = mutableListOf<Int>()
 
         override fun failed(exceptionClass: String) {
             failures += exceptionClass
@@ -64,6 +69,10 @@ class PickEngineTest {
 
         override fun timedOut() {
             timeouts++
+        }
+
+        override fun unusable(returned: Int) {
+            unusable += returned
         }
     }
 
@@ -358,13 +367,70 @@ class PickEngineTest {
     }
 
     @Test
-    fun a_cancelled_pick_reports_nothing() = runTest {
+    fun a_caller_cancellation_is_rethrown_and_reports_nothing() = runTest {
         val reporter = RecordingReporter()
-        val cancelled = PickRanker { _, _, _ -> throw CancellationException("the screen went away") }
+        val waiting = PickRanker { _, _, _ -> awaitCancellation() }
+        val call = launch { reported(reporter, waiting, *rulesPool).pick(PickCriteria(), context) }
+        runCurrent()
+        call.cancelAndJoin()
 
-        assertFailsWith<CancellationException> { reported(reporter, cancelled, *rulesPool).pick(PickCriteria(), context) }
+        assertTrue(call.isCancelled)
         assertEquals(emptyList(), reporter.failures)
         assertEquals(0, reporter.timeouts)
+        assertEquals(emptyList(), reporter.unusable)
+    }
+
+    @Test
+    fun a_ranker_that_times_out_on_its_own_falls_back_and_is_reported_as_a_failure() = runTest {
+        val reporter = RecordingReporter()
+        val own = PickRanker { _, _, _ ->
+            withTimeout(1.seconds) { delay(1.hours) }
+            emptyList()
+        }
+        val result = reported(reporter, own, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(listOf("TimeoutCancellationException"), reporter.failures)
+        assertEquals(0, reporter.timeouts)
+    }
+
+    @Test
+    fun a_ranker_whose_picks_are_all_unusable_is_reported_by_count_and_the_rules_answer() = runTest {
+        val reporter = RecordingReporter()
+        val outside = RankedPick(fresh("42", rating = 10.0), 99.0, PickReason.YourFavorite)
+        val result = reported(reporter, hostile { listOf(outside, outside) }, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(listOf(2), reporter.unusable)
+        assertEquals(emptyList(), reporter.failures)
+    }
+
+    @Test
+    fun a_ranker_that_has_nothing_to_say_is_reported_as_unusable_with_a_count_of_zero() = runTest {
+        val reporter = RecordingReporter()
+        val result = reported(reporter, hostile { emptyList() }, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(listOf(0), reporter.unusable)
+    }
+
+    @Test
+    fun a_ranker_with_some_usable_picks_is_not_reported_as_unusable() = runTest {
+        val reporter = RecordingReporter()
+        val outside = RankedPick(fresh("42", rating = 10.0), 99.0, PickReason.YourFavorite)
+        val result = reported(reporter, hostile { listOf(outside) + it }, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(emptyList(), reporter.unusable)
+    }
+
+    @Test
+    fun an_empty_pool_is_not_reported_as_unusable() = runTest {
+        val reporter = RecordingReporter()
+        val result = reported(reporter, hostile { emptyList() }).pick(PickCriteria(), context)
+
+        assertTrue(result.picks.isEmpty())
+        assertEquals(emptyList(), reporter.unusable)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -378,13 +444,6 @@ class PickEngineTest {
 
         assertEquals(rulesPicks(), result.picks)
         assertEquals(5_000L, testScheduler.currentTime)
-    }
-
-    @Test
-    fun a_cancelled_pick_is_rethrown_and_not_replaced_by_the_rules() = runTest {
-        val cancelled = PickRanker { _, _, _ -> throw CancellationException("the screen went away") }
-
-        assertFailsWith<CancellationException> { engine(*rulesPool, ranker = cancelled).pick(PickCriteria(), context) }
     }
 
     @Test
