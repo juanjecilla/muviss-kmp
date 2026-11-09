@@ -36,9 +36,10 @@ Read in this order: `CLAUDE.md`, `AGENTS.md`, `CONTEXT.md` (the glossary: use it
   Open an issue for the copy ("announce assistant integration on the landing once it is generally available"). Owner confirms.
 - **Release notes** (same section): a `feat` with no user-visible surface must end its commit body with a **`Notes: none`** trailer. Recommended here too.
   Keep the trailer in the squash body: `gh pr merge --squash --body "<body>"`.
-- **Claim the ADR when the branch opens** (AGENTS.md § "Claim ADR and schema numbers"): the next ADR is **0036** (latest is
-  `0035-feature-requests-through-a-hosted-form.md`). Write the number into `docs/EPICS.md` on the branch and push at once. No schema change is expected
-  (schema stays at v22), so no `.sqm`.
+- **Claim the ADR when the branch opens** (AGENTS.md § "Claim ADR and schema numbers"): **0036 and 0037 are already taken** (Display Preferences and
+  Muted Genres sync; a tick adds to the library), and others may have landed since. List `docs/adr/` on a fresh `origin/develop` and take the next free
+  number (called **<ADR>** below). Write it into `docs/EPICS.md` on the branch and push at once, and update every `<ADR>` reference in this handoff's
+  deliverables. No schema change is expected, so no `.sqm`: re-check that against the current schema version.
 - **Undone work becomes an issue** (AGENTS.md § "Undone work gets an issue"): anything you could not verify ("compiles but never ran on a device") must be a
   GitHub issue before the session ends.
 - **Before you finish** (AGENTS.md § "Before you finish"): `./gradlew spotlessCheck detekt`; `./gradlew build allMetadataJar` (use the heap workaround from AGENTS.md
@@ -126,14 +127,14 @@ Names are verbs, ids are strings, results are small. Use the glossary: **WatchNe
 | `searchTitles(query, type?)` | read | `MetadataProviderRegistry.require(SourceId.TMDB).search(...)` | needs network + TMDB credential (Own key → remote → built-in). Map `MetadataError` (below) |
 | `getLibrary(status?, favoritesOnly?)` | read | `CollectionApi.observeSummaries().first()` | filter on `WatchStatus` (NotStarted = watchlist). Returns rating: personal data, return only what the question needs |
 | `getTitleProgress(mediaId)` | read | `ProgressApi.observeSeenEpisodes`, `storedSeasons` | |
-| `tickEpisode(episodeId)` | mutation | `ProgressApi.setEpisodeSeen(id, true)` | **silent**, same as the widget's `TickAction`. Only ever `seen = true`: `setEpisodeSeen(…, false)` clears the episode's history outright, so there is **no un-tick function** |
+| `tickEpisode(episodeId)` | mutation | `ProgressApi.setEpisodeSeen(id, true)` | **silent**, same as the widget's `TickAction`. **Validate before writing**: `setSeen` does not check the catalog, so require the episode to exist in the catalog and to have aired (`EpisodeOrdering.airedBy`), else throw `AppFunctionElementNotFoundException` / `AppFunctionInvalidArgumentException`. An unaired tick would push `seenEpisodes` past `airedEpisodes` and `WatchProgress`'s `require` would crash Library. Tests: unknown episode id and unaired episode id must not raise the seen count. Only ever `seen = true`: `setEpisodeSeen(…, false)` clears the episode's history outright, so there is **no un-tick function** |
 | `addToLibrary(mediaId)` | mutation | `providers.forId(id).details(id)` then `CollectionApi.add(details)` | a TV detail costs `1 + ceil(seasons/20)` requests; idempotent |
-| `setFavorite(mediaId, favorite)` | mutation | `CollectionApi.setFavorite` | |
-| `rateTitle(mediaId, rating)` | mutation | `CollectionApi.setRating(mediaId, rating)` | validate `1..10` first (it throws `IllegalArgumentException`); note the API takes `Int?` where `null` clears the rating: do **not** expose clearing |
+| `setFavorite(mediaId, favorite)` | mutation | `CollectionApi.setFavorite` | **membership check first**: the update affects no rows for a title not in the library and returns normally, so the agent would report success. Throw `AppFunctionElementNotFoundException` when the title is not saved |
+| `rateTitle(mediaId, rating)` | mutation | `CollectionApi.setRating(mediaId, rating)` | validate `1..10` first (it throws `IllegalArgumentException`); same **membership check** as `setFavorite` (`AppFunctionElementNotFoundException` when not saved); note the API takes `Int?` where `null` clears the rating: do **not** expose clearing |
 | `markMovieWatched(mediaId)` | mutation | `ProgressApi.setMovieWatched(id, true)` | silent; `true` only |
 
 **Hard rules**
-- Ids are strings: `tmdb:tv:1399`, episodes `tmdb:tv:1399/1/2`. Parse with `MediaId.parse` / `EpisodeId.parse` (`models/…/MediaId.kt`, `Media.kt`) and turn `IllegalArgumentException` into `AppFunctionInvalidArgumentException` with fixed text.
+- Ids are strings: `tmdb:tv:1399`, episodes `tmdb:tv:1399/1/2`. Parse with `MediaId.parse` / `EpisodeId.parse` (`models/…/MediaId.kt`, `Media.kt`) and map **every** failure to `AppFunctionInvalidArgumentException` with fixed text: `MediaId.parse` throws `IllegalStateException` for an unknown type (`tmdb:game:1399`), not `IllegalArgumentException`, and a well-formed id with an unregistered source makes `providers.forId` throw. Validate type and source at the boundary; catch both exception types.
 - **Never** use `markPreviousSeen` or any bulk tick for "catch up": ticking unaired episodes breaks `WatchProgress.require(seenEpisodes <= airedEpisodes)` and the Library crashes (CLAUDE.md).
 - All writes are idempotent. Writes mark rows dirty; if automatic sync is on, `SyncCoordinator` pushes them later (safe).
 - Exceptions: use `androidx.appfunctions` types (`AppFunctionInvalidArgumentException`, `AppFunctionElementNotFoundException`, `AppFunctionLimitExceededException`, …). Map `MetadataError` (`RateLimited`, `Unauthorized`,
@@ -171,8 +172,9 @@ Private repo `juanjecilla/DevfestOurense26` (checked 2026-11-02; ask the owner f
 
 ## 8. Acceptance criteria
 
-- [ ] `feat/appfunctions` branched from fresh `origin/develop`; ADR **0036** claimed in `docs/EPICS.md` and pushed when the branch opened; ADR written.
+- [ ] `feat/appfunctions` branched from fresh `origin/develop`; ADR **<ADR>** (next free number on fresh `origin/develop`) claimed in `docs/EPICS.md` and pushed when the branch opened; ADR written.
 - [ ] Nine functions of section 5, no more; none destructive; ids as strings; fixed-text errors; no `e.message`.
+- [ ] `docs/PRIVACY.md` updated in the implementation PR, before release: it says nobody else can see the collection, favorites or progress, and these functions hand that data to an assistant that may process it remotely.
 - [ ] Code only in `:app:androidApp`; `verifyModuleGraph` green; no `commonMain` change.
 - [ ] KSP + `appfunctions 1.0.0-beta01` wired; `aggregateAppFunctions` set; manifest, `app_metadata.xml` (`appfn:instructions`), R8 `-keep` in place.
 - [ ] `./gradlew spotlessCheck detekt build allMetadataJar` green; `regenerateOssLicenses` committed; lint clean.
@@ -191,7 +193,7 @@ Private repo `juanjecilla/DevfestOurense26` (checked 2026-11-02; ask the owner f
 ## 10. Open questions for the owner (with recommendations)
 
 1. Landing / Play listing: **`no-landing`** + `Notes: none` + an issue for later copy (recommended), or write en/es copy now?
-2. ADR: **yes, 0036** ("AppFunctions are an inbound adapter in the Android app; safe surface only; agent ticks are silent").
+2. ADR: **yes, next free number** ("AppFunctions are an inbound adapter in the Android app; safe surface only; agent ticks are silent").
 3. Search access: use `MetadataProviderRegistry` directly from the adapter (recommended; `SearchApi` is an empty interface), or widen `SearchApi` first?
 4. ~~Tracking issue~~ opened 2026-11-02: https://github.com/juanjecilla/muviss-kmp/issues/701 (labels `enhancement`, `epic`). When the branch opens, add it to `docs/EPICS.md` with the ADR number and link both ways (AGENTS.md).
 
