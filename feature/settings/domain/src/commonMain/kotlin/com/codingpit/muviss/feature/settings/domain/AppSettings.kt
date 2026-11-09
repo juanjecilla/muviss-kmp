@@ -12,4 +12,10 @@ data class AppSettings(
     val mutedGenres: List<MutedGenreEntry> = MutedGenresCodec.DEFAULTS,
     /** Extends muting to typed search. Off: a search for a muted show still finds it. */
     val mutedGenresInSearch: Boolean = false,
+    /**
+     * Device Backup (ADR 0034). Off by default: when on, the OS may include this device's library in its own
+     * backup (iCloud, Google's backup, a device-to-device transfer); when off, the library is excluded. Per-device,
+     * never synced, never exported.
+     */
+    val deviceBackupEnabled: Boolean = false,
 )

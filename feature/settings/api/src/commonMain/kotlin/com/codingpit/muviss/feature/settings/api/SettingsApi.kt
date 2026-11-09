@@ -25,6 +25,15 @@ interface SettingsApi {
     fun observeCrashReportsEnabled(): Flow<Boolean>
 
     /**
+     * Device Backup (ADR 0034): whether the OS may back this device's library up. Off by default. The Settings row
+     * and the Onboarding page are the only doors, and both are shown only where [platformCanBackUp] is true.
+     */
+    fun observeDeviceBackupEnabled(): Flow<Boolean>
+
+    /** Turns Device Backup on or off. Takes effect for the OS backup at its next run; nothing is copied now. */
+    suspend fun setDeviceBackupEnabled(enabled: Boolean)
+
+    /**
      * What suggestion surfaces (triage deck, Discover, For you, More like this, and search when opted in)
      * leave out. Emits again whenever the setting or the session's "show muted" chip changes.
      */

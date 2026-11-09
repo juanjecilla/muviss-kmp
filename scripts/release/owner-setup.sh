@@ -255,8 +255,10 @@ do_optional() {
   say "from a ConfigCat product with EU data governance (docs/RELEASING.md, 'Remote config')."
   say "The Sentry token needs event:read for the Play ramp gate and, for the crash -> GitHub issue connector"
   say "(#300), event:write to resolve a crash when its issue is closed (docs/RELEASING.md, 'Sentry to GitHub')."
+  say "TALLY_API_KEY + TALLY_FEATURE_REQUEST_FORM_ID (#448) and TALLY_BUG_REPORT_FORM_ID (#449) let the hourly"
+  say "connector turn each form response into a GitHub issue (docs/RELEASING.md, 'Feature requests to issue')."
   local name val
-  for name in TMDB_API_KEY TMDB_READ_TOKEN CONFIGCAT_SDK_KEY SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT; do
+  for name in TMDB_API_KEY TMDB_READ_TOKEN CONFIGCAT_SDK_KEY SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT TALLY_API_KEY TALLY_FEATURE_REQUEST_FORM_ID TALLY_BUG_REPORT_FORM_ID; do
     has_secret "$name" && continue
     read -r -s -p "    $name (empty = skip): " val; echo
     [ -z "$val" ] || gh secret set "$name" --repo "$REPO" --body "$val"

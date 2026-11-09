@@ -19,6 +19,7 @@ const dict = t(locale);
       </a>
       <nav aria-label="Footer">
         <a href="/privacy/">{dict.footer.privacy}</a>
+        <a href={locale === "en" ? "/support/" : "/es/support/"}>{dict.footer.support}</a>
         <a href={links.github}>GitHub</a>
         <a href={repoPath("LICENSE")}>{dict.footer.license}</a>
         <a href={homePath(otherLocale(locale))} hreflang={otherLocale(locale)} lang={otherLocale(locale)}>

@@ -82,6 +82,16 @@ class IosDeepLinksTest {
     }
 
     @Test
+    fun a_url_foundation_cannot_parse_is_ignored_rather_than_crashing_the_app() {
+        // NSURL's initializer returns nil here, which Kotlin/Native turns into a NullPointerException.
+        val recognised = IosDeepLinks.handle("muviss://[::1")
+
+        assertFalse(recognised)
+        assertNull(IosDeepLinks.pendingDeepLinkMediaId.value)
+        assertNull(IosDeepLinks.pendingOAuthCode.value)
+    }
+
+    @Test
     fun clearing_the_pending_title_leaves_a_pending_code_alone() {
         IosDeepLinks.handle("muviss://title/1")
         IosDeepLinks.handle("muviss://auth-callback?code=xyz")

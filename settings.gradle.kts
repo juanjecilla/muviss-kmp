@@ -75,6 +75,12 @@ listOf("search", "collection", "progress", "profile", "settings", "triage", "cow
     }
 }
 
+// Next Pick (EPIC 51, ADR 0032) arrives in layers: the contract and the Pick Session domain first
+// (#398), then the engine's :data (#399) and :ui (#400), which join this loop when they exist.
+listOf("api", "domain").forEach { layer ->
+    include(":feature:nextpick:$layer")
+}
+
 // Apps
 include(":app:androidApp")
 // Baseline profile generator (EPIC 34, #77): a com.android.test module run by hand on a device.

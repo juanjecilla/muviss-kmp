@@ -13,7 +13,11 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -66,5 +70,32 @@ class LocalDataEraserTest {
         assertEquals(1, widgetRefreshes, "the home-screen widgets are told, or they keep showing the old library (#317)")
         database.appSettingsQueries.ensureRow()
         assertEquals("SYSTEM", database.appSettingsQueries.selectSettings().awaitAsOne().theme)
+    }
+
+    @Test
+    fun `a backup choice made before deleting everything does not come back after it`() = runTest {
+        val database = inMemoryDatabase()
+        val writes = DeviceBackupWrites()
+        val queuedIo = object : AppDispatchers {
+            override val default = StandardTestDispatcher(testScheduler)
+            override val io = default
+        }
+        val repository = SqlDelightSettingsRepository(
+            database.appSettingsQueries,
+            ExportQueries(database),
+            queuedIo,
+            FakeClock(1L),
+            AppVersion("1", 1L),
+            writes,
+        )
+        val secrets = InMemorySecretStore()
+        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
+
+        // The tap parks at the hop to io; Delete all data then runs to completion before it lands.
+        launch(start = CoroutineStart.UNDISPATCHED) { repository.setDeviceBackupEnabled(true) }
+        SqlDelightLocalDataEraser(database, dispatchers, ownKey, secrets, writes) {}.deleteAllData()
+        advanceUntilIdle()
+
+        assertEquals(null, database.appSettingsQueries.selectSettings().awaitAsOneOrNull())
     }
 }

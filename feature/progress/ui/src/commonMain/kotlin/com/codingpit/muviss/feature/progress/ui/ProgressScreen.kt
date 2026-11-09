@@ -29,7 +29,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -60,12 +63,16 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CelebrationBurst
@@ -168,10 +175,25 @@ private fun WatchNextScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    // The show whose row a tick sent to the top, until the list shows it there. The effect below
+    // does the scrolling, on the composition's own context rather than wherever `viewModel.tick`
+    // resumed, and only once the row is first: the order comes from the play history, a flow
+    // apart from the one that moved the next episode on, so it can land a frame later.
+    var scrollToTopTarget by remember { mutableStateOf<MediaId?>(null) }
 
     // What to celebrate on screen, and when: a new token restarts the burst.
     var celebration by remember { mutableStateOf<Celebration?>(null) }
     var tokens by remember { mutableStateOf(0) }
+    // Taps are numbered, and the snackbar remembers the newest one it has shown. A tick's
+    // outcome can arrive after a later tap's (a caught-up one returns at once, a plain one
+    // waits for the list to move on), and an older saved tick must not replace a newer one's
+    // Undo. A failed tick shows nothing, so it never hides an older saved tick's Undo.
+    var taps by remember { mutableStateOf(0) }
+    var shownTap by remember { mutableStateOf(0) }
+    // The snackbar's measured height, so the list's end clears a wrapped message too.
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
 
     // One-tap tick with undo (design doc, Motion + Progress screen): tick
     // persists immediately; the snackbar's Undo reverts it via the VM. The
@@ -179,20 +201,45 @@ private fun WatchNextScreen(
     // and a milestone says so there too: with motion off it is all there is.
     val onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit = tick@{ item, onFailed ->
         val episode = item.nextEpisode ?: return@tick
+        val tap = ++taps
         scope.launch {
             val outcome = viewModel.tick(item) ?: return@launch
+            if (outcome is TickOutcome.Failed) return@launch onFailed()
+            if (tap < shownTap) return@launch
+            shownTap = tap
             val message = when (outcome) {
-                is TickOutcome.Failed -> return@launch onFailed()
+                is TickOutcome.Failed -> return@launch
                 is TickOutcome.CaughtUp -> getString(Res.string.tick_snackbar_caught_up, item.title)
                 is TickOutcome.SeasonFinished -> getString(Res.string.tick_snackbar_season_done, outcome.season)
                 is TickOutcome.Plain -> getString(Res.string.tick_snackbar, episode.seasonNumber, episode.episodeNumber)
             }
+            // The tick made this the show most recently watched, so the list has put its row
+            // first. Follow it: from further down, the row would otherwise slide off the top of
+            // the screen. A show that is caught up has no row left to follow.
+            if (outcome !is TickOutcome.CaughtUp) {
+                scrollToTopTarget = item.mediaId
+            }
             if (state.animateTicks && outcome !is TickOutcome.Plain) {
                 celebration = Celebration(outcome, item.title, ++tokens)
             }
-            val result = snackbarHostState.showSnackbar(message = message, actionLabel = getString(Res.string.action_undo))
+            // The newest tick takes the slot: showSnackbar queues, so N quick ticks would
+            // otherwise keep one on screen for N times its timeout.
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = getString(Res.string.action_undo),
+                // Material3 defaults to Indefinite whenever an action label is given.
+                duration = SnackbarDuration.Short,
+            )
             if (result == SnackbarResult.ActionPerformed) viewModel.untick(episode.id)
         }
+    }
+
+    LaunchedEffect(scrollToTopTarget, state.items.firstOrNull()?.mediaId) {
+        val target = scrollToTopTarget ?: return@LaunchedEffect
+        if (state.items.firstOrNull()?.mediaId != target) return@LaunchedEffect
+        if (state.animateTicks) listState.animateScrollToItem(0) else listState.requestScrollToItem(0)
+        scrollToTopTarget = null
     }
 
     LaunchedEffect(state.message) {
@@ -201,7 +248,14 @@ private fun WatchNextScreen(
         viewModel.consumeMessage()
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(snackbarHost = {
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .semantics { testTag = WATCH_NEXT_SNACKBAR_TAG },
+        )
+    }) { padding ->
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = viewModel::refresh,
@@ -219,7 +273,16 @@ private fun WatchNextScreen(
                         body = stringResource(Res.string.watch_next_empty_body),
                     )
 
-                    else -> WatchNextList(state.items, animate = state.animateTicks, onTick = onTick, onOpenDetail = onOpenDetail)
+                    else -> WatchNextList(
+                        state.items,
+                        listState,
+                        animate = state.animateTicks,
+                        // At least the usual allowance, so the end does not jump when a one-line
+                        // snackbar appears; more when a long title or a large font wraps it.
+                        bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight),
+                        onTick = onTick,
+                        onOpenDetail = onOpenDetail,
+                    )
                 }
                 // Over the list, not in a row: a show that is caught up leaves the list,
                 // and its row with it.
@@ -245,18 +308,22 @@ private fun Celebration.label(): String = when (outcome) {
 @Composable
 private fun WatchNextList(
     items: List<WatchNextItem>,
+    listState: LazyListState,
     animate: Boolean,
+    bottomPadding: Dp,
     onTick: (WatchNextItem, onFailed: () -> Unit) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        state = listState,
+        modifier = Modifier.fillMaxSize().testTag(WATCH_NEXT_LIST_TAG),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
-            bottom = MuvissSpacing.bottomContent,
+            // Room for the undo snackbar, which overlays the end of this list.
+            bottom = bottomPadding,
         ),
     ) {
         items(items, key = { it.mediaId.toString() }) { item ->
@@ -267,7 +334,8 @@ private fun WatchNextList(
                 onClick = { onOpenDetail(item.mediaId) },
                 // A row that leaves (caught up) fades out and the rest close the gap, unless
                 // motion is off, when both are instant.
-                modifier = if (animate) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null),
+                modifier = (if (animate) Modifier.animateItem() else Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null))
+                    .semantics { testTag = WATCH_NEXT_ROW_TAG },
             )
         }
     }
@@ -275,6 +343,11 @@ private fun WatchNextList(
 
 /** Tags the "S1E3 seen" sweep across a row for a moment after its tick (EPIC 52). */
 const val TICK_CONFIRMATION_TAG = "tickConfirmation"
+
+/** One Watch Next row, the list it scrolls in, and the undo snackbar that overlays its end. */
+const val WATCH_NEXT_ROW_TAG = "watchNextRow"
+const val WATCH_NEXT_SNACKBAR_TAG = "watchNextSnackbar"
+const val WATCH_NEXT_LIST_TAG = "watchNextList"
 
 private const val SWEEP_MILLIS = 350
 private const val CONFIRMATION_HOLD_MILLIS = 250L

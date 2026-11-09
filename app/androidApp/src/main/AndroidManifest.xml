@@ -13,15 +13,17 @@
          declaration on older APIs where the permission doesn't exist. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- allowBackup=false: Muviss is local-first and the collection/progress
-         SQLite DB is the source of truth (see ADR 0002/0005). Android's
-         auto-backup only captures app files opportunistically and can
-         restore a stale/partial DB snapshot onto a new device, silently
-         diverging from what the user actually watched. Until Muviss ships
-         its own export/import (see EPIC 8) or cloud sync (EPIC 9), backup
-         is off rather than half-working. -->
+    <!-- Device Backup (EPIC 51 WS6, ADR 0034): backup is ON at the manifest level and OFF in the data.
+         The agent offers the library database only when the person has turned Device Backup on, and
+         offers nothing else, ever (KSafe's secrets included). Before ADR 0034 this was allowBackup=false,
+         which on targetSdk 31+ did not stop device-to-device transfer at all; the rules below now state
+         what leaves the device on both paths. `fullBackupOnly`: there is no key-value backup to do. -->
     <application
-        android:allowBackup="false"
+        android:allowBackup="true"
+        android:backupAgent=".backup.MuvissBackupAgent"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:fullBackupOnly="true"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

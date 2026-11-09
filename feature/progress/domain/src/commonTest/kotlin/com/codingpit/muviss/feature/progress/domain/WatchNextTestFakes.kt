@@ -25,7 +25,8 @@ fun collectionSummary(
     id: MediaId,
     title: String = id.toString(),
     status: WatchStatus = WatchStatus.WATCHING,
-) = CollectionSummary(id, title, posterUrl = null, status = status)
+    addedAtEpochMs: Long = 0L,
+) = CollectionSummary(id, title, posterUrl = null, status = status, addedAtEpochMs = addedAtEpochMs)
 
 class FakeCollectionApi(summaries: List<CollectionSummary>) : CollectionApi {
     val flow = MutableStateFlow(summaries)
@@ -80,6 +81,11 @@ class FakeProgressRepository : ProgressRepository {
     }
 
     override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
+
+    /** Each title's newest Play, set by a test to stand in for plays it does not record one by one. */
+    val lastWatched = MutableStateFlow<Map<MediaId, Long>>(emptyMap())
+
+    override fun observeLastWatchedAt(): Flow<Map<MediaId, Long>> = lastWatched
 
     override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
 

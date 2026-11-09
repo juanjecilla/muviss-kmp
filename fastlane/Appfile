@@ -1,3 +1,7 @@
-# Store identities (ADR 0024). Credentials never live here — CI passes them as
-# environment variables from repository secrets.
+# Store identities (ADR 0024, ADR 0033). Credentials never live here — CI passes
+# them as environment variables from repository secrets.
 package_name("com.codingpit.muviss")
+
+# The iOS identities. APPLE_TEAM_ID is the repository variable (apple-setup.sh).
+app_identifier("com.codingpit.muviss")
+team_id(ENV["APPLE_TEAM_ID"]) if ENV["APPLE_TEAM_ID"] && !ENV["APPLE_TEAM_ID"].empty?

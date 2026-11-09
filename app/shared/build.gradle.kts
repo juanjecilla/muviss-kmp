@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 import java.util.Properties
 
 plugins {
@@ -74,6 +75,10 @@ kotlin {
             baseName = "Shared"
             isStatic = true
         }
+        // Release frameworks ship without DWARF line tables, so the app's dSYM
+        // symbolicates Kotlin frames to a symbol and no file or line (WS3, the
+        // iOS dSYM upload). Light debug info adds the line tables only.
+        target.binaries.getFramework(NativeBuildType.RELEASE).freeCompilerArgs += "-Xadd-light-debug=enable"
     }
 
     sourceSets {

@@ -39,7 +39,7 @@ A show's seasons and episodes as the source reported them, stored locally and re
 _Avoid_: snapshot, episode list, seasons (as a stored thing).
 
 **WatchNext**:
-The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
+The titles a user is part-way through, each paired with the next episode they have not seen. Derived from CollectionEntry, EpisodeCatalog and WatchProgress together, never stored. Ordered by when each title was last watched, newest first (a title with no Play sorts by when it was collected), so ticking an episode moves its title to the top. The same answer wherever it is asked — the Progress tab and the home-screen surfaces are renderings of it, not variants of it.
 _Avoid_: up next, continue watching, queue (a watchlist is a CollectionEntry with NotStarted status); upcoming (that is future air dates, a different question).
 
 **WatchProgress**:
@@ -106,6 +106,10 @@ _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user own
 A genre the user has chosen to leave out of what Muviss suggests. A title is hidden from a suggestion when *any* of its genres is muted; a title that carries no genres is never hidden, because nothing says what it is. Muted by default: Talk, News and Reality, for every install. A genre is identified by its type as well as its id — a movie genre and a TV genre can share a number. Muting only ever narrows suggestions: it never touches the collection, progress, Watch Next, notifications or a Snoozed Title, and a title the user opens, searches for by name (unless they opted in) or picks a genre for is shown regardless. The "Show muted" chip lifts it for one session.
 _Avoid_: blocked, blacklisted, filtered out (a filter is something the user narrows by in the moment; muting is a standing preference); hidden (that suggests the title is gone from the collection).
 
+**Device Backup**:
+A per-device switch that lets the OS's own backup (iCloud or a device backup on iOS; Google's backup and device-to-device transfer on Android) include this device's library. Off by default: the library is left out of OS backups until the person turns it on, in the first-run introduction or in Settings. Muviss copies nothing itself: the copy the OS makes lives wherever that backup lives, which is the person's own iCloud or Google account, a computer they back their iPhone up to, or the new phone in a device-to-device transfer, never with Muviss. Muviss never offers KSafe's secrets, including the Own TMDB Key, to it: on Android they are excluded; on iOS they sit in the Keychain, which Muviss does not exclude, and whether an encrypted device backup carries them is not verified. Per-device, never synced, never in the data export (ADR 0034).
+_Avoid_: cloud backup, sync (sync is the paid, Muviss-hosted copy), export (a file the person makes and keeps).
+
 ### First run and data source
 
 **Onboarding**:
@@ -127,6 +131,16 @@ _Avoid_: fallback (it suggests moving on after a failure, which the chain never 
 **Remote Config**:
 Values Muviss can change after a build has shipped — whether an optional feature is offered, which fallback TMDB credential to use — each with a built-in default that applies offline. It reads nothing about the user (ADR 0026); deciding per user is not something it does today.
 _Avoid_: feature flag (that is the in-code seam both Remote Config and per-device settings sit behind), A/B test, analytics.
+
+### Talking to us
+
+**Feature Request**:
+Something the user asks Muviss to do that it does not yet, sent from Settings through a form hosted outside the app, with only the app version, platform, OS version (where known) and device language alongside. One-way: the app never receives an answer, and a request is not a bug report. The user may leave an email address on the form; the app never sees it.
+_Avoid_: feedback (too wide: it would take in bug reports and praise), suggestion box, ticket, survey.
+
+**Bug Report**:
+What went wrong with the app, sent the same way as a Feature Request, from the row under it in Settings, with the same four values and the same one-way rules. Kept apart from a Feature Request because it is triaged as a defect, not a wish.
+_Avoid_: crash report (that is the automatic, opt-out Sentry kind), feedback.
 
 ### Co-watch
 
@@ -175,3 +189,13 @@ _Avoid_: recommendation (it implies a model that learned the user; this is the u
 **Taste Profile**:
 What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre. Belongs to the account like the rest of the user's data (synced and exported).
 _Avoid_: preferences, settings (those are per-device switches); taste, interests; algorithm; disliked genres (that is a Muted Genre).
+
+### Release train
+
+**Stage**:
+Where one platform's build of a version stands on the weekly train: internal, then open beta, then production. Each platform has its own Stage for the same version (ADR 0033), so Play can be in production while iOS is still on beta.
+_Avoid_: track (Play's word for a channel), phase (see Phased Release).
+
+**Phased Release**:
+Apple's seven-day rollout of an App Store version to a growing share of devices with automatic updates on (1%, 2%, 5%, 10%, 20%, 50%, then 100%). It can be paused, and a paused release resumes where it stopped. Play's equivalent is the staged-rollout ramp.
+_Avoid_: ramp (Play's word), staged rollout.

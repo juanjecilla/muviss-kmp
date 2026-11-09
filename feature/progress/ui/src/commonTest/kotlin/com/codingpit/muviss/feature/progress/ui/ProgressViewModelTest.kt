@@ -16,6 +16,7 @@ import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.domain.EpisodeProgress
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
+import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
@@ -67,6 +68,10 @@ internal class FakeProgressRepository : ProgressRepository {
     val tickedEpisodes = mutableListOf<Pair<EpisodeId, Boolean>>()
     var writeFailure: Exception? = null
 
+    // Stands in for the newest Play per title: each tick is "later" than the last.
+    private val lastWatched = MutableStateFlow<Map<MediaId, Long>>(emptyMap())
+    private var playClock = 0L
+
     private fun flowFor(mediaId: MediaId) = seenByMedia.getOrPut(mediaId) { MutableStateFlow(emptySet()) }
 
     override fun observeForMedia(mediaId: MediaId): Flow<List<EpisodeProgress>> = flowFor(mediaId)
@@ -79,6 +84,7 @@ internal class FakeProgressRepository : ProgressRepository {
     override suspend fun setSeen(episodeId: EpisodeId, seen: Boolean) {
         writeFailure?.let { throw it }
         tickedEpisodes += episodeId to seen
+        lastWatched.value = if (seen) lastWatched.value + (episodeId.show to ++playClock) else lastWatched.value - episodeId.show
         val flow = flowFor(episodeId.show)
         flow.value = if (seen) flow.value + episodeId else flow.value - episodeId
     }
@@ -98,6 +104,8 @@ internal class FakeProgressRepository : ProgressRepository {
     }
 
     override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
+
+    override fun observeLastWatchedAt(): Flow<Map<MediaId, Long>> = lastWatched
 
     override fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>> = flowOf(emptyList())
 
@@ -169,7 +177,7 @@ class ProgressViewModelTest {
     ): Pair<ProgressViewModel, EpisodeCatalogCache> {
         val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(catalogSource), InMemoryEpisodeCatalogStore())
         val vm = ProgressViewModel(
-            WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), cache, FakeClock(today)),
+            WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(progressRepository), ObserveLastWatchedAtUseCase(progressRepository), cache, FakeClock(today)),
             ToggleEpisodeSeenUseCase(progressRepository),
             cache,
             flags,

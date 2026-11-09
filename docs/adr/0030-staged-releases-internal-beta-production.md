@@ -47,4 +47,8 @@ A held version is retried every Sunday, and by hand (`release-promote.yml`, disp
 - The daily ramp times and closes the release Play has in production, read from its versionCode, not the newest tag: with several versions in flight those can differ. The back-merge into `develop` is now mostly empty, because fixes were already forwarded; it stays as the safety net and carries the tag.
 - The fastlane `promote` lane gains internal → beta. `app/androidApp/build.gradle.kts` derives `versionCode` from the version, and the RC workflow passes `rcN`.
 - `docs/RELEASING.md`, `AGENTS.md` and `CLAUDE.md` describe the stages, the gates and where to point a fix.
-- iOS (TestFlight internal → external → App Store) and desktop can follow the same three stages when they join the train (#78, #79); this ADR does not cover them.
+- iOS (TestFlight internal → external → App Store) walks the same three stages, independently, as ADR 0033 records; desktop can follow when it joins the train (#79).
+
+## Amendment, 2026-10-26: the notes gate is gone
+
+The `DRAFT:` notes gate held 1.2.0 at internal for a week and, through the stagger rule, stopped the train from cutting 1.3.0. A gate on text nobody had been asked to write does not protect anything. The train now writes final notes itself (`scripts/release/release-notes.sh`): at the cut, and again on every push to the release branch, so fixes are included. A person may still edit them and the train then keeps their text. The Sunday steps no longer read the notes. `release-notes-guard` still refuses a hand-made `DRAFT:` file on a PR into `main`. See `docs/RELEASING.md`, "Release notes".

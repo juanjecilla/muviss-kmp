@@ -48,6 +48,11 @@ class SetCrashReportsEnabledUseCase(private val repository: SettingsRepository) 
     suspend operator fun invoke(enabled: Boolean) = repository.setCrashReportsEnabled(enabled)
 }
 
+/** Turns Device Backup on or off (ADR 0034). The repository applies the OS-side exclusion with the stored value. */
+class SetDeviceBackupEnabledUseCase(private val repository: SettingsRepository) {
+    suspend operator fun invoke(enabled: Boolean) = repository.setDeviceBackupEnabled(enabled)
+}
+
 /** The two Muted Genres writes (ADR 0031), grouped so [SettingsActions] stays inside detekt's parameter budget. */
 class MutedGenresActions(private val repository: SettingsRepository) {
     /** Mutes or unmutes one genre. */
@@ -78,12 +83,14 @@ class SettingsActions(
     private val setCrashReportsEnabledUseCase: SetCrashReportsEnabledUseCase,
     private val mutedGenres: MutedGenresActions,
     private val exportDataUseCase: ExportDataUseCase,
+    private val setDeviceBackupEnabledUseCase: SetDeviceBackupEnabledUseCase,
 ) {
     suspend fun setTheme(theme: AppTheme) = setThemeUseCase(theme)
     suspend fun setLanguage(language: String) = setLanguageUseCase(language)
     suspend fun setRegion(region: String) = setRegionUseCase(region)
     suspend fun setNotificationsEnabled(enabled: Boolean): NotificationsChange = setNotificationsEnabledUseCase(enabled)
     suspend fun setCrashReportsEnabled(enabled: Boolean) = setCrashReportsEnabledUseCase(enabled)
+    suspend fun setDeviceBackupEnabled(enabled: Boolean) = setDeviceBackupEnabledUseCase(enabled)
     suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = mutedGenres.setGenreMuted(key, name, muted)
     suspend fun setMutedGenresInSearch(enabled: Boolean) = mutedGenres.setInSearch(enabled)
     suspend fun exportData(): String = exportDataUseCase()

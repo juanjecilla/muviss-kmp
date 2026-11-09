@@ -18,4 +18,11 @@ object MuvissSpacing {
     val huge = 48.dp
 
     val bottomContent = 32.dp
+
+    /**
+     * [bottomContent] plus the room a Material snackbar takes (about 68dp tall with its 8dp
+     * margin, rounded up). A scrolling list with an undo snackbar over it ends with this, so
+     * its last row can be scrolled clear of the snackbar rather than sitting under it.
+     */
+    val bottomContentWithSnackbar = bottomContent + 72.dp
 }

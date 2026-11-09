@@ -214,4 +214,4 @@ before this EPIC.
 | Android | System document picker (`ActivityResultContracts.GetContent`) |
 | Desktop (JVM) | `java.awt.FileDialog` in `LOAD` mode |
 | Web (JS + Wasm) | A throwaway `<input type=file>` + `FileReader` |
-| iOS | **Stub** — `pickFile()` always returns null; see `FileImporter.ios.kt` for what a real `UIDocumentPickerViewController` implementation needs |
+| iOS | `UIDocumentPickerViewController` in `FileImporter.ios.kt`, JSON, CSV and plain text, `asCopy = true` so no security-scoped access is needed (EPIC 29, #72) |

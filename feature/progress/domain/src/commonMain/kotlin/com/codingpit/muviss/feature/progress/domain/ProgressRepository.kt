@@ -33,6 +33,9 @@ interface ProgressRepository {
     /** Rewatches per title since [sinceEpochMs] — see [com.codingpit.muviss.feature.progress.api.ProgressApi.observeRewatchCounts]. */
     fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>>
 
+    /** The newest live Play's moment per title; a title with no Play is absent. Orders Watch Next. */
+    fun observeLastWatchedAt(): Flow<Map<MediaId, Long>>
+
     /** Every rewatch's timestamp since [sinceEpochMs], across all titles. */
     fun observeRewatchTimestamps(sinceEpochMs: Long): Flow<List<Long>>
 

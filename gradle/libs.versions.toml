@@ -37,20 +37,20 @@ detekt = "1.23.8"
 detektCompose = "0.6.8"
 spotless = "8.10.4"
 ktlint = "1.8.0"
-sentryKmp = "0.27.0"
+sentryKmp = "0.28.0"
 # The Cocoa SDK version `sentryKmp`'s cinterop klibs were generated against
 # (`buildSrc/.../Config.kt` in that release). Keep the two in step.
-sentryCocoa = "8.58.2"
-# Checked 2026-09-20 for EPIC 26: sentryKmp 0.27.0 is still the latest release, and its
-# `buildSrc/.../Config.kt` at that tag pins Cocoa 8.58.2 (and sentry-java 8.41.0), so
-# there is nothing to bump and the pairing above stands. Re-check both together the
-# next time either moves.
+sentryCocoa = "9.29.2"
+# Checked 2026-10-20 for the 0.28.0 bump: its `buildSrc/.../Config.kt` pins Cocoa 9.29.2
+# (and sentry-java 8.58.0). 0.27.0 was built against Cocoa 8.58.2, and linking 0.28.0's
+# klibs against that leaves `SentryAttribute`/`SentryDependencyContainer` undefined.
+# Re-check both together the next time either moves.
 #
 # The Sentry Gradle plugin (`:app:androidApp` only) uploads the R8 mapping and
 # stamps `release`/`dist`. It is a build-time tool: it runs on the build machine
 # and is not part of the shipped app, so the `licensee` allow-list below does not
 # see it.
-sentryGradlePlugin = "6.23.0"
+sentryGradlePlugin = "6.24.0"
 licensee = "1.14.1"
 # Coverage report only, no threshold yet (EPIC 38, #71).
 kover = "0.9.11"

@@ -23,12 +23,20 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
@@ -74,6 +82,10 @@ import com.codingpit.muviss.feature.progress.ui.generated.resources.weekday_6
 import com.codingpit.muviss.models.MediaId
 import org.jetbrains.compose.resources.stringResource
 
+const val UPCOMING_LIST_TAG = "upcomingList"
+const val UPCOMING_ROW_TAG = "upcomingRow"
+const val UPCOMING_SNACKBAR_TAG = "upcomingSnackbar"
+
 /**
  * The Progress tab's Upcoming segment (EPIC 14): an agenda of future-dated
  * episodes across the library's TV shows, grouped into Today / This week /
@@ -94,6 +106,11 @@ fun UpcomingScreen(
         viewModel.consumeMessage()
     }
 
+    // The snackbar's measured height, so the list's end clears a message that wraps (a long error
+    // text, a large font) and not only the one-line case (#473).
+    var snackbarHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+
     Box(Modifier.fillMaxSize()) {
         PullToRefreshBox(
             isRefreshing = state.refreshing,
@@ -105,11 +122,17 @@ fun UpcomingScreen(
                     state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
                     state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
                     state.groups.isEmpty() -> UpcomingEmptyState(hasLibraryEntries = state.hasLibraryEntries)
-                    else -> UpcomingList(state.groups, onOpenDetail)
+                    else -> UpcomingList(state.groups, bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight), onOpenDetail)
                 }
             }
         }
-        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .semantics { testTag = UPCOMING_SNACKBAR_TAG },
+        )
     }
 }
 
@@ -133,16 +156,18 @@ private fun UpcomingEmptyState(hasLibraryEntries: Boolean) {
 @Composable
 private fun UpcomingList(
     groups: List<UpcomingUiGroup>,
+    bottomPadding: Dp,
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag(UPCOMING_LIST_TAG),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
-            bottom = MuvissSpacing.bottomContent,
+            // The refresh-failed snackbar floats over the bottom of the list; this lets the last row scroll clear of it.
+            bottom = bottomPadding,
         ),
     ) {
         groups.forEach { group ->
@@ -168,7 +193,7 @@ private fun UpcomingRow(
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClick = onClick).padding(MuvissSpacing.s),
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable(onClick = onClick).padding(MuvissSpacing.s).semantics { testTag = UPCOMING_ROW_TAG },
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {

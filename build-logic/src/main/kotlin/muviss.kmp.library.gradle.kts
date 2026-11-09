@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
 // Base convention for every shared Kotlin Multiplatform module (non-UI).
 // Applies the KMP + Android-library plugins, declares the full target set,
@@ -39,6 +40,12 @@ kotlin {
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
+        // The browser actuals call `external`/`js()` interop, which Kotlin 2.4
+        // marks experimental. Opting in here, for this one target, keeps the
+        // warning from needing a file-level @OptIn in every web actual (#485).
+        compilerOptions {
+            optIn.add("kotlin.js.ExperimentalWasmJsInterop")
+        }
     }
 
     android {
@@ -54,6 +61,28 @@ kotlin {
     sourceSets {
         commonTest.dependencies {
             implementation(kotlin("test"))
+        }
+    }
+}
+
+// Warnings are errors in shipped code (#485). Main compilations only: the test
+// compilations still call Compose's deprecated `runComposeUiTest`, whose v2 move
+// changes test-dispatcher semantics and is its own piece of work (#492). A
+// library warning that cannot be fixed gets a narrow `@Suppress` with a comment;
+// `-PallowWarnings` switches the rule off for a local experiment, never for CI.
+//
+// The metadata compilations of shared source sets are left out: their KLIB loader
+// prints "the same unique_name=api_commonMain found in more than one library"
+// because every feature's `:api`, `:domain`... module has the same short name,
+// and that is a warning about our module naming, not about code (#493). Code in
+// a shared source set is compiled again by each concrete target, so a warning in
+// it is still caught there.
+kotlin.targets.matching { it.platformType != KotlinPlatformType.common }.configureEach {
+    compilations.configureEach {
+        if (!name.contains("test", ignoreCase = true)) {
+            compileTaskProvider.configure {
+                compilerOptions.allWarningsAsErrors.set(!providers.gradleProperty("allowWarnings").isPresent)
+            }
         }
     }
 }

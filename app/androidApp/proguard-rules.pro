@@ -108,6 +108,12 @@
     <init>(android.content.Context, androidx.work.WorkerParameters);
 }
 
+# Device Backup's agent (ADR 0034) is instantiated by name by the system's backup service, in restricted mode,
+# so R8 must keep its constructor or a release build silently backs nothing up (and fails the restore).
+-keep class com.codingpit.muviss.backup.MuvissBackupAgent {
+    <init>();
+}
+
 # The midnight widget refresh (EPIC 22) is the worker EPIC 30's audit found
 # without this rule: armed every night, ClassNotFoundException every night,
 # release builds only — so the "aired by today" boundary never moved on the

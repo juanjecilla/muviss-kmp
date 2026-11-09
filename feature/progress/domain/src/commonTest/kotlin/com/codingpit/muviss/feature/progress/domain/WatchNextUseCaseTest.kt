@@ -42,6 +42,7 @@ class WatchNextUseCaseTest {
     ) = WatchNextUseCase(
         { collectionApi },
         ObserveSeenEpisodesUseCase(repository),
+        ObserveLastWatchedAtUseCase(repository),
         EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(catalogs)), store),
         FakeClock(today),
     )
@@ -162,5 +163,53 @@ class WatchNextUseCaseTest {
         val first = watchNext().first()
         assertEquals(listOf("Firefly"), first.map { it.title })
         assertNull(first.single().nextEpisode)
+    }
+
+    private val older = MediaId.tmdbTv("2")
+    private val newer = MediaId.tmdbTv("3")
+
+    private fun orderedIds(items: List<com.codingpit.muviss.feature.progress.api.WatchNextItem>) = items.map { it.mediaId }
+
+    @Test
+    fun orders_by_most_recent_play() = runTest {
+        val repository = FakeProgressRepository()
+        repository.lastWatched.value = mapOf(older to 2_000L, newer to 1_000L, show to 3_000L)
+        val summaries = listOf(older, newer, show).map { collectionSummary(it) }
+        val watchNext = useCase(FakeCollectionApi(summaries), repository, catalogs = emptyMap())
+
+        assertEquals(listOf(show, older, newer), orderedIds(watchNext().first()))
+    }
+
+    @Test
+    fun title_without_plays_falls_back_to_added_date() = runTest {
+        val repository = FakeProgressRepository()
+        repository.lastWatched.value = mapOf(older to 5_000L)
+        val summaries = listOf(
+            collectionSummary(show, addedAtEpochMs = 9_000L),
+            collectionSummary(older),
+            collectionSummary(newer, addedAtEpochMs = 4_000L),
+        )
+        val watchNext = useCase(FakeCollectionApi(summaries), repository, catalogs = emptyMap())
+
+        assertEquals(listOf(show, older, newer), orderedIds(watchNext().first()))
+    }
+
+    @Test
+    fun a_new_play_moves_its_title_to_the_top_and_removing_it_moves_it_back() = runTest {
+        val repository = FakeProgressRepository()
+        repository.lastWatched.value = mapOf(show to 1_000L, older to 2_000L)
+        val summaries = listOf(show, older).map { collectionSummary(it) }
+        val watchNext = useCase(FakeCollectionApi(summaries), repository, catalogs = emptyMap())
+
+        watchNext().test {
+            assertEquals(listOf(older, show), orderedIds(awaitItem()))
+
+            repository.lastWatched.value = mapOf(show to 3_000L, older to 2_000L)
+            assertEquals(listOf(show, older), orderedIds(awaitItem()))
+
+            repository.lastWatched.value = mapOf(show to 1_000L, older to 2_000L)
+            assertEquals(listOf(older, show), orderedIds(awaitItem()))
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 }

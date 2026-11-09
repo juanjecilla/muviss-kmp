@@ -126,6 +126,8 @@ class MuvissCrashReportingTest {
             override fun observeThemeMode(): Flow<ThemeMode> = MutableStateFlow(ThemeMode.SYSTEM)
             override fun observeNotificationsEnabled(): Flow<Boolean> = MutableStateFlow(true)
             override fun observeCrashReportsEnabled(): Flow<Boolean> = setting
+            override fun observeDeviceBackupEnabled(): Flow<Boolean> = MutableStateFlow(false)
+            override suspend fun setDeviceBackupEnabled(enabled: Boolean) = Unit
 
             override fun observeMuting(): Flow<GenreMuting> = MutableStateFlow(GenreMuting())
 

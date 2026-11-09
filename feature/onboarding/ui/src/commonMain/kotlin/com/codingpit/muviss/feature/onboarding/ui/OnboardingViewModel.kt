@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.onboarding.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.backup.platformCanBackUp
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.flags.FeatureFlags
@@ -16,6 +17,7 @@ import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,17 +25,19 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
-/** The pages, in order. Two are conditional; see [pagesFor]. */
-enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, NOTIFICATIONS, TMDB_KEY, MUTED_GENRES, DONE }
+/** The pages, in order. Three are conditional; see [pagesFor]. */
+enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, DEVICE_BACKUP, NOTIFICATIONS, TMDB_KEY, MUTED_GENRES, DONE }
 
 /**
- * The pages this device shows: the alerts page needs a platform that notifies (not web), and the
- * TMDB key page appears only while the app offers an Own TMDB Key (`byokEnabled`).
+ * The pages this device shows: the alerts page needs a platform that notifies (not web), the backup page needs a
+ * platform whose OS backup Muviss can honour (Device Backup, ADR 0034), and the TMDB key page appears only while
+ * the app offers an Own TMDB Key (`byokEnabled`).
  */
-fun pagesFor(canNotify: Boolean, byokOffered: Boolean): List<OnboardingPage> = OnboardingPage.entries.filter {
+fun pagesFor(canNotify: Boolean, byokOffered: Boolean, canBackUp: Boolean): List<OnboardingPage> = OnboardingPage.entries.filter {
     when (it) {
         OnboardingPage.NOTIFICATIONS -> canNotify
         OnboardingPage.TMDB_KEY -> byokOffered
+        OnboardingPage.DEVICE_BACKUP -> canBackUp
         else -> true
     }
 }
@@ -57,6 +61,8 @@ data class OnboardingUiState(
     val pages: List<OnboardingPage> = emptyList(),
     val index: Int = 0,
     val notificationsEnabled: Boolean = false,
+    /** Device Backup (ADR 0034): what the backup page's switch shows. Off until the person turns it on. */
+    val deviceBackupEnabled: Boolean = false,
     /** The user asked for alerts and the OS said no, so the switch snapped back; the page says why. */
     val notificationsDenied: Boolean = false,
     val keySource: TmdbDataSource = TmdbDataSource.MUVISS,
@@ -83,6 +89,8 @@ class OnboardingViewModel(
     private val tmdbKey: TmdbKeyApi,
     featureFlags: FeatureFlags,
     private val systemNotifications: SystemNotificationSettings,
+    /** Whether the backup page is offered; the platform's answer in the app, a fixed one in tests. */
+    private val canBackUp: Boolean = platformCanBackUp,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingUiState())
@@ -92,10 +100,13 @@ class OnboardingViewModel(
         viewModelScope.launchReporting {
             // Read once: pages appearing or vanishing under a user mid-flow would move their place.
             val byok = featureFlags.byokEnabled.first()
-            _state.update { it.copy(pages = pagesFor(platformCanNotify, byok)) }
+            _state.update { it.copy(pages = pagesFor(platformCanNotify, byok, canBackUp)) }
         }
         settings.observeNotificationsEnabled()
             .onEach { enabled -> _state.update { it.copy(notificationsEnabled = enabled) } }
+            .launchInReporting(viewModelScope)
+        settings.observeDeviceBackupEnabled()
+            .onEach { enabled -> _state.update { it.copy(deviceBackupEnabled = enabled) } }
             .launchInReporting(viewModelScope)
         tmdbKey.observeSource()
             .onEach { source -> _state.update { it.copy(keySource = source) } }
@@ -133,6 +144,9 @@ class OnboardingViewModel(
     /** Start and Skip alike: whatever the pages wrote stays, and the introduction is done. */
     fun finish(onFinished: () -> Unit) {
         viewModelScope.launchReporting {
+            // Leaving clears this view model and cancels its scope, so a backup choice still being
+            // written would be lost; wait for it first.
+            deviceBackupWrite?.join()
             onboarding.markCompleted()
             onFinished()
         }
@@ -142,6 +156,18 @@ class OnboardingViewModel(
         viewModelScope.launchReporting {
             val change = settings.setNotificationsEnabled(enabled)
             _state.update { it.copy(notificationsDenied = change == NotificationsChange.DENIED) }
+        }
+    }
+
+    /** The backup page's switch (ADR 0034). Nothing is copied now; the OS decides at its next backup. */
+    // The latest backup write, which finish() waits for. Each toggle waits for the one before it, so they land in order.
+    private var deviceBackupWrite: Job? = null
+
+    fun onDeviceBackupToggled(enabled: Boolean) {
+        val previous = deviceBackupWrite
+        deviceBackupWrite = viewModelScope.launchReporting {
+            previous?.join()
+            settings.setDeviceBackupEnabled(enabled)
         }
     }
 

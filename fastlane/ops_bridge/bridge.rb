@@ -192,6 +192,8 @@ module OpsBridge
     all = connector.items
     known = sink.known_issues(connector)
     items = new_items(all, known.map(&:id))
+    # A connector that can be flooded (a public form) caps what one run may open; the rest wait for the next.
+    items = items.first(connector.max_new) if connector.respond_to?(:max_new)
     came_back = regressions(all, known)
     log.call("#{connector.name}: #{all.size} item(s) at the source, #{items.size} without a GitHub issue, " \
              "#{came_back.size} back after a close")

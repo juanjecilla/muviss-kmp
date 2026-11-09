@@ -85,13 +85,12 @@ class FakeGitHub
 end
 
 class FakeGit
-  attr_accessor :rc_by_version, :heads, :shas, :drafts, :codes, :raise_on_draft
+  attr_accessor :rc_by_version, :heads, :shas, :codes
 
   def initialize
     @rc_by_version = {}
     @heads = {}
     @shas = {}
-    @drafts = Hash.new { [] }
     @codes = {}
   end
 
@@ -109,12 +108,6 @@ class FakeGit
 
   def version_code(tag)
     @codes.fetch(tag)
-  end
-
-  def draft_locales(version)
-    raise @raise_on_draft if @raise_on_draft
-
-    @drafts[version]
   end
 end
 
@@ -405,11 +398,6 @@ class ReleasePromotionTest < Minitest::Test
     assert_includes reasons, "CI on the branch head is not green"
   end
 
-  def test_draft_store_notes_hold_the_beta_too
-    reasons = held_reasons { @git.drafts["1.1.0"] = %w[en-US es-ES] }
-    assert_includes reasons, "the store notes are still a DRAFT (or missing) for en-US, es-ES"
-  end
-
   def test_a_sentry_hold_holds_and_asks_about_the_rc_build
     reasons = held_reasons { @sentry.answer = "2 new crash issue(s) first seen in this release: ABC-1, ABC-2" }
     assert_includes reasons, "Sentry: 2 new crash issue(s) first seen in this release: ABC-1, ABC-2"
@@ -422,19 +410,14 @@ class ReleasePromotionTest < Minitest::Test
     assert_includes @out.string, "could not read blockers: RuntimeError"
   end
 
-  def test_unreadable_notes_hold
-    reasons = held_reasons { @git.raise_on_draft = RuntimeError.new("git") }
-    assert_includes reasons, "the store notes could not be read"
-  end
-
   def test_a_held_step_is_recorded_on_the_issue_once
-    @git.drafts["1.1.0"] = %w[en-US]
+    @github.green["sha-1.1.0-rc3"] = false
     run_on(SUNDAY_BETA)
     comments = @github.calls.count { |c| c.first == :comment }
     run_on(SUNDAY_BETA)
     assert_equal comments, @github.calls.count { |c| c.first == :comment }, "an unchanged hold is not commented again"
     assert_equal 1, comments
-    assert_includes @github.issues.first["body"], "DRAFT (or missing) for en-US"
+    assert_includes @github.issues.first["body"], "CI on the branch head is not green"
   end
 
   # ---- the other two entry points -----------------------------------------

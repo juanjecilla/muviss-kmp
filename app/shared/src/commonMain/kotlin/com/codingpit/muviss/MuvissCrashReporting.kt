@@ -121,8 +121,12 @@ object MuvissCrashReporting {
      * The exact string the Sentry Gradle plugin stamps on the mapping it uploads
      * (`<applicationId>@<versionName>+<versionCode>`). If the two ever differ,
      * Sentry has no way to tell which mapping deobfuscates which trace.
+     *
+     * On iOS the namespace is `com.codingpit.muviss.ios` ([crashReleaseNamespace],
+     * #422) so the per-platform crash gates can tell the two stores apart; Android
+     * and every other target keep the string the Gradle plugin stamps.
      */
-    internal fun releaseOf(version: AppVersion): String = "$APPLICATION_ID@${version.versionName}+${version.versionCode}"
+    internal fun releaseOf(version: AppVersion, namespace: String = crashReleaseNamespace): String = "$namespace@${version.versionName}+${version.versionCode}"
 
     internal const val APPLICATION_ID = "com.codingpit.muviss"
 }
