@@ -1,16 +1,15 @@
-package com.codingpit.muviss.feature.search.domain
+package com.codingpit.muviss.feature.collection.api
 
-import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 
 /**
- * Picks the library titles that seed Discover's "For you" section (EPIC 16)
- * and merges the recommendations fetched for each seed back into one deduped
- * list. Pure and total — safe to unit-test without touching collection's
- * database or TMDB (see this module's `ForYouSeedingTest`) — `SearchViewModel`
- * is the only caller, reading the library through collection's `:api` per
- * ADR 0004.
+ * Picks the library titles that seed the personal suggestions (Discover's "For you",
+ * EPIC 16, and a Pick Session that has no anchor, #661) and merges the recommendations
+ * fetched for each seed back into one deduped list. Pure and total, so it is
+ * unit-testable without collection's database or TMDB. It lives in collection's `:api`
+ * because the library is what it reads, and both peers reach the library through there
+ * (ADR 0004).
  */
 object ForYouSeeding {
     /** A title counts as a "taste" signal once it's a favorite or rated at least this high (1-10 scale, EPIC 15). */

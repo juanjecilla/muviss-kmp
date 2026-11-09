@@ -18,6 +18,7 @@ import com.codingpit.muviss.feature.nextpick.data.DiscoverSource
 import com.codingpit.muviss.feature.nextpick.data.LibraryGenreIds
 import com.codingpit.muviss.feature.nextpick.data.NextPickContextReader
 import com.codingpit.muviss.feature.nextpick.data.OwnServicesCandidates
+import com.codingpit.muviss.feature.nextpick.data.SeedCandidates
 import com.codingpit.muviss.feature.nextpick.data.SettingsMuting
 import com.codingpit.muviss.feature.nextpick.data.TasteHistoryReader
 import com.codingpit.muviss.feature.nextpick.data.TriageExclusions
@@ -61,6 +62,7 @@ val nextPickDataModule: Module = module {
                 OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds), taste, lookup, region),
                 DiscoverSource(metadata, collection, thisYear, muting, taste, region),
                 OwnServicesCandidates(AnchorCandidates(metadata, collection), taste, lookup, region),
+                OwnServicesCandidates(SeedCandidates(metadata, collection), taste, lookup, region),
             ),
             exclusions = TriageExclusions(triage),
             history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity, genreIds), taste),

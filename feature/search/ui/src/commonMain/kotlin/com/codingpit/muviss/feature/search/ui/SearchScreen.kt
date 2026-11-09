@@ -57,6 +57,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterCardSkeleton
 import com.codingpit.muviss.core.designsystem.component.PosterSkeleton
 import com.codingpit.muviss.core.designsystem.component.SkeletonHost
+import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.posterGridCells
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -74,6 +75,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.intro_find
 import com.codingpit.muviss.feature.search.ui.generated.resources.intro_tick
 import com.codingpit.muviss.feature.search.ui.generated.resources.intro_title
 import com.codingpit.muviss.feature.search.ui.generated.resources.intro_triage
+import com.codingpit.muviss.feature.search.ui.generated.resources.next_pick_entry
 import com.codingpit.muviss.feature.search.ui.generated.resources.search_clear
 import com.codingpit.muviss.feature.search.ui.generated.resources.search_empty_body
 import com.codingpit.muviss.feature.search.ui.generated.resources.search_empty_title
@@ -321,7 +323,7 @@ internal fun DiscoverBrowse(
         // an empty or thin library is exactly the state it exists to fix.
         TriageEntryCard(onOpenTriage)
         // The Pick Session (EPIC 51, #545): "What's next?" from Discover, beside the deck it is an alternative to.
-        onOpenNextPick?.let { NextPickEntryButton(onClick = it, modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG)) }
+        onOpenNextPick?.let { WhatsNextButton(stringResource(Res.string.next_pick_entry), onClick = it, modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG)) }
         // Muted Genres (ADR 0031): Popular and For you leave them out; this brings them back for the session.
         if (muted.available) {
             FilterChip(selected = muted.shown, onClick = muted.onToggle, label = { Text(stringResource(Res.string.show_muted)) }, modifier = Modifier.testTag(SHOW_MUTED_CHIP_TAG))

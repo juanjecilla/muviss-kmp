@@ -65,12 +65,14 @@ class NextPickRequestBudgetTest {
     /** Wired as NextPickDataModule wires it, so the genre catalogue's requests are counted too (#547). */
     private fun genreIdsOver(metadata: CountingMetadata) = LibraryGenreIds(liveCatalogue = { metadata.genres(it) }, language = { "en-US" })
 
+    @Suppress("LongParameterList") // one defaulted knob per thing a test varies, as DetailViewModelTest.viewModel does
     private suspend fun pick(
         metadata: CountingMetadata,
         context: PickContext,
         vararg answers: PickAnswer,
         genreIds: LibraryGenreIds = genreIdsOver(metadata),
         services: OwnServices = OwnServices(),
+        library: FakeLibrary = this.library,
     ): PickResult {
         val collection: () -> CollectionApi = { library }
         val engine = PickEngine(
@@ -78,6 +80,7 @@ class NextPickRequestBudgetTest {
                 OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds), { services.taste }, { services.lookup }, { "US" }),
                 DiscoverSource(metadata, collection, thisYear = { 2027 }, muting = PickMuting { MutedGenres.NONE }, taste = { services.taste }, region = { "US" }),
                 OwnServicesCandidates(AnchorCandidates(metadata, collection), { services.taste }, { services.lookup }, { "US" }),
+                OwnServicesCandidates(SeedCandidates(metadata, collection), { services.taste }, { services.lookup }, { "US" }),
             ),
             exclusions = PickExclusions { emptySet() },
             history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity(context.online), genreIds), { services.taste }),
@@ -123,6 +126,28 @@ class NextPickRequestBudgetTest {
         pick(metadata, standard(anchored = false), PickAnswer.Source(PickSource.SOMETHING_NEW))
 
         assertEquals(mapOf("discover" to 2), metadata.requests)
+    }
+
+    @Test
+    fun `something_new_without_an_anchor_asks_tmdb_about_at_most_three_taste_seeds`() = runTest {
+        // Four favourites: "For you" seeds from at most three, and so does a no-anchor session (#661).
+        val favourites = FakeLibrary(listOf("11", "12", "13", "14").map { libraryTitle(movie(it), WatchStatus.NOT_STARTED).copy(favorite = true) })
+        val metadata = CountingMetadata(discover = mapOf(MediaType.MOVIE to listOf(movie("2"))), recommended = listOf(movie("20")), similarTitles = listOf(show("21")))
+
+        pick(metadata, standard(anchored = false), PickAnswer.Source(PickSource.SOMETHING_NEW), library = favourites)
+
+        assertEquals(3, metadata.requests["recommendations"])
+        assertEquals(3, metadata.requests["similar"])
+    }
+
+    @Test
+    fun `offline_something_new_makes_no_seed_requests`() = runTest {
+        val favourites = FakeLibrary(listOf(libraryTitle(movie("11"), WatchStatus.NOT_STARTED).copy(favorite = true)))
+        val metadata = CountingMetadata()
+
+        pick(metadata, standard(anchored = false, online = false), PickAnswer.Source(PickSource.SOMETHING_NEW), library = favourites)
+
+        assertEquals(0, metadata.total)
     }
 
     @Test

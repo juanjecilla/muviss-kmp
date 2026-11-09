@@ -81,6 +81,7 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
+import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
@@ -365,7 +366,7 @@ private fun WatchNextList(
         // carries the prominent one, so the two never both show.
         if (onOpenNextPick != null) {
             item(key = WATCH_NEXT_NEXT_PICK_KEY, contentType = WATCH_NEXT_NEXT_PICK_KEY) {
-                NextPickButton(onClick = onOpenNextPick, modifier = Modifier.fillMaxWidth().testTag(WATCH_NEXT_NEXT_PICK_TAG))
+                WhatsNextButton(stringResource(Res.string.next_pick_entry), onClick = onOpenNextPick, modifier = Modifier.fillMaxWidth().testTag(WATCH_NEXT_NEXT_PICK_TAG))
             }
         }
         items(items, key = { it.mediaId.toString() }) { item ->
@@ -386,17 +387,6 @@ private fun WatchNextList(
 /** The "What's next?" entry above a non-empty Watch Next (EPIC 51, #599). */
 const val WATCH_NEXT_NEXT_PICK_TAG = "watchNextNextPick"
 private const val WATCH_NEXT_NEXT_PICK_KEY = "nextPick"
-
-/**
- * The same outlined button Discover and a finished title's Detail use for "What's next?" (EPIC 51, #545),
- * kept private here: the entry lives in `:feature:search:ui`, which this module may not depend on.
- */
-@Composable
-private fun NextPickButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedButton(onClick = onClick, modifier = modifier.heightIn(min = 48.dp)) {
-        Text(stringResource(Res.string.next_pick_entry), style = MaterialTheme.typography.labelLarge)
-    }
-}
 
 /** Tags the "S1E3 seen" sweep across a row for a moment after its tick (EPIC 52). */
 const val TICK_CONFIRMATION_TAG = "tickConfirmation"

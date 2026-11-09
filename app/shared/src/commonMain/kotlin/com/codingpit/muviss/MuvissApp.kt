@@ -457,7 +457,7 @@ private fun MuvissScaffold(
                     searchSection(
                         navController,
                         onOpenTriage = { navController.navigate(TriageRoute) },
-                        onOpenNextPick = controller::openNextPick,
+                        onOpenNextPick = controller::openNextPickFrom,
                     )
                     collectionSection(
                         navController,

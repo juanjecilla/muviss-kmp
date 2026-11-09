@@ -12,8 +12,8 @@ import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.collection.api.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
-import com.codingpit.muviss.feature.search.domain.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase

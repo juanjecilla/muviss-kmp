@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.search.domain
 
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.collection.api.ForYouSeeding
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.WatchStatus

@@ -45,6 +45,7 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
+import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.posterGridCells
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
@@ -407,13 +408,11 @@ internal const val LIBRARY_NEXT_PICK_TAG = "libraryNextPick"
  */
 @Composable
 private fun LibraryNextPickButton(onClick: () -> Unit) {
-    OutlinedButton(
+    WhatsNextButton(
+        stringResource(Res.string.next_pick_entry),
         onClick = onClick,
         modifier = Modifier
             .padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s)
-            .heightIn(min = 48.dp)
             .testTag(LIBRARY_NEXT_PICK_TAG),
-    ) {
-        Text(stringResource(Res.string.next_pick_entry))
-    }
+    )
 }

@@ -104,6 +104,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.RatingRow
+import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
@@ -141,6 +142,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.more_like_this
 import com.codingpit.muviss.feature.search.ui.generated.resources.movie_mark_watched
 import com.codingpit.muviss.feature.search.ui.generated.resources.movie_watched
 import com.codingpit.muviss.feature.search.ui.generated.resources.movie_watched_times
+import com.codingpit.muviss.feature.search.ui.generated.resources.next_pick_entry
 import com.codingpit.muviss.feature.search.ui.generated.resources.note_add
 import com.codingpit.muviss.feature.search.ui.generated.resources.note_placeholder
 import com.codingpit.muviss.feature.search.ui.generated.resources.note_title
@@ -196,7 +198,7 @@ fun DetailScreen(
     // Null where there is nothing to offer (most tests): Detail works without it.
     nudge: NotificationNudgeViewModel? = null,
     /** "What's next?" (EPIC 51, #545), offered only on a Watched or Finished title. Null draws nothing. */
-    onOpenNextPick: (() -> Unit)? = null,
+    onOpenNextPick: ((MediaId) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
@@ -327,9 +329,15 @@ private class DetailCallbacks(
 
 /** "What's next?" under the actions of a Watched or Finished title (EPIC 51, #545). Draws nothing otherwise. */
 @Composable
-private fun CompletedNextPickEntry(state: DetailUiState, onOpenNextPick: (() -> Unit)?) {
-    if (!state.completed || onOpenNextPick == null) return
-    NextPickEntryButton(onClick = onOpenNextPick, modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG))
+private fun CompletedNextPickEntry(state: DetailUiState, onOpenNextPick: ((MediaId) -> Unit)?) {
+    val title = state.details?.summary?.id
+    if (!state.completed || onOpenNextPick == null || title == null) return
+    // The session opens anchored on this title (#664): "more like the one you just finished".
+    WhatsNextButton(
+        stringResource(Res.string.next_pick_entry),
+        onClick = { onOpenNextPick(title) },
+        modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG),
+    )
 }
 
 /**
@@ -346,7 +354,7 @@ private fun DetailCompact(
     viewModel: DetailViewModel,
     callbacks: DetailCallbacks,
     bottomPadding: Dp,
-    onOpenNextPick: (() -> Unit)?,
+    onOpenNextPick: ((MediaId) -> Unit)?,
 ) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
@@ -375,7 +383,7 @@ private fun DetailExpanded(
     viewModel: DetailViewModel,
     callbacks: DetailCallbacks,
     bottomPadding: Dp,
-    onOpenNextPick: (() -> Unit)?,
+    onOpenNextPick: ((MediaId) -> Unit)?,
 ) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
