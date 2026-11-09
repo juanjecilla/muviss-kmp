@@ -6,7 +6,8 @@ Issue #723. "Home" is Discover (`SearchRoute`).
 `LoadingSkeletonGrid` is a 12-poster grid with no headers; the loaded screen is a column (intro card, Triage entry, What's next, muted chip, For you, genre chips, Popular movies, Popular TV). The page re-flows when data lands. `Modifier.shimmer()` sweeps each item on its own.
 
 ## Proposal
-1. **Same shape.** Local parts (intro, Triage entry, What's next, muted chip) need no network and render for real. Network sections render skeleton rows under their real headers, with the real item size (110 dp `PosterCard`) and count that fits the width, so nothing moves on load.
+1. **Same shape.** "For you" is hidden once loaded when the library has no recommendation seeds (`SearchViewModel`, `SearchScreen` drops empty carousels), so a skeleton row for it would vanish and shift everything below. Seeds are known locally before any network call: show the For you skeleton only when the library has at least one seed, otherwise omit it.
+    Local parts (intro, Triage entry, What's next, muted chip) need no network and render for real. Network sections render skeleton rows under their real headers, with the real item size (110 dp `PosterCard`) and count that fits the width, so nothing moves on load.
 2. **A wave.** One gradient brush positioned in window coordinates, animated across the root, so the highlight reaches each skeleton in turn. Items read their offset from `LocalShimmer` rather than each owning an animation, which also makes it one animation, not twelve.
 3. **Standalone library.** `:lib:shimmer`: Compose only, no `com.codingpit.muviss` import. API: a `ShimmerHost` (provides the clock and angle), `Modifier.shimmer(...)`, colors/duration/direction as parameters, a reduced-motion flag as a plain boolean. `:core:designsystem` keeps `PosterSkeleton`/`TextLineSkeleton`/`RowSkeleton` and feeds them Muviss colors and the reduce-motion switches (#394, EPIC 52): reduced motion → a static fill.
 

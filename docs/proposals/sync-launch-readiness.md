@@ -11,7 +11,7 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 | Sync engine, server sequence, opt-in auto sync | done, compiled out of releases (ADR 0009/0020/0021/0024) |
 | Dev and prod Supabase projects | done (#151) |
 | RLS incl. co-watch fix | done, pgTAP in CI (#129) |
-| RLS on `taste_profile` | policy exists, no pgTAP (#586), and ungated once #283 lands (#727) |
+| RLS on `taste_profile` | base policy exists with no pgTAP of its own (#586); #283's branch gates it (`20261027000100`, covered by `sync_entitlement.test.sql`); its two older migrations still need re-timestamping at release-merge time (#727) |
 | Server entitlement gate (#283) | draft, held until the release that turns sync on; hook must be live first (#282) |
 | Client entitlement, Lapsed UI, account deletion UI | missing (#279, #285, #287) |
 | RevenueCat provider + paywall | missing (EPIC 32, #75) |
@@ -29,8 +29,9 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 3. `RevenueCatEntitlementProvider` in `:core:billing` `androidMain`/`iosMain` only. `purchases-kmp` publishes Android + iOS artifacts, and a `commonMain` dependency breaks `compileKotlinWasmJs` for every downstream module (CLAUDE.md). Check licensee's Apache-2.0/MIT allow-list first.
 4. Real paywall presenter behind `rememberPaywallPresenter`; desktop and web can hold an entitlement but not sell one.
 5. Client entitlement states and account deletion (#279, #285, #287), then the public deletion page.
-6. Privacy, data-safety, listing; flip release flags in a dedicated release.
-7. Run the live checks (#100, #114) on dev before the flags move.
+6. **Production entitlement rollout, before any flag moves** (#282): enable the access-token hook on prod, deploy `revenuecat-webhook` and `delete-account`, set the webhook secret, then verify purchase to sync end to end with a sandbox account on prod. If the gated migrations reach prod before this, paying users cannot sync.
+7. Privacy, data-safety, listing; flip release flags in a dedicated release.
+8. Run the live checks (#100, #114) on dev before the flags move.
 
 ## Hazards
 - Merging a `release/*` into `main` applies migrations to **prod** automatically; #283's policies lock everyone out until the hook is on.

@@ -14,11 +14,12 @@ One filled, full-width button whose meaning follows the state:
 | movie, unseen | Mark as watched | tick, Undo snackbar |
 | movie, seen | Watched ✓ (· N×) | Watched-again dialog (existing) |
 | show, next aired episode exists | Mark S2·E3 seen, subtitle: its name | one Tick, Undo |
-| show, nothing aired unseen, more announced | Caught up ✓, subtitle `Next: S3·E1 · 12 Jan` | disabled |
+| show, ongoing, every aired episode seen, next episode announced | Caught up ✓, subtitle `Next: S3·E1 · 12 Jan` | disabled |
+| show, ongoing, every aired episode seen, no announced next episode | Caught up ✓ (WatchStatus `Watched`, ADR 0005), no subtitle | disabled |
 | show, none aired yet | Not aired yet, subtitle first air date | disabled |
 | show ended, all seen | Finished ✓ | disabled |
 
-Icon row (outlined): favorite, bell (saved only), add to list, and a new **bookmark** (filled when saved) that removes from the library. Removal gets an Undo that un-deletes the soft-deleted `CollectionEntry`, so favorite, rating, note, `addedAt` and list membership come back. Today tapping "In Library ✓" removes instantly with no confirmation and no Undo.
+Icon row (outlined): favorite, bell (saved only), add to list, and a new **bookmark** (filled when saved) that removes from the library. Removal gets an Undo that un-deletes the soft-deleted `CollectionEntry` as it was, so favorite, rating, note, `addedAt`, list membership **and the stored Snapshot counts** come back. Undo never rebuilds the Snapshot from the details on screen: offline, `DetailViewModel.savedCopy` can hold a stale catalog, and a rebuilt Snapshot could put `seenEpisodes` above `airedEpisodes`, which `WatchProgress`'s `require` turns into a crash on the next Library derive. Today tapping "In Library ✓" removes instantly with no confirmation and no Undo.
 
 "Mark whole show as seen" and the season checkboxes stay where they are (bulk actions, aired episodes only, `EpisodeOrdering.airedBy`).
 
@@ -38,4 +39,4 @@ Icon row (outlined): favorite, bell (saved only), add to list, and a new **bookm
 `DetailScreen.kt` (`ActionRow`, `MovieWatchedToggle`, `MarkShowSeenButton`), `DetailViewModel.kt` (`toggleSaved`, `toggleMovieWatched`, state), `ProgressApi` + `ProgressUseCases.kt` (next-episode query, tick-adds use case), `CollectionApi` (un-delete), `strings.xml` en/es.
 
 ## Tests
-ViewModel: created-entry Undo, pre-existing-entry Undo, 0 aired, caught up, ended, unaired-before-next, remove + Undo keeps favorite/rating. Goldens `detail-show*` re-recorded; StoreShot and fastlane/website screenshots refreshed (#707 flakes the seasons capture). Landing `en.ts`/`es.ts` and the Play description (free, user-visible `feat`).
+ViewModel: remove then Undo while the details request fails keeps the stored counts (seen never exceeds aired, status still derives); created-entry Undo, pre-existing-entry Undo, 0 aired, caught up, ended, unaired-before-next, remove + Undo keeps favorite/rating. Goldens `detail-show*` re-recorded; StoreShot and fastlane/website screenshots refreshed (#707 flakes the seasons capture). Landing `en.ts`/`es.ts` and the Play description (free, user-visible `feat`).

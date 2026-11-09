@@ -487,9 +487,9 @@ runs standing in where they could. What that did and did not buy:
 - **A hand edit to `docs/changelog/X.Y.Z.md` conflicts when forwarded** — #718: the forward-fix rule covers release notes only (#529), not the changelog file.
 ### 2026-11-09
 - **Detail primary action** (#721, ADR 0037, `docs/proposals/detail-primary-action.md`): the filled button follows library state (Add / Mark seen / Caught up), remove moves to a bookmark with an Undo that un-deletes, and a user tick adds the title. Not built.
-- **Triage deck buffer** (#722, `docs/proposals/triage-deck-buffer.md`): one in-flight refill, low-water 5 / target 10, overflow kept, cursor persisted with a 24 h TTL and a two-page rewind. Needs a migration (number claimed at merge). Not built.
+- **Triage deck buffer** (#722, `docs/proposals/triage-deck-buffer.md`): one in-flight refill, low-water 5 / target 10, overflow kept, cursor persisted with a 24 h TTL and a two-page rewind. Needs a migration (number claimed in `docs/EPICS.md` when the implementation branch opens). Not built.
 - **Home skeleton and wave** (#723, `docs/proposals/home-skeleton-wave.md`): skeleton matches the loaded Discover layout; a travelling wave in a standalone `:lib:shimmer`. Not built.
-- **Discover offline cache** (#724, `docs/proposals/discover-offline-cache.md`): `discoverCache` table, raw pre-mute, shown instantly and revalidated. Needs a migration. Not built.
+- **Discover offline cache** (#724, `docs/proposals/discover-offline-cache.md`): `discoverCache` table, raw pre-mute, shown instantly and revalidated. Needs a migration (number claimed in this file when the implementation branch opens). Not built.
 - **Sync launch checklist** (#725, `docs/proposals/sync-launch-readiness.md`): nothing RevenueCat exists in code; the list of what stands between today and paid sync.
 - **Dependabot** (#726, draft PR #731): 60 npm alerts, all in `kotlin-js-store` locks; same-major packages pinned with Yarn resolutions, the rest (serialize-javascript 6 to 7, minimatch, glob, diff) to be dismissed with a reason. Raised by it: **#730**, develop's dependency-verification metadata misses five JS `kotlin_resources.zip`, so web bundling fails. **#283** was refreshed (develop merged, `taste_profile` gated by `20261027000100`, pgTAP 94/94); its own migrations still need re-timestamping at release-merge time (#727).
 

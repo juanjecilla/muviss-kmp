@@ -4,7 +4,7 @@ On Detail, ticking a movie or an episode of a title that is not in the library w
 
 ## Decision
 
-**A tick the user makes adds the title to the library when it is absent.** The use case behind Detail's ticks (primary button, movie toggle, episode, season, show, Watched-again) calls `CollectionApi.upsertSnapshot` first, the same call "Add to library" makes, so the entry carries a fresh Snapshot and a sync stamp.
+**A tick the user makes adds the title to the library when it is absent.** The use case behind Detail's ticks (primary button, movie toggle, episode, season, show, Watched-again) calls `CollectionApi.add(details)` first, the same call "Add to library" makes (it writes the Snapshot through the repository's `upsertSnapshot`, never `refreshSnapshot`), so the entry carries a fresh Snapshot and a sync stamp. The details are on screen whenever an unsaved title can be ticked.
 
 - Only ticks the user makes. An import, a sync pull and a restore never add: they bring progress for titles the other source already decided about, and a pull that created entries would resurrect a title the user removed on another device (Completion draws the same line, CONTEXT.md).
 - **Undo removes the entry only if this tick created it.** The use case returns `createdEntry`; the snackbar's Undo reverses the ticks and, when `createdEntry` is true, the entry. An entry that existed before the tick is never touched by Undo.

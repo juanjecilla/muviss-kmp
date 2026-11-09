@@ -51,7 +51,7 @@ A value derived from WatchProgress (never stored independently): NotStarted → 
 _Avoid_: state, phase.
 
 **Tick**:
-The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. When the user makes it on a title that is not in the collection, it also creates the CollectionEntry; an import, a sync pull or a restore never does (ADR 0037). What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
+The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. Planned (ADR 0037, #721; today a tick on a title that is not in the collection writes progress only): when the user makes it on such a title it also creates the CollectionEntry; an import, a sync pull or a restore never does. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
 _Avoid_: check, mark (as a noun); watch (that is the viewing, a Play).
 
 **Milestone**:
@@ -86,7 +86,7 @@ The browse screen a person lands on: popular titles, genres and "For you", besid
 _Avoid_: home (a place on the screen, not a concept), feed (this product has none).
 
 **Discover Shelf**:
-One stored section of Discover (popular movies, a genre list, "For you") exactly as the source returned it, with the time it was fetched. A cache: nobody authors it, a refetch always replaces it, it is neither synced nor exported, and Muted Genres are applied when it is read, not when it is stored. Distinct from a Snapshot (the user's saved row) and an EpisodeCatalog (a show's episodes).
+One stored section of Discover (popular movies, a genre list, "For you") exactly as the source returned it, with the time it was fetched. Proposed (#724), not built. A cache: nobody authors it, a refetch always replaces it, it is neither synced nor exported, and Muted Genres are applied when it is read, not when it is stored. A first launch offline with nothing stored still shows the error. Distinct from a Snapshot (the user's saved row) and an EpisodeCatalog (a show's episodes).
 _Avoid_: snapshot, cache (as a name for the thing).
 
 **Triage**:
