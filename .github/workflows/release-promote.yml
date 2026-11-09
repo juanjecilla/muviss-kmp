@@ -7,7 +7,9 @@ name: Release promote
 # newer version takes the beta track. Each step runs only when every gate
 # passes (fastlane/release_promote.rb); a held version says why on its
 # "Release X.Y.Z" issue and is retried next Sunday. A promotion that fails
-# after its merge is retried alone, without merging again.
+# after its merge is retried alone, without merging again. When GitHub refuses
+# the merge as not mergeable and only CHANGELOG.md conflicts, the union of both
+# sides is pushed to main as the App instead (fastlane/release_merge.rb, #712).
 #
 # The production step needs no approval: the gates and the crash gate that
 # holds the ramp are what stand in for it (ADR 0030). `play-promote.yml` halts.
@@ -65,6 +67,18 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: git fetch --prune --tags --force origin '+refs/heads/*:refs/remotes/origin/*'
+
+      # A merge the Sunday step cannot make with GitHub's merge, because only
+      # CHANGELOG.md conflicts, is built here and pushed as the App (#712), so the
+      # commit carries the App's identity as release-train.yml's does.
+      - name: Commit as the release App
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
