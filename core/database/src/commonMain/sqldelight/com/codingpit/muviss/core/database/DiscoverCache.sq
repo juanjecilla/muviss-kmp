@@ -1,0 +1,25 @@
+-- Discover's offline cache (#724): the raw TMDB responses behind the Discover shelves, stored as JSON. A cache,
+-- not user data: no `isDirty`, no `updatedAt`, no soft delete. It is absent from `SyncChangeSet`, the export and
+-- a restore, and Delete all data wipes it (`SqlDelightLocalDataEraser`).
+--
+-- Raw means before Muted Genres: a mute change re-filters what is stored, so it never shows stale titles. The
+-- key carries the section, the page and the TMDB language, so a language change is a miss, not stale content.
+-- A row whose JSON no longer decodes (an app update changed the model) is a miss on read, never a crash.
+CREATE TABLE discoverCache (
+    cacheKey TEXT NOT NULL PRIMARY KEY,
+    json TEXT NOT NULL,
+    fetchedAtEpochMs INTEGER NOT NULL
+);
+
+selectByKey:
+SELECT *
+FROM discoverCache
+WHERE cacheKey = :cacheKey;
+
+upsert:
+INSERT OR REPLACE INTO discoverCache(cacheKey, json, fetchedAtEpochMs)
+VALUES (:cacheKey, :json, :fetchedAtEpochMs);
+
+-- Settings > Delete all data (EPIC 29). A local cache, so hard.
+deleteAll:
+DELETE FROM discoverCache;

@@ -1,0 +1,13 @@
+-- Discover's offline cache (#724). The filename is the version this migrates FROM: 28.sqm takes a v28
+-- database to v29 (fixture 29.db).
+--
+-- NUMBERING: claimed when the #724 branch opened, after #722's 27.sqm; `verifyMigrations` cannot see a
+-- collision, so re-check this number against develop before merging.
+--
+-- A cache table, not user data (ADR 0015's family: `titleWatchProviders`, `episode`, `remoteConfigCache`).
+-- One row per stored TMDB response, replaced on refresh, so it does not grow with use.
+CREATE TABLE discoverCache (
+    cacheKey TEXT NOT NULL PRIMARY KEY,
+    json TEXT NOT NULL,
+    fetchedAtEpochMs INTEGER NOT NULL
+);

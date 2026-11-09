@@ -56,7 +56,7 @@ export const en = {
     title: "Everything you need to keep track",
     lede: "Everything here is free — no paywall on the basics.",
     items: [
-      { icon: "search", title: "Search & discover", body: "Any movie or show from TMDB, plus For you, Popular now and browsing by genre." },
+      { icon: "search", title: "Search & discover", body: "Any movie or show from TMDB, plus For you, Popular now and browsing by genre. Discover opens offline with what you saw last, and says so when it is out of date." },
       { icon: "tv", title: "What's next?", body: "Finished something, or not sure what to watch? A short set of questions finds your next pick, from your list or from new titles, and says why it was chosen. Online, it can also look for more like what you just finished. Offline, it picks from your list. Choose how many questions it asks, whether it shows one pick or a short list, or turn the prompt off, in Settings. You can also say what you like there: genres, formats, services and company." },
       { icon: "search", title: "Mute what you don't watch", body: "Talk shows, news and reality TV are left out of Discover, your triage deck and What's next? picks by default. Pick any genres to mute in Settings, or show them again with one tap." },
       { icon: "tv", title: "Where to watch", body: "See which streaming, rental and purchase services carry a title in your region." },

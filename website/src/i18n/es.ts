@@ -55,7 +55,7 @@ export const es: Dictionary = {
     items: [
       { icon: "tv", title: "¿Qué sigue?", body: "¿Has terminado algo, o no sabes qué ver? Unas pocas preguntas dan con tu próxima elección, de tu lista o de títulos nuevos, y te dicen por qué. Con conexión, también puede buscar algo parecido a lo que acabas de terminar. Sin conexión, elige de tu lista. Elige cuántas preguntas hace, si muestra una recomendación o una lista corta, o apaga el aviso, en Ajustes. También puedes decir ahí lo que te gusta: géneros, formatos, servicios y compañía." },
       { icon: "search", title: "Silencia lo que no ves", body: "Los programas de entrevistas, las noticias y la telerrealidad no aparecen por defecto en Descubrir, en tu mazo de triaje ni en «¿Qué sigue?». Elige en Ajustes qué géneros silenciar, o vuelve a verlos con un toque." },
-      { icon: "search", title: "Busca y descubre", body: "Cualquier película o serie de TMDB, además de Para ti, Populares y géneros." },
+      { icon: "search", title: "Busca y descubre", body: "Cualquier película o serie de TMDB, además de Para ti, Populares y géneros. Descubrir se abre sin conexión con lo último que viste, y avisa cuando está desactualizado." },
       { icon: "tv", title: "Dónde verla", body: "Qué plataformas, alquileres y tiendas tienen cada título en tu país." },
       { icon: "grid", title: "Tu biblioteca", body: "Filtra por estado o favoritos y ordena por fecha, nota o título." },
       { icon: "heart", title: "Favoritos", body: "Marca lo que te encanta, sin importar cuánto llevas visto." },

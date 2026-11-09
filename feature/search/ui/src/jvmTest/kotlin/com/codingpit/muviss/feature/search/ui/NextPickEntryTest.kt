@@ -8,10 +8,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
-import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
+import com.codingpit.muviss.feature.search.domain.NoDiscoverCache
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.domain.SimilarMediaUseCase
@@ -132,11 +133,11 @@ internal fun DiscoverWithEntryContent(onOpenNextPick: (() -> Unit)?) {
     val viewModel = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
-        GenresUseCase(repo),
         RecommendationsUseCase(repo),
         FakeSearchCollectionApi(),
         FakeTriageApi(),
         FakeMutingApi(),
+        DiscoverFeed(repo, NoDiscoverCache, FakeClock(epochMs = 0L)),
     )
     SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {}, onOpenNextPick = onOpenNextPick)
 }

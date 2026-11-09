@@ -13,7 +13,9 @@ import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.ForYouSeeding
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
+import com.codingpit.muviss.feature.search.domain.DiscoverSnapshot
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
@@ -88,6 +90,11 @@ data class SearchUiState(
     val forYouLoading: Boolean = false,
     /** The skeleton's sweep runs (the in-app animations switch, #394). False draws a flat fill. */
     val animateSkeleton: Boolean = true,
+    /**
+     * Discover shows what was stored because the refresh failed and the stored copy is past its TTL (#724).
+     * The screen says so, with a retry, instead of passing an old copy off as current.
+     */
+    val discoverSaved: Boolean = false,
 ) {
     val canLoadMoreResults: Boolean get() = resultsPage < resultsTotalPages
     val canLoadMoreGenreResults: Boolean get() = genrePage < genreTotalPages
@@ -110,11 +117,11 @@ data class SearchUiState(
 class SearchViewModel(
     private val searchMedia: SearchMediaUseCase,
     private val discoverMedia: DiscoverMediaUseCase,
-    private val genresUseCase: GenresUseCase,
     private val recommendationsUseCase: RecommendationsUseCase,
     private val collectionApi: CollectionApi,
     private val triageApi: TriageApi,
     private val settings: SettingsApi,
+    private val discoverFeed: DiscoverFeed,
     connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
     animateSkeleton: Flow<Boolean> = flowOf(true),
 ) : ViewModel() {
@@ -284,7 +291,8 @@ class SearchViewModel(
     fun retry() {
         val s = _state.value
         when (s.mode) {
-            SearchMode.DISCOVER -> loadDiscover()
+            // An explicit retry asks the network even when the stored copy is still fresh (#724).
+            SearchMode.DISCOVER -> loadDiscover(forced = true)
 
             SearchMode.SEARCH_RESULTS -> {
                 loadJob?.cancel()
@@ -316,30 +324,50 @@ class SearchViewModel(
         if (discoverStale) loadDiscover()
     }
 
-    private fun loadDiscover() {
+    /**
+     * Shows what Discover has stored, then refreshes from TMDB only when a part is missing or past its TTL, or
+     * when [forced] (#724). Stored titles are raw, so the muted genres are applied here, every time: a mute
+     * change re-filters the same copy. Only a refresh that fails with nothing stored to show is an error.
+     */
+    private fun loadDiscover(forced: Boolean = false) {
         // A second load must not race the first: both read `muting` mid-flight, and whichever finishes
         // last wins, which could be the one that saw the older muting.
         loadJob?.cancel()
         discoverStale = false
         loadJob = viewModelScope.launchReporting {
-            _state.update { it.copy(loading = true, error = null) }
-            val movieGenres = genresUseCase(MediaType.MOVIE).getOrElse { return@launchReporting fail(it) }
-            val tvGenres = genresUseCase(MediaType.TV).getOrElse { return@launchReporting fail(it) }
+            val snapshot = discoverFeed.snapshot()
             val mutedMovies = mutedFor(MediaType.MOVIE, null)
             val mutedTv = mutedFor(MediaType.TV, null)
-            val popularMovies = discoverMedia(MediaType.MOVIE, excludedGenreIds = mutedMovies.forType(MediaType.MOVIE)).getOrElse { return@launchReporting fail(it) }
-            val popularTv = discoverMedia(MediaType.TV, excludedGenreIds = mutedTv.forType(MediaType.TV)).getOrElse { return@launchReporting fail(it) }
+            // A stored copy is on screen at once, so the skeleton never shows over it (#723, #724).
+            if (snapshot.isEmpty) {
+                _state.update { it.copy(loading = true, error = null) }
+            } else {
+                _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = false) }
+            }
+            if (!forced && !discoverFeed.needsRefresh(snapshot)) return@launchReporting
+
+            val refresh = discoverFeed.refresh(mutedMovies, mutedTv)
+            // Nothing stored and a section failed: the error state, as Discover always showed. With a copy on
+            // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL.
+            if (snapshot.isEmpty) refresh.firstFailure?.let { return@launchReporting fail(it) }
+            val merged = refresh.mergedInto(snapshot)
             _state.update {
-                it.copy(
+                showing(it, merged, mutedMovies, mutedTv).copy(
                     loading = false,
-                    movieGenres = movieGenres,
-                    tvGenres = tvGenres,
-                    popularMovies = popularMovies.items.filterNot(mutedMovies::hides),
-                    popularTv = popularTv.items.filterNot(mutedTv::hides),
+                    error = null,
+                    discoverSaved = refresh.anyFailed && discoverFeed.isPastTtl(merged),
                 )
             }
         }
     }
+
+    /** [snapshot] as the Discover shelves show it: the stored titles minus what is muted for this session. */
+    private fun showing(state: SearchUiState, snapshot: DiscoverSnapshot, mutedMovies: MutedGenres, mutedTv: MutedGenres): SearchUiState = state.copy(
+        movieGenres = snapshot.movieGenres?.value ?: state.movieGenres,
+        tvGenres = snapshot.tvGenres?.value ?: state.tvGenres,
+        popularMovies = snapshot.popularMovies?.let { discoverFeed.visible(it.items, mutedMovies) } ?: state.popularMovies,
+        popularTv = snapshot.popularTv?.let { discoverFeed.visible(it.items, mutedTv) } ?: state.popularTv,
+    )
 
     private fun loadMoreGenreResults(current: SearchUiState) {
         val genre = current.selectedGenre ?: return
