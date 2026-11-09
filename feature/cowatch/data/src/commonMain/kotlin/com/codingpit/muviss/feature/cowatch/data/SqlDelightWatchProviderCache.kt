@@ -4,6 +4,7 @@ import app.cash.sqldelight.async.coroutines.awaitAsList
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.cowatch.domain.CachedProviders
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
 import com.codingpit.muviss.models.MediaId
@@ -19,7 +20,8 @@ internal class SqlDelightWatchProviderCache(
     private val database: MuvissDatabase,
     private val clock: AppClock,
     private val dispatchers: AppDispatchers,
-) : WatchProviderCache {
+) : WatchProviderCache,
+    WatchProviderLookup {
 
     private val queries = database.titleWatchProvidersQueries
 
@@ -33,6 +35,10 @@ internal class SqlDelightWatchProviderCache(
             )
         }
     }
+
+    override suspend fun cachedFlatrateIds(mediaIds: Set<MediaId>, region: String): Map<MediaId, Set<String>> = get(mediaIds)
+        .filterValues { it.region == region }
+        .mapValues { (_, cached) -> cached.flatrateProviderIds }
 
     override suspend fun put(mediaId: MediaId, region: String, flatrateProviderIds: Set<String>) {
         withContext(dispatchers.io) {

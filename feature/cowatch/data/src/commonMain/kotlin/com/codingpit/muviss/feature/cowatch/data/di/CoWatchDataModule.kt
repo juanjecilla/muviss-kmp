@@ -1,4 +1,5 @@
 package com.codingpit.muviss.feature.cowatch.data.di
+import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.core.sync.secureRandomHex
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
@@ -36,7 +37,10 @@ val coWatchDataModule: Module = module {
     // #122 (EPIC 41 follow-up): the local cache and the TMDB-backed source
     // behind it, plus the bounded/TTL'd refresher that sits between them and
     // the pool use cases below.
-    single<WatchProviderCache> { SqlDelightWatchProviderCache(get(), get(), get()) }
+    single { SqlDelightWatchProviderCache(get(), get(), get()) }
+    single<WatchProviderCache> { get<SqlDelightWatchProviderCache>() }
+    // #740: the same cache, read-only, for Next Pick's "only my services" (no request is ever made through it).
+    single<WatchProviderLookup> { get<SqlDelightWatchProviderCache>() }
     single<WatchProviderSource> { TmdbWatchProviderSource(get(), get(), get()) }
     single { WatchProviderRefresher(get(), get(), get()) }
     factory { PublishWatchPoolUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get(), get()) }

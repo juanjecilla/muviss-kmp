@@ -85,4 +85,13 @@ class SqlDelightWatchProviderCacheTest {
     fun `an empty request never touches the database`() = runTest {
         assertTrue(cache.get(emptySet()).isEmpty())
     }
+
+    @Test
+    fun `the_read_only_lookup_answers_only_for_the_requested_region_and_makes_no_request`() = runTest {
+        cache.put(movie, region = "US", flatrateProviderIds = setOf("8"))
+        cache.put(show, region = "GB", flatrateProviderIds = setOf("30"))
+
+        assertEquals(mapOf(movie to setOf("8")), cache.cachedFlatrateIds(setOf(movie, show, MediaId.tmdbTv("3")), region = "US"))
+        assertTrue(cache.cachedFlatrateIds(setOf(show), region = "US").isEmpty())
+    }
 }
