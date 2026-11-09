@@ -31,7 +31,7 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 5. Client entitlement states and account deletion (#279, #285, #287), then the public deletion page.
 6. Live checks (#100, #114) on dev, against the real stores' sandbox where the check needs one.
 7. **Ship the schema first.** A release that carries #283's migrations to prod through the release train (re-timestamped, #727) with sync still compiled out. The gate fails closed, and no released client uses sync, so nobody is affected; it is what lets step 8 exist.
-8. **Production entitlement rollout** (#282): enable the access-token hook on prod, deploy `revenuecat-webhook` and `delete-account`, set the webhook secret, then verify purchase to sync end to end with a sandbox account on prod.
+8. **Production entitlement rollout** (#282): enable the access-token hook on prod, deploy `revenuecat-webhook` and `delete-account`, set the webhook secret, then verify purchase to sync end to end with a sandbox account on prod. The webhook accepts only `PRODUCTION` events unless `REVENUECAT_ALLOWED_ENVIRONMENTS` lists `SANDBOX` too (default `PRODUCTION`, `revenuecat-webhook/logic.ts` on #283's branch), so set it for the check and take `SANDBOX` out again afterwards; configure the RevenueCat webhook URL and its authorization header (`Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>`) before the purchase.
 9. Privacy, data-safety, listing; then flip the release flags in a dedicated release.
 
 ## Hazards
