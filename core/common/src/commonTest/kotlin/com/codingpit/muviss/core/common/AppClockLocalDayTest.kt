@@ -13,12 +13,14 @@ class AppClockLocalDayTest {
     }
 
     @Test
-    fun local_day_is_the_zone_day_when_it_differs_from_the_utc_day() {
+    fun today_is_the_zone_day_when_it_differs_from_the_utc_day() {
         // Given UTC+2 and 22:30 UTC on 1 Nov, which is already 00:30 on 2 Nov locally
         val clock = zone(2 * HOUR)
-        // Then the local day is 2 Nov while the UTC day is still 1 Nov
-        assertEquals(epochDayOfCivil(2026, 11, 2), clock.localTodayEpochDay())
-        assertEquals(epochDayOfCivil(2026, 11, 1), clock.todayEpochDay())
+        // Then today is 2 Nov for the person, on every aired, due and streak check (#675)
+        assertEquals(epochDayOfCivil(2026, 11, 2), clock.todayEpochDay())
+        assertEquals(clock.localTodayEpochDay(), clock.todayEpochDay())
+        // The UTC day is still 1 Nov, and nothing reads it as "today" any more.
+        assertEquals(epochDayOfCivil(2026, 11, 1), epochDayOf(clock.nowEpochMs()))
     }
 
     @Test

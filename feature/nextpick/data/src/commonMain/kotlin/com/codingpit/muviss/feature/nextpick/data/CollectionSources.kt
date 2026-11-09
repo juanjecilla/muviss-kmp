@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.nextpick.data
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
@@ -81,11 +82,7 @@ internal class CollectionHistoryReader(
             genreRatings = ratingsByGenre,
             anchorGenreIds = anchor?.let { indexes.getValue(it.mediaId.type).idsOf(it.genres).toSet() }.orEmpty(),
             anchorTitle = anchor?.title,
-            todayEpochDay = clock.nowEpochMs().floorDiv(MS_PER_DAY),
+            todayEpochDay = clock.localTodayEpochDay(),
         )
-    }
-
-    private companion object {
-        const val MS_PER_DAY = 86_400_000L
     }
 }

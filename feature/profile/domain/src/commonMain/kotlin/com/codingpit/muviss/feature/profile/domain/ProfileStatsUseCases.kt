@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.profile.domain
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -55,15 +56,16 @@ class ObserveRewatchStatsUseCase(
 ) {
     operator fun invoke(window: RewatchWindow): Flow<RewatchStats> {
         val today = clock.todayEpochDay()
+        val utcOffsetMs = clock.utcOffsetMsAt(clock.nowEpochMs())
         return combine(
             collectionApi.observeSummaries(),
             progressApi.observeRewatchCounts(window.sinceEpochMs(clock.nowEpochMs())),
-            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(today)),
+            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(today, utcOffsetMs)),
         ) { summaries, counts, timestamps ->
             RewatchStats(
                 window = window,
                 ranking = RewatchRankingCalculator.calculate(counts, summaries),
-                monthly = MonthlyRewatchCalculator.calculate(timestamps, today),
+                monthly = MonthlyRewatchCalculator.calculate(timestamps, today) { clock.localEpochDayOf(it) },
             )
         }
     }

@@ -118,18 +118,26 @@ object MonthlyRewatchCalculator {
     /** A full year of context, and the reason the chart's window is fixed while the ranking's is not (ADR 0012). */
     const val MONTHS_SHOWN = 12
 
-    /** The `sinceEpochMs` bound covering exactly the months [calculate] will show. */
-    fun sinceEpochMs(todayEpochDay: Long): Long {
+    /**
+     * The `sinceEpochMs` bound covering exactly the months [calculate] will show. [utcOffsetMs] is the person's
+     * zone at the bound, so the first shown month starts at their midnight rather than UTC's (#675).
+     */
+    fun sinceEpochMs(todayEpochDay: Long, utcOffsetMs: Long = 0L): Long {
         val today = civilDateOf(todayEpochDay)
         val firstShown = absoluteMonthOf(today.year, today.month) - (MONTHS_SHOWN - 1)
-        return epochMsAtStartOfDay(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1))
+        return epochMsAtStartOfDay(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1)) - utcOffsetMs
     }
 
-    fun calculate(rewatchTimestamps: List<Long>, todayEpochDay: Long): List<MonthlyRewatches> {
+    /**
+     * Counts the rewatches of each shown month. [dayOf] turns a timestamp into the day it is bucketed under; the
+     * caller passes the person's local day (#675). The UTC default is for callers with no clock, and is what
+     * the calculator's own fixtures are written against.
+     */
+    fun calculate(rewatchTimestamps: List<Long>, todayEpochDay: Long, dayOf: (Long) -> Long = ::epochDayOf): List<MonthlyRewatches> {
         val today = civilDateOf(todayEpochDay)
         val currentMonth = absoluteMonthOf(today.year, today.month)
         val counts = rewatchTimestamps
-            .map { civilDateOf(epochDayOf(it)) }
+            .map { civilDateOf(dayOf(it)) }
             .groupingBy { absoluteMonthOf(it.year, it.month) }
             .eachCount()
         return (currentMonth - (MONTHS_SHOWN - 1)..currentMonth).map { absolute ->

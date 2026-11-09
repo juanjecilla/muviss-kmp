@@ -31,6 +31,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 private class StatusTestDispatchers(d: CoroutineDispatcher) : AppDispatchers {
     override val default = d
@@ -221,5 +222,37 @@ class ProgressCollectionStatusIntegrationTest {
             assertEquals(WatchStatus.WATCHED, entry.status)
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun an_episode_that_airs_on_the_local_day_but_not_the_utc_day_is_counted_and_ticked_on_the_same_day() = runTest {
+        // UTC+10 at 01:00 on day 150 is 15:00 on day 149 in UTC. The episode is dated day 150: aired for the
+        // person, not yet for UTC. The stored aired count and the bulk tick must read the same day (#675), or
+        // the Library throws on seen > aired.
+        val zoneClock = FakeClock(epochMsAtStartOfDay(149) + 15 * HOUR, utcOffsetMs = 10 * HOUR)
+        val db = inMemoryDatabase()
+        val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
+        val progressRepository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, zoneClock, NoOpWidgetRefresher)
+        val zoneProgress = RealSeenEpisodesProgressApi(progressRepository)
+        val zoneCollection = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, zoneClock)
+        val localToday = episode(1, 1, airDay = 150)
+        val seasons = listOf(Season(1, "S1", listOf(localToday)))
+        zoneCollection.upsertSnapshot(details(seasons, ProductionStatus.RETURNING))
+
+        zoneCollection.observeEntry(show).test {
+            awaitItem()
+
+            zoneProgress.markShowAiredSeen(seasons, zoneClock.todayEpochDay())
+
+            val entry = awaitItem()!!
+            assertEquals(1, entry.airedEpisodes, "the stored count is taken on the local day, as the tick is")
+            assertEquals(1, entry.seenEpisodes)
+            assertTrue(entry.seenEpisodes <= entry.airedEpisodes)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    private companion object {
+        const val HOUR = 3_600_000L
     }
 }
