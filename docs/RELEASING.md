@@ -413,7 +413,11 @@ the schedule, the gates and where a fix goes.
   raises a `release-blocker` issue in its milestone, which holds the Sunday step,
   and one comment on its "Release X.Y.Z" issue naming the paths. The run fails
   visibly while any version is blocked. A fix clears the blocker and closes it,
-  and a rerun adds nothing (`fastlane/release_mergeability.rb`, #713).
+  and a rerun adds nothing (`fastlane/release_mergeability.rb`, #713). The
+  blocker clears on the next night, so a fix that lands in the meantime holds the
+  version until then; to clear it sooner, close the "Release X.Y.Z does not merge
+  into main" issue (`release-blocker`) by hand once the branch merges. Do not dispatch `release-train.yml` to re-check: a
+  dispatch bypasses the day gate, so the cut runs too.
 - **A scheduled run is judged by the time it was due.** GitHub can start a cron
   hours late, past midnight. `release-train.yml` judges its train day from the
   scheduled time, not the start (`scripts/release/train_day.rb`, #714).
