@@ -42,7 +42,7 @@ class OwnServicesCandidatesTest {
     private val genreIds = LibraryGenreIds(liveCatalogue = { emptyList<Genre>() }, language = { "en-US" })
 
     private fun backlog(library: FakeLibrary, lookup: WatchProviderLookup, region: String = "US"): PickCandidates = OwnServicesCandidates(
-        inner = CollectionBacklogCandidates({ library }, genreIds),
+        inner = CollectionBacklogCandidates({ library }, genreIds, fixedClock),
         taste = { services },
         lookup = { lookup },
         region = { region },
@@ -124,7 +124,7 @@ class OwnServicesCandidatesTest {
     fun `with_no_services_in_the_taste_profile_the_flag_narrows_nothing_as_discover_does`() = runTest {
         val library = FakeLibrary(listOf(libraryTitle(movie("6"), WatchStatus.NOT_STARTED)))
         val source = OwnServicesCandidates(
-            inner = CollectionBacklogCandidates({ library }, genreIds),
+            inner = CollectionBacklogCandidates({ library }, genreIds, fixedClock),
             taste = { FakeTasteProfile() },
             lookup = { NoLookup },
             region = { "US" },

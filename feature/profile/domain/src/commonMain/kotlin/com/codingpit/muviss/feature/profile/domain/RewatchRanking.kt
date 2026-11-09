@@ -4,7 +4,8 @@ import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.core.common.epochDayOf
 import com.codingpit.muviss.core.common.epochDayOfCivil
-import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.common.localStartOfDayEpochMs
+import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
@@ -21,10 +22,18 @@ enum class RewatchWindow {
     THIS_YEAR,
     ;
 
-    /** The `sinceEpochMs` bound to hand to `ProgressApi.observeRewatchCounts`. */
-    fun sinceEpochMs(nowEpochMs: Long): Long = when (this) {
+    /**
+     * The `sinceEpochMs` bound to hand to `ProgressApi.observeRewatchCounts`. "This year" is the person's
+     * local year and the bound their local midnight of 1 January, so a rewatch on the last night of the
+     * year is not counted into the next one in a zone away from UTC (#756).
+     */
+    fun sinceEpochMs(clock: AppClock): Long = when (this) {
         ALL_TIME -> 0L
-        THIS_YEAR -> epochMsAtStartOfDay(epochDayOfCivil(civilDateOf(epochDayOf(nowEpochMs)).year, month = 1, day = 1))
+
+        THIS_YEAR -> {
+            val year = civilDateOf(clock.localTodayEpochDay()).year
+            clock.localStartOfDayEpochMs(epochDayOfCivil(year, month = 1, day = 1))
+        }
     }
 }
 
@@ -120,25 +129,13 @@ object MonthlyRewatchCalculator {
     const val MONTHS_SHOWN = 12
 
     /**
-     * The `sinceEpochMs` bound covering exactly the months [calculate] will show. [utcOffsetMs] is the person's
-     * zone at the bound, so the first shown month starts at their midnight rather than UTC's (#675).
+     * The `sinceEpochMs` bound covering exactly the months [calculate] will show. The first shown month starts
+     * at the person's midnight, read in their zone at that midnight (#675, #756).
      */
-    fun sinceEpochMs(todayEpochDay: Long, utcOffsetMs: Long = 0L): Long {
+    fun sinceEpochMs(clock: AppClock, todayEpochDay: Long): Long {
         val today = civilDateOf(todayEpochDay)
         val firstShown = absoluteMonthOf(today.year, today.month) - (MONTHS_SHOWN - 1)
-        return epochMsAtStartOfDay(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1)) - utcOffsetMs
-    }
-
-    /**
-     * [sinceEpochMs] with the zone read where it applies: at the first shown month's midnight, not at now (#675,
-     * #757 review). A DST change between the two shifts the bound by an hour, and the first bar loses rewatches.
-     * Two passes: the first reads the offset at that midnight's UTC instant, the second at the local midnight it
-     * gives, which is the instant the bound stands for.
-     */
-    fun sinceEpochMs(todayEpochDay: Long, clock: AppClock): Long {
-        val utcMidnight = sinceEpochMs(todayEpochDay)
-        val localMidnightGuess = sinceEpochMs(todayEpochDay, clock.utcOffsetMsAt(utcMidnight))
-        return sinceEpochMs(todayEpochDay, clock.utcOffsetMsAt(localMidnightGuess))
+        return clock.localStartOfDayEpochMs(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1))
     }
 
     /**

@@ -58,11 +58,24 @@ fun AppClock.localEpochDayOf(epochMs: Long): Long = (epochMs + utcOffsetMsAt(epo
 /**
  * Converts an arbitrary wall-clock timestamp (epoch milliseconds) to a UTC epoch day.
  *
- * Not the person's day: a day that counts toward a streak, an aired comparison or a
- * "today" is [localEpochDayOf] (#675). Kept for the places that still bucket in UTC on
- * purpose, and listed in the follow-up issue, so a new caller starts from the local day.
+ * Not the person's day: every production day bucket is [localEpochDayOf] (#675, #756). What is left
+ * here is the UTC default of [com.codingpit.muviss.feature.profile.domain.MonthlyRewatchCalculator.calculate]
+ * for fixtures that have no clock; a new caller that wants "today" or a streak day uses the local day.
  */
 fun epochDayOf(epochMs: Long): Long = epochMs / MILLIS_PER_DAY
+
+/**
+ * The first millisecond of the person's local day [epochDay] (#756): their midnight, not UTC's.
+ *
+ * The offset is read at the candidate instant and then again at that instant, so a day that starts
+ * on the far side of a DST change still lands on its own midnight. A bound computed this way and a
+ * timestamp bucketed by [localEpochDayOf] agree on which side of the boundary a row falls.
+ */
+fun AppClock.localStartOfDayEpochMs(epochDay: Long): Long {
+    val utcMidnight = epochMsAtStartOfDay(epochDay)
+    val firstGuess = utcMidnight - utcOffsetMsAt(utcMidnight)
+    return utcMidnight - utcOffsetMsAt(firstGuess)
+}
 
 /**
  * The inverse of [epochDayOf]: the first millisecond of [epochDay], UTC.

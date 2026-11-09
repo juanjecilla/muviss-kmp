@@ -40,6 +40,30 @@ class AppClockLocalDayTest {
         assertEquals(clock.todayEpochDay(), clock.localTodayEpochDay())
     }
 
+    /** Berlin-like: +1 until the March change, +2 from then on. The change is on 29 Mar 2026 at 01:00 UTC. */
+    private val dstChangeMs = epochMsAtStartOfDay(epochDayOfCivil(2026, 3, 29)) + HOUR
+    private val dstZone = object : AppClock {
+        override fun nowEpochMs(): Long = epochMsAtStartOfDay(epochDayOfCivil(2026, 11, 9)) + 12 * HOUR
+        override fun utcOffsetMsAt(epochMs: Long): Long = if (epochMs < dstChangeMs) HOUR else 2 * HOUR
+    }
+
+    @Test
+    fun a_local_midnight_on_the_far_side_of_a_dst_change_uses_the_offset_at_that_midnight() {
+        // Given the summer day that starts after the change, when its local midnight is read
+        val midnight = dstZone.localStartOfDayEpochMs(epochDayOfCivil(2026, 7, 1))
+        // Then it is 00:00 at +2, which is 22:00 UTC on 30 June: the offset is read at that instant
+        assertEquals(epochMsAtStartOfDay(epochDayOfCivil(2026, 6, 30)) + 22 * HOUR, midnight)
+        assertEquals(epochDayOfCivil(2026, 7, 1), dstZone.localEpochDayOf(midnight))
+    }
+
+    @Test
+    fun a_local_midnight_before_the_change_is_the_winter_offset_and_is_its_own_day() {
+        val midnight = dstZone.localStartOfDayEpochMs(epochDayOfCivil(2026, 1, 1))
+        assertEquals(epochMsAtStartOfDay(epochDayOfCivil(2025, 12, 31)) + 23 * HOUR, midnight)
+        assertEquals(epochDayOfCivil(2026, 1, 1), dstZone.localEpochDayOf(midnight))
+        assertEquals(epochDayOfCivil(2025, 12, 31), dstZone.localEpochDayOf(midnight - 1))
+    }
+
     private companion object {
         const val HOUR = 3_600_000L
         const val MINUTE = 60_000L
