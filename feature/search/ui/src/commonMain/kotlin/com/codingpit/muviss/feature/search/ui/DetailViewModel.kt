@@ -390,7 +390,7 @@ class DetailViewModel(
      * The primary action's tick for a show (#721): ticks [episode], the next aired one, and offers an Undo.
      * It adds the title first when it is not saved, so the Undo can take that entry back again.
      */
-    fun tickNext(episode: EpisodeId, label: String) {
+    fun tickNext(episode: EpisodeId) {
         val current = _state.value
         val details = current.details
         val caughtUp = details
@@ -400,7 +400,7 @@ class DetailViewModel(
             val created = addIfAbsent()
             progressApi.tickEpisode(episode, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
-            offerUndo(listOf(episode), UiText.Resource(Res.string.tick_next_seen, label), createdEntry = created)
+            offerUndo(listOf(episode), UiText.Resource(Res.string.tick_next_seen, episode.seasonNumber, episode.episodeNumber), createdEntry = created)
         }
     }
 

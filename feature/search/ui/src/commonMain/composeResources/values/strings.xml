@@ -120,16 +120,16 @@
     <string name="nudge_blocked">Notifications are blocked for Muviss in the system settings.</string>
     <string name="nudge_open_settings">Open settings</string>
     <string name="next_pick_entry">What's next?</string>
-    <string name="primary_mark_next">Mark %1$s seen</string>
+    <string name="primary_mark_next">Mark S%1$d·E%2$d seen</string>
     <string name="primary_mark_next_a11y">Mark season %1$d episode %2$d as seen</string>
     <string name="primary_caught_up">Caught up ✓</string>
-    <string name="primary_next_up">Next: %1$s · %2$s</string>
+    <string name="primary_next_up">Next: S%1$d·E%2$d · %3$s</string>
     <string name="primary_not_aired">Not aired yet</string>
     <string name="primary_premieres">Premieres %1$s</string>
     <string name="primary_finished">Finished ✓</string>
     <string name="remove_from_library">Remove from library</string>
     <string name="mark_show_seen_none_aired">Nothing has aired yet</string>
     <string name="movie_marked_watched">Marked as watched</string>
-    <string name="tick_next_seen">%1$s marked as seen</string>
+    <string name="tick_next_seen">Marked S%1$d·E%2$d seen</string>
     <string name="removed_from_library">Removed from library</string>
 </resources>

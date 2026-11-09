@@ -102,16 +102,16 @@
     <string name="nudge_blocked">Las notificaciones de Muviss están bloqueadas en los ajustes del sistema.</string>
     <string name="nudge_open_settings">Abrir ajustes</string>
     <string name="next_pick_entry">¿Qué sigue?</string>
-    <string name="primary_mark_next">Marcar %1$s como visto</string>
+    <string name="primary_mark_next">Marcar T%1$d·E%2$d como visto</string>
     <string name="primary_mark_next_a11y">Marcar la temporada %1$d, episodio %2$d como visto</string>
     <string name="primary_caught_up">Al día ✓</string>
-    <string name="primary_next_up">Siguiente: %1$s · %2$s</string>
+    <string name="primary_next_up">Siguiente: T%1$d·E%2$d · %3$s</string>
     <string name="primary_not_aired">Aún no se ha emitido</string>
     <string name="primary_premieres">Se estrena el %1$s</string>
     <string name="primary_finished">Terminada ✓</string>
     <string name="remove_from_library">Quitar de la biblioteca</string>
     <string name="mark_show_seen_none_aired">Aún no se ha emitido nada</string>
     <string name="movie_marked_watched">Marcada como vista</string>
-    <string name="tick_next_seen">%1$s marcado como visto</string>
+    <string name="tick_next_seen">T%1$d·E%2$d marcado como visto</string>
     <string name="removed_from_library">Quitada de la biblioteca</string>
 </resources>

@@ -973,7 +973,7 @@ class DetailViewModelTest {
         val progress = FakeProgressApi()
         val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
 
-        vm.tickNext(episode1.id, "S1·E1")
+        vm.tickNext(episode1.id)
 
         assertEquals(listOf(show), collection.added)
         assertEquals(setOf(episode1.id), progress.seenIds)

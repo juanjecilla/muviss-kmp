@@ -402,7 +402,7 @@ private fun DetailExpanded(
                                 modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
                             )
                         }
-                        ActionRow(state, viewModel, callbacks, stacked = true)
+                        ActionRow(state, viewModel, callbacks)
                     }
                     Column(
                         Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
@@ -572,14 +572,13 @@ private fun MetadataLine(details: MediaDetails) {
 /**
  * Primary actions: amber add-to-library pill + round outlined icon buttons
  * for favorite / notification mute / add-to-list (replaces the old emoji
- * text buttons). [stacked] lays the pill above the icons (expanded left rail).
+ * text buttons). The pill sits above the icons at every width.
  */
 @Composable
 private fun ActionRow(
     state: DetailUiState,
     viewModel: DetailViewModel,
     callbacks: DetailCallbacks,
-    stacked: Boolean = false,
 ) {
     val pill: @Composable () -> Unit = {
         PrimaryActionButton(
@@ -587,8 +586,8 @@ private fun ActionRow(
             onAdd = viewModel::toggleSaved,
             onMarkMovieWatched = viewModel::markMovieWatched,
             onWatchedAgain = { state.details?.let { callbacks.onTapSeenEpisode(EpisodeId.forMovie(it.id)) } },
-            onTickNext = { episode -> viewModel.tickNext(episode.id, episodeCode(episode)) },
-            modifier = if (stacked) Modifier.fillMaxWidth() else Modifier,
+            onTickNext = { episode -> viewModel.tickNext(episode.id) },
+            modifier = Modifier.fillMaxWidth(),
         )
     }
     val icons: @Composable () -> Unit = {
@@ -628,19 +627,10 @@ private fun ActionRow(
             }
         }
     }
-    if (stacked) {
-        Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-            pill()
-            icons()
-        }
-    } else {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f)) { pill() }
-            icons()
-        }
+    // The pill keeps a row to itself at every width: beside four icons its label wraps, and a translation makes it worse.
+    Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+        pill()
+        icons()
     }
 }
 
@@ -668,7 +658,7 @@ internal fun PrimaryActionButton(
         )
 
         is PrimaryAction.TickNext -> PrimaryLook(
-            label = stringResource(Res.string.primary_mark_next, episodeCode(action.episode)),
+            label = stringResource(Res.string.primary_mark_next, action.episode.seasonNumber, action.episode.episodeNumber),
             subtitle = action.episode.name.takeIf { it.isNotBlank() },
             description = stringResource(Res.string.primary_mark_next_a11y, action.episode.seasonNumber, action.episode.episodeNumber),
             onClick = { onTickNext(action.episode) },
@@ -715,7 +705,7 @@ private fun waitingLook(action: PrimaryAction.Waiting): PrimaryLook {
 
         PrimaryAction.Waiting.Reason.CaughtUp -> PrimaryLook(
             label = stringResource(Res.string.primary_caught_up),
-            subtitle = next?.let { stringResource(Res.string.primary_next_up, episodeCode(it), dateText(it.airDateEpochDay ?: 0L)) },
+            subtitle = next?.let { stringResource(Res.string.primary_next_up, it.seasonNumber, it.episodeNumber, dateText(it.airDateEpochDay ?: 0L)) },
             enabled = false,
             onClick = {},
         )
@@ -724,11 +714,6 @@ private fun waitingLook(action: PrimaryAction.Waiting): PrimaryLook {
 
 /** Test tag of the primary action (#721). */
 internal const val PRIMARY_ACTION_TAG = "detailPrimaryAction"
-
-/** "S2·E3": the short code an episode is shown as on Detail. */
-internal fun episodeCode(episode: Episode): String = episodeCode(episode.seasonNumber, episode.episodeNumber)
-
-internal fun episodeCode(season: Int, episode: Int): String = "S$season·E$episode"
 
 /** "More like this" row (EPIC 16): recommendations, or similar titles as fallback. Hidden when empty. */
 @Composable
