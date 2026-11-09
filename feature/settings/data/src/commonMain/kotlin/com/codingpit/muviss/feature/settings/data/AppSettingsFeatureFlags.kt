@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
@@ -34,6 +35,7 @@ class AppSettingsFeatureFlags(
     private val queries: AppSettingsQueries,
     private val dispatchers: AppDispatchers,
     remoteConfig: RemoteConfig,
+    private val clock: AppClock,
 ) : FeatureFlags {
 
     override val triageControlScheme: Flow<TriageControlScheme> = settings()
@@ -68,24 +70,28 @@ class AppSettingsFeatureFlags(
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageControlScheme(scheme.name)
+        markDisplayPreferencesChanged()
         Unit
     }
 
     override suspend fun setAnimationsEnabled(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateAnimationsEnabled(enabled)
+        markDisplayPreferencesChanged()
         Unit
     }
 
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageDeckAnimations(enabled)
+        markDisplayPreferencesChanged()
         Unit
     }
 
     override suspend fun setTickAnimations(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTickAnimations(enabled)
+        markDisplayPreferencesChanged()
         Unit
     }
 
@@ -98,12 +104,14 @@ class AppSettingsFeatureFlags(
     override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageSnoozePeriod(period.name)
+        markDisplayPreferencesChanged()
         Unit
     }
 
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = withContext(dispatchers.io) {
         ensureRow()
         queries.updateTriageSnoozePlacement(placement.name)
+        markDisplayPreferencesChanged()
         Unit
     }
 
@@ -111,6 +119,12 @@ class AppSettingsFeatureFlags(
         ensureRow()
         queries.updateCompletionPromptEnabled(enabled)
         Unit
+    }
+
+    // A Display Preference (ADR 0036): every choice stamps the group. The OS reduce-motion default does not
+    // come through here (`ApplySystemMotionDefault` writes the column directly), because it is not a change.
+    private suspend fun markDisplayPreferencesChanged() {
+        queries.markDisplayPreferencesChanged(clock.nowEpochMs())
     }
 
     // The motion flags default to true when the row is somehow missing: the
