@@ -275,3 +275,32 @@ tasks.register("verifyComposeStringEscapes") {
 }
 
 tasks.named("check") { dependsOn("verifyComposeStringEscapes") }
+
+// Dependabot alerts on the Kotlin/JS lockfiles (#726). `kotlinUpgradeYarnLock`
+// keeps a transitive range at whatever version the lock already holds, so a
+// patched release inside the range never arrives. These force the patched
+// minimum for the packages whose fix is compatible with every range that
+// requests them (same major). serialize-javascript (6 -> 7), minimatch, glob and
+// diff are left out: the fix is a major bump their consumers do not accept.
+// Build-time tooling only; none of it ships in the app bundle.
+val yarnSecurityPins = mapOf(
+    "fast-uri" to "3.1.9",
+    "ws" to "8.22.0",
+    "qs" to "6.16.1",
+    "follow-redirects" to "1.16.2",
+    "js-yaml" to "4.3.2",
+    "source-map-js" to "1.2.2",
+    "compression" to "1.8.2",
+    "engine.io" to "6.6.10",
+)
+rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin> {
+    rootProject.extensions.configure<org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension> {
+        yarnSecurityPins.forEach { (name, version) -> resolution(name, version) }
+    }
+}
+// The wasm tree has no test runner, so only the two packages it carries.
+rootProject.plugins.withType<org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnPlugin> {
+    rootProject.extensions.configure<org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnRootExtension> {
+        yarnSecurityPins.filterKeys { it in setOf("fast-uri", "ws") }.forEach { (name, version) -> resolution(name, version) }
+    }
+}
