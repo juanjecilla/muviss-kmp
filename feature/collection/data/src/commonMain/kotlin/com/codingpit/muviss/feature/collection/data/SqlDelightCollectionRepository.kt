@@ -118,6 +118,11 @@ class SqlDelightCollectionRepository(
         Unit
     }
 
+    override suspend fun restore(mediaId: MediaId) = withContext(dispatchers.io) {
+        queries.undelete(now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = withContext(dispatchers.io) {
         queries.setFavorite(favorite = favorite, now = clock.nowEpochMs(), mediaId = mediaId.toString())
         Unit

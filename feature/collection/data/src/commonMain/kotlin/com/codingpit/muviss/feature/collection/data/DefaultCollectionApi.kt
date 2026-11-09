@@ -5,6 +5,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.collection.domain.AddToCollectionUseCase
+import com.codingpit.muviss.feature.collection.domain.CollectionRepository
 import com.codingpit.muviss.feature.collection.domain.CollectionToggles
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionEntryUseCase
 import com.codingpit.muviss.feature.collection.domain.ObserveCollectionUseCase
@@ -28,6 +29,7 @@ internal class DefaultCollectionApi(
     private val toggles: CollectionToggles,
     private val refreshAndFindNewEpisodesUseCase: RefreshAndFindNewEpisodesUseCase,
     private val refreshTitlesUseCase: RefreshTitlesUseCase,
+    private val repository: CollectionRepository,
 ) : CollectionApi {
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = observeEntry(mediaId)
@@ -66,6 +68,8 @@ internal class DefaultCollectionApi(
     override suspend fun add(details: MediaDetails) = addToCollection(details)
 
     override suspend fun remove(mediaId: MediaId) = removeFromCollection(mediaId)
+
+    override suspend fun restore(mediaId: MediaId) = repository.restore(mediaId)
 
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = toggles.setFavorite(mediaId, favorite)
 

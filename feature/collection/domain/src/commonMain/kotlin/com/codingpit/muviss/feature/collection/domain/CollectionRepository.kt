@@ -28,6 +28,13 @@ interface CollectionRepository {
     suspend fun upsertSnapshot(details: MediaDetails)
 
     /**
+     * Undoes a [remove]: brings the row back with everything it had (favorite, rating, note, add date, the
+     * stored Snapshot). A no-op for a title that is not removed. Defaulted so the fakes that never exercise
+     * it keep compiling; the SQLDelight repository overrides it.
+     */
+    suspend fun restore(mediaId: MediaId) = Unit
+
+    /**
      * Brings a saved title's provider data (poster, title, episode counts,
      * production status...) up to date — and nothing else. **Not a synced
      * write**: it does not bump the row's timestamp, mark it dirty or touch a

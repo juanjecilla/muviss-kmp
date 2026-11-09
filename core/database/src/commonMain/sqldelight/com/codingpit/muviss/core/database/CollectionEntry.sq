@@ -146,6 +146,14 @@ UPDATE collectionEntry
 SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
 WHERE mediaId = :mediaId;
 
+-- Undoing a removal (#721): brings the soft-deleted row back exactly as it was. Unlike `upsert`, it keeps the
+-- stored Snapshot counts and never rebuilds them from the details on screen, which can be stale offline and
+-- would let seen exceed aired.
+undelete:
+UPDATE collectionEntry
+SET deleted = 0, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId AND deleted = 1;
+
 selectDirty:
 SELECT *
 FROM collectionEntry
