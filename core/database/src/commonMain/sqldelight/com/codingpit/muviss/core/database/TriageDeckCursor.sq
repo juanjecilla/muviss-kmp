@@ -1,0 +1,32 @@
+-- The Triage deck's saved position, one row per deck key (#722, `DeckResume`). Per device, like a Device
+-- Switch: a position is about this device's deck, not the library, so it is never synced or exported.
+-- A position older than the 24 h TTL is ignored on read and deleted on the next write.
+--
+-- `moviesResumePage` / `tvResumePage` are the earliest page still holding a card the person has not acted
+-- on (or the next page when none does); `moviePage` / `tvPage` are the next pages to read.
+CREATE TABLE triageDeckCursor (
+    cursorKey TEXT NOT NULL PRIMARY KEY,
+    moviePage INTEGER NOT NULL,
+    tvPage INTEGER NOT NULL,
+    moviesResumePage INTEGER NOT NULL,
+    tvResumePage INTEGER NOT NULL,
+    savedAtEpochMs INTEGER NOT NULL
+);
+
+selectByKey:
+SELECT *
+FROM triageDeckCursor
+WHERE cursorKey = :cursorKey;
+
+upsert:
+INSERT OR REPLACE INTO triageDeckCursor(cursorKey, moviePage, tvPage, moviesResumePage, tvResumePage, savedAtEpochMs)
+VALUES (:cursorKey, :moviePage, :tvPage, :moviesResumePage, :tvResumePage, :savedAtEpochMs);
+
+-- Positions saved before `beforeEpochMs` can never be restored again, so they go.
+deleteSavedBefore:
+DELETE FROM triageDeckCursor
+WHERE savedAtEpochMs < :beforeEpochMs;
+
+-- Settings > Delete all data (EPIC 29). Hard on purpose: a local wipe is not a message to other devices.
+deleteAll:
+DELETE FROM triageDeckCursor;

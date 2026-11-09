@@ -1,14 +1,19 @@
 package com.codingpit.muviss.feature.triage.data.di
 
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.feature.triage.data.AppSettingsTriagePreferences
 import com.codingpit.muviss.feature.triage.data.DefaultTriageApi
 import com.codingpit.muviss.feature.triage.data.RegistryTriageDetailsSource
+import com.codingpit.muviss.feature.triage.data.SqlDelightDeckCursorStore
 import com.codingpit.muviss.feature.triage.data.SqlDelightTriageDecisionRepository
 import com.codingpit.muviss.feature.triage.data.SqlDelightTriageSnoozeRepository
 import com.codingpit.muviss.feature.triage.data.TmdbDeckSource
+import com.codingpit.muviss.feature.triage.domain.DeckCursorStore
+import com.codingpit.muviss.feature.triage.domain.DeckLanguage
 import com.codingpit.muviss.feature.triage.domain.DeckLoader
+import com.codingpit.muviss.feature.triage.domain.DeckResumption
 import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckGenresUseCase
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
@@ -64,7 +69,15 @@ val triageDataModule: Module = module {
     factory { ObserveDecidedIdsUseCase(get()) }
     factory { ObserveSkippedUseCase(get()) }
     factory { ObserveDecisionUseCase(get()) }
-    factory { LoadDeckUseCase(get(), get(), get(), get(), get()) }
+    // The deck's saved position (#722): per device, keyed by filter and TMDB language.
+    single { get<MuvissDatabase>().triageDeckCursorQueries }
+    single<DeckCursorStore> { SqlDelightDeckCursorStore(get(), get()) }
+    single<DeckLanguage> {
+        val locale: MetadataLocale = get()
+        DeckLanguage { locale.language }
+    }
+    single { DeckResumption(get(), get()) }
+    factory { LoadDeckUseCase(get(), get(), get(), get(), get(), get()) }
     factory { LoadDeckGenresUseCase(get()) }
     factory { UndoDecisionUseCase(get(), get(), get()) }
     factory { RetryUnresolvedUseCase(get(), get()) }

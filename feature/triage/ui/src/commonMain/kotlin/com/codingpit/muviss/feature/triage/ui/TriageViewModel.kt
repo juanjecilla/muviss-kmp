@@ -102,9 +102,8 @@ data class TriageUiState(
      */
     val searchingDeeper: Boolean = false,
     /**
-     * The last refill read [TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL]
-     * batches without a single new title and stopped, though the catalogue is
-     * not spent. Offered as "Keep looking", which continues from the cursor —
+     * The last refill read its page budget ([TriageViewModel.MAX_PAGES_PER_REFILL])
+     * without a single new title and stopped, though the catalogue is not spent. Offered as "Keep looking", which continues from the cursor —
      * never as "All caught up", which would be false (#183).
      */
     val keepLookingAvailable: Boolean = false,
@@ -186,10 +185,26 @@ class TriageViewModel(
 
     private var cursor = DeckCursor()
 
+    /** The filter [cursor] was read for. Null while a reset has not restored one yet, so nothing is saved against a stale position. */
+    private var cursorFilter: DeckFilter? = null
+
     /** Everything already handed to the deck this session, so a refill never repeats a card. */
     private val shown = mutableSetOf<MediaId>()
 
-    private var loadJob: Job? = null
+    /**
+     * Cards a batch read past what the deck needed (#722). The cursor has moved past their pages, so they are
+     * kept here and drained into [TriageUiState.cards] before any network call.
+     */
+    private val overflow = ArrayDeque<MediaSummary>()
+
+    /** The catalogue page each card came from, so a checkpoint can name the earliest page still unacted on. */
+    private val pageOf = mutableMapOf<MediaId, Int>()
+
+    /** The one refill in flight, if any. Swipes never cancel it; only a reset does (#722). */
+    private var refillJob: Job? = null
+
+    /** Bumped by every reset. A refill that finds it changed has been superseded and drops its result. */
+    private var generation = 0
 
     /** Monotonic, so undoing the same card twice reads as two separate events. */
     private var restoreToken = 0L
@@ -237,7 +252,7 @@ class TriageViewModel(
             .onEach { muting ->
                 val changed = _state.value.filter.muted != muting.effective
                 _state.update { it.copy(filter = it.filter.copy(muted = muting.effective), showMuted = muting.showMuted, hasMuted = muting.hasMuted) }
-                if (firstMuting || changed) refill(reset = true)
+                if (firstMuting || changed) refill(reset = true, restore = true)
                 firstMuting = false
             }
             .launchInReporting(viewModelScope)
@@ -248,19 +263,19 @@ class TriageViewModel(
         if (_state.value.filter.type == type) return
         // Genre ids are per-catalogue, so switching type drops the genre.
         _state.update { it.copy(filter = it.filter.copy(type = type, genreId = null)) }
-        refill(reset = true)
+        refill(reset = true, restore = true)
     }
 
     fun onGenreFilterChange(genreId: String?) {
         if (_state.value.filter.genreId == genreId) return
         _state.update { it.copy(filter = it.filter.copy(genreId = genreId)) }
-        refill(reset = true)
+        refill(reset = true, restore = true)
     }
 
     fun onClearFilters() {
         if (!_state.value.filter.isNarrowed) return
         _state.update { it.copy(filter = it.filter.copy(type = null, genreId = null)) }
-        refill(reset = true)
+        refill(reset = true, restore = true)
     }
 
     /** The chip: lifts muting for this session, or puts it back. Reloads through [SettingsApi.observeMuting]. */
@@ -285,6 +300,7 @@ class TriageViewModel(
                 restored = null,
             )
         }
+        checkpoint()
         viewModelScope.launchReporting {
             actions.record(summary, verdict).onFailure { error ->
                 _state.update { current ->
@@ -320,6 +336,7 @@ class TriageViewModel(
             )
         }
         shown -= undoable.summary.id
+        checkpoint()
         viewModelScope.launchReporting {
             when (undoable) {
                 is UndoableAction.Decision -> actions.undo(undoable.summary.id, undoable.verdict)
@@ -402,6 +419,7 @@ class TriageViewModel(
             )
         }
         viewModelScope.launchReporting { actions.snooze(summary, dueAtEpochDay) }
+        checkpoint()
         refillIfRunningLow()
     }
 
@@ -426,7 +444,8 @@ class TriageViewModel(
 
     fun onShowTutorial() = _state.update { it.copy(tutorialVisible = true) }
 
-    fun retry() = refill(reset = true)
+    /** Back to page 1: an explicit start over, so the saved position is not restored (#722). */
+    fun retry() = refill(reset = true, restore = false)
 
     /** Reads on from where the last refill stopped (#183); unlike [retry], it never goes back to page 1. */
     fun onKeepLooking() = refill(reset = false)
@@ -441,79 +460,122 @@ class TriageViewModel(
         if (_state.value.cards.size <= REFILL_THRESHOLD) refill(reset = false)
     }
 
-    private fun refill(reset: Boolean) {
-        loadJob?.cancel()
+    /**
+     * Starts a refill, or does nothing when one is already in flight: a swipe during a refill must not
+     * restart it, because the cursor only moves when a batch lands (#722). A reset cancels the refill in
+     * flight and starts from [restore]d or page-1 position.
+     */
+    private fun refill(reset: Boolean, restore: Boolean = false) {
+        if (!reset && refillJob?.isActive == true) return
         if (reset) {
+            refillJob?.cancel()
+            generation++
             cursor = DeckCursor()
+            cursorFilter = null
             shown.clear()
+            overflow.clear()
+            pageOf.clear()
             _state.update {
                 it.copy(cards = emptyList(), loading = true, error = null, exhausted = false, keepLookingAvailable = false)
             }
         } else {
             _state.update { it.copy(refilling = true, keepLookingAvailable = false) }
         }
+        val run = generation
+        refillJob = viewModelScope.launchReporting { fillDeck(run, restore) }
+    }
 
-        loadJob = viewModelScope.launchReporting {
-            val filter = _state.value.filter
-            var batchCards: List<MediaSummary> = emptyList()
-            var trulyExhausted: Boolean
+    /**
+     * Fills the deck to [BUFFER_TARGET] cards, drawing on the overflow first and then the catalogue. The page
+     * budget is per refill, so a deck of already-decided titles stops and offers "Keep looking" instead of
+     * walking the catalogue (#183). Stops early when the run is superseded by a reset.
+     */
+    private suspend fun fillDeck(run: Int, restore: Boolean) {
+        val filter = _state.value.filter
+        if (restore) cursor = loadDeck.restoreCursor(filter)
+        cursorFilter = filter
+        takeFromOverflow()
+        val session = loadDeck.open(_state.value.snoozePlacement)
 
-            // DeckLoader bounds a single load() call to a handful of
-            // catalogue pages (MAX_PAGES_PER_BATCH), so deep into a large,
-            // heavily-triaged library one batch can come back with nothing
-            // new while the catalogue (cursor.exhaustedFor) is nowhere near
-            // spent — TMDB's popularity order front-loads exactly the titles
-            // a long-time user already has an opinion about. An empty batch
-            // alone is never the answer, so keep reading — but only for
-            // MAX_EMPTY_BATCHES_PER_REFILL batches (#183). Unbounded, the
-            // worst case was ~1000 sequential requests behind a bare spinner.
-            // Stopping is safe because the cursor survives: "Keep looking"
-            // (onKeepLooking) and the next refillIfRunningLow both continue
-            // from it, whereas only retry() and a filter change reset it.
-            var emptyBatches = 0
-            do {
-                if (emptyBatches > 0) _state.update { it.copy(searchingDeeper = true) }
-                val batch = loadDeck(filter, cursor, alreadyShown = shown, placement = _state.value.snoozePlacement)
-                    .getOrElse { error ->
+        var pagesRead = 0
+        var emptyBatch = false
+        while (bufferedCount() < BUFFER_TARGET && !cursor.exhaustedFor(filter) && pagesRead < MAX_PAGES_PER_REFILL) {
+            if (run != generation) return
+            if (emptyBatch) _state.update { it.copy(searchingDeeper = true) }
+            val batch = session.next(filter, cursor, shown, wanted = BUFFER_TARGET - bufferedCount())
+                .getOrElse { error ->
+                    if (run == generation) {
                         _state.update {
                             it.copy(loading = false, refilling = false, searchingDeeper = false, error = error.toUiText(UiText.Resource(Res.string.error_load_more)))
                         }
-                        return@launchReporting
                     }
-                cursor = batch.cursor
-                shown += batch.cards.map { it.id }
-                batchCards = batch.cards
-                trulyExhausted = cursor.exhaustedFor(filter)
-                val nothingNew = batchCards.isEmpty() && !trulyExhausted
-                if (nothingNew) emptyBatches++
-            } while (nothingNew && emptyBatches < MAX_EMPTY_BATCHES_PER_REFILL)
-
-            _state.update { current ->
-                val cards = current.cards + batchCards
-                current.copy(
-                    cards = cards,
-                    loading = false,
-                    refilling = false,
-                    searchingDeeper = false,
-                    error = null,
-                    exhausted = cards.isEmpty() && trulyExhausted,
-                    keepLookingAvailable = cards.isEmpty() && !trulyExhausted,
-                )
-            }
-            if (trulyExhausted && _state.value.cards.isEmpty()) analytics.track(TriageEvent.DeckExhausted)
+                    return
+                }
+            if (run != generation) return
+            pagesRead += batch.pagesRead
+            cursor = batch.cursor
+            pageOf += batch.pageOf
+            shown += batch.cards.map { it.id }
+            shown += batch.overflow.map { it.id }
+            overflow.addAll(batch.overflow)
+            _state.update { it.copy(cards = it.cards + batch.cards) }
+            takeFromOverflow()
+            emptyBatch = batch.cards.isEmpty() && batch.overflow.isEmpty()
+            checkpoint()
         }
+        if (run != generation) return
+
+        val trulyExhausted = cursor.exhaustedFor(filter)
+        _state.update { current ->
+            current.copy(
+                loading = false,
+                refilling = false,
+                searchingDeeper = false,
+                error = null,
+                exhausted = current.cards.isEmpty() && trulyExhausted,
+                keepLookingAvailable = current.cards.isEmpty() && !trulyExhausted,
+            )
+        }
+        if (trulyExhausted && _state.value.cards.isEmpty()) analytics.track(TriageEvent.DeckExhausted)
+        checkpoint()
+    }
+
+    /** Cards on the deck plus those held back for it. */
+    private fun bufferedCount(): Int = _state.value.cards.size + overflow.size
+
+    /** Moves held-back cards onto the deck until it is full. Runs before any network call. */
+    private fun takeFromOverflow() {
+        val room = BUFFER_TARGET - _state.value.cards.size
+        if (room <= 0 || overflow.isEmpty()) return
+        val moved = List(minOf(room, overflow.size)) { overflow.removeFirst() }
+        _state.update { it.copy(cards = it.cards + moved) }
+    }
+
+    /**
+     * Saves where the deck stands for its filter, so a fresh visit (or process) resumes near it (#722). The
+     * saved page is the earliest one still holding a card the person has not acted on, so nothing they have
+     * not seen is skipped. Saves nothing while a reset has not restored a position yet.
+     */
+    private fun checkpoint() {
+        val filter = cursorFilter ?: return
+        val unacted = _state.value.cards + overflow
+        val unactedMovie = unacted.filter { it.type == MediaType.MOVIE }.mapNotNull { pageOf[it.id] }.minOrNull()
+        val unactedTv = unacted.filter { it.type == MediaType.TV }.mapNotNull { pageOf[it.id] }.minOrNull()
+        val snapshot = cursor
+        viewModelScope.launchReporting { loadDeck.checkpoint(filter, snapshot, unactedMovie, unactedTv) }
     }
 
     internal companion object {
         /**
-         * How many batches in a row may come back with nothing new before a
-         * refill stops and offers "Keep looking" (#183). Each batch is up to
-         * `MAX_PAGES_PER_BATCH` catalogue pages, so this bounds one refill to
-         * a few dozen requests instead of the whole 500-page catalogue.
+         * Catalogue pages one refill may read before it stops and offers "Keep looking" (#183). Counted in
+         * pages, not in empty batches: a batch can carry one new title from five pages, and that is progress.
          */
-        const val MAX_EMPTY_BATCHES_PER_REFILL = 4
+        const val MAX_PAGES_PER_REFILL = 20
 
-        /** Refill while there are still cards left to swipe, so the deck never visibly stalls. */
-        const val REFILL_THRESHOLD = 3
+        /** Refill when the deck falls to this many cards (the low-water mark, #722). */
+        const val REFILL_THRESHOLD = 5
+
+        /** The deck is filled up to this many cards, the target a refill aims for. */
+        const val BUFFER_TARGET = 10
     }
 }

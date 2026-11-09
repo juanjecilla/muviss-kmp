@@ -19,14 +19,19 @@ import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.feature.triage.domain.DeckCursorStore
+import com.codingpit.muviss.feature.triage.domain.DeckLanguage
 import com.codingpit.muviss.feature.triage.domain.DeckLoader
+import com.codingpit.muviss.feature.triage.domain.DeckResumption
 import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckGenresUseCase
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
+import com.codingpit.muviss.feature.triage.domain.NoDeckCursorStore
 import com.codingpit.muviss.feature.triage.domain.ObserveSnoozeHintSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.ObserveTutorialSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.RetryUnresolvedUseCase
+import com.codingpit.muviss.feature.triage.domain.SavedDeckCursor
 import com.codingpit.muviss.feature.triage.domain.SetSnoozeHintSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.SetTutorialSeenUseCase
 import com.codingpit.muviss.feature.triage.domain.SnoozeActions
@@ -307,6 +312,15 @@ internal class GatedDetailsSource(private val summaries: List<MediaSummary>) : T
     }
 }
 
+/** An in-memory [DeckCursorStore]: what a device would keep between two visits to the deck. */
+internal class FakeDeckCursorStore : DeckCursorStore {
+    val saved = mutableMapOf<String, SavedDeckCursor>()
+    override suspend fun read(key: String): SavedDeckCursor? = saved[key]
+    override suspend fun write(key: String, saved: SavedDeckCursor) {
+        this.saved[key] = saved
+    }
+}
+
 /** A multi-page movie catalogue for [FakeDeckSource], for a batch that must span more than one `load()` call. */
 internal data class FakeDeckPages(val byNumber: Map<Int, List<MediaSummary>>, val totalPages: Int)
 
@@ -319,6 +333,9 @@ internal class FakeDeckSource(
 ) : DeckSource {
     var failure: Throwable? = null
 
+    /** When set, a movie page waits on it after being recorded: a refill can be held in flight (#722). */
+    var gate: CompletableDeferred<Unit>? = null
+
     /** Every movie page asked for, in order — how far a refill read (#183). */
     val requestedPages = mutableListOf<Int>()
 
@@ -329,6 +346,7 @@ internal class FakeDeckSource(
         failure?.let { return Result.failure(it) }
         if (type == MediaType.TV) tvExcludedRequests += excludedGenreIds
         if (type == MediaType.MOVIE) requestedPages += page
+        if (type == MediaType.MOVIE) gate?.await()
         if (type == MediaType.MOVIE && moviePages != null) {
             return Result.success(PagedResult(moviePages.byNumber[page].orEmpty(), page = page, totalPages = moviePages.totalPages))
         }
@@ -382,6 +400,7 @@ internal class TriageHarness(
     flagsConfig: FakeFlagsConfig = FakeFlagsConfig(),
     moviePages: FakeDeckPages? = null,
     muted: MutedGenres = MutedGenres.NONE,
+    val cursors: DeckCursorStore = NoDeckCursorStore,
 ) {
     val source = FakeDeckSource(movies, tv, genres, moviePages)
     val details = GatedDetailsSource(movies + tv)
@@ -398,7 +417,7 @@ internal class TriageHarness(
     private val record = RecordDecisionUseCase(repository, collection, progress, details, clock)
 
     fun viewModel() = TriageViewModel(
-        LoadDeckUseCase(DeckLoader(source), repository, snoozes, collection, clock),
+        LoadDeckUseCase(DeckLoader(source), repository, snoozes, collection, clock, DeckResumption(cursors, DeckLanguage { "en-US" })),
         LoadDeckGenresUseCase(source),
         TriageActions(
             record = record,
