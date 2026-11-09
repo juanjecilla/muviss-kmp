@@ -29,11 +29,12 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 3. `RevenueCatEntitlementProvider` in `:core:billing` `androidMain`/`iosMain` only. `purchases-kmp` publishes Android + iOS artifacts, and a `commonMain` dependency breaks `compileKotlinWasmJs` for every downstream module (CLAUDE.md). Check licensee's Apache-2.0/MIT allow-list first.
 4. Real paywall presenter behind `rememberPaywallPresenter`; desktop and web can hold an entitlement but not sell one.
 5. Client entitlement states and account deletion (#279, #285, #287), then the public deletion page.
-6. **Production entitlement rollout, before any flag moves** (#282): enable the access-token hook on prod, deploy `revenuecat-webhook` and `delete-account`, set the webhook secret, then verify purchase to sync end to end with a sandbox account on prod. If the gated migrations reach prod before this, paying users cannot sync.
-7. Privacy, data-safety, listing; flip release flags in a dedicated release.
-8. Run the live checks (#100, #114) on dev before the flags move.
+6. Live checks (#100, #114) on dev, against the real stores' sandbox where the check needs one.
+7. **Ship the schema first.** A release that carries #283's migrations to prod through the release train (re-timestamped, #727) with sync still compiled out. The gate fails closed, and no released client uses sync, so nobody is affected; it is what lets step 8 exist.
+8. **Production entitlement rollout** (#282): enable the access-token hook on prod, deploy `revenuecat-webhook` and `delete-account`, set the webhook secret, then verify purchase to sync end to end with a sandbox account on prod.
+9. Privacy, data-safety, listing; then flip the release flags in a dedicated release.
 
 ## Hazards
-- Merging a `release/*` into `main` applies migrations to **prod** automatically; #283's policies lock everyone out until the hook is on.
+- Merging a `release/*` into `main` applies migrations to **prod** automatically; #283's policies lock everyone out until the hook is on. Harmless only while sync is compiled out of every release, which is why step 7 comes before the flags and not with them.
 - #283's migration timestamps must sort after develop's newest at merge time (#727).
 - Paid features never appear on the landing or Play listing before they ship (CLAUDE.md).

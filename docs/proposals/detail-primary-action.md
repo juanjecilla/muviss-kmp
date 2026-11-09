@@ -14,8 +14,8 @@ One filled, full-width button whose meaning follows the state:
 | movie, unseen | Mark as watched | tick, Undo snackbar |
 | movie, seen | Watched ✓ (· N×) | Watched-again dialog (existing) |
 | show, next aired episode exists | Mark S2·E3 seen, subtitle: its name | one Tick, Undo |
-| show, ongoing, every aired episode seen, next episode announced | Caught up ✓, subtitle `Next: S3·E1 · 12 Jan` | disabled |
-| show, ongoing, every aired episode seen, no announced next episode | Caught up ✓ (WatchStatus `Watched`, ADR 0005), no subtitle | disabled |
+| show, ongoing, **at least one episode aired** and every aired episode seen, next episode announced | Caught up ✓, subtitle `Next: S3·E1 · 12 Jan` | disabled |
+| show, ongoing, **at least one episode aired** and every aired episode seen, no announced next episode | Caught up ✓ (WatchStatus `Watched`, ADR 0005), no subtitle | disabled |
 | show, none aired yet | Not aired yet, subtitle first air date | disabled |
 | show ended, all seen | Finished ✓ | disabled |
 
@@ -28,7 +28,9 @@ Icon row (outlined): favorite, bell (saved only), add to list, and a new **bookm
 - **Show with 0 aired episodes**: today "Mark whole show" is a silent no-op after a confirm. Disable it and say why.
 - **Unaired episode positioned before the next aired one**: next = first *aired* unseen, never an unaired one (`WatchProgress` `require(seen <= aired)` throws).
 - **Rewatch**: a seen movie's primary opens Watched-again; it must never add a second entry or tick twice.
+- **Zero aired episodes** takes precedence over both caught-up rows: "every aired episode seen" is vacuously true, but the status is `NotStarted` (`WatchStatusCalculator`), so the button reads Not aired yet.
 - **Tick on unsaved title** (ADR 0037): entry created first; Undo removes it only if created by this tick.
+- **Tick on a title just removed** (stale `savedCopy` still on screen, possibly offline): a soft-deleted row is un-deleted, never re-added from `savedCopy` (ADR 0037).
 - **Completion on the primary tick** fires celebration, "What's next?" and the review prompt like a Progress tick.
 - **Remove while a tick Undo is showing**, double tap, remove then Undo then tick: each action replaces the snackbar slot; the keyed-effect pattern from #569/#613 applies.
 - **Stale network**: all local; Snapshot comes from the details already on screen.
@@ -39,4 +41,4 @@ Icon row (outlined): favorite, bell (saved only), add to list, and a new **bookm
 `DetailScreen.kt` (`ActionRow`, `MovieWatchedToggle`, `MarkShowSeenButton`), `DetailViewModel.kt` (`toggleSaved`, `toggleMovieWatched`, state), `ProgressApi` + `ProgressUseCases.kt` (next-episode query, tick-adds use case), `CollectionApi` (un-delete), `strings.xml` en/es.
 
 ## Tests
-ViewModel: remove then Undo while the details request fails keeps the stored counts (seen never exceeds aired, status still derives); created-entry Undo, pre-existing-entry Undo, 0 aired, caught up, ended, unaired-before-next, remove + Undo keeps favorite/rating. Goldens `detail-show*` re-recorded; StoreShot and fastlane/website screenshots refreshed (#707 flakes the seasons capture). Landing `en.ts`/`es.ts` and the Play description (free, user-visible `feat`).
+ViewModel: remove then tick while offline un-deletes the row and keeps the stored counts; remove then Undo while the details request fails keeps the stored counts (seen never exceeds aired, status still derives); created-entry Undo, pre-existing-entry Undo, 0 aired, caught up, ended, unaired-before-next, remove + Undo keeps favorite/rating. Goldens `detail-show*` re-recorded; StoreShot and fastlane/website screenshots refreshed (#707 flakes the seasons capture). Landing `en.ts`/`es.ts` and the Play description (free, user-visible `feat`).
