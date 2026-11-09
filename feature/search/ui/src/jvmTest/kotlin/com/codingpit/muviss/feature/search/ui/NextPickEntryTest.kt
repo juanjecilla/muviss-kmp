@@ -105,8 +105,9 @@ class NextPickEntryTest {
     }
 }
 
+/** Shared with [NextPickEntryGoldenTest], which frames the same screens in both themes. */
 @Composable
-private fun DiscoverWithEntry(onOpenNextPick: (() -> Unit)?) {
+internal fun DiscoverWithEntry(onOpenNextPick: (() -> Unit)?, darkTheme: Boolean = false) {
     val repo = FakeRepo()
     val viewModel = SearchViewModel(
         SearchMediaUseCase(repo),
@@ -117,13 +118,13 @@ private fun DiscoverWithEntry(onOpenNextPick: (() -> Unit)?) {
         FakeTriageApi(),
         FakeMutingApi(),
     )
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {}, onOpenNextPick = onOpenNextPick)
     }
 }
 
 @Composable
-private fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?) {
+internal fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?, darkTheme: Boolean = false) {
     val mediaId = MediaId.tmdbMovie("603")
     val repo = FakeDetailRepo(details = MediaDetails(MediaSummary(mediaId, "The Matrix", year = 1999)))
     val collection = FakeCollectionApi()
@@ -136,7 +137,7 @@ private fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?)
         MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
         FakeClock(0L),
     )
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         DetailScreen(viewModel = viewModel, onBack = {}, onOpenDetail = {}, onOpenEpisode = {}, onOpenNextPick = onOpenNextPick)
     }
 }

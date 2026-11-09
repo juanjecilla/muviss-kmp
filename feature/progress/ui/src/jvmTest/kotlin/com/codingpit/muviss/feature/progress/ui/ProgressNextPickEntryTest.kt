@@ -102,8 +102,9 @@ class ProgressNextPickEntryTest {
     }
 }
 
+/** Shared with [ProgressNextPickEntryGoldenTest], which frames the same screen in both themes. */
 @Composable
-private fun ProgressWithEntry(onOpenNextPick: (() -> Unit)?, withTitle: Boolean = false) {
+internal fun ProgressWithEntry(onOpenNextPick: (() -> Unit)?, withTitle: Boolean = false, darkTheme: Boolean = false) {
     val show = MediaId.tmdbTv("1001")
     val progressRepository = FakeProgressRepository()
     val episodes = listOf(Season(1, "Season 1", (1..2).map { Episode(EpisodeId(show, 1, it), 1, it, "Episode $it", airDateEpochDay = 100L + it) }))
@@ -126,7 +127,7 @@ private fun ProgressWithEntry(onOpenNextPick: (() -> Unit)?, withTitle: Boolean 
     val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
     val upcomingViewModel = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))
 
-    MuvissTheme(darkTheme = false) {
+    MuvissTheme(darkTheme = darkTheme) {
         ProgressScreen(watchNextViewModel, upcomingViewModel, onOpenDetail = {}, onOpenCoWatch = null, onOpenNextPick = onOpenNextPick)
     }
 }
