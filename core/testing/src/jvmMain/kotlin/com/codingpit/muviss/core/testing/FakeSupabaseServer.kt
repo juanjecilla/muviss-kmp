@@ -11,7 +11,7 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
 import kotlinx.coroutines.delay
 import kotlinx.io.readByteArray
 import kotlinx.serialization.json.Json
@@ -247,7 +247,7 @@ class FakeSupabaseServer(
         else -> ""
     }
 
-    private suspend fun ByteReadChannel.drainToString(): String = readRemaining().readByteArray().decodeToString()
+    private suspend fun ByteReadChannel.drainToString(): String = readBuffer().readByteArray().decodeToString()
 
     // ------------------------------------------------------------------ auth ---
 
@@ -537,6 +537,20 @@ class FakeSupabaseServer(
                     "overview" to nullableText,
                     "snoozed_at_epoch_ms" to integer,
                     "due_at_epoch_day" to integer,
+                    UPDATED_AT to integer,
+                    "deleted" to booleanDefault(false),
+                ),
+            ),
+            // EPIC 51 (#402). `kind`, `value` and `label` are NOT NULL and always sent, so
+            // the fake needs no nullable column. One row per item, keyed by the derived `id`.
+            TableSchema(
+                "taste_profile",
+                listOf("id"),
+                linkedMapOf(
+                    "id" to text,
+                    "kind" to text,
+                    "value" to text,
+                    "label" to text,
                     UPDATED_AT to integer,
                     "deleted" to booleanDefault(false),
                 ),

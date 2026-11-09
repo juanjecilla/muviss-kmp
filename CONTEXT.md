@@ -105,6 +105,15 @@ _Avoid_: reminder (nothing notifies); queue (the deck is not a list the user own
 **Muted Genre**:
 A genre the user has chosen to leave out of what Muviss suggests. A title is hidden from a suggestion when *any* of its genres is muted; a title that carries no genres is never hidden, because nothing says what it is. Muted by default: Talk, News and Reality, for every install. A genre is identified by its type as well as its id — a movie genre and a TV genre can share a number. Muting only ever narrows suggestions: it never touches the collection, progress, Watch Next, notifications or a Snoozed Title, and a title the user opens, searches for by name (unless they opted in) or picks a genre for is shown regardless. The "Show muted" chip lifts it for one session.
 _Avoid_: blocked, blacklisted, filtered out (a filter is something the user narrows by in the moment; muting is a standing preference); hidden (that suggests the title is gone from the collection).
+Once sync ships it belongs to the account like the rest of the user's choices: a set of decisions over the defaults, so a device that never chose and a device that chose to mute nothing are different (ADR 0036).
+
+**Display Preferences**:
+The choices about how the library looks, moves and reads, which the person expects to find the same on every device they sign in to: theme, language and region, the motion switches, the triage control and snooze choices, and whether Muted Genres also apply to typed search. They travel as one group, so they change together, and a backup carries them too. Belongs to the account (synced and exported; ADR 0036).
+_Avoid_: settings (that is the word for Device Switches); preferences on its own (Taste Profile means what the person likes, not how the app looks).
+
+**Device Switch**:
+A setting that describes this device or this install rather than the person: notification permission, background sync, crash reporting, device backup, the one-time introductions and their marks, and the co-watch defaults. Never synced or exported, and a restore or a pull never writes one (ADR 0036).
+_Avoid_: preference (a Display Preference when it belongs to the account); setting (too general to say whose it is).
 
 **Device Backup**:
 A per-device switch that lets the OS's own backup (iCloud or a device backup on iOS; Google's backup and device-to-device transfer on Android) include this device's library. Off by default: the library is left out of OS backups until the person turns it on, in the first-run introduction or in Settings. Muviss copies nothing itself: the copy the OS makes lives wherever that backup lives, which is the person's own iCloud or Google account, a computer they back their iPhone up to, or the new phone in a device-to-device transfer, never with Muviss. Muviss never offers KSafe's secrets, including the Own TMDB Key, to it: on Android they are excluded; on iOS they sit in the Keychain, which Muviss does not exclude, and whether an encrypted device backup carries them is not verified. Per-device, never synced, never in the data export (ADR 0034).
@@ -131,6 +140,16 @@ _Avoid_: fallback (it suggests moving on after a failure, which the chain never 
 **Remote Config**:
 Values Muviss can change after a build has shipped — whether an optional feature is offered, which fallback TMDB credential to use — each with a built-in default that applies offline. It reads nothing about the user (ADR 0026); deciding per user is not something it does today.
 _Avoid_: feature flag (that is the in-code seam both Remote Config and per-device settings sit behind), A/B test, analytics.
+
+### Talking to us
+
+**Feature Request**:
+Something the user asks Muviss to do that it does not yet, sent from Settings through a form hosted outside the app, with only the app version, platform, OS version (where known) and device language alongside. One-way: the app never receives an answer, and a request is not a bug report. The user may leave an email address on the form; the app never sees it.
+_Avoid_: feedback (too wide: it would take in bug reports and praise), suggestion box, ticket, survey.
+
+**Bug Report**:
+What went wrong with the app, sent the same way as a Feature Request, from the row under it in Settings, with the same four values and the same one-way rules. Kept apart from a Feature Request because it is triaged as a defect, not a wish.
+_Avoid_: crash report (that is the automatic, opt-out Sentry kind), feedback.
 
 ### Co-watch
 
@@ -165,7 +184,7 @@ _Avoid_: recommendation (nothing enters a Shortlist that a Companion did not alr
 ### What's next?
 
 **Completion**:
-The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
+The moment a title becomes Watched (a movie, or a show whose aired episodes are all seen but which is still airing) or Finished (a show that has ended and is fully seen). Derived from the change in WatchStatus, never stored. Two kinds, told apart because the sentence differs: **Finished** (a movie watched, or a show that has ended and is fully seen) and **Caught up** (a show that is still airing, with no aired episode left unseen). Only a tick the user makes counts: a status reached by an import, a sync pull, a restore or a bulk "mark seen" is not a Completion, because the user did not just finish anything.
 _Avoid_: finished (that is one WatchStatus, and Completion includes Watched); done, completed.
 
 **Pick Session**:
@@ -177,7 +196,7 @@ A MediaItem Muviss offers at the end of a Pick Session, always with the reason i
 _Avoid_: recommendation (it implies a model that learned the user; this is the user's own answers over their own history), suggestion (Muted Genre uses it for the broader class), WatchNext (that is what the user is part-way through), Shortlist (that is what Companions could watch together).
 
 **Taste Profile**:
-What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre. Belongs to the account like the rest of the user's data (synced and exported).
+What the user has said they like, written down once so a Pick Session can ask less: liked genres, formats, streaming services, languages and who they usually watch with. Authored by the user and editable at any time, never inferred from what they watch. What they do not want is not in it: that is a Muted Genre, and a genre is liked or muted, never both; when both are recorded (a like from another device or a backup), the Muted Genre wins until it is unmuted. Belongs to the account like the rest of the user's data (synced and exported).
 _Avoid_: preferences, settings (those are per-device switches); taste, interests; algorithm; disliked genres (that is a Muted Genre).
 
 ### Release train

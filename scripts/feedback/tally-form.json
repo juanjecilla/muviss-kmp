@@ -1,0 +1,112 @@
+{
+  "status": "DRAFT",
+  "blocks": [
+    {
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "type": "FORM_TITLE",
+      "groupUuid": "00000000-0000-4000-8000-000000000001",
+      "groupType": "FORM_TITLE",
+      "payload": {
+        "title": "Request a feature for Muviss",
+        "html": "<p>Request a feature for Muviss</p>"
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "type": "TEXT",
+      "groupUuid": "00000000-0000-4000-8000-000000000002",
+      "groupType": "TEXT",
+      "payload": {
+        "html": "<p>Tell us what Muviss should do that it doesn't yet. Every request is read. Requests may be copied into our public issue tracker, without your email address.</p>"
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000003",
+      "type": "TITLE",
+      "groupUuid": "00000000-0000-4000-8000-000000000003",
+      "groupType": "QUESTION",
+      "payload": {
+        "html": "<p>What should Muviss do?</p>"
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000004",
+      "type": "TEXTAREA",
+      "groupUuid": "00000000-0000-4000-8000-000000000003",
+      "groupType": "TEXTAREA",
+      "payload": {
+        "isRequired": true,
+        "placeholder": "I'd like to..."
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000005",
+      "type": "TITLE",
+      "groupUuid": "00000000-0000-4000-8000-000000000005",
+      "groupType": "QUESTION",
+      "payload": {
+        "html": "<p>Why would it help you? (optional)</p>"
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000006",
+      "type": "TEXTAREA",
+      "groupUuid": "00000000-0000-4000-8000-000000000005",
+      "groupType": "TEXTAREA",
+      "payload": {
+        "isRequired": false,
+        "placeholder": ""
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000007",
+      "type": "TITLE",
+      "groupUuid": "00000000-0000-4000-8000-000000000007",
+      "groupType": "QUESTION",
+      "payload": {
+        "html": "<p>Email, only if you'd like a reply (optional)</p>"
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000008",
+      "type": "INPUT_EMAIL",
+      "groupUuid": "00000000-0000-4000-8000-000000000007",
+      "groupType": "INPUT_EMAIL",
+      "payload": {
+        "isRequired": false,
+        "placeholder": "you@example.com"
+      }
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000009",
+      "type": "HIDDEN_FIELDS",
+      "groupUuid": "00000000-0000-4000-8000-000000000009",
+      "groupType": "HIDDEN_FIELDS",
+      "payload": {
+        "hiddenFields": [
+          {
+            "uuid": "00000000-0000-4000-8000-000000000100",
+            "name": "version"
+          },
+          {
+            "uuid": "00000000-0000-4000-8000-000000000101",
+            "name": "platform"
+          },
+          {
+            "uuid": "00000000-0000-4000-8000-000000000102",
+            "name": "os"
+          },
+          {
+            "uuid": "00000000-0000-4000-8000-000000000103",
+            "name": "locale"
+          }
+        ]
+      }
+    }
+  ],
+  "settings": {
+    "language": "en",
+    "hasSelfEmailNotifications": true,
+    "saveForLater": false
+  }
+}

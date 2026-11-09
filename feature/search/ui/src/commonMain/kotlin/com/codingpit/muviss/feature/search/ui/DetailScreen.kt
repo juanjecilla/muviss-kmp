@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -38,6 +39,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -88,6 +90,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -99,6 +102,8 @@ import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.RatingRow
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
@@ -180,12 +185,16 @@ fun DetailScreen(
     onOpenEpisode: (EpisodeId) -> Unit = {},
     // Null where there is nothing to offer (most tests): Detail works without it.
     nudge: NotificationNudgeViewModel? = null,
+    /** "What's next?" (EPIC 51, #545), offered only on a Watched or Finished title. Null draws nothing. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
     var editingNote by remember { mutableStateOf(false) }
     var tickedEpisode by remember { mutableStateOf<EpisodeId?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+    // The snackbar's measured height, so the list's end clears a wrapped message too.
+    val snackbarClearance = rememberSnackbarClearance()
 
     // A bulk mark parks its undo in state; this turns it into the snackbar and
     // clears it once acted on, so it can't reappear on the next recomposition.
@@ -216,10 +225,13 @@ fun DetailScreen(
                     onTapSeenEpisode = { tickedEpisode = it },
                     notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
                 )
+                // At least the usual allowance, so the end does not jump when a one-line
+                // snackbar appears; more when a long title or a large font wraps it.
+                val bottomPadding = snackbarClearance.bottomPadding
                 if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(state, viewModel, callbacks)
+                    DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
                 } else {
-                    DetailCompact(state, viewModel, callbacks)
+                    DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
                 }
             }
         }
@@ -237,7 +249,13 @@ fun DetailScreen(
 
         // Detail is a scrolling Box rather than a Scaffold, so it hosts its
         // own snackbar for the bulk-mark undo.
-        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .measureSnackbarHeight(snackbarClearance)
+                .testTag(DETAIL_SNACKBAR_TAG),
+        )
     }
 
     tickedEpisode?.let { episodeId ->
@@ -297,6 +315,13 @@ private class DetailCallbacks(
     val notificationNudge: (@Composable (title: String) -> Unit)? = null,
 )
 
+/** "What's next?" under the actions of a Watched or Finished title (EPIC 51, #545). Draws nothing otherwise. */
+@Composable
+private fun CompletedNextPickEntry(state: DetailUiState, onOpenNextPick: (() -> Unit)?) {
+    if (!state.completed || onOpenNextPick == null) return
+    NextPickEntryButton(onClick = onOpenNextPick, modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG))
+}
+
 /**
  * Compact (phone): backdrop hero with the poster overlapping into content.
  *
@@ -306,14 +331,26 @@ private class DetailCallbacks(
  * on screen is composed.
  */
 @Composable
-private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks) {
+private fun DetailCompact(
+    state: DetailUiState,
+    viewModel: DetailViewModel,
+    callbacks: DetailCallbacks,
+    bottomPadding: Dp,
+    onOpenNextPick: (() -> Unit)?,
+) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     val inset = Modifier.padding(horizontal = MuvissSpacing.l)
-    LazyColumn(Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG)) {
+    LazyColumn(
+        Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        contentPadding = PaddingValues(bottom = bottomPadding),
+    ) {
         item(key = "hero", contentType = "hero") { DetailHero(details) }
         item(key = "actions", contentType = "actions") {
-            Box(inset.padding(top = MuvissSpacing.m)) { ActionRow(state, viewModel, callbacks.onAddToList) }
+            Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                ActionRow(state, viewModel, callbacks.onAddToList)
+                CompletedNextPickEntry(state, onOpenNextPick)
+            }
         }
         detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
         item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
@@ -323,7 +360,13 @@ private fun DetailCompact(state: DetailUiState, viewModel: DetailViewModel, call
 
 /** Expanded (≥840dp): poster + actions pinned left, content right. */
 @Composable
-private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, callbacks: DetailCallbacks) {
+private fun DetailExpanded(
+    state: DetailUiState,
+    viewModel: DetailViewModel,
+    callbacks: DetailCallbacks,
+    bottomPadding: Dp,
+    onOpenNextPick: (() -> Unit)?,
+) {
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     // The body lines up with the title column beside the poster, as it did
@@ -331,7 +374,10 @@ private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, cal
     val bodyColumn = Modifier
         .padding(start = MuvissSpacing.xxl + POSTER_COLUMN_WIDTH + MuvissSpacing.xl, end = MuvissSpacing.xxl)
         .widthIn(max = 640.dp)
-    LazyColumn(Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG)) {
+    LazyColumn(
+        Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        contentPadding = PaddingValues(bottom = bottomPadding),
+    ) {
         item(key = "hero", contentType = "hero") {
             Column {
                 DetailBackdrop(details, height = 200.dp)
@@ -355,6 +401,7 @@ private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, cal
                     ) {
                         Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
                         MetadataLine(details)
+                        CompletedNextPickEntry(state, onOpenNextPick)
                     }
                 }
             }
@@ -368,6 +415,9 @@ private fun DetailExpanded(state: DetailUiState, viewModel: DetailViewModel, cal
 private val POSTER_COLUMN_WIDTH = 150.dp
 
 internal const val DETAIL_LIST_TAG = "detailList"
+
+/** The bulk-mark undo snackbar's host, so a test can find where it sits over the list. */
+internal const val DETAIL_SNACKBAR_TAG = "detailSnackbar"
 
 /** What the list items read: one bundle, so the item builders keep short signatures. */
 private class DetailListContext(
@@ -743,9 +793,14 @@ internal fun NoteEditorContent(initial: String, onSave: (String) -> Unit, onCanc
 }
 
 @Composable
-private fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () -> Unit) {
-    Row(Modifier.clickable(onClick = onToggle), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = watched, onCheckedChange = { onToggle() })
+internal fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () -> Unit) {
+    // One control: the row toggles and says what it is. A checkbox with its own handler beside a
+    // clickable row is two controls for one thing, and the checkbox on its own has no label.
+    Row(
+        Modifier.toggleable(value = watched, role = Role.Checkbox, onValueChange = { onToggle() }),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = watched, onCheckedChange = null)
         Text(
             when {
                 !watched -> stringResource(Res.string.movie_mark_watched)

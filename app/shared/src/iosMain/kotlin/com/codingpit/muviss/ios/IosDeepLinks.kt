@@ -62,7 +62,11 @@ object IosDeepLinks {
      * take the app down.
      */
     fun handle(url: String): Boolean {
-        val components = NSURLComponents(uRL = NSURL(string = url), resolvingAgainstBaseURL = false) ?: return false
+        // Kotlin/Native types a failable initializer as non-null and throws NullPointerException
+        // when it returns nil (`NSURL(string = "muviss://[::1")` does), so `?: return false` can
+        // never run; catching is the only way to refuse a link Foundation cannot parse.
+        val components = runCatching { NSURLComponents(uRL = NSURL(string = url), resolvingAgainstBaseURL = false) }
+            .getOrNull() ?: return false
         if (components.scheme != SCHEME) return false
         return when (components.host) {
             HOST_TITLE -> {

@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   tag:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -49,8 +49,35 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app.outputs.token || github.token }}
 
+      # The notes follow the branch (scripts/release/release-notes.sh): a fix merged
+      # into it is in them before the RC is built. When they change, commit them
+      # and stop; that push (the release App's) starts the next run, which finds
+      # nothing to change and tags the commit that carries them. Text a person
+      # wrote is kept. Without the App the push would not start a run, so the
+      # notes are left as committed and this run goes on.
+      - name: Refresh the release notes
+        id: notes
+        if: steps.has-app.outputs.ok == 'true'
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          VERSION="${BRANCH#*/}"
+          scripts/release/release-notes.sh "$VERSION" --write
+          if [ -z "$(git status --porcelain fastlane/release-notes)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fastlane/release-notes
+          git commit -q -m "chore(release): refresh the $VERSION release notes"
+          git push origin "HEAD:$BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "### Release notes refreshed; the next run tags the candidate" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Tag the next release candidate
         id: next
+        if: steps.notes.outputs.changed != 'true'
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
@@ -79,6 +106,7 @@ jobs:
 
   build:
     needs: tag
+    if: needs.tag.outputs.tag != ''
     uses: ./.github/workflows/android-release-build.yml
     with:
       ref: ${{ needs.tag.outputs.tag }}
@@ -88,7 +116,8 @@ jobs:
 
   prerelease:
     needs: [tag, build]
-    runs-on: ubuntu-latest
+    if: needs.tag.outputs.tag != ''
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -138,8 +167,12 @@ jobs:
   # notice rather than failing the RC.
   ios:
     needs: tag
-    runs-on: macos-latest
+    if: needs.tag.outputs.tag != ''
+    runs-on: macos-15
     timeout-minutes: 75
+    outputs:
+      # Set only once the TestFlight upload succeeded; `record-testflight` reads it (#604).
+      uploaded: ${{ steps.uploaded.outputs.uploaded }}
     steps:
       - name: Check for the Apple credentials
         id: ready
@@ -196,7 +229,7 @@ jobs:
 
       - name: Set up Gradle
         if: steps.ready.outputs.ok == 'true'
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       # The Xcode build runs embedAndSignAppleFrameworkForXcode, a Kotlin/Native
       # link that is the expensive part; the cache is ci.yml's, keyed the same way.
@@ -211,7 +244,7 @@ jobs:
 
       - name: Set up Ruby
         if: steps.ready.outputs.ok == 'true'
-        uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
+        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
         with:
           bundler-cache: true
 
@@ -233,6 +266,12 @@ jobs:
           APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
         run: bundle exec fastlane ios beta
 
+      # Before the dSYM upload, so a Sentry failure after a good upload does not hide it from the record job.
+      - name: Note the TestFlight upload
+        id: uploaded
+        if: steps.ready.outputs.ok == 'true'
+        run: echo "uploaded=true" >> "$GITHUB_OUTPUT"
+
       - name: Upload dSYMs to Sentry
         if: steps.ready.outputs.ok == 'true' && steps.ready.outputs.sentry == 'true'
         env:
@@ -246,3 +285,35 @@ jobs:
         env:
           TAG: ${{ needs.tag.outputs.tag }}
         run: echo "### iOS candidate \`$TAG\` uploaded to TestFlight (internal)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Records the TestFlight upload on the release issue's iOS track (#604), so
+  # ReleasePromotion#ios_still_ramping? keeps the issue open at Play's 100% while
+  # iOS's external-beta step is held. Its own job, with issues: write, so the
+  # macOS job's build tooling never holds that token. A failure here does not
+  # fail the candidate: the run's conclusion is what release_promote's gates read
+  # (ADR 0030), and a marker write must not hold Play. The marker then keeps
+  # today's behaviour, which is the only cost.
+  record-testflight:
+    needs: [tag, ios]
+    if: always() && needs.tag.outputs.tag != '' && needs.ios.outputs.uploaded == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
+
+      - name: Record the TestFlight upload on the release issue
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: ruby fastlane/release_promote.rb record-testflight "$TAG"

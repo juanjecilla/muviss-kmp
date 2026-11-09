@@ -6,7 +6,7 @@
 -- Everything runs inside one transaction that is rolled back.
 begin;
 
-select plan(46);
+select plan(47);
 
 -- Users:
 --   a  entitled, expires in 30 days
@@ -72,7 +72,7 @@ select is(
   (select count(*)::int from pg_policies
     where schemaname = 'public'
       and tablename in ('collection_entry', 'episode_progress', 'media_list', 'list_entry', 'triage_decision',
-                        'episode_play', 'triage_snooze', 'cowatch_link', 'cowatch_pool_entry')
+                        'episode_play', 'triage_snooze', 'taste_profile', 'cowatch_link', 'cowatch_pool_entry')
       and ((qual is not null and qual not like '%sync_until%')
         or (with_check is not null and with_check not like '%sync_until%'))),
   0,
@@ -82,10 +82,10 @@ select is(
   (select count(distinct tablename)::int from pg_policies
     where schemaname = 'public'
       and tablename in ('collection_entry', 'episode_progress', 'media_list', 'list_entry', 'triage_decision',
-                        'episode_play', 'triage_snooze', 'cowatch_link', 'cowatch_pool_entry')
+                        'episode_play', 'triage_snooze', 'taste_profile', 'cowatch_link', 'cowatch_pool_entry')
       and cmd in ('ALL', 'SELECT')),
-  9,
-  'and all nine still have a read policy, none dropped along with an older permissive one'
+  10,
+  'and all ten still have a read policy, none dropped along with an older permissive one'
 );
 select is(
   (select count(*)::int from pg_policies
@@ -199,6 +199,11 @@ select throws_ok(
   $$insert into public.triage_snooze (media_id, media_type, title, snoozed_at_epoch_ms, due_at_epoch_day, updated_at_epoch_ms)
     values ('m3', 'MOVIE', 't', 1, 1, 1)$$,
   '42501', null, 'and so does triage_snooze'
+);
+select throws_ok(
+  $$insert into public.taste_profile (id, kind, value, updated_at_epoch_ms)
+    values ('genre:18', 'genre', '18', 1)$$,
+  '42501', null, 'and so does taste_profile (#588 arrived after the gate was written)'
 );
 reset role;
 

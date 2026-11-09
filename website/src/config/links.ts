@@ -9,6 +9,14 @@ export const links = {
   desktop: null as string | null,
   // The Wasm web app, once it is hosted at app.muvissapp.com (#167).
   web: null as string | null,
+  // The two hosted forms the app's Settings rows open (EPIC 53, ADR 0034). Public by design: they are
+  // links to a form, not a way into anything.
+  featureRequest: "https://tally.so/r/bZVJMg",
+  bugReport: "https://tally.so/r/LD1rzy",
+  // Interim contact until support@muvissapp.com exists (#438). One place, so swapping it is one edit.
+  supportEmail: "codingpit@gmail.com",
 };
+
+export const issuesUrl = `${links.github}/issues`;
 
 export const repoPath = (path: string) => `${links.github}/blob/main/${path}`;

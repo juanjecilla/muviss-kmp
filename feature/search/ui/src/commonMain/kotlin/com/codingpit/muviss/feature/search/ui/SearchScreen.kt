@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -50,6 +49,7 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterSkeleton
+import com.codingpit.muviss.core.designsystem.component.posterGridCells
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
@@ -86,6 +86,8 @@ fun SearchScreen(
     onOpenTriage: () -> Unit,
     introVisible: Boolean = false,
     onIntroDismissed: () -> Unit = {},
+    /** The way into the Pick Session (EPIC 51). Null draws no entry. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -104,7 +106,15 @@ fun SearchScreen(
             }
 
             else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(state, onSelectGenre = viewModel::selectGenre, onOpenDetail = onOpenDetail, onOpenTriage = onOpenTriage, intro = DiscoverIntro(introVisible, onIntroDismissed), muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled))
+                SearchMode.DISCOVER -> DiscoverBrowse(
+                    state,
+                    onSelectGenre = viewModel::selectGenre,
+                    onOpenDetail = onOpenDetail,
+                    onOpenTriage = onOpenTriage,
+                    intro = DiscoverIntro(introVisible, onIntroDismissed),
+                    muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
+                    onOpenNextPick = onOpenNextPick,
+                )
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -126,7 +136,7 @@ fun SearchScreen(
  * doesn't want (results render inline below the pill instead).
  */
 @Composable
-private fun SearchPill(
+internal fun SearchPill(
     query: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -187,7 +197,7 @@ private fun SearchPill(
 @Composable
 private fun LoadingSkeletonGrid() {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 110.dp),
+        columns = posterGridCells(),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         modifier = Modifier.fillMaxSize(),
@@ -204,6 +214,7 @@ private fun DiscoverBrowse(
     onOpenTriage: () -> Unit,
     intro: DiscoverIntro = DiscoverIntro(),
     muted: MutedChip = MutedChip(),
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     Column(
         Modifier
@@ -217,6 +228,8 @@ private fun DiscoverBrowse(
         // Triage's main entry point (ADR 0010). It leads the browse because
         // an empty or thin library is exactly the state it exists to fix.
         TriageEntryCard(onOpenTriage)
+        // The Pick Session (EPIC 51, #545): "What's next?" from Discover, beside the deck it is an alternative to.
+        onOpenNextPick?.let { NextPickEntryButton(onClick = it, modifier = Modifier.fillMaxWidth().testTag(NEXT_PICK_ENTRY_TAG)) }
         // Muted Genres (ADR 0031): Popular and For you leave them out; this brings them back for the session.
         if (muted.available) {
             FilterChip(selected = muted.shown, onClick = muted.onToggle, label = { Text(stringResource(Res.string.show_muted)) }, modifier = Modifier.testTag(SHOW_MUTED_CHIP_TAG))
@@ -414,7 +427,7 @@ private fun PagedResultsGrid(
     }
     LazyVerticalGrid(
         state = gridState,
-        columns = GridCells.Adaptive(minSize = 110.dp),
+        columns = posterGridCells(),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         contentPadding = PaddingValues(bottom = MuvissSpacing.bottomContent),

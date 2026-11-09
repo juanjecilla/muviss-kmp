@@ -430,7 +430,7 @@ platform :ios do
     UI.user_error!("TESTFLIGHT_EXTERNAL_GROUPS is not set (the external group with the public link)") unless groups
 
     # External testing needs "What to Test": the version's English release notes,
-    # the same file Play's changelog comes from (the DRAFT gate has already passed).
+    # the same file Play's changelog comes from (written by scripts/release/release-notes.sh).
     notes_file = File.join(REPO_ROOT, "fastlane/release-notes", "v#{IosRelease.version_name(tag)}", "en-US.txt")
     UI.user_error!("No release notes at #{notes_file}; external testing needs them as What to Test") unless File.exist?(notes_file)
 

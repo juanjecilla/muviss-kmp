@@ -35,6 +35,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -53,6 +54,8 @@ import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.label
 import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.nextpick.api.ResultMode
+import com.codingpit.muviss.feature.nextpick.api.SessionLength
 import com.codingpit.muviss.feature.settings.domain.AppTheme
 import com.codingpit.muviss.feature.settings.domain.SupportedLocales
 import com.codingpit.muviss.feature.settings.ui.generated.resources.Res
@@ -75,19 +78,32 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.export
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library
 import com.codingpit.muviss.feature.settings.ui.generated.resources.fill_library_value
 import com.codingpit.muviss.feature.settings.ui.generated.resources.import
+import com.codingpit.muviss.feature.settings.ui.generated.resources.length_none
+import com.codingpit.muviss.feature.settings.ui.generated.resources.length_quick
+import com.codingpit.muviss.feature.settings.ui.generated.resources.length_standard
 import com.codingpit.muviss.feature.settings.ui.generated.resources.licenses
 import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_count
 import com.codingpit.muviss.feature.settings.ui.generated.resources.muted_genres_title
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_length
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_prompt
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_prompt_body
+import com.codingpit.muviss.feature.settings.ui.generated.resources.next_pick_result
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications
 import com.codingpit.muviss.feature.settings.ui.generated.resources.notifications_blocked
 import com.codingpit.muviss.feature.settings.ui.generated.resources.open_settings
 import com.codingpit.muviss.feature.settings.ui.generated.resources.provider_region
+import com.codingpit.muviss.feature.settings.ui.generated.resources.report_problem
+import com.codingpit.muviss.feature.settings.ui.generated.resources.request_feature
+import com.codingpit.muviss.feature.settings.ui.generated.resources.result_deck
+import com.codingpit.muviss.feature.settings.ui.generated.resources.result_one
+import com.codingpit.muviss.feature.settings.ui.generated.resources.result_top
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_four_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.scheme_three_way
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_about
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_appearance
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_content
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_data
+import com.codingpit.muviss.feature.settings.ui.generated.resources.section_next_pick
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_privacy
 import com.codingpit.muviss.feature.settings.ui.generated.resources.section_triage
 import com.codingpit.muviss.feature.settings.ui.generated.resources.settings_title
@@ -98,6 +114,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animat
 import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_animations_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.swipe_controls
 import com.codingpit.muviss.feature.settings.ui.generated.resources.system_default
+import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_profile_row_hint
+import com.codingpit.muviss.feature.settings.ui.generated.resources.taste_profile_title
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_dark
 import com.codingpit.muviss.feature.settings.ui.generated.resources.theme_light
@@ -118,15 +136,19 @@ fun SettingsScreen(
     onOpenImport: () -> Unit,
     onOpenTriage: () -> Unit,
     onOpenMutedGenres: () -> Unit = {},
+    onOpenTasteProfile: () -> Unit = {},
     onReplayIntroduction: () -> Unit = {},
     // Null where the row has nothing to talk to (the screen's own tests). Optional on purpose:
     // the screen works without it, so the many tests of everything else do not need a Koin graph.
     tmdbKey: TmdbKeyViewModel? = null,
+    // The "What's next?" rows (EPIC 51, #403). Null hides the section: the screen's own tests do not build it.
+    nextPick: NextPickSettingsViewModel? = null,
     // Whether the OS backup can carry the library (ADR 0034). A parameter so a test can show the row on desktop.
     canBackUp: Boolean = platformCanBackUp,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exporter = rememberDataExporter()
+    val uriHandler = LocalUriHandler.current
     val systemDefault = stringResource(Res.string.system_default)
 
     LaunchedEffect(state.exportJson) {
@@ -213,6 +235,13 @@ fun SettingsScreen(
             value = pluralStringResource(Res.plurals.muted_genres_count, state.settings.mutedGenres.size, state.settings.mutedGenres.size),
             onClick = onOpenMutedGenres,
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        ActionRow(
+            icon = MuvissIcons.Favorite,
+            label = stringResource(Res.string.taste_profile_title),
+            value = stringResource(Res.string.taste_profile_row_hint),
+            onClick = onOpenTasteProfile,
+        )
         if (tmdbKey != null) {
             val keyState by tmdbKey.state.collectAsStateWithLifecycle()
             if (keyState.visible) {
@@ -266,6 +295,34 @@ fun SettingsScreen(
             enabled = state.animationsEnabled,
             onToggle = viewModel::onTriageDeckAnimationsToggled,
         )
+
+        if (nextPick != null) {
+            val nextPickState by nextPick.state.collectAsStateWithLifecycle()
+            SectionOverline(stringResource(Res.string.section_next_pick), topPadding = true)
+            SwitchRow(
+                label = stringResource(Res.string.next_pick_prompt),
+                description = stringResource(Res.string.next_pick_prompt_body),
+                checked = nextPickState.completionPromptEnabled,
+                onToggle = nextPick::onCompletionPromptToggled,
+                modifier = Modifier.testTag(NEXT_PICK_PROMPT_TAG),
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            PickerRow(
+                label = stringResource(Res.string.next_pick_length),
+                value = nextPickState.sessionLength.label(),
+                options = SessionLength.entries.map { it.name to it.label() },
+                selectedCode = nextPickState.sessionLength.name,
+                onSelect = { name -> nextPick.onSessionLengthSelected(SessionLength.fromStored(name)) },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            PickerRow(
+                label = stringResource(Res.string.next_pick_result),
+                value = nextPickState.resultMode.label(),
+                options = ResultMode.entries.map { it.name to it.label() },
+                selectedCode = nextPickState.resultMode.name,
+                onSelect = { name -> nextPick.onResultModeSelected(ResultMode.fromStored(name)) },
+            )
+        }
 
         SectionOverline(stringResource(Res.string.section_data), topPadding = true)
         ActionRow(
@@ -326,6 +383,8 @@ fun SettingsScreen(
             appVersionName = state.appVersion.versionName,
             onOpenLicenses = onOpenLicenses,
             onReplayIntroduction = onReplayIntroduction,
+            onRequestFeature = state.featureRequestUrl?.let { url -> { uriHandler.openUri(url) } },
+            onReportProblem = state.bugReportUrl?.let { url -> { uriHandler.openUri(url) } },
             onTestCrash = { throw MuvissTestCrash() },
         )
     }
@@ -547,6 +606,10 @@ internal fun AboutSection(
     onOpenLicenses: () -> Unit,
     onTestCrash: () -> Unit,
     onReplayIntroduction: () -> Unit = {},
+    /** Opens the Feature Request form (ADR 0035); null while there is none, which hides the row. */
+    onRequestFeature: (() -> Unit)? = null,
+    /** Opens the Bug Report form (ADR 0035, #449); null while there is none, which hides the row. */
+    onReportProblem: (() -> Unit)? = null,
 ) {
     var versionTaps by remember { mutableIntStateOf(0) }
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
@@ -587,6 +650,36 @@ internal fun AboutSection(
                 modifier = Modifier.size(16.dp),
             )
         }
+        if (onRequestFeature != null) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onRequestFeature).padding(vertical = MuvissSpacing.s).testTag(FEATURE_REQUEST_TAG),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(Res.string.request_feature), style = MaterialTheme.typography.bodyLarge)
+                Icon(
+                    MuvissIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        if (onReportProblem != null) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onReportProblem).padding(vertical = MuvissSpacing.s).testTag(BUG_REPORT_TAG),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(Res.string.report_problem), style = MaterialTheme.typography.bodyLarge)
+                Icon(
+                    MuvissIcons.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
         Row(
             Modifier.fillMaxWidth().clickable(onClick = onOpenLicenses).padding(vertical = MuvissSpacing.s),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -608,6 +701,24 @@ internal fun AboutSection(
  * differ only in whether a downward drag commits Watching or is inert.
  */
 @Composable
+private fun SessionLength.label(): String = stringResource(
+    when (this) {
+        SessionLength.QUICK -> Res.string.length_quick
+        SessionLength.STANDARD -> Res.string.length_standard
+        SessionLength.NONE -> Res.string.length_none
+    },
+)
+
+@Composable
+private fun ResultMode.label(): String = stringResource(
+    when (this) {
+        ResultMode.ONE_PICK -> Res.string.result_one
+        ResultMode.TOP_PICKS -> Res.string.result_top
+        ResultMode.DECK -> Res.string.result_deck
+    },
+)
+
+@Composable
 private fun TriageControlScheme.displayName(): String = stringResource(
     when (this) {
         TriageControlScheme.FOUR_WAY -> Res.string.scheme_four_way
@@ -615,7 +726,10 @@ private fun TriageControlScheme.displayName(): String = stringResource(
     },
 )
 
+internal const val NEXT_PICK_PROMPT_TAG = "nextPickPrompt"
 internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
+internal const val FEATURE_REQUEST_TAG = "featureRequest"
+internal const val BUG_REPORT_TAG = "bugReport"
 const val VERSION_ROW_TAG = "settings_version_row"
 
 internal const val TEST_CRASH_TAPS = 7

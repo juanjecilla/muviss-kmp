@@ -24,7 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
@@ -61,10 +63,14 @@ fun PosterCard(
     val scale by animateFloatAsState(if (pressed) 0.97f else 1f, label = "posterPress")
 
     Column(
-        modifier = modifier.graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        },
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            // The whole card is the control (poster + caption): one announcement, "Title, button",
+            // and the caption is part of the target. Merged by `clickable`.
+            .clickable(interactionSource = interactionSource, indication = null, role = Role.Button, onClick = onClick),
     ) {
         Surface(
             shape = MaterialTheme.shapes.medium,
@@ -79,11 +85,15 @@ fun PosterCard(
                         Modifier
                     },
                 )
-                .clip(MaterialTheme.shapes.medium)
-                .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
+                .clip(MaterialTheme.shapes.medium),
         ) {
             Box(Modifier.fillMaxSize()) {
-                PosterImage(url = posterUrl, title = title, modifier = Modifier.fillMaxSize(), size = PosterSize.Grid)
+                PosterImage(
+                    url = posterUrl,
+                    title = title,
+                    modifier = Modifier.fillMaxSize(),
+                    size = PosterSize.Grid,
+                )
                 if (rating != null) {
                     RatingBadge(
                         rating = rating,
@@ -115,7 +125,9 @@ fun PosterCard(
                 maxLines = TITLE_LINES,
                 minLines = TITLE_LINES,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 6.dp).testTag(POSTER_TITLE_TAG),
+                // Visual only: the poster already carries the title (its description, or its no-artwork text), and
+                // a caption that is cut off by the viewport drops out of the merged label, leaving the card unlabelled.
+                modifier = Modifier.padding(top = 6.dp).clearAndSetSemantics { testTag = POSTER_TITLE_TAG },
             )
         }
     }

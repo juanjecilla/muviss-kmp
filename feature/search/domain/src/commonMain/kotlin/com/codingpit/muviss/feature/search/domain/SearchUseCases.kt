@@ -10,12 +10,32 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
 
-/** Searches media by free-text query, one page at a time. Blank queries resolve to an empty page. */
+/**
+ * Drops from [this] every title whose id is in [shown], and every repeat of an
+ * id earlier in the list. The first occurrence wins and the order of the rest
+ * is kept.
+ *
+ * TMDB paging drifts while a list grows: a title can come back on page 2 that
+ * page 1 already showed. A paged list that appends pages blindly then carries
+ * the same [MediaId] twice, and a keyed `LazyVerticalGrid` crashes on it. So
+ * every paged read passes the ids already on screen as [shown] and gets back a
+ * page that is unique by construction. The page can come back shorter than
+ * TMDB sent it; its paging fields are left alone.
+ */
+internal fun List<MediaSummary>.withoutShown(shown: Set<MediaId>): List<MediaSummary> {
+    val seen = HashSet(shown)
+    return filter { seen.add(it.id) }
+}
+
+/**
+ * Searches media by free-text query, one page at a time. Blank queries resolve to an empty page.
+ * [shown] is the ids already on screen; see [withoutShown].
+ */
 class SearchMediaUseCase(private val repository: SearchRepository) {
-    suspend operator fun invoke(query: String, page: Int = 1): Result<PagedResult<MediaSummary>> = if (query.isBlank()) {
+    suspend operator fun invoke(query: String, page: Int = 1, shown: Set<MediaId> = emptySet()): Result<PagedResult<MediaSummary>> = if (query.isBlank()) {
         Result.success(PagedResult(emptyList(), page = 1, totalPages = 1))
     } else {
-        repository.search(query.trim(), page)
+        repository.search(query.trim(), page).map { it.copy(items = it.items.withoutShown(shown)) }
     }
 }
 
@@ -29,14 +49,19 @@ class MediaDetailUseCase(private val repository: SearchRepository) {
     suspend operator fun invoke(id: MediaId): Result<MediaDetails> = repository.details(id)
 }
 
-/** Popularity-sorted browse backing the Search tab's discover carousels and genre drill-down. */
+/**
+ * Popularity-sorted browse backing the Search tab's discover carousels and genre drill-down.
+ * [shown] is the ids already on screen; see [withoutShown].
+ */
 class DiscoverMediaUseCase(private val repository: SearchRepository) {
     suspend operator fun invoke(
         type: MediaType,
         page: Int = 1,
         genreId: String? = null,
         excludedGenreIds: Set<String> = emptySet(),
+        shown: Set<MediaId> = emptySet(),
     ): Result<PagedResult<MediaSummary>> = repository.discover(type, page, genreId, excludedGenreIds)
+        .map { it.copy(items = it.items.withoutShown(shown)) }
 }
 
 /** Loads the localized genre list backing the discover chip rows. */

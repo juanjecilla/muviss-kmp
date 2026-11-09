@@ -1,8 +1,10 @@
 package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.MuvissCrashReporting
+import com.codingpit.muviss.core.common.motion.SystemMotionPreference
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
+import com.codingpit.muviss.core.common.review.ReviewPrompter
 import com.codingpit.muviss.core.common.widget.AppWidgets
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
@@ -55,6 +57,9 @@ object IosAppStartup {
                         single { DatabaseDriverFactory() }
                         single<NotificationPermissionRequester> { IosNotificationPermissionRequester }
                         single<SystemNotificationSettings> { IosNotificationSettings }
+                        single<SystemMotionPreference> { IosSystemMotionPreference }
+                        // The store review sheet (#410). Bound here only: the widget process never asks.
+                        single<ReviewPrompter> { IosReviewPrompter }
                     },
                 )
             }

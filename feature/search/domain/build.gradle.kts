@@ -10,5 +10,8 @@ kotlin {
             implementation(projects.core.common)
             implementation(projects.feature.collection.api)
         }
+        commonTest.dependencies {
+            implementation(libs.kotlinx.coroutinesTest)
+        }
     }
 }

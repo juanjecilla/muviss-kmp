@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +22,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -34,14 +35,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.SegmentedSwitch
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.posterGridCells
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -64,6 +70,7 @@ import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_wat
 import com.codingpit.muviss.feature.collection.ui.generated.resources.filter_with_count
 import com.codingpit.muviss.feature.collection.ui.generated.resources.find_something
 import com.codingpit.muviss.feature.collection.ui.generated.resources.library_title
+import com.codingpit.muviss.feature.collection.ui.generated.resources.next_pick_entry
 import com.codingpit.muviss.feature.collection.ui.generated.resources.segment_library
 import com.codingpit.muviss.feature.collection.ui.generated.resources.segment_lists
 import com.codingpit.muviss.feature.collection.ui.generated.resources.sort_by
@@ -103,6 +110,8 @@ fun CollectionScreen(
     onOpenDetail: (MediaId) -> Unit,
     onOpenList: (MediaList) -> Unit,
     onOpenSearch: () -> Unit = {},
+    /** The way into the Pick Session (EPIC 51, #545), drawn on the Library segment. Null draws nothing. */
+    onOpenNextPick: (() -> Unit)? = null,
 ) {
     var segment by remember { mutableStateOf(CollectionSegment.LIBRARY) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -126,7 +135,7 @@ fun CollectionScreen(
             modifier = Modifier.padding(horizontal = MuvissSpacing.l),
         )
         when (segment) {
-            CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail, onOpenSearch)
+            CollectionSegment.LIBRARY -> LibraryScreen(viewModel, onOpenDetail, onOpenSearch, onOpenNextPick)
             CollectionSegment.LISTS -> ListsScreen(listsViewModel, onOpenList)
         }
     }
@@ -210,6 +219,7 @@ private fun LibraryScreen(
     viewModel: CollectionViewModel,
     onOpenDetail: (MediaId) -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenNextPick: (() -> Unit)?,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -222,8 +232,13 @@ private fun LibraryScreen(
         viewModel.consumeMessage()
     }
 
+    // The snackbar's measured height, so the end of the list clears a message that wraps (a long
+    // name, a large font) and not only the one-line case.
+    val snackbarClearance = rememberSnackbarClearance()
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
+            onOpenNextPick?.let { LibraryNextPickButton(it) }
             CollectionFilterChips(state, onSelect = viewModel::selectFilter)
 
             PullToRefreshBox(
@@ -234,14 +249,27 @@ private fun LibraryScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                     when {
                         state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
+
                         state.error != null -> ErrorState(state.error!!, onRetry = { viewModel.refresh() })
+
                         state.visibleEntries.isEmpty() -> EmptyLibraryState(state.filter, state.typeFilter, onOpenSearch)
-                        else -> CollectionGrid(state.visibleEntries, onOpenDetail)
+
+                        else -> CollectionGrid(
+                            state.visibleEntries,
+                            bottomPadding = snackbarClearance.bottomPadding,
+                            onOpenDetail,
+                        )
                     }
                 }
             }
         }
-        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(
+            snackbarHostState,
+            Modifier
+                .align(Alignment.BottomCenter)
+                .measureSnackbarHeight(snackbarClearance)
+                .testTag(COLLECTION_SNACKBAR_TAG),
+        )
     }
 }
 
@@ -302,28 +330,33 @@ private fun CollectionFilterChips(
 @Composable
 private fun CollectionGrid(
     entries: List<CollectionEntry>,
+    bottomPadding: Dp,
     onOpenDetail: (MediaId) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 110.dp),
+        columns = posterGridCells(),
         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        // The refresh-failure snackbar sits over the bottom of the grid, so the last row
+        // must be scrollable clear of it.
         contentPadding = PaddingValues(
             start = MuvissSpacing.m,
             end = MuvissSpacing.m,
             top = MuvissSpacing.m,
-            bottom = MuvissSpacing.bottomContent,
+            bottom = bottomPadding,
         ),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag(COLLECTION_GRID_TAG),
     ) {
         items(entries, key = { it.mediaId.toString() }) { entry ->
-            PosterCard(
-                title = entry.title,
-                posterUrl = entry.posterUrl,
-                onClick = { onOpenDetail(entry.mediaId) },
-                rating = entry.rating,
-                progress = entry.watchingProgress(),
-            )
+            Box(Modifier.testTag(COLLECTION_CELL_TAG)) {
+                PosterCard(
+                    title = entry.title,
+                    posterUrl = entry.posterUrl,
+                    onClick = { onOpenDetail(entry.mediaId) },
+                    rating = entry.rating,
+                    progress = entry.watchingProgress(),
+                )
+            }
         }
     }
 }
@@ -359,3 +392,28 @@ private fun CollectionSort.label(): String = stringResource(
         CollectionSort.TITLE -> Res.string.sort_title
     },
 )
+
+/** Test hooks: the refresh-failure snackbar, the library grid, and one grid cell. */
+internal const val COLLECTION_SNACKBAR_TAG = "collection-snackbar"
+internal const val COLLECTION_GRID_TAG = "collection-grid"
+internal const val COLLECTION_CELL_TAG = "collection-cell"
+
+/** Test tag of the "What's next?" entry on the Library (EPIC 51, #545). */
+internal const val LIBRARY_NEXT_PICK_TAG = "libraryNextPick"
+
+/**
+ * The way into the Pick Session from the Library (EPIC 51, #545): a labelled button above the filter chips,
+ * with the 48dp minimum touch target. The words say what it opens, so there is no icon to label.
+ */
+@Composable
+private fun LibraryNextPickButton(onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .padding(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s)
+            .heightIn(min = 48.dp)
+            .testTag(LIBRARY_NEXT_PICK_TAG),
+    ) {
+        Text(stringResource(Res.string.next_pick_entry))
+    }
+}

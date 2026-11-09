@@ -33,7 +33,7 @@ echo "=== unauthenticated reads (expect: 200 with [], or 401 permission denied) 
 # sync_rls.test.sql) checks the same policies from inside, with several real
 # accounts, on every PR; this is the check that the *hosted* project matches.
 TABLES="collection_entry episode_progress media_list list_entry triage_decision episode_play
-triage_snooze cowatch_link cowatch_pool_entry entitlement"
+triage_snooze taste_profile cowatch_link cowatch_pool_entry entitlement"
 for t in $TABLES; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "$REST/$t?select=*" -H "apikey: $ANON")
   body=$(curl -s "$REST/$t?select=*" -H "apikey: $ANON" | head -c 80)

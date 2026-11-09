@@ -55,6 +55,14 @@ internal class FakeTriageApi(initial: Map<MediaId, TriageVerdict> = emptyMap()) 
         decisions.value = decisions.value - mediaId
     }
 
+    override suspend fun skip(summary: com.codingpit.muviss.models.MediaSummary) {
+        decisions.value = decisions.value + (summary.id to TriageVerdict.SKIP)
+    }
+
+    override suspend fun snooze(summary: com.codingpit.muviss.models.MediaSummary, dueAtEpochDay: Long) {
+        snoozes.value = snoozes.value + (summary.id to dueAtEpochDay)
+    }
+
     val snoozes = MutableStateFlow<Map<MediaId, Long>>(emptyMap())
     val unsnoozed = mutableListOf<MediaId>()
 
@@ -75,12 +83,14 @@ internal class FakeTriageApi(initial: Map<MediaId, TriageVerdict> = emptyMap()) 
 }
 
 internal class FakeRepo(
-    private val searchResult: (page: Int) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), it, it)) },
+    private val searchResult: suspend (page: Int) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), it, it)) },
     private val movieGenresResult: Result<List<Genre>> = Result.success(emptyList()),
     private val tvGenresResult: Result<List<Genre>> = Result.success(emptyList()),
-    private val discoverResult: (type: MediaType, page: Int, genreId: String?) -> Result<PagedResult<MediaSummary>> =
+    private val discoverResult: suspend (type: MediaType, page: Int, genreId: String?) -> Result<PagedResult<MediaSummary>> =
         { _, page, _ -> Result.success(PagedResult(emptyList(), page, page)) },
     private val recommendationsResult: (id: MediaId) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), 1, 1)) },
+    /** Runs before a browse answers, so a test can hold one response back while the user moves on. */
+    private val discoverGate: suspend (page: Int, genreId: String?) -> Unit = { _, _ -> },
 ) : SearchRepository {
     override suspend fun search(query: String, page: Int) = searchResult(page)
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
@@ -91,6 +101,7 @@ internal class FakeRepo(
 
     override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
         discoverExcluded += type to excludedGenreIds
+        discoverGate(page, genreId)
         return discoverResult(type, page, genreId)
     }
     override suspend fun genres(type: MediaType) = if (type == MediaType.MOVIE) movieGenresResult else tvGenresResult

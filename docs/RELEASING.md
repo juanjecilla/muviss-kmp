@@ -255,7 +255,9 @@ Business plan; this runs on any plan, with the token the Play ramp's crash gate
   set for the mapping upload and the gate). With no token the workflow does nothing.
 - **Try it**: Actions > "Sentry issues" > Run workflow (dry run is on by default and prints
   what it would open). Tests: `ruby fastlane/test/sentry_connector_test.rb` and `ops_bridge_test.rb`, run by `pr-guards`.
-  Nothing here has been run against a live Sentry project (#328).
+  Partly run against the live project on 2026-10-14 (#328): a dry run listed the existing
+  issues and the crash gate answered for a real release. Not yet run live: opening an issue,
+  close-to-resolve and the regressed-reopen path; #328 tracks them.
 
 #### Play reviews to issue (EPIC 48, connector #2)
 
@@ -279,6 +281,30 @@ fewer**, labelled `from-play-review` + `user-feedback`.
 - Stdlib only: the OAuth token is a signed JWT exchanged at Google (`PlayReviews#access_token`),
   no gems. Try it: Actions > "Play reviews" > Run workflow (dry run is on by default).
   Tests: `ruby fastlane/test/play_reviews_test.rb`. Never run against the live API.
+
+#### Feature requests and bug reports to issue (#448, #449, connectors #3 and #4)
+
+`.github/workflows/feature-requests.yml` opens one issue per completed submission of the in-app
+**Request a feature** form (section 13), labelled `from-feature-request` + `user-feedback`, and of
+the **Report a problem** form, labelled `from-bug-report` + `bug` + `user-feedback`.
+
+- **Hourly** (and by hand, dry by default). Polling rather than a Tally webhook: Tally's webhook
+  sends its own fixed JSON and cannot call GitHub's dispatch API, so it would need a hosted
+  receiver, which ADR 0028 rules out. Tally keeps every submission, so nothing is lost between runs.
+- **The respondent's email is never copied** (the repository goes public); the issue only says
+  whether one was left, and the owner replies from the Tally dashboard. The text goes in a code
+  fence, so an `@name` cannot ping anyone. The hidden fields (`version`, `platform`, `os`,
+  `locale`) are shown, sanitised, since a query parameter is anything someone types.
+- **Capped**: an empty submission is skipped and one run opens at most 10 issues, oldest first, so a
+  flood of junk costs an hour at a time. One issue per submission id; re-running opens nothing.
+- **No reverse mapping.** Closing the issue changes nothing in Tally.
+- **Secrets**: `TALLY_API_KEY` (Tally > Settings > API keys) and `TALLY_FEATURE_REQUEST_FORM_ID`
+  (the id `scripts/feedback/tally-form.sh create` printed); `TALLY_BUG_REPORT_FORM_ID` for the Bug
+  Report form. With the key or a form's id unset, that form's step does nothing. `scripts/release/owner-setup.sh` asks for both. Scheduled workflows only run from the
+  default branch, so nothing happens until this reaches `main`.
+- **Try it**: `DRY_RUN=1 TALLY_API_KEY=… TALLY_FEATURE_REQUEST_FORM_ID=… GITHUB_REPOSITORY=… GITHUB_TOKEN=… ruby fastlane/ops_bridge.rb sync tally-feature-requests`,
+  or Actions > "Feature requests" > Run workflow (dry run is on by default). Tests:
+  `ruby fastlane/test/tally_feature_requests_test.rb`, run by `pr-guards`.
 
 ## 5. Branches, the release train and CI (ADR 0025)
 
@@ -307,9 +333,9 @@ the schedule, the gates and where a fix goes.
 |---|---|---|
 | `ci.yml` | PRs into `develop`/`main`; pushes to `develop`, `main`, `release/**`, `hotfix/**` | build, tests, desktop, iOS, build-logic tests (versionCode) |
 | `pr-guards.yml` | PRs into `develop`/`main`, incl. retitle/relabel | `main-source-guard`, `release-notes-guard`, `landing-guard`, release tooling tests |
-| `release-train.yml` | nightly 23:00 UTC; acts on `RELEASE_TRAIN_DAY` (default `1`, Monday); dispatch | cut `release/<next>` if `develop` has new commits and no version is still in internal; create its milestone and "Release X.Y.Z" issue |
+| `release-train.yml` | nightly 23:00 UTC; the cut acts on `RELEASE_TRAIN_DAY` (default `1`, Monday), judged from the scheduled time, not the start (#714); dispatch | cut `release/<next>` if `develop` has new commits and no version is still in internal; create its milestone and "Release X.Y.Z" issue. The `mergeability` job runs every night, after the cut: each live release branch is merged onto main in memory, and a conflict git cannot resolve raises `release-blocker` (#713) |
 | `release-rc.yml` | push to `release/**`, `hotfix/**` | tag `vX.Y.Z-rcN`, build (`android-release-build.yml`), Play internal, pre-release |
-| `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App and promote beta → production (20%) |
+| `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App and promote beta → production (20%). A merge GitHub refuses over `CHANGELOG.md` alone is resolved by the union of both sides and pushed as the App (#712) |
 | `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, on a manual merge promote → production (20%), desktop installers, GitHub Release, back-merge PR |
 | `release-forward.yml` | a PR merged into `release/*` or `hotfix/*` | open the fix again into every newer `release/*` and `develop` |
 | `release-milestone.yml` | a PR opened into `release/*` or `hotfix/*` | milestone `X.Y.Z` on it |
@@ -345,9 +371,16 @@ the schedule, the gates and where a fix goes.
   - an open PR into `release/X.Y.Z` (a fix in flight);
   - the newest RC is not the branch head (a commit landed after it was built),
     or that RC's `release-rc.yml` run did not succeed;
-  - CI on the branch head is not green;
-  - the store notes still carry `DRAFT:` (or are missing), checked at the beta
-    step too, since testers see them;
+  - CI on the branch head is not green. Judged per check name: the newest
+    finished run that was not cancelled decides, so the duplicate runs the
+    release PR starts on the same commit (cancelled by concurrency, or still
+    running) neither hold nor clear a version (#699). The Sunday merge does
+    **not** wait for the release PR's own checks: the release App's bypass skips
+    them, and the branch head's CI, which ran on the push, is the gate (#351).
+    Some `main` checks run only on PR events (`Release notes are final`, `PRs
+    into main come from release/*`, `Release tooling tests`), so on the Sunday
+    path they are skipped too; generated notes never carry `DRAFT:`, and
+    nothing on that path reads the notes;
   - the Sentry crash gate (`fastlane/sentry_gate.rb`) finds an unhandled issue
     first seen in that build;
   - another version is still on the beta track (one per stage). This is read from
@@ -356,6 +389,47 @@ the schedule, the gates and where a fix goes.
     Play itself before merging, that beta's newest build is the RC (#349);
   - for production: the version has not had its full week on beta. A held beta
     step pushes production back with it.
+- **A beta step run by hand early in the week keeps the cadence.** Promoted on a
+  Monday or Tuesday (a Sunday held on its gates, then dispatched), it is recorded
+  as the Sunday before, so production stays due the Sunday a week later. Counted
+  as the Monday, production would fall due a day after the Sunday cron and cost
+  the whole train a week (1.2.0 → 1.4.0, November 2026). Later in the week the
+  step counts as the day it ran. `release_promote.rb` also writes `production_on`.
+- **Changelog conflicts resolve themselves; anything else holds.** `CHANGELOG.md`
+  is frozen history: each cut writes `docs/changelog/X.Y.Z.md` (#711), so the
+  release branches of versions in flight no longer edit the same lines. A
+  branch cut before that still does, and GitHub refuses its merge into `main` as
+  not mergeable. When the only conflict is `CHANGELOG.md`, the Sunday step builds
+  the merge itself: the union of both sides' version sections, each version once,
+  newest first, with main's header. It pushes that to main as the release App
+  with a plain push (never forced), then records the merge as usual. A main that
+  moved in the meantime holds the step, and the next Sunday retries. Any other
+  conflict holds before a PR is opened, and the hold names the paths
+  (`fastlane/release_merge.rb`, #712). A dry run says `would self-resolve`.
+- **The nightly check finds a conflict before the Sunday.** The `mergeability` job
+  of `release-train.yml` merges every live release branch onto main, in version
+  order, each one on top of the merges before it. It does this in memory and
+  pushes nothing. A branch that conflicts on anything except `CHANGELOG.md`
+  raises a `release-blocker` issue in its milestone, which holds the Sunday step,
+  and one comment on its "Release X.Y.Z" issue naming the paths. The run fails
+  visibly while any version is blocked. A fix clears the blocker and closes it,
+  and a rerun adds nothing (`fastlane/release_mergeability.rb`, #713). The
+  blocker clears on the next night, so a fix that lands in the meantime holds the
+  version until then; to clear it sooner, close the "Release X.Y.Z does not merge
+  into main" issue (`release-blocker`) by hand once the branch merges. Do not dispatch `release-train.yml` to re-check: a
+  dispatch bypasses the day gate, so the cut runs too.
+- **A scheduled run is judged by the time it was due.** GitHub can start a cron
+  hours late, past midnight. `release-train.yml` judges its train day from the
+  scheduled time, not the start (`scripts/release/train_day.rb`, #714).
+  `release-promote.yml` needs no such judgement: its due checks compare with `>=`,
+  and a beta step run on a Sunday, Monday or Tuesday counts as that Sunday
+  (`beta_done_day`), so a late run keeps the cadence (audited under #714).
+  Scheduled runs read their workflow files and scripts from the default branch,
+  which is `develop`, so a change to them takes effect on the first scheduled run
+  after it merges there.
+- **Ship release does not self-resolve yet.** Its manual merge (`ship-release.yml`)
+  still uses `gh pr merge`, so a `CHANGELOG.md` conflict there needs a hand
+  resolution on the branch (#717).
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
   rollout (the ramp leaves a halted release alone until `resume`). A
   `release-blocker` issue or PR in the milestone holds the next Sunday step. The
@@ -369,16 +443,78 @@ the schedule, the gates and where a fix goes.
   linking the original. A forward PR that conflicts is still opened, empty, and
   stays open for a person; a forward PR into a release branch holds that
   version's promotion until it merges. Each push to a release branch is a new RC.
+  A hand edit to the release notes (`fastlane/release-notes/`), which exist only
+  on the release branch, makes git report a delete/modify conflict, which the
+  forward resolves by itself: it takes the notes as the release branch wrote
+  them and continues, so the PR carries them (#529) and nobody has to step in.
+  A notes file that both branches changed still opens as a conflict when the
+  target may receive it (develop, or that version's own line). Another version's
+  notes never conflict: the target keeps its copy and nothing is forwarded (below).
+  **CodeRabbit does not review a forward PR** (the App authored it, and it skips
+  App-authored PRs), so its approval has to come from a person: approve it, or
+  for a conflicting one resolve it and merge it by hand, as #528 did for #527
+  (#573).
+- **The marker is written by several workflows.** The release RC job's TestFlight
+  record (`release_promote.rb record-testflight`), the Sunday step, the ramp, the
+  brake and the manual merge (`record-production`) all rewrite the issue body. Each
+  write starts from the body as it is now and applies only its own change
+  (`ReleaseStages.write_marker`), reads the body back, and writes again if its change
+  was replaced. A stage never moves backwards, and the TestFlight record never moves
+  to an older RC. What remains: a write that lands between a writer's fresh read and
+  its own write is overwritten, and the read back cannot see it. That window is two
+  API calls. The REST API takes no precondition on an issue update, so only a lock
+  would close it (a follow-up, see `docs/EPICS.md`).
 - **Owner prerequisites.** The `beta` (open testing) track must exist in Play
   Console with a tester opt-in URL. The release App needs **Contents**,
-  **Pull requests** and **Issues** write, and **Actions** read (the RC run check);
+  **Pull requests**, **Issues** and **Workflows** write, **Actions** read (the RC
+  run check) and **Checks** read (the branch head's check runs);
   it must also be a bypass actor on the `main` ruleset, or the Sunday merge is
-  refused (the step then holds, with that reason).
+  refused (the step then holds, with that reason). A self-resolved merge (#712)
+  is a direct push to `main` rather than a merge, so that bypass has to cover
+  pushes as well. Not verified against the live ruleset yet (#716).
 
 ### iOS in the train
 
 iOS walks the same three stages as Play, one week apart, on the same RC binary (ADR 0033).
 Its table, rules, lanes and the owner runbook are in section 9 ("9.4 The staged train for iOS").
+
+### Release notes
+
+The train writes them; nobody has to (`scripts/release/release-notes.sh`, run
+with no `--write` to preview). One file per listing locale,
+`fastlane/release-notes/vX.Y.Z/<locale>.txt`, within Play's 500 characters:
+
+- **What is in them.** The `feat` and `fix` subjects since the previous release,
+  features first, without issue references. Left out: infrastructure scopes
+  (`release`, `ci`, `build`, `ops`, `supabase`, ...), other platforms (`ios`,
+  `web`, `desktop`), and anything paid or remotely dark (sync, co-watch, the own
+  TMDB key), which never appear in public copy. Phrase a `feat`/`fix` subject
+  as something a user would recognise; it is the store text.
+  - **Opting a commit out.** A commit whose body ends in a `Notes: none` trailer
+    (key and value in any case, anywhere in the trailer block) is left out of
+    both the English list and the Spanish count. A `Notes: none` line in prose
+    above the last paragraph does not count. It is for a `feat` with nothing a
+    user can see yet; the version bump still follows the type, so this does not
+    stop a release being a minor one.
+- **Spanish (and any other non-English locale)** gets one sentence that counts
+  the changes ("Muviss 1.2.0 trae 3 novedades y 1 corrección de errores."): a
+  commit subject cannot be translated here.
+- **When.** `start-release.sh` writes them with the cut. Every push to the
+  release branch (`release-rc.yml`) writes them again first; when a merged fix
+  changed them it commits them as the release App and stops, and the run that
+  push starts tags and builds the commit that carries them. So the RC on Play,
+  the GitHub pre-release and the file in the repo always agree.
+- **Editing by hand is allowed, never required.** `.generated` records what the
+  script last wrote per locale; a file that no longer matches is a person's and
+  is kept from then on. A file that still starts with the old `DRAFT:` marker is
+  replaced. `release-notes-guard` still refuses a `DRAFT:` file on a PR into
+  `main`, which generated notes never carry.
+- **Forwarded notes.** A notes edit in a fix forwards to develop and to its own
+  version's release line only. On any other release line `forward-fix.sh` leaves
+  those notes out and logs `skipped vX.Y.Z notes for release/A.B.C`, so no stray
+  `vX.Y.Z/` directory lands there (#575). When that line already has its own copy
+  of those notes, it keeps it. A forward that conflicts on code says in its PR
+  which notes were left out, so the person resolving it leaves them out too.
 
 ### Cutting a release
 
@@ -391,24 +527,29 @@ scripts/release/start-release.sh 1.0.0 --dry-run  # checks only
 scripts/release/next-version.sh                   # what the train would cut
 ```
 
+The train's version (and the range its notes and changelog cover) starts at the
+previous release **including one still in flight**: with 1.2.0 in open beta and
+no `v1.2.0` tag yet, the next cut is 1.2.1 or 1.3.0, counted from where
+`release/1.2.0` left `develop`. `scripts/release/previous-release.sh` is that
+lookup (an RC tag or a `release/*` branch names a version in flight).
+
 It refuses when the tree is dirty, the branch or tag exists, the version is not
 newer than the last release, the Play listing is over a limit, or (releases
 only) a `release/*` branch is open. The train applies ADR 0030's stagger rule
 itself and passes `--stagger-checked`; a hand cut refuses while any release
 branch is open, unless you pass that flag after checking that none is still in
 internal. The branch starts with one commit:
-draft release notes for every listing locale, seeded from the `feat`/`fix`
-subjects since the last release, first line `DRAFT: …`, and this version's
-section at the top of `CHANGELOG.md` (every `feat`/`fix` with its scope,
-uncapped). The changelog is generated, not edited: a fix merged into the
+the release notes for every listing locale, and this version's section in
+`docs/changelog/X.Y.Z.md` (every `feat`/`fix` with its scope, uncapped).
+`CHANGELOG.md` is frozen history and nothing writes to it any more (#711).
+The changelog is generated, not edited: a fix merged into the
 release branch later is in the RC but not in that section.
 
 Then:
 
 1. Install the RC from Play's internal track and run §8.
 2. Fix anything on the release branch (PRs into `release/x.y.z`). Each push is a new RC.
-3. Rewrite the notes for users in every locale and delete the `DRAFT:` line —
-   `release-notes-guard` fails the PR into `main` until you do.
+3. Nothing for the notes: they never hold a release (see **Release notes** below).
 4. Nothing, on the scheduled path: the Sunday step after the beta opens the PR
    `release/x.y.z → main` and merges it as the App (see **Staged releases**). To
    merge by hand instead, open that PR and **merge with a merge commit** — or
@@ -461,8 +602,53 @@ ruleset will refuse them), and the train fails.
 Its permissions (ADR 0030): **Contents** write (train branches, forward
 branches, RC tags), **Pull requests** write (back-merge, forward and release
 PRs, merging), **Issues** write (the release issues, milestones, and the
-blocked-train issue), and **Actions** read (the Sunday step checks the RC's run).
+blocked-train issue), **Workflows** write (train and back-merge branches carry
+`.github/workflows` changes), **Actions** read (the Sunday step checks the RC's
+run), and **Checks** read (it reads the branch head's check runs before
+promoting). An App set up before the last two were listed keeps working until a
+Sunday holds with "could not be read"; `owner-setup.sh` asks for them as its own
+step.
 It is a bypass actor on the `main` ruleset (see **Branch protection**).
+
+### Dependabot's worker bumps (#638)
+
+Dependabot bumps `core/database/src/webWorker/package.json` (sql.js), but it
+cannot run Gradle, so the two `kotlin-js-store` locks stayed stale and every
+bump failed `kotlinStoreYarnLock` (#631). `.github/workflows/dependabot-worker-locks.yml`
+regenerates them (`./gradlew kotlinUpgradeYarnLock kotlinWasmUpgradeYarnLock`)
+and pushes the result onto the Dependabot branch, so the bump arrives green.
+
+It is two jobs, split by secrets:
+
+- `regenerate` has no secrets and read-only permissions. It checks out the PR
+  head, runs the Gradle tasks (which execute the PR's build scripts), and
+  uploads the two lock files.
+- `push` holds the release App's token, scoped to this repository and to
+  `contents: write` only. It executes no repository code: it
+  downloads the artifact outside the workspace, accepts only the two lock paths
+  as regular files with yarn's lockfile header, copies them in, and commits.
+
+Both jobs run only when Dependabot both opened the PR and triggered the run,
+on a `dependabot/npm_and_yarn/` branch of this repository. The author check
+says who opened the PR. The actor check skips the run that the App's own push
+triggers.
+
+Dependabot-triggered runs read **Dependabot** secrets, not Actions secrets, so
+`RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must also be set under Settings >
+Secrets and variables > **Dependabot**. The `push` job fails with that message
+when they are missing.
+
+The push is made with the App's token because a push by `GITHUB_TOKEN` starts no
+workflow run, and CI would never run on the lock commit.
+
+**Dependabot stops rebasing or updating a PR after a push by someone else**, and
+this workflow's push is one. A bump that later needs a rebase will not get one
+on its own. Close the PR and let the next weekly run open a fresh one, which
+this workflow then covers; a maintainer can also rebase the branch by hand.
+
+Not yet verified live: the workflow is written and shape-tested
+(`scripts/ci/test/dependabot_worker_locks_test.rb`) but has not run on a real
+Dependabot bump. Follow-up #667 checks the next one.
 
 ### Shared build
 
@@ -472,6 +658,53 @@ It is a bypass actor on the `main` ruleset (see **Branch protection**).
 TMDB and Sentry secrets, uploads the AAB as an artifact and, for RCs, runs
 `fastlane android internal`. `release.yml`'s dispatch path calls it without the
 upload to exercise the build.
+
+### Dependency verification (#480)
+
+`gradle/verification-metadata.xml` pins every artifact Gradle resolves by sha256, so
+a substituted jar on a permitted repository fails the build instead of shipping. It
+covers Maven Central, Google, the Gradle plugin portal and the Sentry Cocoa zip (an
+ivy repository, so it is an ordinary artifact to Gradle).
+
+- **Signatures: considered, not used.** Many Kotlin Multiplatform and Compose
+  artifacts publish no usable PGP key, so signature verification would be a long list
+  of `ignored-keys`, which is a weaker statement than a checksum, not a stronger one.
+  Checksums it is; revisit if the ecosystem signs consistently.
+- **Not covered, on purpose:** the Kotlin/Native toolchain (`~/.konan`, downloaded by
+  the Kotlin plugin outside dependency resolution), npm packages (pinned by
+  `kotlin-js-store/yarn.lock`, which CI already checks is current), the JDK and
+  Gradle wrapper (the wrapper has its own SHA-256 in `gradle-wrapper.properties`),
+  and GitHub Actions (pinned to commit SHAs).
+- **Regenerating:** `scripts/gradle/update-verification.sh` resolves every
+  configuration (`scripts/gradle/resolve-all.init.gradle.kts`) and runs every CI lane.
+  Run it on **all three** hosts in turn, macOS, then Linux, then Windows, each starting
+  from the file the previous one wrote: some artifacts are chosen by the host (aapt2,
+  Skiko's runtime, the Kotlin/Native toolchain), and the iOS lanes only resolve on
+  macOS. It only adds; `--prune` starts from nothing so stale entries go, which makes
+  the three-host order mandatory after a prune: a macOS-only prune drops the Linux and
+  Windows checksums and fails those lanes. By hand, the easy way is
+  `gh workflow run gradle-verification.yml --ref <feature-branch>`, which runs the three
+  legs; it refuses `develop`, `main`, `release/*` and `hotfix/*`, because the push job's
+  App can bypass those branches' rulesets. Fix their checksums through a PR. It is also
+  how a Dependabot PR that a maintainer reopened is regenerated: the automatic run
+  starts only for Dependabot's own events. A lane CI adds that resolves something new belongs
+  in that script, or CI fails on a missing checksum.
+- **A Dependabot bump** regenerates the file by itself:
+  `.github/workflows/gradle-verification.yml` runs the script on `dependabot/gradle/*`
+  PRs and pushes the new checksums as a commit, so a reviewer reads the added lines.
+  The legs that run the build hold no secrets; a separate job with an App token
+  scoped to `contents: write` commits the result and runs no repository code. It
+  commits only checksum **additions**: the `<configuration>` block (the verification
+  policy) must be unchanged, every existing checksum kept, and each new entry shaped
+  as Gradle writes it, so a build that tried to write a trust-all rule fails the job.
+  Removing stale entries is a person's job (`--prune`, by hand, in a reviewed PR).
+  **Owner setup, once:** copy `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` into
+  Settings → Secrets and variables → **Dependabot** (Dependabot-triggered runs cannot
+  read the Actions secrets). Without them the PR stays red until someone runs the
+  script and pushes.
+- **Proof it can fail:** `scripts/gradle/test/verification-test.sh` (a CI step) builds
+  a throwaway project with an unlisted dependency and expects "Dependency verification
+  failed".
 
 ### Publishing to Google Play (ADR 0024, EPIC 34 / #77)
 
@@ -578,13 +811,31 @@ this app's primary target, see CLAUDE.md) and writes its
 into `feature/settings/ui`'s Licenses screen without an app→feature dependency
 inversion would need either a cross-module generated-resource pipeline or
 Compose Multiplatform's raw-resource mechanism, either well beyond this
-epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a
-**generated-once, checked-in** `List<OssLicense>` produced from that same
-`artifacts.json` (253 entries as of this pass). Regenerate it by re-running
-`:app:androidApp:licenseeAndroidRelease` and re-deriving the list from the
-refreshed `artifacts.json` whenever dependencies change meaningfully — it
-will silently go stale otherwise, unlike the build-time gate above, which
-never can.
+epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a **checked-in**
+`List<OssLicense>` generated from that same `artifacts.json`. To refresh it
+after a dependency change:
+
+```bash
+./gradlew :app:androidApp:regenerateOssLicenses   # runs licenseeAndroidRelease, then rewrites OssLicenses.kt
+git diff feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt
+```
+
+Commit the rewritten file with the dependency change. The generated entries
+come from the report's name and licence exactly as licensee gives them; the
+hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
+not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
+when the report lists an artifact with no entry (missing), or when an entry
+names an artifact the report no longer lists (stale), or lists one artifact
+twice (the Licenses screen keys its rows by artifact), so an artifact added or
+removed without a regeneration breaks CI rather than under-reporting or
+over-reporting on the About screen (#562, #616). It also fails when an entry's
+name, licence or licence URL differs from the report at the same coordinates
+(a version bump that changes what the artifact says it is licensed under,
+#666). Each entry is compared with the text the generator writes for that
+artifact, fallbacks included, so the check and `regenerateOssLicenses` cannot
+disagree. Its failure message names every list and the regenerate command. The
+comparison lives in build-logic's `OssLicensesList` (unit-tested in
+`build-logic/src/test`).
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
@@ -753,8 +1004,8 @@ properties to the JVM a JavaExec forks.
 ### CI
 
 `.github/workflows/release.yml`'s `desktop-release` job runs a 3-entry OS
-matrix: `ubuntu-latest` → `packageDeb`, `macos-latest` → `packageDmg`,
-`windows-latest` → `packageMsi`. Each format can only be produced on its native
+matrix: `ubuntu-24.04` → `packageDeb`, `macos-15` → `packageDmg`,
+`windows-2025` → `packageMsi`. Each format can only be produced on its native
 OS (jpackage delegates to the OS's own packaging tool), which is why this is a
 matrix of jobs rather than one job running three tasks, and `fail-fast: false`
 keeps one broken leg from taking the other two down.
@@ -762,7 +1013,7 @@ keeps one broken leg from taking the other two down.
 Windows/MSI used to be left out, on the grounds that it was the one leg nobody
 here could verify locally before merging. EPIC 23 put it in: nobody can verify
 it locally *either way*, and a CI run is better evidence than a reading of the
-config. WiX ships preinstalled on `windows-latest` per `actions/runner-images`.
+config. WiX ships preinstalled on `windows-2025` per `actions/runner-images`.
 What CI still cannot say is whether the resulting `.msi` installs and launches —
 that needs a Windows machine, and is issue #44.
 
@@ -779,6 +1030,19 @@ every change), smoke-launches the packaged Linux binary under Xvfb, and runs
 
 Installers upload as workflow artifacts (`muviss-desktop-<os>-<tag>`) and, on a
 release, are attached to the GitHub Release (see §5).
+
+#### Runner images (#481)
+
+Every `runs-on:` names a specific image (`ubuntu-24.04`, `macos-15`,
+`windows-2025`), never `-latest`: GitHub is moving `ubuntu-latest` to Ubuntu 26
+on its own schedule, and a migration can break the Xvfb smoke launch, `verifyJlinkModules`
+or the iOS Kotlin/Native build on an unrelated PR. `pr-guards.yml`'s "Runner
+images are pinned" step (`scripts/ci/check-runner-pins.rb`) fails a floating
+label. Dependabot does not bump images, so the owner does, on a branch: change
+the label, let `ci.yml` run (it covers Linux, macOS and the packaged-binary
+smoke launch; `release.yml`'s Windows leg runs by `workflow_dispatch`), and merge
+only when it is green. GitHub announces a retiring image well ahead; watch
+`actions/runner-images` releases.
 
 ### Signing / notarization (manual follow-up, not attempted)
 
@@ -992,7 +1256,7 @@ APPLE_ASC_KEY_ID=… APPLE_ASC_ISSUER_ID=… APPLE_ASC_P8_PATH=~/Downloads/AuthK
 
 ### 9.4 The staged train for iOS (ADR 0033)
 
-iOS walks the same three stages as Play, one week apart, on the **same RC binary**. Each platform has its own stage in the release issue's marker. Shared gates (release-blocker, a fix PR into the branch, CI, draft notes) hold both platforms. The iOS steps are skipped with a notice while the App Store Connect key is unset, and Play runs as before.
+iOS walks the same three stages as Play, one week apart, on the **same RC binary**. Each platform has its own stage in the release issue's marker. Shared gates (release-blocker, a fix PR into the branch, CI) hold both platforms. The iOS steps are skipped with a notice while the App Store Connect key is unset, and Play runs as before.
 
 | When | iOS step | What happens | Where |
 |---|---|---|---|
@@ -1328,3 +1592,29 @@ secret than the one in the APK — the point is rotation, not secrecy. Set it ba
 `docs/PRIVACY.md` and `docs/store/DATA_SAFETY.md` already describe the request
 (it exposes the device IP to ConfigCat and sends nothing about the user), so
 setting the secret needs no further copy change.
+
+## 13. Feature Request form (Tally) — EPIC 53 / issue #447
+
+The **Request a feature** row in Settings > About is built in but **dark**: it only appears once the app has a form URL. See ADR 0035. Owner steps, once:
+
+1. In Tally, create an API key (Settings > API keys). Run `read -rs TALLY_API_KEY && export TALLY_API_KEY` (bash or zsh) and paste the key at the silent prompt, so it never lands in your shell history. It stays with you; it never goes in the app or in CI.
+2. `scripts/feedback/tally-form.sh create` makes a **draft** from `scripts/feedback/tally-form.json` and prints the form id and `https://tally.so/r/<id>`. **First run, check the draft in the dashboard** (issue #450): the four hidden fields (`version`, `platform`, `os`, `locale`), the optional email, and that "Email me on each submission" is on. The script's block shapes were not verified against the live API, and the create response has no URL field, so the script derives it from the id.
+3. `scripts/feedback/tally-form.sh publish <id>` publishes it, sending the blocks along with the status (a status-only PATCH leaves the public page with no fields, only a Submit button). `update <id>` re-applies the checked-in definition as a draft after you edit the JSON, so run `publish` again afterwards.
+4. Turn it on, either way:
+   - **Compiled default:** `FEATURE_REQUEST_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets (needs a release).
+   - **ConfigCat** (no release needed): create two text settings in the product from §12 with exactly these keys: **`featureRequestProvider`**, default `tally`, and **`featureRequestUrl`**, default the published `https://tally.so/r/<id>`. A setting that does not exist falls back to the compiled default, and that default for the URL is blank, so until `featureRequestUrl` exists with a real URL the row stays hidden. ConfigCat will not save an empty text value; to keep the setting while the row is off, use a placeholder such as `none`.
+
+   Only an absolute `https://` URL shows the row. A blank value, a placeholder, a URL without its scheme or an `http://` one all hide it.
+5. Verify end to end: open the app, tap the row, and submit a test response; confirm the email arrives and `version`, `platform` and `locale` are filled. `os` is filled on Android, iOS and desktop only; the web app cannot read the OS version and leaves it empty.
+
+**Switching to Typeform** (the fallback, if Tally ever fails us): create the form by hand in Typeform with the same four **hidden fields** (`version`, `platform`, `os`, `locale`), turn on **Send email for new responses** in the form's notification settings (Typeform does not email responses by default) and confirm it with a test submission, then set ConfigCat `featureRequestProvider` = `typeform` and `featureRequestUrl` = its public URL. Typeform reads hidden fields from the URL fragment, so the provider key must change with the URL. Its free plan stops collecting after about 10 responses a month, so treat it as a stop-gap. `featureRequestProvider` = `off` hides the row whatever the URL is.
+
+Each response (of either form) reaches you by email. It also becomes a GitHub issue within the hour once its form's id is an Actions secret next to `TALLY_API_KEY`: `TALLY_FEATURE_REQUEST_FORM_ID` for feature requests, `TALLY_BUG_REPORT_FORM_ID` for bug reports (below). See 'Feature requests to issue' under the Ops Bridge.
+
+### Bug Report form (#449)
+
+A second row, **Report a problem**, sits under **Request a feature** in Settings > About and opens a second Tally form (`scripts/feedback/tally-bug-report.json`: what happened, what was expected, an optional email, the same four hidden fields). It follows the same rules: dark until its URL is set, the same provider switch (`featureRequestProvider`, which governs both rows; `off` hides both), no new data in the link. Because the switch is shared, **switching to Typeform moves both forms**: create the bug report form in Typeform too and set `bugReportUrl` to it in the same change, or clear `bugReportUrl` to hide the row. A Tally `bugReportUrl` left behind would still show the row, but its link would carry the four values in a fragment that Tally does not read.
+
+1. `TALLY_FORM_DEFINITION=scripts/feedback/tally-bug-report.json scripts/feedback/tally-form.sh create`, then `publish <id>` with the same variable set (publish re-sends the definition).
+2. `BUG_REPORT_URL=https://tally.so/r/<id>` in `local.properties` / CI secrets, or the ConfigCat text setting **`bugReportUrl`**.
+3. Add the Actions secret `TALLY_BUG_REPORT_FORM_ID` so the Ops Bridge turns each report into an issue.

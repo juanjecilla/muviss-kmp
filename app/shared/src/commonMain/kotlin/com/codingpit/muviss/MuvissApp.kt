@@ -26,6 +26,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,6 +41,7 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.app.shared.generated.resources.persistence_write_failed
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
@@ -59,7 +62,12 @@ import com.codingpit.muviss.di.rememberDatabaseDriverFactory
 import com.codingpit.muviss.feature.collection.ui.collectionSection
 import com.codingpit.muviss.feature.cowatch.ui.CompanionsRoute
 import com.codingpit.muviss.feature.cowatch.ui.coWatchSection
+import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
+import com.codingpit.muviss.feature.nextpick.ui.CompletionSheetHost
+import com.codingpit.muviss.feature.nextpick.ui.NextPickRoute
+import com.codingpit.muviss.feature.nextpick.ui.nextPickSection
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
+import com.codingpit.muviss.feature.onboarding.data.ApplySystemMotionDefault
 import com.codingpit.muviss.feature.onboarding.ui.OnboardingRoute
 import com.codingpit.muviss.feature.onboarding.ui.onboardingSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
@@ -75,12 +83,14 @@ import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
+import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -138,6 +148,7 @@ fun MuvissApp(
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
         AutoSyncOnForeground()
+        AskForReviewAfterCompletion()
         RefreshRemoteConfigOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
@@ -181,6 +192,18 @@ private fun AutoSyncOnForeground() {
     PlatformSyncTriggers(coordinator)
     LifecycleEventEffect(Lifecycle.Event.ON_START) { coordinator.onForeground() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { coordinator.onForeground() }
+}
+
+/**
+ * Starts the store-review listener (#410) for as long as the app is composed. It is started here,
+ * rather than from a screen, for the same reason as [AutoSyncOnForeground]: a Completion can be
+ * made on any tab. Nothing in this composable decides anything; the policy lives in
+ * [ReviewPromptOnCompletion] and the use case under it.
+ */
+@Composable
+private fun AskForReviewAfterCompletion() {
+    val listener = koinInject<ReviewPromptOnCompletion>()
+    LaunchedEffect(listener) { listener.start(this) }
 }
 
 /**
@@ -270,7 +293,13 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
 private fun rememberStartRoute(deepLinkMediaId: String?): Any? {
     val onboarding = koinInject<OnboardingApi>()
     val completed by produceState<Boolean?>(initialValue = null) { value = onboarding.observeCompleted().first() }
-    return remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
+    val route = remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
+    // A fresh install takes its animations default from the OS's reduce-motion setting, once, on its first
+    // launch whatever the start route; the use case keeps its own mark, so a choice made in Settings
+    // afterwards is never touched (#394).
+    val applyMotionDefault = koinInject<ApplySystemMotionDefault>()
+    LaunchedEffect(Unit) { applyMotionDefault() }
+    return route
 }
 
 /** The decision [rememberStartRoute] makes, apart from the reading: null while [completed] is unknown. */
@@ -322,6 +351,7 @@ private fun MuvissScaffold(
             controller.destinations.firstOrNull { dest ->
                 currentDestination?.hierarchy?.any { it.hasRoute(dest.route::class) } == true
             }
+        controller.showingOnboarding = currentDestination?.hasRoute(OnboardingRoute::class) == true
     }
 
     LaunchedEffect(deepLinkMediaId) {
@@ -378,7 +408,9 @@ private fun MuvissScaffold(
                     selected = selected,
                     onClick = { controller.navigateTo(dest) },
                     icon = { NavItemIcon(dest, needsAttention = accountChangePending && dest.key == ACCOUNT_CHANGE_DESTINATION_KEY) },
-                    label = { Text(dest.label) },
+                    // At 200 % text the five labels no longer fit their slots and break mid-word
+                    // ("Searc/h"). The bar's labels stop scaling at 1.3×; the rest of the app does not.
+                    label = { CappedFontScale(NAV_LABEL_MAX_FONT_SCALE) { Text(dest.label, maxLines = 1) } },
                     colors = itemColors,
                 )
             }
@@ -392,6 +424,12 @@ private fun MuvissScaffold(
         ScreenInsets {
             Column {
                 PersistenceBanner(message = rememberPersistenceWarning())
+                // The "What's next?" sheet (EPIC 51, #400) is hosted here rather than on a screen: its
+                // trigger is a hot flow, so it must be collecting when a tick finishes a title.
+                CompletionSheetHost(
+                    viewModel = koinViewModel<CompletionPromptViewModel>(),
+                    onWhatsNext = { anchor -> navController.navigate(NextPickRoute(anchor?.toString())) },
+                )
                 NavHost(
                     navController = navController,
                     startDestination = startRoute,
@@ -414,15 +452,21 @@ private fun MuvissScaffold(
                             scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
                     },
                 ) {
-                    searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                    searchSection(
+                        navController,
+                        onOpenTriage = { navController.navigate(TriageRoute) },
+                        onOpenNextPick = controller::openNextPick,
+                    )
                     collectionSection(
                         navController,
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenSearch = { controller.destinations.firstOrNull { it.key == "search" }?.let(controller::navigateTo) },
+                        onOpenNextPick = controller::openNextPick,
                     )
                     progressSection(
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenCoWatch = openCoWatch,
+                        onOpenNextPick = controller::openNextPick,
                     )
                     profileSection(navController, onOpenCompanions = openCoWatch)
                     settingsSection(
@@ -445,6 +489,8 @@ private fun MuvissScaffold(
                     // Not a top-level destination — reached from Discover and Settings.
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    // Not a bottom-bar destination: reached from the completion sheet and the entry points (EPIC 51).
+                    nextPickSection(navController)
                 }
             }
         }
@@ -469,9 +515,20 @@ private fun rememberPersistenceWarning(): String? {
         PersistenceState.Pending, PersistenceState.Durable -> null
         PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
         PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
+        PersistenceState.WriteFailed -> stringResource(Res.string.persistence_write_failed)
     }
 }
 
 private fun configureImageLoader() {
     SingletonImageLoader.setSafe { context -> createImageLoader(context) }
+}
+
+/** Largest font scale the bottom-bar labels follow. Beyond it the labels would overflow their slots. */
+private const val NAV_LABEL_MAX_FONT_SCALE = 1.3f
+
+/** Content whose text stops growing at [max] times the base size: the user's setting still applies up to there. */
+@Composable
+private fun CappedFontScale(max: Float, content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(density.density, minOf(density.fontScale, max)), content = content)
 }

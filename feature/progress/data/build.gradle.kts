@@ -24,6 +24,8 @@ kotlin {
             implementation(libs.turbine)
             // `CountingDriver` — the shared query-count budget driver (issue #102).
             implementation(projects.core.testing)
+            // The real status derivation, so the Completion tests use the rule the Library uses.
+            implementation(projects.core.model)
         }
     }
 }

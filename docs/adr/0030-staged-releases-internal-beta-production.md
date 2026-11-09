@@ -19,7 +19,7 @@ ADR 0025 gave each release a Monday cut, an internal RC, and a hand-merged PR in
 - an open issue or PR in the version's milestone labelled `release-blocker`;
 - an open PR into its `release/X.Y.Z` branch (a fix in flight);
 - the Sentry crash gate (ADR 0025's, `fastlane/sentry_gate.rb`) finds an unhandled issue first seen in that build;
-- the store notes still carry the `DRAFT:` marker (beta testers see them too, so this is checked at the beta step, not only at production);
+- ~~the store notes still carry the `DRAFT:` marker~~ — removed 2026-10-26, see the amendment below: the train writes the notes and the Sunday steps never read them;
 - the branch head is not the newest RC (a commit landed after the last candidate was built), or that RC's build or Play upload did not succeed;
 - CI on the branch head is not green;
 - for production: the version has not had its full week on beta (a held beta step pushes production back with it).
@@ -48,3 +48,11 @@ A held version is retried every Sunday, and by hand (`release-promote.yml`, disp
 - The fastlane `promote` lane gains internal → beta. `app/androidApp/build.gradle.kts` derives `versionCode` from the version, and the RC workflow passes `rcN`.
 - `docs/RELEASING.md`, `AGENTS.md` and `CLAUDE.md` describe the stages, the gates and where to point a fix.
 - iOS (TestFlight internal → external → App Store) walks the same three stages, independently, as ADR 0033 records; desktop can follow when it joins the train (#79).
+
+## Amendment, 2026-10-26: the notes gate is gone
+
+The `DRAFT:` notes gate held 1.2.0 at internal for a week and, through the stagger rule, stopped the train from cutting 1.3.0. A gate on text nobody had been asked to write does not protect anything. The train now writes final notes itself (`scripts/release/release-notes.sh`): at the cut, and again on every push to the release branch, so fixes are included. A person may still edit them and the train then keeps their text. The Sunday steps no longer read the notes. `release-notes-guard` still refuses a hand-made `DRAFT:` file on a PR into `main`. See `docs/RELEASING.md`, "Release notes".
+
+## Amendment, 2026-11-03: a hand-run beta step keeps the cadence
+
+"A full week on beta" is counted from the Sunday the step was due. 1.2.0's beta step was held on Sunday 2026-10-25 and dispatched on Monday 10-26; counted from the Monday, production fell due Monday 11-02, the Sunday 11-01 run skipped it, and one version per stage then held 1.3.0 and the 1.4.0 cut: the train lost a week. A beta step run on a Monday or Tuesday is now recorded as the Sunday before (`ReleaseStages.beta_done_day`), so that version gets 5 to 6 days on beta instead of seven and production stays on the Sunday cadence. From Wednesday on the step counts as the day it ran. The Play beta step also records `production_on`. Same day: the Sunday merge passes `--admin` so the release App's bypass reaches the server (`gh` refuses a BLOCKED PR client-side otherwise), and the CI gate is judged per check name (#699).

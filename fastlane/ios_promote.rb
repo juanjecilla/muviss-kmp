@@ -234,13 +234,12 @@ class IosPromotion
     rc_sha = safe("RC commit") { @git.sha_of(rc) }
     facts[:rc_built] = safe("RC run") { @github.run_conclusion(rc_sha, "release-rc.yml") == "success" } if rc_sha
     if merged
-      facts.merge!(head_is_rc: true, ci_green: true, draft_locales: [])
+      facts.merge!(head_is_rc: true, ci_green: true)
     else
       head = safe("branch head") { @git.branch_head(version) }
       facts[:head] = head
       facts[:head_is_rc] = head && rc_sha ? head == rc_sha : nil
       facts[:ci_green] = safe("CI") { head && @github.checks_green?(head) } if head
-      facts[:draft_locales] = safe("notes") { @git.draft_locales(version) }
     end
     facts[:rc_code] = safe("version code") { @git.version_code(rc) }
     facts[:sentry_ios] = facts[:rc_code] ? sentry_hold(version, facts[:rc_code]) : nil
@@ -324,7 +323,8 @@ class IosPromotion
     end
     return [problem, state] if problem
 
-    track = ReleaseStages.ios_of(state).merge("stage" => IosTrain::BETA, "beta_done_on" => @today.iso8601,
+    track = ReleaseStages.ios_of(state).merge("stage" => IosTrain::BETA,
+                                             "beta_done_on" => ReleaseStages.beta_done_day(@today).iso8601,
                                              "rc_tag" => facts[:rc_tag], "holds" => [])
     state = with_track(state, track)
     persist(issue, state, "Sent #{facts[:rc_tag]} (build #{facts[:rc_code]}) to the TestFlight external group and submitted it to Beta App Review. Review latency is not published: record the time it took here.")
@@ -384,7 +384,7 @@ class IosPromotion
     track = ReleaseStages.ios_of(state).merge("stage" => ReleaseStages::DONE, "completed_on" => @today.iso8601, "holds" => [])
     state = with_track(state, track)
     if state["stage"] == ReleaseStages::DONE
-      @github.update_issue(issue["number"], ReleaseStages.render(state))
+      ReleaseStages.save(@github, issue, state)
       @github.close_issue(issue["number"], "#{version} finished on both stores. Closed.")
     else
       persist(issue, state, "iOS phased release of #{version} reached 100%. Play still has its own track; this issue closes when it finishes.")
@@ -407,7 +407,7 @@ class IosPromotion
   end
 
   def persist(issue, state, comment)
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    ReleaseStages.save(@github, issue, state)
     @github.comment(issue["number"], comment)
   end
 end

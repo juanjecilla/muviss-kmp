@@ -75,7 +75,7 @@ do_app() {
   say "workflows (GITHUB_TOKEN's do not). Create a private GitHub App:"
   say "  name: muviss-release   homepage: https://github.com/$REPO   webhook: off"
   say "  repository permissions: Contents RW, Pull requests RW, Issues RW,"
-  say "                          Workflows RW, Metadata R"
+  say "                          Workflows RW, Actions R, Checks R, Metadata R"
   say "  where can it be installed: only this account"
   say "Then: generate a private key (.pem), and install the App on $REPO only."
   open_url "https://github.com/settings/apps/new"
@@ -87,6 +87,20 @@ do_app() {
   gh secret set RELEASE_APP_PRIVATE_KEY --repo "$REPO" <"$pem"
   gh variable set RELEASE_APP_ID --repo "$REPO" --body "$app_id"   # the rulesets need it unmasked
   say "Delete the .pem from your downloads once it is in a password manager."
+}
+
+# An App created before Actions/Checks were on the list keeps its secrets, so
+# check_app passes; the Sunday gate then holds with "could not be read". Ask
+# once, and only the owner can see the App's permissions.
+check_app_perms() { marked app-read-perms; }
+do_app_perms() {
+  say "The Sunday promotion reads the RC's workflow run and the branch head's check"
+  say "runs with the App's token. On the App's page → Permissions & events, set:"
+  say "  Actions: Read-only   Checks: Read-only"
+  say "Save, then accept the new permissions on the installation (Settings →"
+  say "Applications → muviss-release → Review request). Skip if both are set."
+  open_url "https://github.com/settings/apps/muviss-release/permissions"
+  wait_enter && mark app-read-perms
 }
 
 # --- 5. rulesets ---------------------------------------------------------------
@@ -255,8 +269,10 @@ do_optional() {
   say "from a ConfigCat product with EU data governance (docs/RELEASING.md, 'Remote config')."
   say "The Sentry token needs event:read for the Play ramp gate and, for the crash -> GitHub issue connector"
   say "(#300), event:write to resolve a crash when its issue is closed (docs/RELEASING.md, 'Sentry to GitHub')."
+  say "TALLY_API_KEY + TALLY_FEATURE_REQUEST_FORM_ID (#448) and TALLY_BUG_REPORT_FORM_ID (#449) let the hourly"
+  say "connector turn each form response into a GitHub issue (docs/RELEASING.md, 'Feature requests to issue')."
   local name val
-  for name in TMDB_API_KEY TMDB_READ_TOKEN CONFIGCAT_SDK_KEY SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT; do
+  for name in TMDB_API_KEY TMDB_READ_TOKEN CONFIGCAT_SDK_KEY SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT TALLY_API_KEY TALLY_FEATURE_REQUEST_FORM_ID TALLY_BUG_REPORT_FORM_ID; do
     has_secret "$name" && continue
     read -r -s -p "    $name (empty = skip): " val; echo
     [ -z "$val" ] || gh secret set "$name" --repo "$REPO" --body "$val"
@@ -268,6 +284,7 @@ step "develop is the default branch"                       check_develop    do_d
 step "the no-landing label exists"                         check_labels     do_labels
 step "CodeRabbit is installed"                             check_coderabbit do_coderabbit
 step "the muviss-release GitHub App's secrets are set"      check_app        do_app
+step "the release App can read Actions and Checks"         check_app_perms  do_app_perms
 step "rulesets protect main, develop and v* tags"          check_rulesets   do_rulesets
 step "the production environment needs your approval"      check_env        do_env
 step "the release keystore secrets are set"                check_keystore   do_keystore

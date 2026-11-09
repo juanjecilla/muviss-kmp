@@ -1,0 +1,4 @@
+# Edges that break ADR 0004 and predate `verifyModuleGraph` (#483). One per line:
+#   :from :to   # reason, issue, date
+# Empty on purpose: the graph was clean when the check landed. An entry whose
+# edge is gone, or no longer a violation, fails the check, so this cannot rot.

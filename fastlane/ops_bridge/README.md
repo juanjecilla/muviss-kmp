@@ -35,10 +35,14 @@ connector.items  ->  OpsBridge::Item  ->  GithubSink#create
 |---|---|---|---|
 | `sentry` (`connectors/sentry.rb`, #300) | new unhandled production crashes | hourly | closing the issue resolves it in the next release; a regression reopens it |
 | `play-reviews` (`connectors/play_reviews.rb`) | Play reviews of 3 stars or fewer | daily | none |
+| `tally-feature-requests` (`connectors/tally_feature_requests.rb`, #448) | completed submissions of the in-app Feature Request form | hourly | none |
+| `tally-bug-reports` (same file, `TallyBugReports`, #449) | completed submissions of the in-app Bug Report form | hourly | none |
 
 ```sh
 ruby fastlane/ops_bridge.rb sync sentry            # needs SENTRY_AUTH_TOKEN, SENTRY_ORG, GITHUB_TOKEN, GITHUB_REPOSITORY
 DRY_RUN=1 ruby fastlane/ops_bridge.rb sync play-reviews
+DRY_RUN=1 ruby fastlane/ops_bridge.rb sync tally-feature-requests   # needs TALLY_API_KEY, TALLY_FEATURE_REQUEST_FORM_ID
+DRY_RUN=1 ruby fastlane/ops_bridge.rb sync tally-bug-reports        # needs TALLY_API_KEY, TALLY_BUG_REPORT_FORM_ID
 ```
 
 `DRY_RUN=1` prints what would be opened and writes nothing. A manual workflow run
@@ -49,7 +53,8 @@ is dry by default.
 1. **A class in `connectors/`** with `name`, `kind` (the marker prefix, unique),
    `source_label` (the label `GithubSink` finds its issues by, `from-<thing>`),
    `labels`, and `items` returning `OpsBridge::Item`s. Add `resolve(id)` only if a
-   closed issue should change something at the source.
+   closed issue should change something at the source, and `max_new` if the source is
+   public enough to be flooded (the sync opens at most that many per run; the rest wait).
 2. **Take an injectable `http:`** (default `OpsBridge::Http.new`) and raise
    `OpsBridge::ApiError` with a message that never contains a token or key.
 3. **Keep the body to counts and names.** Nothing that identifies a person: the

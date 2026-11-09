@@ -28,8 +28,8 @@ kotlin {
 // license outside the allow-list below — bump the list deliberately if a new
 // one shows up. The Settings > About > Licenses screen does *not* read this
 // task's output live (see feature/settings/domain's OssLicenses.kt for why);
-// re-run `licenseeAndroidRelease` and regenerate that file when dependencies
-// change.
+// `regenerateOssLicenses` rewrites that file from the report, and
+// `verifyOssLicenses` (wired into `check`, below) fails when it has fallen behind.
 // -----------------------------------------------------------------------
 licensee {
     allow("Apache-2.0")
@@ -48,9 +48,37 @@ licensee {
     // than allowing "any raw.githubusercontent.com".
     allowUrl("https://raw.githubusercontent.com/configcat/kotlin-sdk/main/LICENSE")
     allowUrl("https://raw.githubusercontent.com/z4kn4fein/kotlin-semver/main/LICENSE")
+    // #410: Play In-App Review and the Google Play services artifacts it pulls in. Their POMs name
+    // Google's Android SDK / Play Core terms by URL, not an SPDX id, so none of them is OSS. They are
+    // allowed here by exact coordinates, one line each, rather than by the terms URL: the URL would
+    // also admit any future artifact that quotes the same terms, and a version bump should fail this
+    // build on purpose so the terms are read again before any of them moves.
+    allowDependency("com.google.android.play", "review", "2.0.2") {
+        because("Play In-App Review (#410): Play Core SDK terms (developer.android.com/guide/playcore/license)")
+    }
+    allowDependency("com.google.android.play", "review-ktx", "2.0.2") {
+        because("Play In-App Review's Kotlin extensions (#410): Play Core SDK terms (developer.android.com/guide/playcore/license)")
+    }
+    allowDependency("com.google.android.play", "core-common", "2.0.4") {
+        because("Play Core common, a dependency of Play In-App Review (#410): Play Core SDK terms (developer.android.com/guide/playcore/license)")
+    }
+    allowDependency("com.google.android.gms", "play-services-basement", "18.4.0") {
+        because("Google Play services basement, a dependency of Play In-App Review (#410): Android SDK terms (developer.android.com/studio/terms)")
+    }
+    allowDependency("com.google.android.gms", "play-services-tasks", "18.2.0") {
+        because("Google Play services tasks, a dependency of Play In-App Review (#410): Android SDK terms (developer.android.com/studio/terms)")
+    }
 }
 
 dependencies {
+    // The Play review SDK pulls androidx.fragment 1.1.0, and lint rejects that next to the
+    // ActivityResult APIs `MainActivity` uses (InvalidFragmentVersionForActivityResult, needs 1.3.0).
+    // A constraint raises whatever version is resolved without adding a direct dependency on it.
+    constraints {
+        implementation("androidx.fragment:fragment:1.9.1") {
+            because("Play In-App Review (#410) pulls fragment 1.1.0; lint needs 1.3.0+ for registerForActivityResult")
+        }
+    }
     implementation(projects.app.shared)
 
     // EPIC 5 (new-episode notifications): the background worker talks to the
@@ -78,6 +106,9 @@ dependencies {
     implementation(libs.androidx.glance.material3)
 
     implementation(libs.androidx.activity.compose)
+    // Play In-App Review (#410): the store's review sheet, after a user-made Completion. Its
+    // licence is the Play Core SDK terms, not an OSS one, which is why licensee below names it.
+    implementation(libs.play.review.ktx)
     // Installs the committed baseline profile on devices without Play's cloud
     // profiles (sideloads, first days after release). EPIC 34 / #77.
     implementation(libs.androidx.profileinstaller)
@@ -95,6 +126,54 @@ dependencies {
     testImplementation(libs.kotlin.testJunit)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutinesTest)
+}
+
+// -----------------------------------------------------------------------
+// About > Licenses coverage (#562, #616). OssLicenses.kt is checked in, so it can
+// drift from the licensee report as dependencies move. Both tasks read the
+// release variant's report (the one the APK ships):
+//   verifyOssLicenses      fails, in `check`, when the report lists an artifact
+//                          the list has no entry for, or the list has an entry
+//                          for an artifact the report no longer lists.
+//   regenerateOssLicenses  rewrites the generated entries from the report and
+//                          keeps the hand-written tail (the bundled font).
+// The decisions live in build-logic's OssLicensesList (unit-tested there). The
+// task actions only read and write files, so they do not capture the build
+// script (configuration cache).
+// -----------------------------------------------------------------------
+val ossLicensesReport = layout.buildDirectory.file("reports/licensee/androidRelease/artifacts.json")
+val ossLicensesSource =
+    rootProject.layout.projectDirectory.file("feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt")
+
+val verifyOssLicenses = tasks.register("verifyOssLicenses") {
+    group = "verification"
+    description = "Fails if About > Licenses is out of step with licensee's release report, missing or stale entries (#562, #616)."
+    dependsOn("licenseeAndroidRelease")
+    inputs.file(ossLicensesReport)
+    inputs.file(ossLicensesSource)
+    val report = ossLicensesReport.get().asFile
+    val source = ossLicensesSource.asFile
+    doLast {
+        val drift = OssLicensesList.drift(report.readText(), source.readText())
+        check(drift.isEmpty) { OssLicensesList.failureMessage(drift) }
+        logger.lifecycle("About > Licenses matches the licensee release report, both ways")
+    }
+}
+
+tasks.named("check") {
+    dependsOn(verifyOssLicenses)
+}
+
+tasks.register("regenerateOssLicenses") {
+    group = "help"
+    description = "Rewrites feature/settings/domain's OssLicenses.kt from the licensee release report (#562)."
+    dependsOn("licenseeAndroidRelease")
+    val report = ossLicensesReport.get().asFile
+    val source = ossLicensesSource.asFile
+    doLast {
+        source.writeText(OssLicensesList.regenerate(report.readText(), source.readText()))
+        logger.lifecycle("Regenerated $source from $report")
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -202,15 +281,10 @@ fun registerComposeResourcesCheck(
         val archive =
             dir.get().asFile.listFiles { f -> f.extension == extension }?.singleOrNull()
                 ?: error("Expected exactly one .$extension in ${dir.get().asFile}")
-        val present =
+        val missing =
             ZipFile(archive).use { zip ->
-                zip.entries().asSequence()
-                    .map { it.name }
-                    .filter { it.startsWith(entryPrefix) }
-                    .map { it.removePrefix(entryPrefix).substringBefore('/') }
-                    .toSet()
+                ArtifactChecks.missingComposeResources(zip.entries().asSequence().map { it.name }, entryPrefix, expected)
             }
-        val missing = expected - present
         check(missing.isEmpty()) {
             "${archive.name} has no Compose Resources for: ${missing.joinToString()}. " +
                 "Is `androidResources.enable = true` still set in muviss.kmp.compose?"
@@ -264,10 +338,7 @@ tasks.register("verifyReleaseExceptionClasses") {
     inputs.file(mapping)
     inputs.property("canaries", canaries)
     doLast {
-        val classes = mapping.get().asFile.useLines { lines ->
-            lines.filter { !it.startsWith(" ") && it.contains(" -> ") }.map { it.substringBefore(" -> ") }.toSet()
-        }
-        val merged = canaries.filterNot { it in classes }
+        val merged = mapping.get().asFile.useLines { lines -> ArtifactChecks.mergedCanaries(lines, canaries) }
         check(merged.isEmpty()) { "R8 merged these exceptions away; Sentry would name them after another class: ${merged.joinToString()}" }
         logger.lifecycle("R8 kept all ${canaries.size} exception canaries as classes of their own")
     }

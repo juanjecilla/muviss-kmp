@@ -22,7 +22,7 @@ internal class WebPersistenceStatus : PersistenceStatus {
 
     override val state: StateFlow<PersistenceState> = mutable.asStateFlow()
 
-    fun report(writer: Boolean, webLocksSupported: Boolean) {
-        mutable.value = persistenceStateOf(writer, webLocksSupported)
+    fun report(writer: Boolean, webLocksSupported: Boolean, lastWriteFailed: Boolean) {
+        mutable.value = persistenceStateOf(writer, webLocksSupported, lastWriteFailed)
     }
 }

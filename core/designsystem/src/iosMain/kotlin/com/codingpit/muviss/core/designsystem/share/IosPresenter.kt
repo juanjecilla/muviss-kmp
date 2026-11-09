@@ -21,16 +21,23 @@ import platform.UIKit.popoverPresentationController
 @Suppress("DEPRECATION")
 private fun currentWindow(): UIWindow? {
     val app = UIApplication.sharedApplication
-    val scenes = app.connectedScenes.filterIsInstance<UIWindowScene>()
-    val foreground = scenes.firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
-    val fromForeground = foreground?.let { scene ->
+    val fromForeground = foregroundWindowScene()?.let { scene ->
         val windows = scene.windows.filterIsInstance<UIWindow>()
         scene.keyWindow ?: windows.firstOrNull { it.isKeyWindow() } ?: windows.firstOrNull()
     }
     return fromForeground
         ?: app.keyWindow
-        ?: scenes.asSequence().flatMap { it.windows.filterIsInstance<UIWindow>() }.firstOrNull()
+        ?: app.connectedScenes.asSequence().filterIsInstance<UIWindowScene>().flatMap { it.windows.filterIsInstance<UIWindow>() }.firstOrNull()
 }
+
+/**
+ * The foreground-active window scene, or null before any scene is foregrounded. The one place the
+ * app resolves "the scene the person is looking at" (#468); the store review sheet asks for it too (#410).
+ */
+fun foregroundWindowScene(): UIWindowScene? = UIApplication.sharedApplication.connectedScenes
+    .asSequence()
+    .filterIsInstance<UIWindowScene>()
+    .firstOrNull { it.activationState == UISceneActivationStateForegroundActive }
 
 /**
  * The view controller the user is looking at: the root of [host]'s window, walked down

@@ -33,7 +33,7 @@
 
     <string name="onboarding_key_title">Your TMDB key</string>
     <string name="onboarding_key_body">Muviss gets titles from TMDB using its own key. If you have a TMDB account you can use yours instead. It is optional, and you can change it later in Settings.</string>
-    <string name="onboarding_key_muviss">Using Muviss\'s key</string>
+    <string name="onboarding_key_muviss">Using Muviss's key</string>
     <string name="onboarding_key_yours">Using your key</string>
     <string name="onboarding_key_use_own">Use my own key</string>
     <string name="onboarding_key_change">Change key</string>
