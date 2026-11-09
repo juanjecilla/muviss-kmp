@@ -13,8 +13,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.core.common.review.ReviewPrompter
 import com.codingpit.muviss.core.sync.OAUTH_CODE_PARAM
 import com.codingpit.muviss.notifications.AndroidNotificationPermissionRequester
+import com.codingpit.muviss.review.AndroidReviewPrompter
 import org.koin.core.context.GlobalContext
 
 /**
@@ -43,6 +45,10 @@ class MainActivity : ComponentActivity() {
             notificationPermissions?.onResult(granted)
         }
 
+    /** The process-wide review prompter, lent this activity so Play's review sheet has a window to draw on (#410). */
+    private val reviewPrompter: AndroidReviewPrompter?
+        get() = GlobalContext.getOrNull()?.get<ReviewPrompter>() as? AndroidReviewPrompter
+
     /** The process-wide requester, if the host bound the Android one (it always does outside tests). */
     private val notificationPermissions: AndroidNotificationPermissionRequester?
         get() = GlobalContext.getOrNull()?.get<NotificationPermissionRequester>() as? AndroidNotificationPermissionRequester
@@ -54,6 +60,8 @@ class MainActivity : ComponentActivity() {
         deepLinkMediaId = intent.deepLinkMediaIdExtra()
         oauthCode = intent.oauthCode()
         notificationPermissions?.attach { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        // The store's review sheet (#410) needs this activity to draw on; it is taken back in onDestroy.
+        reviewPrompter?.attach(this)
 
         setContent {
             MuvissApp(
@@ -68,6 +76,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         // A launcher belongs to its activity; a request in flight when it goes is a refusal.
         notificationPermissions?.detach()
+        reviewPrompter?.detach(this)
         super.onDestroy()
     }
 

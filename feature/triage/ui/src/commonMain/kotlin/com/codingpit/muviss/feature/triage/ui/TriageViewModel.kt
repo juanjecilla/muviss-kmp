@@ -288,7 +288,13 @@ class TriageViewModel(
         viewModelScope.launchReporting {
             actions.record(summary, verdict).onFailure { error ->
                 _state.update { current ->
-                    current.copy(failedCommit = FailedCommit(summary, verdict, error.toUiText(UiText.Resource(Res.string.error_commit))))
+                    current.copy(
+                        // The failure replaces the Undo (#159). Clearing undoable here
+                        // cancels the Undo snackbar's effect, so the failure takes the
+                        // snackbar slot at once instead of racing it (#569).
+                        undoable = null,
+                        failedCommit = FailedCommit(summary, verdict, error.toUiText(UiText.Resource(Res.string.error_commit))),
+                    )
                 }
             }
         }

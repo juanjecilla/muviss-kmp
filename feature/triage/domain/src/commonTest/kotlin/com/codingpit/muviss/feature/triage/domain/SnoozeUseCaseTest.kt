@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.triage.domain
 
+import com.codingpit.muviss.core.common.epochDayOfCivil
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.todayEpochDay
@@ -48,6 +50,20 @@ class SnoozeUseCaseTest {
     }
 
     @Test
+    fun due_dates_count_the_local_day_not_the_utc_day() {
+        // Given UTC+2 and 22:30 UTC on 1 Nov, which is 00:30 on 2 Nov for the person
+        val localClock = FakeClock(
+            epochMsAtStartOfDay(epochDayOfCivil(2026, 11, 1)) + 22 * 3_600_000L + 30 * 60_000L,
+            utcOffsetMs = 2 * 3_600_000L,
+        )
+        val snooze = SnoozeUseCase(FakeTriageSnoozeRepository(), localClock)
+
+        // Then the picker's floor and a one-week Snooze both start from 2 Nov, not 1 Nov
+        assertEquals(epochDayOfCivil(2026, 11, 2), snooze.todayEpochDay())
+        assertEquals(epochDayOfCivil(2026, 11, 9), snooze.dueDateFor(SnoozePeriod.ONE_WEEK))
+    }
+
+    @Test
     fun today_epoch_day_reads_straight_off_the_clock() {
         val snooze = SnoozeUseCase(FakeTriageSnoozeRepository(), clock)
 
@@ -92,6 +108,31 @@ class SnoozeUseCaseTest {
 
         // Straight off the stored snapshot: the catalogue returned nothing, so
         // there was nowhere else this card could have come from.
+        assertEquals(listOf("The Matrix"), batch.cards.map { it.title })
+    }
+
+    @Test
+    fun a_snooze_due_on_the_local_day_comes_back_before_the_utc_day_reaches_it() = runTest {
+        // Given UTC+2 and 00:30 local on 2 Nov, which is still 1 Nov in UTC
+        val localClock = FakeClock(
+            epochMsAtStartOfDay(epochDayOfCivil(2026, 11, 1)) + 22 * 3_600_000L + 30 * 60_000L,
+            utcOffsetMs = 2 * 3_600_000L,
+        )
+        val snoozes = FakeTriageSnoozeRepository()
+        val card = movie("1", title = "The Matrix")
+        SnoozeUseCase(snoozes, localClock).invoke(card, dueAtEpochDay = epochDayOfCivil(2026, 11, 2))
+
+        val loadDeck = LoadDeckUseCase(
+            loader = DeckLoader(FakeDeckSource(moviePages = listOf(emptyList()))),
+            repository = FakeTriageDecisionRepository(),
+            snoozes = snoozes,
+            collectionApi = FakeCollectionApi(),
+            clock = localClock,
+        )
+
+        // When the deck loads, the Snooze is due on the person's day and returns
+        val batch = loadDeck(DeckFilter(), DeckCursor(), placement = SnoozePlacement.FIRST).getOrThrow()
+
         assertEquals(listOf("The Matrix"), batch.cards.map { it.title })
     }
 

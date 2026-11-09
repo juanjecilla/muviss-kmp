@@ -1,0 +1,14 @@
+-- The OS reduce-motion default (#394). The filename is the version this migrates FROM:
+-- 21.sqm takes a v21 database to v22, after Device Backup's `20.sqm`.
+--
+-- NUMBERING: the number a branch takes is whatever is free when it merges
+-- (`verifyMigrations` cannot see a collision); renumber and regenerate the
+-- fixture if another migration landed first.
+--
+-- One per-device mark on the singleton row, appended last. It does not sync and is
+-- not in the data export. The column DEFAULT, 0, is what a row `ensureRow` creates
+-- after this gets: a fresh install takes its animations default from the OS once.
+-- Every row that already exists is marked applied, so an upgraded install keeps the
+-- animations choice it has (the `17.sqm` pattern for `onboardingCompleted`).
+ALTER TABLE appSettings ADD COLUMN motionDefaultApplied INTEGER NOT NULL DEFAULT 0;
+UPDATE appSettings SET motionDefaultApplied = 1;

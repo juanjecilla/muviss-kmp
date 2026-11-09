@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.data
 
+import com.codingpit.muviss.feature.progress.api.Completion
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
@@ -11,6 +12,7 @@ import com.codingpit.muviss.feature.progress.domain.ObserveRewatchTimestampsUseC
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenActivityEpochDaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
 import com.codingpit.muviss.feature.progress.domain.ProgressMutations
+import com.codingpit.muviss.feature.progress.domain.ProgressTicks
 import com.codingpit.muviss.feature.progress.domain.RefreshWatchNextCatalogsUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import com.codingpit.muviss.models.EpisodeId
@@ -28,6 +30,7 @@ internal class DefaultProgressApi(
     private val watchNext: WatchNextUseCase,
     private val refreshWatchNextCatalogs: RefreshWatchNextCatalogsUseCase,
     private val catalogStore: EpisodeCatalogStore,
+    private val ticks: ProgressTicks,
 ) : ProgressApi {
 
     override suspend fun storedSeasons(mediaId: MediaId): List<Season>? = catalogStore.load(listOf(mediaId))[mediaId]
@@ -73,6 +76,12 @@ internal class DefaultProgressApi(
     override suspend fun clearProgress(mediaId: MediaId) = mutations.clearProgress(mediaId)
 
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = mutations.setMovieWatched(mediaId, watched)
+
+    override val completions: Flow<Completion> get() = ticks.detector.completions
+
+    override suspend fun tickEpisode(episodeId: EpisodeId, seen: Boolean) = ticks.tickEpisode(episodeId, seen)
+
+    override suspend fun tickMovie(mediaId: MediaId, watched: Boolean) = ticks.tickMovie(mediaId, watched)
 }
 
 /**

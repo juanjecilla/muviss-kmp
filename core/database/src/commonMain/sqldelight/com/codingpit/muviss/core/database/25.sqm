@@ -1,0 +1,16 @@
+-- Store review prompt (#410). The filename is the version this migrates FROM: 25.sqm
+-- takes a v25 database to v26 (fixture 26.db).
+--
+-- NUMBERING: first written as 21.sqm, renumbered to 25 when it merged after the Taste
+-- Profile's `24.sqm` (#588), as the coordinator's order had it.
+--
+-- Four per-device counters for the review prompt's guardrails, appended last. None of them
+-- syncs or appears in the data export. The install stamp stays NULL until the first launch
+-- after this migration writes it (see `stampReviewInstalledIfUnknown`), so an upgraded install
+-- waits a full install period from its upgrade. The tick count starts at 0 and counts only
+-- hand ticks from here on, not the rows that already exist: an import or a sync pull never
+-- counted and a backfill would count them.
+ALTER TABLE appSettings ADD COLUMN reviewInstalledAtEpochMs INTEGER;
+ALTER TABLE appSettings ADD COLUMN reviewTickCount INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE appSettings ADD COLUMN reviewLastAskedAtEpochMs INTEGER;
+ALTER TABLE appSettings ADD COLUMN reviewLastAskedVersion TEXT;

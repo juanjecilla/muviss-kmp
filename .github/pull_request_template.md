@@ -10,4 +10,5 @@
 ## Checklist
 - [ ] `./gradlew spotlessCheck detekt` and the affected modules' tests pass
 - [ ] **Landing**: a free, user-visible feature is on muvissapp.com — `website/src/i18n/en.ts` + `es.ts` (and the Play listing in `fastlane/metadata/android/*/full_description.txt` if it changes what the app does). Paid features (sync, co-watch) never go there. Not applicable → label `no-landing`.
+- [ ] A `feat` with no user-visible surface uses a non-`feat` type or ends its squash commit body with a `Notes: none` trailer, so the release notes skip it (AGENTS.md)
 - [ ] Anything raised and not done here has an issue (AGENTS.md)

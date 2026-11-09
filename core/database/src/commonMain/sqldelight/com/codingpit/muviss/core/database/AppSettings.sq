@@ -102,6 +102,26 @@
 -- backup agent, which runs before Koin exists and so reads the column from the database
 -- file itself.
 --
+-- `motionDefaultApplied` was added in `21.sqm` (#394). The once-ever mark that a
+-- fresh install has taken its `animationsEnabled` default from the OS's reduce-motion
+-- setting. The migration sets it on every row that exists, so an upgraded install never
+-- has its own choice replaced; a row `ensureRow` creates later takes the DEFAULT, 0. A separate
+-- mark rather than `onboardingCompleted`, because a deep-link launch skips the
+-- introduction and leaves Settings reachable before it is done.
+--
+-- `completionPromptEnabled`, `nextPickSessionLength` and `nextPickResultMode` were added in
+-- `23.sqm` (EPIC 51, #403, Next Pick). Per device and NOT synced, like every preference above.
+-- The prompt switches the "What's next?" sheet after a Completion on or off. The two enums are
+-- `SessionLength` and `ResultMode` in `:feature:nextpick:api`, read and written through
+-- `NextPickPreferences`; the stored value is the enum's name and a value written by a newer build
+-- falls back to the default.
+-- `reviewInstalledAtEpochMs`, `reviewTickCount`, `reviewLastAskedAtEpochMs` and
+-- `reviewLastAskedVersion` were added in `25.sqm` (#410, the store review prompt). The
+-- ledger the prompt's guardrails read: install date, hand ticks, and the last ask. Per
+-- device, NOT synced, NOT exported. A null install date is "not yet stamped", which the
+-- policy treats as ineligible; existing installs are stamped on their first launch after
+-- upgrading, so they wait the full install period from there.
+--
 -- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
 -- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
 -- is already true on every install that exists — folding the snooze hint into
@@ -131,7 +151,16 @@ CREATE TABLE appSettings (
     mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality',
     mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    motionDefaultApplied INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    completionPromptShownAtEpochMs INTEGER,
+    completionPromptEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    nextPickSessionLength TEXT NOT NULL DEFAULT 'STANDARD',
+    nextPickResultMode TEXT NOT NULL DEFAULT 'ONE_PICK',
+    reviewInstalledAtEpochMs INTEGER,
+    reviewTickCount INTEGER NOT NULL DEFAULT 0,
+    reviewLastAskedAtEpochMs INTEGER,
+    reviewLastAskedVersion TEXT
 );
 
 selectSettings:
@@ -230,6 +259,47 @@ UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch WHERE id = 0;
 updateDeviceBackupEnabled:
 UPDATE appSettings SET deviceBackupEnabled = :deviceBackupEnabled WHERE id = 0;
 
+-- `completionPromptShownAtEpochMs` was added in `22.sqm` (Next Pick, EPIC 51 #400). The last time the
+-- "What's next?" sheet was shown on this device; null means never. Per device, not synced, not exported.
+updateCompletionPromptShownAt:
+UPDATE appSettings SET completionPromptShownAtEpochMs = :shownAtEpochMs WHERE id = 0;
+
+updateCompletionPromptEnabled:
+UPDATE appSettings SET completionPromptEnabled = :completionPromptEnabled WHERE id = 0;
+
+updateNextPickSessionLength:
+UPDATE appSettings SET nextPickSessionLength = :nextPickSessionLength WHERE id = 0;
+
+updateNextPickResultMode:
+UPDATE appSettings SET nextPickResultMode = :nextPickResultMode WHERE id = 0;
+
+-- The store-review ledger (#410, `25.sqm`). Four per-device counters, never synced or exported:
+-- they describe how this device's app has been used, not the library. Read by `ReviewLedger`
+-- (settings data) and only ever written through the three statements below, so no caller can
+-- set a counter to a value it did not earn. The install stamp is written once, and the count and
+-- the ask record are plain increments/overwrites on the one singleton row.
+selectReviewLedger:
+SELECT reviewInstalledAtEpochMs, reviewTickCount, reviewLastAskedAtEpochMs, reviewLastAskedVersion
+FROM appSettings
+WHERE id = 0;
+
+-- Null stays null until the first launch stamps it: a null install date means "not yet eligible",
+-- never "installed at the epoch" (which would be eligible at once).
+stampReviewInstalledIfUnknown:
+UPDATE appSettings SET reviewInstalledAtEpochMs = :epochMs WHERE id = 0 AND reviewInstalledAtEpochMs IS NULL;
+
+incrementReviewTickCount:
+UPDATE appSettings SET reviewTickCount = reviewTickCount + 1 WHERE id = 0;
+
+recordReviewAsked:
+UPDATE appSettings SET reviewLastAskedAtEpochMs = :epochMs, reviewLastAskedVersion = :version WHERE id = 0;
+
 -- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
 deleteRow:
 DELETE FROM appSettings;
+
+selectMotionDefaultApplied:
+SELECT motionDefaultApplied FROM appSettings WHERE id = 0;
+
+markMotionDefaultApplied:
+UPDATE appSettings SET motionDefaultApplied = 1 WHERE id = 0;

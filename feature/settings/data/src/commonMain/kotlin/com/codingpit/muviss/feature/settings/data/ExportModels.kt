@@ -46,6 +46,16 @@ data class MuvissDataExport(
     val listEntries: List<ListEntryExport> = emptyList(),
     /** Display name and avatar. Null in v1 files, and restored only when present. v2. */
     val profile: ProfileExport? = null,
+    /** The look-and-feel and triage preferences (#392). Defaulted like every field since v1; older builds ignore it. */
+    val settings: SettingsExport? = null,
+    /**
+     * The Taste Profile (EPIC 51, #402): what the person likes. Defaulted, so a file
+     * from before it existed has none. Deliberately NOT a format-version bump: an
+     * older build reads its unknown key as nothing (`ignoreUnknownKeys`), whereas a
+     * bumped version would make it refuse the whole file as "newer". Live items only;
+     * a removed item is simply absent, as a removed snooze is.
+     */
+    val tasteProfile: List<TasteProfileItemExport> = emptyList(),
 ) {
     companion object {
         const val CURRENT_FORMAT_VERSION: Int = 2
@@ -134,10 +144,41 @@ data class ListEntryExport(
     val updatedAtEpochMs: Long,
 )
 
+/** One Taste Profile item (EPIC 51, #402). [id] is the derived `kind:value` key the row is stored under. */
+@Serializable
+data class TasteProfileItemExport(
+    val id: String,
+    val kind: String,
+    val value: String,
+    val label: String,
+    val updatedAtEpochMs: Long,
+)
+
 @Serializable
 data class ProfileExport(
     val displayName: String,
     val avatarId: String,
+)
+
+/**
+ * The preferences that describe how the person likes the app, not the device it runs on (#392). Left
+ * out on purpose: notifications, automatic sync, crash reports, device backup, and the one-time hints
+ * and onboarding flags, which are about this install. Stored as `appSettings` stores them, so a value a
+ * newer build wrote is tolerated on read exactly as it is there.
+ */
+@Serializable
+data class SettingsExport(
+    val theme: String,
+    val language: String,
+    val region: String,
+    val animationsEnabled: Boolean,
+    val triageDeckAnimations: Boolean,
+    val tickAnimations: Boolean,
+    val triageControlScheme: String,
+    val triageSnoozePeriod: String,
+    val triageSnoozePlacement: String,
+    val mutedGenres: String,
+    val mutedGenresInSearch: Boolean,
 )
 
 @Serializable

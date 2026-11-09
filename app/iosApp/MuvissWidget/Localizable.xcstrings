@@ -32,6 +32,16 @@
         }
       }
     },
+    "Marked %@ ✓": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marcado %@ ✓"
+          }
+        }
+      }
+    },
     "Marked seen": {
       "localizations": {
         "es": {

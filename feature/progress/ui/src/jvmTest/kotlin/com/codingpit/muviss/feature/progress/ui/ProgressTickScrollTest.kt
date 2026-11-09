@@ -19,10 +19,12 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.progress.domain.CompletionDetector
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
+import com.codingpit.muviss.feature.progress.domain.TickEpisodeUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import com.codingpit.muviss.models.Episode
@@ -38,6 +40,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 /**
  * Ticking a show makes it the one most recently watched, so Watch Next puts it
@@ -73,6 +76,18 @@ class ProgressTickScrollTest {
         topRowIs("Show 1")
     }
 
+    // The "What's next?" header is the list's first item (#599): the scroll must land on the row after it,
+    // or the row would sit under the header instead of at the top.
+    @Test
+    fun ticking_a_row_far_down_brings_it_to_the_top_past_the_what_s_next_entry() = runComposeUiTest {
+        setContent { ManyShows(onOpenNextPick = {}) }
+        onNodeWithTag(WATCH_NEXT_LIST_TAG).performScrollToKey(key(1))
+
+        tick(1)
+
+        rowIsAtTheTopPastTheEntry("Show 1")
+    }
+
     // Only the scroll: the row leaving is the collection's doing (the show's status turns
     // Watched), and FakeCollectionApi keeps the status it was given, so the row stays here.
     @Test
@@ -95,6 +110,17 @@ class ProgressTickScrollTest {
         onNodeWithText(title).assertIsDisplayed()
         onNodeWithTag(WATCH_NEXT_LIST_TAG).onChildAt(0).assert(hasAnyDescendant(hasText(title)))
     }
+
+    // With the "What's next?" header above the rows, a scrolled-off header stays in the tree as child 0, so
+    // child 0 cannot say where the row is. Measure instead: a row at the top sits within the list's padding, and
+    // one that landed under the header sits a whole header lower.
+    private fun ComposeUiTest.rowIsAtTheTopPastTheEntry(title: String) {
+        onNodeWithText(title).assertIsDisplayed()
+        val list = onNodeWithTag(WATCH_NEXT_LIST_TAG).fetchSemanticsNode().boundsInRoot
+        val row = onNodeWithText(title).fetchSemanticsNode().boundsInRoot
+        val header = onNodeWithTag(WATCH_NEXT_NEXT_PICK_TAG).fetchSemanticsNode().size.height.toFloat()
+        assertTrue(row.top - list.top < header, "$title sits ${row.top - list.top}px below the list's top, a header is ${header}px")
+    }
 }
 
 private fun key(show: Int) = show(show).toString()
@@ -105,7 +131,7 @@ private const val SHOWS = 40
 
 /** [SHOWS] watching shows, far more than fit; Show 40 was watched last, Show 1 first, so Show 1 starts at the bottom. */
 @Composable
-private fun ManyShows(tickAnimations: Boolean = true, lastEpisodeOnShow1: Boolean = false) {
+private fun ManyShows(tickAnimations: Boolean = true, lastEpisodeOnShow1: Boolean = false, onOpenNextPick: (() -> Unit)? = null) {
     val repository = FakeProgressRepository()
     val ids = (1..SHOWS).map(::show)
     val catalogs = ids.associateWith { id ->
@@ -122,13 +148,13 @@ private fun ManyShows(tickAnimations: Boolean = true, lastEpisodeOnShow1: Boolea
     val flags = FakeFeatureFlags().apply { this.tickAnimations.value = tickAnimations }
     val watchNext = ProgressViewModel(
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(repository), ObserveLastWatchedAtUseCase(repository), cache, FakeClock(1_000L * 86_400_000L)),
-        ToggleEpisodeSeenUseCase(repository),
+        TickEpisodeUseCase(ToggleEpisodeSeenUseCase(repository), CompletionDetector.None),
         cache,
         flags,
     )
     val upcomingCache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeUpcomingCatalogSource(emptyMap())), InMemoryEpisodeCatalogStore())
     val upcoming = UpcomingViewModel(FakeUpcomingCollectionApi(emptyList()), upcomingCache, FakeClock(0L))
     MuvissTheme(darkTheme = false) {
-        ProgressScreen(watchNextViewModel = watchNext, upcomingViewModel = upcoming, onOpenDetail = {}, onOpenCoWatch = null)
+        ProgressScreen(watchNextViewModel = watchNext, upcomingViewModel = upcoming, onOpenDetail = {}, onOpenCoWatch = null, onOpenNextPick = onOpenNextPick)
     }
 }

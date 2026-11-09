@@ -111,6 +111,15 @@ feature is released. When a PR adds or changes something a user can see:
 A `feat` PR with nothing for the landing — paid, invisible, not user-facing —
 carries the `no-landing` label; CI's `landing-guard` fails it otherwise.
 
+The release notes are built from the same `feat`/`fix` subjects, so a `feat`
+with no user-visible surface (a domain layer with no screen yet, say) must not
+reach them either. It does one of two things: uses a non-`feat` type
+(`refactor`, `chore`) when it is not really a feature, or keeps `feat` and ends
+its commit body with a `Notes: none` trailer, which `release-notes.sh` skips
+(`docs/RELEASING.md` § Release notes). The trailer must be in the squash commit's
+body; when merging, `gh pr merge --squash --body "<body>"` keeps it there. It
+does not change the version bump: a `feat` still makes the next release a minor.
+
 ## Claim ADR and schema numbers when the branch opens, not when it merges
 
 Both of these are sequences that two parallel branches will silently pick the

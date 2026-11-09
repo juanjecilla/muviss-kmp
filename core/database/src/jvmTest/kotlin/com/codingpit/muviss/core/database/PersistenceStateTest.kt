@@ -52,4 +52,34 @@ class PersistenceStateTest {
             persistenceStateOf(writer = true, webLocksSupported = false),
         )
     }
+
+    /** A writer whose last IndexedDB put failed is the one case where "Durable" would be a lie (#292). */
+    @Test
+    fun `a writer whose last snapshot failed is not durable`() {
+        assertEquals(
+            PersistenceState.WriteFailed,
+            persistenceStateOf(writer = true, webLocksSupported = true, lastWriteFailed = true),
+        )
+    }
+
+    @Test
+    fun `a later good write clears the failure`() {
+        assertEquals(
+            PersistenceState.Durable,
+            persistenceStateOf(writer = true, webLocksSupported = true, lastWriteFailed = false),
+        )
+    }
+
+    /** A read-only tab never writes, so a failure flag it cannot have set must not hide the real reason. */
+    @Test
+    fun `a failure flag does not turn a read-only tab into a failed writer`() {
+        assertEquals(
+            PersistenceState.ReadOnlyTab,
+            persistenceStateOf(writer = false, webLocksSupported = true, lastWriteFailed = true),
+        )
+        assertEquals(
+            PersistenceState.NotPersisted,
+            persistenceStateOf(writer = true, webLocksSupported = false, lastWriteFailed = true),
+        )
+    }
 }
