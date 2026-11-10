@@ -186,7 +186,7 @@ Private repo `juanjecilla/DevfestOurense26` (checked 2026-11-02; ask the owner f
 - **Stale baseline.** The main checkout is detached and ~369 files behind develop. Use a worktree from `origin/develop`.
 - **Overlapping branches/worktrees** (checked 2026-11-02): `feat/widget-tick-feedback` (widget code), `fix/645-erase-signs-out`, `fix/656-local-day`, `feat/sync-entitlement-server`. Rebase before opening the PR and expect conflicts in the widget and progress areas.
 - **Do not copy** the talk worktrees' `applicationIdSuffix` (`.a11ytalk`, `.a11ybroken`) into the product branch: an assistant would see a different package name.
-- **Personal data.** Ratings and play history reach a third-party agent: return only what the question needs; never expose notes, the Own TMDB Key or anything from sync/co-watch.
+- **Personal data.** Ratings and play history reach a third-party agent: return only what the question needs; never expose notes, the Own TMDB Key or anything from sync/co-watch. `docs/PRIVACY.md` must be updated before release (section 8): it currently says nobody else can see the collection, favorites or progress, and an agent that reads them may process them remotely.
 - **Docs vs skill drift.** If the docs and the skill disagree, the skill and samples were newer on 2026-11-02. Re-check the release notes before starting; if a newer version exists, follow its upgrade section.
 - **Gemini is a private preview.** The functions can be called by `adb` and by privileged test agents today; end-to-end with Gemini needs the Early Access Program. Do not promise it in user-facing copy.
 
