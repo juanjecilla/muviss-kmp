@@ -51,7 +51,7 @@ A value derived from WatchProgress (never stored independently): NotStarted → 
 _Avoid_: state, phase.
 
 **Tick**:
-The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. Planned (ADR 0037, #721; today a tick on a title that is not in the collection writes progress only): when the user makes it on such a title it also creates the CollectionEntry; an import, a sync pull or a restore never does. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
+The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. Planned (ADR 0037, #721; today a tick on a title that is not in the collection writes progress only): when the user makes it on such a title it also creates the CollectionEntry, or restores the soft-deleted one if the user had removed the title (it never re-creates from stale data); an import, a sync pull or a restore never does. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
 _Avoid_: check, mark (as a noun); watch (that is the viewing, a Play).
 
 **Milestone**:

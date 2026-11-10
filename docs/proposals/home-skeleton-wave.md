@@ -12,6 +12,7 @@ Issue #723. "Home" is Discover (`SearchRoute`).
 3. **Standalone library.** `:lib:shimmer`: Compose only, no `com.codingpit.muviss` import. API: a `ShimmerHost` (provides the clock and angle), `Modifier.shimmer(...)`, colors/duration/direction as parameters, a reduced-motion flag as a plain boolean. `:core:designsystem` keeps `PosterSkeleton`/`TextLineSkeleton`/`RowSkeleton` and feeds them Muviss colors and the reduce-motion switches (#394, EPIC 52): reduced motion → a static fill.
 
 ## Check before building
+- Register the module: `settings.gradle.kts` includes modules explicitly and does not discover `lib/`, so add `:lib:shimmer` there, or the project dependency cannot resolve (the graph check can accept a prefix without the project being registered).
 - `settings.gradle.kts`'s module loop and `verifyModuleGraph` assume `feature/`, `core/`, `app/`; confirm a `lib/` prefix is accepted, or extend the rule.
 - `muviss.kmp.compose` sets up Compose Resources and `androidResources`; the library likely wants `muviss.kmp.library` + Compose plugin only.
 - Web: a full-screen animated brush on canvas; measure.
