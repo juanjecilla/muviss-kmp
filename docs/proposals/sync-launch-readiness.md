@@ -39,4 +39,4 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 ## Hazards
 - Merging a `release/*` into `main` applies migrations to **prod** automatically; #283's policies lock everyone out until the hook is on. Harmless only while sync is compiled out of every release, which is why step 7 comes before the flags and not with them.
 - #283's migration timestamps must sort after develop's newest at merge time (#727).
-- Paid features never appear on the landing or Play listing before they ship (CLAUDE.md).
+- Paid features (sync, co-watch) never appear on the landing, before or after they ship; the Play listing is a separate question and follows its own timing (CLAUDE.md).
