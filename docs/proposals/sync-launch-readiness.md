@@ -19,7 +19,7 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 | Account deletion | server function lives in #283; no public web page (Play requires one) |
 | Privacy | `docs/PRIVACY.md` line 6 says no accounts; `docs/store/DATA_SAFETY.md` same; #467 contact address |
 | Release builds | set none of the sync flags (`android-release-build.yml`); `release.yml` writes "Sync is compiled out". Turning sync on means setting `SYNC_ENABLED`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`; `SYNC_BACKGROUND_ENABLED` too if automatic sync ships with the launch (without it the release hides the "Sync automatically" switch and disables every automatic trigger, although opt-in automatic sync is complete; the alternative is to defer it explicitly and ship manual sync only: an owner decision); **`SYNC_ENTITLEMENT_OVERRIDE` must stay unset** (ADR 0019), or the client binds `AlwaysEntitledProvider` and skips the paywall while the server still rejects unentitled sync |
-| TMDB licence | #302, a hard prerequisite for enabling any paid entitlement, including the seven-day trial ADR 0019 specifies, so it must be done before step 13's flag change and not only "before charging" |
+| TMDB licence | #302, a hard prerequisite for enabling any paid entitlement, including the seven-day trial ADR 0019 specifies, so it must be done before step 14's flag change and not only "before charging" |
 | Live checks | token refresh past expiry, fresh-install restore, Android upgrade never run (#100, #114) |
 | Data parity | Delete all data vs. sync race #677/#678; Display Preferences #643, Muted Genres #644 (after #642) |
 
@@ -35,8 +35,9 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 9. **Transfer decision (#281).** A restore to another account can leave a paying user without sync until renewal when the source has no live mirrored grant. Before the flags move, decide #281 (query RevenueCat for the destination's entitlement instead of copying the source row) or explicitly accept the limitation, and run a restore-to-another-account check next to the purchase checks.
 10. **Sign-in providers.** ADR 0019 requires Google, Apple and GitHub. `config.toml` has Apple (disabled) only, so implement and configure each provider in production, then verify a real sign-in with each one: a purchase test through one provider proves nothing about the others.
 11. Privacy, data-safety, listing.
-12. **Release notes.** `.github/workflows/release.yml` (around lines 306–309) always writes "Sync is compiled out" and that no library data leaves the device; flipping the flags without changing that generated text would publish wrong notes for the sync launch, so the same release updates it (the landing and the public listing still never mention paid features).
-13. **Gate on iOS.** ADR 0019 puts iOS in the App Store before the flags move, so Android and iOS gain sync together (#78). Only then flip the release flags, in a dedicated release.
+12. **Cancellation and expiry.** EPIC #75 requires it: cancel a sandbox subscription and verify the entitlement row ends and sync stops once the token expires, on both stores, before the flags move.
+13. **Release notes.** `.github/workflows/release.yml` (around lines 306–309) always writes "Sync is compiled out" and that no library data leaves the device; flipping the flags without changing that generated text would publish wrong notes for the sync launch, so the same release updates it (the landing and the public listing still never mention paid features).
+14. **Gate on iOS.** ADR 0019 puts iOS in the App Store before the flags move, so Android and iOS gain sync together (#78). Only then flip the release flags, in a dedicated release.
 
 ## Hazards
 - Merging a `release/*` into `main` applies migrations to **prod** automatically; #283's policies lock everyone out until the hook is on. Harmless only while sync is compiled out of every release, which is why step 7 comes before the flags and not with them.
