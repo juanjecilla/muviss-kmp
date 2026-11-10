@@ -35,7 +35,8 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 9. **Transfer decision (#281).** A restore to another account can leave a paying user without sync until renewal when the source has no live mirrored grant. Before the flags move, decide #281 (query RevenueCat for the destination's entitlement instead of copying the source row) or explicitly accept the limitation, and run a restore-to-another-account check next to the purchase checks.
 10. **Sign-in providers.** ADR 0019 requires Google, Apple and GitHub. `config.toml` has Apple (disabled) only, so implement and configure each provider in production, then verify a real sign-in with each one: a purchase test through one provider proves nothing about the others.
 11. Privacy, data-safety, listing.
-12. **Gate on iOS.** ADR 0019 puts iOS in the App Store before the flags move, so Android and iOS gain sync together (#78). Only then flip the release flags, in a dedicated release.
+12. **Release notes.** `.github/workflows/release.yml` (around lines 306–309) always writes "Sync is compiled out" and that no library data leaves the device; flipping the flags without changing that generated text would publish wrong notes for the sync launch, so the same release updates it (the landing and the public listing still never mention paid features).
+13. **Gate on iOS.** ADR 0019 puts iOS in the App Store before the flags move, so Android and iOS gain sync together (#78). Only then flip the release flags, in a dedicated release.
 
 ## Hazards
 - Merging a `release/*` into `main` applies migrations to **prod** automatically; #283's policies lock everyone out until the hook is on. Harmless only while sync is compiled out of every release, which is why step 7 comes before the flags and not with them.
