@@ -35,7 +35,7 @@ Icon row (outlined): favorite, bell (saved only), add to list, and a new **bookm
 - **Edit between tick and Undo**: a favorite, rating, note or list change on the title makes Undo reverse the ticks only; the entry stays.
 - **Remove then Add offline**: restores the stored row; `add(details)` only runs when no row exists and the details were loaded by this screen.
 - **Zero aired episodes** takes precedence over both caught-up rows: "every aired episode seen" is vacuously true, but the status is `NotStarted` (`WatchStatusCalculator`), so the button reads Not aired yet.
-- **Tick on unsaved title** (ADR 0037): entry created first; Undo removes it only if created by this tick.
+- **Tick on unsaved title** (ADR 0037): the use case result is `Created`, `Restored` or `None`. Undo reverses the entry only if this tick wrote it, and only when no later edit depends on it: `Created` is removed again, `Restored` is soft-deleted again. Tests: add → tick → Undo, and remove → tick → Undo.
 - **Tick on a title just removed** (stale `savedCopy` still on screen, possibly offline): a soft-deleted row is un-deleted, never re-added from `savedCopy` (ADR 0037).
 - **Completion on the primary tick** fires celebration, "What's next?" and the review prompt like a Progress tick.
 - **Remove while a tick Undo is showing**, double tap, remove then Undo then tick: each action replaces the snackbar slot; the keyed-effect pattern from #569/#613 applies.
