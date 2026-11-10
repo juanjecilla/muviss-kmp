@@ -19,7 +19,7 @@ No part of it exists in the repository. There is no RevenueCat dependency in any
 | Account deletion | server function lives in #283; no public web page (Play requires one) |
 | Privacy | `docs/PRIVACY.md` line 6 says no accounts; `docs/store/DATA_SAFETY.md` same; #467 contact address |
 | Release builds | set none of the sync flags (`android-release-build.yml`); `release.yml` writes "Sync is compiled out". Turning sync on means setting `SYNC_ENABLED`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`; **`SYNC_ENTITLEMENT_OVERRIDE` must stay unset** (ADR 0019), or the client binds `AlwaysEntitledProvider` and skips the paywall while the server still rejects unentitled sync |
-| TMDB licence | #302, needed before charging |
+| TMDB licence | #302, a hard prerequisite for enabling any paid entitlement, including the seven-day trial ADR 0019 specifies, so it must be done before step 13's flag change and not only "before charging" |
 | Live checks | token refresh past expiry, fresh-install restore, Android upgrade never run (#100, #114) |
 | Data parity | Delete all data vs. sync race #677/#678; Display Preferences #643, Muted Genres #644 (after #642) |
 
