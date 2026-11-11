@@ -161,6 +161,38 @@ class BackupRestoreTest {
     }
 
     @Test
+    fun `a losing group stamp still restores the legacy muted list over its default`() = runTest {
+        val source = newDatabase()
+        changePreferences(source) // group stamped 9_000, legacy list "movie:27:Horror"
+        val backup = exporter(source).exportData()
+
+        // A newer local group keeps its own values, but a list still at its default takes the backup's.
+        val newerLocal = newDatabase()
+        newerLocal.appSettingsQueries.run {
+            ensureRow()
+            updateTheme("LIGHT")
+            markDisplayPreferencesChanged(nowEpochMs = 20_000L)
+        }
+        restorer(newerLocal).restore(backup)
+        val kept = newerLocal.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("LIGHT", kept.theme, "the newer local group is kept")
+        assertEquals("movie:27:Horror", kept.mutedGenres, "the list sits outside the group, so the losing stamp does not skip it")
+
+        // A tied stamp: the group still keeps local, and a list the person already changed is kept as well.
+        val tiedLocal = newDatabase()
+        tiedLocal.appSettingsQueries.run {
+            ensureRow()
+            updateTheme("LIGHT")
+            updateMutedGenres("tv:99:Custom")
+            markDisplayPreferencesChanged(nowEpochMs = 9_000L)
+        }
+        restorer(tiedLocal).restore(backup)
+        val tied = tiedLocal.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("LIGHT", tied.theme, "a tie keeps local")
+        assertEquals("tv:99:Custom", tied.mutedGenres, "a list chosen here is never replaced")
+    }
+
+    @Test
     fun `an older or equal backup group never replaces a newer or equal local one`() = runTest {
         val source = newDatabase()
         changePreferences(source) // stamped 9_000

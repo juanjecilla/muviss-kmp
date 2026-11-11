@@ -49,8 +49,11 @@ internal class DisplayPreferencesRestorer(private val database: MuvissDatabase) 
         )
         val backupStamp = backup.displayPreferencesUpdatedAtEpochMs
         if (backupStamp != null) {
-            if (!wins(backupStamp, local.displayPreferencesUpdatedAtEpochMs)) return
-            writeGroup(backup.toGroup(), stamp = backupStamp)
+            // A losing or tied stamp keeps the local group, but it must not skip the legacy list below: that
+            // list sits outside the group and has its own rule.
+            if (wins(backupStamp, local.displayPreferencesUpdatedAtEpochMs)) {
+                writeGroup(backup.toGroup(), stamp = backupStamp)
+            }
         } else {
             val merged = Group(
                 theme = if (localGroup.theme == DEFAULT_THEME) backup.theme else localGroup.theme,
