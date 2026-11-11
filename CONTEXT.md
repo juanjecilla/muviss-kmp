@@ -51,7 +51,7 @@ A value derived from WatchProgress (never stored independently): NotStarted → 
 _Avoid_: state, phase.
 
 **Tick**:
-The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
+The user's act of marking one episode seen. It writes WatchProgress (and a Play); it is never a status. Planned (ADR 0037, #721; today a tick on a title that is not in the collection writes progress only): when the user makes it on such a title it also creates the CollectionEntry, or restores the soft-deleted one if the user had removed the title (it never re-creates from stale data); an import, a sync pull or a restore never does. What the app shows in response — the row confirming it, the Undo — is feedback on the tick, and is separate from the tick itself.
 _Avoid_: check, mark (as a noun); watch (that is the viewing, a Play).
 
 **Milestone**:
@@ -81,9 +81,17 @@ _Avoid_: subscription, purchase, licence (those are how an Entitlement is acquir
 An account whose Entitlement has ended. Its synced data is kept but out of reach — nothing syncs, nothing is deleted — and renewing picks up where it stopped. The device's own library is unaffected either way.
 _Avoid_: expired account, cancelled (cancelling is what the user does in the store; the Entitlement only lapses when the paid period runs out); deleted (that is what "Delete account" does, and only that).
 
+**Discover**:
+The browse screen a person lands on: popular titles, genres and "For you", beside the Triage entry. What people call "home". Its network sections are kept as a Discover Shelf so it opens offline.
+_Avoid_: home (a place on the screen, not a concept), feed (this product has none).
+
+**Discover Shelf**:
+One stored section of Discover (popular movies, a genre list, "For you") exactly as the source returned it, with the time it was fetched. Proposed (#724), not built. A cache: nobody authors it, a refetch always replaces it, it is neither synced nor exported, and Muted Genres are applied when it is read, not when it is stored. A first launch offline with nothing stored still shows the error. Distinct from a Snapshot (the user's saved row) and an EpisodeCatalog (a show's episodes).
+_Avoid_: snapshot, cache (as a name for the thing).
+
 **Triage**:
 Deciding rapidly, one MediaItem at a time, whether it belongs in the collection and how far the user has already watched it. The mechanism that fills an empty collection quickly, and afterwards keeps offering newly-surfaced MediaItems the user has never ruled on, plus Snoozed Titles that have come due.
-_Avoid_: swipe, deck, card (those are UI mechanics, not domain).
+_Avoid_: swipe, deck, stack, card (those are UI mechanics, not domain).
 
 **TriageDecision**:
 The persisted record of one TriageVerdict on one MediaItem — a log of what the user decided, never a status. Outlives the CollectionEntry it created: removing a MediaItem from the collection does not erase the decision, so triage never asks about it twice.

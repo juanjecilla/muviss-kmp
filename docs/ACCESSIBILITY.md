@@ -283,6 +283,14 @@ The per-poster table is in the test's standard output, in
 Without `MUVISS_POSTER_DIR` the test is skipped. A set path with an empty or
 missing folder fails rather than passing.
 
+**How the numbers stay current (#628).** The poster set is licensed artwork
+that cannot be committed, and no CI job has a poster bucket, so the test runs
+on a maintainer's machine and nowhere else. The decision is to accept that
+snapshot and make the gap visible, not to hide it: a pull request that changes
+`RatingBadgeScrim`, the amber ink or the palette either re-runs the test above
+and updates the "Measured" date and figures in this file, or says in its body
+that it was not re-run and why. `pull_request_template.md` asks the question.
+
 The gate was checked against a white poster with a temporary 55% scrim: the
 lightest backdrop measured **#737373 at 3.16:1** and the test failed, the same
 figure as the synthetic check above. The scrim was restored to 70% afterwards.
