@@ -6,7 +6,8 @@ import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.WatchStatus
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -80,7 +81,7 @@ class PickEngine(
 
     /**
      * The ranker's picks, enforced against [pool]. When it fails, times out, or leaves nothing usable,
-     * the rules' order over the same pool. A cancellation of the caller is rethrown, never swallowed.
+     * the rules' order over the same pool. The caller's own cancellation is rethrown, never swallowed.
      */
     private suspend fun rankOrFallBack(
         criteria: PickCriteria,
@@ -88,23 +89,25 @@ class PickEngine(
         history: PickHistory,
         excluded: Set<MediaId>,
     ): List<RankedPick> {
-        val enforced = attempt(criteria, pool, history)?.let { enforce(it, pool, excluded) }
-        return enforced?.takeIf { it.isNotEmpty() } ?: fallback.rank(criteria, pool, history)
+        val answer = attempt(criteria, pool, history) ?: return fallback.rank(criteria, pool, history)
+        val enforced = enforce(answer, pool, excluded)
+        if (enforced.isEmpty() && pool.isNotEmpty()) reporter.unusable(answer.size)
+        return enforced.takeIf { it.isNotEmpty() } ?: fallback.rank(criteria, pool, history)
     }
 
     /**
      * Null when the ranker failed or timed out, and each of those is reported once through [reporter]
-     * (#605). `rank` returns a non-null list, so a null from [withTimeoutOrNull] can only be the timeout.
-     * A cancelled caller is rethrown before anything is reported.
+     * (#605). A null from [withTimeoutOrNull] is [PickEngine]'s own timeout. Anything else the ranker
+     * throws is a failure, including a `CancellationException` it raised itself (#673). Only the caller's
+     * own cancellation is rethrown, because it is the caller's to handle.
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // Any ranker failure means "use the rules", never an error on screen.
     private suspend fun attempt(criteria: PickCriteria, pool: List<PickCandidate>, history: PickHistory): List<RankedPick>? = try {
         val ranked = withTimeoutOrNull(RANKER_TIMEOUT) { ranker.rank(criteria, pool, history) }
         if (ranked == null) reporter.timedOut()
         ranked
-    } catch (e: CancellationException) {
-        throw e
     } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
         reporter.failed(e::class.simpleName ?: UNNAMED_EXCEPTION)
         null
     }
