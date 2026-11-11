@@ -107,17 +107,17 @@ class PickSessionViewModel(
     fun start() {
         viewModelScope.launchReporting {
             _state.value = PickSessionUiState.Loading
-            val read = try {
-                context()
+            // The result mode is read here too, so a failed database read ends in Failed, not a spinner.
+            val (opened, chosen) = try {
+                context().withAnchor() to preferences.resultMode.first().presentation()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) { // As in pickNext: Failed offers Retry, and the reporter still gets it.
                 _state.value = PickSessionUiState.Failed
                 throw failure
             }
-            val opened = read.withAnchor()
             readContext = opened
-            mode = preferences.resultMode.first().presentation()
+            mode = chosen
             session = PickSession.start(opened)
             previous.clear()
             shown.clear()

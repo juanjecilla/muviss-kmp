@@ -22,6 +22,7 @@ import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -332,6 +333,16 @@ class PickSessionViewModelTest {
     }
 
     @Test
+    fun a_result_mode_that_cannot_be_read_ends_in_failed_not_a_spinner() {
+        // Given a session whose context reads fine but whose result mode read throws
+        val viewModel = PickSessionViewModel(context = { noQuestions }, engine = engineOver(emptyList()), actions = RecordingNextPickActions(), preferences = UnreadableResultMode())
+
+        // When it opens
+        // Then it shows Failed, whose Retry is reachable, rather than Loading forever
+        assertIs<PickSessionUiState.Failed>(viewModel.state.value)
+    }
+
+    @Test
     fun a_session_opened_from_a_completion_asks_about_that_title_first() {
         // Given a session opened from the title just finished
         val finished = MediaId.tmdbTv("1399")
@@ -389,6 +400,16 @@ class PickSessionViewModelTest {
     }
 
     private fun PickSessionViewModel.onePick() = assertIs<PickSessionUiState.Result>(state.value).picks.first()
+}
+
+/** Preferences whose result mode read fails, as a database read can. The session must still end in Failed. */
+private class UnreadableResultMode : NextPickPreferences {
+    override val sessionLength: Flow<SessionLength> = flowOf(SessionLength.NONE)
+    override val resultMode: Flow<ResultMode> = flow { error("settings unreadable") }
+
+    override suspend fun setSessionLength(length: SessionLength) = Unit
+
+    override suspend fun setResultMode(mode: ResultMode) = Unit
 }
 
 /** Preferences that never change: the result mode is the one the test names, the length is "no questions" (the context says the length). */
