@@ -64,6 +64,7 @@ private fun LoadingHomeUnderTest(darkTheme: Boolean, animate: Boolean) {
     val state = SearchUiState(
         loading = true,
         hasForYouSeeds = true,
+        forYouLoading = true,
         hasMuted = true,
         animateSkeleton = animate,
     )

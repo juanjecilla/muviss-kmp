@@ -84,11 +84,19 @@ data class SearchUiState(
     val hasMuted: Boolean = false,
     /** The library has a title to seed "For you" from, so its skeleton row belongs in the loading Home (#723). */
     val hasForYouSeeds: Boolean = false,
+    /** The "For you" request is in flight. Its own flag: Discover can finish first and clear [loading] while it still waits. */
+    val forYouLoading: Boolean = false,
     /** The skeleton's sweep runs (the in-app animations switch, #394). False draws a flat fill. */
     val animateSkeleton: Boolean = true,
 ) {
     val canLoadMoreResults: Boolean get() = resultsPage < resultsTotalPages
     val canLoadMoreGenreResults: Boolean get() = genrePage < genreTotalPages
+
+    /** The "For you" row is a placeholder: its titles have not arrived and the library has seeds to fetch them from. */
+    val forYouSkeleton: Boolean get() = forYou.isEmpty() && hasForYouSeeds && forYouLoading
+
+    /** Home has anything still loading, so its skeletons animate. Once nothing is, the sweep stops. */
+    val discoverSkeleton: Boolean get() = loading || forYouSkeleton
 }
 
 /**
@@ -168,9 +176,14 @@ class SearchViewModel(
             triageApi.observeSnoozedIds(),
             settings.observeMuting().map { it.effective }.distinctUntilChanged(),
         ) { library, decided, snoozed, muted -> Triple(library, decided + snoozed, muted) }
-            .onEach { (library, _, _) -> _state.update { it.copy(hasForYouSeeds = ForYouSeeding.selectSeeds(library).isNotEmpty()) } }
+            // The flag is set here, before flatMapLatest starts the request, and cleared only by its emission. A
+            // cancelled request (a newer library) never clears it, so the skeleton stays up until the live one answers.
+            .onEach { (library, _, _) ->
+                val seeded = ForYouSeeding.selectSeeds(library).isNotEmpty()
+                _state.update { it.copy(hasForYouSeeds = seeded, forYouLoading = seeded) }
+            }
             .flatMapLatest { (library, decided, muted) -> forYouFlow(library, decided, muted) }
-            .onEach { forYou -> _state.update { it.copy(forYou = forYou) } }
+            .onEach { forYou -> _state.update { it.copy(forYou = forYou, forYouLoading = false) } }
             .launchInReporting(viewModelScope)
         animateSkeleton
             .onEach { animate -> _state.update { it.copy(animateSkeleton = animate) } }

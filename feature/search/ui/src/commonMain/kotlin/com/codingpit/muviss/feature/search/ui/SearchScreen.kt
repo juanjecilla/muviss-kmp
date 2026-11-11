@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -94,6 +95,7 @@ fun SearchScreen(
     onOpenNextPick: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val homeScroll = rememberScrollState()
 
     Column(Modifier.fillMaxSize().padding(horizontal = MuvissSpacing.l)) {
         SearchPill(
@@ -107,9 +109,10 @@ fun SearchScreen(
                 ErrorState(state.error!!, viewModel::retry)
             }
 
-            // Home while it loads: the local cards are real and the network sections are skeletons under
-            // their real headers, so the page does not re-flow when the data lands (#723).
-            state.loading && state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton, modifier = Modifier.fillMaxSize()) {
+            // Home, loading or loaded, is one DiscoverBrowse call site: the local cards are real and the network
+            // sections are skeletons under their real headers, so the page does not re-flow when the data lands
+            // (#723). A second call site would give the loaded page a fresh scroll state and jump it to the top.
+            state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize()) {
                 DiscoverBrowse(
                     state,
                     onSelectGenre = viewModel::selectGenre,
@@ -118,21 +121,15 @@ fun SearchScreen(
                     intro = DiscoverIntro(introVisible, onIntroDismissed),
                     muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
                     onOpenNextPick = onOpenNextPick,
+                    scroll = homeScroll,
                 )
             }
 
             state.loading -> SkeletonHost(animate = state.animateSkeleton, modifier = Modifier.fillMaxSize()) { LoadingSkeletonGrid() }
 
             else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(
-                    state,
-                    onSelectGenre = viewModel::selectGenre,
-                    onOpenDetail = onOpenDetail,
-                    onOpenTriage = onOpenTriage,
-                    intro = DiscoverIntro(introVisible, onIntroDismissed),
-                    muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
-                    onOpenNextPick = onOpenNextPick,
-                )
+                // Drawn by the branch above.
+                SearchMode.DISCOVER -> Unit
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -282,12 +279,15 @@ internal fun DiscoverBrowse(
     intro: DiscoverIntro = DiscoverIntro(),
     muted: MutedChip = MutedChip(),
     onOpenNextPick: (() -> Unit)? = null,
+    // Held by the caller: the skeleton host's sweep is switched off when the load ends, and that recomposes
+    // the page beneath it, so a scroll position kept here would be lost (#723).
+    scroll: ScrollState = rememberScrollState(),
 ) {
     val loading = state.loading
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(bottom = MuvissSpacing.bottomContent),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
     ) {
@@ -307,7 +307,7 @@ internal fun DiscoverBrowse(
         // (no library signal yet), so no separate visibility check is needed.
         when {
             state.forYou.isNotEmpty() -> MediaCarousel(stringResource(Res.string.carousel_for_you), state.forYou, onOpenDetail)
-            loading && state.hasForYouSeeds -> CarouselSkeleton(stringResource(Res.string.carousel_for_you))
+            state.forYouSkeleton -> CarouselSkeleton(stringResource(Res.string.carousel_for_you))
         }
         GenreSection(stringResource(Res.string.genres_movies), state.movieGenres, loading) { onSelectGenre(it, MediaType.MOVIE) }
         GenreSection(stringResource(Res.string.genres_tv), state.tvGenres, loading) { onSelectGenre(it, MediaType.TV) }
