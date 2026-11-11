@@ -24,17 +24,25 @@ fun interface PickRanker {
  *
  * The failure is handed over as the exception's class name only. The message can carry request text
  * or keys (EPIC 27), so it never leaves [PickEngine].
+ *
+ * [unusable] is a ranker that answered but gave nothing [PickEngine] could show (#674): every pick was
+ * outside the pool, excluded, repeated, or the list was empty. Only the count leaves [PickEngine], never
+ * a title.
  */
 interface PickRankerReporter {
     fun failed(exceptionClass: String)
 
     fun timedOut()
 
+    fun unusable(returned: Int)
+
     /** The default for code that has no crash reporter to hand, such as a test that does not care. */
     data object Silent : PickRankerReporter {
         override fun failed(exceptionClass: String) = Unit
 
         override fun timedOut() = Unit
+
+        override fun unusable(returned: Int) = Unit
     }
 }
 
