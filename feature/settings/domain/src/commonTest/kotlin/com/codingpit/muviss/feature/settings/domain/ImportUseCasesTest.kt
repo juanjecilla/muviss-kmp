@@ -299,4 +299,34 @@ class ApplyImportUseCaseTest {
         assertEquals(1, result.unresolved.size)
         assertEquals(0, result.importedTitleCount)
     }
+
+    @Test
+    fun a_title_resolved_on_two_rows_is_fetched_once_and_its_failure_reported_once() = runTest {
+        // A rewatch is two rows for one title: the failed list is keyed by MediaId, so it must not repeat it (#733).
+        val source = FakeDetailsSource(mapOf(movieId to movieDetails))
+        source.failFor = movieId
+        val useCase = ApplyImportUseCase(source, FakeCollectionApi(), FakeProgressApi())
+        val title = ImportedTitle(ExternalTitleRef(tmdbId = "603"), MediaType.MOVIE, "The Matrix", watched = true)
+
+        val result = useCase(preview(ResolvedImportTitle(title, movieId), ResolvedImportTitle(title, movieId)))
+
+        assertEquals(1, result.failed.size)
+        assertEquals(0, result.importedTitleCount)
+    }
+
+    @Test
+    fun a_title_resolved_on_two_rows_is_added_once_and_keeps_the_ticks_of_both() = runTest {
+        val collectionApi = FakeCollectionApi()
+        val progressApi = FakeProgressApi()
+        val useCase = ApplyImportUseCase(FakeDetailsSource(mapOf(showId to showDetails)), collectionApi, progressApi)
+        val firstViewing = ImportedTitle(ExternalTitleRef(tmdbId = "1399"), MediaType.TV, "Show", episodes = listOf(ImportedEpisode(1, 1)))
+        val rewatch = ImportedTitle(ExternalTitleRef(tmdbId = "1399"), MediaType.TV, "Show", episodes = listOf(ImportedEpisode(1, 2)))
+
+        val result = useCase(preview(ResolvedImportTitle(firstViewing, showId), ResolvedImportTitle(rewatch, showId)))
+
+        assertEquals(1, result.importedTitleCount)
+        assertEquals(1, collectionApi.added.size)
+        assertEquals(2, result.episodeTickCount)
+        assertEquals(setOf(EpisodeId(showId, 1, 1), EpisodeId(showId, 1, 2)), progressApi.seenEpisodes)
+    }
 }
