@@ -166,3 +166,11 @@
 # the annotation carries no runtime behaviour, so the warning is about metadata. Added from the
 # R8 missing-classes report (`missing_rules.txt`).
 -dontwarn com.google.android.gms.common.annotation.NoNullnessRewrite
+
+# ---------------------------------------------------------------------------
+# Exception class names in crash reports (#672)
+# ---------------------------------------------------------------------------
+# PickEngine reports a failing ranker as the thrown exception's simple name, so the Sentry event says
+# which exception it was. Sentry deobfuscates stack frames through the mapping but not free text, so an
+# obfuscated name would read as "a". `-keepnames` only keeps names; it does not keep the classes.
+-keepnames class * extends java.lang.Throwable
