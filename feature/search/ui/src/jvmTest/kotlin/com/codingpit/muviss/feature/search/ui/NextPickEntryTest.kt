@@ -105,8 +105,18 @@ class NextPickEntryTest {
     }
 }
 
+/** The behaviour tests' frame: the screen under its own theme. */
 @Composable
-private fun DiscoverWithEntry(onOpenNextPick: (() -> Unit)?) {
+internal fun DiscoverWithEntry(onOpenNextPick: (() -> Unit)?, darkTheme: Boolean = false) {
+    MuvissTheme(darkTheme = darkTheme) { DiscoverWithEntryContent(onOpenNextPick) }
+}
+
+/**
+ * The screen without a theme, for [NextPickEntryGoldenTest], which installs its own around `GoldenSurface`. A theme
+ * inside the frame would replace the pinned typography and leave the frame's background unpainted.
+ */
+@Composable
+internal fun DiscoverWithEntryContent(onOpenNextPick: (() -> Unit)?) {
     val repo = FakeRepo()
     val viewModel = SearchViewModel(
         SearchMediaUseCase(repo),
@@ -117,13 +127,18 @@ private fun DiscoverWithEntry(onOpenNextPick: (() -> Unit)?) {
         FakeTriageApi(),
         FakeMutingApi(),
     )
-    MuvissTheme(darkTheme = false) {
-        SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {}, onOpenNextPick = onOpenNextPick)
-    }
+    SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {}, onOpenNextPick = onOpenNextPick)
 }
 
+/** The behaviour tests' frame: the screen under its own theme. */
 @Composable
-private fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?) {
+internal fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?, darkTheme: Boolean = false) {
+    MuvissTheme(darkTheme = darkTheme) { DetailWithEntryContent(status, onOpenNextPick) }
+}
+
+/** The screen without a theme; see [DiscoverWithEntryContent]. */
+@Composable
+internal fun DetailWithEntryContent(status: WatchStatus?, onOpenNextPick: (() -> Unit)?) {
     val mediaId = MediaId.tmdbMovie("603")
     val repo = FakeDetailRepo(details = MediaDetails(MediaSummary(mediaId, "The Matrix", year = 1999)))
     val collection = FakeCollectionApi()
@@ -136,7 +151,5 @@ private fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?)
         MoreLikeThisUseCase(RecommendationsUseCase(repo), SimilarMediaUseCase(repo)),
         FakeClock(0L),
     )
-    MuvissTheme(darkTheme = false) {
-        DetailScreen(viewModel = viewModel, onBack = {}, onOpenDetail = {}, onOpenEpisode = {}, onOpenNextPick = onOpenNextPick)
-    }
+    DetailScreen(viewModel = viewModel, onBack = {}, onOpenDetail = {}, onOpenEpisode = {}, onOpenNextPick = onOpenNextPick)
 }
