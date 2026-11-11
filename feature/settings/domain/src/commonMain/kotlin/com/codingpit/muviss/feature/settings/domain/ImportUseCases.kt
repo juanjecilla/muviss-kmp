@@ -115,17 +115,23 @@ class ApplyImportUseCase(
         var tickCount = 0
         val failed = mutableListOf<FailedImportTitle>()
 
-        preview.resolved.forEachIndexed { index, resolved ->
-            detailsSource.fetch(resolved.mediaId).fold(
+        // One fetch and one collection add per title: a rewatch is a second row for the same MediaId, and the
+        // failed list is keyed by it (#733). Every row still contributes its own ticks and rating.
+        val titles = preview.resolved.groupBy { it.mediaId }.values.toList()
+        titles.forEachIndexed { index, rows ->
+            val first = rows.first()
+            detailsSource.fetch(first.mediaId).fold(
                 onSuccess = { details ->
                     collectionApi.add(details)
                     importedCount++
-                    tickCount += applyProgress(resolved, details)
-                    applyRating(resolved)
+                    rows.forEach { resolved ->
+                        tickCount += applyProgress(resolved, details)
+                        applyRating(resolved)
+                    }
                 },
-                onFailure = { e -> failed += FailedImportTitle(resolved, e as? MetadataError ?: MetadataError.Unknown()) },
+                onFailure = { e -> failed += FailedImportTitle(first, e as? MetadataError ?: MetadataError.Unknown()) },
             )
-            onProgress(index + 1, preview.resolved.size)
+            onProgress(index + 1, titles.size)
         }
 
         return ImportApplyResult(importedCount, tickCount, preview.unresolved, failed)
