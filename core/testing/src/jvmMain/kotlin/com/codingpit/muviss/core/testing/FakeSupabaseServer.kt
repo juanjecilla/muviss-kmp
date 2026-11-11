@@ -70,7 +70,8 @@ import java.io.IOException
  *   [latencyMs] and the [onRequest] hook, which is how a test edits a local
  *   row *while* a push is in flight.
  * - **Just enough GoTrue** for token refresh: `/auth/v1/token` for
- *   `refresh_token` grants (which rotates both tokens) and `/auth/v1/signup`
+ *   `refresh_token` grants (which rotates both tokens), `pkce` code exchanges
+ *   (see [issueOAuthCode]) and `/auth/v1/signup`
  *   for anonymous sign-in, so a session can expire and an account can switch.
  *
  * It parses and validates request bodies against a schema mirroring
@@ -123,6 +124,7 @@ class FakeSupabaseServer(
 
     /** Refresh token to user id. Single use: redeeming one rotates it. */
     private val refreshTokens = mutableMapOf<String, String>()
+    private val oauthCodes = mutableMapOf<String, String>()
     private var nextSeq = 1L
     private var nextUser = 1
     private var nextToken = 1
@@ -216,10 +218,16 @@ class FakeSupabaseServer(
             return json(fault.body, HttpStatusCode.fromValue(status))
         }
         return when {
-            recordedRequest.path == "/auth/v1/token" -> synchronized(lock) { refresh(recordedRequest) }
+            recordedRequest.path == "/auth/v1/token" -> synchronized(lock) {
+                if (recordedRequest.body.contains("auth_code")) exchangeOAuthCode(recordedRequest) else refresh(recordedRequest)
+            }
+
             recordedRequest.path == "/auth/v1/signup" -> synchronized(lock) { signUpAnonymously() }
+
             recordedRequest.path == "/auth/v1/logout" -> respond("", HttpStatusCode.NoContent)
+
             recordedRequest.table != null -> synchronized(lock) { rest(recordedRequest) }
+
             else -> json("""{"message":"no route"}""", HttpStatusCode.NotFound)
         }
     }
@@ -250,6 +258,18 @@ class FakeSupabaseServer(
     private suspend fun ByteReadChannel.drainToString(): String = readBuffer().readByteArray().decodeToString()
 
     // ------------------------------------------------------------------ auth ---
+
+    /** Issues the one-time code an OAuth redirect would carry for [userId]; redeemed by `grant_type=pkce`. */
+    fun issueOAuthCode(userId: String): String = synchronized(lock) {
+        "code-$userId-${nextToken++}".also { oauthCodes[it] = userId }
+    }
+
+    private fun MockRequestHandleScope.exchangeOAuthCode(request: Request): HttpResponseData {
+        val supplied = (Json.parseToJsonElement(request.body) as? JsonObject)?.get("auth_code")?.let { it as? JsonPrimitive }?.contentOrNull
+        val userId = supplied?.let { oauthCodes.remove(it) }
+            ?: return json("""{"error":"invalid_grant","error_description":"Invalid authorization code"}""", HttpStatusCode.BadRequest)
+        return json(newSession(userId))
+    }
 
     private fun MockRequestHandleScope.refresh(request: Request): HttpResponseData {
         val supplied = (Json.parseToJsonElement(request.body) as? JsonObject)?.get("refresh_token")?.let { it as? JsonPrimitive }?.contentOrNull

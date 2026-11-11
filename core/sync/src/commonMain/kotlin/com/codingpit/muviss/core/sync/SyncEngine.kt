@@ -250,7 +250,10 @@ class SyncEngine(
                 if (trigger.isAutomatic && !syncAutomatically.first()) {
                     SyncOutcome.Disabled
                 } else {
-                    block(checkNotNull(session).userId).also { lastFinished.value = clock.nowEpochMs() }
+                    // The session read above is stale if the wait was for Delete all data, which
+                    // signs out under this lock (#678). Read it again now the lock is held.
+                    val current = backend.session.first() ?: return@withLock SyncOutcome.NotSignedIn
+                    block(current.userId).also { lastFinished.value = clock.nowEpochMs() }
                 }
             }
         }
