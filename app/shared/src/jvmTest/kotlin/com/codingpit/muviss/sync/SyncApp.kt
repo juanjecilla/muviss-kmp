@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.AutomaticSyncSettings
+import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
@@ -40,6 +41,7 @@ import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 
 internal const val FAKE_PROJECT_URL = "https://project.supabase.co"
+private const val OAUTH_REDIRECT = "muviss://auth-callback"
 
 /** A clock that reads whatever [nowMs] says, so a test can tie it to a scheduler or to the wall clock. */
 internal class LambdaClock(private val nowMs: () -> Long) : AppClock {
@@ -143,6 +145,17 @@ internal class SyncApp(
         koin.get<SyncSessionStore>().save(
             SyncSession(SyncBackendId.SUPABASE, userId, "$userId@example.com", "access-$userId", "refresh-$userId", null),
         )
+    }
+
+    /**
+     * Signs in as [userId] through the path a real sign-in takes: begin the OAuth attempt, then
+     * complete it with the code the server issued for that account. Unlike [signIn], this works
+     * after a sign-out, because the backend's in-memory session is set, not read back from the store.
+     */
+    suspend fun signInWithOAuth(userId: String = this.userId) {
+        val backend = koin.get<SyncBackend>()
+        backend.beginOAuth(OAuthProvider.GOOGLE, OAUTH_REDIRECT).getOrThrow()
+        backend.completeOAuth(server.issueOAuthCode(userId)).getOrThrow()
     }
 
     /** Starts what `MuvissApp` and `MuvissApplication` start: the coordinator. */

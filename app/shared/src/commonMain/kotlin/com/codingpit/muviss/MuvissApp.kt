@@ -126,8 +126,10 @@ fun MuvissApp(
     onOAuthCodeConsumed: () -> Unit = {},
     controller: MuvissAppController = rememberMuvissAppController(),
 ) {
-    remember { MuvissCrashReporting.ensureStarted() }
-    remember { configureImageLoader() }
+    // Called directly rather than in `remember {}` (RememberReturnType: those return Unit). Both run before the
+    // first composition below uses Koin or Coil, and both are idempotent, so a recomposition repeats them harmlessly.
+    MuvissCrashReporting.ensureStarted()
+    configureImageLoader()
     val databaseDriverFactory = rememberDatabaseDriverFactory()
     KoinApplication(application = { modules(appModules + platformDatabaseModule(databaseDriverFactory)) }) {
         // Idempotent (`following`), so on Android/iOS/desktop this is a harmless
@@ -139,7 +141,7 @@ fun MuvissApp(
         // resolves `SettingsApi` off the running Koin instance, which does not
         // exist yet at that point in this function — only inside this content
         // lambda, once `KoinApplication` above has started it.
-        remember { MuvissCrashReporting.followSettings() }
+        MuvissCrashReporting.followSettings()
         val settingsApi = koinInject<SettingsApi>()
         val themeMode by settingsApi.observeThemeMode().collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
         val darkTheme = when (themeMode) {
