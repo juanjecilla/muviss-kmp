@@ -14,11 +14,11 @@ androidx-testExt = "1.3.0"
 androidx-baselineprofile = "1.5.0"
 androidx-benchmark = "1.5.0"
 androidx-profileinstaller = "1.4.1"
-androidx-uiautomator = "2.4.0"
+androidx-uiautomator = "2.4.1"
 composeMultiplatform = "1.12.2"
 junit = "4.13.2"
 kotlin = "2.4.21"
-kotlin-wrappers = "2026.10.6"
+kotlin-wrappers = "2026.11.0"
 # Pinned to the -0.6.x-compat line that io.ktor:ktor-openapi-schema already resolves (via
 # ktor-serialization-kotlinx-json). Plain 0.8.0 would upgrade that transitive graph for every consumer.
 kotlinx-datetime = "0.8.0-0.6.x-compat"
@@ -42,7 +42,7 @@ navigationCompose = "2.9.2"
 turbine = "1.2.1"
 detekt = "1.23.8"
 detektCompose = "0.6.8"
-spotless = "8.10.4"
+spotless = "8.11.0"
 ktlint = "1.8.0"
 sentryKmp = "0.29.0"
 # The Cocoa SDK version `sentryKmp`'s cinterop klibs were generated against
@@ -57,7 +57,7 @@ sentryCocoa = "9.29.2"
 # stamps `release`/`dist`. It is a build-time tool: it runs on the build machine
 # and is not part of the shipped app, so the `licensee` allow-list below does not
 # see it.
-sentryGradlePlugin = "6.25.0"
+sentryGradlePlugin = "6.26.0"
 licensee = "1.14.1"
 # Coverage report only, no threshold yet (EPIC 38, #71).
 kover = "0.9.11"
