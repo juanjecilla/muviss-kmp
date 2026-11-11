@@ -7,6 +7,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SkikoComposeUiTest
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -213,14 +214,12 @@ class StoreShotTest {
         settle { onAllNodes(hasTestTag("detailList")).fetchSemanticsNodes().isNotEmpty() }
         // Detail is a lazy list (EPIC 28): rows off screen are not composed, so
         // it is scrolled by item key rather than to a node. Detail opens the
-        // season the user is in the middle of; expand only if it did not.
+        // season the user is in the middle of, but only from the progress loaded
+        // when it first composed, so Season 1 can be open or closed by timing
+        // (#707). Both are forced to the state the shot shows.
         val detailList = onAllNodes(hasTestTag("detailList"))[0]
-        detailList.performScrollToKey("season-2")
-        waitForIdle()
-        if (onAllNodes(hasTestTag("seasonEpisodes2")).fetchSemanticsNodes().isEmpty()) {
-            onAllNodes(hasTestTag("seasonHeader2"))[0].performClick()
-        }
-        settle { onAllNodes(hasTestTag("seasonEpisodes2")).fetchSemanticsNodes().isNotEmpty() }
+        setSeasonOpen(detailList, number = 1, open = false)
+        setSeasonOpen(detailList, number = 2, open = true)
         // nav.seasonsTwo just under the floating back button, ticks below it.
         detailList.performScrollToKey("seasonsHeader")
         waitForIdle()
@@ -299,6 +298,15 @@ class StoreShotTest {
     /** Waits without advancing the clock (unlike [settle]) until no popup is up. */
     private fun SkikoComposeUiTest.waitForOneRoot() {
         waitUntil(timeoutMillis = 5_000) { onAllNodes(isRoot()).fetchSemanticsNodes().size == 1 }
+    }
+
+    /** Opens or closes one season of Detail, scrolling its header into view first (#707). */
+    private fun SkikoComposeUiTest.setSeasonOpen(detailList: SemanticsNodeInteraction, number: Int, open: Boolean) {
+        detailList.performScrollToKey("season-$number")
+        waitForIdle()
+        val isOpen = { onAllNodes(hasTestTag("seasonEpisodes$number")).fetchSemanticsNodes().isNotEmpty() }
+        if (isOpen() != open) onAllNodes(hasTestTag("seasonHeader$number"))[0].performClick()
+        settle { isOpen() == open }
     }
 
     private fun SkikoComposeUiTest.settle(condition: () -> Boolean) {
