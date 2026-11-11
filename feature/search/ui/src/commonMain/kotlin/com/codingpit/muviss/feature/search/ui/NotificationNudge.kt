@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.crash.launchInReporting
@@ -71,16 +72,16 @@ class NotificationNudgeViewModel(
      * Notifications are off and the OS will not ask again (#326): a request would answer "no" at once, so the
      * nudge explains the blocked switch instead of offering a tap that goes nowhere.
      */
-    private val refusedForGood: Boolean = system.blocked() && !system.canAskAgain()
+    private fun refusedForGood(): Boolean = system.blocked() && !system.canAskAgain()
 
     init {
         onboarding.observeNotificationNudge(mediaId)
-            .onEach { offered -> _state.update { it.copy(offered = offered, blocked = it.blocked || (offered && refusedForGood)) } }
+            .onEach { offered -> _state.update { it.copy(offered = offered, blocked = it.blocked || (offered && refusedForGood())) } }
             .launchInReporting(viewModelScope)
     }
 
     fun turnOn() {
-        if (refusedForGood) {
+        if (refusedForGood()) {
             _state.update { it.copy(blocked = true) }
             return
         }
@@ -88,6 +89,17 @@ class NotificationNudgeViewModel(
             if (onboarding.acceptNotificationNudge() == NotificationNudgeResult.DENIED) {
                 _state.update { it.copy(blocked = true) }
             }
+        }
+    }
+
+    /**
+     * Asked again each time the screen resumes, because that is how the person returns from system settings:
+     * a permission granted there clears the explanation, and a refusal still in force keeps it.
+     */
+    fun recheckPermission() {
+        viewModelScope.launchReporting {
+            val off = system.blockedNow()
+            _state.update { it.copy(blocked = it.blocked && off) }
         }
     }
 
@@ -142,6 +154,10 @@ internal fun NotificationNudgeBanner(
 /** The banner wired to its view model; draws nothing while the nudge is not due. */
 @Composable
 internal fun NotificationNudge(viewModel: NotificationNudgeViewModel, title: String) {
+    LifecycleResumeEffect(viewModel) {
+        viewModel.recheckPermission()
+        onPauseOrDispose {}
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (!state.visible) return
     NotificationNudgeBanner(

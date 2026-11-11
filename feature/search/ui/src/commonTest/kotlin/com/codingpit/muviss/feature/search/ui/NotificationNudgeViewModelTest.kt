@@ -48,10 +48,13 @@ class NotificationNudgeViewModelTest {
     private class FakeSystem : SystemNotificationSettings {
         var opened = 0
 
-        /** Notifications are off and the OS has stopped asking (#326). */
-        var refusedForGood = false
-        override fun blocked(): Boolean = refusedForGood
-        override fun canAskAgain(): Boolean = !refusedForGood
+        /** Notifications are off in system settings. */
+        var off = false
+
+        /** False once the OS has stopped asking (#326). */
+        var askable = true
+        override fun blocked(): Boolean = off
+        override fun canAskAgain(): Boolean = askable
 
         override fun open() {
             opened++
@@ -118,7 +121,8 @@ class NotificationNudgeViewModelTest {
 
     @Test
     fun a_refusal_the_os_will_not_repeat_is_explained_at_once_without_asking_again() = runTest {
-        system.refusedForGood = true
+        system.off = true
+        system.askable = false
         val vm = viewModel()
 
         assertEquals(true, vm.state.value.blocked, "offered and refused for good: say why, do not offer a tap that goes nowhere")
@@ -129,7 +133,8 @@ class NotificationNudgeViewModelTest {
 
     @Test
     fun a_refusal_the_os_will_not_repeat_shows_nothing_when_the_nudge_is_not_due() = runTest {
-        system.refusedForGood = true
+        system.off = true
+        system.askable = false
         onboarding.offered.value = false
 
         assertEquals(false, viewModel().state.value.visible)
@@ -137,9 +142,46 @@ class NotificationNudgeViewModelTest {
 
     @Test
     fun a_refusal_that_can_still_be_asked_again_keeps_the_offer() = runTest {
-        system.refusedForGood = false
+        system.off = true
+        system.askable = true
 
         assertEquals(false, viewModel().state.value.blocked)
         assertEquals(true, viewModel().state.value.offered)
+    }
+
+    @Test
+    fun a_permission_granted_in_system_settings_clears_the_explanation_on_resume() = runTest {
+        system.off = true
+        system.askable = false
+        val vm = viewModel()
+        assertEquals(true, vm.state.value.blocked)
+
+        system.off = false
+        vm.recheckPermission()
+
+        assertEquals(false, vm.state.value.blocked)
+    }
+
+    @Test
+    fun a_refusal_still_in_force_survives_a_resume() = runTest {
+        system.off = true
+        system.askable = false
+        val vm = viewModel()
+
+        vm.recheckPermission()
+
+        assertEquals(true, vm.state.value.blocked)
+    }
+
+    @Test
+    fun a_denial_just_given_keeps_its_explanation_after_the_nudge_is_spent_and_on_resume() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        val vm = viewModel()
+        vm.turnOn()
+        vm.recheckPermission()
+
+        assertEquals(false, onboarding.offered.value, "the nudge is spent whatever the OS said")
+        assertEquals(true, vm.state.value.blocked)
     }
 }
