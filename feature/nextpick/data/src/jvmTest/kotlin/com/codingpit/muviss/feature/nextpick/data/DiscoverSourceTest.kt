@@ -130,6 +130,16 @@ class DiscoverSourceTest {
     }
 
     @Test
+    fun `only my services with no services in the taste profile narrows nothing`() = runTest {
+        val catalogue = RecordingCatalogue()
+        DiscoverSource(catalogue, { emptyLibrary }, { 2026 }, PickMuting { MutedGenres.NONE }, { FakeTasteProfile() }, { "ES" })
+            .gather(PickCriteria(onlyMyServices = true), PickContext(online = true))
+
+        assertEquals(emptySet(), catalogue.filters.getValue(MediaType.MOVIE).watchProviderIds)
+        assertEquals(null, catalogue.filters.getValue(MediaType.MOVIE).watchRegion)
+    }
+
+    @Test
     fun `without only my services discover is not narrowed by the services`() = runTest {
         val catalogue = RecordingCatalogue()
         DiscoverSource(catalogue, { emptyLibrary }, { 2026 }, PickMuting { MutedGenres.NONE }, { FakeTasteProfile(listOf(TasteItem(TasteKind.SERVICE, "8", "Netflix"))) }, { "ES" })

@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.first
  * The Muted Genres go to TMDB as `excludedGenreIds` (#662), so a muted-heavy catalogue still fills the page.
  * A genre a mood picked is not excluded, as [effectiveMuting] says. "Only my services" (#663) goes as
  * `watchProviderIds` with the region, which TMDB filters on its side, so no title is fetched to be checked.
+ * A Taste Profile with no services narrows nothing, under the same flag: the same rule `OwnServicesCandidates` applies to the library.
  *
  * A failed request ([MetadataError]: rate limited, unauthorized, an offline race) means "no catalogue
  * candidates" when the person said either is fine: the library can still answer, and one failed call must
