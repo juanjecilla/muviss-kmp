@@ -71,8 +71,10 @@ internal class DisplayPreferencesRestorer(private val database: MuvissDatabase) 
                 writeGroup(merged, stamp = local.displayPreferencesUpdatedAtEpochMs ?: 0L)
             }
         }
-        // The legacy list (ADR 0031) is restored over its default only, as it always was. A file that carries
-        // the new fields has the same string, derived from the decisions, so it is harmless on either path.
+        // The legacy list (ADR 0031) is restored over its default only, as it always was. Until #644 moves the
+        // live store to decisions, `mutedGenres` is still the legacy string on both sides, and the export writes
+        // that string as is. From #644 on, the export derives it from the effective set (ADR 0036), so a file
+        // that carries the new fields has the same string derived from the decisions.
         if (local.mutedGenres == DEFAULT_MUTED_GENRES) queries.updateMutedGenres(backup.mutedGenres)
     }
 
