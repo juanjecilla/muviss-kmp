@@ -39,19 +39,24 @@ internal fun primaryActionFor(state: DetailUiState, todayEpochDay: Long): Primar
         return if (state.movieWatched) PrimaryAction.WatchedAgain(state.moviePlayCount) else PrimaryAction.MarkMovieWatched
     }
 
+    // Specials (season 0) are never ticked by this button, but an aired special still counts as "something has aired":
+    // only when nothing at all has aired is the title "not aired yet" rather than "caught up".
     val episodes = details.seasons
         .filter { it.number >= 1 }
         .sortedBy { it.number }
         .flatMap { season -> season.episodes.sortedBy { it.episodeNumber } }
-    fun aired(episode: Episode) = episode.airDateEpochDay?.let { it <= todayEpochDay } == true
+    val anythingAired = details.seasons.any { season -> season.episodes.any { it.hasAired(todayEpochDay) } }
 
-    val nextAired = episodes.firstOrNull { !state.isSeen(it.id) && aired(it) }
+    val nextAired = episodes.firstOrNull { !state.isSeen(it.id) && it.hasAired(todayEpochDay) }
     if (nextAired != null) return PrimaryAction.TickNext(nextAired)
 
     val next = episodes.firstOrNull { !state.isSeen(it.id) && it.airDateEpochDay?.let { day -> day > todayEpochDay } == true }
     return when {
         state.watchStatus == WatchStatus.FINISHED -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Finished, null)
-        episodes.none { aired(it) } -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.NotAiredYet, next)
+        !anythingAired -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.NotAiredYet, next)
         else -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, next)
     }
 }
+
+/** Whether this episode has aired by [todayEpochDay]. An undated episode has not: it is never ticked. */
+internal fun Episode.hasAired(todayEpochDay: Long): Boolean = airDateEpochDay?.let { it <= todayEpochDay } == true

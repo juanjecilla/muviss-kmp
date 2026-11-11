@@ -583,7 +583,7 @@ private fun ActionRow(
     val pill: @Composable () -> Unit = {
         PrimaryActionButton(
             action = primaryActionFor(state, viewModel.todayEpochDay),
-            onAdd = viewModel::toggleSaved,
+            onAdd = viewModel::addToLibrary,
             onMarkMovieWatched = viewModel::markMovieWatched,
             onWatchedAgain = { state.details?.let { callbacks.onTapSeenEpisode(EpisodeId.forMovie(it.id)) } },
             onTickNext = { episode -> viewModel.tickNext(episode.id) },

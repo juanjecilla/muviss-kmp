@@ -108,4 +108,14 @@ class DetailPrimaryActionTest {
         val action = assertIs<PrimaryAction.Waiting>(primaryActionFor(state, today))
         assertEquals(PrimaryAction.Waiting.Reason.Finished, action.reason)
     }
+
+    @Test
+    fun an_aired_special_does_not_make_a_show_not_aired_yet() {
+        // Specials are never ticked by this button, but one that has aired means the show is not "not aired yet".
+        val special = episode(0, 1, airDay = 5)
+        val future = episode(1, 1, airDay = 100)
+        val state = showState(Season(0, "Specials", listOf(special)), Season(1, "Season 1", listOf(future)))
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, future), primaryActionFor(state, today))
+    }
 }
