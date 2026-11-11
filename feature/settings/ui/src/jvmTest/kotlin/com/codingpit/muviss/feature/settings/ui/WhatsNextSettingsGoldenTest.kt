@@ -2,14 +2,18 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.core.testing.GoldenSurface
+import com.codingpit.muviss.core.testing.TestSafeAreaInsets
 import com.codingpit.muviss.core.testing.assertMatchesGolden
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -38,7 +42,7 @@ class WhatsNextSettingsGoldenTest {
     @Test
     fun whats_next_section_light() = runComposeUiTest {
         showSettings(darkTheme = false)
-        onNodeWithTag(NEXT_PICK_PROMPT_TAG).performScrollTo()
+        onNodeWithText(RESULT_ROW_LABEL).performScrollTo()
         waitForIdle()
         assertMatchesGolden("settings-whats-next", tolerance = SECTION_TOLERANCE)
     }
@@ -46,7 +50,7 @@ class WhatsNextSettingsGoldenTest {
     @Test
     fun whats_next_section_dark() = runComposeUiTest {
         showSettings(darkTheme = true)
-        onNodeWithTag(NEXT_PICK_PROMPT_TAG).performScrollTo()
+        onNodeWithText(RESULT_ROW_LABEL).performScrollTo()
         waitForIdle()
         assertMatchesGolden("settings-whats-next-dark", tolerance = SECTION_TOLERANCE)
     }
@@ -75,14 +79,17 @@ class WhatsNextSettingsGoldenTest {
         setContent {
             MuvissTheme(darkTheme = darkTheme) {
                 GoldenSurface {
-                    SettingsScreen(
-                        settings,
-                        onOpenLicenses = {},
-                        onOpenImport = {},
-                        onOpenTriage = {},
-                        onOpenTasteProfile = {},
-                        nextPick = nextPick,
-                    )
+                    // The shell's safe area, without the bottom inset: the nav bar pads that side, as in the app.
+                    ScreenInsets(insets = TestSafeAreaInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)) {
+                        SettingsScreen(
+                            settings,
+                            onOpenLicenses = {},
+                            onOpenImport = {},
+                            onOpenTriage = {},
+                            onOpenTasteProfile = {},
+                            nextPick = nextPick,
+                        )
+                    }
                 }
             }
         }
@@ -92,6 +99,9 @@ class WhatsNextSettingsGoldenTest {
 
 /** The row's label in English: the test JVMs are pinned to en-US (CLAUDE.md, UI copy is localized). */
 private const val TASTE_ROW_LABEL = "Your taste"
+
+/** The last picker row: scrolling to it brings both pickers into the section frame. */
+private const val RESULT_ROW_LABEL = "Result"
 
 /**
  * The section is a switch and two pickers over a Compose scroll; the same text-edge tolerance as the
