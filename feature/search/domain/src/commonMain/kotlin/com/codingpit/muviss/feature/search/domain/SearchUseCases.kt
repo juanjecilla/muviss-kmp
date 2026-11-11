@@ -103,9 +103,12 @@ class MoreLikeThisUseCase(
 ) {
     suspend operator fun invoke(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>> {
         val recommended = recommendations(id, page)
-        if (recommended.getOrNull()?.items?.isNotEmpty() == true) return recommended
-        return similar(id, page)
+        if (recommended.getOrNull()?.items?.isNotEmpty() == true) return recommended.map { it.distinctByMediaId() }
+        return similar(id, page).map { it.distinctByMediaId() }
     }
+
+    /** The row is a `LazyColumn` keyed by [MediaId]: one title must not reach it twice (#733). */
+    private fun PagedResult<MediaSummary>.distinctByMediaId(): PagedResult<MediaSummary> = copy(items = items.withoutShown(emptySet()))
 }
 
 /** Loads one episode's full detail for the episode screen. */
