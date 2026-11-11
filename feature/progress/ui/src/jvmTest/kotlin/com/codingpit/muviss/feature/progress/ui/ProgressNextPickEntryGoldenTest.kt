@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.progress.ui
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
 import kotlinx.coroutines.Dispatchers
@@ -31,14 +32,14 @@ class ProgressNextPickEntryGoldenTest {
 
     @Test
     fun empty_watch_next_with_what_s_next_light() = runComposeUiTest {
-        setContent { GoldenSurface { ProgressWithEntry(onOpenNextPick = {}, darkTheme = false) } }
+        setContent { MuvissTheme(darkTheme = false) { GoldenSurface { ProgressWithEntryContent(onOpenNextPick = {}) } } }
         awaitEmptyWatchNext()
         assertMatchesGolden("progress-empty-what-s-next", tolerance = ENTRY_TOLERANCE)
     }
 
     @Test
     fun empty_watch_next_with_what_s_next_dark() = runComposeUiTest {
-        setContent { GoldenSurface { ProgressWithEntry(onOpenNextPick = {}, darkTheme = true) } }
+        setContent { MuvissTheme(darkTheme = true) { GoldenSurface { ProgressWithEntryContent(onOpenNextPick = {}) } } }
         awaitEmptyWatchNext()
         assertMatchesGolden("progress-empty-what-s-next-dark", tolerance = ENTRY_TOLERANCE)
     }

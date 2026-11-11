@@ -62,6 +62,20 @@ class PickSessionScreenTest {
     }
 
     @Test
+    fun answering_a_question_chip_moves_to_the_next_step() = runComposeUiTest {
+        setContent { ScreenUnderTest(context = PickContext(length = SessionLength.STANDARD)) }
+        waitForIdle()
+        onNodeWithText("Where should it come from?").assertExists()
+
+        // "Either" leaves the two-candidate pool alone, so the step advance is the only thing this asserts.
+        onNodeWithText("Either").performClick()
+        waitForIdle()
+
+        onNodeWithText("Question 2 of 4").assertExists()
+        onNodeWithText("Where should it come from?").assertDoesNotExist()
+    }
+
+    @Test
     fun offline_the_question_says_only_the_list_is_searched() = runComposeUiTest {
         setContent { ScreenUnderTest(context = PickContext(length = SessionLength.STANDARD, online = false)) }
         waitForIdle()

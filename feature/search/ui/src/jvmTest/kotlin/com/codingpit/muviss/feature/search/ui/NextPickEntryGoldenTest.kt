@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
 import com.codingpit.muviss.models.WatchStatus
@@ -30,28 +31,28 @@ class NextPickEntryGoldenTest {
 
     @Test
     fun discover_with_what_s_next_light() = runComposeUiTest {
-        setContent { GoldenSurface { DiscoverWithEntry(onOpenNextPick = {}, darkTheme = false) } }
+        setContent { MuvissTheme(darkTheme = false) { GoldenSurface { DiscoverWithEntryContent(onOpenNextPick = {}) } } }
         waitForIdle()
         assertMatchesGolden("discover-what-s-next", tolerance = ENTRY_TOLERANCE)
     }
 
     @Test
     fun discover_with_what_s_next_dark() = runComposeUiTest {
-        setContent { GoldenSurface { DiscoverWithEntry(onOpenNextPick = {}, darkTheme = true) } }
+        setContent { MuvissTheme(darkTheme = true) { GoldenSurface { DiscoverWithEntryContent(onOpenNextPick = {}) } } }
         waitForIdle()
         assertMatchesGolden("discover-what-s-next-dark", tolerance = ENTRY_TOLERANCE)
     }
 
     @Test
     fun completed_detail_with_what_s_next_light() = runComposeUiTest {
-        setContent { GoldenSurface { DetailWithEntry(WatchStatus.WATCHED, onOpenNextPick = {}, darkTheme = false) } }
+        setContent { MuvissTheme(darkTheme = false) { GoldenSurface { DetailWithEntryContent(WatchStatus.WATCHED, onOpenNextPick = {}) } } }
         waitForIdle()
         assertMatchesGolden("detail-completed-what-s-next", tolerance = ENTRY_TOLERANCE)
     }
 
     @Test
     fun completed_detail_with_what_s_next_dark() = runComposeUiTest {
-        setContent { GoldenSurface { DetailWithEntry(WatchStatus.WATCHED, onOpenNextPick = {}, darkTheme = true) } }
+        setContent { MuvissTheme(darkTheme = true) { GoldenSurface { DetailWithEntryContent(WatchStatus.WATCHED, onOpenNextPick = {}) } } }
         waitForIdle()
         assertMatchesGolden("detail-completed-what-s-next-dark", tolerance = ENTRY_TOLERANCE)
     }
