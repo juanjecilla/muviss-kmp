@@ -320,6 +320,39 @@ UPDATE appSettings SET motionDefaultApplied = 1 WHERE id = 0;
 markDisplayPreferencesChanged:
 UPDATE appSettings SET displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
 
+-- A Display Preference written together with its group stamp (ADR 0036, #642): one statement, so a process
+-- that stops cannot commit the value without the stamp that makes a backup treat it as a change. The plain
+-- `updateX` queries above stay for the OS motion default and for callers that stamp separately.
+updateThemeStamped:
+UPDATE appSettings SET theme = :theme, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateLanguageStamped:
+UPDATE appSettings SET language = :language, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateRegionStamped:
+UPDATE appSettings SET region = :region, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateAnimationsEnabledStamped:
+UPDATE appSettings SET animationsEnabled = :animationsEnabled, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageDeckAnimationsStamped:
+UPDATE appSettings SET triageDeckAnimations = :triageDeckAnimations, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTickAnimationsStamped:
+UPDATE appSettings SET tickAnimations = :tickAnimations, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageControlSchemeStamped:
+UPDATE appSettings SET triageControlScheme = :triageControlScheme, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageSnoozePeriodStamped:
+UPDATE appSettings SET triageSnoozePeriod = :triageSnoozePeriod, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageSnoozePlacementStamped:
+UPDATE appSettings SET triageSnoozePlacement = :triageSnoozePlacement, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateMutedGenresInSearchStamped:
+UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
 -- A restore of the whole group (ADR 0036, #642). It takes the backup's stamp, not the clock, and the
 -- dirty flag is written explicitly: a restored group is a change the account has not seen, and it must
 -- still lose to anything newer there. Device switches are never in this statement.

@@ -84,25 +84,22 @@ class SqlDelightSettingsRepository(
         .onStart { ensureRow() }
         .map { row -> row?.toDomain() ?: AppSettings() }
 
-    // A Display Preference (ADR 0036): every choice stamps the group, so it travels with the group's one stamp.
+    // A Display Preference (ADR 0036): the value and the group's stamp are one statement, so they commit together.
     override suspend fun setTheme(theme: AppTheme) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateTheme(theme.name)
-        markDisplayPreferencesChanged()
+        settingsQueries.updateThemeStamped(theme.name, clock.nowEpochMs())
         Unit
     }
 
     override suspend fun setLanguage(language: String) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateLanguage(language)
-        markDisplayPreferencesChanged()
+        settingsQueries.updateLanguageStamped(language, clock.nowEpochMs())
         Unit
     }
 
     override suspend fun setRegion(region: String) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateRegion(region)
-        markDisplayPreferencesChanged()
+        settingsQueries.updateRegionStamped(region, clock.nowEpochMs())
         Unit
     }
 
@@ -159,8 +156,7 @@ class SqlDelightSettingsRepository(
 
     override suspend fun setMutedGenresInSearch(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateMutedGenresInSearch(enabled)
-        markDisplayPreferencesChanged()
+        settingsQueries.updateMutedGenresInSearchStamped(enabled, clock.nowEpochMs())
         Unit
     }
 
@@ -186,11 +182,6 @@ class SqlDelightSettingsRepository(
     }
 
     private suspend fun ensureRow() = withContext(dispatchers.io) { settingsQueries.ensureRow() }
-
-    /** Called after each Display Preference write. Stamps the group with the clock and marks it dirty (ADR 0036). */
-    private suspend fun markDisplayPreferencesChanged() = withContext(dispatchers.io) {
-        settingsQueries.markDisplayPreferencesChanged(clock.nowEpochMs())
-    }
 
     // A restored backup from a newer build can store a theme this one does not know; it is kept
     // as is (a later build reads it again) and shown as the system theme meanwhile, never thrown.
