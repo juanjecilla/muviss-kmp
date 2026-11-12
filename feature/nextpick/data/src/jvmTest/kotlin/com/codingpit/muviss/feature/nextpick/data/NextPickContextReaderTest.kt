@@ -24,14 +24,14 @@ class NextPickContextReaderTest {
 
     @Test
     fun a_stored_quick_session_opens_with_the_quick_length() = runTest {
-        val context = NextPickContextReader(ConnectivityMonitor.AlwaysOnline, { FakeLibrary(emptyList()) }, StoredPreferences(SessionLength.QUICK)).read()
+        val context = NextPickContextReader(ConnectivityMonitor.AlwaysOnline, { FakeLibrary(emptyList()) }, StoredPreferences(SessionLength.QUICK), { FakeTasteProfile() }).read()
 
         assertEquals(SessionLength.QUICK, context.length)
     }
 
     @Test
     fun a_stored_no_questions_session_opens_with_no_questions() = runTest {
-        val context = NextPickContextReader(ConnectivityMonitor.AlwaysOnline, { FakeLibrary(emptyList()) }, StoredPreferences(SessionLength.NONE)).read()
+        val context = NextPickContextReader(ConnectivityMonitor.AlwaysOnline, { FakeLibrary(emptyList()) }, StoredPreferences(SessionLength.NONE), { FakeTasteProfile() }).read()
 
         assertEquals(SessionLength.NONE, context.length)
     }
