@@ -39,11 +39,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
@@ -83,6 +85,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.ceil
 
 @Composable
 fun SearchScreen(
@@ -253,14 +256,22 @@ private fun PopularSection(title: String, items: List<MediaSummary>, loading: Bo
 private fun CarouselSkeleton(title: String) {
     Column {
         CarouselHeader(title, modifier = Modifier.padding(bottom = MuvissSpacing.s))
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val count = ((maxWidth + MuvissSpacing.m) / (POSTER_CARD_WIDTH + MuvissSpacing.m)).toInt().coerceAtLeast(1)
+        // Clipped as the loaded LazyRow is, so the partly visible last card stops at the same edge.
+        BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds()) {
+            val count = carouselSkeletonCount(maxWidth)
             Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
                 repeat(count) { PosterCardSkeleton(Modifier.width(POSTER_CARD_WIDTH)) }
             }
         }
     }
 }
+
+/**
+ * The placeholders a skeleton row draws in [width]: every card whose *start* falls inside it, the partly visible
+ * one included, because the loaded `LazyRow` starts that card too. Card k starts at k * (card + gap), so the count
+ * is the ceiling of width / (card + gap). At least one, so an empty width still shows the shape.
+ */
+internal fun carouselSkeletonCount(width: Dp): Int = ceil(width / (POSTER_CARD_WIDTH + MuvissSpacing.m)).toInt().coerceAtLeast(1)
 
 private val POSTER_CARD_WIDTH = 110.dp
 private const val GENRE_SKELETON_CHIPS = 5
