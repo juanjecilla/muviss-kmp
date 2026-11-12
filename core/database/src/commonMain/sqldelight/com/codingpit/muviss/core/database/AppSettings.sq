@@ -7,8 +7,10 @@
 -- "never synced"; `SyncEngine` stamps it after a completed push+pull cycle.
 --
 -- `triageControlScheme` and `triageTutorialSeen` were added in `4.sqm`
--- (triage, ADR 0010). Both are per-device UI preferences, deliberately NOT
--- synced — same category as `collectionEntry.notificationsMuted`. Columns
+-- (triage, ADR 0010). `triageControlScheme` is a Display Preference (ADR 0036):
+-- which direction means which verdict is how the deck reads for the person, so
+-- it travels with the group (it was per device until #642). `triageTutorialSeen`
+-- is a one-time mark about this install and stays per device. Columns
 -- added by a migration must stay LAST in this declaration: `ALTER TABLE ADD
 -- COLUMN` appends, and `verifyMigrations` compares ordinal position.
 --
@@ -16,14 +18,16 @@
 -- first is the app-wide motion switch; the second turns off the triage deck's
 -- own card animations on their own. The effective value is the AND of the two,
 -- so the master switch turns everything off and the per-feature switch narrows
--- it further. Both are per-device UI preferences and, like the two above, are
--- deliberately NOT synced: motion tolerance belongs to a device and the person
--- holding it, not to a library.
+-- it further. Both are Display Preferences (ADR 0036): the person's choice,
+-- which travels with the group, so every device they sign in to shows the same
+-- motion. Only the OS reduce-motion default is a device fact, and it is written
+-- without stamping the group (`updateAnimationsEnabled`'s caller, `ApplySystemMotionDefault`).
 --
 -- `tickAnimations` was added in `19.sqm` (EPIC 52). It narrows `animationsEnabled`
 -- the way `triageDeckAnimations` does: readers take the AND of the two. It
--- covers the feedback a tick plays on the Progress and Detail screens. Per
--- device and NOT synced, like every motion preference above.
+-- covers the feedback a tick plays on the Progress and Detail screens. A Display
+-- Preference (ADR 0036): it is part of the group, stamped and dirtied like its
+-- neighbours. It was per device until #642.
 --
 -- `syncCursorEpochMs` was added in `7.sqm`. It is NOT a second copy of
 -- `lastSyncedAtEpochMs`: that one answers "when did this device last complete
@@ -67,11 +71,12 @@
 -- feature nobody reaches.
 --
 -- `triageSnoozePeriod`, `triageSnoozePlacement` and `triageSnoozeHintSeen`
--- were added in `12.sqm` (EPIC 42, snooze, ADR 0023). Per-device and NOT
--- synced, like every preference above them: how long *this* device waits
--- before raising a title again, and where the returning cards go, are
--- statements about this device's deck, not about the library. The Snoozes
--- themselves are user data and do sync — see `triageSnooze`.
+-- were added in `12.sqm` (EPIC 42, snooze, ADR 0023). The first two are Display
+-- Preferences (ADR 0036): how long the person waits before a snooze returns, and
+-- where the returning cards land, travel with the group, because a Snooze carries
+-- its due date in `triageSnooze`. `triageSnoozeHintSeen` is a one-time mark about
+-- this install and stays per device. The Snoozes themselves are user data and do
+-- sync — see `triageSnooze`. The two Display Preferences were per device until #642.
 --
 -- `triageSnoozePeriod` ASK_EACH_TIME is not a duration: it means the app asks
 -- on every snooze instead of applying one, which is also the only route to a
@@ -86,7 +91,9 @@
 -- once-ever mark for the Notification Nudge.
 --
 -- `mutedGenres` and `mutedGenresInSearch` were added in `18.sqm` (Muted Genres,
--- ADR 0031). Per-device and NOT synced. `mutedGenres` is a `;`-joined list of
+-- ADR 0031). `mutedGenresInSearch` is a Display Preference (ADR 0036) and travels
+-- with the group. `mutedGenres` is the legacy list and stays the live store until #644 moves it into
+-- the `mutedGenre` decisions and the `mutedGenreChoice` marker (ADR 0036). It is a `;`-joined list of
 -- `<movie|tv>:<tmdb genre id>:<name>` (the name is kept so Settings can list what is muted
 -- offline); the column DEFAULT is what mutes Talk, News and Reality on a fresh
 -- install, and `ALTER TABLE ADD COLUMN ... DEFAULT` is what gives an upgraded
@@ -160,7 +167,9 @@ CREATE TABLE appSettings (
     reviewInstalledAtEpochMs INTEGER,
     reviewTickCount INTEGER NOT NULL DEFAULT 0,
     reviewLastAskedAtEpochMs INTEGER,
-    reviewLastAskedVersion TEXT
+    reviewLastAskedVersion TEXT,
+    displayPreferencesUpdatedAtEpochMs INTEGER,
+    displayPreferencesDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -303,3 +312,62 @@ SELECT motionDefaultApplied FROM appSettings WHERE id = 0;
 
 markMotionDefaultApplied:
 UPDATE appSettings SET motionDefaultApplied = 1 WHERE id = 0;
+
+-- A person's choice of any Display Preference (ADR 0036): the setter writes its column, then this, so the
+-- group's stamp is the time of the latest change and the group is dirty until a push carries it. Not
+-- every write goes through here: the OS reduce-motion default (`ApplySystemMotionDefault`) is not a change
+-- and writes `animationsEnabled` alone, and `ensureRow` seeds defaults that are never data.
+markDisplayPreferencesChanged:
+UPDATE appSettings SET displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+-- A Display Preference written together with its group stamp (ADR 0036, #642): one statement, so a process
+-- that stops cannot commit the value without the stamp that makes a backup treat it as a change. The plain
+-- `updateX` queries above stay for the OS motion default and for callers that stamp separately.
+updateThemeStamped:
+UPDATE appSettings SET theme = :theme, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateLanguageStamped:
+UPDATE appSettings SET language = :language, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateRegionStamped:
+UPDATE appSettings SET region = :region, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateAnimationsEnabledStamped:
+UPDATE appSettings SET animationsEnabled = :animationsEnabled, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageDeckAnimationsStamped:
+UPDATE appSettings SET triageDeckAnimations = :triageDeckAnimations, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTickAnimationsStamped:
+UPDATE appSettings SET tickAnimations = :tickAnimations, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageControlSchemeStamped:
+UPDATE appSettings SET triageControlScheme = :triageControlScheme, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageSnoozePeriodStamped:
+UPDATE appSettings SET triageSnoozePeriod = :triageSnoozePeriod, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateTriageSnoozePlacementStamped:
+UPDATE appSettings SET triageSnoozePlacement = :triageSnoozePlacement, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+updateMutedGenresInSearchStamped:
+UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch, displayPreferencesUpdatedAtEpochMs = :nowEpochMs, displayPreferencesDirty = 1 WHERE id = 0;
+
+-- A restore of the whole group (ADR 0036, #642). It takes the backup's stamp, not the clock, and the
+-- dirty flag is written explicitly: a restored group is a change the account has not seen, and it must
+-- still lose to anything newer there. Device switches are never in this statement.
+restoreDisplayPreferences:
+UPDATE appSettings
+SET theme = :theme,
+    language = :language,
+    region = :region,
+    animationsEnabled = :animationsEnabled,
+    triageDeckAnimations = :triageDeckAnimations,
+    tickAnimations = :tickAnimations,
+    triageControlScheme = :triageControlScheme,
+    triageSnoozePeriod = :triageSnoozePeriod,
+    triageSnoozePlacement = :triageSnoozePlacement,
+    mutedGenresInSearch = :mutedGenresInSearch,
+    displayPreferencesUpdatedAtEpochMs = :stampEpochMs,
+    displayPreferencesDirty = :isDirty
+WHERE id = 0;

@@ -71,11 +71,11 @@ class NextPickRequestBudgetTest {
         val engine = PickEngine(
             sources = listOf(
                 CollectionBacklogCandidates(collection, genreIds),
-                DiscoverSource(metadata, collection, thisYear = { 2027 }),
+                DiscoverSource(metadata, collection, thisYear = { 2027 }, muting = PickMuting { MutedGenres.NONE }, taste = { FakeTasteProfile() }, region = { "US" }),
                 AnchorCandidates(metadata, collection),
             ),
             exclusions = PickExclusions { emptySet() },
-            history = CollectionHistoryReader(clock, collection, connectivity(context.online), genreIds),
+            history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity(context.online), genreIds), { FakeTasteProfile() }),
             muting = PickMuting { MutedGenres.NONE },
         )
         return engine.pick(criteriaFor(context, *answers), context)

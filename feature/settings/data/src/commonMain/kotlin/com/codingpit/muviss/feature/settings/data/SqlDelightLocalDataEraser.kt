@@ -68,6 +68,9 @@ class SqlDelightLocalDataEraser(
             database.triageDecisionQueries.deleteAll()
             database.triageSnoozeQueries.deleteAll()
             database.tasteProfileQueries.deleteAll()
+            // Muted Genres decisions and the choice marker (ADR 0036): user data, not a cache.
+            database.mutedGenreQueries.deleteAll()
+            database.mutedGenreChoiceQueries.deleteAll()
             database.profileQueries.deleteRow()
             database.appSettingsQueries.deleteRow()
             // Co-watch's local copies (EPIC 41).
