@@ -23,10 +23,22 @@ class ExportShapeTest {
         assertEquals(
             listOf(
                 "formatVersion", "appVersion", "exportedAtEpochMs", "collection", "progress", "triage", "plays",
-                "snoozes", "lists", "listEntries", "profile", "settings", "tasteProfile",
+                "snoozes", "lists", "listEntries", "profile", "settings", "tasteProfile", "mutedGenreChoice", "mutedGenres",
             ),
             MuvissDataExport.serializer().descriptor.elementNames.toList(),
             "the episode catalog is TMDB's data cached locally, not the user's — see ADR 0015",
+        )
+    }
+
+    @Test
+    fun `the display preferences group is exported with its one stamp`() {
+        assertEquals(
+            listOf(
+                "theme", "language", "region", "animationsEnabled", "triageDeckAnimations", "tickAnimations",
+                "triageControlScheme", "triageSnoozePeriod", "triageSnoozePlacement", "mutedGenres", "mutedGenresInSearch",
+                "displayPreferencesUpdatedAtEpochMs",
+            ),
+            SettingsExport.serializer().descriptor.elementNames.toList(),
         )
     }
 }

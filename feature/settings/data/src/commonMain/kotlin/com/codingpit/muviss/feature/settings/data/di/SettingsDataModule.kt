@@ -107,7 +107,7 @@ val settingsDataModule: Module = module {
     factory { SetTasteItemUseCase(get(), mutedGenreKeys(get())) }
     single<TasteProfileApi> { DefaultTasteProfileApi(get(), get()) }
     factory { DeleteAllDataUseCase(get()) }
-    single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get()) }
+    single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get(), get()) }
     single<NextPickPreferences> { AppSettingsNextPickPreferences(get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class

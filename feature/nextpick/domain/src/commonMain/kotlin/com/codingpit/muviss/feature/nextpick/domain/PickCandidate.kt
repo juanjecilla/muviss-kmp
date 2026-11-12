@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.nextpick.domain
 
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.WatchStatus
@@ -51,6 +52,8 @@ data class PickHistory(
     val anchorTitle: String? = null,
     /** Today's epoch day, for "new" and "classic". */
     val todayEpochDay: Long = 0,
+    /** Genres the person likes in the Taste Profile, already without any that are muted (ADR 0031). */
+    val likedGenres: Set<GenreKey> = emptySet(),
 )
 
 /** Why a pick was chosen, as data. The UI turns each into a localized sentence (#400); the domain does not speak a language. */
@@ -66,6 +69,9 @@ sealed interface PickReason {
     data object RecentRelease : PickReason
     data object Classic : PickReason
     data class InYourLanguage(val language: String) : PickReason
+
+    /** One of the person's liked genres (Taste Profile, #402) is among the title's genres. */
+    data object LikedGenre : PickReason
 
     /** Nothing stood out: it passed the filters. Better than inventing a reason. */
     data object FitsWhatYouAsked : PickReason

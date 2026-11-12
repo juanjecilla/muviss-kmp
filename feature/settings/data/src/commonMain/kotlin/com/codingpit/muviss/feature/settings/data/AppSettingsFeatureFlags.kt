@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.settings.data
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
@@ -34,6 +35,7 @@ class AppSettingsFeatureFlags(
     private val queries: AppSettingsQueries,
     private val dispatchers: AppDispatchers,
     remoteConfig: RemoteConfig,
+    private val clock: AppClock,
 ) : FeatureFlags {
 
     override val triageControlScheme: Flow<TriageControlScheme> = settings()
@@ -67,25 +69,27 @@ class AppSettingsFeatureFlags(
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) = withContext(dispatchers.io) {
         ensureRow()
-        queries.updateTriageControlScheme(scheme.name)
+        queries.updateTriageControlSchemeStamped(scheme.name, clock.nowEpochMs())
         Unit
     }
 
+    // A Display Preference (ADR 0036): stamped with its value. The OS reduce-motion default does not come
+    // through here (`ApplySystemMotionDefault` writes the column directly), because it is not a change.
     override suspend fun setAnimationsEnabled(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
-        queries.updateAnimationsEnabled(enabled)
+        queries.updateAnimationsEnabledStamped(enabled, clock.nowEpochMs())
         Unit
     }
 
     override suspend fun setTriageDeckAnimations(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
-        queries.updateTriageDeckAnimations(enabled)
+        queries.updateTriageDeckAnimationsStamped(enabled, clock.nowEpochMs())
         Unit
     }
 
     override suspend fun setTickAnimations(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
-        queries.updateTickAnimations(enabled)
+        queries.updateTickAnimationsStamped(enabled, clock.nowEpochMs())
         Unit
     }
 
@@ -97,13 +101,13 @@ class AppSettingsFeatureFlags(
 
     override suspend fun setTriageSnoozePeriod(period: SnoozePeriod) = withContext(dispatchers.io) {
         ensureRow()
-        queries.updateTriageSnoozePeriod(period.name)
+        queries.updateTriageSnoozePeriodStamped(period.name, clock.nowEpochMs())
         Unit
     }
 
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) = withContext(dispatchers.io) {
         ensureRow()
-        queries.updateTriageSnoozePlacement(placement.name)
+        queries.updateTriageSnoozePlacementStamped(placement.name, clock.nowEpochMs())
         Unit
     }
 

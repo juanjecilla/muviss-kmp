@@ -318,7 +318,8 @@ fun SettingsScreen(
             PickerRow(
                 label = stringResource(Res.string.next_pick_result),
                 value = nextPickState.resultMode.label(),
-                options = ResultMode.entries.map { it.name to it.label() },
+                // Deck is not offered until its handoff exists (#554): choosing it would open a button that does nothing.
+                options = ResultMode.entries.filter { it != ResultMode.DECK }.map { it.name to it.label() },
                 selectedCode = nextPickState.resultMode.name,
                 onSelect = { name -> nextPick.onResultModeSelected(ResultMode.fromStored(name)) },
             )
