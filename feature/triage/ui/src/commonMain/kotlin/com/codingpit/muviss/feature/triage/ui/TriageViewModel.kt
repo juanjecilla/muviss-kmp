@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.triage.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
+import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.flags.FeatureFlags
@@ -29,7 +30,9 @@ import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -206,6 +209,34 @@ class TriageViewModel(
     /** Bumped by every reset. A refill that finds it changed has been superseded and drops its result. */
     private var generation = 0
 
+    /** A checkpoint taken at [epoch], the [generation] it was taken in. A reset makes it stale (#722). */
+    private class PendingCheckpoint(
+        val epoch: Int,
+        val filter: DeckFilter,
+        val cursor: DeckCursor,
+        val unactedMovie: Int?,
+        val unactedTv: Int?,
+    )
+
+    /**
+     * Every checkpoint, in the order it was taken. One consumer writes them one at a time, so an older
+     * snapshot can never land after a newer one, and a snapshot from before a reset is skipped rather than
+     * overwriting the reset's own position.
+     */
+    private val checkpoints = Channel<PendingCheckpoint>(Channel.UNLIMITED)
+
+    /**
+     * An action the store has not confirmed yet (a decision whose record is in flight or failed, or a Snooze
+     * not yet written), keyed by card. Its page stays in every checkpoint until the action persists, so a
+     * restart cannot resume past a card the person acted on but nothing has recorded (#722). [token] tells
+     * a superseded action from the one that is still outstanding.
+     */
+    private data class Unpersisted(val summary: MediaSummary, val page: Int?, val token: Long)
+
+    private val unpersisted = mutableMapOf<MediaId, Unpersisted>()
+
+    private var unpersistedToken = 0L
+
     /** Monotonic, so undoing the same card twice reads as two separate events. */
     private var restoreToken = 0L
 
@@ -244,6 +275,17 @@ class TriageViewModel(
             .launchInReporting(viewModelScope)
 
         analytics.track(TriageEvent.DeckOpened)
+        viewModelScope.launchReporting {
+            for (pending in checkpoints) {
+                if (pending.epoch != generation) continue
+                // One failed save costs one report; the next checkpoint still gets written.
+                runCatching { loadDeck.checkpoint(pending.filter, pending.cursor, pending.unactedMovie, pending.unactedTv) }
+                    .onFailure { error ->
+                        if (error is CancellationException) throw error
+                        CrashReporter.recordException(error)
+                    }
+            }
+        }
         viewModelScope.launchReporting { loadGenreChips() }
         // The first deck waits for the first muting: filling it unmuted and then reloading would flash
         // exactly the shows the user muted. A later change (Settings, the chip) reloads from page 1.
@@ -300,19 +342,25 @@ class TriageViewModel(
                 restored = null,
             )
         }
-        checkpoint()
+        // The saved position moves only once the decision persists; until then its page is held (see [hold]).
+        val token = hold(summary)
         viewModelScope.launchReporting {
-            actions.record(summary, verdict).onFailure { error ->
-                _state.update { current ->
-                    current.copy(
-                        // The failure replaces the Undo (#159). Clearing undoable here
-                        // cancels the Undo snackbar's effect, so the failure takes the
-                        // snackbar slot at once instead of racing it (#569).
-                        undoable = null,
-                        failedCommit = FailedCommit(summary, verdict, error.toUiText(UiText.Resource(Res.string.error_commit))),
-                    )
+            actions.record(summary, verdict)
+                .onSuccess {
+                    settle(summary.id, token)
+                    checkpoint()
                 }
-            }
+                .onFailure { error ->
+                    _state.update { current ->
+                        current.copy(
+                            // The failure replaces the Undo (#159). Clearing undoable here
+                            // cancels the Undo snackbar's effect, so the failure takes the
+                            // snackbar slot at once instead of racing it (#569).
+                            undoable = null,
+                            failedCommit = FailedCommit(summary, verdict, error.toUiText(UiText.Resource(Res.string.error_commit))),
+                        )
+                    }
+                }
         }
         refillIfRunningLow()
     }
@@ -336,6 +384,8 @@ class TriageViewModel(
             )
         }
         shown -= undoable.summary.id
+        // The card is back on the deck, so its page is held by the deck itself, not by this hold.
+        unpersisted.remove(undoable.summary.id)
         checkpoint()
         viewModelScope.launchReporting {
             when (undoable) {
@@ -418,8 +468,13 @@ class TriageViewModel(
                 restored = null,
             )
         }
-        viewModelScope.launchReporting { actions.snooze(summary, dueAtEpochDay) }
-        checkpoint()
+        // A failed write throws, so the report is made and the hold stays: the card's page is kept, not skipped.
+        val token = hold(summary)
+        viewModelScope.launchReporting {
+            actions.snooze(summary, dueAtEpochDay)
+            settle(summary.id, token)
+            checkpoint()
+        }
         refillIfRunningLow()
     }
 
@@ -428,10 +483,16 @@ class TriageViewModel(
     fun onRetryFailedCommit() {
         val failed = _state.value.failedCommit ?: return
         _state.update { it.copy(failedCommit = null) }
+        val token = unpersisted[failed.summary.id]?.token ?: hold(failed.summary)
         viewModelScope.launchReporting {
-            actions.record(failed.summary, failed.verdict).onFailure { error ->
-                _state.update { it.copy(failedCommit = failed.copy(message = error.toUiText(UiText.Resource(Res.string.error_commit)))) }
-            }
+            actions.record(failed.summary, failed.verdict)
+                .onSuccess {
+                    settle(failed.summary.id, token)
+                    checkpoint()
+                }
+                .onFailure { error ->
+                    _state.update { it.copy(failedCommit = failed.copy(message = error.toUiText(UiText.Resource(Res.string.error_commit)))) }
+                }
         }
     }
 
@@ -559,10 +620,22 @@ class TriageViewModel(
     private fun checkpoint() {
         val filter = cursorFilter ?: return
         val unacted = _state.value.cards + overflow
-        val unactedMovie = unacted.filter { it.type == MediaType.MOVIE }.mapNotNull { pageOf[it.id] }.minOrNull()
-        val unactedTv = unacted.filter { it.type == MediaType.TV }.mapNotNull { pageOf[it.id] }.minOrNull()
-        val snapshot = cursor
-        viewModelScope.launchReporting { loadDeck.checkpoint(filter, snapshot, unactedMovie, unactedTv) }
+        val pages = unacted.map { it.type to pageOf[it.id] } + unpersisted.values.map { it.summary.type to it.page }
+        val unactedMovie = pages.filter { it.first == MediaType.MOVIE }.mapNotNull { it.second }.minOrNull()
+        val unactedTv = pages.filter { it.first == MediaType.TV }.mapNotNull { it.second }.minOrNull()
+        checkpoints.trySend(PendingCheckpoint(generation, filter, cursor, unactedMovie, unactedTv))
+    }
+
+    /** Holds [summary]'s page in every checkpoint until its action persists. Returns the token [settle] needs. */
+    private fun hold(summary: MediaSummary): Long {
+        val token = ++unpersistedToken
+        unpersisted[summary.id] = Unpersisted(summary, pageOf[summary.id], token)
+        return token
+    }
+
+    /** Releases the hold once the action persisted, unless a newer action on the same card has taken it over. */
+    private fun settle(id: MediaId, token: Long) {
+        if (unpersisted[id]?.token == token) unpersisted.remove(id)
     }
 
     internal companion object {

@@ -403,7 +403,9 @@ internal class TriageHarness(
     val cursors: DeckCursorStore = NoDeckCursorStore,
 ) {
     val source = FakeDeckSource(movies, tv, genres, moviePages)
-    val details = GatedDetailsSource(movies + tv)
+
+    // Paged titles must be known to the details source too, or deciding one fails to record.
+    val details = GatedDetailsSource(movies + tv + (moviePages?.byNumber?.values?.flatten() ?: emptyList()))
     val repository = FakeTriageDecisionRepository()
     val collection = FakeCollectionApi()
     val progress = FakeProgressApi()

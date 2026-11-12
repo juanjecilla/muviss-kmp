@@ -5,6 +5,8 @@ package com.codingpit.muviss.feature.triage.ui
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.feature.triage.domain.DeckCursorStore
+import com.codingpit.muviss.feature.triage.domain.SavedDeckCursor
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.GenreKey
@@ -14,6 +16,7 @@ import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -27,6 +30,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 class TriageViewModelTest {
 
@@ -375,7 +379,9 @@ class TriageViewModelTest {
         val gate = CompletableDeferred<Unit>()
         harness.source.gate = gate
         val before = harness.source.requestedPages.size
-        repeat(6) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) } // the fifth swipe starts a refill; the sixth lands in flight
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) } // the fifth swipe starts a refill
+        assertTrue(harness.source.requestedPages.size > before, "the refill reached the gate before the next swipe")
+        vm.onDecide(TriageVerdict.LATER, viaGesture = false) // the sixth lands in flight
         gate.complete(Unit)
         advanceUntilIdle()
 
@@ -426,6 +432,8 @@ class TriageViewModelTest {
         // Act on every card of pages 1 to 4. Page 5 is still unacted, so that is where a visit must resume.
         repeat(8) { first.onDecide(TriageVerdict.LATER, viaGesture = false) }
         advanceUntilIdle()
+        // The position moves only once each decision persists, and the harness persists on a real IO thread.
+        awaitSavedResumePage(store, page = 5)
 
         val before = harness.source.requestedPages.size
         val second = harness.viewModel()
@@ -446,7 +454,9 @@ class TriageViewModelTest {
 
         val gate = CompletableDeferred<Unit>()
         harness.source.gate = gate
+        val beforeSwipes = harness.source.requestedPages.size
         repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) } // a refill now waits on the gate
+        assertTrue(harness.source.requestedPages.size > beforeSwipes, "the refill reached the gate before the reset")
         val beforeReset = harness.source.requestedPages.size
         vm.retry() // an explicit start over
         harness.source.gate = null
@@ -650,5 +660,90 @@ class TriageViewModelTest {
         advanceUntilIdle()
 
         assertFalse(vm.state.value.hasMuted)
+    }
+
+    @Test
+    fun `a decision that fails to record keeps its page in the saved position`() = runTest {
+        // Page 1 is the only card on page 1, so once it is decided the earliest unacted page is 2 — unless the
+        // failed decision still holds page 1 (#722): then a restart resumes at 1 and cannot skip the card.
+        val pages = FakeDeckPages(mapOf(1 to listOf(movie("p1-a")), 2 to listOf(movie("p2-a"), movie("p2-b"))), totalPages = 2)
+        val store = FakeDeckCursorStore()
+        val harness = TriageHarness(moviePages = pages, cursors = store)
+        harness.details.failure = IllegalStateException("offline")
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        vm.onDecide(TriageVerdict.LATER, viaGesture = false)
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.failedCommit)
+        assertEquals(1, store.saved.values.single().moviesResumePage, "the unpersisted card keeps page 1 in the saved position")
+    }
+
+    @Test
+    fun `a checkpoint taken before a reset cannot land after the reset position`() = runTest {
+        // Writes are held in the store and released newest first, so an out-of-order landing would show up as
+        // a pre-reset value written last. Every write must land in the order it was taken, and the last one
+        // to land must come from after the reset.
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val store = HeldCursorStore()
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10), cursors = store)
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        store.holding = true
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) } // checkpoints taken before the reset
+        advanceUntilIdle()
+        store.phase = 1
+        vm.retry()
+        advanceUntilIdle()
+
+        store.holding = false
+        while (store.held.isNotEmpty()) {
+            store.held.removeLast().complete(Unit)
+            advanceUntilIdle()
+        }
+
+        assertEquals(1, store.landed.last(), "the last checkpoint to land was taken after the reset, landed: ${store.landed}")
+    }
+}
+
+/**
+ * Waits until [store] holds a resume page of [page]. The harness persists decisions on a real IO thread, so a
+ * visit started straight after the last swipe could read a position the last save has not reached yet.
+ */
+private fun TestScope.awaitSavedResumePage(store: FakeDeckCursorStore, page: Int) {
+    repeat(400) {
+        advanceUntilIdle() // the persisted result resumes on this scope's dispatcher, which only runs when driven
+        if (store.saved.values.any { it.moviesResumePage == page }) return
+        Thread.sleep(5)
+    }
+    fail("the saved resume page never reached $page, saved: ${store.saved.values}")
+}
+
+/**
+ * A [DeckCursorStore] whose writes wait for the test while [holding] is set, so a checkpoint can stay in flight
+ * across a reset. [landed] records, in the order they landed, the phase each write was issued in.
+ */
+private class HeldCursorStore : DeckCursorStore {
+    val saved = mutableMapOf<String, SavedDeckCursor>()
+    var holding = false
+
+    /** 0 until the test starts the reset; a write records the phase it was issued in. */
+    var phase = 0
+    val held = ArrayDeque<CompletableDeferred<Unit>>()
+    val landed = mutableListOf<Int>()
+
+    override suspend fun read(key: String): SavedDeckCursor? = saved[key]
+
+    override suspend fun write(key: String, saved: SavedDeckCursor) {
+        val issuedIn = phase
+        if (holding) {
+            val gate = CompletableDeferred<Unit>()
+            held.addLast(gate)
+            gate.await()
+        }
+        this.saved[key] = saved
+        landed += issuedIn
     }
 }
