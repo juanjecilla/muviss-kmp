@@ -39,6 +39,7 @@ status=0
   spotlessCheck detekt \
   jvmTest :app:androidApp:testDebugUnitTest :app:desktopApp:test \
   compileKotlinJs compileKotlinWasmJs allMetadataJar \
+  :app:webApp:jsBrowserDevelopmentWebpack :app:webApp:wasmJsBrowserDevelopmentWebpack \
   "${ios_tasks[@]}" \
   :app:androidApp:assembleDebug :app:androidApp:lintDebug \
   :app:androidApp:assembleRelease :app:androidApp:bundleRelease \

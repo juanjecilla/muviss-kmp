@@ -275,8 +275,13 @@ jobs:
           if-no-files-found: ignore
           path: app/androidApp/build/reports/lint-results-debug.*
 
-      - name: Compile web targets (JS + Wasm)
-        run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
+      # The webpack bundles run too, not just the compiles: they are the only
+      # step that resolves the JS and Wasm runtime classpaths (the resource
+      # zips), so a missing checksum in gradle/verification-metadata.xml fails
+      # here, on the PR, instead of on develop (#730). Verification is strict
+      # on every run that does not write the metadata.
+      - name: Compile web targets (JS + Wasm) and bundle them
+        run: ./gradlew compileKotlinJs compileKotlinWasmJs :app:webApp:jsBrowserDevelopmentWebpack :app:webApp:wasmJsBrowserDevelopmentWebpack --stacktrace
 
       # kotlin-js-store/ pins every npm package the JS and Wasm builds resolve.
       # Kotlin's own store task does not fail on a stale lock — it rewrites the
