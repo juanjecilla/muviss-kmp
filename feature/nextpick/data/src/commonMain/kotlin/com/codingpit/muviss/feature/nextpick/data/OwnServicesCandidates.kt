@@ -33,7 +33,16 @@ internal class OwnServicesCandidates(
         if (!criteria.onlyMyServices || candidates.isEmpty()) return candidates
         val services = serviceIds(taste()).mapTo(hashSetOf()) { it.toString() }
         if (services.isEmpty()) return candidates
-        val cached = lookup().cachedFlatrateIds(candidates.mapTo(linkedSetOf()) { it.id }, region())
+        val cached = buildMap {
+            candidates.mapTo(linkedSetOf()) { it.id }.chunked(LOOKUP_BATCH).forEach { batch ->
+                putAll(lookup().cachedFlatrateIds(batch.toSet(), region()))
+            }
+        }
         return candidates.filter { candidate -> cached[candidate.id]?.any { it in services } == true }
+    }
+
+    private companion object {
+        /** One `IN (...)` binds one parameter per id; a library can be far larger than SQLite's old limit of 999 (CodeRabbit, #764). */
+        const val LOOKUP_BATCH = 500
     }
 }

@@ -88,6 +88,30 @@ class OwnServicesCandidatesTest {
     }
 
     @Test
+    fun `a_library_larger_than_one_lookup_batch_is_looked_up_in_batches_and_filtered_whole`() = runTest {
+        val titles = (1..1200).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) }
+        val inner = FakeLookup(mapOf(MediaId.tmdbMovie("1150") to ("US" to setOf("8"))))
+        val recording = RecordingLookup(inner)
+
+        val picked = backlog(FakeLibrary(titles), recording).gather(onMyServices, PickContext(online = true))
+
+        assertEquals(listOf(MediaId.tmdbMovie("1150")), picked.map { it.id })
+        assertTrue(recording.batchSizes.size > 1, "1200 ids must not go in one lookup")
+        assertTrue(recording.batchSizes.all { it <= 500 }, "each lookup stays within one batch: ${recording.batchSizes}")
+        assertEquals(1200, recording.batchSizes.sum())
+    }
+
+    /** Records how many ids each lookup call carries, and answers from [inner]. */
+    private class RecordingLookup(private val inner: WatchProviderLookup) : WatchProviderLookup {
+        val batchSizes = mutableListOf<Int>()
+
+        override suspend fun cachedFlatrateIds(mediaIds: Set<MediaId>, region: String): Map<MediaId, Set<String>> {
+            batchSizes += mediaIds.size
+            return inner.cachedFlatrateIds(mediaIds, region)
+        }
+    }
+
+    @Test
     fun `with_the_flag_off_every_candidate_passes_and_nothing_is_looked_up`() = runTest {
         val library = FakeLibrary(listOf(libraryTitle(movie("5"), WatchStatus.NOT_STARTED)))
 
