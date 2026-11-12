@@ -16,6 +16,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -151,5 +152,20 @@ class DetailProgressWritesTest {
 
         assertTrue(progress.markedPrevious.isEmpty())
         assertTrue(collection.added.isEmpty())
+    }
+
+    @Test
+    fun a_rewatch_after_an_offered_undo_is_not_taken_back_by_that_undo() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.tickNext(episode1.id)
+        assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
+        vm.recordRewatch(episode1.id)
+        assertNull(vm.state.value.pendingUndo)
+        vm.undoBulkMark()
+
+        // Undo would have removed the newest viewing, which is the rewatch; both viewings must remain.
+        assertEquals(2, progress.observePlayCounts(show).first()[episode1.id])
     }
 }

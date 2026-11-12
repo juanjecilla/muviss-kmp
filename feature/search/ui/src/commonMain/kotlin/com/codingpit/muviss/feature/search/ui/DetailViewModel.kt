@@ -348,6 +348,21 @@ class DetailViewModel(
         }
     }
 
+    /**
+     * [releaseEntry] plus: [episodeId] is no longer something Undo may take back. A rewatch or a play removal writes
+     * the newest viewing, so an Undo that still listed the episode would delete that write instead of the tick it
+     * was offered for (#753 review). Dropped from the list, and cleared when nothing is left.
+     */
+    private fun releaseUndoFor(episodeId: EpisodeId) {
+        _state.update { s ->
+            s.copy(
+                pendingUndo = s.pendingUndo
+                    ?.let { undo -> undo.copy(createdEntry = false, removedFromLibrary = false, episodeIds = undo.episodeIds - episodeId) }
+                    ?.takeIf { it.episodeIds.isNotEmpty() },
+            )
+        }
+    }
+
     fun toggleFavorite() {
         viewModelScope.launchReporting { collectionApi.setFavorite(mediaId, !_state.value.favorite) }
     }
@@ -512,7 +527,7 @@ class DetailViewModel(
         viewModelScope.launchReporting {
             addIfAbsent()
             progressApi.recordPlay(episodeId)
-            releaseEntry()
+            releaseUndoFor(episodeId)
         }
     }
 
@@ -520,7 +535,7 @@ class DetailViewModel(
     fun undoLatestPlay(episodeId: EpisodeId) {
         viewModelScope.launchReporting {
             progressApi.removeLatestPlay(episodeId)
-            releaseEntry()
+            releaseUndoFor(episodeId)
         }
     }
 
