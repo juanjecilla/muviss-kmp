@@ -65,6 +65,9 @@ class BackupRestoreTest {
         updateTriageSnoozePlacement("FIRST")
         updateMutedGenres("movie:27:Horror")
         updateMutedGenresInSearch(true)
+        // The person changed the group, so it carries a stamp (ADR 0036). Device-bound and one-time flags
+        // below are not part of a backup.
+        markDisplayPreferencesChanged(nowEpochMs = 9_000L)
         // Device-bound and one-time flags are not part of a backup.
         updateNotificationsEnabled(true)
         updateSyncAutomatically(true)
@@ -111,11 +114,17 @@ class BackupRestoreTest {
         assertEquals(false, row.discoverIntroSeen)
     }
 
+    /** A file as a build from before ADR 0036 wrote it: the same preferences, with no group stamp. */
+    private fun legacy(backup: String): String {
+        val decoded = Json.decodeFromString<MuvissDataExport>(backup)
+        return Json.encodeToString(MuvissDataExport.serializer(), decoded.copy(settings = decoded.settings?.copy(displayPreferencesUpdatedAtEpochMs = null)))
+    }
+
     @Test
-    fun `a preference already chosen on this device is kept over the backup's`() = runTest {
+    fun `a legacy file's preference already chosen on this device is kept over the backup's`() = runTest {
         val source = newDatabase()
         changePreferences(source)
-        val backup = exporter(source).exportData()
+        val backup = legacy(exporter(source).exportData())
 
         val local = newDatabase()
         local.appSettingsQueries.ensureRow()
@@ -126,6 +135,187 @@ class BackupRestoreTest {
         val row = local.appSettingsQueries.selectSettings().awaitAsOne()
         assertEquals("LIGHT", row.theme, "chosen here, so the backup does not replace it")
         assertEquals("es-ES", row.language, "still at its default, so the backup fills it")
+    }
+
+    @Test
+    fun `a newer backup group replaces the local group as a unit`() = runTest {
+        val source = newDatabase()
+        changePreferences(source) // stamped 9_000
+        val backup = exporter(source).exportData()
+
+        val local = newDatabase()
+        local.appSettingsQueries.run {
+            ensureRow()
+            updateTheme("LIGHT")
+            updateTickAnimations(true)
+            markDisplayPreferencesChanged(nowEpochMs = 1_000L)
+        }
+
+        restorer(local).restore(backup)
+
+        val row = local.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("DARK", row.theme, "the group is one unit, so the newer backup replaces every member")
+        assertEquals(false, row.tickAnimations)
+        assertEquals(9_000L, row.displayPreferencesUpdatedAtEpochMs, "the restored group keeps the backup's stamp")
+        assertEquals(true, row.displayPreferencesDirty, "a restored group is a change the account has not seen")
+    }
+
+    @Test
+    fun `a losing group stamp still restores the legacy muted list over its default`() = runTest {
+        val source = newDatabase()
+        changePreferences(source) // group stamped 9_000, legacy list "movie:27:Horror"
+        val backup = exporter(source).exportData()
+
+        // A newer local group keeps its own values, but a list still at its default takes the backup's.
+        val newerLocal = newDatabase()
+        newerLocal.appSettingsQueries.run {
+            ensureRow()
+            updateTheme("LIGHT")
+            markDisplayPreferencesChanged(nowEpochMs = 20_000L)
+        }
+        restorer(newerLocal).restore(backup)
+        val kept = newerLocal.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("LIGHT", kept.theme, "the newer local group is kept")
+        assertEquals("movie:27:Horror", kept.mutedGenres, "the list sits outside the group, so the losing stamp does not skip it")
+
+        // A tied stamp: the group still keeps local, and a list the person already changed is kept as well.
+        val tiedLocal = newDatabase()
+        tiedLocal.appSettingsQueries.run {
+            ensureRow()
+            updateTheme("LIGHT")
+            updateMutedGenres("tv:99:Custom")
+            markDisplayPreferencesChanged(nowEpochMs = 9_000L)
+        }
+        restorer(tiedLocal).restore(backup)
+        val tied = tiedLocal.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("LIGHT", tied.theme, "a tie keeps local")
+        assertEquals("tv:99:Custom", tied.mutedGenres, "a list chosen here is never replaced")
+    }
+
+    @Test
+    fun `an older or equal backup group never replaces a newer or equal local one`() = runTest {
+        val source = newDatabase()
+        changePreferences(source) // stamped 9_000
+        val backup = exporter(source).exportData()
+
+        listOf(9_000L, 20_000L).forEach { localStamp ->
+            val local = newDatabase()
+            local.appSettingsQueries.run {
+                ensureRow()
+                updateTheme("LIGHT")
+                markDisplayPreferencesChanged(nowEpochMs = localStamp)
+            }
+
+            restorer(local).restore(backup)
+
+            val row = local.appSettingsQueries.selectSettings().awaitAsOne()
+            assertEquals("LIGHT", row.theme, "local stamp $localStamp is not older than the backup's 9000, so local keeps")
+            assertEquals(localStamp, row.displayPreferencesUpdatedAtEpochMs)
+        }
+    }
+
+    @Test
+    fun `a legacy file that changes a default stamps the group 0 and marks it dirty`() = runTest {
+        val source = newDatabase()
+        changePreferences(source)
+        val backup = legacy(exporter(source).exportData())
+
+        val fresh = newDatabase()
+        restorer(fresh).restore(backup)
+
+        val row = fresh.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("DARK", row.theme)
+        assertEquals(0L, row.displayPreferencesUpdatedAtEpochMs, "older than any real change, so it never beats one on the account")
+        assertEquals(true, row.displayPreferencesDirty)
+    }
+
+    @Test
+    fun `a legacy fill onto a device with its own stamp keeps that stamp and marks the group dirty`() = runTest {
+        val source = newDatabase()
+        changePreferences(source)
+        val backup = legacy(exporter(source).exportData())
+
+        val local = newDatabase()
+        local.appSettingsQueries.run {
+            ensureRow()
+            updateRegion("FR")
+            markDisplayPreferencesChanged(nowEpochMs = 4_000L)
+        }
+
+        restorer(local).restore(backup)
+
+        val row = local.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals("DARK", row.theme, "still at its default here, so the legacy file fills it")
+        assertEquals("FR", row.region, "chosen here, so the legacy file keeps it")
+        assertEquals(4_000L, row.displayPreferencesUpdatedAtEpochMs, "a real stamp is never lowered to 0")
+        assertEquals(true, row.displayPreferencesDirty)
+    }
+
+    @Test
+    fun `a legacy file that changes nothing leaves the group clean and unstamped`() = runTest {
+        val source = newDatabase()
+        source.appSettingsQueries.ensureRow()
+        val backup = legacy(exporter(source).exportData())
+
+        val fresh = newDatabase()
+        restorer(fresh).restore(backup)
+
+        val row = fresh.appSettingsQueries.selectSettings().awaitAsOne()
+        assertEquals(null, row.displayPreferencesUpdatedAtEpochMs)
+        assertEquals(false, row.displayPreferencesDirty)
+    }
+
+    @Test
+    fun `a restored muted list merges per row, and a tombstone keeps its unmute`() = runTest {
+        val source = newDatabase()
+        source.mutedGenreQueries.upsert("tv", 10767L, "Talk", deleted = true, isDirty = false, updatedAtEpochMs = 5_000L) // unmuted
+        source.mutedGenreQueries.upsert("movie", 27L, "Horror", deleted = false, isDirty = false, updatedAtEpochMs = 3_000L) // muted
+        source.mutedGenreQueries.upsert("tv", 10763L, "News", deleted = false, isDirty = false, updatedAtEpochMs = 2_000L)
+        val backup = exporter(source).exportData()
+
+        val local = newDatabase()
+        local.mutedGenreQueries.upsert("movie", 27L, "Horror", deleted = true, isDirty = false, updatedAtEpochMs = 4_000L) // unmuted later here
+        local.mutedGenreQueries.upsert("tv", 10767L, "Talk", deleted = false, isDirty = false, updatedAtEpochMs = 1_000L) // muted, older
+
+        restorer(local).restore(backup)
+
+        val rows = local.mutedGenreQueries.selectAll().awaitAsList().associateBy { it.mediaType to it.genreId }
+        assertEquals(true, rows.getValue("movie" to 27L).deleted, "the local unmute is newer than the backup's mute")
+        assertEquals(true, rows.getValue("tv" to 10767L).deleted, "the backup's unmute is newer than the local mute")
+        assertEquals(false, rows.getValue("tv" to 10763L).deleted, "a decision this device never made is inserted")
+        assertEquals(true, rows.getValue("tv" to 10763L).isDirty, "a restored decision reaches the account")
+    }
+
+    @Test
+    fun `the choice marker is taken when the device has none, and the newer stamp wins otherwise`() = runTest {
+        val source = newDatabase()
+        source.mutedGenreChoiceQueries.upsert(defaultsAtChoice = "tv:10767:Talk", updatedAtEpochMs = 5_000L, isDirty = false)
+        val backup = exporter(source).exportData()
+
+        val fresh = newDatabase()
+        restorer(fresh).restore(backup)
+        val taken = fresh.mutedGenreChoiceQueries.select().awaitAsOne()
+        assertEquals("tv:10767:Talk", taken.defaultsAtChoice)
+        assertEquals(true, taken.isDirty, "the restored marker is dirty with the backup's stamp")
+
+        val newer = newDatabase()
+        newer.mutedGenreChoiceQueries.upsert(defaultsAtChoice = "", updatedAtEpochMs = 9_000L, isDirty = false)
+        restorer(newer).restore(backup)
+        assertEquals("", newer.mutedGenreChoiceQueries.select().awaitAsOne().defaultsAtChoice, "the local marker is newer, so it stays")
+    }
+
+    @Test
+    fun `an export carries the group stamp, the choice marker and the decisions`() = runTest {
+        val source = newDatabase()
+        changePreferences(source)
+        source.mutedGenreChoiceQueries.upsert(defaultsAtChoice = "tv:10767:Talk", updatedAtEpochMs = 6_000L, isDirty = true)
+        source.mutedGenreQueries.upsert("movie", 27L, "Horror", deleted = false, isDirty = true, updatedAtEpochMs = 7_000L)
+
+        val decoded = Json.decodeFromString<MuvissDataExport>(exporter(source).exportData())
+
+        assertEquals(9_000L, decoded.settings?.displayPreferencesUpdatedAtEpochMs)
+        assertEquals(MutedGenreChoiceExport(defaultsAtChoice = "tv:10767:Talk", updatedAtEpochMs = 6_000L), decoded.mutedGenreChoice)
+        assertEquals(listOf(MutedGenreExport("movie", 27, "Horror", deleted = false, updatedAtEpochMs = 7_000L)), decoded.mutedGenres)
     }
 
     @Test

@@ -220,6 +220,37 @@ class PickEngineTest {
         assertEquals(ids(a), ids(b))
     }
 
+    @Test
+    fun a_liked_genre_lifts_its_title_and_is_the_reason_given() = runTest {
+        val history = PickHistory(likedGenres = setOf(GenreKey(MediaType.MOVIE, "10749")))
+        val result = engine(fresh("romance", listOf("10749")), fresh("other", listOf("18")), history = history).pick(PickCriteria(), context)
+
+        assertEquals("Title romance", result.picks.first().candidate.summary.title)
+        assertEquals(PickReason.LikedGenre, result.picks.first().reason)
+    }
+
+    @Test
+    fun a_genre_liked_then_muted_never_reaches_the_pool() = runTest {
+        val muted = MutedGenres(setOf(GenreKey(MediaType.MOVIE, "27")))
+        val history = PickHistory(likedGenres = setOf(GenreKey(MediaType.MOVIE, "27")))
+        val result = engine(fresh("horror", listOf("27")), fresh("drama", listOf("18")), muted = muted, history = history).pick(PickCriteria(), context)
+
+        assertEquals(listOf("Title drama"), result.picks.map { it.candidate.summary.title })
+    }
+
+    @Test
+    fun a_liked_genre_muted_now_gives_no_lift_even_when_a_mood_lifts_the_mute() = runTest {
+        // Light reads as comedy (35), so the mood shows a muted comedy. The standing mute still stops the like from counting.
+        val muted = MutedGenres(setOf(GenreKey(MediaType.MOVIE, "35")))
+        val criteria = PickCriteria(moods = setOf(PickMood.LIGHT))
+        val liked = PickHistory(likedGenres = setOf(GenreKey(MediaType.MOVIE, "35")))
+        val withLike = engine(fresh("comedy", listOf("35")), muted = muted, history = liked).pick(criteria, context)
+        val withoutLike = engine(fresh("comedy", listOf("35")), muted = muted).pick(criteria, context)
+
+        assertEquals(withoutLike.picks.single().score, withLike.picks.single().score)
+        assertEquals(PickReason.FitsMood(PickMood.LIGHT), withLike.picks.single().reason)
+    }
+
     // ---- the ranker's output is enforced (ADR 0032) -----------------------------------------------
 
     private val rulesPool = arrayOf(fresh("1", rating = 9.0), fresh("2", rating = 7.0), fresh("3", rating = 5.0))
