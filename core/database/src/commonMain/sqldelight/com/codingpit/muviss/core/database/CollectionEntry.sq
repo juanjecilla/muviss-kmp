@@ -171,6 +171,11 @@ UPDATE collectionEntry
 SET isDirty = 0
 WHERE mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
 
+-- How many episodes of a title the user has ticked. The insert path floors its counts at this
+-- (see `SqlDelightCollectionRepository.upsertSnapshot`), the same floor `updateSnapshot` applies.
+seenCountFor:
+SELECT COUNT(*) FROM episodeProgress WHERE mediaId = :mediaId AND seen = 1;
+
 -- The snapshot half of a refresh (EPIC 39, ADR 0020): what TMDB says about a
 -- title, and nothing the user said. It touches neither `updatedAtEpochMs` nor
 -- `isDirty` — a refresh is not an edit, so it is not synced — and it only ever

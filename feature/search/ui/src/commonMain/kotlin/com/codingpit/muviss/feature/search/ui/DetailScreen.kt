@@ -618,7 +618,7 @@ private fun ActionRow(
                 )
             }
             // Library membership (#721): the bookmark removes a saved title (Undo brings it back) and adds an unsaved one.
-            OutlinedIconButton(onClick = if (state.saved) viewModel::removeFromLibrary else viewModel::toggleSaved) {
+            OutlinedIconButton(onClick = if (state.saved) viewModel::removeFromLibrary else viewModel::addToLibrary) {
                 Icon(
                     if (state.saved) MuvissIcons.Saved else MuvissIcons.Later,
                     contentDescription = stringResource(if (state.saved) Res.string.remove_from_library else Res.string.add_to_library),

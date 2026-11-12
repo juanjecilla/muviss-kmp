@@ -368,4 +368,27 @@ class SqlDelightCollectionRepositoryTest {
             true,
         )
     }
+
+    @Test
+    fun upsertSnapshot_on_a_removed_title_floors_its_counts_at_the_ticks_it_kept() = runTest {
+        // A removed title keeps its ticks. Coming back with provider data that reports nothing aired must not
+        // leave seen above aired, which WatchProgress rejects with a throw when status is derived.
+        val show = MediaId.tmdbTv("1399")
+        repository.upsertSnapshot(details(id = show, title = "Game of Thrones"))
+        repository.remove(show)
+        repeat(3) { i ->
+            database.episodeProgressQueries.upsert(EpisodeId(show, 1, i + 1).toString(), show.toString(), 1L, (i + 1).toLong(), true, 1_000L, false)
+        }
+
+        repository.upsertSnapshot(details(id = show, title = "Game of Thrones"))
+
+        repository.observeAll().test {
+            val entry = awaitItem().single()
+            assertEquals(3, entry.seenEpisodes)
+            assertTrue(entry.airedEpisodes >= entry.seenEpisodes, "aired ${entry.airedEpisodes} < seen ${entry.seenEpisodes}")
+            assertTrue(entry.totalEpisodes >= entry.seenEpisodes, "total ${entry.totalEpisodes} < seen ${entry.seenEpisodes}")
+            entry.status
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }
