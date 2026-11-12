@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -256,12 +257,24 @@ private fun PopularSection(title: String, items: List<MediaSummary>, loading: Bo
 private fun CarouselSkeleton(title: String) {
     Column {
         CarouselHeader(title, modifier = Modifier.padding(bottom = MuvissSpacing.s))
-        // Clipped as the loaded LazyRow is, so the partly visible last card stops at the same edge.
-        BoxWithConstraints(Modifier.fillMaxWidth().clipToBounds()) {
-            val count = carouselSkeletonCount(maxWidth)
-            Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-                repeat(count) { PosterCardSkeleton(Modifier.width(POSTER_CARD_WIDTH)) }
-            }
+        CarouselSkeletonRow()
+    }
+}
+
+/**
+ * The placeholder cards of a carousel, as many as [carouselSkeletonCount] allows. The row is measured unbounded and
+ * start-aligned, so the partly visible last card keeps its full 110 dp; the clip trims the part past the edge, as the
+ * loaded `LazyRow` does. A bounded `Row` would hand that card only the width left over and shrink it.
+ */
+@Composable
+internal fun CarouselSkeletonRow(modifier: Modifier = Modifier, cardModifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.fillMaxWidth().clipToBounds()) {
+        val count = carouselSkeletonCount(maxWidth)
+        Row(
+            Modifier.wrapContentWidth(Alignment.Start, unbounded = true),
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        ) {
+            repeat(count) { PosterCardSkeleton(Modifier.width(POSTER_CARD_WIDTH).then(cardModifier)) }
         }
     }
 }
