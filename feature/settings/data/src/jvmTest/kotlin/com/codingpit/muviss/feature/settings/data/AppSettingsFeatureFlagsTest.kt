@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.common.flags.tickAnimationsActive
 import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
@@ -36,6 +37,7 @@ class AppSettingsFeatureFlagsTest {
                 override val io: CoroutineDispatcher = dispatcher
             },
             DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
+            FakeClock(epochMs = 1_000L),
         )
     }
 
