@@ -36,22 +36,31 @@ fun CompletionSheetHost(viewModel: CompletionPromptViewModel, onWhatsNext: (anch
     val anchor by viewModel.anchor.collectAsStateWithLifecycle()
     if (!visible) return
     ModalBottomSheet(onDismissRequest = viewModel::dismiss) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-            Text(stringResource(Res.string.nextpick_sheet_title), style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(8.dp))
-            Text(stringResource(Res.string.nextpick_sheet_body), style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    viewModel.dismiss()
-                    onWhatsNext(anchor)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(stringResource(Res.string.nextpick_sheet_whats_next)) }
-            TextButton(onClick = viewModel::dismiss, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(Res.string.nextpick_sheet_not_now))
-            }
-            Spacer(Modifier.height(24.dp))
+        CompletionSheetContent(
+            onWhatsNext = {
+                viewModel.dismiss()
+                onWhatsNext(anchor)
+            },
+            onNotNow = viewModel::dismiss,
+        )
+    }
+}
+
+/**
+ * What the sheet says and offers, without the modal chrome around it. [CompletionSheetHost] wraps this in a
+ * ModalBottomSheet; the golden frames this directly, because a modal's window is laid out outside a test frame.
+ */
+@Composable
+internal fun CompletionSheetContent(onWhatsNext: () -> Unit, onNotNow: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+        Text(stringResource(Res.string.nextpick_sheet_title), style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(Res.string.nextpick_sheet_body), style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = onWhatsNext, modifier = Modifier.fillMaxWidth()) { Text(stringResource(Res.string.nextpick_sheet_whats_next)) }
+        TextButton(onClick = onNotNow, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(Res.string.nextpick_sheet_not_now))
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
