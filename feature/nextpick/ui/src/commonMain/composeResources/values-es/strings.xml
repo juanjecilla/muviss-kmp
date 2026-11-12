@@ -55,6 +55,7 @@
     <string name="nextpick_reason_like">Como algo que te gustó</string>
     <string name="nextpick_reason_unlike">Distinta de lo que no te gustó</string>
     <string name="nextpick_reason_rated">En géneros que valoras mucho</string>
+    <string name="nextpick_reason_liked_genre">En un género que te gusta</string>
     <string name="nextpick_reason_favorite">Una de tus favoritas</string>
     <string name="nextpick_reason_long_in_list">Lleva un tiempo esperando en tu lista</string>
     <string name="nextpick_reason_highly_rated">Muy bien valorada</string>
