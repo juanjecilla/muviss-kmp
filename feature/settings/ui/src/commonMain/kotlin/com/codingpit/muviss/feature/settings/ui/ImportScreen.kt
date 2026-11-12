@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -218,7 +219,8 @@ private fun SummaryCounts(titleCount: Int, episodeCount: Int, unresolvedCount: I
 @Composable
 private fun UnresolvedList(unresolved: List<UnresolvedImportTitle>, modifier: Modifier = Modifier) {
     LazyColumn(modifier) {
-        items(unresolved, key = { it.title.displayTitle + it.reason.name }) { entry ->
+        // Keyed by position too: two unmatched rows can share a title and a reason (a rewatch), and LazyColumn needs unique keys (#733).
+        itemsIndexed(unresolved, key = { index, entry -> "$index:${entry.title.displayTitle}:${entry.reason.name}" }) { _, entry ->
             Column(Modifier.padding(vertical = 4.dp)) {
                 Text(entry.title.displayTitle, style = MaterialTheme.typography.bodyMedium)
                 Text(entry.reason.toUiText().resolve(), style = MaterialTheme.typography.labelSmall)

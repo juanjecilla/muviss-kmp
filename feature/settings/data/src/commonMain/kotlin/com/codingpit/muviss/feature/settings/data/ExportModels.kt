@@ -56,6 +56,16 @@ data class MuvissDataExport(
      * a removed item is simply absent, as a removed snooze is.
      */
     val tasteProfile: List<TasteProfileItemExport> = emptyList(),
+    /**
+     * The Muted Genres choice marker (ADR 0036, #642): the default set in force when the person chose,
+     * and the stamp of that choice. Null when the person has not chosen. Defaulted, so an older file has none.
+     */
+    val mutedGenreChoice: MutedGenreChoiceExport? = null,
+    /**
+     * Muted Genres decisions (ADR 0036, #642), tombstones included: a tombstone is an explicit unmute, which
+     * a backup must keep. Defaulted, so an older file has none.
+     */
+    val mutedGenres: List<MutedGenreExport> = emptyList(),
 ) {
     companion object {
         const val CURRENT_FORMAT_VERSION: Int = 2
@@ -161,10 +171,14 @@ data class ProfileExport(
 )
 
 /**
- * The preferences that describe how the person likes the app, not the device it runs on (#392). Left
- * out on purpose: notifications, automatic sync, crash reports, device backup, and the one-time hints
- * and onboarding flags, which are about this install. Stored as `appSettings` stores them, so a value a
+ * The Display Preferences (ADR 0036): how the person likes the app to look, move and read. Left out on
+ * purpose: notifications, automatic sync, crash reports, device backup, and the one-time hints and
+ * onboarding flags, which are about this install. Stored as `appSettings` stores them, so a value a
  * newer build wrote is tolerated on read exactly as it is there.
+ *
+ * [displayPreferencesUpdatedAtEpochMs] is the one stamp of the whole group (#642). Null means the group
+ * has never been changed on the exporting device, which is also what a v2 file from before this field
+ * means. A restore takes the group as a unit when this stamp is newer than the local one.
  */
 @Serializable
 data class SettingsExport(
@@ -177,8 +191,28 @@ data class SettingsExport(
     val triageControlScheme: String,
     val triageSnoozePeriod: String,
     val triageSnoozePlacement: String,
+    /** The legacy `;`-joined list (ADR 0031). Still written, so an older build can read the file. */
     val mutedGenres: String,
     val mutedGenresInSearch: Boolean,
+    /** The group's stamp (#642, ADR 0036). Defaulted: a file from before it existed has none. */
+    val displayPreferencesUpdatedAtEpochMs: Long? = null,
+)
+
+/** The Muted Genres choice marker (ADR 0036, #642): [defaultsAtChoice] is in `MutedGenresCodec`'s format. */
+@Serializable
+data class MutedGenreChoiceExport(
+    val defaultsAtChoice: String,
+    val updatedAtEpochMs: Long,
+)
+
+/** One Muted Genres decision (ADR 0036, #642). A [deleted] decision is an explicit unmute. */
+@Serializable
+data class MutedGenreExport(
+    val mediaType: String,
+    val genreId: Int,
+    val name: String,
+    val deleted: Boolean = false,
+    val updatedAtEpochMs: Long,
 )
 
 @Serializable

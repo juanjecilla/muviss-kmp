@@ -27,4 +27,13 @@ class CrashPickRankerReporterTest {
         assertIs<PickRankerTimedOut>(event)
         assertNull(event.cause)
     }
+
+    @Test
+    fun an_unusable_answer_is_sent_as_its_own_event_with_the_count_and_no_cause() {
+        reporter.unusable(3)
+
+        val event = assertIs<PickRankerUnusable>(sent.single())
+        assertEquals("PickRanker returned 3 unusable picks", event.message)
+        assertNull(event.cause)
+    }
 }
