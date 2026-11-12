@@ -21,6 +21,13 @@ interface SystemNotificationSettings {
      */
     suspend fun blockedNow(): Boolean = blocked()
 
+    /**
+     * Whether asking the OS again could still show a prompt (#326). False once the person has refused
+     * and the OS has stopped asking (Android's "don't ask again"): a request then answers "no" at once,
+     * so a screen should explain the switch rather than offer it. A platform that cannot tell says true.
+     */
+    fun canAskAgain(): Boolean = true
+
     /** Opens the system screen where the user can allow them again. */
     fun open()
 
