@@ -59,7 +59,11 @@ class MainActivity : ComponentActivity() {
 
         deepLinkMediaId = intent.deepLinkMediaIdExtra()
         oauthCode = intent.oauthCode()
-        notificationPermissions?.attach { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        notificationPermissions?.attach(
+            launch = { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
+            // Android's own answer to "may I ask again?": false after a refusal the OS will no longer show (#326).
+            rationale = { shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) },
+        )
         // The store's review sheet (#410) needs this activity to draw on; it is taken back in onDestroy.
         reviewPrompter?.attach(this)
 

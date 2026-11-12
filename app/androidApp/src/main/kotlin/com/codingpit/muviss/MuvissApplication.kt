@@ -77,10 +77,12 @@ class MuvissApplication : Application() {
                             // The Own TMDB Key lives in the Android Keystore (EPIC 46); KSafe needs a
                             // Context, so this replaces secretsModule's default.
                             single<SecretStore> { androidSecretStore(this@MuvissApplication) }
+                            // One requester for both: it knows whether the prompt was ever shown here (#326).
+                            val permissions = AndroidNotificationPermissionRequester(this@MuvissApplication)
                             // Settings explains a blocked notification switch (EPIC 30, #73).
-                            single<SystemNotificationSettings> { AndroidNotificationSettings(this@MuvissApplication) }
+                            single<SystemNotificationSettings> { AndroidNotificationSettings(this@MuvissApplication, permissions) }
                             // Turning notifications on asks the OS here, not on first launch (EPIC 47).
-                            single<NotificationPermissionRequester> { AndroidNotificationPermissionRequester(this@MuvissApplication) }
+                            single<NotificationPermissionRequester> { permissions }
                             // A fresh install takes its animations default from "Remove animations" (#394).
                             single<SystemMotionPreference> { AndroidSystemMotionPreference(this@MuvissApplication) }
                             // The store review sheet (#410) needs the foreground Activity, which MainActivity lends it.
