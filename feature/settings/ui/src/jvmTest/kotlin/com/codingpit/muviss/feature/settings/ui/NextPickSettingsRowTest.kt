@@ -84,16 +84,26 @@ class NextPickSettingsRowTest {
     }
 
     @Test
-    fun choosing_deck_writes_the_result_mode() = runComposeUiTest {
+    fun choosing_top_picks_writes_the_result_mode() = runComposeUiTest {
         val preferences = FakeNextPickPreferences()
         showSettings(preferences, FakeFeatureFlags())
 
         onNodeWithText("Result").performScrollTo().performClick()
         waitForIdle()
-        onNodeWithText("Deck").performClick()
+        onNodeWithText("Top picks").performClick()
         waitForIdle()
 
-        assertEquals(ResultMode.DECK, preferences.mode.value)
+        assertEquals(ResultMode.TOP_PICKS, preferences.mode.value)
+    }
+
+    @Test
+    fun deck_is_not_offered_until_its_handoff_exists() = runComposeUiTest {
+        showSettings(FakeNextPickPreferences(), FakeFeatureFlags())
+
+        onNodeWithText("Result").performScrollTo().performClick()
+        waitForIdle()
+
+        assertTrue(onAllNodesWithText("Deck").fetchSemanticsNodes().isEmpty())
     }
 
     @Test

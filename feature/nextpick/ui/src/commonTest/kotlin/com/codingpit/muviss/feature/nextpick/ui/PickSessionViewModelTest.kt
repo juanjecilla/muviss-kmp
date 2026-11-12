@@ -1,10 +1,11 @@
 package com.codingpit.muviss.feature.nextpick.ui
 
+import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.nextpick.api.PickSource
+import com.codingpit.muviss.feature.nextpick.api.ResultMode
 import com.codingpit.muviss.feature.nextpick.api.SessionLength
 import com.codingpit.muviss.feature.nextpick.domain.CandidateSource
 import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
-import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickAnswer
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidate
 import com.codingpit.muviss.feature.nextpick.domain.PickCandidates
@@ -20,6 +21,9 @@ import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -51,10 +55,10 @@ class PickSessionViewModelTest {
         context = { context },
         engine = engineOver(pool),
         actions = actions,
-        settings = FixedSettings(mode),
+        preferences = FixedPreferences(mode),
     )
 
-    private fun viewModelFromCompletion(anchor: MediaId, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"))) = PickSessionViewModel(context = { PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true) }, engine = engineOver(pool), actions = RecordingNextPickActions(), anchor = anchor)
+    private fun viewModelFromCompletion(anchor: MediaId, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"))) = PickSessionViewModel(context = { PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true) }, engine = engineOver(pool), actions = RecordingNextPickActions(), preferences = FixedPreferences(), anchor = anchor)
 
     @Test
     fun online_session_opens_on_the_first_question_out_of_the_standard_length() {
@@ -321,7 +325,17 @@ class PickSessionViewModelTest {
     @Test
     fun a_context_that_cannot_be_read_ends_in_failed_not_a_spinner() {
         // Given a session whose context read throws
-        val viewModel = PickSessionViewModel(context = { error("no settings") }, engine = engineOver(emptyList()), actions = RecordingNextPickActions())
+        val viewModel = PickSessionViewModel(context = { error("no settings") }, engine = engineOver(emptyList()), actions = RecordingNextPickActions(), preferences = FixedPreferences())
+
+        // When it opens
+        // Then it shows Failed, whose Retry is reachable, rather than Loading forever
+        assertIs<PickSessionUiState.Failed>(viewModel.state.value)
+    }
+
+    @Test
+    fun a_result_mode_that_cannot_be_read_ends_in_failed_not_a_spinner() {
+        // Given a session whose context reads fine but whose result mode read throws
+        val viewModel = PickSessionViewModel(context = { noQuestions }, engine = engineOver(emptyList()), actions = RecordingNextPickActions(), preferences = UnreadableResultMode())
 
         // When it opens
         // Then it shows Failed, whose Retry is reachable, rather than Loading forever
@@ -357,7 +371,7 @@ class PickSessionViewModelTest {
             history = PickHistoryReader { PickHistory() },
             muting = PickMuting { MutedGenres.NONE },
         )
-        val viewModel = PickSessionViewModel(context = { PickContext(length = SessionLength.NONE) }, engine = engine, actions = RecordingNextPickActions())
+        val viewModel = PickSessionViewModel(context = { PickContext(length = SessionLength.NONE) }, engine = engine, actions = RecordingNextPickActions(), preferences = FixedPreferences())
 
         // When the person asks for another pick twice
         viewModel.another()
@@ -388,6 +402,22 @@ class PickSessionViewModelTest {
     private fun PickSessionViewModel.onePick() = assertIs<PickSessionUiState.Result>(state.value).picks.first()
 }
 
-private class FixedSettings(override val mode: NextPickResultMode) : NextPickSettings {
-    override val length: SessionLength = SessionLength.NONE
+/** Preferences whose result mode read fails, as a database read can. The session must still end in Failed. */
+private class UnreadableResultMode : NextPickPreferences {
+    override val sessionLength: Flow<SessionLength> = flowOf(SessionLength.NONE)
+    override val resultMode: Flow<ResultMode> = flow { error("settings unreadable") }
+
+    override suspend fun setSessionLength(length: SessionLength) = Unit
+
+    override suspend fun setResultMode(mode: ResultMode) = Unit
+}
+
+/** Preferences that never change: the result mode is the one the test names, the length is "no questions" (the context says the length). */
+private class FixedPreferences(mode: NextPickResultMode = NextPickResultMode.ONE_PICK) : NextPickPreferences {
+    override val sessionLength: Flow<SessionLength> = flowOf(SessionLength.NONE)
+    override val resultMode: Flow<ResultMode> = flowOf(ResultMode.valueOf(mode.name))
+
+    override suspend fun setSessionLength(length: SessionLength) = Unit
+
+    override suspend fun setResultMode(mode: ResultMode) = Unit
 }
