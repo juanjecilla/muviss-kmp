@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -425,6 +426,9 @@ private val POSTER_COLUMN_WIDTH = 150.dp
 
 internal const val DETAIL_LIST_TAG = "detailList"
 
+/** Test tag of the icon row under the poster (library, notifications, lists, favorite), for layout checks. */
+internal const val DETAIL_ACTIONS_TAG = "detailActions"
+
 /** The bulk-mark undo snackbar's host, so a test can find where it sits over the list. */
 internal const val DETAIL_SNACKBAR_TAG = "detailSnackbar"
 
@@ -591,7 +595,8 @@ private fun ActionRow(
         )
     }
     val icons: @Composable () -> Unit = {
-        Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+        // A FlowRow, not a Row: four 48 dp targets are wider than the 150 dp poster column, so a Row overflowed it.
+        FlowRow(Modifier.testTag(DETAIL_ACTIONS_TAG), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
             OutlinedIconButton(onClick = viewModel::toggleFavorite) {
                 Icon(
                     if (state.favorite) MuvissIcons.Favorite else MuvissIcons.FavoriteOutline,
