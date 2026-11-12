@@ -14,6 +14,7 @@ import com.codingpit.muviss.core.testing.TestSafeAreaInsets
 import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.nextpick.api.ResultMode
 import com.codingpit.muviss.feature.nextpick.api.SessionLength
+import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -112,22 +113,22 @@ class PickSessionScreenTest {
     }
 }
 
-/** The defaults a person starts with: a standard session, one pick at a time. */
-private class DefaultPreferences : NextPickPreferences {
-    override val sessionLength: Flow<SessionLength> = flowOf(SessionLength.STANDARD)
-    override val resultMode: Flow<ResultMode> = flowOf(ResultMode.ONE_PICK)
-
-    override suspend fun setSessionLength(length: SessionLength) = Unit
-
-    override suspend fun setResultMode(mode: ResultMode) = Unit
-}
-
 /** A session over a small pool (One Pick, the Settings default), as [PickSessionViewModelTest] builds one. */
-internal fun viewModelFor(context: PickContext, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"), candidate("2"))) = PickSessionViewModel(context = { context }, engine = engineOver(pool), actions = RecordingNextPickActions(), preferences = DefaultPreferences())
+internal fun viewModelFor(context: PickContext, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"), candidate("2"))) = PickSessionViewModel(context = { context }, engine = engineOver(pool), actions = RecordingNextPickActions(), preferences = ScreenPreferences())
 
 @Composable
 private fun ScreenUnderTest(context: PickContext, onLeave: () -> Unit = {}) {
     MuvissTheme(darkTheme = false) {
         PickSessionScreen(viewModelFor(context), onLeave = onLeave, onOpenDeck = {})
     }
+}
+
+/** The stored result mode is One Pick (the Settings default); the length comes from the context, as the screen tests set it. */
+private class ScreenPreferences : NextPickPreferences {
+    override val sessionLength: Flow<SessionLength> = flowOf(SessionLength.NONE)
+    override val resultMode: Flow<ResultMode> = flowOf(ResultMode.valueOf(NextPickResultMode.ONE_PICK.name))
+
+    override suspend fun setSessionLength(length: SessionLength) = Unit
+
+    override suspend fun setResultMode(mode: ResultMode) = Unit
 }
