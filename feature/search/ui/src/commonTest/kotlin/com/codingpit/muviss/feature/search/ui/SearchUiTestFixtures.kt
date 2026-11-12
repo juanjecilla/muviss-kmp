@@ -88,7 +88,8 @@ internal class FakeRepo(
     private val tvGenresResult: Result<List<Genre>> = Result.success(emptyList()),
     private val discoverResult: suspend (type: MediaType, page: Int, genreId: String?) -> Result<PagedResult<MediaSummary>> =
         { _, page, _ -> Result.success(PagedResult(emptyList(), page, page)) },
-    private val recommendationsResult: (id: MediaId) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), 1, 1)) },
+    /** Suspends, so a test can hold "For you" back while Discover finishes. */
+    private val recommendationsResult: suspend (id: MediaId) -> Result<PagedResult<MediaSummary>> = { Result.success(PagedResult(emptyList(), 1, 1)) },
     /** Runs before a browse answers, so a test can hold one response back while the user moves on. */
     private val discoverGate: suspend (page: Int, genreId: String?) -> Unit = { _, _ -> },
 ) : SearchRepository {
