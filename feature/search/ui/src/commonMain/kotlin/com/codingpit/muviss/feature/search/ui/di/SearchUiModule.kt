@@ -17,7 +17,8 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
 val searchUiModule: Module = module {
-    viewModelOf(::SearchViewModel)
+    // The motion switch is a flow, which the constructor-reflecting DSL cannot supply on its own.
+    viewModel { SearchViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get<FeatureFlags>().animationsEnabled) }
     viewModelOf(::DiscoverIntroViewModel)
     viewModel { (id: MediaId) -> DetailViewModel(id, get(), DetailPeers(get(), get(), get(), get()), get(), get(), get(), get(), get<FeatureFlags>().tickAnimationsActive) }
     viewModel { (id: MediaId) -> AddToListViewModel(id, get()) }

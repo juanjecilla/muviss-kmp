@@ -5,6 +5,8 @@ plugins {
 kotlin {
     sourceSets {
         commonMain.dependencies {
+            // The skeleton drawing (#723): Compose-only, Muviss-free; this module supplies the colours and the motion switch.
+            implementation(projects.lib.shimmer)
             api(libs.coil.compose)
             api(libs.coil.networkKtor)
             // MetadataError -> translated copy (ErrorText.kt, EPIC 31).
