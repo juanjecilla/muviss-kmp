@@ -16,7 +16,6 @@ import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -30,7 +29,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.fail
 
 class TriageViewModelTest {
 
@@ -432,8 +430,9 @@ class TriageViewModelTest {
         // Act on every card of pages 1 to 4. Page 5 is still unacted, so that is where a visit must resume.
         repeat(8) { first.onDecide(TriageVerdict.LATER, viaGesture = false) }
         advanceUntilIdle()
-        // The position moves only once each decision persists, and the harness persists on a real IO thread.
-        awaitSavedResumePage(store, page = 5)
+        // The position moves only once each decision persists. Every save has landed once the scheduler is idle.
+        advanceUntilIdle()
+        assertEquals(5, store.saved.values.single().moviesResumePage, "the last decision persisted, so the resume page is the first unacted one")
 
         val before = harness.source.requestedPages.size
         val second = harness.viewModel()
@@ -663,7 +662,7 @@ class TriageViewModelTest {
     }
 
     @Test
-    fun `a decision that fails to record keeps its page in the saved position`() = runTest {
+    fun a_decision_that_fails_to_record_keeps_its_page_in_the_saved_position() = runTest {
         // Page 1 is the only card on page 1, so once it is decided the earliest unacted page is 2 — unless the
         // failed decision still holds page 1 (#722): then a restart resumes at 1 and cannot skip the card.
         val pages = FakeDeckPages(mapOf(1 to listOf(movie("p1-a")), 2 to listOf(movie("p2-a"), movie("p2-b"))), totalPages = 2)
@@ -681,7 +680,7 @@ class TriageViewModelTest {
     }
 
     @Test
-    fun `a checkpoint taken before a reset cannot land after the reset position`() = runTest {
+    fun a_checkpoint_taken_before_a_reset_cannot_land_after_the_reset_position() = runTest {
         // Writes are held in the store and released newest first, so an out-of-order landing would show up as
         // a pre-reset value written last. Every write must land in the order it was taken, and the last one
         // to land must come from after the reset.
@@ -706,19 +705,6 @@ class TriageViewModelTest {
 
         assertEquals(1, store.landed.last(), "the last checkpoint to land was taken after the reset, landed: ${store.landed}")
     }
-}
-
-/**
- * Waits until [store] holds a resume page of [page]. The harness persists decisions on a real IO thread, so a
- * visit started straight after the last swipe could read a position the last save has not reached yet.
- */
-private fun TestScope.awaitSavedResumePage(store: FakeDeckCursorStore, page: Int) {
-    repeat(400) {
-        advanceUntilIdle() // the persisted result resumes on this scope's dispatcher, which only runs when driven
-        if (store.saved.values.any { it.moviesResumePage == page }) return
-        Thread.sleep(5)
-    }
-    fail("the saved resume page never reached $page, saved: ${store.saved.values}")
 }
 
 /**

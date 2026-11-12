@@ -231,7 +231,7 @@ class TriageViewModel(
      * restart cannot resume past a card the person acted on but nothing has recorded (#722). [token] tells
      * a superseded action from the one that is still outstanding.
      */
-    private data class Unpersisted(val summary: MediaSummary, val page: Int?, val token: Long)
+    private data class Unpersisted(val summary: MediaSummary, val page: Int?, val filter: DeckFilter, val token: Long)
 
     private val unpersisted = mutableMapOf<MediaId, Unpersisted>()
 
@@ -620,7 +620,9 @@ class TriageViewModel(
     private fun checkpoint() {
         val filter = cursorFilter ?: return
         val unacted = _state.value.cards + overflow
-        val pages = unacted.map { it.type to pageOf[it.id] } + unpersisted.values.map { it.summary.type to it.page }
+        // Only holds taken under this filter: another filter's page numbers say nothing about this one's cursor.
+        val held = unpersisted.values.filter { it.filter == filter }
+        val pages = unacted.map { it.type to pageOf[it.id] } + held.map { it.summary.type to it.page }
         val unactedMovie = pages.filter { it.first == MediaType.MOVIE }.mapNotNull { it.second }.minOrNull()
         val unactedTv = pages.filter { it.first == MediaType.TV }.mapNotNull { it.second }.minOrNull()
         checkpoints.trySend(PendingCheckpoint(generation, filter, cursor, unactedMovie, unactedTv))
@@ -629,7 +631,7 @@ class TriageViewModel(
     /** Holds [summary]'s page in every checkpoint until its action persists. Returns the token [settle] needs. */
     private fun hold(summary: MediaSummary): Long {
         val token = ++unpersistedToken
-        unpersisted[summary.id] = Unpersisted(summary, pageOf[summary.id], token)
+        unpersisted[summary.id] = Unpersisted(summary, pageOf[summary.id], cursorFilter ?: _state.value.filter, token)
         return token
     }
 
