@@ -2,7 +2,7 @@ package com.codingpit.muviss.feature.nextpick.data
 
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.feature.collection.api.CollectionApi
-import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
+import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
 import com.codingpit.muviss.models.WatchStatus
@@ -19,13 +19,13 @@ import kotlinx.coroutines.flow.first
 internal class NextPickContextReader(
     private val connectivity: ConnectivityMonitor,
     private val collection: () -> CollectionApi,
-    private val settings: NextPickSettings,
+    private val preferences: NextPickPreferences,
 ) : PickContextSource {
 
     override suspend fun read(): PickContext {
         val summaries = collection().observeSummaries().first()
         return PickContext(
-            length = settings.length,
+            length = preferences.sessionLength.first(),
             online = connectivity.isOnline.first(),
             hasBacklog = summaries.any { it.status == WatchStatus.NOT_STARTED },
             hasWatchedTitles = summaries.any { it.status == WatchStatus.WATCHED || it.status == WatchStatus.FINISHED },
