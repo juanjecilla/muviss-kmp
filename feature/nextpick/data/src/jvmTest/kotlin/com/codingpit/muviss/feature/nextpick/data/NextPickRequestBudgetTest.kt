@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.nextpick.data
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.nextpick.api.PickAnchor
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
@@ -13,6 +14,9 @@ import com.codingpit.muviss.feature.nextpick.domain.PickExclusions
 import com.codingpit.muviss.feature.nextpick.domain.PickMuting
 import com.codingpit.muviss.feature.nextpick.domain.PickResult
 import com.codingpit.muviss.feature.nextpick.domain.PickSession
+import com.codingpit.muviss.feature.settings.api.TasteItem
+import com.codingpit.muviss.feature.settings.api.TasteKind
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
@@ -66,16 +70,17 @@ class NextPickRequestBudgetTest {
         context: PickContext,
         vararg answers: PickAnswer,
         genreIds: LibraryGenreIds = genreIdsOver(metadata),
+        services: OwnServices = OwnServices(),
     ): PickResult {
         val collection: () -> CollectionApi = { library }
         val engine = PickEngine(
             sources = listOf(
-                CollectionBacklogCandidates(collection, genreIds),
-                DiscoverSource(metadata, collection, thisYear = { 2027 }, muting = PickMuting { MutedGenres.NONE }, taste = { FakeTasteProfile() }, region = { "US" }),
-                AnchorCandidates(metadata, collection),
+                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds), { services.taste }, { services.lookup }, { "US" }),
+                DiscoverSource(metadata, collection, thisYear = { 2027 }, muting = PickMuting { MutedGenres.NONE }, taste = { services.taste }, region = { "US" }),
+                OwnServicesCandidates(AnchorCandidates(metadata, collection), { services.taste }, { services.lookup }, { "US" }),
             ),
             exclusions = PickExclusions { emptySet() },
-            history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity(context.online), genreIds), { FakeTasteProfile() }),
+            history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity(context.online), genreIds), { services.taste }),
             muting = PickMuting { MutedGenres.NONE },
         )
         return engine.pick(criteriaFor(context, *answers), context)
@@ -135,6 +140,25 @@ class NextPickRequestBudgetTest {
     }
 
     @Test
+    fun `only_my_services_costs_no_watch_provider_requests_even_across_every_candidate`() = runTest {
+        // #740: the cache is read, never fetched per candidate, so the backlog and the recommendations cost what they cost without the flag.
+        val metadata = CountingMetadata(discover = mapOf(MediaType.MOVIE to listOf(movie("2"))), recommended = listOf(movie("3")))
+        val cache = object : WatchProviderLookup {
+            override suspend fun cachedFlatrateIds(mediaIds: Set<MediaId>, region: String): Map<MediaId, Set<String>> = mapOf(MediaId.tmdbMovie("1") to setOf("8"))
+        }
+
+        pick(
+            metadata,
+            standard(),
+            PickAnswer.Anchor(PickAnchor(finished, like = true)),
+            PickAnswer.EraAndServices(null, null, onlyMyServices = true),
+            services = OwnServices(FakeTasteProfile(listOf(TasteItem(TasteKind.SERVICE, "8", "Netflix"))), cache),
+        )
+
+        assertEquals(mapOf("genres" to 2, "discover" to 2, "recommendations" to 1, "similar" to 1), metadata.requests)
+    }
+
+    @Test
     fun `offline_costs_no_tmdb_requests_and_the_pick_comes_from_the_library`() = runTest {
         val metadata = CountingMetadata()
 
@@ -156,4 +180,11 @@ class NextPickRequestBudgetTest {
         assertEquals(1, metadata.requests["similar"])
         assertTrue(result.picks.any { it.candidate.id == similar.id }, "the similar title survives the recommendations failure")
     }
+}
+
+/** What "only my services" reads: the Taste Profile's services and the cached providers. */
+private data class OwnServices(val taste: TasteProfileApi = FakeTasteProfile(), val lookup: WatchProviderLookup = NoWatchLookup)
+
+private object NoWatchLookup : WatchProviderLookup {
+    override suspend fun cachedFlatrateIds(mediaIds: Set<MediaId>, region: String): Map<MediaId, Set<String>> = emptyMap()
 }
