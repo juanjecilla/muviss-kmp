@@ -262,8 +262,10 @@ jobs:
       # com.android.lint). JVM-only test helpers such as :core:testing are not
       # linted. Accessibility issues are errors; the
       # baseline holds only what predates lint being switched on (#164).
+      # :app:shared is not in that graph, so it is linted here too (#739); it
+      # is one more module in the same build, sharing the analysis above.
       - name: Android Lint
-        run: ./gradlew :app:androidApp:lintDebug --stacktrace
+        run: ./gradlew :app:androidApp:lintDebug :app:shared:lintAndroidMain --stacktrace
 
       - name: Upload the lint report
         if: failure()
@@ -273,8 +275,13 @@ jobs:
           if-no-files-found: ignore
           path: app/androidApp/build/reports/lint-results-debug.*
 
-      - name: Compile web targets (JS + Wasm)
-        run: ./gradlew compileKotlinJs compileKotlinWasmJs --stacktrace
+      # The webpack bundles run too, not just the compiles: they are the only
+      # step that resolves the JS and Wasm runtime classpaths (the resource
+      # zips), so a missing checksum in gradle/verification-metadata.xml fails
+      # here, on the PR, instead of on develop (#730). Verification is strict
+      # on every run that does not write the metadata.
+      - name: Compile web targets (JS + Wasm) and bundle them
+        run: ./gradlew compileKotlinJs compileKotlinWasmJs :app:webApp:jsBrowserDevelopmentWebpack :app:webApp:wasmJsBrowserDevelopmentWebpack --stacktrace
 
       # kotlin-js-store/ pins every npm package the JS and Wasm builds resolve.
       # Kotlin's own store task does not fail on a stale lock — it rewrites the

@@ -4,9 +4,11 @@ import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickSource
 import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.WatchStatus
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -29,6 +31,19 @@ fun interface PickHistoryReader {
 /** The standing Muted Genres (ADR 0031), including the session chip that lifts them. */
 fun interface PickMuting {
     suspend fun current(): MutedGenres
+}
+
+/**
+ * [muted] without the genres a mood the person picked reads as, for either type: choosing beats muting
+ * (ADR 0031). Shared by the engine and by the discover source, so `/discover` never excludes a genre the
+ * engine would then show.
+ */
+fun effectiveMuting(criteria: PickCriteria, muted: MutedGenres): MutedGenres {
+    if (criteria.moods.isEmpty()) return muted
+    val chosen = listOf(MediaType.MOVIE, MediaType.TV).flatMap { type ->
+        MoodGenres.genreIds(criteria.moods, type).map { GenreKey(type, it) }
+    }.toSet()
+    return MutedGenres(muted.keys - chosen)
 }
 
 /**
@@ -69,18 +84,20 @@ class PickEngine(
 
     suspend fun pick(criteria: PickCriteria, context: PickContext, limit: Int = DEFAULT_LIMIT): PickResult {
         val excluded = exclusions.excluded()
-        val muted = effectiveMuting(criteria, muting.current())
+        val standing = muting.current()
+        val muted = effectiveMuting(criteria, standing)
         val pool = sources.flatMap { it.gather(criteria, context) }
             .merged()
             .filter { allowed(it, criteria, excluded, muted) }
-        val ownHistory = history.read(criteria)
+        // A genre liked and then muted does not shape a pick (#584, ADR 0031): the standing mute wins over a like.
+        val ownHistory = history.read(criteria).let { it.copy(likedGenres = it.likedGenres - standing.keys) }
         val ranked = rankOrFallBack(criteria, pool, ownHistory, excluded).take(limit)
         return PickResult(ranked, offline = !context.online)
     }
 
     /**
      * The ranker's picks, enforced against [pool]. When it fails, times out, or leaves nothing usable,
-     * the rules' order over the same pool. A cancellation of the caller is rethrown, never swallowed.
+     * the rules' order over the same pool. The caller's own cancellation is rethrown, never swallowed.
      */
     private suspend fun rankOrFallBack(
         criteria: PickCriteria,
@@ -88,23 +105,25 @@ class PickEngine(
         history: PickHistory,
         excluded: Set<MediaId>,
     ): List<RankedPick> {
-        val enforced = attempt(criteria, pool, history)?.let { enforce(it, pool, excluded) }
-        return enforced?.takeIf { it.isNotEmpty() } ?: fallback.rank(criteria, pool, history)
+        val answer = attempt(criteria, pool, history) ?: return fallback.rank(criteria, pool, history)
+        val enforced = enforce(answer, pool, excluded)
+        if (enforced.isEmpty() && pool.isNotEmpty()) reporter.unusable(answer.size)
+        return enforced.takeIf { it.isNotEmpty() } ?: fallback.rank(criteria, pool, history)
     }
 
     /**
      * Null when the ranker failed or timed out, and each of those is reported once through [reporter]
-     * (#605). `rank` returns a non-null list, so a null from [withTimeoutOrNull] can only be the timeout.
-     * A cancelled caller is rethrown before anything is reported.
+     * (#605). A null from [withTimeoutOrNull] is [PickEngine]'s own timeout. Anything else the ranker
+     * throws is a failure, including a `CancellationException` it raised itself (#673). Only the caller's
+     * own cancellation is rethrown, because it is the caller's to handle.
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // Any ranker failure means "use the rules", never an error on screen.
     private suspend fun attempt(criteria: PickCriteria, pool: List<PickCandidate>, history: PickHistory): List<RankedPick>? = try {
         val ranked = withTimeoutOrNull(RANKER_TIMEOUT) { ranker.rank(criteria, pool, history) }
         if (ranked == null) reporter.timedOut()
         ranked
-    } catch (e: CancellationException) {
-        throw e
     } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
         reporter.failed(e::class.simpleName ?: UNNAMED_EXCEPTION)
         null
     }
@@ -142,15 +161,6 @@ class PickEngine(
             WatchStatus.WATCHING -> false
             WatchStatus.WATCHED, WatchStatus.FINISHED -> inLibrary && criteria.rewatchOk == true && criteria.source != PickSource.SOMETHING_NEW
         }
-    }
-
-    /** [muted] without the genres a mood the person picked reads as, for either type: choosing beats muting. */
-    private fun effectiveMuting(criteria: PickCriteria, muted: MutedGenres): MutedGenres {
-        if (criteria.moods.isEmpty()) return muted
-        val chosen = listOf(com.codingpit.muviss.models.MediaType.MOVIE, com.codingpit.muviss.models.MediaType.TV).flatMap { type ->
-            MoodGenres.genreIds(criteria.moods, type).map { GenreKey(type, it) }
-        }.toSet()
-        return MutedGenres(muted.keys - chosen)
     }
 
     companion object {

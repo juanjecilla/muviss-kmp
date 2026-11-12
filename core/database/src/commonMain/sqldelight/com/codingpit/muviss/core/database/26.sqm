@@ -1,0 +1,54 @@
+-- Display Preferences and Muted Genres (ADR 0036, #642). The filename is the version this
+-- migrates FROM: 26.sqm takes a v26 database to v27 (fixture 27.db).
+--
+-- NUMBERING: claimed by ADR 0036 when its branch opened; `verifyMigrations` cannot see a
+-- collision, so re-check this number against develop before merging.
+--
+-- The group's one stamp and its dirty flag, appended last. A null stamp means the group has never
+-- been changed on any device; a number is the time of the last change, and the reading device's
+-- restore and (later) sync compare it. Neither column syncs by itself in this migration.
+ALTER TABLE appSettings ADD COLUMN displayPreferencesUpdatedAtEpochMs INTEGER;
+ALTER TABLE appSettings ADD COLUMN displayPreferencesDirty INTEGER NOT NULL DEFAULT 0;
+
+-- Defaults are never data (ADR 0036). An install that already has the app may hold a value the
+-- person chose, and the group must reach the account once sync exists. So every row that differs
+-- from a first-run value in any member is stamped 0 (older than any real change) and marked dirty.
+-- The stamp is a constant, not the clock, so the same database always produces the same rows.
+-- The literals are the first-run values `ensureRow` seeds and the column defaults.
+UPDATE appSettings
+SET displayPreferencesUpdatedAtEpochMs = 0, displayPreferencesDirty = 1
+WHERE theme <> 'SYSTEM'
+   OR language <> ''
+   OR region <> 'US'
+   OR animationsEnabled <> 1
+   OR triageDeckAnimations <> 1
+   OR tickAnimations <> 1
+   OR triageControlScheme <> 'FOUR_WAY'
+   OR triageSnoozePeriod <> 'ONE_WEEK'
+   OR triageSnoozePlacement <> 'MIXED_IN'
+   OR mutedGenresInSearch <> 0;
+
+-- Muted Genres as decisions (ADR 0036). A row is the person's decision on one genre: live means
+-- muted, a tombstone means unmuted, whatever the genre's default. Keyed by the genre, so two devices
+-- deciding different genres keep both. Synced in a later slice, so the dirty index is here now.
+CREATE TABLE mutedGenre (
+    mediaType TEXT NOT NULL,
+    genreId INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    deleted INTEGER NOT NULL DEFAULT 0,
+    isDirty INTEGER NOT NULL DEFAULT 1,
+    updatedAtEpochMs INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (mediaType, genreId)
+);
+
+CREATE INDEX mutedGenre_dirty ON mutedGenre(isDirty) WHERE isDirty = 1;
+
+-- The choice marker (ADR 0036): a singleton, present once the person has changed the muted set.
+-- `defaultsAtChoice` is the default set in force when they chose, in MutedGenresCodec's format, so
+-- a later change to the code's defaults does not reach a device that chose.
+CREATE TABLE mutedGenreChoice (
+    id INTEGER NOT NULL PRIMARY KEY,
+    defaultsAtChoice TEXT NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL DEFAULT 0,
+    isDirty INTEGER NOT NULL DEFAULT 1
+);

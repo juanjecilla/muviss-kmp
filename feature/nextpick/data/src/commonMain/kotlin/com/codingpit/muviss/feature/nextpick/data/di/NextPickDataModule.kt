@@ -17,15 +17,15 @@ import com.codingpit.muviss.feature.nextpick.data.DiscoverSource
 import com.codingpit.muviss.feature.nextpick.data.LibraryGenreIds
 import com.codingpit.muviss.feature.nextpick.data.NextPickContextReader
 import com.codingpit.muviss.feature.nextpick.data.SettingsMuting
+import com.codingpit.muviss.feature.nextpick.data.TasteHistoryReader
 import com.codingpit.muviss.feature.nextpick.data.TriageExclusions
 import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
-import com.codingpit.muviss.feature.nextpick.domain.DefaultNextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
-import com.codingpit.muviss.feature.nextpick.domain.NextPickSettings
 import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
 import com.codingpit.muviss.feature.nextpick.domain.PickEngine
 import com.codingpit.muviss.feature.nextpick.domain.PickRankerReporter
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -36,7 +36,6 @@ import org.koin.dsl.module
  * construction depend on this module.
  */
 val nextPickDataModule: Module = module {
-    single<NextPickSettings> { DefaultNextPickSettings }
     single<PickRankerReporter> { CrashPickRankerReporter() }
     single<CompletionPromptStore> { AppSettingsCompletionPromptStore(get<MuvissDatabase>().appSettingsQueries, get(), get()) }
 
@@ -49,16 +48,19 @@ val nextPickDataModule: Module = module {
         val genreIds: LibraryGenreIds = get()
         val thisYear = { civilDateOf(clock.nowEpochMs().floorDiv(MS_PER_DAY)).year }
         val metadata: MetadataProvider = get()
+        val taste: () -> TasteProfileApi = { get() }
+        val region: () -> String = { get<MetadataLocale>().region }
+        val muting = SettingsMuting(settings)
         // Order is not priority: PickEngine merges one copy per title by source (backlog, then anchor, then discover).
         PickEngine(
             sources = listOf(
                 CollectionBacklogCandidates(collection, genreIds),
-                DiscoverSource(metadata, collection, thisYear),
+                DiscoverSource(metadata, collection, thisYear, muting, taste, region),
                 AnchorCandidates(metadata, collection),
             ),
             exclusions = TriageExclusions(triage),
-            history = CollectionHistoryReader(clock, collection, connectivity, genreIds),
-            muting = SettingsMuting(settings),
+            history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity, genreIds), taste),
+            muting = muting,
             reporter = get(),
         )
     }
@@ -71,7 +73,7 @@ val nextPickDataModule: Module = module {
         )
     }
 
-    single<PickContextSource> { NextPickContextReader(get(), { get<CollectionApi>() }, get()) }
+    single<PickContextSource> { NextPickContextReader(get(), { get<CollectionApi>() }, get(), { get<TasteProfileApi>() }) }
 
     single<NextPickActions> {
         DefaultNextPickActions({ get<CollectionApi>() }, { get<TriageApi>() }, get(), get(), get())

@@ -4,6 +4,7 @@ import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickEra
 import com.codingpit.muviss.feature.nextpick.api.PickRuntime
+import com.codingpit.muviss.models.GenreKey
 
 /**
  * The seam an AI ranker would replace (ADR 0032, spike #404): criteria and candidates in, an ordered
@@ -24,17 +25,25 @@ fun interface PickRanker {
  *
  * The failure is handed over as the exception's class name only. The message can carry request text
  * or keys (EPIC 27), so it never leaves [PickEngine].
+ *
+ * [unusable] is a ranker that answered but gave nothing [PickEngine] could show (#674): every pick was
+ * outside the pool, excluded, repeated, or the list was empty. Only the count leaves [PickEngine], never
+ * a title.
  */
 interface PickRankerReporter {
     fun failed(exceptionClass: String)
 
     fun timedOut()
 
+    fun unusable(returned: Int)
+
     /** The default for code that has no crash reporter to hand, such as a test that does not care. */
     data object Silent : PickRankerReporter {
         override fun failed(exceptionClass: String) = Unit
 
         override fun timedOut() = Unit
+
+        override fun unusable(returned: Int) = Unit
     }
 }
 
@@ -59,6 +68,7 @@ class RuleBasedRanker : PickRanker {
         mood(criteria, c)?.let(::add)
         anchor(criteria, c, h)?.let(::add)
         genreAffinity(c, h)?.let(::add)
+        likedGenre(c, h)?.let(::add)
         if (c.favorite) add(Term(FAVORITE, PickReason.YourFavorite))
         c.addedAtEpochMs?.let { added -> if (c.source == CandidateSource.BACKLOG && h.todayEpochDay > 0) staleBacklog(added, h)?.let(::add) }
         c.summary.rating?.let { add(Term(((it - NEUTRAL_VOTE) / VOTE_SPREAD).coerceIn(-1.0, MAX_VOTE_BONUS), PickReason.HighlyRated(it))) }
@@ -91,6 +101,12 @@ class RuleBasedRanker : PickRanker {
         val best = rated.maxBy { it.second }
         val mean = rated.map { it.second }.average()
         return Term((mean - NEUTRAL_RATING) / RATING_SPREAD * AFFINITY, PickReason.YouRateTheseGenresHigh(best.first, best.second))
+    }
+
+    private fun likedGenre(c: PickCandidate, h: PickHistory): Term? {
+        if (h.likedGenres.isEmpty()) return null
+        val liked = c.summary.genreIds.any { GenreKey(c.summary.type, it) in h.likedGenres }
+        return if (liked) Term(LIKED_GENRE, PickReason.LikedGenre) else null
     }
 
     private fun staleBacklog(addedAtEpochMs: Long, h: PickHistory): Term? {
@@ -134,6 +150,7 @@ class RuleBasedRanker : PickRanker {
         const val NEUTRAL_RATING = 6.0
         const val RATING_SPREAD = 3.0
         const val FAVORITE = 2.0
+        const val LIKED_GENRE = 1.5
         const val STALE_DAYS = 90
         const val STALE_BONUS = 0.5
         const val DAY_MS = 86_400_000L

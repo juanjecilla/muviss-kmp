@@ -1,0 +1,26 @@
+-- The Muted Genres choice marker (ADR 0036, #642): a singleton, like `appSettings`. Its presence means
+-- the person has chosen their muted set, and `defaultsAtChoice` is the default set in force at that
+-- moment, in `MutedGenresCodec`'s format. A device that never chose has no marker and follows the code's
+-- defaults. The snapshot is what keeps a later change to those defaults away from a device that chose.
+--
+-- It has no `deleted` column: the marker is never removed, only written again.
+CREATE TABLE mutedGenreChoice (
+    id INTEGER NOT NULL PRIMARY KEY,
+    defaultsAtChoice TEXT NOT NULL,
+    updatedAtEpochMs INTEGER NOT NULL DEFAULT 0,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+);
+
+select:
+SELECT *
+FROM mutedGenreChoice
+WHERE id = 0;
+
+-- Writes the marker, replacing it. Explicit dirty and stamp: a restored marker carries the backup's stamp.
+upsert:
+INSERT OR REPLACE INTO mutedGenreChoice(id, defaultsAtChoice, updatedAtEpochMs, isDirty)
+VALUES (0, :defaultsAtChoice, :updatedAtEpochMs, :isDirty);
+
+-- Settings > Delete all data (EPIC 29). Hard on purpose.
+deleteAll:
+DELETE FROM mutedGenreChoice;

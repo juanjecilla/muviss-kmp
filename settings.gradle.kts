@@ -68,6 +68,9 @@ include(":core:remoteconfig")
 include(":core:secrets")
 include(":core:testing")
 
+// Standalone libraries: Compose-only, no Muviss theme or `:core:*` dependency (#723).
+include(":lib:shimmer")
+
 // Feature slices (each: :api / :domain / :data / :ui)
 listOf("search", "collection", "progress", "profile", "settings", "triage", "cowatch", "onboarding").forEach { feature ->
     listOf("api", "domain", "data", "ui").forEach { layer ->

@@ -5,11 +5,13 @@ package com.codingpit.muviss.core.sync
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Delete all data runs inside [SyncIdleLock.runIdle] (#645). Signing out only stops the next
@@ -75,5 +77,31 @@ class SyncIdleLockTest {
         cycle.join()
 
         assertEquals(listOf("erase started", "erase done", "cycle done"), events)
+    }
+
+    @Test
+    fun a_cycle_that_read_the_session_before_sign_out_does_not_sync_after_it() = runTest {
+        // Delete all data queues for the lock while a cycle is in flight. A second cycle asks after the
+        // erase is queued, so it reads the session before the sign-out runs, then waits on the lock.
+        // Once the erase has signed out, that cycle must not push or pull with the account it read (#678).
+        val backend = FakeSyncBackend()
+        val engine = SyncEngine(backend, inMemoryDatabase(), ImmediateDispatchers(UnconfinedTestDispatcher(testScheduler)), FakeClock(1_000L))
+        val hold = CompletableDeferred<Unit>()
+
+        val inFlight = launch { engine.runIdle { hold.await() } }
+        testScheduler.advanceUntilIdle()
+        val erase = launch { engine.runIdle { backend.signOut() } }
+        testScheduler.advanceUntilIdle()
+        val queued = async { engine.syncNow(SyncTrigger.Manual) }
+        testScheduler.advanceUntilIdle()
+
+        hold.complete(Unit)
+        inFlight.join()
+        erase.join()
+        val outcome = queued.await()
+
+        assertEquals(SyncOutcome.NotSignedIn, outcome)
+        assertTrue(backend.pullRequests.isEmpty(), "a cycle queued before the sign-out pulled ${backend.pullRequests.size} time(s)")
+        assertTrue(backend.pushes.isEmpty(), "a cycle queued before the sign-out pushed")
     }
 }

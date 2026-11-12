@@ -1,7 +1,9 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -37,18 +40,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
+import com.codingpit.muviss.core.designsystem.component.ChipSkeleton
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterCard
+import com.codingpit.muviss.core.designsystem.component.PosterCardSkeleton
 import com.codingpit.muviss.core.designsystem.component.PosterSkeleton
+import com.codingpit.muviss.core.designsystem.component.SkeletonHost
 import com.codingpit.muviss.core.designsystem.component.posterGridCells
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -78,6 +86,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.ceil
 
 @Composable
 fun SearchScreen(
@@ -90,6 +99,7 @@ fun SearchScreen(
     onOpenNextPick: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val homeScroll = rememberScrollState()
 
     Column(Modifier.fillMaxSize().padding(horizontal = MuvissSpacing.l)) {
         SearchPill(
@@ -99,14 +109,15 @@ fun SearchScreen(
         )
 
         when {
-            state.loading -> LoadingSkeletonGrid()
-
             state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 ErrorState(state.error!!, viewModel::retry)
             }
 
-            else -> when (state.mode) {
-                SearchMode.DISCOVER -> DiscoverBrowse(
+            // Home, loading or loaded, is one DiscoverBrowse call site: the local cards are real and the network
+            // sections are skeletons under their real headers, so the page does not re-flow when the data lands
+            // (#723). A second call site would give the loaded page a fresh scroll state and jump it to the top.
+            state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize()) {
+                DiscoverBrowse(
                     state,
                     onSelectGenre = viewModel::selectGenre,
                     onOpenDetail = onOpenDetail,
@@ -114,7 +125,15 @@ fun SearchScreen(
                     intro = DiscoverIntro(introVisible, onIntroDismissed),
                     muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
                     onOpenNextPick = onOpenNextPick,
+                    scroll = homeScroll,
                 )
+            }
+
+            state.loading -> SkeletonHost(animate = state.animateSkeleton, modifier = Modifier.fillMaxSize()) { LoadingSkeletonGrid() }
+
+            else -> when (state.mode) {
+                // Drawn by the branch above.
+                SearchMode.DISCOVER -> Unit
 
                 SearchMode.GENRE_BROWSE -> GenreResults(
                     state,
@@ -193,7 +212,7 @@ internal fun SearchPill(
     }
 }
 
-/** Poster-shaped shimmer placeholders while the initial content loads. */
+/** Poster-shaped shimmer placeholders while a search or a genre loads. */
 @Composable
 private fun LoadingSkeletonGrid() {
     LazyVerticalGrid(
@@ -206,8 +225,77 @@ private fun LoadingSkeletonGrid() {
     }
 }
 
+/** A genre row while its genres load: the real header over a row of chip shapes. */
 @Composable
-private fun DiscoverBrowse(
+private fun GenreSection(title: String, genres: List<Genre>, loading: Boolean, onClick: (Genre) -> Unit) {
+    when {
+        genres.isNotEmpty() -> GenreChipRow(title, genres, onClick)
+
+        loading -> Column {
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = MuvissSpacing.s))
+            Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                repeat(GENRE_SKELETON_CHIPS) { ChipSkeleton() }
+            }
+        }
+    }
+}
+
+/** A popularity carousel: the real one once it has titles, the skeleton row while it loads, nothing after an empty load. */
+@Composable
+private fun PopularSection(title: String, items: List<MediaSummary>, loading: Boolean, onOpenDetail: (MediaId) -> Unit) {
+    when {
+        items.isNotEmpty() -> MediaCarousel(title, items, onOpenDetail)
+        loading -> CarouselSkeleton(title)
+    }
+}
+
+/**
+ * A carousel's header over as many poster placeholders as the width holds, at the same 110 dp as the
+ * loaded [MediaCarousel], so the row takes the same space when the titles arrive.
+ */
+@Composable
+private fun CarouselSkeleton(title: String) {
+    Column {
+        CarouselHeader(title, modifier = Modifier.padding(bottom = MuvissSpacing.s))
+        CarouselSkeletonRow()
+    }
+}
+
+/**
+ * The placeholder cards of a carousel, as many as [carouselSkeletonCount] allows. The row is measured unbounded and
+ * start-aligned, so the partly visible last card keeps its full 110 dp; the clip trims the part past the edge, as the
+ * loaded `LazyRow` does. A bounded `Row` would hand that card only the width left over and shrink it.
+ */
+@Composable
+internal fun CarouselSkeletonRow(modifier: Modifier = Modifier, cardModifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.fillMaxWidth().clipToBounds()) {
+        val count = carouselSkeletonCount(maxWidth)
+        Row(
+            Modifier.wrapContentWidth(Alignment.Start, unbounded = true),
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        ) {
+            repeat(count) { PosterCardSkeleton(Modifier.width(POSTER_CARD_WIDTH).then(cardModifier)) }
+        }
+    }
+}
+
+/**
+ * The placeholders a skeleton row draws in [width]: every card whose *start* falls inside it, the partly visible
+ * one included, because the loaded `LazyRow` starts that card too. Card k starts at k * (card + gap), so the count
+ * is the ceiling of width / (card + gap). At least one, so an empty width still shows the shape.
+ */
+internal fun carouselSkeletonCount(width: Dp): Int = ceil(width / (POSTER_CARD_WIDTH + MuvissSpacing.m)).toInt().coerceAtLeast(1)
+
+private val POSTER_CARD_WIDTH = 110.dp
+private const val GENRE_SKELETON_CHIPS = 5
+
+/**
+ * Home (Discover). Internal so its loading layout can be captured on its own (#723). Sections that are
+ * still loading draw a skeleton under their real header; "For you" draws one only when the library has a
+ * seed for it, because a row that never appears would shift everything below it.
+ */
+@Composable
+internal fun DiscoverBrowse(
     state: SearchUiState,
     onSelectGenre: (Genre, MediaType) -> Unit,
     onOpenDetail: (MediaId) -> Unit,
@@ -215,11 +303,15 @@ private fun DiscoverBrowse(
     intro: DiscoverIntro = DiscoverIntro(),
     muted: MutedChip = MutedChip(),
     onOpenNextPick: (() -> Unit)? = null,
+    // Held by the caller: the skeleton host's sweep is switched off when the load ends, and that recomposes
+    // the page beneath it, so a scroll position kept here would be lost (#723).
+    scroll: ScrollState = rememberScrollState(),
 ) {
+    val loading = state.loading
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(bottom = MuvissSpacing.bottomContent),
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
     ) {
@@ -237,22 +329,25 @@ private fun DiscoverBrowse(
         // "For you" (EPIC 16) leads the browse when it has anything to show;
         // MediaCarousel itself renders nothing while state.forYou is empty
         // (no library signal yet), so no separate visibility check is needed.
-        MediaCarousel(stringResource(Res.string.carousel_for_you), state.forYou, onOpenDetail)
-        GenreChipRow(stringResource(Res.string.genres_movies), state.movieGenres) { onSelectGenre(it, MediaType.MOVIE) }
-        GenreChipRow(stringResource(Res.string.genres_tv), state.tvGenres) { onSelectGenre(it, MediaType.TV) }
-        MediaCarousel(stringResource(Res.string.carousel_popular_movies), state.popularMovies, onOpenDetail)
-        MediaCarousel(stringResource(Res.string.carousel_popular_tv), state.popularTv, onOpenDetail)
+        when {
+            state.forYou.isNotEmpty() -> MediaCarousel(stringResource(Res.string.carousel_for_you), state.forYou, onOpenDetail)
+            state.forYouSkeleton -> CarouselSkeleton(stringResource(Res.string.carousel_for_you))
+        }
+        GenreSection(stringResource(Res.string.genres_movies), state.movieGenres, loading) { onSelectGenre(it, MediaType.MOVIE) }
+        GenreSection(stringResource(Res.string.genres_tv), state.tvGenres, loading) { onSelectGenre(it, MediaType.TV) }
+        PopularSection(stringResource(Res.string.carousel_popular_movies), state.popularMovies, loading, onOpenDetail)
+        PopularSection(stringResource(Res.string.carousel_popular_tv), state.popularTv, loading, onOpenDetail)
     }
 }
 
 /** The "show muted" chip: whether it is offered, whether it is on, and what tapping it does. */
-private class MutedChip(val available: Boolean = false, val shown: Boolean = false, val onToggle: () -> Unit = {})
+internal class MutedChip(val available: Boolean = false, val shown: Boolean = false, val onToggle: () -> Unit = {})
 
 /** Test tag of the chip that lifts muting for the session (ADR 0031). */
 const val SHOW_MUTED_CHIP_TAG = "showMutedChip"
 
 /** Whether the first-run intro shows, and what dismissing it does. Bundled so DiscoverBrowse stays under detekt's parameter budget. */
-private class DiscoverIntro(val visible: Boolean = false, val onDismiss: () -> Unit = {})
+internal class DiscoverIntro(val visible: Boolean = false, val onDismiss: () -> Unit = {})
 
 /**
  * The one-time Discover intro (EPIC 30, #73): the app's three moves, once, on

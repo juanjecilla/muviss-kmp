@@ -7,6 +7,8 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.settings.api.TasteItem
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
@@ -89,4 +91,11 @@ internal class CountingMetadata(
         count("genres")
         return emptyList()
     }
+}
+
+/** The Taste Profile as [TasteProfileApi] shows it: [items] are what `observe` emits, already without muted genres. */
+internal class FakeTasteProfile(private val items: List<TasteItem> = emptyList()) : TasteProfileApi {
+    override fun observe(): Flow<List<TasteItem>> = flowOf(items)
+
+    override suspend fun setLiked(item: TasteItem, liked: Boolean): Boolean = error("unused")
 }

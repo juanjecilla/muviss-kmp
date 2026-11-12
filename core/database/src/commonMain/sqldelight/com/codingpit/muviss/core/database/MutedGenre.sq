@@ -1,0 +1,40 @@
+-- Muted Genres as decisions (ADR 0036, #642). One row per genre the person has decided about: a live
+-- row means the genre is muted, a tombstone means it is unmuted, whatever its default. The effective
+-- set is `muted(g) = row(g)?.let { !deleted } ?: (g in the marker's defaults)`, computed in Kotlin, so
+-- this file only stores and reads the decisions.
+--
+-- Keyed by the genre, so two devices deciding different genres keep both, which a single synced string
+-- could not do (ADR 0031's #385). Deletes are SOFT, as `triageSnooze` and `tasteProfile` are: a hard
+-- delete leaves no timestamp for last-write-wins to compare. Every read that means "muted" must filter
+-- `deleted = 0`; the export is the one deliberate exception, because a backup carries the tombstones.
+CREATE TABLE mutedGenre (
+    mediaType TEXT NOT NULL,
+    genreId INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    updatedAtEpochMs INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (mediaType, genreId)
+);
+
+-- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
+CREATE INDEX mutedGenre_dirty ON mutedGenre(isDirty) WHERE isDirty = 1;
+
+-- Every decision, tombstones included, for the export. Deliberately does not filter `deleted`.
+selectAll:
+SELECT *
+FROM mutedGenre
+ORDER BY mediaType ASC, genreId ASC;
+
+selectOne:
+SELECT *
+FROM mutedGenre
+WHERE mediaType = :mediaType AND genreId = :genreId;
+
+upsert:
+INSERT OR REPLACE INTO mutedGenre(mediaType, genreId, name, deleted, isDirty, updatedAtEpochMs)
+VALUES (:mediaType, :genreId, :name, :deleted, :isDirty, :updatedAtEpochMs);
+
+-- Settings > Delete all data (EPIC 29). Hard on purpose, as the other user tables are.
+deleteAll:
+DELETE FROM mutedGenre;

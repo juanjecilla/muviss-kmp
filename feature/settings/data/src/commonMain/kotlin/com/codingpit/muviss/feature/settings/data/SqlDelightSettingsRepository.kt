@@ -14,6 +14,8 @@ import com.codingpit.muviss.core.database.DeviceBackupExclusion
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
 import com.codingpit.muviss.core.database.MediaListQueries
+import com.codingpit.muviss.core.database.MutedGenreChoiceQueries
+import com.codingpit.muviss.core.database.MutedGenreQueries
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.database.ProfileQueries
 import com.codingpit.muviss.core.database.TasteProfileQueries
@@ -39,6 +41,8 @@ import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
+import com.codingpit.muviss.core.database.MutedGenre as MutedGenreRow
+import com.codingpit.muviss.core.database.MutedGenreChoice as MutedGenreChoiceRow
 import com.codingpit.muviss.core.database.Profile as ProfileRow
 import com.codingpit.muviss.core.database.TasteProfile as TasteProfileRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
@@ -80,21 +84,22 @@ class SqlDelightSettingsRepository(
         .onStart { ensureRow() }
         .map { row -> row?.toDomain() ?: AppSettings() }
 
+    // A Display Preference (ADR 0036): the value and the group's stamp are one statement, so they commit together.
     override suspend fun setTheme(theme: AppTheme) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateTheme(theme.name)
+        settingsQueries.updateThemeStamped(theme.name, clock.nowEpochMs())
         Unit
     }
 
     override suspend fun setLanguage(language: String) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateLanguage(language)
+        settingsQueries.updateLanguageStamped(language, clock.nowEpochMs())
         Unit
     }
 
     override suspend fun setRegion(region: String) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateRegion(region)
+        settingsQueries.updateRegionStamped(region, clock.nowEpochMs())
         Unit
     }
 
@@ -151,7 +156,7 @@ class SqlDelightSettingsRepository(
 
     override suspend fun setMutedGenresInSearch(enabled: Boolean) = withContext(dispatchers.io) {
         ensureRow()
-        settingsQueries.updateMutedGenresInSearch(enabled)
+        settingsQueries.updateMutedGenresInSearchStamped(enabled, clock.nowEpochMs())
         Unit
     }
 
@@ -170,6 +175,8 @@ class SqlDelightSettingsRepository(
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
             settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
             tasteProfile = exportQueries.tasteProfile.selectAll().awaitAsList().map { it.toExport() },
+            mutedGenreChoice = exportQueries.mutedGenreChoice.select().awaitAsOneOrNull()?.toExport(),
+            mutedGenres = exportQueries.mutedGenres.selectAll().awaitAsList().map { it.toExport() },
         )
         json.encodeToString(export)
     }
@@ -283,6 +290,20 @@ class SqlDelightSettingsRepository(
         triageSnoozePlacement = triageSnoozePlacement,
         mutedGenres = mutedGenres,
         mutedGenresInSearch = mutedGenresInSearch,
+        displayPreferencesUpdatedAtEpochMs = displayPreferencesUpdatedAtEpochMs,
+    )
+
+    private fun MutedGenreChoiceRow.toExport(): MutedGenreChoiceExport = MutedGenreChoiceExport(
+        defaultsAtChoice = defaultsAtChoice,
+        updatedAtEpochMs = updatedAtEpochMs,
+    )
+
+    private fun MutedGenreRow.toExport(): MutedGenreExport = MutedGenreExport(
+        mediaType = mediaType,
+        genreId = genreId.toInt(),
+        name = name,
+        deleted = deleted,
+        updatedAtEpochMs = updatedAtEpochMs,
     )
 
     private fun ProfileRow.toExport(): ProfileExport = ProfileExport(displayName = displayName, avatarId = avatarId)
@@ -302,4 +323,6 @@ class ExportQueries(database: MuvissDatabase) {
     val lists: MediaListQueries = database.mediaListQueries
     val profile: ProfileQueries = database.profileQueries
     val tasteProfile: TasteProfileQueries = database.tasteProfileQueries
+    val mutedGenres: MutedGenreQueries = database.mutedGenreQueries
+    val mutedGenreChoice: MutedGenreChoiceQueries = database.mutedGenreChoiceQueries
 }
