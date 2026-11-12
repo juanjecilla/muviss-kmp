@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.database.AppSettingsQueries
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.nextpick.api.ResultMode
 import com.codingpit.muviss.feature.nextpick.api.SessionLength
@@ -37,7 +38,7 @@ class NextPickPreferencesTest {
         }
         queries = inMemoryDatabase().appSettingsQueries
         preferences = AppSettingsNextPickPreferences(queries, dispatchers)
-        flags = AppSettingsFeatureFlags(queries, dispatchers, DefaultsRemoteConfig(RemoteValues(byokEnabled = false)))
+        flags = AppSettingsFeatureFlags(queries, dispatchers, DefaultsRemoteConfig(RemoteValues(byokEnabled = false)), FakeClock(epochMs = 1_000L))
     }
 
     @Test
