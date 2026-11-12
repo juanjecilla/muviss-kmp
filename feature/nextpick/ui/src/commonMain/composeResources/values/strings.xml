@@ -56,6 +56,7 @@
     <string name="nextpick_reason_like">Like something you liked</string>
     <string name="nextpick_reason_unlike">Unlike what you did not like</string>
     <string name="nextpick_reason_rated">In genres you rate highly</string>
+    <string name="nextpick_reason_liked_genre">In a genre you like</string>
     <string name="nextpick_reason_favorite">One of your favorites</string>
     <string name="nextpick_reason_long_in_list">Waiting in your list a while</string>
     <string name="nextpick_reason_highly_rated">Highly rated</string>
