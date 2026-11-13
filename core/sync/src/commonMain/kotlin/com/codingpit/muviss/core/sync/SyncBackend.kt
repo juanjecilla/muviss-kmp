@@ -95,6 +95,18 @@ interface SyncBackend {
      * short page then means "capped", not "finished".
      */
     suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit>
+
+    /**
+     * [pull] restricted to [tables], for the one place the engine reads a table before pushing it: a
+     * Display Preferences group that is dirty on this device (ADR 0036, #643). A backend that can page
+     * one table alone overrides this; the default reads everything and drops the other tables' pages,
+     * which is correct and only slower.
+     */
+    suspend fun pull(
+        after: Map<SyncTable, SyncCursor>,
+        tables: Set<SyncTable>,
+        onPage: suspend (SyncPage) -> Unit,
+    ): Result<Unit> = pull(after) { page -> if (page.table in tables) onPage(page) }
 }
 
 /**
@@ -116,6 +128,9 @@ enum class SyncTable(val cursorKey: String) {
     TRIAGE_SNOOZE("triageSnooze"),
     EPISODE_PLAY("episodePlay"),
     TASTE_PROFILE("tasteProfile"),
+
+    /** The Display Preferences group: one row per account (ADR 0036, #643). Read before its first push whenever it is dirty. */
+    DISPLAY_PREFERENCES("displayPreferences"),
 }
 
 /**

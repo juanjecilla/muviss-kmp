@@ -55,6 +55,7 @@ internal class RemoteApplier(private val database: MuvissDatabase, private val c
         changes.triageSnoozes.forEach { applyTriageSnooze(it) }
         changes.episodePlays.forEach { applyEpisodePlay(it) }
         changes.tasteProfileItems.forEach { applyTasteProfileItem(it) }
+        changes.displayPreferences.forEach { applyDisplayPreferences(it) }
 
         val touched = buildSet {
             changes.collectionEntries.mapTo(this) { it.mediaId }
@@ -274,6 +275,74 @@ internal class RemoteApplier(private val database: MuvissDatabase, private val c
             deleted = change.deleted,
         )
     }
+
+    /**
+     * The Display Preferences group (ADR 0036, #643). Writes the group's members and its stamp, never a
+     * device switch.
+     *
+     * - A clean group takes the account's copy whole.
+     * - A group stamped `0` (a backfill or a legacy restore) takes it whole too, and never merges:
+     *   `0` means older than anything on the account.
+     * - A dirty, stamped group merges. A member still at its first-run value yields to the account's
+     *   value; a member the person changed keeps this device's. The merged group keeps the local stamp
+     *   and stays dirty, so it is pushed with it. Only a pulled copy newer than the last one applied
+     *   reaches here: a pre-push read resumes from the cursor, and the main pull delivers nothing older.
+     *   That is what makes the merge idempotent when the same copy is read twice in one cycle.
+     */
+    private suspend fun applyDisplayPreferences(change: DisplayPreferencesChange) {
+        val queries = database.appSettingsQueries
+        queries.ensureRow()
+        val local = queries.selectSettings().awaitAsOneOrNull() ?: return
+        val localStamp = local.displayPreferencesUpdatedAtEpochMs
+        if (!local.displayPreferencesDirty || localStamp == null || localStamp == 0L) {
+            writeDisplayPreferences(change.toGroup(), stamp = change.updatedAtEpochMs, isDirty = false)
+            return
+        }
+        val remote = change.toGroup()
+        val merged = DisplayPreferencesGroup(
+            theme = if (local.theme == DisplayPreferenceDefaults.THEME) remote.theme else local.theme,
+            language = if (local.language == DisplayPreferenceDefaults.LANGUAGE) remote.language else local.language,
+            region = if (local.region == DisplayPreferenceDefaults.REGION) remote.region else local.region,
+            animationsEnabled = if (local.animationsEnabled == DisplayPreferenceDefaults.ANIMATIONS_ENABLED) remote.animationsEnabled else local.animationsEnabled,
+            triageDeckAnimations = if (local.triageDeckAnimations == DisplayPreferenceDefaults.TRIAGE_DECK_ANIMATIONS) remote.triageDeckAnimations else local.triageDeckAnimations,
+            tickAnimations = if (local.tickAnimations == DisplayPreferenceDefaults.TICK_ANIMATIONS) remote.tickAnimations else local.tickAnimations,
+            triageControlScheme = if (local.triageControlScheme == DisplayPreferenceDefaults.TRIAGE_CONTROL_SCHEME) remote.triageControlScheme else local.triageControlScheme,
+            triageSnoozePeriod = if (local.triageSnoozePeriod == DisplayPreferenceDefaults.TRIAGE_SNOOZE_PERIOD) remote.triageSnoozePeriod else local.triageSnoozePeriod,
+            triageSnoozePlacement = if (local.triageSnoozePlacement == DisplayPreferenceDefaults.TRIAGE_SNOOZE_PLACEMENT) remote.triageSnoozePlacement else local.triageSnoozePlacement,
+            mutedGenresInSearch = if (local.mutedGenresInSearch == DisplayPreferenceDefaults.MUTED_GENRES_IN_SEARCH) remote.mutedGenresInSearch else local.mutedGenresInSearch,
+        )
+        writeDisplayPreferences(merged, stamp = localStamp, isDirty = true)
+    }
+
+    private suspend fun writeDisplayPreferences(group: DisplayPreferencesGroup, stamp: Long, isDirty: Boolean) {
+        database.appSettingsQueries.restoreDisplayPreferences(
+            theme = group.theme,
+            language = group.language,
+            region = group.region,
+            animationsEnabled = group.animationsEnabled,
+            triageDeckAnimations = group.triageDeckAnimations,
+            tickAnimations = group.tickAnimations,
+            triageControlScheme = group.triageControlScheme,
+            triageSnoozePeriod = group.triageSnoozePeriod,
+            triageSnoozePlacement = group.triageSnoozePlacement,
+            mutedGenresInSearch = group.mutedGenresInSearch,
+            stampEpochMs = stamp,
+            isDirty = isDirty,
+        )
+    }
+
+    private fun DisplayPreferencesChange.toGroup() = DisplayPreferencesGroup(
+        theme = theme,
+        language = language,
+        region = region,
+        animationsEnabled = animationsEnabled,
+        triageDeckAnimations = triageDeckAnimations,
+        tickAnimations = tickAnimations,
+        triageControlScheme = triageControlScheme,
+        triageSnoozePeriod = triageSnoozePeriod,
+        triageSnoozePlacement = triageSnoozePlacement,
+        mutedGenresInSearch = mutedGenresInSearch,
+    )
 
     private suspend fun applyEpisodePlay(change: EpisodePlayChange) {
         val local = database.episodePlayQueries.selectById(change.id).awaitAsOneOrNull()

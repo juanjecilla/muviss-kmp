@@ -416,10 +416,19 @@ Notes:
 - No `deleted` filter is applied server-side on select — `SyncEngine` pulls
   tombstoned rows too (so it can propagate the delete locally) and relies on
   `updated_at_epoch_ms` for the `since` filter, same as every other row.
+- `display_preferences` (EPIC 51, ADR 0036, #643) is the Display Preferences
+  group of `appSettings` as **one row per account**, primary key `user_id`:
+  the ten members, one `updated_at_epoch_ms` stamp for the group, and no
+  `deleted` column, since the group is never removed. Device switches are not in
+  it. Migration `20261113000000_display_preferences_sync.sql`; pgTAP in
+  `supabase/tests/database/display_preferences_rls.test.sql`.
 
 ## How a sync cycle works (EPIC 39, ADR 0020)
 
-`SyncEngine.syncNow()` runs, under one mutex: **owner check, push, pull, reconcile**.
+`SyncEngine.syncNow()` runs, under one mutex: **owner check, read a dirty
+Display Preferences group, push, pull, reconcile**. The read is the one
+table-specific step (ADR 0036, #643), and it is described under **Read before
+push** below.
 
 **Owner check.** `syncState.ownerAccountId` is the account this database's user
 data belongs to. No owner (a fresh install, or any install from before it
@@ -430,6 +439,24 @@ uploads rewatch history from before plays synced. A *different* account returns
 `resolveAccountChange(DiscardLocalData | MergeLocalDataIntoAccount)`. Plain
 sign-out keeps the owner. `resyncEverything()` is the repair path: forget the
 cursors, mark everything dirty, run a normal cycle.
+
+**Read before push (ADR 0036, #643).** A dirty Display Preferences group is read
+from the account before the push, so a device that has never seen the account
+cannot push its defaults over the account's values. This is the cycle's only
+table-specific ordering. The read is `SyncBackend.pull` restricted to that table
+and its page is applied, but the cursor is not saved: the main pull reads the
+same copy again and moves the cursor at the end, as every table does. A group
+with a stamp of its own resumes from its cursor, so only a copy newer than the
+last one applied is merged. A group stamped `0` (a backfill or a legacy restore),
+or a device that has never pulled the table, reads from the beginning and is
+replaced whole, never merged.
+
+When the copy is applied to a dirty group, a member still at its first-run value
+yields to the account's, and a member the person changed keeps this device's.
+The merged group keeps the local stamp and stays dirty. Two costs are accepted:
+an unsent edit to one member is replaced by an account group that is newer than
+it, because the group is one row with one stamp; and a person who returns a
+member to its default on one device yields to the account on the merge.
 
 **Push.** Table by table, parents first, at most 500 rows per request. Bodies
 carry `null` explicitly (`"rating":null`) because PostgREST's merge-duplicates
