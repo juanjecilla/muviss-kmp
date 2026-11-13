@@ -161,16 +161,18 @@ select is(
 
 -- ------------------------------------------------------------ anonymous ---
 
--- The anon key with no session: auth.uid() is null, so every policy matches
--- nothing. A read is an empty set (not an error); a write is refused.
+-- The anon key with no session. Since the entitlement migration anon holds no
+-- table privilege at all (20261022000100), so a read is refused outright with
+-- 42501 rather than answered with an empty set; RLS would have matched nothing
+-- either way, now it is never reached.
 select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claims', '{"role":"anon"}', true);
 set local role anon;
 
-select is((select count(*)::int from public.collection_entry), 0, 'anon reads no collection entries');
-select is((select count(*)::int from public.cowatch_pool_entry), 0, 'anon reads no pool entries');
-select is((select count(*)::int from public.cowatch_link), 0, 'anon reads no links');
-select is((select count(*)::int from public.triage_snooze), 0, 'anon reads no snoozes');
+select throws_ok($$select count(*) from public.collection_entry$$, '42501', null, 'anon cannot read collection entries');
+select throws_ok($$select count(*) from public.cowatch_pool_entry$$, '42501', null, 'anon cannot read pool entries');
+select throws_ok($$select count(*) from public.cowatch_link$$, '42501', null, 'anon cannot read links');
+select throws_ok($$select count(*) from public.triage_snooze$$, '42501', null, 'anon cannot read snoozes');
 
 select throws_ok(
   $$insert into public.cowatch_pool_entry (user_id, recipient_id, media_id, media_type, title, updated_at_epoch_ms)

@@ -23,6 +23,11 @@ values
 -- Acting as a user is three statements: set the claims auth.uid() reads, then
 -- drop to the `authenticated` role so RLS applies. `reset role` first when
 -- switching between users.
+--
+-- Since EPIC 32 (ADR 0019) every synced table also requires a `sync_until`
+-- claim in the future, which the custom access token hook stamps for an
+-- entitled account. These users are entitled; `sync_entitlement.test.sql`
+-- covers the ones who are not.
 
 -- --------------------------------------------------------------- structure ---
 
@@ -39,7 +44,7 @@ select has_index('public', 'episode_play', 'episode_play_server_seq', array['use
 -- ---------------------------------------------------------- monotonic seq ---
 
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', true);
-select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated","sync_until":"9999-12-31T23:59:59Z"}', true);
 set local role authenticated;
 
 insert into public.collection_entry (media_id, media_type, title, production_status, added_at_epoch_ms, updated_at_epoch_ms)
@@ -124,7 +129,7 @@ select is((select updated_at_epoch_ms from public.collection_entry where media_i
 
 reset role;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', true);
-select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated","sync_until":"9999-12-31T23:59:59Z"}', true);
 set local role authenticated;
 
 select is((select count(*)::int from public.collection_entry), 0, 'another user sees none of alice''s rows');
