@@ -226,4 +226,10 @@ data class TriageDecisionExport(
     val updatedAtEpochMs: Long,
     /** v2; whether a CaughtUp's ticks were written (ADR 0010). A v1 decision restores as resolved. */
     val resolved: Boolean = true,
+    /**
+     * Whether this verdict created its library entry (#767). Defaulted to true, the value
+     * every decision written before the field existed was made under, so an older backup
+     * restores with undo behaving as it always has.
+     */
+    val createdEntry: Boolean = true,
 )

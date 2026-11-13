@@ -61,7 +61,7 @@ class SyncIntegrationTest {
         a.progress.setSeenBulk(episodeIds(3), true)
         a.device.database.mediaListQueries.insertList("list-1", "Weekend", 1_000L, 1_000L, true, false)
         a.device.database.mediaListQueries.upsertEntry("list-1", movie.toString(), 1_000L, 1_000L, true, false)
-        a.device.database.triageDecisionQueries.upsert(second.toString(), "movie", "SKIP", "Reloaded", null, 1_000L, true, 1_000L, true, false)
+        a.device.database.triageDecisionQueries.upsert(second.toString(), "movie", "SKIP", "Reloaded", null, 1_000L, true, 1_000L, true, false, true)
         assertTrue(a.sync() is SyncOutcome.Success)
         assertTrue(b.sync() is SyncOutcome.Success)
 

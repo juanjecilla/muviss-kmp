@@ -314,6 +314,7 @@ create table triage_decision (
   resolved boolean not null default true,
   updated_at_epoch_ms bigint not null,
   deleted boolean not null default false,
+  created_entry boolean not null default true,  -- #767: undo removes the library entry only when true
   primary key (user_id, media_id)
 );
 

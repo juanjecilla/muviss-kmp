@@ -476,6 +476,8 @@ runs standing in where they could. What that did and did not buy:
 
 ## Cross-cutting / backlog
 
+- **Triage undo keeps a library entry the person added while the deck was open** (#767, `docs/adr/0010-triage-decision-log.md`). Schema claim: `29.sqm` (fixture `30.db`), which takes a v29 database to v30; it is stacked on #724's branch because `28.sqm` (Discover's cache) must come first for the chain to be contiguous, so this PR is retargeted once #724 merges. `triageDecision.createdEntry` (default 1 for every existing row) records whether the verdict created the entry; undo removes the entry and ticks only then. Synced as `created_entry` (`supabase/migrations/20261113000000_triage_created_entry.sql`) and carried by backups with a default. Follow-ups: #790 (ticks the verdict wrote), #791 (claim read before the fetch), #792 (undo while a verdict is in flight).
+
 - **Sentry MUVISS-4 (`InvisibleActionTrampolineActivity`, "List adapter activity trampoline invoked without specifying target intent") has no trigger in the current home-screen widget** — #630 (no fix PR: Glance 1.1.1 and 1.2.0 both throw the same guard, and the non-lazy `MuvissWidget` never builds that intent). Root cause and the release it came from are open in #635; the device and Sentry check is #636.
 ### 2026-11-09
 - **Staged versions conflict on CHANGELOG.md** — #711, fixed: `start-release.sh` writes `docs/changelog/X.Y.Z.md` and leaves `CHANGELOG.md` frozen, so two release branches cut before a back-merge no longer edit the same lines. Raised by the 1.3.0 refusal (#708).
