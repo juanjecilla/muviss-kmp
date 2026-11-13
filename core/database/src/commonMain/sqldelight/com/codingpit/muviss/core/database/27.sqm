@@ -1,0 +1,16 @@
+-- The Triage deck's saved position (#722). The filename is the version this migrates FROM: 27.sqm
+-- takes a v27 database to v28 (fixture 28.db).
+--
+-- NUMBERING: claimed when the #722 branch opened, after #642's 26.sqm; `verifyMigrations` cannot see a
+-- collision, so re-check this number against develop before merging.
+--
+-- A new table, not a column: one row per deck key (type, genre, muted set, language). It is per device,
+-- like a Device Switch, so it is not synced, exported or restored, and Delete all data wipes it.
+CREATE TABLE triageDeckCursor (
+    cursorKey TEXT NOT NULL PRIMARY KEY,
+    moviePage INTEGER NOT NULL,
+    tvPage INTEGER NOT NULL,
+    moviesResumePage INTEGER NOT NULL,
+    tvResumePage INTEGER NOT NULL,
+    savedAtEpochMs INTEGER NOT NULL
+);

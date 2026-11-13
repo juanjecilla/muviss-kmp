@@ -35,6 +35,9 @@ data class DeckCursor(
         MediaType.TV -> tvExhausted
         null -> moviesExhausted && tvExhausted
     }
+
+    /** The next page to read for [type]. */
+    fun pageFor(type: MediaType): Int = if (type == MediaType.MOVIE) moviePage else tvPage
 }
 
 /**
@@ -47,10 +50,21 @@ data class DueSnoozes(
     val placement: SnoozePlacement = SnoozePlacement.DEFAULT,
 )
 
-/** A batch of cards plus where to resume. */
+/**
+ * A batch of cards plus where to resume.
+ *
+ * [overflow] is what the batch read beyond what was asked for. The cursor has already moved past those
+ * pages, so the caller must keep them (#722): dropping them would lose titles the catalogue will not
+ * offer again from this cursor. [pageOf] gives the catalogue page each card came from, so a checkpoint
+ * can record the earliest page still holding a card the person has not acted on. [pagesRead] is what the
+ * refill budget counts.
+ */
 data class DeckBatch(
     val cards: List<MediaSummary>,
     val cursor: DeckCursor,
+    val overflow: List<MediaSummary> = emptyList(),
+    val pageOf: Map<MediaId, Int> = emptyMap(),
+    val pagesRead: Int = 0,
 ) {
     val exhausted: Boolean get() = cards.isEmpty()
 }
@@ -98,6 +112,8 @@ class DeckLoader(private val source: DeckSource) {
     ): Result<DeckBatch> {
         val collected = mutableListOf<MediaSummary>()
         val seen = excluded.toMutableSet()
+        val pageOf = mutableMapOf<MediaId, Int>()
+        var pagesRead = 0
         var current = cursor
         val placement = dueSnoozes.placement
 
@@ -121,29 +137,44 @@ class DeckLoader(private val source: DeckSource) {
             val muted = filter.muted.without(type, filter.genreId)
             val page = source.page(type, pageNumber, filter.genreId, muted.forType(type))
                 .getOrElse { return Result.failure(it) }
+            pagesRead++
 
             // The source already excluded them; this is for a source that cannot (and for a row whose
             // genres TMDB filled in after the query). Only fresh candidates are filtered: due Snoozes
             // above are the user's own postponement and carry no genres.
             page.items
                 .filter { !muted.hides(it) && seen.add(it.id) }
-                .forEach { collected += it }
+                .forEach {
+                    collected += it
+                    pageOf[it.id] = pageNumber
+                }
 
             current = current.advance(type, lastPage = page.page >= page.totalPages)
         }
 
-        val merged = when (placement) {
+        // Fresh titles beyond the room left for them are not lost: they go back as overflow (#722), since
+        // the cursor has already moved past their pages.
+        val room = (wanted - returning.size).coerceAtLeast(0)
+        val (merged, spill) = when (placement) {
             // Already at the front.
-            SnoozePlacement.FIRST -> collected
+            SnoozePlacement.FIRST -> collected to emptyList()
 
-            SnoozePlacement.LAST -> collected.take(wanted - returning.size).plus(returning)
+            SnoozePlacement.LAST -> collected.take(room).plus(returning) to collected.drop(room)
 
             // Trimmed to leave room *before* mixing, so the truncation below
             // can never be what drops a returning title.
-            SnoozePlacement.MIXED_IN -> collected.take(wanted - returning.size).mixIn(returning)
+            SnoozePlacement.MIXED_IN -> collected.take(room).mixIn(returning) to collected.drop(room)
         }
 
-        return Result.success(DeckBatch(merged.take(wanted), current))
+        return Result.success(
+            DeckBatch(
+                cards = merged.take(wanted),
+                cursor = current,
+                overflow = merged.drop(wanted) + spill,
+                pageOf = pageOf.toMap(),
+                pagesRead = pagesRead,
+            ),
+        )
     }
 
     /**
@@ -194,8 +225,6 @@ class DeckLoader(private val source: DeckSource) {
         }
     }
 
-    private fun DeckCursor.pageFor(type: MediaType): Int = if (type == MediaType.MOVIE) moviePage else tvPage
-
     private fun DeckCursor.advance(type: MediaType, lastPage: Boolean): DeckCursor = when (type) {
         MediaType.MOVIE -> copy(moviePage = moviePage + 1, moviesExhausted = lastPage)
         MediaType.TV -> copy(tvPage = tvPage + 1, tvExhausted = lastPage)
@@ -205,7 +234,7 @@ class DeckLoader(private val source: DeckSource) {
         /** Enough to swipe through without a visible refill, small enough to load fast. */
         const val DEFAULT_BATCH_SIZE = 10
 
-        /** Bounds the refill loop when almost everything on a page is already decided. */
+        /** Bounds one `load` call when almost everything on a page is already decided. */
         const val MAX_PAGES_PER_BATCH = 5
 
         /**
