@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.nextpick.data.di
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
@@ -18,6 +19,7 @@ import com.codingpit.muviss.feature.nextpick.data.DiscoverSource
 import com.codingpit.muviss.feature.nextpick.data.LibraryGenreIds
 import com.codingpit.muviss.feature.nextpick.data.NextPickContextReader
 import com.codingpit.muviss.feature.nextpick.data.OwnServicesCandidates
+import com.codingpit.muviss.feature.nextpick.data.SeedCandidates
 import com.codingpit.muviss.feature.nextpick.data.SettingsMuting
 import com.codingpit.muviss.feature.nextpick.data.TasteHistoryReader
 import com.codingpit.muviss.feature.nextpick.data.TriageExclusions
@@ -48,7 +50,7 @@ val nextPickDataModule: Module = module {
         val clock: AppClock = get()
         val connectivity: ConnectivityMonitor = get()
         val genreIds: LibraryGenreIds = get()
-        val thisYear = { civilDateOf(clock.nowEpochMs().floorDiv(MS_PER_DAY)).year }
+        val thisYear = { civilDateOf(clock.localTodayEpochDay()).year }
         val metadata: MetadataProvider = get()
         val taste: () -> TasteProfileApi = { get() }
         val region: () -> String = { get<MetadataLocale>().region }
@@ -58,9 +60,10 @@ val nextPickDataModule: Module = module {
         PickEngine(
             sources = listOf(
                 // "Only my services" (#740) narrows the two sources TMDB does not filter by provider; discover does it itself.
-                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds), taste, lookup, region),
+                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds, clock), taste, lookup, region),
                 DiscoverSource(metadata, collection, thisYear, muting, taste, region),
                 OwnServicesCandidates(AnchorCandidates(metadata, collection), taste, lookup, region),
+                OwnServicesCandidates(SeedCandidates(metadata, collection), taste, lookup, region),
             ),
             exclusions = TriageExclusions(triage),
             history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity, genreIds), taste),
@@ -83,5 +86,3 @@ val nextPickDataModule: Module = module {
         DefaultNextPickActions({ get<CollectionApi>() }, { get<TriageApi>() }, get(), get(), get())
     }
 }
-
-private const val MS_PER_DAY = 86_400_000L

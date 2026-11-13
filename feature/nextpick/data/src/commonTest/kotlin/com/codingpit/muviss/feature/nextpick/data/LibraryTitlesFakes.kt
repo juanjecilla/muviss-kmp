@@ -68,13 +68,23 @@ internal fun libraryEngine(
     live: suspend (MediaType) -> List<Genre> = noLiveCatalogue,
     language: String = "en-US",
     online: Boolean = true,
+): PickEngine = engineOver(FixedClock, library, muted, LibraryGenreIds(liveCatalogue = live, language = { language }), online)
+
+/** The real engine read on [clock], so the person's zone and "today" are the test's own (#756). */
+internal fun libraryEngineOn(clock: AppClock, library: List<CollectionSummary>): PickEngine = engineOver(clock, library, MutedGenres.NONE, LibraryGenreIds(liveCatalogue = noLiveCatalogue, language = { "en-US" }), online = true)
+
+private fun engineOver(
+    clock: AppClock,
+    library: List<CollectionSummary>,
+    muted: MutedGenres,
+    genreIds: LibraryGenreIds,
+    online: Boolean,
 ): PickEngine {
     val collection = FakeLibrary(library)
-    val genreIds = LibraryGenreIds(liveCatalogue = live, language = { language })
     return PickEngine(
-        sources = listOf(CollectionBacklogCandidates({ collection }, genreIds)),
+        sources = listOf(CollectionBacklogCandidates({ collection }, genreIds, clock)),
         exclusions = PickExclusions { emptySet() },
-        history = CollectionHistoryReader(FixedClock, { collection }, connectivity(online), genreIds),
+        history = CollectionHistoryReader(clock, { collection }, connectivity(online), genreIds),
         muting = PickMuting { muted },
     )
 }

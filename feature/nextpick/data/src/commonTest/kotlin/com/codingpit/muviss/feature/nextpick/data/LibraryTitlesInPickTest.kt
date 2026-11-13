@@ -1,5 +1,8 @@
 package com.codingpit.muviss.feature.nextpick.data
 
+import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.epochDayOfCivil
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
 import com.codingpit.muviss.feature.nextpick.api.PickAnchor
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
 import com.codingpit.muviss.feature.nextpick.api.PickMood
@@ -135,5 +138,70 @@ class LibraryTitlesInPickTest {
 
         assertEquals("Finished", history.anchorTitle)
         assertEquals(setOf("35", "18"), history.anchorGenreIds)
+    }
+
+    /**
+     * Two titles added on the same evening, 90 and 89 of the person's days ago. Their day is the local one, so a
+     * title added at 22:00 at UTC-5 is the day it was added to them, not the next UTC day, and the rule reads
+     * the same days the list shows (#756). The next-UTC-day title is the one the old UTC math got a day wrong.
+     */
+    @Test
+    fun a_title_added_late_at_night_counts_its_days_in_the_persons_zone() = runTest {
+        val clock = zone(-5 * HOUR, nowLocal = atLocal(TODAY, localHour = 12, offsetMs = -5 * HOUR))
+        val ninetyDaysAgo = atLocal(TODAY - 90, localHour = 22, offsetMs = -5 * HOUR)
+        val eightyNineDaysAgo = atLocal(TODAY - 89, localHour = 22, offsetMs = -5 * HOUR)
+        val engine = libraryEngineOn(
+            clock,
+            library = listOf(
+                libraryTitle("1", "Ninety", genres = emptyList()).copy(addedAtEpochMs = ninetyDaysAgo),
+                libraryTitle("2", "Eighty Nine", genres = emptyList()).copy(addedAtEpochMs = eightyNineDaysAgo),
+            ),
+        )
+
+        val reasons = engine.pick(PickCriteria(), PickContext(online = true)).picks.associate { it.candidate.summary.title to it.reason }
+
+        assertEquals(PickReason.LongInYourList, reasons.getValue("Ninety"))
+        assertEquals(PickReason.FitsWhatYouAsked, reasons.getValue("Eighty Nine"))
+    }
+
+    /**
+     * Berlin-like: +2 in August, +1 in November, with the change on 25 Oct. A title added at 00:30 on 12 Aug is
+     * 89 local days old, but its UTC day is 11 Aug and would read as 90. The offset is read at the add, not "now".
+     */
+    @Test
+    fun the_days_are_read_at_the_offset_in_force_at_each_timestamp_across_a_dst_change() = runTest {
+        val dstChange = epochMsAtStartOfDay(epochDayOfCivil(2026, 10, 25)) + HOUR
+        val berlin = object : AppClock {
+            override fun nowEpochMs(): Long = atLocal(TODAY, localHour = 12, offsetMs = HOUR)
+            override fun utcOffsetMsAt(epochMs: Long): Long = if (epochMs < dstChange) 2 * HOUR else HOUR
+        }
+        val addedOn12Aug = atLocal(epochDayOfCivil(2026, 8, 12), localHour = 0, offsetMs = 2 * HOUR) + 30 * MINUTE
+        val addedOn11Aug = atLocal(epochDayOfCivil(2026, 8, 11), localHour = 0, offsetMs = 2 * HOUR) + 30 * MINUTE
+        val engine = libraryEngineOn(
+            berlin,
+            library = listOf(
+                libraryTitle("1", "Eighty Nine", genres = emptyList()).copy(addedAtEpochMs = addedOn12Aug),
+                libraryTitle("2", "Ninety", genres = emptyList()).copy(addedAtEpochMs = addedOn11Aug),
+            ),
+        )
+
+        val reasons = engine.pick(PickCriteria(), PickContext(online = true)).picks.associate { it.candidate.summary.title to it.reason }
+
+        assertEquals(PickReason.FitsWhatYouAsked, reasons.getValue("Eighty Nine"))
+        assertEquals(PickReason.LongInYourList, reasons.getValue("Ninety"))
+    }
+
+    private fun zone(utcOffsetMs: Long, nowLocal: Long) = object : AppClock {
+        override fun nowEpochMs(): Long = nowLocal
+        override fun utcOffsetMsAt(epochMs: Long): Long = utcOffsetMs
+    }
+
+    /** The UTC instant at which the local day [epochDay] is at [localHour] in a zone at [offsetMs]. */
+    private fun atLocal(epochDay: Long, localHour: Long, offsetMs: Long): Long = epochMsAtStartOfDay(epochDay) + localHour * HOUR - offsetMs
+
+    private companion object {
+        val TODAY = epochDayOfCivil(2026, 11, 9)
+        const val HOUR = 3_600_000L
+        const val MINUTE = 60_000L
     }
 }

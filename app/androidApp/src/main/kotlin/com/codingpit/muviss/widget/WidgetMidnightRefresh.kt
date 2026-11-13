@@ -57,11 +57,10 @@ object WidgetMidnightRefresh {
      * Local midnight, from the device's own calendar rather than a UTC
      * epoch-day computation.
      *
-     * The app compares air dates in UTC epoch days
-     * (`AppClock.todayEpochDay`), which is what makes them comparable across
-     * time zones — but a person's "today" starts at their midnight, and that
-     * is when they expect the widget to have moved on. Firing on the local
-     * boundary covers the UTC one within a day either way.
+     * The app's day is the person's local day (`AppClock.todayEpochDay`, #675),
+     * so the boundary the widget redraws on is the one its "next aired episode"
+     * answer changes at. This is that same midnight, read from the device's own
+     * calendar.
      *
      * `java.util.Calendar` rather than `java.time`: minSdk is 24 and the
      * module has no core-library desugaring configured.

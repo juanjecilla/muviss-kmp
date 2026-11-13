@@ -73,6 +73,17 @@ class NextPickEntryTest {
     }
 
     @Test
+    fun a_finished_title_opens_the_session_anchored_on_itself() = runComposeUiTest {
+        // "More like the one you just finished" (#664): the entry hands back the title it is on.
+        val anchors = mutableListOf<MediaId>()
+        setContent { DetailWithEntry(WatchStatus.FINISHED, onOpenNextPick = { anchors += it }) }
+        waitForIdle()
+
+        onNodeWithTag(NEXT_PICK_ENTRY_TAG).assertExists().performClick()
+        assertEquals(listOf(MediaId.tmdbMovie("603")), anchors)
+    }
+
+    @Test
     fun a_finished_title_offers_what_s_next() = runComposeUiTest {
         setContent { DetailWithEntry(WatchStatus.FINISHED, onOpenNextPick = {}) }
         waitForIdle()
@@ -132,13 +143,13 @@ internal fun DiscoverWithEntryContent(onOpenNextPick: (() -> Unit)?) {
 
 /** The behaviour tests' frame: the screen under its own theme. */
 @Composable
-internal fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: (() -> Unit)?, darkTheme: Boolean = false) {
+internal fun DetailWithEntry(status: WatchStatus?, onOpenNextPick: ((MediaId) -> Unit)?, darkTheme: Boolean = false) {
     MuvissTheme(darkTheme = darkTheme) { DetailWithEntryContent(status, onOpenNextPick) }
 }
 
 /** The screen without a theme; see [DiscoverWithEntryContent]. */
 @Composable
-internal fun DetailWithEntryContent(status: WatchStatus?, onOpenNextPick: (() -> Unit)?) {
+internal fun DetailWithEntryContent(status: WatchStatus?, onOpenNextPick: ((MediaId) -> Unit)?) {
     val mediaId = MediaId.tmdbMovie("603")
     val repo = FakeDetailRepo(details = MediaDetails(MediaSummary(mediaId, "The Matrix", year = 1999)))
     val collection = FakeCollectionApi()

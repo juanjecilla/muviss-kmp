@@ -12,7 +12,7 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
 /** Registers the search + detail destinations into the app NavGraphBuilder. */
-fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: () -> Unit, onOpenNextPick: () -> Unit) {
+fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: () -> Unit, onOpenNextPick: (anchor: MediaId?) -> Unit) {
     composable<SearchRoute> {
         val viewModel = koinViewModel<SearchViewModel>()
         val intro = koinViewModel<DiscoverIntroViewModel>()
@@ -26,7 +26,8 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
             // app shell owns the navigation and passes it down.
             onOpenTriage = onOpenTriage,
             // The Pick Session (EPIC 51, #545) is in :feature:nextpick, which this module may not depend on.
-            onOpenNextPick = onOpenNextPick,
+            // Discover opens it with no anchor on purpose: no title here was just finished (#664).
+            onOpenNextPick = { onOpenNextPick(null) },
         )
     }
     composable<DetailRoute> { entry ->
@@ -43,6 +44,7 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
             onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
             onOpenEpisode = { episodeId -> navController.navigate(EpisodeDetailRoute(episodeId.toString())) },
             nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
+            // A finished title's entry opens the session anchored on that title (#664).
             onOpenNextPick = onOpenNextPick,
         )
     }

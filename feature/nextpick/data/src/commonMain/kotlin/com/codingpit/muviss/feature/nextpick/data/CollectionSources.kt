@@ -2,6 +2,8 @@ package com.codingpit.muviss.feature.nextpick.data
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.localEpochDayOf
+import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
@@ -25,6 +27,7 @@ import kotlinx.coroutines.flow.first
 internal class CollectionBacklogCandidates(
     private val collection: () -> CollectionApi,
     private val genreIds: LibraryGenreIds,
+    private val clock: AppClock,
 ) : PickCandidates {
 
     override suspend fun gather(criteria: PickCriteria, context: PickContext): List<PickCandidate> {
@@ -47,7 +50,7 @@ internal class CollectionBacklogCandidates(
         runtimeMinutes = runtimeMinutes,
         favorite = favorite,
         userRating = rating,
-        addedAtEpochMs = addedAtEpochMs.takeIf { it > 0 },
+        addedOnEpochDay = addedAtEpochMs.takeIf { it > 0 }?.let { clock.localEpochDayOf(it) },
     )
 }
 
@@ -81,11 +84,7 @@ internal class CollectionHistoryReader(
             genreRatings = ratingsByGenre,
             anchorGenreIds = anchor?.let { indexes.getValue(it.mediaId.type).idsOf(it.genres).toSet() }.orEmpty(),
             anchorTitle = anchor?.title,
-            todayEpochDay = clock.nowEpochMs().floorDiv(MS_PER_DAY),
+            todayEpochDay = clock.localTodayEpochDay(),
         )
-    }
-
-    private companion object {
-        const val MS_PER_DAY = 86_400_000L
     }
 }
