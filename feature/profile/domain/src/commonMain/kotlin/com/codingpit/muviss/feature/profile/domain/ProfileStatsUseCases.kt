@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.profile.domain
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
@@ -23,7 +24,7 @@ class ObserveProfileStatsUseCase(
     operator fun invoke(): Flow<ProfileStats> = combine(
         collectionApi.observeSummaries(),
         progressApi.observeSeenActivityEpochDays(),
-        progressApi.observeRewatchCounts(RewatchWindow.ALL_TIME.sinceEpochMs(clock.nowEpochMs())),
+        progressApi.observeRewatchCounts(RewatchWindow.ALL_TIME.sinceEpochMs(clock)),
     ) { summaries, activityDays, rewatchCounts ->
         ProfileStatsCalculator.calculate(summaries, activityDays, clock.todayEpochDay(), rewatchCounts)
     }
@@ -57,13 +58,13 @@ class ObserveRewatchStatsUseCase(
         val today = clock.todayEpochDay()
         return combine(
             collectionApi.observeSummaries(),
-            progressApi.observeRewatchCounts(window.sinceEpochMs(clock.nowEpochMs())),
-            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(today)),
+            progressApi.observeRewatchCounts(window.sinceEpochMs(clock)),
+            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(clock, today)),
         ) { summaries, counts, timestamps ->
             RewatchStats(
                 window = window,
                 ranking = RewatchRankingCalculator.calculate(counts, summaries),
-                monthly = MonthlyRewatchCalculator.calculate(timestamps, today),
+                monthly = MonthlyRewatchCalculator.calculate(timestamps, today) { clock.localEpochDayOf(it) },
             )
         }
     }

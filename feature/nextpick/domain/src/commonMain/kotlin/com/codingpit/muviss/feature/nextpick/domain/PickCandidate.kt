@@ -34,7 +34,8 @@ data class PickCandidate(
     val favorite: Boolean = false,
     /** The person's own rating, 1 to 10, when they gave one. */
     val userRating: Int? = null,
-    val addedAtEpochMs: Long? = null,
+    /** The person's local epoch day the title went onto their list, when it is in the library (#756). */
+    val addedOnEpochDay: Long? = null,
 ) {
     val id: MediaId get() = summary.id
 }

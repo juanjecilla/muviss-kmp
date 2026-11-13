@@ -1,9 +1,11 @@
 package com.codingpit.muviss.feature.profile.domain
 
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.core.common.epochDayOf
 import com.codingpit.muviss.core.common.epochDayOfCivil
-import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.common.localStartOfDayEpochMs
+import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
@@ -20,10 +22,18 @@ enum class RewatchWindow {
     THIS_YEAR,
     ;
 
-    /** The `sinceEpochMs` bound to hand to `ProgressApi.observeRewatchCounts`. */
-    fun sinceEpochMs(nowEpochMs: Long): Long = when (this) {
+    /**
+     * The `sinceEpochMs` bound to hand to `ProgressApi.observeRewatchCounts`. "This year" is the person's
+     * local year and the bound their local midnight of 1 January, so a rewatch on the last night of the
+     * year is not counted into the next one in a zone away from UTC (#756).
+     */
+    fun sinceEpochMs(clock: AppClock): Long = when (this) {
         ALL_TIME -> 0L
-        THIS_YEAR -> epochMsAtStartOfDay(epochDayOfCivil(civilDateOf(epochDayOf(nowEpochMs)).year, month = 1, day = 1))
+
+        THIS_YEAR -> {
+            val year = civilDateOf(clock.localTodayEpochDay()).year
+            clock.localStartOfDayEpochMs(epochDayOfCivil(year, month = 1, day = 1))
+        }
     }
 }
 
@@ -118,18 +128,26 @@ object MonthlyRewatchCalculator {
     /** A full year of context, and the reason the chart's window is fixed while the ranking's is not (ADR 0012). */
     const val MONTHS_SHOWN = 12
 
-    /** The `sinceEpochMs` bound covering exactly the months [calculate] will show. */
-    fun sinceEpochMs(todayEpochDay: Long): Long {
+    /**
+     * The `sinceEpochMs` bound covering exactly the months [calculate] will show. The first shown month starts
+     * at the person's midnight, read in their zone at that midnight (#675, #756).
+     */
+    fun sinceEpochMs(clock: AppClock, todayEpochDay: Long): Long {
         val today = civilDateOf(todayEpochDay)
         val firstShown = absoluteMonthOf(today.year, today.month) - (MONTHS_SHOWN - 1)
-        return epochMsAtStartOfDay(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1))
+        return clock.localStartOfDayEpochMs(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1))
     }
 
-    fun calculate(rewatchTimestamps: List<Long>, todayEpochDay: Long): List<MonthlyRewatches> {
+    /**
+     * Counts the rewatches of each shown month. [dayOf] turns a timestamp into the day it is bucketed under; the
+     * caller passes the person's local day (#675). The UTC default is for callers with no clock, and is what
+     * the calculator's own fixtures are written against.
+     */
+    fun calculate(rewatchTimestamps: List<Long>, todayEpochDay: Long, dayOf: (Long) -> Long = ::epochDayOf): List<MonthlyRewatches> {
         val today = civilDateOf(todayEpochDay)
         val currentMonth = absoluteMonthOf(today.year, today.month)
         val counts = rewatchTimestamps
-            .map { civilDateOf(epochDayOf(it)) }
+            .map { civilDateOf(dayOf(it)) }
             .groupingBy { absoluteMonthOf(it.year, it.month) }
             .eachCount()
         return (currentMonth - (MONTHS_SHOWN - 1)..currentMonth).map { absolute ->

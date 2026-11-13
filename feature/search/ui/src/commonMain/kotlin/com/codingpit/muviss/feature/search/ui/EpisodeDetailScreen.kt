@@ -38,7 +38,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.codingpit.muviss.core.common.epochDayOf
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
@@ -206,7 +205,7 @@ private fun WatchHistorySection(
             )
             if (state.plays.isNotEmpty()) {
                 Text(
-                    state.plays.map { dateText(epochDayOf(it.watchedAtEpochMs)) }.joinToString(" · "),
+                    state.playDays.map { dateText(it) }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

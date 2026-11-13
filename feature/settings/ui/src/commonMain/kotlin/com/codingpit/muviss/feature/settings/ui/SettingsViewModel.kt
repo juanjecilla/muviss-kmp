@@ -193,7 +193,7 @@ class SettingsViewModel(
         viewModelScope.launchReporting {
             runCatching { actions.exportData() }.reportFailure().fold(
                 onSuccess = { json ->
-                    _state.update { it.copy(exportJson = json, exportFileName = backupFileName(clock.nowEpochMs()), exportError = null) }
+                    _state.update { it.copy(exportJson = json, exportFileName = backupFileName(clock), exportError = null) }
                 },
                 onFailure = { e -> _state.update { it.copy(exportError = e.toUiText(UiText.Resource(Res.string.error_generic))) } },
             )

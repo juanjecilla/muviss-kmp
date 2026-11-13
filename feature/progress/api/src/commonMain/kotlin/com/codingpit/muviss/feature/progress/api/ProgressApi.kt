@@ -101,8 +101,8 @@ interface ProgressApi {
     suspend fun storedSeasons(mediaId: MediaId): List<Season>? = null
 
     /**
-     * Every distinct epoch-day (UTC, [com.codingpit.muviss.core.common.todayEpochDay]'s
-     * convention) carrying at least one recorded viewing, across every title —
+     * Every distinct epoch-day (the person's local day, [com.codingpit.muviss.core.common.todayEpochDay]'s
+     * convention, #675) carrying at least one recorded viewing, across every title —
      * the raw calendar the profile feature derives its watch-streak stat from.
      *
      * Read from the play history (ADR 0011), not from tick timestamps. Under

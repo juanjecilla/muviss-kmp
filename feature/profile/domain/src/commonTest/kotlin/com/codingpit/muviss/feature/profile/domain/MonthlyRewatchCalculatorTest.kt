@@ -1,11 +1,14 @@
 package com.codingpit.muviss.feature.profile.domain
 
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.epochDayOfCivil
 import com.codingpit.muviss.core.common.epochMsAtStartOfDay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class MonthlyRewatchCalculatorTest {
+
+    private val hourMs = 3_600_000L
 
     private fun day(year: Int, month: Int, day: Int) = epochDayOfCivil(year, month, day)
 
@@ -69,12 +72,30 @@ class MonthlyRewatchCalculatorTest {
 
     @Test
     fun the_query_bound_covers_exactly_the_oldest_month_shown() {
-        val since = MonthlyRewatchCalculator.sinceEpochMs(today)
+        val since = MonthlyRewatchCalculator.sinceEpochMs(UtcClock, today)
 
         assertEquals(at(2025, 9, 1), since)
     }
 
+    private object UtcClock : AppClock {
+        override fun nowEpochMs(): Long = 0L
+    }
+
     private companion object {
         const val MILLIS_PER_DAY = 86_400_000L
+    }
+
+    @Test
+    fun the_bound_reads_the_zone_at_the_first_shown_months_midnight_not_at_now() {
+        // Winter now (UTC+1) and summer at the first shown month's midnight (UTC+2): a DST change sits between them.
+        val now = at(2026, 3, 15)
+        val summer2025 = at(2025, 3, 30)..<at(2025, 10, 26)
+        val clock = object : AppClock {
+            override fun nowEpochMs(): Long = now
+            override fun utcOffsetMsAt(epochMs: Long): Long = if (epochMs in summer2025) 2 * hourMs else hourMs
+        }
+
+        // April 2025 starts at its local midnight, 2 hours before UTC midnight. Reading now's +1 would start an hour late.
+        assertEquals(at(2025, 4, 1) - 2 * hourMs, MonthlyRewatchCalculator.sinceEpochMs(clock, day(2026, 3, 15)))
     }
 }

@@ -196,6 +196,20 @@ class PickEngineTest {
         assertEquals(PickReason.YourFavorite, result.picks.first().reason)
     }
 
+    /** Both sides are the person's local day: exactly 90 days is stale, 89 is not (#756). */
+    @Test
+    fun a_backlog_title_is_stale_at_ninety_of_the_persons_days_and_not_before() = runTest {
+        val day = 500L
+        val ninety = backlog("90").copy(addedOnEpochDay = day - 90)
+        val eightyNine = backlog("89").copy(addedOnEpochDay = day - 89)
+
+        val picks = engine(ninety, eightyNine, history = PickHistory(todayEpochDay = day)).pick(PickCriteria(source = PickSource.MY_LIST), context).picks
+        val reasons = picks.associate { it.candidate.id.toString() to it.reason }
+
+        assertEquals(PickReason.LongInYourList, reasons.getValue(ninety.id.toString()))
+        assertEquals(PickReason.FitsWhatYouAsked, reasons.getValue(eightyNine.id.toString()))
+    }
+
     @Test
     fun time_era_and_language_fit_count() = runTest {
         val short = fresh("short", year = 2023).copy(runtimeMinutes = 90, originalLanguage = "es")
