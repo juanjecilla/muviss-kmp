@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -85,6 +86,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -130,10 +132,10 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.episode_not_ai
 import com.codingpit.muviss.feature.search.ui.generated.resources.episode_watched_times
 import com.codingpit.muviss.feature.search.ui.generated.resources.favorite_add
 import com.codingpit.muviss.feature.search.ui.generated.resources.favorite_remove
-import com.codingpit.muviss.feature.search.ui.generated.resources.in_library
 import com.codingpit.muviss.feature.search.ui.generated.resources.mark_seen
 import com.codingpit.muviss.feature.search.ui.generated.resources.mark_show_seen
 import com.codingpit.muviss.feature.search.ui.generated.resources.mark_show_seen_body
+import com.codingpit.muviss.feature.search.ui.generated.resources.mark_show_seen_none_aired
 import com.codingpit.muviss.feature.search.ui.generated.resources.mark_show_seen_question
 import com.codingpit.muviss.feature.search.ui.generated.resources.more_like_this
 import com.codingpit.muviss.feature.search.ui.generated.resources.movie_mark_watched
@@ -144,9 +146,17 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.note_placehold
 import com.codingpit.muviss.feature.search.ui.generated.resources.note_title
 import com.codingpit.muviss.feature.search.ui.generated.resources.notifications_mute
 import com.codingpit.muviss.feature.search.ui.generated.resources.notifications_unmute
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_caught_up
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_finished
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_mark_next
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_mark_next_a11y
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_next_up
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_not_aired
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_premieres
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_buy
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_rent
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_stream
+import com.codingpit.muviss.feature.search.ui.generated.resources.remove_from_library
 import com.codingpit.muviss.feature.search.ui.generated.resources.season_aired_progress
 import com.codingpit.muviss.feature.search.ui.generated.resources.seasons_header
 import com.codingpit.muviss.feature.search.ui.generated.resources.skipped_banner
@@ -348,7 +358,7 @@ private fun DetailCompact(
         item(key = "hero", contentType = "hero") { DetailHero(details) }
         item(key = "actions", contentType = "actions") {
             Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-                ActionRow(state, viewModel, callbacks.onAddToList)
+                ActionRow(state, viewModel, callbacks)
                 CompletedNextPickEntry(state, onOpenNextPick)
             }
         }
@@ -393,7 +403,7 @@ private fun DetailExpanded(
                                 modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
                             )
                         }
-                        ActionRow(state, viewModel, callbacks.onAddToList, stacked = true)
+                        ActionRow(state, viewModel, callbacks)
                     }
                     Column(
                         Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
@@ -415,6 +425,9 @@ private fun DetailExpanded(
 private val POSTER_COLUMN_WIDTH = 150.dp
 
 internal const val DETAIL_LIST_TAG = "detailList"
+
+/** Test tag of the icon row under the poster (library, notifications, lists, favorite), for layout checks. */
+internal const val DETAIL_ACTIONS_TAG = "detailActions"
 
 /** The bulk-mark undo snackbar's host, so a test can find where it sits over the list. */
 internal const val DETAIL_SNACKBAR_TAG = "detailSnackbar"
@@ -478,22 +491,8 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
         }
     }
 
-    when (details.type) {
-        MediaType.MOVIE -> item(key = "movieWatched", contentType = "movieWatched") {
-            Box(section) {
-                MovieWatchedToggle(
-                    watched = state.movieWatched,
-                    playCount = state.moviePlayCount,
-                    onToggle = {
-                        val id = EpisodeId.forMovie(details.id)
-                        if (state.movieWatched) callbacks.onTapSeenEpisode(id) else viewModel.toggleMovieWatched()
-                    },
-                )
-            }
-        }
-
-        MediaType.TV -> seasonItems(context, inset)
-    }
+    // A movie's watched state is the primary action at the top (#721), so the body has no toggle of its own.
+    if (details.type == MediaType.TV) seasonItems(context, inset)
 
     state.watchProviders?.let { providers ->
         item(key = "providers", contentType = "providers") { Box(section) { WhereToWatchSection(providers) } }
@@ -577,27 +576,27 @@ private fun MetadataLine(details: MediaDetails) {
 /**
  * Primary actions: amber add-to-library pill + round outlined icon buttons
  * for favorite / notification mute / add-to-list (replaces the old emoji
- * text buttons). [stacked] lays the pill above the icons (expanded left rail).
+ * text buttons). The pill sits above the icons at every width.
  */
 @Composable
 private fun ActionRow(
     state: DetailUiState,
     viewModel: DetailViewModel,
-    onAddToList: () -> Unit,
-    stacked: Boolean = false,
+    callbacks: DetailCallbacks,
 ) {
     val pill: @Composable () -> Unit = {
-        Button(
-            onClick = viewModel::toggleSaved,
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(),
-            modifier = if (stacked) Modifier.fillMaxWidth() else Modifier,
-        ) {
-            Text(stringResource(if (state.saved) Res.string.in_library else Res.string.add_to_library))
-        }
+        PrimaryActionButton(
+            action = primaryActionFor(state, viewModel.todayEpochDay),
+            onAdd = viewModel::addToLibrary,
+            onMarkMovieWatched = viewModel::markMovieWatched,
+            onWatchedAgain = { state.details?.let { callbacks.onTapSeenEpisode(EpisodeId.forMovie(it.id)) } },
+            onTickNext = { episode -> viewModel.tickNext(episode.id) },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
     val icons: @Composable () -> Unit = {
-        Row(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+        // A FlowRow, not a Row: four 48 dp targets are wider than the 150 dp poster column, so a Row overflowed it.
+        FlowRow(Modifier.testTag(DETAIL_ACTIONS_TAG), horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
             OutlinedIconButton(onClick = viewModel::toggleFavorite) {
                 Icon(
                     if (state.favorite) MuvissIcons.Favorite else MuvissIcons.FavoriteOutline,
@@ -616,30 +615,110 @@ private fun ActionRow(
                 }
             }
             // Lists (EPIC 17) are orthogonal to library membership — always available.
-            OutlinedIconButton(onClick = onAddToList) {
+            OutlinedIconButton(onClick = callbacks.onAddToList) {
                 Icon(
                     MuvissIcons.AddToList,
                     contentDescription = stringResource(Res.string.add_to_list),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Library membership (#721): the bookmark removes a saved title (Undo brings it back) and adds an unsaved one.
+            OutlinedIconButton(onClick = if (state.saved) viewModel::removeFromLibrary else viewModel::addToLibrary) {
+                Icon(
+                    if (state.saved) MuvissIcons.Saved else MuvissIcons.Later,
+                    contentDescription = stringResource(if (state.saved) Res.string.remove_from_library else Res.string.add_to_library),
+                    tint = if (state.saved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
-    if (stacked) {
-        Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-            pill()
-            icons()
-        }
-    } else {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f)) { pill() }
-            icons()
+    // The pill keeps a row to itself at every width: beside four icons its label wraps, and a translation makes it worse.
+    Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+        pill()
+        icons()
+    }
+}
+
+/**
+ * The one filled button under the poster (#721, ADR 0037). Its label follows the library state; a disabled
+ * state says what comes next, so an empty tap target never leaves the user guessing.
+ */
+@Composable
+internal fun PrimaryActionButton(
+    action: PrimaryAction,
+    onAdd: () -> Unit,
+    onMarkMovieWatched: () -> Unit,
+    onWatchedAgain: () -> Unit,
+    onTickNext: (Episode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val look = when (action) {
+        PrimaryAction.Add -> PrimaryLook(stringResource(Res.string.add_to_library), onClick = onAdd)
+
+        PrimaryAction.MarkMovieWatched -> PrimaryLook(stringResource(Res.string.movie_mark_watched), onClick = onMarkMovieWatched)
+
+        is PrimaryAction.WatchedAgain -> PrimaryLook(
+            if (action.playCount > 1) stringResource(Res.string.movie_watched_times, action.playCount) else stringResource(Res.string.movie_watched),
+            onClick = onWatchedAgain,
+        )
+
+        is PrimaryAction.TickNext -> PrimaryLook(
+            label = stringResource(Res.string.primary_mark_next, action.episode.seasonNumber, action.episode.episodeNumber),
+            subtitle = action.episode.name.takeIf { it.isNotBlank() },
+            description = stringResource(Res.string.primary_mark_next_a11y, action.episode.seasonNumber, action.episode.episodeNumber),
+            onClick = { onTickNext(action.episode) },
+        )
+
+        is PrimaryAction.Waiting -> waitingLook(action)
+    }
+    Button(
+        onClick = look.onClick,
+        enabled = look.enabled,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(),
+        modifier = modifier.testTag(PRIMARY_ACTION_TAG).then(look.description?.let { Modifier.semantics { contentDescription = it } } ?: Modifier),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(look.label)
+            look.subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         }
     }
 }
+
+/** What the primary button shows: its label, an optional second line, an optional spoken description, and what a tap does. */
+private class PrimaryLook(
+    val label: String,
+    val subtitle: String? = null,
+    val description: String? = null,
+    val enabled: Boolean = true,
+    val onClick: () -> Unit,
+)
+
+/** The disabled states: nothing to tick right now, with the reason and the next episode when there is one. */
+@Composable
+private fun waitingLook(action: PrimaryAction.Waiting): PrimaryLook {
+    val next = action.next
+    return when (action.reason) {
+        PrimaryAction.Waiting.Reason.Finished -> PrimaryLook(stringResource(Res.string.primary_finished), enabled = false, onClick = {})
+
+        PrimaryAction.Waiting.Reason.NotAiredYet -> PrimaryLook(
+            label = stringResource(Res.string.primary_not_aired),
+            subtitle = next?.airDateEpochDay?.let { stringResource(Res.string.primary_premieres, dateText(it)) },
+            enabled = false,
+            onClick = {},
+        )
+
+        PrimaryAction.Waiting.Reason.CaughtUp -> PrimaryLook(
+            label = stringResource(Res.string.primary_caught_up),
+            subtitle = next?.let { stringResource(Res.string.primary_next_up, it.seasonNumber, it.episodeNumber, dateText(it.airDateEpochDay ?: 0L)) },
+            enabled = false,
+            onClick = {},
+        )
+    }
+}
+
+/** Test tag of the primary action (#721). */
+internal const val PRIMARY_ACTION_TAG = "detailPrimaryAction"
 
 /** "More like this" row (EPIC 16): recommendations, or similar titles as fallback. Hidden when empty. */
 @Composable
@@ -792,26 +871,6 @@ internal fun NoteEditorContent(initial: String, onSave: (String) -> Unit, onCanc
     }
 }
 
-@Composable
-internal fun MovieWatchedToggle(watched: Boolean, playCount: Int, onToggle: () -> Unit) {
-    // One control: the row toggles and says what it is. A checkbox with its own handler beside a
-    // clickable row is two controls for one thing, and the checkbox on its own has no label.
-    Row(
-        Modifier.toggleable(value = watched, role = Role.Checkbox, onValueChange = { onToggle() }),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = watched, onCheckedChange = null)
-        Text(
-            when {
-                !watched -> stringResource(Res.string.movie_mark_watched)
-                playCount > 1 -> stringResource(Res.string.movie_watched_times, playCount)
-                else -> stringResource(Res.string.movie_watched)
-            },
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
-
 /**
  * The seasons' UI state, created once per screen and read by the list items.
  *
@@ -867,7 +926,9 @@ private fun LazyListScope.seasonItems(context: DetailListContext, inset: Modifie
     item(key = "seasonsHeader", contentType = "seasonsHeader") {
         Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             SeasonsHeader(details.seasons.size)
-            MarkShowSeenButton(onClick = { seasons.confirmMarkShow.value = true })
+            // Nothing aired means nothing to mark: the button is off and says so, rather than a silent no-op (#721).
+            val anyAired = details.seasons.any { season -> season.episodes.any { it.hasAiredBy(viewModel.todayEpochDay) } }
+            MarkShowSeenButton(enabled = anyAired, onClick = { seasons.confirmMarkShow.value = true })
         }
     }
     details.seasons.forEachIndexed { index, season ->
@@ -930,10 +991,20 @@ internal class SeasonActions(
 )
 
 @Composable
-private fun MarkShowSeenButton(onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = Modifier.testTag(MARK_SHOW_TAG)) {
-        Icon(MuvissIcons.CaughtUp, contentDescription = null, modifier = Modifier.size(18.dp))
-        Text(stringResource(Res.string.mark_show_seen), modifier = Modifier.padding(start = MuvissSpacing.s))
+private fun MarkShowSeenButton(enabled: Boolean, onClick: () -> Unit) {
+    Column {
+        TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.testTag(MARK_SHOW_TAG)) {
+            Icon(MuvissIcons.CaughtUp, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(stringResource(Res.string.mark_show_seen), modifier = Modifier.padding(start = MuvissSpacing.s))
+        }
+        if (!enabled) {
+            Text(
+                stringResource(Res.string.mark_show_seen_none_aired),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = MuvissSpacing.m),
+            )
+        }
     }
 }
 

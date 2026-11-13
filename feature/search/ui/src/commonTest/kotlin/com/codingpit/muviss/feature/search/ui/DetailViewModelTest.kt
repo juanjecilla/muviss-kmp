@@ -87,6 +87,7 @@ internal class FakeCollectionApi : CollectionApi {
     private val membership = MutableStateFlow<CollectionMembership?>(null)
     val added = mutableListOf<MediaId>()
     val removed = mutableListOf<MediaId>()
+    val restored = mutableListOf<MediaId>()
 
     /** The library snapshot offline-first Detail renders first (EPIC 30, #73). */
     var saved: MediaDetails? = null
@@ -111,6 +112,12 @@ internal class FakeCollectionApi : CollectionApi {
     override suspend fun remove(mediaId: MediaId) {
         removed += mediaId
         membership.value = null
+    }
+
+    /** Un-deletes the entry; the real one keeps favorite, rating and the stored Snapshot, which this fake does not model. */
+    override suspend fun restore(mediaId: MediaId) {
+        restored += mediaId
+        membership.value = CollectionMembership(mediaId, favorite = false)
     }
 
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) {
@@ -903,5 +910,73 @@ class DetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(talkShow), vm.state.value.moreLikeThis)
+    }
+
+    @Test
+    fun a_movie_tick_on_an_unsaved_title_adds_it_before_ticking() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress)
+
+        vm.markMovieWatched()
+
+        assertEquals(listOf(mediaId), collection.added)
+        assertTrue(EpisodeId.forMovie(mediaId) in progress.seenIds)
+    }
+
+    @Test
+    fun undo_of_a_tick_that_created_the_entry_takes_the_entry_back_out() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress)
+
+        vm.markMovieWatched()
+        assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
+        vm.undoBulkMark()
+
+        assertEquals(listOf(mediaId), collection.removed)
+        assertTrue(progress.seenIds.isEmpty())
+    }
+
+    @Test
+    fun undo_of_a_tick_on_a_saved_title_leaves_the_entry_alone() = runTest {
+        val collection = FakeCollectionApi()
+        collection.add(details)
+        val vm = viewModel(collectionApi = collection)
+
+        vm.markMovieWatched()
+        assertEquals(false, vm.state.value.pendingUndo?.createdEntry)
+        vm.undoBulkMark()
+
+        assertTrue(collection.removed.isEmpty())
+    }
+
+    @Test
+    fun remove_then_undo_brings_the_entry_back() = runTest {
+        val collection = FakeCollectionApi()
+        collection.add(details)
+        val vm = viewModel(collectionApi = collection)
+
+        vm.removeFromLibrary()
+        assertEquals(listOf(mediaId), collection.removed)
+        assertEquals(true, vm.state.value.pendingUndo?.removedFromLibrary)
+
+        vm.undoBulkMark()
+
+        assertEquals(listOf(mediaId), collection.restored)
+        assertTrue(collection.removed.size == 1)
+    }
+
+    @Test
+    fun the_primary_tick_on_a_show_ticks_the_named_episode_and_adds_the_show() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.tickNext(episode1.id)
+
+        assertEquals(listOf(show), collection.added)
+        assertEquals(setOf(episode1.id), progress.seenIds)
+        assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
     }
 }
