@@ -109,6 +109,7 @@
     <string name="primary_not_aired">Aún no se ha emitido</string>
     <string name="primary_premieres">Se estrena el %1$s</string>
     <string name="primary_finished">Terminada ✓</string>
+    <string name="primary_loading">Cargando…</string>
     <string name="remove_from_library">Quitar de la biblioteca</string>
     <string name="mark_show_seen_none_aired">Aún no se ha emitido nada</string>
     <string name="movie_marked_watched">Marcada como vista</string>

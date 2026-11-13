@@ -150,6 +150,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.notifications_
 import com.codingpit.muviss.feature.search.ui.generated.resources.notifications_unmute
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_caught_up
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_finished
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_loading
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_mark_next
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_mark_next_a11y
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_next_up
@@ -594,7 +595,7 @@ private fun ActionRow(
 ) {
     val pill: @Composable () -> Unit = {
         PrimaryActionButton(
-            action = primaryActionFor(state, viewModel.todayEpochDay),
+            action = viewModel.primaryAction(state),
             onAdd = viewModel::addToLibrary,
             onMarkMovieWatched = viewModel::markMovieWatched,
             onWatchedAgain = { state.details?.let { callbacks.onTapSeenEpisode(EpisodeId.forMovie(it.id)) } },
@@ -707,6 +708,8 @@ private class PrimaryLook(
 private fun waitingLook(action: PrimaryAction.Waiting): PrimaryLook {
     val next = action.next
     return when (action.reason) {
+        PrimaryAction.Waiting.Reason.Loading -> PrimaryLook(stringResource(Res.string.primary_loading), enabled = false, onClick = {})
+
         PrimaryAction.Waiting.Reason.Finished -> PrimaryLook(stringResource(Res.string.primary_finished), enabled = false, onClick = {})
 
         PrimaryAction.Waiting.Reason.NotAiredYet -> PrimaryLook(

@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId

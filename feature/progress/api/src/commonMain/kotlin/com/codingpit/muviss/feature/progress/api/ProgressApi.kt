@@ -61,6 +61,16 @@ data class WatchNextItem(
 }
 
 /**
+ * A title's "next" answer for one screen (Detail's primary button, ADR 0037): [aired] is the next aired episode
+ * still unseen, which is what a tick writes; [announced] is the next unseen episode whose air date is still ahead.
+ */
+data class NextEpisodes(val aired: Episode?, val announced: Episode?) {
+    companion object {
+        val NONE = NextEpisodes(aired = null, announced = null)
+    }
+}
+
+/**
  * Public contract of the progress feature. Peers (search's `DetailScreen`,
  * collection's status derivation) depend on this module only — never
  * progress's domain/data/ui — to tick episodes and read watched state without
@@ -69,6 +79,18 @@ data class WatchNextItem(
 interface ProgressApi {
     /** Seen episode ids for [mediaId] (movies use the single id from [EpisodeId.forMovie]). */
     fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>>
+
+    /**
+     * The next-episode answer for a title whose [seasons] the caller already holds (Detail reads them from
+     * TMDB, which can be fresher than the stored catalog), against its [seen] set. Pure: no read, no write.
+     *
+     * It is the same ordering [observeWatchNext] uses ([EpisodeOrdering]), so Detail's button and the Progress
+     * tab cannot disagree about which episode is next. Specials are never returned.
+     */
+    fun nextEpisodes(seasons: List<Season>, seen: Set<EpisodeId>, todayEpochDay: Long): NextEpisodes = NextEpisodes(
+        aired = EpisodeOrdering.nextUnseen(seasons, seen, todayEpochDay),
+        announced = EpisodeOrdering.nextAnnounced(seasons, seen, todayEpochDay),
+    )
 
     /**
      * Every title currently being watched, each with its next unseen aired

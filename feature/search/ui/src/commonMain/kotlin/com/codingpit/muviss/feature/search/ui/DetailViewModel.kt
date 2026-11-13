@@ -11,6 +11,8 @@ import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.progress.api.NextEpisodes
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
@@ -61,6 +63,10 @@ data class DetailUiState(
      */
     val staleNotice: UiText? = null,
     val saved: Boolean = false,
+    /** Whether the library has reported this title's membership at least once; until then [saved] is only a guess (#779). */
+    val membershipLoaded: Boolean = false,
+    /** Whether progress has reported this title's seen episodes at least once; until then [seenEpisodes] is empty, not "nothing seen" (#779). */
+    val progressLoaded: Boolean = false,
     val favorite: Boolean = false,
     /** Per-show new-episode notification opt-out (EPIC 5); only meaningful while [saved] is true. */
     val notificationsMuted: Boolean = false,
@@ -168,6 +174,16 @@ class DetailViewModel(
     /** "Today" for aired-vs-unaired decisions in the season list. */
     val todayEpochDay: Long get() = clock.todayEpochDay()
 
+    /**
+     * What the primary button does for [state] (ADR 0037). The next episode comes from progress's shared query over
+     * the seasons this screen holds, so the button and the Progress tab use one ordering (#779).
+     */
+    internal fun primaryAction(state: DetailUiState): PrimaryAction {
+        val seasons = state.details?.seasons.orEmpty()
+        val next = if (seasons.isEmpty()) NextEpisodes.NONE else progressApi.nextEpisodes(seasons, state.seenEpisodes, todayEpochDay)
+        return primaryActionFor(state, todayEpochDay, next)
+    }
+
     init {
         load()
         animateTicks
@@ -185,6 +201,7 @@ class DetailViewModel(
             .onEach { membership ->
                 _state.update {
                     it.copy(
+                        membershipLoaded = true,
                         saved = membership != null,
                         favorite = membership?.favorite ?: false,
                         notificationsMuted = membership?.notificationsMuted ?: false,
@@ -199,7 +216,7 @@ class DetailViewModel(
             }
             .launchInReporting(viewModelScope)
         progressApi.observeSeenEpisodes(mediaId)
-            .onEach { seen -> _state.update { it.copy(seenEpisodes = seen) } }
+            .onEach { seen -> _state.update { it.copy(seenEpisodes = seen, progressLoaded = true) } }
             .launchInReporting(viewModelScope)
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
@@ -406,10 +423,13 @@ class DetailViewModel(
     private var celebrations = 0
 
     /**
-     * Ticks a single episode's checkmark. The tick that leaves nothing aired
-     * unseen also raises [DetailUiState.celebration] (when tick motion is on),
-     * decided before the write from what was on screen at the tap, and raised
-     * only once the write has succeeded.
+     * Ticks a single episode's checkmark, and offers the same Undo a primary tick does (#751: a checkmark tap used
+     * to offer none, so an unsaved title it added could only be removed by hand). The tick that leaves nothing aired
+     * unseen also raises [DetailUiState.celebration] (when tick motion is on), decided before the write from what was
+     * on screen at the tap, and raised only once the write has succeeded.
+     *
+     * Reads progress fresh before writing, as [tickNext] does: the screen's copy can still be loading, and an episode
+     * already seen must not be ticked again or offered for Undo, because Undo would delete a viewing this tap never made.
      */
     fun toggleEpisodeSeen(episodeId: EpisodeId) {
         val current = _state.value
@@ -418,10 +438,15 @@ class DetailViewModel(
             ?.takeIf { current.animateTicks && it.completesAiredWith(episodeId, current.seenEpisodes, clock.todayEpochDay()) }
             ?.let { UiText.Resource(Res.string.tick_caught_up, it.summary.title) }
         viewModelScope.launchReporting {
-            if (!current.isSeen(episodeId)) addIfAbsent()
-            progressApi.tickEpisode(episodeId, !current.isSeen(episodeId))
-            releaseEntry()
+            if (episodeId in progressApi.observeSeenEpisodes(mediaId).first()) return@launchReporting
+            val created = addIfAbsent()
+            progressApi.tickEpisode(episodeId, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
+            offerUndo(
+                listOf(episodeId),
+                UiText.Resource(Res.string.tick_next_seen, episodeId.seasonNumber, episodeId.episodeNumber),
+                createdEntry = created,
+            )
         }
     }
 
@@ -470,6 +495,7 @@ class DetailViewModel(
      */
     fun markSeasonSeen(season: Season) {
         viewModelScope.launchReporting {
+            if (airedUnseen(listOf(season)).isEmpty()) return@launchReporting
             val created = addIfAbsent()
             val written = progressApi.markSeasonAiredSeen(season, clock.todayEpochDay())
             offerUndo(written, UiText.Resource(Res.string.undo_season_seen, season.name), createdEntry = created)
@@ -488,6 +514,7 @@ class DetailViewModel(
     fun markShowSeen() {
         val seasons = _state.value.details?.seasons ?: return
         viewModelScope.launchReporting {
+            if (airedUnseen(seasons).isEmpty()) return@launchReporting
             val created = addIfAbsent()
             val written = progressApi.markShowAiredSeen(seasons, clock.todayEpochDay())
             offerUndo(written, UiText.Resource(Res.string.undo_show_seen), createdEntry = created)
@@ -547,6 +574,16 @@ class DetailViewModel(
         }
     }
 
+    /**
+     * The aired, unseen episodes of [seasons]: the only set a bulk mark may write (ADR 0037). Read fresh, and checked
+     * before the library is touched, so an empty set adds no entry and offers no Undo: a show nothing has aired for
+     * would otherwise be saved by a button that does nothing.
+     */
+    private suspend fun airedUnseen(seasons: List<Season>): List<EpisodeId> {
+        val seen = progressApi.observeSeenEpisodes(mediaId).first()
+        return EpisodeOrdering.airedBy(seasons, clock.todayEpochDay()).filterNot { it in seen }
+    }
+
     /** A bulk mark that ticked nothing (already caught up) has nothing to undo, so it offers none. */
     private fun offerUndo(written: List<EpisodeId>, message: UiText, createdEntry: Boolean = false) {
         if (written.isEmpty()) return
@@ -565,6 +602,9 @@ class DetailViewModel(
             val today = clock.todayEpochDay()
             val aired = seasons.map { season -> season.copy(episodes = season.episodes.filter { it.hasAired(today) }) }
             if (aired.none { season -> season.episodes.any { it.id == episodeId } }) return@launchReporting
+            // Already seen through here: nothing would be ticked, so the title is not saved for it (ADR 0037).
+            val seen = progressApi.observeSeenEpisodes(mediaId).first()
+            if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchReporting
             addIfAbsent()
             progressApi.markPreviousSeen(aired, episodeId)
             releaseEntry()

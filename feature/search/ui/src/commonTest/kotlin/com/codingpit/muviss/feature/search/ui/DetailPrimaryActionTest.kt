@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.search.ui
 
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.progress.api.NextEpisodes
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -11,7 +13,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
-/** The primary button's rule (ADR 0037): what it does is read from the library state, and today is fixed at day 20. */
+/**
+ * The primary button's rule (ADR 0037): what it does is read from the library state, and today is fixed at day 20.
+ * The next episode comes from the shared ordering ([EpisodeOrdering], the same one `ProgressApi.nextEpisodes` calls),
+ * so these cases pin the rule while the ordering itself is pinned in `EpisodeOrderingTest`.
+ */
 class DetailPrimaryActionTest {
 
     private val today = 20L
@@ -20,24 +26,47 @@ class DetailPrimaryActionTest {
 
     private fun episode(season: Int, number: Int, airDay: Long?) = Episode(EpisodeId(show, season, number), season, number, "E$season-$number", airDateEpochDay = airDay)
 
-    private fun showState(vararg seasons: Season, seen: Set<EpisodeId> = emptySet(), status: WatchStatus? = null, saved: Boolean = true) = DetailUiState(
+    private fun showState(
+        vararg seasons: Season,
+        seen: Set<EpisodeId> = emptySet(),
+        status: WatchStatus? = null,
+        saved: Boolean = true,
+    ) = DetailUiState(
         loading = false,
         details = MediaDetails(summary = MediaSummary(show, "Show"), seasons = seasons.toList()),
         saved = saved,
+        membershipLoaded = true,
+        progressLoaded = true,
         seenEpisodes = seen,
         watchStatus = status,
     )
 
+    /** The answer `ProgressApi.nextEpisodes` gives for [state], computed by the same ordering it calls. */
+    private fun primaryFor(state: DetailUiState): PrimaryAction {
+        val seasons = state.details?.seasons.orEmpty()
+        val next = NextEpisodes(
+            aired = EpisodeOrdering.nextUnseen(seasons, state.seenEpisodes, today),
+            announced = EpisodeOrdering.nextAnnounced(seasons, state.seenEpisodes, today),
+        )
+        return primaryActionFor(state, today, next)
+    }
+
     @Test
     fun an_unsaved_title_offers_to_add_it() {
-        assertEquals(PrimaryAction.Add, primaryActionFor(showState(saved = false), today))
+        assertEquals(PrimaryAction.Add, primaryFor(showState(saved = false)))
     }
 
     @Test
     fun an_unwatched_movie_offers_to_mark_it_watched() {
-        val state = DetailUiState(loading = false, details = MediaDetails(MediaSummary(movie, "Movie")), saved = true)
+        val state = DetailUiState(
+            loading = false,
+            details = MediaDetails(MediaSummary(movie, "Movie")),
+            saved = true,
+            membershipLoaded = true,
+            progressLoaded = true,
+        )
 
-        assertEquals(PrimaryAction.MarkMovieWatched, primaryActionFor(state, today))
+        assertEquals(PrimaryAction.MarkMovieWatched, primaryFor(state))
     }
 
     @Test
@@ -46,11 +75,13 @@ class DetailPrimaryActionTest {
             loading = false,
             details = MediaDetails(MediaSummary(movie, "Movie")),
             saved = true,
+            membershipLoaded = true,
+            progressLoaded = true,
             seenEpisodes = setOf(EpisodeId.forMovie(movie)),
             playCounts = mapOf(EpisodeId.forMovie(movie) to 3),
         )
 
-        assertEquals(PrimaryAction.WatchedAgain(3), primaryActionFor(state, today))
+        assertEquals(PrimaryAction.WatchedAgain(3), primaryFor(state))
     }
 
     @Test
@@ -58,7 +89,7 @@ class DetailPrimaryActionTest {
         val first = episode(1, 1, 10L)
         val state = showState(Season(1, "S1", listOf(first, episode(1, 2, 11L))))
 
-        assertEquals(PrimaryAction.TickNext(first), primaryActionFor(state, today))
+        assertEquals(PrimaryAction.TickNext(first), primaryFor(state))
     }
 
     @Test
@@ -67,7 +98,7 @@ class DetailPrimaryActionTest {
         val regular = episode(1, 1, 12L)
         val state = showState(Season(0, "Specials", listOf(special)), Season(1, "S1", listOf(regular)))
 
-        assertEquals(PrimaryAction.TickNext(regular), primaryActionFor(state, today))
+        assertEquals(PrimaryAction.TickNext(regular), primaryFor(state))
     }
 
     @Test
@@ -76,7 +107,7 @@ class DetailPrimaryActionTest {
         val aired = episode(1, 2, 12L)
         val state = showState(Season(1, "S1", listOf(unaired, aired)))
 
-        assertEquals(PrimaryAction.TickNext(aired), primaryActionFor(state, today))
+        assertEquals(PrimaryAction.TickNext(aired), primaryFor(state))
     }
 
     @Test
@@ -85,7 +116,7 @@ class DetailPrimaryActionTest {
         val announced = episode(1, 2, 99L)
         val state = showState(Season(1, "S1", listOf(seen, announced)), seen = setOf(seen.id))
 
-        val action = assertIs<PrimaryAction.Waiting>(primaryActionFor(state, today))
+        val action = assertIs<PrimaryAction.Waiting>(primaryFor(state))
         assertEquals(PrimaryAction.Waiting.Reason.CaughtUp, action.reason)
         assertEquals(announced, action.next)
     }
@@ -95,7 +126,7 @@ class DetailPrimaryActionTest {
         val premiere = episode(1, 1, 99L)
         val state = showState(Season(1, "S1", listOf(premiere)))
 
-        val action = assertIs<PrimaryAction.Waiting>(primaryActionFor(state, today))
+        val action = assertIs<PrimaryAction.Waiting>(primaryFor(state))
         assertEquals(PrimaryAction.Waiting.Reason.NotAiredYet, action.reason)
         assertEquals(premiere, action.next)
     }
@@ -105,7 +136,7 @@ class DetailPrimaryActionTest {
         val only = episode(1, 1, 10L)
         val state = showState(Season(1, "S1", listOf(only)), seen = setOf(only.id), status = WatchStatus.FINISHED)
 
-        val action = assertIs<PrimaryAction.Waiting>(primaryActionFor(state, today))
+        val action = assertIs<PrimaryAction.Waiting>(primaryFor(state))
         assertEquals(PrimaryAction.Waiting.Reason.Finished, action.reason)
     }
 
@@ -116,6 +147,43 @@ class DetailPrimaryActionTest {
         val future = episode(1, 1, airDay = 100)
         val state = showState(Season(0, "Specials", listOf(special)), Season(1, "Season 1", listOf(future)))
 
-        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, future), primaryActionFor(state, today))
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, future), primaryFor(state))
+    }
+
+    @Test
+    fun before_the_library_reports_membership_the_button_is_loading_not_add() {
+        // A saved title must not read "Add to library" for the moment before membership arrives (#779).
+        val state = showState(Season(1, "S1", listOf(episode(1, 1, 10L)))).copy(membershipLoaded = false, saved = false)
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null), primaryFor(state))
+    }
+
+    @Test
+    fun before_progress_reports_seen_episodes_a_saved_show_is_loading_not_its_first_unseen_episode() {
+        // The seen set is empty until the first emission, so "Mark S1·E1 seen" would be a lie for a watched episode (#779).
+        val first = episode(1, 1, 10L)
+        val state = showState(Season(1, "S1", listOf(first))).copy(progressLoaded = false)
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null), primaryFor(state))
+    }
+
+    @Test
+    fun a_saved_show_without_details_yet_is_loading() {
+        val state = DetailUiState(loading = true, saved = true, membershipLoaded = true, progressLoaded = true)
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null), primaryFor(state))
+    }
+
+    @Test
+    fun a_movie_before_progress_reports_is_loading_not_mark_as_watched() {
+        val state = DetailUiState(
+            loading = false,
+            details = MediaDetails(MediaSummary(movie, "Movie")),
+            saved = true,
+            membershipLoaded = true,
+            progressLoaded = false,
+        )
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null), primaryFor(state))
     }
 }

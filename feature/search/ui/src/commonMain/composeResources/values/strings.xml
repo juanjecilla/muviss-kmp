@@ -127,6 +127,7 @@
     <string name="primary_not_aired">Not aired yet</string>
     <string name="primary_premieres">Premieres %1$s</string>
     <string name="primary_finished">Finished ✓</string>
+    <string name="primary_loading">Loading…</string>
     <string name="remove_from_library">Remove from library</string>
     <string name="mark_show_seen_none_aired">Nothing has aired yet</string>
     <string name="movie_marked_watched">Marked as watched</string>
