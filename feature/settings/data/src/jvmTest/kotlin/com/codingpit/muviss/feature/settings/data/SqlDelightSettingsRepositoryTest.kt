@@ -7,6 +7,8 @@ import app.cash.turbine.test
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
+import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
@@ -55,6 +57,7 @@ class SqlDelightSettingsRepositoryTest {
             ImmediateDispatchers(UnconfinedTestDispatcher()),
             FakeClock(1_000L),
             AppVersion("1.2.3", 42L),
+            DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
         )
     }
 
@@ -135,6 +138,7 @@ class SqlDelightSettingsRepositoryTest {
             ImmediateDispatchers(StandardTestDispatcher(testScheduler)),
             FakeClock(1_000L),
             AppVersion("1.2.3", 42L),
+            DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
         )
         // UNDISPATCHED: the tap runs at once and parks at the hop to io, as it does on the main thread.
         val caller = launch(start = CoroutineStart.UNDISPATCHED) { queued.setDeviceBackupEnabled(true) }
@@ -360,6 +364,7 @@ class MutedGenresSettingsTest {
         ImmediateDispatchers(UnconfinedTestDispatcher()),
         FakeClock(1_000L),
         AppVersion("1.2.3", 42L),
+        DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
     )
     private val talk = GenreKey(MediaType.TV, "10767")
 

@@ -5,6 +5,8 @@ import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
@@ -56,6 +58,7 @@ class LocalDataEraserTest {
             dispatchers,
             FakeClock(1L),
             AppVersion("1", 1L),
+            DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
         )
         val fixture = javaClass.getResource("/backups/v1-export.json")!!.readText()
         SqlDelightBackupRestorer(database, dispatchers).restore(fixture)
@@ -113,6 +116,7 @@ class LocalDataEraserTest {
             queuedIo,
             FakeClock(1L),
             AppVersion("1", 1L),
+            DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
             writes,
         )
         val secrets = InMemorySecretStore()

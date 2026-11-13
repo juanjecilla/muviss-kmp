@@ -28,6 +28,7 @@ class NextPickPreferencesTest {
     private lateinit var queries: AppSettingsQueries
     private lateinit var preferences: AppSettingsNextPickPreferences
     private lateinit var flags: AppSettingsFeatureFlags
+    private val remote = DefaultsRemoteConfig(RemoteValues(byokEnabled = false))
 
     @BeforeTest
     fun setUp() {
@@ -37,8 +38,8 @@ class NextPickPreferencesTest {
             override val io: CoroutineDispatcher = dispatcher
         }
         queries = inMemoryDatabase().appSettingsQueries
-        preferences = AppSettingsNextPickPreferences(queries, dispatchers)
-        flags = AppSettingsFeatureFlags(queries, dispatchers, DefaultsRemoteConfig(RemoteValues(byokEnabled = false)), FakeClock(epochMs = 1_000L))
+        preferences = AppSettingsNextPickPreferences(queries, dispatchers, remote)
+        flags = AppSettingsFeatureFlags(queries, dispatchers, remote, FakeClock(epochMs = 1_000L))
     }
 
     @Test

@@ -8,6 +8,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.core.database.DeviceBackupExclusion
@@ -64,15 +65,19 @@ import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
  * `executeAsList()` because the latter assumes a synchronous driver and
  * throws on web's async one — see `DatabaseFactory.web.kt`.
  */
+@Suppress("LongParameterList") // one Koin binding per dependency; the seventh is the Remote Config seed for a fresh row (#556)
 class SqlDelightSettingsRepository(
     private val settingsQueries: AppSettingsQueries,
     private val exportQueries: ExportQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
     private val appVersion: AppVersion,
+    remoteConfig: RemoteConfig,
     private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
 ) : SettingsRepository {
 
+    // Seeds a fresh row's Next Pick result mode from Remote Config (#556); see AppSettingsRowSeeder.
+    private val rowSeeder = AppSettingsRowSeeder(settingsQueries, remoteConfig, dispatchers)
     private val json = Json { prettyPrint = true }
     private val mutedGenresLock = Mutex()
 
@@ -181,7 +186,7 @@ class SqlDelightSettingsRepository(
         json.encodeToString(export)
     }
 
-    private suspend fun ensureRow() = withContext(dispatchers.io) { settingsQueries.ensureRow() }
+    private suspend fun ensureRow() = rowSeeder.ensureRow()
 
     // A restored backup from a newer build can store a theme this one does not know; it is kept
     // as is (a later build reads it again) and shown as the system theme meanwhile, never thrown.

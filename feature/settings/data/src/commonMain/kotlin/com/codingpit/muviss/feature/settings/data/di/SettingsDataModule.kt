@@ -90,6 +90,7 @@ val settingsDataModule: Module = module {
             get(),
             get(),
             get(),
+            get(),
         )
     }
     single { DeviceBackupWrites() }
@@ -108,7 +109,7 @@ val settingsDataModule: Module = module {
     single<TasteProfileApi> { DefaultTasteProfileApi(get(), get()) }
     factory { DeleteAllDataUseCase(get()) }
     single<FeatureFlags> { AppSettingsFeatureFlags(get(), get(), get(), get()) }
-    single<NextPickPreferences> { AppSettingsNextPickPreferences(get(), get()) }
+    single<NextPickPreferences> { AppSettingsNextPickPreferences(get(), get(), get()) }
 
     single { MutableMetadataLocale() } bind MetadataLocale::class
     single { SettingsLocaleSync(get(), get(), get(), get()) } withOptions { createdAtStart() }
