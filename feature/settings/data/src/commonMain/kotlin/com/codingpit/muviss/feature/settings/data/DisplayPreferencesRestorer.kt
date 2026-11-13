@@ -1,7 +1,9 @@
 package com.codingpit.muviss.feature.settings.data
 
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.feature.settings.domain.MutedGenresCodec
 
 /**
  * Restores the Display Preferences group and the Muted Genres rows (ADR 0036, #642). Kept apart from
@@ -34,6 +36,9 @@ internal class DisplayPreferencesRestorer(private val database: MuvissDatabase) 
     suspend fun restoreGroup(backup: SettingsExport) {
         val queries = database.appSettingsQueries
         queries.ensureRow()
+        // This device's own legacy list is converted before the backup's choices land, or the backup's marker would
+        // take the place of a list the person made here (ADR 0036). Idempotent, so an already-converted device is a no-op.
+        MutedGenresStore(database).convertLegacy(queries.selectSettings().awaitAsOne().mutedGenres)
         val local = queries.selectSettings().awaitAsOneOrNull() ?: return
         val localGroup = Group(
             theme = local.theme,
@@ -71,11 +76,15 @@ internal class DisplayPreferencesRestorer(private val database: MuvissDatabase) 
                 writeGroup(merged, stamp = local.displayPreferencesUpdatedAtEpochMs ?: 0L)
             }
         }
-        // The legacy list (ADR 0031) is restored over its default only, as it always was. Until #644 moves the
-        // live store to decisions, `mutedGenres` is still the legacy string on both sides, and the export writes
-        // that string as is. From #644 on, the export derives it from the effective set (ADR 0036), so a file
-        // that carries the new fields has the same string derived from the decisions.
-        if (local.mutedGenres == DEFAULT_MUTED_GENRES) queries.updateMutedGenres(backup.mutedGenres)
+    }
+
+    /**
+     * A legacy file (no choice marker, no decisions) carries only the Muted Genres string. It restores through the
+     * same conversion a device runs on its own string, and only onto a device that has never chosen (ADR 0036).
+     */
+    suspend fun restoreLegacyMutedGenres(legacy: String) {
+        val device = database.appSettingsQueries.selectSettings().awaitAsOneOrNull()?.mutedGenres ?: return
+        MutedGenresStore(database).restoreLegacy(MutedGenresCodec.decode(legacy), device)
     }
 
     /**
@@ -148,7 +157,6 @@ internal class DisplayPreferencesRestorer(private val database: MuvissDatabase) 
         const val DEFAULT_SCHEME = "FOUR_WAY"
         const val DEFAULT_SNOOZE_PERIOD = "ONE_WEEK"
         const val DEFAULT_SNOOZE_PLACEMENT = "MIXED_IN"
-        const val DEFAULT_MUTED_GENRES = "tv:10767:Talk;tv:10763:News;tv:10764:Reality"
     }
 }
 

@@ -9,6 +9,9 @@ import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.settings.domain.ImportFileError
 import com.codingpit.muviss.feature.settings.domain.ImportFileException
+import com.codingpit.muviss.feature.settings.domain.MutedGenreEntry
+import com.codingpit.muviss.models.GenreKey
+import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -33,6 +36,7 @@ class BackupRestoreTest {
         dispatchers,
         FakeClock(9_000L),
         AppVersion("1.2.3", 42L),
+        database,
     )
 
     private fun restorer(database: MuvissDatabase) = SqlDelightBackupRestorer(database, dispatchers)
@@ -94,7 +98,8 @@ class BackupRestoreTest {
         assertEquals("TWO_WAY", row.triageControlScheme)
         assertEquals("ONE_MONTH", row.triageSnoozePeriod)
         assertEquals("FIRST", row.triageSnoozePlacement)
-        assertEquals("movie:27:Horror", row.mutedGenres)
+        // The list is decisions now (ADR 0036): the effective set is what a restore must bring back.
+        assertEquals(listOf(MutedGenreEntry(GenreKey(MediaType.MOVIE, "27"), "Horror")), MutedGenresStore(fresh).effective())
         assertEquals(true, row.mutedGenresInSearch)
     }
 
@@ -176,7 +181,11 @@ class BackupRestoreTest {
         restorer(newerLocal).restore(backup)
         val kept = newerLocal.appSettingsQueries.selectSettings().awaitAsOne()
         assertEquals("LIGHT", kept.theme, "the newer local group is kept")
-        assertEquals("movie:27:Horror", kept.mutedGenres, "the list sits outside the group, so the losing stamp does not skip it")
+        assertEquals(
+            listOf(MutedGenreEntry(GenreKey(MediaType.MOVIE, "27"), "Horror")),
+            MutedGenresStore(newerLocal).effective(),
+            "the list sits outside the group, so the losing stamp does not skip it",
+        )
 
         // A tied stamp: the group still keeps local, and a list the person already changed is kept as well.
         val tiedLocal = newDatabase()
@@ -189,7 +198,12 @@ class BackupRestoreTest {
         restorer(tiedLocal).restore(backup)
         val tied = tiedLocal.appSettingsQueries.selectSettings().awaitAsOne()
         assertEquals("LIGHT", tied.theme, "a tie keeps local")
-        assertEquals("tv:99:Custom", tied.mutedGenres, "a list chosen here is never replaced")
+        // The device's own list is kept, and the backup's decision for Horror merges in per row (ADR 0036).
+        assertEquals(
+            setOf(MutedGenreEntry(GenreKey(MediaType.TV, "99"), "Custom"), MutedGenreEntry(GenreKey(MediaType.MOVIE, "27"), "Horror")),
+            MutedGenresStore(tiedLocal).effective().toSet(),
+            "a list chosen here is never replaced, only added to by the backup's decisions",
+        )
     }
 
     @Test

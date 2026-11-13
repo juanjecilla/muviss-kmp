@@ -131,6 +131,12 @@ enum class SyncTable(val cursorKey: String) {
 
     /** The Display Preferences group: one row per account (ADR 0036, #643). Read before its first push whenever it is dirty. */
     DISPLAY_PREFERENCES("displayPreferences"),
+
+    /** The Muted Genres choice marker: one row per account, read before its first push whenever it is dirty (ADR 0036, #644). */
+    MUTED_GENRE_CHOICE("mutedGenreChoice"),
+
+    /** The Muted Genres decisions: one row per genre, live or a tombstone (ADR 0036, #644). Parent first, so after the marker. */
+    MUTED_GENRE("mutedGenre"),
 }
 
 /**

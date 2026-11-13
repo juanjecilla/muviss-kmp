@@ -283,10 +283,10 @@ class SyncEngine(
         beforePush()
         database.appSettingsQueries.ensureRow()
 
-        // The one table-specific ordering in the cycle (ADR 0036): a dirty Display Preferences group is
-        // merged with the account's copy before it is sent, so a device that has never seen the account
-        // cannot push its defaults over the account's values.
-        pullDirtyDisplayPreferences()
+        // The one table-specific ordering in the cycle (ADR 0036): a dirty singleton (the Display Preferences
+        // group, the Muted Genres marker) is merged with the account's copy before it is sent, so a device that
+        // has never seen the account cannot push its defaults over the account's values.
+        pullDirtySingletons()
 
         val pushed = changeLog.pushDirty { backend.push(it) }
 
@@ -327,19 +327,21 @@ class SyncEngine(
     }
 
     /**
-     * Reads the account's copy of a dirty Display Preferences group before the push (ADR 0036, #643).
+     * Reads the account's copy of each dirty singleton before the push (ADR 0036, #643, #644): the Display
+     * Preferences group and the Muted Genres marker.
      *
-     * The page is applied, but its cursor is not saved: the main pull reads the same copy again and moves
-     * the cursor once the cycle has drained, as every table does. A group with a stamp of its own resumes
-     * from its cursor, so only a copy newer than the last one applied is merged. A group stamped `0` (a
-     * backfill or a legacy restore) reads from the beginning and is replaced whole, never merged; so does a
-     * device that has never pulled the table.
+     * The pages are applied, but their cursors are not saved: the main pull reads the same copies again and
+     * moves the cursors once the cycle has drained, as every table does. A singleton with a stamp of its own
+     * resumes from its cursor, so only a copy newer than the last one applied is merged. A singleton stamped
+     * `0` (a backfill or a legacy restore) reads from the beginning and is replaced whole, never merged; so does
+     * one on a device that has never pulled its table.
      */
-    private suspend fun pullDirtyDisplayPreferences() {
-        val stamp = changeLog.dirtyDisplayPreferencesStamp() ?: return
-        val cursors = changeLog.loadCursors()
-        val after = if (stamp > 0) cursors else cursors - SyncTable.DISPLAY_PREFERENCES
-        backend.pull(after, setOf(SyncTable.DISPLAY_PREFERENCES)) { page -> applier.applyPage(page) }.getOrThrow()
+    private suspend fun pullDirtySingletons() {
+        val stamps: Map<SyncTable, Long> = SINGLETON_TABLES.mapNotNull { table -> changeLog.dirtySingletonStamp(table)?.let { table to it } }.toMap()
+        if (stamps.isEmpty()) return
+        // A stamp of 0 (or a missing cursor) reads the table from the beginning: that copy is replaced whole, not merged.
+        val fromStart = stamps.filterValues { it <= 0L }.keys
+        backend.pull(changeLog.loadCursors() - fromStart, stamps.keys) { page -> applier.applyPage(page) }.getOrThrow()
     }
 
     private suspend fun currentOwner(): String? = database.syncStateQueries.selectState().awaitAsOneOrNull()?.ownerAccountId
@@ -386,6 +388,9 @@ class SyncEngine(
 }
 
 private const val OUTCOME_FAILED = "FAILED"
+
+/** The tables with one row per account, which a device reads before it pushes them when they are dirty (ADR 0036). */
+private val SINGLETON_TABLES = listOf(SyncTable.DISPLAY_PREFERENCES, SyncTable.MUTED_GENRE_CHOICE)
 
 /** What [SyncEngine.observeStatus] reports; everything the Profile status line needs, and no copy. */
 data class SyncStatusSnapshot(

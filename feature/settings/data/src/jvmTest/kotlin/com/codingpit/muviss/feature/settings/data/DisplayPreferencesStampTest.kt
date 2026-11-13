@@ -39,6 +39,7 @@ class DisplayPreferencesStampTest {
         dispatchers,
         clock,
         AppVersion("test", 1L),
+        database,
     )
     private val flags = AppSettingsFeatureFlags(
         database.appSettingsQueries,

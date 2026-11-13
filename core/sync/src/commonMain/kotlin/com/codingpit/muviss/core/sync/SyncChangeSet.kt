@@ -26,16 +26,20 @@ data class SyncChangeSet(
     val tasteProfileItems: List<TasteProfileItemChange> = emptyList(),
     /** Zero or one row: the account's Display Preferences group (ADR 0036, #643). */
     val displayPreferences: List<DisplayPreferencesChange> = emptyList(),
+    /** One row per genre the person has decided about, tombstones included (ADR 0036, #644). */
+    val mutedGenres: List<MutedGenreChange> = emptyList(),
+    /** Zero or one row: the Muted Genres choice marker (ADR 0036, #644). */
+    val mutedGenreChoices: List<MutedGenreChoiceChange> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = collectionEntries.isEmpty() && episodeProgress.isEmpty() && mediaLists.isEmpty() &&
             listEntries.isEmpty() && triageDecisions.isEmpty() && triageSnoozes.isEmpty() && episodePlays.isEmpty() &&
-            tasteProfileItems.isEmpty() && displayPreferences.isEmpty()
+            tasteProfileItems.isEmpty() && displayPreferences.isEmpty() && mutedGenres.isEmpty() && mutedGenreChoices.isEmpty()
 
     val size: Int
         get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size +
             triageDecisions.size + triageSnoozes.size + episodePlays.size + tasteProfileItems.size +
-            displayPreferences.size
+            displayPreferences.size + mutedGenres.size + mutedGenreChoices.size
 }
 
 /**
@@ -224,5 +228,30 @@ data class DisplayPreferencesChange(
     @SerialName("triage_snooze_period") val triageSnoozePeriod: String,
     @SerialName("triage_snooze_placement") val triageSnoozePlacement: String,
     @SerialName("muted_genres_in_search") val mutedGenresInSearch: Boolean,
+    @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
+)
+
+/**
+ * Mirrors `mutedGenre` (`MutedGenre.sq`, ADR 0036, #644): the person's decision on one genre, keyed by its
+ * media type and TMDB id. A live row mutes the genre whatever its default; a tombstone unmutes it. The
+ * tombstone is what a plain delete would lose, so it is sent like any other row.
+ */
+@Serializable
+data class MutedGenreChange(
+    @SerialName("media_type") val mediaType: String,
+    @SerialName("genre_id") val genreId: Long,
+    val name: String,
+    val deleted: Boolean,
+    @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
+)
+
+/**
+ * Mirrors `mutedGenreChoice` (`MutedGenreChoice.sq`, ADR 0036, #644): the marker that the person has chosen
+ * their muted set, with the defaults in force at that choice. One row per account, and no `deleted`: the
+ * marker is never removed, only written again.
+ */
+@Serializable
+data class MutedGenreChoiceChange(
+    @SerialName("defaults_at_choice") val defaultsAtChoice: String,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
 )

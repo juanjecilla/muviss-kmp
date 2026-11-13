@@ -9,6 +9,8 @@ import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
 import com.codingpit.muviss.core.database.ListEntry as ListEntryRow
 import com.codingpit.muviss.core.database.MediaList as MediaListRow
+import com.codingpit.muviss.core.database.MutedGenre as MutedGenreRow
+import com.codingpit.muviss.core.database.MutedGenreChoice as MutedGenreChoiceRow
 import com.codingpit.muviss.core.database.TasteProfile as TasteProfileRow
 import com.codingpit.muviss.core.database.TriageDecision as TriageDecisionRow
 import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
@@ -91,13 +93,31 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
             wrap = { SyncChangeSet(displayPreferences = it) },
             push = push,
         ) { chunk -> chunk.forEach { database.appSettingsQueries.clearDisplayPreferencesDirty(it.updatedAtEpochMs) } }
+
+        // The marker goes before its decisions, as the table order says (parent first).
+        SyncTable.MUTED_GENRE_CHOICE -> send(
+            rows = database.mutedGenreChoiceQueries.selectDirty().awaitAsList().map { it.toChange() },
+            wrap = { SyncChangeSet(mutedGenreChoices = it) },
+            push = push,
+        ) { chunk -> chunk.forEach { database.mutedGenreChoiceQueries.clearDirty(it.updatedAtEpochMs) } }
+
+        SyncTable.MUTED_GENRE -> send(
+            rows = database.mutedGenreQueries.selectDirty().awaitAsList().map { it.toChange() },
+            wrap = { SyncChangeSet(mutedGenres = it) },
+            push = push,
+        ) { chunk -> chunk.forEach { database.mutedGenreQueries.clearDirty(it.mediaType, it.genreId, it.updatedAtEpochMs) } }
     }
 
     /**
-     * The Display Preferences group's stamp when it is dirty, or null when there is nothing to send. The
-     * engine reads it before the cycle's push to decide whether the group must be pulled first (ADR 0036).
+     * The stamp of a dirty singleton ([SyncTable.DISPLAY_PREFERENCES] or [SyncTable.MUTED_GENRE_CHOICE]), or null
+     * when it has nothing to send. The engine reads these before the push to decide what must be pulled first
+     * (ADR 0036). A table this does not name has no such read.
      */
-    suspend fun dirtyDisplayPreferencesStamp(): Long? = database.appSettingsQueries.selectDisplayPreferencesIfDirty().awaitAsOneOrNull()?.displayPreferencesUpdatedAtEpochMs
+    suspend fun dirtySingletonStamp(table: SyncTable): Long? = when (table) {
+        SyncTable.DISPLAY_PREFERENCES -> database.appSettingsQueries.selectDisplayPreferencesIfDirty().awaitAsOneOrNull()?.displayPreferencesUpdatedAtEpochMs
+        SyncTable.MUTED_GENRE_CHOICE -> database.mutedGenreChoiceQueries.selectDirty().awaitAsOneOrNull()?.updatedAtEpochMs
+        else -> null
+    }
 
     private suspend fun <T> send(
         rows: List<T>,
@@ -153,6 +173,9 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.tasteProfileQueries.markAllDirty()
         // Only a group that has been changed; a never-stamped one is defaults, and defaults are never data (ADR 0036).
         database.appSettingsQueries.markDisplayPreferencesDirtyIfStamped()
+        // The muted marker and decisions exist only once the person has chosen, so they are dirty as any row is.
+        database.mutedGenreChoiceQueries.markAllDirty()
+        database.mutedGenreQueries.markAllDirty()
     }
 
     /**
@@ -171,8 +194,24 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.tasteProfileQueries.deleteAll()
         // The group belongs to the account being left, so the next pull is the only thing that fills it.
         database.appSettingsQueries.resetDisplayPreferences()
+        // Muted Genres are the account's choices too: the marker and every decision go, and the account's copy is pulled.
+        database.mutedGenreQueries.deleteAll()
+        database.mutedGenreChoiceQueries.deleteAll()
     }
 }
+
+internal fun MutedGenreRow.toChange() = MutedGenreChange(
+    mediaType = mediaType,
+    genreId = genreId,
+    name = name,
+    deleted = deleted,
+    updatedAtEpochMs = updatedAtEpochMs,
+)
+
+internal fun MutedGenreChoiceRow.toChange() = MutedGenreChoiceChange(
+    defaultsAtChoice = defaultsAtChoice,
+    updatedAtEpochMs = updatedAtEpochMs,
+)
 
 internal fun SelectDisplayPreferencesIfDirty.toDisplayPreferencesChange() = DisplayPreferencesChange(
     theme = theme,

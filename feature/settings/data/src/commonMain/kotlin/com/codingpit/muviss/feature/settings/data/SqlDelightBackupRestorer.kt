@@ -65,6 +65,10 @@ class SqlDelightBackupRestorer(
                 backup.settings?.let { displayPreferences.restoreGroup(it) }
                 backup.mutedGenreChoice?.let { displayPreferences.restoreChoice(it) }
                 backup.mutedGenres.forEach { tally.count(displayPreferences.restoreDecision(it)) }
+                // A file with no marker and no decisions predates them: its list is the legacy string alone.
+                if (backup.mutedGenreChoice == null && backup.mutedGenres.isEmpty()) {
+                    backup.settings?.let { displayPreferences.restoreLegacyMutedGenres(it.mutedGenres) }
+                }
 
                 val mediaIds = buildSet {
                     backup.collection.mapTo(this) { it.mediaId }

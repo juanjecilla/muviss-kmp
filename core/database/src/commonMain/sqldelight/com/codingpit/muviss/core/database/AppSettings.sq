@@ -92,8 +92,9 @@
 --
 -- `mutedGenres` and `mutedGenresInSearch` were added in `18.sqm` (Muted Genres,
 -- ADR 0031). `mutedGenresInSearch` is a Display Preference (ADR 0036) and travels
--- with the group. `mutedGenres` is the legacy list and stays the live store until #644 moves it into
--- the `mutedGenre` decisions and the `mutedGenreChoice` marker (ADR 0036). It is a `;`-joined list of
+-- with the group. `mutedGenres` is the legacy list and is DEAD since #644: the live set is the `mutedGenre`
+-- decisions over the `mutedGenreChoice` marker (ADR 0036). It is converted once, on a device's first open, and
+-- then pinned to this default, so a later reset cannot convert it again. It is a `;`-joined list of
 -- `<movie|tv>:<tmdb genre id>:<name>` (the name is kept so Settings can list what is muted
 -- offline); the column DEFAULT is what mutes Talk, News and Reality on a fresh
 -- install, and `ALTER TABLE ADD COLUMN ... DEFAULT` is what gives an upgraded

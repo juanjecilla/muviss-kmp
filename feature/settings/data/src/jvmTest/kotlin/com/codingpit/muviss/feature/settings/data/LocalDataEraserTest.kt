@@ -56,6 +56,7 @@ class LocalDataEraserTest {
             dispatchers,
             FakeClock(1L),
             AppVersion("1", 1L),
+            database,
         )
         val fixture = javaClass.getResource("/backups/v1-export.json")!!.readText()
         SqlDelightBackupRestorer(database, dispatchers).restore(fixture)
@@ -113,6 +114,7 @@ class LocalDataEraserTest {
             queuedIo,
             FakeClock(1L),
             AppVersion("1", 1L),
+            database,
             writes,
         )
         val secrets = InMemorySecretStore()

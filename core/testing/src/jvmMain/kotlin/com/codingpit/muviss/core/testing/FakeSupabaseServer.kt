@@ -595,6 +595,29 @@ class FakeSupabaseServer(
                     UPDATED_AT to integer,
                 ),
             ),
+            // EPIC 51 / ADR 0036 (#644). The Muted Genres marker, one row per account: no key columns, and no
+            // `deleted`, as the marker is never removed.
+            TableSchema(
+                "muted_genre_choice",
+                emptyList(),
+                linkedMapOf(
+                    "defaults_at_choice" to text,
+                    UPDATED_AT to integer,
+                ),
+            ),
+            // The decisions, keyed by media type and TMDB genre id. `deleted` is always sent, so it has no default:
+            // a push that omitted it would be refused, as the column is NOT NULL on the server.
+            TableSchema(
+                "muted_genre",
+                listOf("media_type", "genre_id"),
+                linkedMapOf(
+                    "media_type" to text,
+                    "genre_id" to integer,
+                    "name" to text,
+                    "deleted" to Column(Type.BOOLEAN),
+                    UPDATED_AT to integer,
+                ),
+            ),
             TableSchema(
                 "episode_play",
                 listOf("id"),
