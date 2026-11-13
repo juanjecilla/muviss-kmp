@@ -1,0 +1,90 @@
+package com.codingpit.muviss.feature.cowatch.data
+
+import com.codingpit.muviss.feature.cowatch.domain.CachedProviders
+import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
+import com.codingpit.muviss.feature.cowatch.domain.WatchProviderSource
+import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MetadataError
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/** #762: the pick's fill writes only what TMDB answered, and a failure never becomes "on no service". */
+class TmdbWatchProviderFillTest {
+
+    private class RecordingCache : WatchProviderCache {
+        val puts = mutableListOf<Triple<MediaId, String, Set<String>>>()
+
+        override suspend fun get(mediaIds: Set<MediaId>): Map<MediaId, CachedProviders> = emptyMap()
+
+        override suspend fun put(mediaId: MediaId, region: String, flatrateProviderIds: Set<String>) {
+            puts += Triple(mediaId, region, flatrateProviderIds)
+        }
+    }
+
+    /** Answers each title from [answers] and records the order it was asked in. */
+    private class ScriptedSource(private val answers: Map<MediaId, Result<Set<String>>>) : WatchProviderSource {
+        override val region: String = "US"
+        val asked = mutableListOf<MediaId>()
+
+        override suspend fun fetchFlatrateIds(mediaId: MediaId): Result<Set<String>> {
+            asked += mediaId
+            return answers.getValue(mediaId)
+        }
+    }
+
+    private val a = MediaId.tmdbMovie("1")
+    private val b = MediaId.tmdbMovie("2")
+    private val c = MediaId.tmdbMovie("3")
+
+    @Test
+    fun `every_answered_title_is_cached_for_the_region_in_the_order_given`() = runTest {
+        val cache = RecordingCache()
+        val source = ScriptedSource(mapOf(a to Result.success(setOf("8")), b to Result.success(setOf("9", "337"))))
+
+        TmdbWatchProviderFill(cache, source).fill(listOf(a, b), region = "US")
+
+        assertEquals(listOf(a, b), source.asked)
+        assertEquals(listOf(Triple(a, "US", setOf("8")), Triple(b, "US", setOf("9", "337"))), cache.puts)
+    }
+
+    @Test
+    fun `a_title_on_no_flatrate_service_is_cached_as_empty_so_it_is_not_asked_about_again`() = runTest {
+        val cache = RecordingCache()
+        val source = ScriptedSource(mapOf(a to Result.success(emptySet())))
+
+        TmdbWatchProviderFill(cache, source).fill(listOf(a), region = "US")
+
+        assertEquals(listOf(Triple(a, "US", emptySet())), cache.puts)
+    }
+
+    @Test
+    fun `a_title_that_no_longer_exists_is_skipped_and_the_rest_still_fill`() = runTest {
+        val cache = RecordingCache()
+        val source = ScriptedSource(mapOf(a to Result.failure(MetadataError.NotFound()), b to Result.success(setOf("8"))))
+
+        TmdbWatchProviderFill(cache, source).fill(listOf(a, b), region = "US")
+
+        assertEquals(listOf(a, b), source.asked)
+        assertEquals(listOf(Triple(b, "US", setOf("8"))), cache.puts)
+    }
+
+    @Test
+    fun `an_offline_failure_writes_nothing_for_that_title_and_ends_the_batch`() = runTest {
+        val cache = RecordingCache()
+        val source = ScriptedSource(
+            mapOf(
+                a to Result.success(setOf("8")),
+                b to Result.failure(MetadataError.Offline()),
+                c to Result.success(setOf("9")),
+            ),
+        )
+
+        TmdbWatchProviderFill(cache, source).fill(listOf(a, b, c), region = "US")
+
+        assertEquals(listOf(a, b), source.asked, "the title after the failure is not asked about")
+        assertEquals(listOf(Triple(a, "US", setOf("8"))), cache.puts, "what was answered before the failure is kept; the failed title is not written")
+        assertTrue(cache.puts.none { it.first == b }, "a failure is never recorded as on no service")
+    }
+}

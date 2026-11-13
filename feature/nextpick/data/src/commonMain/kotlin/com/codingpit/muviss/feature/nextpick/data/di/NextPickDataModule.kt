@@ -7,12 +7,14 @@ import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProvider
+import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.nextpick.data.AnchorCandidates
 import com.codingpit.muviss.feature.nextpick.data.AppSettingsCompletionPromptStore
 import com.codingpit.muviss.feature.nextpick.data.CollectionBacklogCandidates
 import com.codingpit.muviss.feature.nextpick.data.CollectionHistoryReader
+import com.codingpit.muviss.feature.nextpick.data.CombinedCandidates
 import com.codingpit.muviss.feature.nextpick.data.CrashPickRankerReporter
 import com.codingpit.muviss.feature.nextpick.data.DefaultNextPickActions
 import com.codingpit.muviss.feature.nextpick.data.DiscoverSource
@@ -55,15 +57,27 @@ val nextPickDataModule: Module = module {
         val taste: () -> TasteProfileApi = { get() }
         val region: () -> String = { get<MetadataLocale>().region }
         val lookup: () -> WatchProviderLookup = { get() }
+        val fill: () -> WatchProviderFill = { get() }
         val muting = SettingsMuting(settings)
         // Order is not priority: PickEngine merges one copy per title by source (backlog, then anchor, then discover).
         PickEngine(
             sources = listOf(
-                // "Only my services" (#740) narrows the two sources TMDB does not filter by provider; discover does it itself.
-                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds, clock), taste, lookup, region),
+                // "Only my services" (#740) narrows the sources TMDB does not filter by provider; discover does it itself.
+                // One pool, so one request budget per pick (#762), not one per source.
+                OwnServicesCandidates(
+                    inner = CombinedCandidates(
+                        listOf(
+                            CollectionBacklogCandidates(collection, genreIds, clock),
+                            AnchorCandidates(metadata, collection),
+                            SeedCandidates(metadata, collection),
+                        ),
+                    ),
+                    taste = taste,
+                    lookup = lookup,
+                    fill = fill,
+                    region = region,
+                ),
                 DiscoverSource(metadata, collection, thisYear, muting, taste, region),
-                OwnServicesCandidates(AnchorCandidates(metadata, collection), taste, lookup, region),
-                OwnServicesCandidates(SeedCandidates(metadata, collection), taste, lookup, region),
             ),
             exclusions = TriageExclusions(triage),
             history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity, genreIds), taste),

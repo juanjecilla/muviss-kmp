@@ -3,6 +3,8 @@ package com.codingpit.muviss.feature.nextpick.data
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.network.DiscoverFilters
 import com.codingpit.muviss.core.network.MetadataProvider
+import com.codingpit.muviss.core.network.WatchProviderFill
+import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -17,6 +19,8 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.SourceId
+import com.codingpit.muviss.models.WatchProvider
+import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -50,6 +54,8 @@ internal class CountingMetadata(
     private val recommended: List<MediaSummary> = emptyList(),
     private val similarTitles: List<MediaSummary> = emptyList(),
     private val failRecommendations: MetadataError? = null,
+    /** The flatrate provider ids TMDB reports for a title; what [watchProviders] answers with. */
+    private val flatrateOf: (MediaId) -> Set<String> = { emptySet() },
 ) : MetadataProvider {
 
     override val source: SourceId = SourceId.TMDB
@@ -90,6 +96,37 @@ internal class CountingMetadata(
     override suspend fun genres(type: MediaType): List<Genre> {
         count("genres")
         return emptyList()
+    }
+
+    override suspend fun watchProviders(id: MediaId, region: String): WatchProviders {
+        count("watch")
+        return WatchProviders(flatrate = flatrateOf(id).map { WatchProvider(id = it, name = "provider $it") })
+    }
+}
+
+/** The cache the fill writes and the lookup reads, keyed by title and holding one region's answer, as the real cache does. */
+internal class MutableWatchCache : WatchProviderLookup {
+    val entries = mutableMapOf<MediaId, Pair<String, Set<String>>>()
+
+    override suspend fun cachedFlatrateIds(mediaIds: Set<MediaId>, region: String): Map<MediaId, Set<String>> = entries
+        .filterKeys { it in mediaIds }
+        .filterValues { (cachedRegion, _) -> cachedRegion == region }
+        .mapValues { (_, cached) -> cached.second }
+}
+
+/**
+ * Fills like the production fill: one TMDB request per title, through [metadata] so it is counted, with the
+ * answer written to [cache]. [filled] records every title asked about, in order.
+ */
+internal class MetadataWatchFill(private val metadata: CountingMetadata, private val cache: MutableWatchCache) : WatchProviderFill {
+    val filled = mutableListOf<MediaId>()
+
+    override suspend fun fill(mediaIds: List<MediaId>, region: String) {
+        for (id in mediaIds) {
+            filled += id
+            val flatrate = metadata.watchProviders(id, region).flatrate.map { it.id }.toSet()
+            cache.entries[id] = region to flatrate
+        }
     }
 }
 
