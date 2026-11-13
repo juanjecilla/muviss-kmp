@@ -16,6 +16,8 @@ SELECT *
 FROM discoverCache
 WHERE cacheKey = :cacheKey;
 
+-- The write guard (a newer stored copy is never replaced by an older one) lives in `SqlDelightDiscoverCache`: the
+-- SQLite dialect here predates `ON CONFLICT ... DO UPDATE`, and the check must read the row it would overwrite.
 upsert:
 INSERT OR REPLACE INTO discoverCache(cacheKey, json, fetchedAtEpochMs)
 VALUES (:cacheKey, :json, :fetchedAtEpochMs);

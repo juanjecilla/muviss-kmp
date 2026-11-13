@@ -138,6 +138,38 @@ class DiscoverOfflineViewModelTest {
     }
 
     @Test
+    fun a_reconnection_does_not_cancel_a_search_typed_over_a_saved_copy() = runTest {
+        // A saved copy that failed to refresh is retried on reconnection, but only while Discover itself shows: a
+        // typed query has its own pending search, and a retry would cancel it.
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        var searches = 0
+        val online = MutableStateFlow(false)
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, _, _ -> Result.failure(MetadataError.Offline()) },
+                searchResult = { page ->
+                    searches++
+                    Result.success(PagedResult(listOf(drama), page, page))
+                },
+            ),
+            cache,
+            FakeClock(epochMs = DiscoverFeed.TTL_MS + 1),
+            connectivity = object : ConnectivityMonitor {
+                override val isOnline: Flow<Boolean> = online
+            },
+        )
+        advanceUntilIdle()
+        assertTrue(vm.state.value.discoverSaved)
+
+        vm.onQueryChange("drama")
+        online.value = true
+        advanceUntilIdle()
+
+        assertTrue(searches > 0, "the typed search ran: the reconnection did not cancel it")
+    }
+
+    @Test
     fun a_cold_start_that_cannot_reach_the_network_keeps_the_error_state() = runTest {
         val vm = viewModel(FakeRepo(movieGenresResult = Result.failure(MetadataError.Offline())), MemoryDiscoverCache(), FakeClock(epochMs = 0L))
         advanceUntilIdle()

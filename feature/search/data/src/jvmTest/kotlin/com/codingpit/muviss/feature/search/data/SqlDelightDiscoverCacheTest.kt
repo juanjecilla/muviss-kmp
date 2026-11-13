@@ -77,6 +77,16 @@ class SqlDelightDiscoverCacheTest {
     }
 
     @Test
+    fun a_superseded_write_never_replaces_a_newer_answer() = runTest {
+        // A refresh overtaken by a later one can still land its last write: the newer stored copy must win.
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 10L)
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("99", "Old")), fetchedAtEpochMs = 5L)
+
+        assertEquals(listOf(Genre("28", "Action")), cache.genres(MediaType.MOVIE)?.value)
+        assertEquals(10L, cache.genres(MediaType.MOVIE)?.fetchedAtEpochMs)
+    }
+
+    @Test
     fun a_storage_failure_costs_the_copy_and_never_fails_the_refresh() = runTest {
         // A table that is gone makes every write throw: the answer must still come back to the caller.
         val driver = inMemoryDriver()

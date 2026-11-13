@@ -12,6 +12,8 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -31,6 +33,7 @@ class SqlDelightDiscoverCache(
     private val json = Json { ignoreUnknownKeys = true }
     private val genresSerializer = ListSerializer(Genre.serializer())
     private val pageSerializer = PagedResult.serializer(MediaSummary.serializer())
+    private val writes = Mutex()
 
     override suspend fun genres(type: MediaType): Saved<List<Genre>>? = read(genresKey(type)) { raw, at ->
         Saved(json.decodeFromString(genresSerializer, raw), at)
@@ -66,7 +69,15 @@ class SqlDelightDiscoverCache(
     private suspend fun write(section: String, body: String, fetchedAtEpochMs: Long) {
         runCatching {
             withContext(dispatchers.io) {
-                queries.upsert(cacheKey = cacheKey(section), json = body, fetchedAtEpochMs = fetchedAtEpochMs)
+                // Read, compare and write one at a time: a superseded refresh can still land its last write, and it
+                // must not replace a newer copy stored meanwhile.
+                writes.withLock {
+                    val key = cacheKey(section)
+                    val current = queries.selectByKey(key).awaitAsOneOrNull()
+                    if (current == null || fetchedAtEpochMs >= current.fetchedAtEpochMs) {
+                        queries.upsert(cacheKey = key, json = body, fetchedAtEpochMs = fetchedAtEpochMs)
+                    }
+                }
             }
         }.onFailure { error ->
             if (error is CancellationException) throw error

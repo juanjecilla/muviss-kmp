@@ -214,9 +214,14 @@ class SearchViewModel(
 
     /**
      * A failure the person can see and a reconnection can fix: the error screen, or a saved Discover copy whose
-     * refresh failed (#724). Both retry on reconnection, so a saved copy does not stay stale until a tap.
+     * refresh failed (#724). The copy counts only while Discover itself is showing: a typed query has its own
+     * pending search, and a retry would cancel it. Both retry on reconnection, so a copy is not stale until a tap.
      */
-    private fun showsFailure(): Boolean = _state.value.error != null || _state.value.discoverSaved
+    private fun showsFailure(): Boolean {
+        val s = _state.value
+        val discoverShowing = s.mode == SearchMode.DISCOVER && s.query.isBlank()
+        return s.error != null || (discoverShowing && s.discoverSaved)
+    }
 
     fun onQueryChange(query: String) {
         _state.update { it.copy(query = query) }
