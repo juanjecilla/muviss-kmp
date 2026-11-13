@@ -106,6 +106,9 @@ import org.koin.dsl.module
  * [onDeepLinkConsumed] so backgrounding/foregrounding the app doesn't
  * re-navigate. Both default to no-op for platforms with no such deep link.
  *
+ * [openNextPick] is the `muviss://next-pick` link (the widget's empty state, EPIC 51): it opens the Pick
+ * Session over the start screen, cleared through [onOpenNextPickConsumed] like [deepLinkMediaId].
+ *
  * [oauthCode] is the same idea for sign-in (ADR 0014): the authorization code
  * from a `muviss://auth-callback` redirect, cleared through
  * [onOAuthCodeConsumed] once redeemed. It is handled here rather than in the
@@ -122,6 +125,8 @@ import org.koin.dsl.module
 fun MuvissApp(
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
+    openNextPick: Boolean = false,
+    onOpenNextPickConsumed: () -> Unit = {},
     oauthCode: String? = null,
     onOAuthCodeConsumed: () -> Unit = {},
     controller: MuvissAppController = rememberMuvissAppController(),
@@ -159,13 +164,13 @@ fun MuvissApp(
                 // "TMDB rejected your key" offers a way to Settings, where the key lives (#321).
                 LocalOpenTmdbKeySettings provides { controller.destinations.firstOrNull { it.route == SettingsRoute }?.let(controller::navigateTo) },
             ) {
-                val startRoute = rememberStartRoute(deepLinkMediaId)
+                val startRoute = rememberStartRoute(hasDeepLink = deepLinkMediaId != null || openNextPick)
                 if (startRoute == null) {
                     // The decision is one local read; drawing nothing meanwhile beats flashing
                     // the Search tab (and the trending request it makes) before the introduction.
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 } else {
-                    MuvissScaffold(controller, startRoute, deepLinkMediaId, onDeepLinkConsumed)
+                    MuvissScaffold(controller, startRoute, deepLinkMediaId, onDeepLinkConsumed, openNextPick, onOpenNextPickConsumed)
                 }
             }
         }
@@ -292,10 +297,10 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
  * finishes, and a start destination that followed it would rebuild the graph under the user.
  */
 @Composable
-private fun rememberStartRoute(deepLinkMediaId: String?): Any? {
+private fun rememberStartRoute(hasDeepLink: Boolean): Any? {
     val onboarding = koinInject<OnboardingApi>()
     val completed by produceState<Boolean?>(initialValue = null) { value = onboarding.observeCompleted().first() }
-    val route = remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
+    val route = remember(completed) { startRouteFor(completed, hasDeepLink = hasDeepLink) }
     // A fresh install takes its animations default from the OS's reduce-motion setting, once, on its first
     // launch whatever the start route; the use case keeps its own mark, so a choice made in Settings
     // afterwards is never touched (#394).
@@ -332,6 +337,8 @@ private fun MuvissScaffold(
     startRoute: Any,
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
+    openNextPick: Boolean = false,
+    onOpenNextPickConsumed: () -> Unit = {},
 ) {
     val navController = controller.navController
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -360,6 +367,15 @@ private fun MuvissScaffold(
         if (deepLinkMediaId != null) {
             navController.navigate(DetailRoute(deepLinkMediaId))
             onDeepLinkConsumed()
+        }
+    }
+
+    // The widget's empty state (muviss://next-pick). Opened over whatever the start route was, the way the
+    // Library's entry opens it, so back returns to where the launch landed.
+    LaunchedEffect(openNextPick) {
+        if (openNextPick) {
+            controller.openNextPick()
+            onOpenNextPickConsumed()
         }
     }
 
