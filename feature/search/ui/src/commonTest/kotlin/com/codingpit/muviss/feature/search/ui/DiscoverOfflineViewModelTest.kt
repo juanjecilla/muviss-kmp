@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.search.ui
 
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.search.domain.DiscoverCache
 import com.codingpit.muviss.feature.search.domain.DiscoverFeed
@@ -18,6 +19,8 @@ import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -50,6 +53,7 @@ class DiscoverOfflineViewModelTest {
         discoverCache: DiscoverCache,
         clock: FakeClock,
         settings: FakeMutingApi = FakeMutingApi(),
+        connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
     ) = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
@@ -58,6 +62,7 @@ class DiscoverOfflineViewModelTest {
         FakeTriageApi(),
         settings,
         DiscoverFeed(repo, discoverCache, clock),
+        connectivity = connectivity,
     )
 
     private fun offline() = FakeRepo(
@@ -100,6 +105,36 @@ class DiscoverOfflineViewModelTest {
         assertEquals(listOf(talkShow, drama), vm.state.value.popularTv, "the stored shelf stays on screen")
         assertNull(vm.state.value.error, "a stored copy is never an error")
         assertTrue(vm.state.value.discoverSaved, "past its TTL and refreshed without success: say it is saved")
+    }
+
+    @Test
+    fun a_reconnection_refreshes_a_saved_copy_whose_refresh_failed() = runTest {
+        // Past its TTL and refreshed offline: the copy is saved, not an error, and nothing else would retry it.
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        var reachable = false
+        val online = MutableStateFlow(false)
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, page, _ ->
+                    if (reachable) Result.success(PagedResult(listOf(drama), page, page)) else Result.failure(MetadataError.Offline())
+                },
+            ),
+            cache,
+            FakeClock(epochMs = DiscoverFeed.TTL_MS + 1),
+            connectivity = object : ConnectivityMonitor {
+                override val isOnline: Flow<Boolean> = online
+            },
+        )
+        advanceUntilIdle()
+        assertTrue(vm.state.value.discoverSaved)
+
+        reachable = true
+        online.value = true
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.discoverSaved, "the connection returned, so the saved copy was refreshed")
+        assertEquals(listOf(drama), vm.state.value.popularTv)
     }
 
     @Test

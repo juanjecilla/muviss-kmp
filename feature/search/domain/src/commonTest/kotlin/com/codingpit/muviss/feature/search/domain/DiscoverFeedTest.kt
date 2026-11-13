@@ -175,6 +175,42 @@ class DiscoverFeedTest {
     }
 
     /** TMDB's stand-in: each list holds the answers for one type, one per page number. */
+    @Test
+    fun a_sparse_shelf_stops_at_the_page_budget_even_when_more_pages_exist() = runTest {
+        // Every page is mostly muted and the catalogue has five more: the shelf still reads only MAX_SHELF_PAGES.
+        repository.tvs = (1..5).map { n -> page(n, 5, *tvTitles("mute-$n", 15, "10767")) }
+
+        feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+
+        assertEquals((1..DiscoverFeed.MAX_SHELF_PAGES).toList(), repository.discoverPages(MediaType.TV), "no page after the budget is requested")
+    }
+
+    @Test
+    fun a_failed_supplemental_page_keeps_the_saved_shelf_instead_of_replacing_it() = runTest {
+        repository.tvs = listOf(page(1, 2, *tvTitles("mute-a", 15, "10767"), *tvTitles("keep-a", 5)), page(2, 2, *tvTitles("keep-b", 12)))
+        feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        val saved = feed.snapshot()
+        assertEquals(32, saved.popularTv?.items?.size, "the first refresh stored both pages")
+
+        // Page 2 is gone this time: the fresh read is partial, and the stored shelf with every title stays.
+        repository.tvs = listOf(page(1, 2, *tvTitles("mute-a", 15, "10767"), *tvTitles("keep-a", 5)))
+        val refresh = feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        val merged = refresh.mergedInto(saved)
+
+        assertTrue(refresh.anyFailed, "a partial shelf is reported as a failure, so the saved copy says so")
+        assertEquals(32, merged.popularTv?.items?.size, "the stored shelf keeps the page that failed to refresh")
+    }
+
+    @Test
+    fun a_partial_shelf_with_nothing_stored_is_kept_as_read() = runTest {
+        repository.tvs = listOf(page(1, 2, *tvTitles("mute-a", 15, "10767"), *tvTitles("keep-a", 5)))
+
+        val refresh = feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        val merged = refresh.mergedInto(DiscoverSnapshot(movieGenres = null, tvGenres = null, popularMovies = null, popularTv = null))
+
+        assertEquals(20, merged.popularTv?.items?.size, "with no stored copy the partial read is all there is")
+    }
+
     private class ScriptedRepository : SearchRepository {
         var movies: List<PagedResult<MediaSummary>> = emptyList()
         var tvs: List<PagedResult<MediaSummary>> = emptyList()

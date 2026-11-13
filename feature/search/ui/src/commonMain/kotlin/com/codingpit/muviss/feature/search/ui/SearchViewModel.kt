@@ -198,11 +198,11 @@ class SearchViewModel(
         // A failure shown while offline retries itself when the connection
         // comes back, rather than waiting for a tap on Retry (#249).
         connectivity.reconnections()
-            .onEach { if (_state.value.error != null) retry() else reconnectedBeforeFailure = true }
+            .onEach { if (showsFailure()) retry() else reconnectedBeforeFailure = true }
             .launchInReporting(viewModelScope)
         // A reconnection can land while a request is still in flight and fail
         // after it: remembered, it buys that failure one retry, no more (#249).
-        _state.map { it.error != null }
+        _state.map { showsFailure() }
             .distinctUntilChanged()
             .filter { showing -> showing && reconnectedBeforeFailure }
             .onEach {
@@ -211,6 +211,12 @@ class SearchViewModel(
             }
             .launchInReporting(viewModelScope)
     }
+
+    /**
+     * A failure the person can see and a reconnection can fix: the error screen, or a saved Discover copy whose
+     * refresh failed (#724). Both retry on reconnection, so a saved copy does not stay stale until a tap.
+     */
+    private fun showsFailure(): Boolean = _state.value.error != null || _state.value.discoverSaved
 
     fun onQueryChange(query: String) {
         _state.update { it.copy(query = query) }

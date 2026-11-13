@@ -1,9 +1,11 @@
 package com.codingpit.muviss.feature.search.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.DefaultMetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
 import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.core.testing.inMemoryDriver
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -72,5 +74,17 @@ class SqlDelightDiscoverCacheTest {
         fresh.saveGenres(MediaType.TV, emptyList(), fetchedAtEpochMs = 1L)
 
         assertEquals(emptyList(), cache.genres(MediaType.TV)?.value, "the same key under en-US")
+    }
+
+    @Test
+    fun a_storage_failure_costs_the_copy_and_never_fails_the_refresh() = runTest {
+        // A table that is gone makes every write throw: the answer must still come back to the caller.
+        val driver = inMemoryDriver()
+        driver.execute(null, "DROP TABLE discoverCache", 0)
+        val broken = SqlDelightDiscoverCache(MuvissDatabase(driver).discoverCacheQueries, locale, dispatchers)
+
+        broken.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 1L)
+        broken.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), fetchedAtEpochMs = 1L)
+        // Reaching this line without an exception is the assertion: a write that threw would have failed the test.
     }
 }

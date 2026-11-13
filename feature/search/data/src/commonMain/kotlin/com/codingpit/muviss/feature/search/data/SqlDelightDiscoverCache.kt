@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.search.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.database.DiscoverCacheQueries
 import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.feature.search.domain.DiscoverCache
@@ -10,6 +11,7 @@ import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -57,9 +59,18 @@ class SqlDelightDiscoverCache(
         }
     }
 
+    /**
+     * Best-effort: a storage failure (a full disk, say) costs this copy, never the TMDB answer it was stored from,
+     * so the refresh that produced it still completes. Cancellation is not a failure and is rethrown.
+     */
     private suspend fun write(section: String, body: String, fetchedAtEpochMs: Long) {
-        withContext(dispatchers.io) {
-            queries.upsert(cacheKey = cacheKey(section), json = body, fetchedAtEpochMs = fetchedAtEpochMs)
+        runCatching {
+            withContext(dispatchers.io) {
+                queries.upsert(cacheKey = cacheKey(section), json = body, fetchedAtEpochMs = fetchedAtEpochMs)
+            }
+        }.onFailure { error ->
+            if (error is CancellationException) throw error
+            CrashReporter.recordException(error)
         }
     }
 

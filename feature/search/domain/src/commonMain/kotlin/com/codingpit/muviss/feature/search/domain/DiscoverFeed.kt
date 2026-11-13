@@ -29,8 +29,12 @@ object NoDiscoverCache : DiscoverCache {
     override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long) = Unit
 }
 
-/** One popular shelf as stored: its raw titles across the pages read, and when the oldest page was fetched. */
-data class DiscoverShelf(val items: List<MediaSummary>, val fetchedAtEpochMs: Long)
+/**
+ * One popular shelf as stored: its raw titles across the pages read, and when the oldest page was fetched.
+ * [complete] is false when a supplemental page the shelf wanted failed, so the titles are a partial read and a
+ * stored copy that holds more of the shelf is kept instead (#724).
+ */
+data class DiscoverShelf(val items: List<MediaSummary>, val fetchedAtEpochMs: Long, val complete: Boolean = true)
 
 /** What Discover can show before the network answers. A null part was never fetched (or was evicted by a newer build). */
 data class DiscoverSnapshot(
@@ -57,18 +61,28 @@ data class DiscoverRefresh(
 ) {
     private val sections: List<Result<*>> get() = listOf(movieGenres, tvGenres, popularMovies, popularTv)
 
-    val anyFailed: Boolean get() = sections.any { it.isFailure }
+    /** A section failed, or a shelf came back partial: either way the copy shown is not a full refresh. */
+    val anyFailed: Boolean get() = sections.any { it.isFailure } || listOf(popularMovies, popularTv).any { it.getOrNull()?.complete == false }
 
     /** The first failure, to report when there is nothing stored to show instead. */
     val firstFailure: Throwable? get() = sections.firstNotNullOfOrNull { it.exceptionOrNull() }
 
-    /** This refresh's answers where they succeeded, and [snapshot]'s stored copy where they did not. */
+    /**
+     * This refresh's answers where they succeeded, and [snapshot]'s stored copy where they did not. A partial
+     * shelf keeps the stored one when there is one, since that copy holds more of the shelf; with nothing stored
+     * the partial read is all there is.
+     */
     fun mergedInto(snapshot: DiscoverSnapshot): DiscoverSnapshot = DiscoverSnapshot(
         movieGenres = movieGenres.getOrNull()?.let { Saved(it, fetchedAtEpochMs) } ?: snapshot.movieGenres,
         tvGenres = tvGenres.getOrNull()?.let { Saved(it, fetchedAtEpochMs) } ?: snapshot.tvGenres,
-        popularMovies = popularMovies.getOrNull() ?: snapshot.popularMovies,
-        popularTv = popularTv.getOrNull() ?: snapshot.popularTv,
+        popularMovies = popularMovies.shelfOr(snapshot.popularMovies),
+        popularTv = popularTv.shelfOr(snapshot.popularTv),
     )
+
+    private fun Result<DiscoverShelf>.shelfOr(stored: DiscoverShelf?): DiscoverShelf? {
+        val fresh = getOrNull() ?: return stored
+        return if (fresh.complete) fresh else stored ?: fresh
+    }
 }
 
 /**
@@ -122,18 +136,27 @@ class DiscoverFeed(
             .onSuccess { cache.savePopular(type, 1, it, now) }
             .getOrElse { return Result.failure(it) }
         val pages = mutableListOf(first)
+        var complete = true
         while (needsMorePages(pages, muted)) {
             val page = pages.last().page + 1
             val next = repository.discover(type, page = page, genreId = null, excludedGenreIds = excluded)
                 .onSuccess { cache.savePopular(type, page, it, now) }
-                .getOrNull() ?: break
+                .getOrNull()
+            if (next == null) {
+                complete = false
+                break
+            }
             pages += next
         }
-        return Result.success(DiscoverShelf(items = pages.flatMap { it.items }, fetchedAtEpochMs = now))
+        return Result.success(DiscoverShelf(items = pages.flatMap { it.items }, fetchedAtEpochMs = now, complete = complete))
     }
 
-    /** True while the shelf has fewer titles than it should show and a page after the last one read exists. */
+    /**
+     * True while the shelf has fewer titles than it should show, a page after the last one read exists, and the
+     * page budget ([MAX_SHELF_PAGES]) is not spent. The budget bounds the requests as well as the stored copy.
+     */
     private fun needsMorePages(pages: List<PagedResult<MediaSummary>>, muted: MutedGenres): Boolean {
+        if (pages.size >= MAX_SHELF_PAGES) return false
         if (visible(pages.flatMap { it.items }, muted).size >= SHELF_MIN_TITLES) return false
         return pages.last().page < pages.last().totalPages
     }
