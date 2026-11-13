@@ -1,0 +1,89 @@
+name: Dependabot approve
+
+# CodeRabbit skips bot-authored PRs ("authored by a bot without an assigned
+# review seat"), so a Dependabot PR never gets the one approval the develop
+# ruleset requires and sits unmergeable however green it is.
+#
+# This workflow supplies that approval, from the release App, once CI has
+# finished green on the PR. It is a CI-is-green stamp, not a code review: the
+# ruleset's required status checks still gate the merge, and nothing here merges.
+#
+# Runs on `workflow_run` of CI, so it never executes the PR's code and checks
+# nothing out. The gate is the same shape as dependabot-worker-locks.yml: the PR
+# must be opened by Dependabot, triggered by Dependabot, from this repository,
+# into develop. The approving identity is the App, never the PR's author.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  approve:
+    name: Approve a green Dependabot PR
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/') &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check for the release App
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+        run: |
+          if [ -z "$APP_ID" ]; then
+            echo "::error::RELEASE_APP_ID is not set as a Dependabot secret (Settings > Secrets and variables > Dependabot)."
+            exit 1
+          fi
+
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          # Reads the PR and its checks, writes the review. Nothing else.
+          permission-pull-requests: write
+          permission-checks: read
+
+      - name: Approve when the PR is still what CI tested
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          pr=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+            --json number,author,baseRefName,headRefOid,isDraft \
+            -q '[.[] | select(.author.login == "app/dependabot" and .baseRefName == "develop")][0]')
+          if [ -z "$pr" ] || [ "$pr" = "null" ]; then
+            echo "no open Dependabot PR into develop for $BRANCH; nothing to do"
+            exit 0
+          fi
+          number=$(jq -r .number <<<"$pr")
+          head=$(jq -r .headRefOid <<<"$pr")
+          # A push after the run started means the green result is for older code.
+          if [ "$head" != "$TESTED_SHA" ]; then
+            echo "PR #$number moved to $head since CI ran on $TESTED_SHA; the next run decides"
+            exit 0
+          fi
+          # Approve only a PR whose required checks all passed on that head.
+          if ! gh pr checks "$number" --repo "$REPO" --required >/dev/null; then
+            echo "PR #$number has a required check that is not green; not approving"
+            exit 0
+          fi
+          gh pr review "$number" --repo "$REPO" --approve \
+            --body "CI is green on $TESTED_SHA. Approved by the release App (Dependabot PRs are skipped by CodeRabbit); this is not a code review."
