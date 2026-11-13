@@ -54,6 +54,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.ProductionStatus
@@ -333,6 +334,9 @@ internal class FakeDeckSource(
 ) : DeckSource {
     var failure: Throwable? = null
 
+    /** When set, every movie page from this number on fails, so a refill can die partway through a deck (#722). */
+    var failFromPage: Int? = null
+
     /** When set, a movie page waits on it after being recorded: a refill can be held in flight (#722). */
     var gate: CompletableDeferred<Unit>? = null
 
@@ -346,6 +350,7 @@ internal class FakeDeckSource(
         failure?.let { return Result.failure(it) }
         if (type == MediaType.TV) tvExcludedRequests += excludedGenreIds
         if (type == MediaType.MOVIE) requestedPages += page
+        if (type == MediaType.MOVIE && failFromPage?.let { page >= it } == true) return Result.failure(MetadataError.Offline())
         if (type == MediaType.MOVIE) gate?.await()
         if (type == MediaType.MOVIE && moviePages != null) {
             return Result.success(PagedResult(moviePages.byNumber[page].orEmpty(), page = page, totalPages = moviePages.totalPages))

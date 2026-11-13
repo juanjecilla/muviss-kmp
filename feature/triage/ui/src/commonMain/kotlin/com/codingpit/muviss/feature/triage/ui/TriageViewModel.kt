@@ -110,7 +110,13 @@ data class TriageUiState(
      * never as "All caught up", which would be false (#183).
      */
     val keepLookingAvailable: Boolean = false,
+    /** A screen-level error: only when the deck is empty, so there is nothing else to show. */
     val error: UiText? = null,
+    /**
+     * A refill failed with cards still on the deck. The deck stays; the screen reports this once as a snackbar,
+     * whose action resumes the refill from the cursor (#722).
+     */
+    val refillFailure: UiText? = null,
     val undoable: UndoableAction? = null,
     val failedCommit: FailedCommit? = null,
     val restored: RestoredCard? = null,
@@ -498,6 +504,8 @@ class TriageViewModel(
 
     fun onFailedCommitDismissed() = _state.update { it.copy(failedCommit = null) }
 
+    fun onRefillFailureDismissed() = _state.update { it.copy(refillFailure = null) }
+
     fun onTutorialDismissed() {
         _state.update { it.copy(tutorialVisible = false) }
         viewModelScope.launchReporting { actions.setTutorialSeen(true) }
@@ -537,10 +545,10 @@ class TriageViewModel(
             overflow.clear()
             pageOf.clear()
             _state.update {
-                it.copy(cards = emptyList(), loading = true, error = null, exhausted = false, keepLookingAvailable = false)
+                it.copy(cards = emptyList(), loading = true, error = null, refillFailure = null, exhausted = false, keepLookingAvailable = false)
             }
         } else {
-            _state.update { it.copy(refilling = true, keepLookingAvailable = false) }
+            _state.update { it.copy(refilling = true, keepLookingAvailable = false, refillFailure = null) }
         }
         val run = generation
         refillJob = viewModelScope.launchReporting { fillDeck(run, restore) }
@@ -566,8 +574,15 @@ class TriageViewModel(
             val batch = session.next(filter, cursor, shown, wanted = BUFFER_TARGET - bufferedCount())
                 .getOrElse { error ->
                     if (run == generation) {
+                        val message = error.toUiText(UiText.Resource(Res.string.error_load_more))
                         _state.update {
-                            it.copy(loading = false, refilling = false, searchingDeeper = false, error = error.toUiText(UiText.Resource(Res.string.error_load_more)))
+                            // A failed refill never hides the cards it already has: with a deck on screen it is a
+                            // snackbar, and only an empty deck gets the full error and its Retry.
+                            if (it.cards.isEmpty() && overflow.isEmpty()) {
+                                it.copy(loading = false, refilling = false, searchingDeeper = false, error = message)
+                            } else {
+                                it.copy(loading = false, refilling = false, searchingDeeper = false, refillFailure = message)
+                            }
                         }
                     }
                     return

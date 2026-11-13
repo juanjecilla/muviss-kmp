@@ -680,6 +680,37 @@ class TriageViewModelTest {
     }
 
     @Test
+    fun a_refill_failure_with_cards_left_keeps_the_deck_visible() = runTest {
+        // Ten cards over five pages. Five swipes leave five on the deck, which starts a refill; page 6 then fails.
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+        harness.source.failFromPage = 6
+
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) }
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.error, "a failed refill does not replace a deck that still has cards")
+        assertEquals(5, vm.state.value.cards.size, "the cards already on the deck are kept")
+        assertNotNull(vm.state.value.topCard, "the deck stays visible")
+        assertNotNull(vm.state.value.refillFailure, "the failure is reported once, as a snackbar")
+    }
+
+    @Test
+    fun a_refill_failure_with_an_empty_deck_still_shows_the_error() = runTest {
+        val harness = TriageHarness(moviePages = FakeDeckPages(mapOf(1 to listOf(movie("p1-a"))), totalPages = 1))
+        harness.source.failure = MetadataError.Offline()
+
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.error, "with nothing to show, the error takes the screen")
+        assertNull(vm.state.value.topCard)
+        assertNull(vm.state.value.refillFailure)
+    }
+
+    @Test
     fun a_checkpoint_taken_before_a_reset_cannot_land_after_the_reset_position() = runTest {
         // Writes are held in the store and released newest first, so an out-of-order landing would show up as
         // a pre-reset value written last. Every write must land in the order it was taken, and the last one
