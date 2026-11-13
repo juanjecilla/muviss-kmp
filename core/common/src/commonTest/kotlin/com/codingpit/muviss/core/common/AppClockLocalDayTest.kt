@@ -41,6 +41,39 @@ class AppClockLocalDayTest {
     }
 
     @Test
+    fun a_repeated_midnight_starts_its_day_at_the_first_of_the_two() {
+        // Asia/Gaza, 1 Oct 2004: UTC+3 becomes UTC+2 at 22:00 UTC, which shows 00:00 twice. The first is 21:00 UTC on 30 Sep.
+        val switch = epochMsAtStartOfDay(epochDayOfCivil(2004, 9, 30)) + 22 * HOUR
+        val clock = object : AppClock {
+            override fun nowEpochMs(): Long = switch
+            override fun utcOffsetMsAt(epochMs: Long): Long = if (epochMs >= switch) 2 * HOUR else 3 * HOUR
+        }
+        val october1 = epochDayOfCivil(2004, 10, 1)
+        val firstMidnight = epochMsAtStartOfDay(epochDayOfCivil(2004, 9, 30)) + 21 * HOUR
+
+        // Not the second reading at 22:00 UTC, which is the midnight an offset refinement picks.
+        assertEquals(firstMidnight, clock.localStartOfDayEpochMs(october1))
+        assertEquals(october1, clock.localEpochDayOf(firstMidnight))
+        assertEquals(epochDayOfCivil(2004, 9, 30), clock.localEpochDayOf(firstMidnight - 1))
+        // The day after has one midnight, at UTC+2.
+        assertEquals(epochMsAtStartOfDay(october1 + 1) - 2 * HOUR, clock.localStartOfDayEpochMs(october1 + 1))
+    }
+
+    @Test
+    fun a_whole_day_the_clocks_skip_starts_at_the_jump_into_the_next_day() {
+        // Pacific/Apia, 30 Dec 2011 never happens locally: UTC-10 becomes UTC+14 at 10:00 UTC on 30 Dec, so 29 Dec is followed by 31 Dec.
+        val jump = epochMsAtStartOfDay(epochDayOfCivil(2011, 12, 30)) + 10 * HOUR
+        val clock = object : AppClock {
+            override fun nowEpochMs(): Long = jump
+            override fun utcOffsetMsAt(epochMs: Long): Long = if (epochMs >= jump) 14 * HOUR else -10 * HOUR
+        }
+
+        // No instant is on 30 Dec, so the first instant at or after its start is the jump. It is not 30 Dec's UTC midnight.
+        assertEquals(jump, clock.localStartOfDayEpochMs(epochDayOfCivil(2011, 12, 30)))
+        assertEquals(epochDayOfCivil(2011, 12, 31), clock.localEpochDayOf(jump))
+    }
+
+    @Test
     fun local_day_before_the_epoch_floors_toward_the_earlier_day() {
         // Given UTC-5 and 02:00 UTC on 1 Jan 1970, which is 21:00 on 31 Dec 1969 locally
         val clock = zone(-5 * HOUR)
