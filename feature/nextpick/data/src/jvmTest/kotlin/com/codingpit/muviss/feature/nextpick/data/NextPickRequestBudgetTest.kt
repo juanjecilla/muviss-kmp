@@ -77,7 +77,7 @@ class NextPickRequestBudgetTest {
         val collection: () -> CollectionApi = { library }
         val engine = PickEngine(
             sources = listOf(
-                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds), { services.taste }, { services.lookup }, { "US" }),
+                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds, clock), { services.taste }, { services.lookup }, { "US" }),
                 DiscoverSource(metadata, collection, thisYear = { 2027 }, muting = PickMuting { MutedGenres.NONE }, taste = { services.taste }, region = { "US" }),
                 OwnServicesCandidates(AnchorCandidates(metadata, collection), { services.taste }, { services.lookup }, { "US" }),
                 OwnServicesCandidates(SeedCandidates(metadata, collection), { services.taste }, { services.lookup }, { "US" }),

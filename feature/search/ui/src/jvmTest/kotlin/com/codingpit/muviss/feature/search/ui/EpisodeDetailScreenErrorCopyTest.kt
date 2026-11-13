@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import com.codingpit.muviss.core.common.SystemClock
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
 import com.codingpit.muviss.models.EpisodeId
@@ -64,7 +65,7 @@ private val episodeDetailId = EpisodeId(MediaId.tmdbTv("1399"), 3, 9)
 @Composable
 private fun EpisodeDetailWithFailure(failure: Throwable) {
     val repo = FakeEpisodeRepo(Result.failure(failure))
-    val viewModel = EpisodeDetailViewModel(episodeDetailId, EpisodeDetailUseCase(repo), FakeProgressApi())
+    val viewModel = EpisodeDetailViewModel(episodeDetailId, EpisodeDetailUseCase(repo), FakeProgressApi(), SystemClock())
     MuvissTheme(darkTheme = false) {
         EpisodeDetailScreen(viewModel = viewModel, onBack = {})
     }

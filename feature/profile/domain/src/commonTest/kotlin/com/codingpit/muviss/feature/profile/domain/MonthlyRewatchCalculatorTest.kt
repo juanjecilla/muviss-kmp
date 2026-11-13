@@ -72,9 +72,13 @@ class MonthlyRewatchCalculatorTest {
 
     @Test
     fun the_query_bound_covers_exactly_the_oldest_month_shown() {
-        val since = MonthlyRewatchCalculator.sinceEpochMs(today)
+        val since = MonthlyRewatchCalculator.sinceEpochMs(UtcClock, today)
 
         assertEquals(at(2025, 9, 1), since)
+    }
+
+    private object UtcClock : AppClock {
+        override fun nowEpochMs(): Long = 0L
     }
 
     private companion object {
@@ -92,6 +96,6 @@ class MonthlyRewatchCalculatorTest {
         }
 
         // April 2025 starts at its local midnight, 2 hours before UTC midnight. Reading now's +1 would start an hour late.
-        assertEquals(at(2025, 4, 1) - 2 * hourMs, MonthlyRewatchCalculator.sinceEpochMs(day(2026, 3, 15), clock))
+        assertEquals(at(2025, 4, 1) - 2 * hourMs, MonthlyRewatchCalculator.sinceEpochMs(clock, day(2026, 3, 15)))
     }
 }

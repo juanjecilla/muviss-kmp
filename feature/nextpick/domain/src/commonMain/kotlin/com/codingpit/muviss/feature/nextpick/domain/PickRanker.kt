@@ -70,7 +70,7 @@ class RuleBasedRanker : PickRanker {
         genreAffinity(c, h)?.let(::add)
         likedGenre(c, h)?.let(::add)
         if (c.favorite) add(Term(FAVORITE, PickReason.YourFavorite))
-        c.addedAtEpochMs?.let { added -> if (c.source == CandidateSource.BACKLOG && h.todayEpochDay > 0) staleBacklog(added, h)?.let(::add) }
+        c.addedOnEpochDay?.let { added -> if (c.source == CandidateSource.BACKLOG && h.todayEpochDay > 0) staleBacklog(added, h)?.let(::add) }
         c.summary.rating?.let { add(Term(((it - NEUTRAL_VOTE) / VOTE_SPREAD).coerceIn(-1.0, MAX_VOTE_BONUS), PickReason.HighlyRated(it))) }
         runtime(criteria, c)?.let(::add)
         era(criteria, c, h)?.let(::add)
@@ -109,8 +109,9 @@ class RuleBasedRanker : PickRanker {
         return if (liked) Term(LIKED_GENRE, PickReason.LikedGenre) else null
     }
 
-    private fun staleBacklog(addedAtEpochMs: Long, h: PickHistory): Term? {
-        val days = h.todayEpochDay - addedAtEpochMs / DAY_MS
+    /** Both sides are the person's local day, so a title added late at night is not a day older than it is (#756). */
+    private fun staleBacklog(addedOnEpochDay: Long, h: PickHistory): Term? {
+        val days = h.todayEpochDay - addedOnEpochDay
         return if (days >= STALE_DAYS) Term(STALE_BONUS, PickReason.LongInYourList) else null
     }
 
@@ -153,7 +154,6 @@ class RuleBasedRanker : PickRanker {
         const val LIKED_GENRE = 1.5
         const val STALE_DAYS = 90
         const val STALE_BONUS = 0.5
-        const val DAY_MS = 86_400_000L
         const val NEUTRAL_VOTE = 6.5
         const val VOTE_SPREAD = 2.0
         const val MAX_VOTE_BONUS = 1.5

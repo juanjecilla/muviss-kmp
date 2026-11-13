@@ -58,11 +58,46 @@ fun AppClock.localEpochDayOf(epochMs: Long): Long = (epochMs + utcOffsetMsAt(epo
 /**
  * Converts an arbitrary wall-clock timestamp (epoch milliseconds) to a UTC epoch day.
  *
- * Not the person's day: a day that counts toward a streak, an aired comparison or a
- * "today" is [localEpochDayOf] (#675). Kept for the places that still bucket in UTC on
- * purpose, and listed in the follow-up issue, so a new caller starts from the local day.
+ * Not the person's day: every production day bucket is [localEpochDayOf] (#675, #756). What is left
+ * here is the UTC default of [com.codingpit.muviss.feature.profile.domain.MonthlyRewatchCalculator.calculate]
+ * for fixtures that have no clock; a new caller that wants "today" or a streak day uses the local day.
  */
 fun epochDayOf(epochMs: Long): Long = epochMs / MILLIS_PER_DAY
+
+/**
+ * The first millisecond of the person's local day [epochDay] (#756): the earliest instant whose local day is
+ * [epochDay] or later, not a midnight guessed from one offset.
+ *
+ * A DST change can break the midnight guess both ways. A forward jump across midnight skips local 00:00
+ * (America/Asuncion, 1 Oct 2023), so the day starts at the jump. A fall-back across midnight shows 00:00 twice
+ * (Asia/Gaza, 1 Oct 2004), so the day starts at the first of the two. Both come out of one search: the local
+ * day is scanned forward from a point well before the day, to the first half-hour at which it has reached
+ * [epochDay], and that single switch is bisected down to the millisecond. Every zone's offset lies within a day
+ * of UTC, so the window [midnight - 36 h, midnight + 36 h] always brackets the switch.
+ */
+fun AppClock.localStartOfDayEpochMs(epochDay: Long): Long {
+    val utcMidnight = epochMsAtStartOfDay(epochDay)
+    var before = utcMidnight - START_OF_DAY_SPAN_MS
+    var after = utcMidnight + START_OF_DAY_SPAN_MS
+    var probe = before
+    while (probe < after) {
+        val next = minOf(probe + START_OF_DAY_SCAN_STEP_MS, after)
+        if (localEpochDayOf(next) >= epochDay) {
+            before = probe
+            after = next
+            break
+        }
+        probe = next
+    }
+    while (after - before > 1) {
+        val middle = before + (after - before) / 2
+        if (localEpochDayOf(middle) >= epochDay) after = middle else before = middle
+    }
+    return after
+}
+
+private const val START_OF_DAY_SPAN_MS = 36L * 3_600_000L
+private const val START_OF_DAY_SCAN_STEP_MS = 30L * 60_000L
 
 /**
  * The inverse of [epochDayOf]: the first millisecond of [epochDay], UTC.

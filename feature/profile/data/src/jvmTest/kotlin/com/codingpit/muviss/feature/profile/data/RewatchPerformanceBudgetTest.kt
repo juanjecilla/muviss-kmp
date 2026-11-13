@@ -112,7 +112,7 @@ class RewatchPerformanceBudgetTest {
         seedHeavyLibrary()
         driver.reset()
 
-        repository.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(0L)).first()
+        repository.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(FakeClock(0L), 0L)).first()
 
         assertEquals(1, driver.queries)
     }

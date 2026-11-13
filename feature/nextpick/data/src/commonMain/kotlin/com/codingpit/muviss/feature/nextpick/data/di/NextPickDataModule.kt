@@ -60,7 +60,7 @@ val nextPickDataModule: Module = module {
         PickEngine(
             sources = listOf(
                 // "Only my services" (#740) narrows the two sources TMDB does not filter by provider; discover does it itself.
-                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds), taste, lookup, region),
+                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds, clock), taste, lookup, region),
                 DiscoverSource(metadata, collection, thisYear, muting, taste, region),
                 OwnServicesCandidates(AnchorCandidates(metadata, collection), taste, lookup, region),
                 OwnServicesCandidates(SeedCandidates(metadata, collection), taste, lookup, region),

@@ -24,7 +24,7 @@ class ObserveProfileStatsUseCase(
     operator fun invoke(): Flow<ProfileStats> = combine(
         collectionApi.observeSummaries(),
         progressApi.observeSeenActivityEpochDays(),
-        progressApi.observeRewatchCounts(RewatchWindow.ALL_TIME.sinceEpochMs(clock.nowEpochMs())),
+        progressApi.observeRewatchCounts(RewatchWindow.ALL_TIME.sinceEpochMs(clock)),
     ) { summaries, activityDays, rewatchCounts ->
         ProfileStatsCalculator.calculate(summaries, activityDays, clock.todayEpochDay(), rewatchCounts)
     }
@@ -58,8 +58,8 @@ class ObserveRewatchStatsUseCase(
         val today = clock.todayEpochDay()
         return combine(
             collectionApi.observeSummaries(),
-            progressApi.observeRewatchCounts(window.sinceEpochMs(clock.nowEpochMs())),
-            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(today, clock)),
+            progressApi.observeRewatchCounts(window.sinceEpochMs(clock)),
+            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(clock, today)),
         ) { summaries, counts, timestamps ->
             RewatchStats(
                 window = window,

@@ -2,8 +2,10 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
@@ -25,6 +27,8 @@ data class EpisodeDetailUiState(
     val error: UiText? = null,
     /** Every recorded viewing, newest first (ADR 0011). Empty means never watched. */
     val plays: List<EpisodePlay> = emptyList(),
+    /** [plays] as the person's local epoch day, in the same order, for the date text (#756). */
+    val playDays: List<Long> = emptyList(),
 ) {
     val playCount: Int get() = plays.size
     val seen: Boolean get() = plays.isNotEmpty()
@@ -43,6 +47,7 @@ class EpisodeDetailViewModel(
     private val episodeId: EpisodeId,
     private val loadEpisode: EpisodeDetailUseCase,
     private val progressApi: ProgressApi,
+    private val clock: AppClock,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(EpisodeDetailUiState())
@@ -51,7 +56,9 @@ class EpisodeDetailViewModel(
     init {
         load()
         progressApi.observePlays(episodeId)
-            .onEach { plays -> _state.update { it.copy(plays = plays) } }
+            .onEach { plays ->
+                _state.update { it.copy(plays = plays, playDays = plays.map { play -> clock.localEpochDayOf(play.watchedAtEpochMs) }) }
+            }
             .launchInReporting(viewModelScope)
     }
 
