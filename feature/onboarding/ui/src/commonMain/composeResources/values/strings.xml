@@ -51,4 +51,13 @@
     <string name="onboarding_muted_soap">Soap operas</string>
     <string name="onboarding_muted_soap_examples">Days of Our Lives, The Bold and the Beautiful</string>
     <string name="onboarding_muted_more">There are more genres to choose from in Settings, under Muted genres.</string>
+    <string name="onboarding_taste_title">What do you like?</string>
+    <string name="onboarding_taste_body">Optional. Tell suggestions what you enjoy, and they will use it. Skip this if you would rather not, and change it any time in Settings.</string>
+    <string name="onboarding_taste_formats">What you watch</string>
+    <string name="onboarding_taste_format_movie">Movies</string>
+    <string name="onboarding_taste_format_series">Series</string>
+    <string name="onboarding_taste_format_limited">Limited series</string>
+    <string name="onboarding_taste_services">Services you use</string>
+    <string name="onboarding_taste_languages">Languages you like</string>
+    <string name="onboarding_taste_more">Genres are in Settings, under Your taste, where you can also name the company you usually watch with.</string>
 </resources>

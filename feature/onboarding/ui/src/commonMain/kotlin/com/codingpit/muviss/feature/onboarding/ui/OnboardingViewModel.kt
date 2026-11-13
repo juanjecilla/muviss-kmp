@@ -13,6 +13,8 @@ import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.TasteItem
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.models.GenreKey
@@ -26,12 +28,13 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 
 /** The pages, in order. Three are conditional; see [pagesFor]. */
-enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, DEVICE_BACKUP, NOTIFICATIONS, TMDB_KEY, MUTED_GENRES, DONE }
+enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, DEVICE_BACKUP, NOTIFICATIONS, TMDB_KEY, MUTED_GENRES, TASTE, DONE }
 
 /**
  * The pages this device shows: the alerts page needs a platform that notifies (not web), the backup page needs a
  * platform whose OS backup Muviss can honour (Device Backup, ADR 0034), and the TMDB key page appears only while
- * the app offers an Own TMDB Key (`byokEnabled`).
+ * the app offers an Own TMDB Key (`byokEnabled`). The Taste page follows the mutes, so a genre already muted is
+ * not the next thing offered.
  */
 fun pagesFor(canNotify: Boolean, byokOffered: Boolean, canBackUp: Boolean): List<OnboardingPage> = OnboardingPage.entries.filter {
     when (it) {
@@ -72,6 +75,8 @@ data class OnboardingUiState(
     val mutedGenres: Set<MutedGenreChoice> = emptySet(),
     /** Poster urls per genre, best-effort: absent offline, and the page shows its text examples alone. */
     val genrePosters: Map<MutedGenreChoice, List<String>> = emptyMap(),
+    /** [TasteItem.id]s the person currently likes; the Taste page's chips read it. */
+    val likedTaste: Set<String> = emptySet(),
 ) {
     val page: OnboardingPage? get() = pages.getOrNull(index)
     val isFirst: Boolean get() = index == 0
@@ -83,12 +88,14 @@ data class OnboardingUiState(
  * Settings' and the key's own doors, so Skip needs to do nothing but end the flow: it keeps
  * whatever was already set and marks onboarding completed.
  */
+@Suppress("LongParameterList") // one Koin dependency per contract the pages write through; the seventh is the Taste Profile (#583)
 class OnboardingViewModel(
     private val onboarding: OnboardingApi,
     private val settings: SettingsApi,
     private val tmdbKey: TmdbKeyApi,
     featureFlags: FeatureFlags,
     private val systemNotifications: SystemNotificationSettings,
+    private val tasteProfile: TasteProfileApi,
     /** Whether the backup page is offered; the platform's answer in the app, a fixed one in tests. */
     private val canBackUp: Boolean = platformCanBackUp,
 ) : ViewModel() {
@@ -117,7 +124,18 @@ class OnboardingViewModel(
                 _state.update { it.copy(mutedGenres = muted) }
             }
             .launchInReporting(viewModelScope)
+        tasteProfile.observe()
+            .onEach { items -> _state.update { it.copy(likedTaste = items.mapTo(linkedSetOf()) { item -> item.id }) } }
+            .launchInReporting(viewModelScope)
         loadGenrePosters()
+    }
+
+    /**
+     * Likes or unlikes one Taste chip. Written as it is tapped, like every other page. The API refuses a
+     * muted genre; the Taste page offers none, so the refusal cannot happen from here.
+     */
+    fun onTasteToggled(item: TasteItem, liked: Boolean) {
+        viewModelScope.launchReporting { tasteProfile.setLiked(item, liked) }
     }
 
     /**

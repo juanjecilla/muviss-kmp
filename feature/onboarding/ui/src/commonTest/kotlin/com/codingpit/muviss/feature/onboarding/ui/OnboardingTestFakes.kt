@@ -7,6 +7,8 @@ import com.codingpit.muviss.feature.settings.api.GenreMuting
 import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.TasteItem
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.settings.api.ThemeMode
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
@@ -107,6 +109,20 @@ internal class FakeTmdbKeyApi : TmdbKeyApi {
 
     override suspend fun clear() {
         source.value = TmdbDataSource.MUVISS
+    }
+}
+
+/** The Taste Profile as the page sees it: a live set of liked items, and every write recorded. */
+internal class FakeTasteProfileApi : TasteProfileApi {
+    val liked = MutableStateFlow<List<TasteItem>>(emptyList())
+    val writes = mutableListOf<Pair<TasteItem, Boolean>>()
+
+    override fun observe(): Flow<List<TasteItem>> = liked
+
+    override suspend fun setLiked(item: TasteItem, liked: Boolean): Boolean {
+        writes += item to liked
+        this.liked.value = if (liked) this.liked.value + item else this.liked.value.filterNot { it.id == item.id }
+        return true
     }
 }
 
