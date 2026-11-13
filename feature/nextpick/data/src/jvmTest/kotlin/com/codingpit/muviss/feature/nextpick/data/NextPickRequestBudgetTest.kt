@@ -141,6 +141,26 @@ class NextPickRequestBudgetTest {
     }
 
     @Test
+    fun `a_movie_session_seeds_from_its_own_format_even_when_newer_favourites_are_shows`() = runTest {
+        // Three newer favourites are shows and the one older favourite is a movie. The seed cap must count movies only,
+        // or the session takes the three shows, drops them all, and asks TMDB about nothing.
+        val library = FakeLibrary(
+            listOf(
+                libraryTitle(show("31"), WatchStatus.NOT_STARTED).copy(favorite = true, addedAtEpochMs = 300L),
+                libraryTitle(show("32"), WatchStatus.NOT_STARTED).copy(favorite = true, addedAtEpochMs = 200L),
+                libraryTitle(show("33"), WatchStatus.NOT_STARTED).copy(favorite = true, addedAtEpochMs = 100L),
+                libraryTitle(movie("11"), WatchStatus.NOT_STARTED).copy(favorite = true, addedAtEpochMs = 10L),
+            ),
+        )
+        val metadata = CountingMetadata(discover = mapOf(MediaType.MOVIE to listOf(movie("2"))), recommended = listOf(movie("20")), similarTitles = listOf(movie("21")))
+
+        pick(metadata, standard(anchored = false), PickAnswer.Source(PickSource.SOMETHING_NEW), PickAnswer.FormatAndTime(MediaType.MOVIE, null), library = library)
+
+        assertEquals(1, metadata.requests["recommendations"])
+        assertEquals(1, metadata.requests["similar"])
+    }
+
+    @Test
     fun `offline_something_new_makes_no_seed_requests`() = runTest {
         val favourites = FakeLibrary(listOf(libraryTitle(movie("11"), WatchStatus.NOT_STARTED).copy(favorite = true)))
         val metadata = CountingMetadata()

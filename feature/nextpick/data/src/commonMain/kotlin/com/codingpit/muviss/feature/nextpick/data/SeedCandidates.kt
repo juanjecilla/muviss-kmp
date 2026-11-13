@@ -38,8 +38,9 @@ internal class SeedCandidates(
 
         val library = collection().observeSummaries().first()
         val statuses = library.associate { it.mediaId to it.status }
-        val seeds = ForYouSeeding.selectSeeds(library, maxSeeds = MAX_SEEDS)
-            .filter { criteria.type == null || criteria.type == it.type }
+        // The format filter runs before the cap: otherwise a movie session spends its seeds on favourites of another
+        // format and then drops them all, with no seed request for the movie it asked for. Statuses stay whole-library.
+        val seeds = ForYouSeeding.selectSeeds(library.filter { criteria.type == null || criteria.type == it.mediaId.type }, maxSeeds = MAX_SEEDS)
         return seeds.flatMap { seed ->
             val recommended = orEmptyOnFailure { metadata.recommendations(seed).items }
             val similar = orEmptyOnFailure { metadata.similar(seed).items }
