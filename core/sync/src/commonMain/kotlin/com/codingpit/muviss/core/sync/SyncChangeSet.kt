@@ -24,15 +24,18 @@ data class SyncChangeSet(
     val triageSnoozes: List<TriageSnoozeChange> = emptyList(),
     val episodePlays: List<EpisodePlayChange> = emptyList(),
     val tasteProfileItems: List<TasteProfileItemChange> = emptyList(),
+    /** Zero or one row: the account's Display Preferences group (ADR 0036, #643). */
+    val displayPreferences: List<DisplayPreferencesChange> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = collectionEntries.isEmpty() && episodeProgress.isEmpty() && mediaLists.isEmpty() &&
             listEntries.isEmpty() && triageDecisions.isEmpty() && triageSnoozes.isEmpty() && episodePlays.isEmpty() &&
-            tasteProfileItems.isEmpty()
+            tasteProfileItems.isEmpty() && displayPreferences.isEmpty()
 
     val size: Int
         get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size +
-            triageDecisions.size + triageSnoozes.size + episodePlays.size + tasteProfileItems.size
+            triageDecisions.size + triageSnoozes.size + episodePlays.size + tasteProfileItems.size +
+            displayPreferences.size
 }
 
 /**
@@ -199,4 +202,27 @@ data class TasteProfileItemChange(
     val label: String,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
     val deleted: Boolean,
+)
+
+/**
+ * Mirrors the Display Preferences group of `appSettings` (ADR 0036, #643): the ten members, stamped
+ * as one by [updatedAtEpochMs]. One row per account, so the primary key is `user_id` and there is no
+ * `deleted` column: the group is never removed, a person resets a value by changing it.
+ *
+ * Device switches are deliberately absent. Every member here is a choice the person expects on every
+ * device they sign in to; `notificationsEnabled` and its neighbours describe this device (ADR 0036).
+ */
+@Serializable
+data class DisplayPreferencesChange(
+    val theme: String,
+    val language: String,
+    val region: String,
+    @SerialName("animations_enabled") val animationsEnabled: Boolean,
+    @SerialName("triage_deck_animations") val triageDeckAnimations: Boolean,
+    @SerialName("tick_animations") val tickAnimations: Boolean,
+    @SerialName("triage_control_scheme") val triageControlScheme: String,
+    @SerialName("triage_snooze_period") val triageSnoozePeriod: String,
+    @SerialName("triage_snooze_placement") val triageSnoozePlacement: String,
+    @SerialName("muted_genres_in_search") val mutedGenresInSearch: Boolean,
+    @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
 )

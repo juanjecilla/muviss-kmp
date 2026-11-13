@@ -3,6 +3,7 @@ package com.codingpit.muviss.core.sync
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.database.SelectDisplayPreferencesIfDirty
 import com.codingpit.muviss.core.database.CollectionEntry as CollectionEntryRow
 import com.codingpit.muviss.core.database.EpisodePlay as EpisodePlayRow
 import com.codingpit.muviss.core.database.EpisodeProgress as EpisodeProgressRow
@@ -84,7 +85,19 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
             wrap = { SyncChangeSet(tasteProfileItems = it) },
             push = push,
         ) { chunk -> chunk.forEach { database.tasteProfileQueries.clearDirty(it.id, it.updatedAtEpochMs) } }
+
+        SyncTable.DISPLAY_PREFERENCES -> send(
+            rows = database.appSettingsQueries.selectDisplayPreferencesIfDirty().awaitAsList().map { it.toDisplayPreferencesChange() },
+            wrap = { SyncChangeSet(displayPreferences = it) },
+            push = push,
+        ) { chunk -> chunk.forEach { database.appSettingsQueries.clearDisplayPreferencesDirty(it.updatedAtEpochMs) } }
     }
+
+    /**
+     * The Display Preferences group's stamp when it is dirty, or null when there is nothing to send. The
+     * engine reads it before the cycle's push to decide whether the group must be pulled first (ADR 0036).
+     */
+    suspend fun dirtyDisplayPreferencesStamp(): Long? = database.appSettingsQueries.selectDisplayPreferencesIfDirty().awaitAsOneOrNull()?.displayPreferencesUpdatedAtEpochMs
 
     private suspend fun <T> send(
         rows: List<T>,
@@ -138,6 +151,8 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.triageSnoozeQueries.markAllDirty()
         database.episodePlayQueries.markAllDirty()
         database.tasteProfileQueries.markAllDirty()
+        // Only a group that has been changed; a never-stamped one is defaults, and defaults are never data (ADR 0036).
+        database.appSettingsQueries.markDisplayPreferencesDirtyIfStamped()
     }
 
     /**
@@ -154,8 +169,25 @@ internal class LocalChangeLog(private val database: MuvissDatabase) {
         database.triageSnoozeQueries.deleteAll()
         database.episodePlayQueries.deleteAll()
         database.tasteProfileQueries.deleteAll()
+        // The group belongs to the account being left, so the next pull is the only thing that fills it.
+        database.appSettingsQueries.resetDisplayPreferences()
     }
 }
+
+internal fun SelectDisplayPreferencesIfDirty.toDisplayPreferencesChange() = DisplayPreferencesChange(
+    theme = theme,
+    language = language,
+    region = region,
+    animationsEnabled = animationsEnabled,
+    triageDeckAnimations = triageDeckAnimations,
+    tickAnimations = tickAnimations,
+    triageControlScheme = triageControlScheme,
+    triageSnoozePeriod = triageSnoozePeriod,
+    triageSnoozePlacement = triageSnoozePlacement,
+    mutedGenresInSearch = mutedGenresInSearch,
+    // Only ever called on a dirty group, which is stamped (selectDisplayPreferencesIfDirty).
+    updatedAtEpochMs = checkNotNull(displayPreferencesUpdatedAtEpochMs),
+)
 
 internal fun CollectionEntryRow.toChange() = CollectionEntryChange(
     mediaId = mediaId,

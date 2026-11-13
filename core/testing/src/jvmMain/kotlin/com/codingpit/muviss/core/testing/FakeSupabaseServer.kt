@@ -575,6 +575,26 @@ class FakeSupabaseServer(
                     "deleted" to booleanDefault(false),
                 ),
             ),
+            // EPIC 51 / ADR 0036 (#643). The Display Preferences group: one row per account, so the key is
+            // empty and the stored key is the user id alone. Every member is NOT NULL and always sent, so no
+            // member has a default, and a push that omitted one would be refused, as PostgREST refuses it.
+            TableSchema(
+                "display_preferences",
+                emptyList(),
+                linkedMapOf(
+                    "theme" to text,
+                    "language" to text,
+                    "region" to text,
+                    "animations_enabled" to Column(Type.BOOLEAN),
+                    "triage_deck_animations" to Column(Type.BOOLEAN),
+                    "tick_animations" to Column(Type.BOOLEAN),
+                    "triage_control_scheme" to text,
+                    "triage_snooze_period" to text,
+                    "triage_snooze_placement" to text,
+                    "muted_genres_in_search" to Column(Type.BOOLEAN),
+                    UPDATED_AT to integer,
+                ),
+            ),
             TableSchema(
                 "episode_play",
                 listOf("id"),

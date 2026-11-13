@@ -371,3 +371,40 @@ SET theme = :theme,
     displayPreferencesUpdatedAtEpochMs = :stampEpochMs,
     displayPreferencesDirty = :isDirty
 WHERE id = 0;
+
+-- Display Preferences sync (ADR 0036, #643). The group is one row per account, so the sync reads it
+-- as one: the stamped, dirty group is the one `SyncChangeSet.displayPreferences` element. A group
+-- that was never stamped (a fresh install, or one the person never changed) has nothing to send.
+selectDisplayPreferencesIfDirty:
+SELECT *
+FROM appSettings
+WHERE id = 0 AND displayPreferencesDirty = 1 AND displayPreferencesUpdatedAtEpochMs IS NOT NULL;
+
+-- Clears the flag only if the group is still the version that was sent (ADR 0020's conditional
+-- clearDirty): an edit made while the push was on the wire keeps the group dirty.
+clearDisplayPreferencesDirty:
+UPDATE appSettings SET displayPreferencesDirty = 0 WHERE id = 0 AND displayPreferencesUpdatedAtEpochMs = :pushedAtEpochMs;
+
+-- Owner adoption and "resync everything" put the group back on the change-log only if it has ever
+-- been changed. A group with no stamp has only defaults, and defaults are never data (ADR 0036).
+markDisplayPreferencesDirtyIfStamped:
+UPDATE appSettings SET displayPreferencesDirty = 1 WHERE id = 0 AND displayPreferencesUpdatedAtEpochMs IS NOT NULL;
+
+-- "Replace with <account>'s library" (DiscardLocalData): the group goes back to the first-run values
+-- and no stamp, so the account's copy is what the next pull writes and nothing of the old account stays.
+-- Device switches are not touched; they were never the account's.
+resetDisplayPreferences:
+UPDATE appSettings
+SET theme = 'SYSTEM',
+    language = '',
+    region = 'US',
+    animationsEnabled = 1,
+    triageDeckAnimations = 1,
+    tickAnimations = 1,
+    triageControlScheme = 'FOUR_WAY',
+    triageSnoozePeriod = 'ONE_WEEK',
+    triageSnoozePlacement = 'MIXED_IN',
+    mutedGenresInSearch = 0,
+    displayPreferencesUpdatedAtEpochMs = NULL,
+    displayPreferencesDirty = 0
+WHERE id = 0;

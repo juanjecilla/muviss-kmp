@@ -169,13 +169,23 @@ internal class FakeSyncBackend(
             val start = after[table]?.position ?: 0L
             val pages = when (table) {
                 SyncTable.COLLECTION_ENTRY -> pagesOf(collectionEntries.values, start) { SyncChangeSet(collectionEntries = it) }
+
                 SyncTable.EPISODE_PROGRESS -> pagesOf(episodeProgress.values, start) { SyncChangeSet(episodeProgress = it) }
+
                 SyncTable.MEDIA_LIST -> pagesOf(mediaLists.values, start) { SyncChangeSet(mediaLists = it) }
+
                 SyncTable.LIST_ENTRY -> pagesOf(listEntries.values, start) { SyncChangeSet(listEntries = it) }
+
                 SyncTable.TRIAGE_DECISION -> pagesOf(triageDecisions.values, start) { SyncChangeSet(triageDecisions = it) }
+
                 SyncTable.TRIAGE_SNOOZE -> pagesOf(triageSnoozes.values, start) { SyncChangeSet(triageSnoozes = it) }
+
                 SyncTable.EPISODE_PLAY -> pagesOf(episodePlays.values, start) { SyncChangeSet(episodePlays = it) }
+
                 SyncTable.TASTE_PROFILE -> pagesOf(tasteProfileItems.values, start) { SyncChangeSet(tasteProfileItems = it) }
+
+                // The group is one row per account and is covered against SupabaseSyncBackend in DisplayPreferencesSyncTest.
+                SyncTable.DISPLAY_PREFERENCES -> emptyList()
             }
             for ((changes, cursor) in pages) {
                 if (failPullAfterPages != null && delivered >= failPullAfterPages!!) return Result.failure(IllegalStateException("connection lost mid-pull"))
