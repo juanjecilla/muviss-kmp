@@ -814,6 +814,46 @@ class ReleasePromotionTest < Minitest::Test
                          today: Date.new(2026, 10, 12), apply: true, out: @out).record_testflight(tag)
   end
 
+  def record_rc(tag)
+    ReleasePromotion.new(github: @github, git: @git, play: @play, sentry: @sentry,
+                         today: Date.new(2026, 10, 12), apply: true, out: @out).record_rc(tag)
+  end
+
+  def test_record_rc_names_the_newest_candidate_on_the_issue
+    @github.issues.clear
+    add_version("1.1.0", "internal")
+    record_rc("v1.1.0-rc2")
+    state = ReleaseStages.parse(issue_for("1.1.0")["body"])
+    assert_equal "v1.1.0-rc2", state["rc_tag"]
+    assert_includes issue_for("1.1.0")["body"], "Latest RC: v1.1.0-rc2."
+    assert_empty @github.calls.select { |kind, *| kind == :comment }, "one comment per candidate would be noise"
+  end
+
+  def test_record_rc_never_replaces_a_newer_candidate_with_an_older_one
+    @github.issues.clear
+    add_version("1.1.0", "internal", "rc_tag" => "v1.1.0-rc3")
+    record_rc("v1.1.0-rc2")
+    assert_equal "v1.1.0-rc3", ReleaseStages.parse(issue_for("1.1.0")["body"])["rc_tag"]
+    assert_empty @github.calls.select { |kind, *| kind == :update_issue }
+  end
+
+  def test_record_rc_is_a_no_op_for_a_rerun_on_the_same_candidate
+    @github.issues.clear
+    add_version("1.1.0", "internal", "rc_tag" => "v1.1.0-rc2")
+    record_rc("v1.1.0-rc2")
+    assert_empty @github.calls.select { |kind, *| kind == :update_issue }
+  end
+
+  def test_record_rc_for_a_hotfix_with_no_release_issue_records_nothing
+    record_rc("v1.0.1-rc1")
+    assert_includes @out.string, "no release issue for 1.0.1"
+    assert_empty @github.calls.select { |kind, *| kind == :update_issue }
+  end
+
+  def test_record_rc_rejects_a_tag_that_is_not_a_candidate
+    assert_raises(ArgumentError) { record_rc("v1.1.0") }
+  end
+
   def test_complete_closes_when_ios_already_finished_or_was_superseded
     done = ReleaseStages.new_ios_state.merge("stage" => "done", "rc_tag" => "v1.0.0-rc1")
     add_version("1.0.0", "production", "ios" => done)
