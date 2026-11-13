@@ -56,11 +56,10 @@ class ObserveRewatchStatsUseCase(
 ) {
     operator fun invoke(window: RewatchWindow): Flow<RewatchStats> {
         val today = clock.todayEpochDay()
-        val utcOffsetMs = clock.utcOffsetMsAt(clock.nowEpochMs())
         return combine(
             collectionApi.observeSummaries(),
             progressApi.observeRewatchCounts(window.sinceEpochMs(clock.nowEpochMs())),
-            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(today, utcOffsetMs)),
+            progressApi.observeRewatchTimestamps(MonthlyRewatchCalculator.sinceEpochMs(today, clock)),
         ) { summaries, counts, timestamps ->
             RewatchStats(
                 window = window,

@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.profile.domain
 
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.core.common.epochDayOf
 import com.codingpit.muviss.core.common.epochDayOfCivil
@@ -126,6 +127,18 @@ object MonthlyRewatchCalculator {
         val today = civilDateOf(todayEpochDay)
         val firstShown = absoluteMonthOf(today.year, today.month) - (MONTHS_SHOWN - 1)
         return epochMsAtStartOfDay(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1)) - utcOffsetMs
+    }
+
+    /**
+     * [sinceEpochMs] with the zone read where it applies: at the first shown month's midnight, not at now (#675,
+     * #757 review). A DST change between the two shifts the bound by an hour, and the first bar loses rewatches.
+     * Two passes: the first reads the offset at that midnight's UTC instant, the second at the local midnight it
+     * gives, which is the instant the bound stands for.
+     */
+    fun sinceEpochMs(todayEpochDay: Long, clock: AppClock): Long {
+        val utcMidnight = sinceEpochMs(todayEpochDay)
+        val localMidnightGuess = sinceEpochMs(todayEpochDay, clock.utcOffsetMsAt(utcMidnight))
+        return sinceEpochMs(todayEpochDay, clock.utcOffsetMsAt(localMidnightGuess))
     }
 
     /**
