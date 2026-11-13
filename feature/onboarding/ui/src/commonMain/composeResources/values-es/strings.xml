@@ -58,6 +58,9 @@
     <string name="onboarding_taste_format_series">Series</string>
     <string name="onboarding_taste_format_limited">Miniseries</string>
     <string name="onboarding_taste_services">Servicios que usas</string>
-    <string name="onboarding_taste_languages">Idiomas que te gustan</string>
-    <string name="onboarding_taste_more">Los géneros están en Ajustes, en Tus gustos, donde también puedes indicar con quién sueles ver las cosas.</string>
+    <string name="onboarding_taste_company">Normalmente viendo con</string>
+    <string name="onboarding_taste_company_alone">Solo</string>
+    <string name="onboarding_taste_company_partner">Pareja</string>
+    <string name="onboarding_taste_company_family">Familia</string>
+    <string name="onboarding_taste_more">Los géneros y los idiomas están en Ajustes, en Tus gustos.</string>
 </resources>

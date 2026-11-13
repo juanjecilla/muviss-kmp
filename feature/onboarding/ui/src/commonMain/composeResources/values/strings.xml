@@ -58,6 +58,9 @@
     <string name="onboarding_taste_format_series">Series</string>
     <string name="onboarding_taste_format_limited">Limited series</string>
     <string name="onboarding_taste_services">Services you use</string>
-    <string name="onboarding_taste_languages">Languages you like</string>
-    <string name="onboarding_taste_more">Genres are in Settings, under Your taste, where you can also name the company you usually watch with.</string>
+    <string name="onboarding_taste_company">Usually watching with</string>
+    <string name="onboarding_taste_company_alone">Alone</string>
+    <string name="onboarding_taste_company_partner">Partner</string>
+    <string name="onboarding_taste_company_family">Family</string>
+    <string name="onboarding_taste_more">Genres and languages are in Settings, under Your taste.</string>
 </resources>

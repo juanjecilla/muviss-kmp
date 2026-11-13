@@ -10,6 +10,8 @@ kotlin {
             // Peer :api only (ADR 0004): notifications go through Settings' one door, the
             // Own TMDB Key through its own contract.
             implementation(projects.feature.settings.api)
+            // The Taste page offers the company choices, which are the Pick Session's enum (#583).
+            implementation(projects.feature.nextpick.api)
             implementation(projects.core.common)
             implementation(projects.core.designsystem)
             implementation(projects.models)
