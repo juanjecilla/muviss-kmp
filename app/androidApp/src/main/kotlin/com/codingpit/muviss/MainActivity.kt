@@ -57,8 +57,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        deepLinkMediaId = intent.deepLinkMediaIdExtra()
-        oauthCode = intent.oauthCode()
+        // A recreated activity (rotation, process death) gets its launch intent back, extras and all:
+        // only a fresh launch reads it, and a recreation restores what was still pending (#805).
+        val isRecreated = savedInstanceState != null
+        deepLinkMediaId = startupExtraValue(
+            isRecreated = isRecreated,
+            fromIntent = intent.deepLinkMediaIdExtra(),
+            savedPending = savedInstanceState?.getString(STATE_PENDING_DEEP_LINK_MEDIA_ID),
+        )
+        oauthCode = startupExtraValue(isRecreated = isRecreated, fromIntent = intent.oauthCode(), savedPending = null)
         notificationPermissions?.attach(
             launch = { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
             // Android's own answer to "may I ask again?": false after a refusal the OS will no longer show (#326).
@@ -75,6 +82,12 @@ class MainActivity : ComponentActivity() {
                 onOAuthCodeConsumed = { oauthCode = null },
             )
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Only a still-pending value is saved: once the consumer clears it, a recreation has nothing to restore.
+        deepLinkMediaId?.let { outState.putString(STATE_PENDING_DEEP_LINK_MEDIA_ID, it) }
     }
 
     override fun onDestroy() {
@@ -106,6 +119,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Set by `notifications.NewEpisodesNotifier` on a per-show notification's tap intent. */
         const val EXTRA_DEEP_LINK_MEDIA_ID = "com.codingpit.muviss.DEEP_LINK_MEDIA_ID"
+
+        private const val STATE_PENDING_DEEP_LINK_MEDIA_ID = "com.codingpit.muviss.PENDING_DEEP_LINK_MEDIA_ID"
 
         // Must match the manifest's intent filter and :core:sync's
         // OAUTH_REDIRECT_URI. Split into scheme/host here because that is how
