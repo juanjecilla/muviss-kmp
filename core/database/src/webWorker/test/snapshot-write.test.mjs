@@ -188,7 +188,7 @@ test("an aborted transaction is a failed write, and does not block the next one"
 test("a snapshot due inside a transaction waits for it instead of failing", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }, getRowsModified: () => 1," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -216,7 +216,7 @@ test("a snapshot due inside a rolled-back transaction is still taken", async () 
 test("changes committed before a transaction are saved before it opens", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }, getRowsModified: () => 1," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -231,7 +231,7 @@ test("changes committed before a transaction are saved before it opens", async (
 test("a save queued behind a slow one still holds the changes made before a transaction", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }, getRowsModified: () => 1," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );

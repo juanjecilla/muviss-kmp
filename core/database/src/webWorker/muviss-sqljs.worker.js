@@ -63,8 +63,10 @@ let loadedGeneration = 0;
 // True when the startup read failed, so this database may not be the latest one
 // and promotion cannot compare against it. See promote().
 let loadFailed = false;
-// True once a mutation has run on this database. A tab that has not made one
-// holds nothing the stored snapshot lacks (see promote()).
+// True once a mutation has changed a row in this database. A tab that has not
+// changed one holds nothing the stored snapshot lacks (see promote()). Counted
+// by rows changed, not by statements run: a startup write such as `ensureRow`
+// is an INSERT OR IGNORE that changes nothing on every launch after the first.
 let localWrites = false;
 // True when another tab saved after this database was built and this tab has
 // changes of its own. It never writes again. See becomeStale().
@@ -470,7 +472,9 @@ function onModuleReady() {
       }
       const results = db.exec(data.sql, data.params)[0] ?? { values: [] };
       if (isMutation(data.sql)) {
-        localWrites = true;
+        // A statement that changed no row (an INSERT OR IGNORE on a row that
+        // exists, say) is not a change this tab holds. See promote().
+        if (db.getRowsModified() > 0) localWrites = true;
         markDirty();
       }
       return postMessage({ id: data.id, results });

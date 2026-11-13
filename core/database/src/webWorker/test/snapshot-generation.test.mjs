@@ -29,10 +29,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 class FakeDatabase {
   constructor(bytes) {
     this.text = bytes ? decode(bytes) : "";
+    this.rowsModified = 0;
   }
+  // A statement marked NO-OP changes no row, as an INSERT OR IGNORE on an existing row does.
   exec(sql) {
     this.text += `${sql};`;
+    this.rowsModified = /NO-OP/.test(sql) ? 0 : 1;
     return [];
+  }
+  getRowsModified() {
+    return this.rowsModified;
   }
   export() {
     return encode(this.text);
@@ -325,6 +331,31 @@ test("a write against a generation that is no longer stored is refused, and the 
   const c = await openTab(idb, locks);
   await settle();
   assert.equal(c.state().isWriter, true, "the refused tab gave the lock up");
+});
+
+// A startup write such as `ensureRow` is an INSERT OR IGNORE that changes nothing
+// on every launch after the first. It must not make a tab's copy count as its own.
+test("a write that changes no row does not count as this tab's own change", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+
+  const b = await openTab(idb, locks);
+  await settle();
+  b.exec("INSERT NO-OP ensureRow");
+  assert.equal(b.state().localWrites, false);
+
+  a.exec("INSERT A2");
+  await a.flush();
+  a.close();
+  await settle();
+
+  assert.equal(b.state().reloadRequested, true, "out of date and nothing of its own: it reloads");
+  assert.equal(b.state().stale, false);
+  assert.equal(idb.data.get(GENERATION), 2);
 });
 
 test("a snapshot saved before generations existed counts as generation 0", async () => {
