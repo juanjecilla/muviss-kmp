@@ -38,3 +38,17 @@ VALUES (:mediaType, :genreId, :name, :deleted, :isDirty, :updatedAtEpochMs);
 -- Settings > Delete all data (EPIC 29). Hard on purpose, as the other user tables are.
 deleteAll:
 DELETE FROM mutedGenre;
+
+-- The rows the sync has not sent yet, tombstones included: an unmute is a write like any other (ADR 0036).
+selectDirty:
+SELECT *
+FROM mutedGenre
+WHERE isDirty = 1;
+
+-- Clears the flag only for the stamp that was sent, as every synced table does (ADR 0020).
+clearDirty:
+UPDATE mutedGenre SET isDirty = 0 WHERE mediaType = :mediaType AND genreId = :genreId AND updatedAtEpochMs = :updatedAtEpochMs;
+
+-- Owner adoption and "resync everything" put every decision back on the change-log.
+markAllDirty:
+UPDATE mutedGenre SET isDirty = 1;

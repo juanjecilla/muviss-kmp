@@ -40,6 +40,7 @@ class TasteProfileBackupTest {
         dispatchers,
         FakeClock(9_000L),
         AppVersion("1.2.3", 42L),
+        database,
     )
 
     private fun restorer(database: MuvissDatabase) = SqlDelightBackupRestorer(database, dispatchers)

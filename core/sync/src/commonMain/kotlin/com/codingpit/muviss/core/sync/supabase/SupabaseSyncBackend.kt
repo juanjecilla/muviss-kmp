@@ -7,6 +7,8 @@ import com.codingpit.muviss.core.sync.EpisodePlayChange
 import com.codingpit.muviss.core.sync.EpisodeProgressChange
 import com.codingpit.muviss.core.sync.ListEntryChange
 import com.codingpit.muviss.core.sync.MediaListChange
+import com.codingpit.muviss.core.sync.MutedGenreChange
+import com.codingpit.muviss.core.sync.MutedGenreChoiceChange
 import com.codingpit.muviss.core.sync.OAuthProvider
 import com.codingpit.muviss.core.sync.PULL_PAGE_ROWS
 import com.codingpit.muviss.core.sync.PUSH_CHUNK_ROWS
@@ -134,6 +136,8 @@ internal class SupabaseSyncBackend(
         pushRows(TABLE_EPISODE_PLAY, changes.episodePlays, EpisodePlayChange.serializer())
         pushRows(TABLE_TASTE_PROFILE, changes.tasteProfileItems, TasteProfileItemChange.serializer())
         pushRows(TABLE_DISPLAY_PREFERENCES, changes.displayPreferences, DisplayPreferencesChange.serializer())
+        pushRows(TABLE_MUTED_GENRE_CHOICE, changes.mutedGenreChoices, MutedGenreChoiceChange.serializer())
+        pushRows(TABLE_MUTED_GENRE, changes.mutedGenres, MutedGenreChange.serializer())
     }
 
     private suspend fun <T> pushRows(table: String, rows: List<T>, serializer: KSerializer<T>) {
@@ -162,6 +166,8 @@ internal class SupabaseSyncBackend(
                 SyncTable.EPISODE_PLAY -> drain(RemoteTable(table, TABLE_EPISODE_PLAY, EpisodePlayChange.serializer()) { SyncChangeSet(episodePlays = it) }, start, onPage)
                 SyncTable.TASTE_PROFILE -> drain(RemoteTable(table, TABLE_TASTE_PROFILE, TasteProfileItemChange.serializer()) { SyncChangeSet(tasteProfileItems = it) }, start, onPage)
                 SyncTable.DISPLAY_PREFERENCES -> drain(RemoteTable(table, TABLE_DISPLAY_PREFERENCES, DisplayPreferencesChange.serializer()) { SyncChangeSet(displayPreferences = it) }, start, onPage)
+                SyncTable.MUTED_GENRE_CHOICE -> drain(RemoteTable(table, TABLE_MUTED_GENRE_CHOICE, MutedGenreChoiceChange.serializer()) { SyncChangeSet(mutedGenreChoices = it) }, start, onPage)
+                SyncTable.MUTED_GENRE -> drain(RemoteTable(table, TABLE_MUTED_GENRE, MutedGenreChange.serializer()) { SyncChangeSet(mutedGenres = it) }, start, onPage)
             }
         }
     }
@@ -308,6 +314,8 @@ internal class SupabaseSyncBackend(
         const val TABLE_EPISODE_PLAY = "episode_play"
         const val TABLE_TASTE_PROFILE = "taste_profile"
         const val TABLE_DISPLAY_PREFERENCES = "display_preferences"
+        const val TABLE_MUTED_GENRE_CHOICE = "muted_genre_choice"
+        const val TABLE_MUTED_GENRE = "muted_genre"
         const val MILLIS_PER_SECOND = 1000L
 
         /** Refresh a minute early rather than at the stroke of expiry, so a request in flight cannot age out mid-round-trip. */

@@ -24,3 +24,16 @@ VALUES (0, :defaultsAtChoice, :updatedAtEpochMs, :isDirty);
 -- Settings > Delete all data (EPIC 29). Hard on purpose.
 deleteAll:
 DELETE FROM mutedGenreChoice;
+
+-- The marker the sync has not sent yet (ADR 0036). A marker is sent once and replaced only by a newer one.
+selectDirty:
+SELECT *
+FROM mutedGenreChoice
+WHERE id = 0 AND isDirty = 1;
+
+clearDirty:
+UPDATE mutedGenreChoice SET isDirty = 0 WHERE id = 0 AND updatedAtEpochMs = :updatedAtEpochMs;
+
+-- Owner adoption: the marker is dirty as any row is, if the person has chosen (ADR 0036).
+markAllDirty:
+UPDATE mutedGenreChoice SET isDirty = 1 WHERE id = 0;

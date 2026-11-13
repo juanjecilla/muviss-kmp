@@ -184,8 +184,8 @@ internal class FakeSyncBackend(
 
                 SyncTable.TASTE_PROFILE -> pagesOf(tasteProfileItems.values, start) { SyncChangeSet(tasteProfileItems = it) }
 
-                // The group is one row per account and is covered against SupabaseSyncBackend in DisplayPreferencesSyncTest.
-                SyncTable.DISPLAY_PREFERENCES -> emptyList()
+                // The singletons and the decisions are covered against SupabaseSyncBackend in DisplayPreferencesSyncTest and MutedGenresSyncTest.
+                SyncTable.DISPLAY_PREFERENCES, SyncTable.MUTED_GENRE_CHOICE, SyncTable.MUTED_GENRE -> emptyList()
             }
             for ((changes, cursor) in pages) {
                 if (failPullAfterPages != null && delivered >= failPullAfterPages!!) return Result.failure(IllegalStateException("connection lost mid-pull"))

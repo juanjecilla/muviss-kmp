@@ -55,6 +55,7 @@ class SqlDelightSettingsRepositoryTest {
             ImmediateDispatchers(UnconfinedTestDispatcher()),
             FakeClock(1_000L),
             AppVersion("1.2.3", 42L),
+            database,
         )
     }
 
@@ -135,6 +136,7 @@ class SqlDelightSettingsRepositoryTest {
             ImmediateDispatchers(StandardTestDispatcher(testScheduler)),
             FakeClock(1_000L),
             AppVersion("1.2.3", 42L),
+            database,
         )
         // UNDISPATCHED: the tap runs at once and parks at the hop to io, as it does on the main thread.
         val caller = launch(start = CoroutineStart.UNDISPATCHED) { queued.setDeviceBackupEnabled(true) }
@@ -360,6 +362,7 @@ class MutedGenresSettingsTest {
         ImmediateDispatchers(UnconfinedTestDispatcher()),
         FakeClock(1_000L),
         AppVersion("1.2.3", 42L),
+        database,
     )
     private val talk = GenreKey(MediaType.TV, "10767")
 

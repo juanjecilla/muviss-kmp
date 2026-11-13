@@ -4,6 +4,7 @@ import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
@@ -29,6 +30,7 @@ import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import com.codingpit.muviss.models.GenreKey
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.Mutex
@@ -63,26 +65,36 @@ import com.codingpit.muviss.core.database.TriageSnooze as TriageSnoozeRow
  * uses `awaitAsList()` (from `async-extensions`) rather than
  * `executeAsList()` because the latter assumes a synchronous driver and
  * throws on web's async one — see `DatabaseFactory.web.kt`.
+ *
+ * [database] is here for the Muted Genres writes, which must run in one transaction with the marker they gate
+ * (ADR 0036, #644), and for the settings flow, which combines the marker and the decisions with the row.
  */
+@Suppress("LongParameterList") // a composition root for the settings table and its export: each query group is a named input
 class SqlDelightSettingsRepository(
     private val settingsQueries: AppSettingsQueries,
     private val exportQueries: ExportQueries,
     private val dispatchers: AppDispatchers,
     private val clock: AppClock,
     private val appVersion: AppVersion,
+    private val database: MuvissDatabase,
     private val deviceBackupWrites: DeviceBackupWrites = DeviceBackupWrites(),
 ) : SettingsRepository {
 
     private val json = Json { prettyPrint = true }
     private val mutedGenresLock = Mutex()
+    private val mutedGenres = MutedGenresStore(database)
 
-    /** The column and the OS exclusion change together, so two overlapping toggles (Settings, onboarding) never interleave. */
-
-    override fun observeSettings(): Flow<AppSettings> = settingsQueries.selectSettings()
-        .asFlow()
-        .mapToOneOrNull(dispatchers.io)
-        .onStart { ensureRow() }
-        .map { row -> row?.toDomain() ?: AppSettings() }
+    /**
+     * The settings, with the Muted Genres as the person sees them: the marker and its decisions, not the legacy
+     * string (ADR 0036). The legacy string is converted before the first read, so a device with a custom list
+     * never shows the defaults for a moment.
+     */
+    override fun observeSettings(): Flow<AppSettings> = combine(
+        settingsQueries.selectSettings().asFlow().mapToOneOrNull(dispatchers.io),
+        database.mutedGenreChoiceQueries.select().asFlow().mapToOneOrNull(dispatchers.io),
+        database.mutedGenreQueries.selectAll().asFlow().mapToList(dispatchers.io),
+    ) { row, choice, rows -> row?.toDomain(MutedGenresStore.effectiveOf(choice, rows)) ?: AppSettings() }
+        .onStart { convertLegacyMutedGenres() }
 
     // A Display Preference (ADR 0036): the value and the group's stamp are one statement, so they commit together.
     override suspend fun setTheme(theme: AppTheme) = withContext(dispatchers.io) {
@@ -115,6 +127,7 @@ class SqlDelightSettingsRepository(
         Unit
     }
 
+    // The column and the OS exclusion change together, so two overlapping toggles (Settings, onboarding) never interleave.
     // NonCancellable: the caller is a view model's scope, and leaving Settings (or the introduction) clears it.
     // A backup choice the person made must still land, column and OS exclusion together, once it has started.
     override suspend fun setDeviceBackupEnabled(enabled: Boolean) {
@@ -144,12 +157,10 @@ class SqlDelightSettingsRepository(
     }
 
     override suspend fun setGenreMuted(key: GenreKey, name: String, muted: Boolean) = withContext(dispatchers.io) {
-        // Read-modify-write on one column: serialized so two quick taps cannot drop one of them.
+        convertLegacyMutedGenres()
+        // Two quick taps write two decisions; the lock keeps the marker check and its write from interleaving.
         mutedGenresLock.withLock {
-            ensureRow()
-            val current = MutedGenresCodec.decode(settingsQueries.selectSettings().awaitAsOne().mutedGenres)
-            val updated = current.filterNot { it.key == key } + if (muted) listOf(MutedGenreEntry(key, name)) else emptyList()
-            settingsQueries.updateMutedGenres(MutedGenresCodec.encode(updated))
+            mutedGenres.choose(key, name, muted, clock.nowEpochMs())
         }
         Unit
     }
@@ -161,6 +172,10 @@ class SqlDelightSettingsRepository(
     }
 
     override suspend fun exportData(): String = withContext(dispatchers.io) {
+        // The legacy string is derived from the effective set, not read, so a device that has not converted yet
+        // must convert first or its export would show the defaults over its own list.
+        convertLegacyMutedGenres()
+        val effective = mutedGenres.effective()
         val export = MuvissDataExport(
             formatVersion = MuvissDataExport.CURRENT_FORMAT_VERSION,
             appVersion = appVersion.versionName,
@@ -173,7 +188,7 @@ class SqlDelightSettingsRepository(
             lists = exportQueries.lists.selectAllListsForExport().awaitAsList().map { it.toExport() },
             listEntries = exportQueries.lists.selectAllEntriesForExport().awaitAsList().map { it.toExport() },
             profile = exportQueries.profile.selectProfile().awaitAsOneOrNull()?.toExport(),
-            settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(),
+            settings = settingsQueries.selectSettings().awaitAsOneOrNull()?.toExport(effective),
             tasteProfile = exportQueries.tasteProfile.selectAll().awaitAsList().map { it.toExport() },
             mutedGenreChoice = exportQueries.mutedGenreChoice.select().awaitAsOneOrNull()?.toExport(),
             mutedGenres = exportQueries.mutedGenres.selectAll().awaitAsList().map { it.toExport() },
@@ -183,15 +198,23 @@ class SqlDelightSettingsRepository(
 
     private suspend fun ensureRow() = withContext(dispatchers.io) { settingsQueries.ensureRow() }
 
+    /** Converts this device's legacy Muted Genres string once (ADR 0036). Idempotent, so every entry point may call it. */
+    private suspend fun convertLegacyMutedGenres() = withContext(dispatchers.io) {
+        mutedGenresLock.withLock {
+            ensureRow()
+            mutedGenres.convertLegacy(settingsQueries.selectSettings().awaitAsOne().mutedGenres)
+        }
+    }
+
     // A restored backup from a newer build can store a theme this one does not know; it is kept
     // as is (a later build reads it again) and shown as the system theme meanwhile, never thrown.
-    private fun AppSettingsRow.toDomain(): AppSettings = AppSettings(
+    private fun AppSettingsRow.toDomain(effectiveMutedGenres: List<MutedGenreEntry>): AppSettings = AppSettings(
         theme = AppTheme.entries.firstOrNull { it.name == theme } ?: AppTheme.SYSTEM,
         language = language,
         region = region,
         notificationsEnabled = notificationsEnabled,
         crashReportsEnabled = crashReportsEnabled,
-        mutedGenres = MutedGenresCodec.decode(mutedGenres),
+        mutedGenres = effectiveMutedGenres,
         mutedGenresInSearch = mutedGenresInSearch,
         deviceBackupEnabled = deviceBackupEnabled,
     )
@@ -278,7 +301,8 @@ class SqlDelightSettingsRepository(
         updatedAtEpochMs = updatedAtEpochMs,
     )
 
-    private fun AppSettingsRow.toExport(): SettingsExport = SettingsExport(
+    /** The legacy string a build without decisions reads, derived from the effective set (ADR 0036): the column itself is dead. */
+    private fun AppSettingsRow.toExport(effectiveMutedGenres: List<MutedGenreEntry>): SettingsExport = SettingsExport(
         theme = theme,
         language = language,
         region = region,
@@ -288,7 +312,7 @@ class SqlDelightSettingsRepository(
         triageControlScheme = triageControlScheme,
         triageSnoozePeriod = triageSnoozePeriod,
         triageSnoozePlacement = triageSnoozePlacement,
-        mutedGenres = mutedGenres,
+        mutedGenres = MutedGenresCodec.encode(effectiveMutedGenres),
         mutedGenresInSearch = mutedGenresInSearch,
         displayPreferencesUpdatedAtEpochMs = displayPreferencesUpdatedAtEpochMs,
     )

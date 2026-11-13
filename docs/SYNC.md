@@ -422,6 +422,15 @@ Notes:
   `deleted` column, since the group is never removed. Device switches are not in
   it. Migration `20261113000000_display_preferences_sync.sql`; pgTAP in
   `supabase/tests/database/display_preferences_rls.test.sql`.
+- `muted_genre_choice` and `muted_genre` (EPIC 51, ADR 0036, #644) are the Muted
+  Genres marker and decisions. The marker is one row per account with no
+  `deleted`: it is never removed, only written again. A decision is keyed by
+  `(media_type, genre_id)`, and a tombstone (`deleted`) is an unmute, which has to
+  travel as a row, because a plain delete leaves no timestamp for the other device to
+  lose to. Migration `20261113000100_muted_genres_sync.sql`; pgTAP in
+  `supabase/tests/database/muted_genres_rls.test.sql`. The effective set is computed on
+  the device, never on the server: `muted(g) = decision(g)?.let { !deleted } ?: (g in
+  marker.defaults)`.
 
 ## How a sync cycle works (EPIC 39, ADR 0020)
 
@@ -442,8 +451,10 @@ cursors, mark everything dirty, run a normal cycle.
 
 **Read before push (ADR 0036, #643).** A dirty Display Preferences group is read
 from the account before the push, so a device that has never seen the account
-cannot push its defaults over the account's values. This is the cycle's only
-table-specific ordering. The read is `SyncBackend.pull` restricted to that table
+cannot push its defaults over the account's values. The Muted Genres marker is read
+the same way when it is dirty (#644). Decisions are not: each one is its own row,
+so there is nothing to merge. This is the cycle's only table-specific ordering. The
+read is `SyncBackend.pull` restricted to that table
 and its page is applied, but the cursor is not saved: the main pull reads the
 same copy again and moves the cursor at the end, as every table does. A group
 with a stamp of its own resumes from its cursor, so only a copy newer than the

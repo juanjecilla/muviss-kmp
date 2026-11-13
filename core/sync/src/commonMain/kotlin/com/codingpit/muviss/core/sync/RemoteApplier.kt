@@ -56,6 +56,9 @@ internal class RemoteApplier(private val database: MuvissDatabase, private val c
         changes.episodePlays.forEach { applyEpisodePlay(it) }
         changes.tasteProfileItems.forEach { applyTasteProfileItem(it) }
         changes.displayPreferences.forEach { applyDisplayPreferences(it) }
+        // The marker before its decisions, as the table order says; neither touches a title, so neither is in `touched`.
+        changes.mutedGenreChoices.forEach { applyMutedGenreChoice(it) }
+        changes.mutedGenres.forEach { applyMutedGenre(it) }
 
         val touched = buildSet {
             changes.collectionEntries.mapTo(this) { it.mediaId }
@@ -328,6 +331,31 @@ internal class RemoteApplier(private val database: MuvissDatabase, private val c
             mutedGenresInSearch = group.mutedGenresInSearch,
             stampEpochMs = stamp,
             isDirty = isDirty,
+        )
+    }
+
+    /**
+     * The Muted Genres marker (ADR 0036, #644). It is a snapshot, not a set to merge, so the plain rule applies: a
+     * clean local marker takes the account's, and a dirty one is kept unless the account's stamp is newer.
+     */
+    private suspend fun applyMutedGenreChoice(change: MutedGenreChoiceChange) {
+        val queries = database.mutedGenreChoiceQueries
+        val local = queries.select().awaitAsOneOrNull()
+        if (local != null && !remoteWins(local.updatedAtEpochMs, local.isDirty, change.updatedAtEpochMs)) return
+        queries.upsert(defaultsAtChoice = change.defaultsAtChoice, updatedAtEpochMs = change.updatedAtEpochMs, isDirty = false)
+    }
+
+    /** One Muted Genres decision, last-write-wins per genre like every other row. A tombstone arrives as a tombstone. */
+    private suspend fun applyMutedGenre(change: MutedGenreChange) {
+        val local = database.mutedGenreQueries.selectOne(change.mediaType, change.genreId).awaitAsOneOrNull()
+        if (local != null && !remoteWins(local.updatedAtEpochMs, local.isDirty, change.updatedAtEpochMs)) return
+        database.mutedGenreQueries.upsert(
+            mediaType = change.mediaType,
+            genreId = change.genreId,
+            name = change.name,
+            deleted = change.deleted,
+            isDirty = false,
+            updatedAtEpochMs = change.updatedAtEpochMs,
         )
     }
 

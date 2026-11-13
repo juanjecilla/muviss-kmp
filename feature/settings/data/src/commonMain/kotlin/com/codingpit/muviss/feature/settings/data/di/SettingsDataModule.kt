@@ -89,6 +89,7 @@ val settingsDataModule: Module = module {
             get(),
             get(),
             get(),
+            get<MuvissDatabase>(),
             get(),
         )
     }
