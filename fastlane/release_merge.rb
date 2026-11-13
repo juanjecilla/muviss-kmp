@@ -10,6 +10,10 @@
 #
 # ALLOWED_CONFLICTS is the whole list. A conflict in any other path is not
 # resolved here, and the caller holds with the path named.
+#
+# The manual path (ship-release.yml, #717) and the Sunday rehearsal (release-promote.yml,
+# #732) use the same plumbing through the command line at the bottom of this file, so
+# neither has its own copy of the rule.
 require "open3"
 require "tmpdir"
 
@@ -115,6 +119,35 @@ module ReleaseMerge
       status.success? ? out.strip : nil
     end
 
+    # origin's refs/heads/<branch>, fetched now; its sha.
+    def fetch_branch(branch)
+      git("fetch", "--quiet", "origin", "+refs/heads/#{branch}:refs/remotes/origin/#{branch}")
+      git("rev-parse", "origin/#{branch}")
+    end
+
+    # The tree of a commit.
+    def tree_of(commit)
+      git("rev-parse", "#{commit}^{tree}")
+    end
+
+    # The paths that differ between two commits (no renames).
+    def changed_paths(from, to)
+      git("diff", "--no-renames", "--name-only", from, to).lines.map(&:strip).reject(&:empty?)
+    end
+
+    # Pushes a sha to a ref that is not main, with no force. Only the rehearsal
+    # uses it, on a throwaway ref it deletes again.
+    def push_ref(sha, ref)
+      git("push", "--quiet", "origin", "#{sha}:#{ref}")
+    end
+
+    # Deletes a ref on origin. A missing ref is not an error here.
+    def delete_ref(ref)
+      git("push", "--quiet", "origin", ":#{ref}")
+    rescue RuntimeError
+      nil
+    end
+
     # origin's main, fetched now. The merge is judged against this sha.
     def main_sha
       git("fetch", "--quiet", "origin", "main")
@@ -189,4 +222,113 @@ module ReleaseMerge
       [out.force_encoding(Encoding::UTF_8), err, status]
     end
   end
+
+  # The command line the workflows call. Run it from the checkout, with origin
+  # reachable. Only `union` and `rehearse --push` write to origin, as whoever the
+  # checkout's git credentials are (the release App, in the workflows).
+  #
+  #   release_merge.rb conflicts BRANCH           the paths BRANCH conflicts on with origin/main;
+  #                                               exit 2 when one is not allow-listed
+  #   release_merge.rb union BRANCH               push origin/main + BRANCH's union, when GitHub
+  #                                               refused the merge: 0 pushed, 2 held (paths named),
+  #                                               3 git merges it cleanly (not explained: nothing pushed)
+  #   release_merge.rb rehearse VERSION [--push]  judge and print the Sunday merge of release/VERSION
+  #                                               without moving main; --push also puts the merge
+  #                                               commit on rehearsal/VERSION as the App, then deletes it
+  module Cli
+    HELD = 2
+    CLEAN_IN_GIT = 3
+    USAGE = "usage: release_merge.rb conflicts BRANCH | union BRANCH | rehearse VERSION [--push]".freeze
+
+    module_function
+
+    def run(argv, repo:, out:, err:)
+      command, *args = argv
+      case command
+      when "conflicts" then conflicts(repo, args.fetch(0) { return usage(err) }, out, err)
+      when "union" then union(repo, args.fetch(0) { return usage(err) }, out, err)
+      when "rehearse" then rehearse(repo, args.fetch(0) { return usage(err) }, args.include?("--push"), out, err)
+      else usage(err)
+      end
+    rescue Unresolvable, MainMoved, RuntimeError => e
+      err.puts "release_merge: #{e.message}"
+      1
+    end
+
+    def usage(err)
+      err.puts USAGE
+      64
+    end
+
+    def conflicts(repo, branch, out, err)
+      main = repo.main_sha
+      head = repo.fetch_branch(branch)
+      paths = repo.conflicts(main, head)
+      out.puts "main #{main}"
+      out.puts "#{branch} #{head}"
+      out.puts(paths.empty? ? "conflicts: none" : "conflicts: #{paths.join(', ')}")
+      blocked = paths - ALLOWED_CONFLICTS
+      return 0 if blocked.empty?
+
+      err.puts "held: #{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved; resolve #{branch} by hand"
+      HELD
+    end
+
+    def union(repo, branch, out, err)
+      main = repo.main_sha
+      head = repo.fetch_branch(branch)
+      built = repo.merge_commit(main, head, message: "Merge #{branch} into main")
+      if built[:conflicts].empty?
+        err.puts "git merges #{branch} into main cleanly, so GitHub's refusal is not explained: nothing pushed"
+        return CLEAN_IN_GIT
+      end
+      unless built[:commit]
+        err.puts "held: #{(built[:conflicts] - ALLOWED_CONFLICTS).join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved; nothing pushed"
+        return HELD
+      end
+      repo.push_main(built[:commit], expected: main)
+      out.puts "pushed #{built[:commit]} to main: #{built[:conflicts].join(', ')} resolved as the union of both sides"
+      0
+    end
+
+    def rehearse(repo, version, push, out, err)
+      branch = "release/#{version}"
+      main = repo.main_sha
+      head = repo.fetch_branch(branch)
+      built = repo.merge_commit(main, head, message: "Rehearsal: merge #{branch} into main")
+      out.puts "main #{main}"
+      out.puts "#{branch} #{head}"
+      blocked = built[:conflicts] - ALLOWED_CONFLICTS
+      unless blocked.empty?
+        out.puts "verdict: held, #{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved"
+        return HELD
+      end
+      out.puts(built[:conflicts].empty? ? "verdict: clean, git merges it; no union needed" : "verdict: union of both sides for #{built[:conflicts].join(', ')}")
+      commit = built[:commit]
+      out.puts "merge commit #{commit}"
+      out.puts "tree #{repo.tree_of(commit)}"
+      changed = repo.changed_paths(main, commit)
+      # A release branch that is months old changes most of the tree, so the list is capped.
+      shown = changed.first(25)
+      out.puts "changes on main (#{changed.size}): #{shown.join(', ')}#{changed.size > shown.size ? ', ...' : ''}"
+      push ? rehearsal_push(repo, version, commit, out) : out.puts("not pushed (rehearse --push pushes it to rehearsal/#{version} and deletes it)")
+      0
+    end
+
+    # The throwaway ref is deleted whether or not the push worked: a rehearsal leaves nothing behind.
+    def rehearsal_push(repo, version, commit, out)
+      ref = "refs/heads/rehearsal/#{version}"
+      repo.delete_ref(ref)
+      begin
+        repo.push_ref(commit, ref)
+        out.puts "pushed to #{ref} as the caller's credentials; deleting it"
+      ensure
+        repo.delete_ref(ref)
+      end
+    end
+  end
+end
+
+if $PROGRAM_NAME == __FILE__
+  exit ReleaseMerge::Cli.run(ARGV, repo: ReleaseMerge::Repo.new, out: $stdout, err: $stderr)
 end

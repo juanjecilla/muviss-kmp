@@ -427,9 +427,18 @@ the schedule, the gates and where a fix goes.
   Scheduled runs read their workflow files and scripts from the default branch,
   which is `develop`, so a change to them takes effect on the first scheduled run
   after it merges there.
-- **Ship release does not self-resolve yet.** Its manual merge (`ship-release.yml`)
-  still uses `gh pr merge`, so a `CHANGELOG.md` conflict there needs a hand
-  resolution on the branch (#717).
+- **Ship release resolves a `CHANGELOG.md`-only conflict as the Sunday step does (#717).**
+  `ship-release.yml` still tries `gh pr merge` first. When GitHub refuses it as
+  not mergeable, it runs `fastlane/release_merge.rb union`, the same plumbing the
+  Sunday step uses, and pushes the union as the App. Any other conflict holds the
+  run with its paths named, before anything is pushed. Its wait loop judges such
+  a conflict at once rather than waiting for it to clear, and its checks are the
+  PR's, not the branch head's as the Sunday step judges them (unverified on a live
+  PR).
+- **Rehearse the Sunday merge without moving main (#732).** Dispatch
+  `release-promote.yml` with `rehearse` and `version` (`rehearse_push` also puts the
+  merge commit on `rehearsal/X.Y.Z` as the App, then deletes it). It prints the
+  verdict, the tree and the paths the merge changes; main does not move.
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
   rollout (the ramp leaves a halted release alone until `resume`). A
   `release-blocker` issue or PR in the milestone holds the next Sunday step. The
