@@ -22,6 +22,7 @@ import com.codingpit.muviss.feature.profile.ui.ProfileRoute
 import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
+import com.codingpit.muviss.models.MediaId
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -105,9 +106,15 @@ class MuvissAppController internal constructor(
      * Not [navigateTo]: the session is not a tab, so it must not pop to Search or save and restore a
      * tab's back stack. `launchSingleTop` stops a repeated chord from stacking sessions.
      */
-    fun openNextPick() {
+    fun openNextPick() = openNextPickFrom(anchor = null)
+
+    /**
+     * Opens the Pick Session anchored on [anchor], the title a finished title's entry was tapped on (#664).
+     * Null is the entry points with no title to anchor on: Discover, Library and Progress, on purpose.
+     */
+    fun openNextPickFrom(anchor: MediaId?) {
         if (!graphReady) return
-        navController.navigate(NextPickRoute()) { launchSingleTop = true }
+        navController.navigate(NextPickRoute(anchor?.toString())) { launchSingleTop = true }
     }
 
     /**
