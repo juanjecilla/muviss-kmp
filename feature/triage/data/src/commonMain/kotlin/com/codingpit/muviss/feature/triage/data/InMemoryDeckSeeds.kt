@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.triage.data
 import com.codingpit.muviss.feature.triage.api.TriageDeckSeeds
 import com.codingpit.muviss.feature.triage.domain.DeckSeeds
 import com.codingpit.muviss.models.MediaSummary
+import kotlin.concurrent.Volatile
 
 /**
  * The one handoff from Next Pick to a seeded deck (#554). Held in memory: a seeded deck is a session, and a process
