@@ -365,8 +365,10 @@ jobs:
   # It was non-blocking already and never green: #172 (cowatch's JS test bundle
   # cannot resolve `os`/`path`) and #49 (compiler OOM under parallel load).
   # JS and Wasm still *compile* in `build` — that is what catches commonMain
-  # code a browser target cannot take (#10). To bring it back, restore
-  # `if: needs.changes.outputs.code == 'true'` and fix #172 first.
+  # code a browser target cannot take (#10). The Gradle side of the deferral
+  # is `muviss.webTests` in gradle.properties (build.gradle.kts disables the
+  # browser test tasks while it is false); to bring this job back, set that to
+  # true, restore `if: needs.changes.outputs.code == 'true'`, and fix #172 first.
   # See docs/EPICS.md, "Web is deferred".
   web-tests:
     needs: changes
