@@ -2,7 +2,7 @@ Muviss es un gestor privado para seguir películas y series. Marca los episodios
 
 SIGUE LO QUE VES
 • Busca cualquier película o serie, con carátulas, sinopsis, guía completa de episodios y dónde verla.
-• Marca episodios uno a uno, o una temporada entera de episodios ya emitidos de golpe.
+• Marca episodios uno a uno, o una temporada entera de episodios ya emitidos de golpe. Si marcas algo que aún no tienes, se añade a tu biblioteca.
 • Estado automático: Sin empezar, Viéndose, Visto o Terminado, según lo que realmente has visto y si la serie sigue en emisión. Nunca tienes que marcarlo a mano.
 • ¿Vuelves a ver algo? Se guarda cada visionado, no solo el primero.
 • Puntúa títulos, apúntate una nota, marca favoritos y crea tus propias listas.

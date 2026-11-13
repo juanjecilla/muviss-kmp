@@ -33,7 +33,7 @@ val collectionDataModule: Module = module {
     single { get<MuvissDatabase>().collectionEntryQueries }
     single<CollectionRepository> { SqlDelightCollectionRepository(get(), get(), get()) }
     single<MediaSnapshotSource> { RegistryMediaSnapshotSource(get(), get()) }
-    single<CollectionApi> { DefaultCollectionApi(get(), get(), get(), get(), get(), get(), get()) }
+    single<CollectionApi> { DefaultCollectionApi(get(), get(), get(), get(), get(), get(), get(), get()) }
 
     factory { ObserveCollectionUseCase(get()) }
     factory { ObserveCollectionEntryUseCase(get()) }
