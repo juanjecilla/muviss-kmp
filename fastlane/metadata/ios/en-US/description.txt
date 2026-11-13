@@ -2,7 +2,7 @@ Muviss is a private tracker for movies and TV shows. Tick episodes as you watch 
 
 TRACK WHAT YOU WATCH
 • Search any movie or show, with posters, synopses, full episode guides and where to watch it.
-• Tick episodes one by one, or a whole season of aired episodes at once.
+• Tick episodes one by one, or a whole season of aired episodes at once. Ticking a title you haven't added yet adds it to your library.
 • Automatic status: Not started, Watching, Watched or Finished, worked out from what you've actually seen and whether a show is still airing. You never set it by hand.
 • Rewatch something? Every viewing is kept, not just the first.
 • Rate titles, write yourself a note, mark favorites, and build your own lists.
