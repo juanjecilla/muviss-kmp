@@ -29,8 +29,8 @@ data class GenreRating(
 )
 
 /**
- * Consecutive-day watch activity, in UTC epoch-days (see
- * [com.codingpit.muviss.core.common.todayEpochDay]). A "day" counts if at
+ * Consecutive-day watch activity, in the person's local epoch-days (see
+ * [com.codingpit.muviss.core.common.todayEpochDay], #675). A "day" counts if at
  * least one episode or movie is currently marked seen with that day's
  * `updatedAtEpochMs` (see [com.codingpit.muviss.feature.progress.api.ProgressApi.observeSeenActivityEpochDays]).
  *

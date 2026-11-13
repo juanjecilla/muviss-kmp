@@ -6,7 +6,7 @@ import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOne
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
-import com.codingpit.muviss.core.common.epochDayOf
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.EpisodePlayQueries
 import com.codingpit.muviss.core.database.EpisodeProgressQueries
@@ -57,7 +57,7 @@ class SqlDelightProgressRepository(
     override fun observeSeenActivityEpochDays(): Flow<Set<Long>> = playQueries.selectAllWatchedAt()
         .asFlow()
         .mapToList(dispatchers.io)
-        .map { timestamps -> timestamps.map(::epochDayOf).toSet() }
+        .map { timestamps -> timestamps.map { clock.localEpochDayOf(it) }.toSet() }
 
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = playQueries.countsForMedia(mediaId.toString())
         .asFlow()

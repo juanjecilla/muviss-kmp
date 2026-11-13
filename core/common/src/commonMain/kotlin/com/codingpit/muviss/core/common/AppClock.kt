@@ -34,37 +34,33 @@ class SystemClock : AppClock {
 private const val MILLIS_PER_DAY = 86_400_000L
 
 /**
- * Today as an epoch day (days since 1970-01-01 **UTC**), matching the convention
- * used by [com.codingpit.muviss.models.Episode.airDateEpochDay] for "has this
- * episode aired yet" comparisons.
+ * Today as an epoch day in the person's time zone (#675): the one day every "has this aired", "is it today",
+ * "is it due" and "does this count toward the streak" check reads. It is the same basis as
+ * [localTodayEpochDay], under the name the aired comparisons have always used.
  *
- * UTC on purpose, and not a bug to fix in one call site. The aired count stored on a
- * `CollectionEntry` (`CivilDate`/`airedEpisodeCount(todayEpochDay())`) and the
- * `seenEpisodes <= airedEpisodes` invariant in `WatchProgress` both depend on this
- * day. A caller that switched to [localTodayEpochDay] alone would tick an episode the
- * stored count does not include, and the Library would crash on the next read. Aired
- * comparisons move together, or not at all. The follow-up issue lists the whole set.
+ * Air dates are civil dates (`Episode.airDateEpochDay`), so comparing them with the local day is the
+ * comparison a person means: an episode dated today is aired at their midnight, not at UTC's. Every consumer
+ * moves together, because a stored aired count and a tick written on different days would break the
+ * `seen <= aired` invariant `WatchProgress` requires and the Library would crash on the next read. Anything
+ * that buckets a timestamp into a day must use [localEpochDayOf] for the same reason.
  */
-fun AppClock.todayEpochDay(): Long = nowEpochMs() / MILLIS_PER_DAY
+fun AppClock.todayEpochDay(): Long = localTodayEpochDay()
 
 /**
- * Today in the person's time zone, as an epoch day. Used for Snooze due days and the
- * once-a-day What's next? rule, so that "today" starts at the person's midnight.
- *
- * Not for aired comparisons; see [todayEpochDay]. Stored due days are plain day numbers
- * with no zone attached, so a due day written before this rule existed is at most one
- * day off, and only for a Snooze in flight at the upgrade.
+ * Today in the person's time zone, as an epoch day: the same day as [todayEpochDay]. Named for the
+ * snooze and once-a-day call sites that were written before the aired basis moved here (#656, #675).
  */
 fun AppClock.localTodayEpochDay(): Long = localEpochDayOf(nowEpochMs())
 
-/** The epoch day of [epochMs] in the person's time zone (see [localTodayEpochDay]). */
+/** The epoch day of [epochMs] in the person's time zone (see [todayEpochDay]). */
 fun AppClock.localEpochDayOf(epochMs: Long): Long = (epochMs + utcOffsetMsAt(epochMs)).floorDiv(MILLIS_PER_DAY)
 
 /**
- * Converts an arbitrary wall-clock timestamp (epoch milliseconds) to the same
- * epoch-day convention as [todayEpochDay] — used to bucket per-tick
- * `updatedAtEpochMs` timestamps (e.g. `episodeProgress` rows) into calendar
- * days for streak calculations (see the profile feature's `WatchStreakCalculator`).
+ * Converts an arbitrary wall-clock timestamp (epoch milliseconds) to a UTC epoch day.
+ *
+ * Not the person's day: a day that counts toward a streak, an aired comparison or a
+ * "today" is [localEpochDayOf] (#675). Kept for the places that still bucket in UTC on
+ * purpose, and listed in the follow-up issue, so a new caller starts from the local day.
  */
 fun epochDayOf(epochMs: Long): Long = epochMs / MILLIS_PER_DAY
 

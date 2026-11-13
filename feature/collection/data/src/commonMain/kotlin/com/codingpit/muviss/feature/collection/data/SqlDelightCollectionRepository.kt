@@ -225,8 +225,11 @@ class SqlDelightCollectionRepository(
         posterUrl = posterUrl,
         releaseYear = releaseYear?.toInt(),
         productionStatus = ProductionStatus.valueOf(productionStatus),
-        totalEpisodes = totalEpisodes.toInt(),
-        airedEpisodes = airedEpisodes.toInt(),
+        // The stored counts are written on the day of a save or a refresh. A tick on a later local day can see an
+        // episode the stored count does not yet include (#675), so the read floors them at what has been ticked.
+        // WatchProgress requires seen <= aired and throws otherwise, and the Library reads on every change.
+        totalEpisodes = maxOf(totalEpisodes, airedEpisodes, seenCount).toInt(),
+        airedEpisodes = maxOf(airedEpisodes, seenCount).toInt(),
         favorite = favorite,
         addedAtEpochMs = addedAtEpochMs,
         seenEpisodes = seenCount.toInt(),

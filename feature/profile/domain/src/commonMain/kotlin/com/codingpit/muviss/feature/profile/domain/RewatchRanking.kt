@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.profile.domain
 
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.civilDateOf
 import com.codingpit.muviss.core.common.epochDayOf
 import com.codingpit.muviss.core.common.epochDayOfCivil
@@ -118,18 +119,38 @@ object MonthlyRewatchCalculator {
     /** A full year of context, and the reason the chart's window is fixed while the ranking's is not (ADR 0012). */
     const val MONTHS_SHOWN = 12
 
-    /** The `sinceEpochMs` bound covering exactly the months [calculate] will show. */
-    fun sinceEpochMs(todayEpochDay: Long): Long {
+    /**
+     * The `sinceEpochMs` bound covering exactly the months [calculate] will show. [utcOffsetMs] is the person's
+     * zone at the bound, so the first shown month starts at their midnight rather than UTC's (#675).
+     */
+    fun sinceEpochMs(todayEpochDay: Long, utcOffsetMs: Long = 0L): Long {
         val today = civilDateOf(todayEpochDay)
         val firstShown = absoluteMonthOf(today.year, today.month) - (MONTHS_SHOWN - 1)
-        return epochMsAtStartOfDay(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1))
+        return epochMsAtStartOfDay(epochDayOfCivil(yearOf(firstShown), monthOf(firstShown), day = 1)) - utcOffsetMs
     }
 
-    fun calculate(rewatchTimestamps: List<Long>, todayEpochDay: Long): List<MonthlyRewatches> {
+    /**
+     * [sinceEpochMs] with the zone read where it applies: at the first shown month's midnight, not at now (#675,
+     * #757 review). A DST change between the two shifts the bound by an hour, and the first bar loses rewatches.
+     * Two passes: the first reads the offset at that midnight's UTC instant, the second at the local midnight it
+     * gives, which is the instant the bound stands for.
+     */
+    fun sinceEpochMs(todayEpochDay: Long, clock: AppClock): Long {
+        val utcMidnight = sinceEpochMs(todayEpochDay)
+        val localMidnightGuess = sinceEpochMs(todayEpochDay, clock.utcOffsetMsAt(utcMidnight))
+        return sinceEpochMs(todayEpochDay, clock.utcOffsetMsAt(localMidnightGuess))
+    }
+
+    /**
+     * Counts the rewatches of each shown month. [dayOf] turns a timestamp into the day it is bucketed under; the
+     * caller passes the person's local day (#675). The UTC default is for callers with no clock, and is what
+     * the calculator's own fixtures are written against.
+     */
+    fun calculate(rewatchTimestamps: List<Long>, todayEpochDay: Long, dayOf: (Long) -> Long = ::epochDayOf): List<MonthlyRewatches> {
         val today = civilDateOf(todayEpochDay)
         val currentMonth = absoluteMonthOf(today.year, today.month)
         val counts = rewatchTimestamps
-            .map { civilDateOf(epochDayOf(it)) }
+            .map { civilDateOf(dayOf(it)) }
             .groupingBy { absoluteMonthOf(it.year, it.month) }
             .eachCount()
         return (currentMonth - (MONTHS_SHOWN - 1)..currentMonth).map { absolute ->
