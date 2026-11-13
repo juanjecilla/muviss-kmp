@@ -50,6 +50,27 @@ class BackupRestoreTest {
         assertEquals(Json.decodeFromString<MuvissDataExport>(first), Json.decodeFromString<MuvissDataExport>(second))
     }
 
+    @Test
+    fun `a verdict that did not create its entry keeps that claim through a backup`() = runTest {
+        val source = newDatabase()
+        source.triageDecisionQueries.upsert("tmdb:movie:603", "MOVIE", "LATER", "The Matrix", null, 3_000L, true, 3_000L, false, false, false)
+        val exported = exporter(source).exportData()
+
+        val fresh = newDatabase()
+        restorer(fresh).restore(exported)
+
+        assertEquals(false, fresh.triageDecisionQueries.selectById("tmdb:movie:603").executeAsOne().createdEntry)
+    }
+
+    @Test
+    fun `a decision from a backup before the claim existed restores as having created its entry`() {
+        val legacy = Json.decodeFromString<TriageDecisionExport>(
+            """{"mediaId":"tmdb:movie:603","mediaType":"MOVIE","verdict":"LATER","title":"The Matrix","posterUrl":null,"decidedAtEpochMs":3000,"updatedAtEpochMs":3000}""",
+        )
+
+        assertEquals(true, legacy.createdEntry)
+    }
+
     // ---- display preferences (#392) -----------------------------------------------------------
 
     private suspend fun changePreferences(database: MuvissDatabase) = database.appSettingsQueries.run {
@@ -452,7 +473,7 @@ class BackupRestoreTest {
         database.episodePlayQueries.upsert("$SHOW/1/2@1200", "$SHOW/1/2", SHOW, 1_200L, 1_200L, false, false)
         database.mediaListQueries.upsertList("list-1", "Rainy day", 1_000L, 1_000L, false, false)
         database.mediaListQueries.upsertEntry("list-1", MATRIX, 1_500L, 1_500L, false, false)
-        database.triageDecisionQueries.upsert("tmdb:movie:550", "MOVIE", "SKIP", "Fight Club", null, 2_000L, true, 2_000L, false, false)
+        database.triageDecisionQueries.upsert("tmdb:movie:550", "MOVIE", "SKIP", "Fight Club", null, 2_000L, true, 2_000L, false, false, true)
         database.triageSnoozeQueries.upsert("tmdb:movie:1", "MOVIE", "Later", 2020L, null, null, 3_000L, 20_100L, 3_000L, false, false)
         database.profileQueries.ensureRow()
         database.profileQueries.updateDisplayName("Juanje")

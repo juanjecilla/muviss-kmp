@@ -68,6 +68,15 @@ class SqlDelightTriageDecisionRepositoryTest {
     }
 
     @Test
+    fun `the claim a verdict was recorded with is read back, true or false`() = runTest {
+        repository.record(decision(matrix, TriageVerdict.LATER).copy(createdEntry = true))
+        repository.record(decision(got, TriageVerdict.LATER))
+
+        assertEquals(true, repository.observeDecision(matrix).first()?.createdEntry)
+        assertEquals(false, repository.observeDecision(got).first()?.createdEntry)
+    }
+
+    @Test
     fun `restore soft-deletes so the title becomes deck-eligible again`() = runTest {
         repository.record(decision(matrix, TriageVerdict.SKIP))
         clock.advanceBy(1_000)
@@ -131,6 +140,7 @@ class SqlDelightTriageDecisionRepositoryTest {
             updatedAtEpochMs = NOW_EPOCH_MS,
             isDirty = false,
             deleted = false,
+            createdEntry = true,
         )
 
         assertEquals(setOf(matrix), repository.observeDecidedIds().first())

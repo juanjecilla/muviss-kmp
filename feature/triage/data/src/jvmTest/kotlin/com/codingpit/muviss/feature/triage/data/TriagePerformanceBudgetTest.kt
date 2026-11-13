@@ -142,6 +142,7 @@ class TriagePerformanceBudgetTest {
                 updatedAtEpochMs = NOW_EPOCH_MS,
                 isDirty = false,
                 deleted = false,
+                createdEntry = true,
             )
         }
         val source = CountingDeckSource(pages)
@@ -167,6 +168,7 @@ class TriagePerformanceBudgetTest {
                 updatedAtEpochMs = NOW_EPOCH_MS,
                 isDirty = false,
                 deleted = false,
+                createdEntry = true,
             )
         }
         driver.reset()

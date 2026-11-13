@@ -175,6 +175,7 @@ class SqlDelightBackupRestorer(
             updatedAtEpochMs = row.updatedAtEpochMs,
             isDirty = true,
             deleted = false,
+            createdEntry = row.createdEntry,
         )
         return true
     }

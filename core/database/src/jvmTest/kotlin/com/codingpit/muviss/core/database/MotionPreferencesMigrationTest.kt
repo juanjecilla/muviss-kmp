@@ -76,17 +76,17 @@ class MotionPreferencesMigrationTest {
                 rating = 9,
                 note = "the early seasons",
             )
-            before.triageDecisionQueries.upsert(
-                mediaId = "tmdb:movie:603",
-                mediaType = "movie",
-                verdict = "SKIP",
-                title = "The Matrix",
-                posterUrl = null,
-                decidedAtEpochMs = 5_000,
-                resolved = true,
-                updatedAtEpochMs = 5_000,
-                isDirty = true,
-                deleted = false,
+            // Raw SQL: this database is v5, so the generated `upsert` (which writes the
+            // current schema's createdEntry column) does not match it yet.
+            driver.execute(
+                identifier = null,
+                sql = """
+                    INSERT INTO triageDecision(
+                        mediaId, mediaType, verdict, title, posterUrl, decidedAtEpochMs,
+                        resolved, updatedAtEpochMs, isDirty, deleted
+                    ) VALUES ('tmdb:movie:603', 'movie', 'SKIP', 'The Matrix', NULL, 5000, 1, 5000, 1, 0)
+                """.trimIndent(),
+                parameters = 0,
             )
 
             MuvissDatabase.Schema.synchronous().migrate(driver, oldVersion = 5L, newVersion = MuvissDatabase.Schema.version)

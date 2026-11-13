@@ -42,18 +42,24 @@ class RecordDecisionUseCase(
         require(verdict in TriageVerdict.availableFor(summary.type)) {
             "$verdict is not a valid verdict for a ${summary.type}"
         }
+        // Read before anything is written, so the claim is the library's state
+        // when the person ruled on the card. A title already saved (from Detail,
+        // while the deck was open) is not this verdict's to take back (#767).
         val decision = TriageDecision.of(
             summary = summary,
             verdict = verdict,
             nowEpochMs = clock.nowEpochMs(),
             resolved = !verdict.savesToCollection,
+            createdEntry = verdict.savesToCollection && !isInLibrary(summary.id),
         )
         repository.record(decision)
         if (!verdict.savesToCollection) return Result.success(Unit)
         return apply(decision)
     }
 
-    /** Re-runs the side effects of a decision that never completed. */
+    private suspend fun isInLibrary(mediaId: MediaId): Boolean = collectionApi.observeMembership(mediaId).first() != null
+
+    /** Re-runs the side effects of a decision that never completed. The claim it stored is kept, never re-read. */
     suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision)
 
     private suspend fun apply(decision: TriageDecision): Result<Unit> = runCatching {
@@ -82,14 +88,18 @@ class RecordDecisionUseCase(
 }
 
 /**
- * Takes a verdict back, completely.
+ * Takes a verdict back.
  *
- * Restoring the decision alone is not enough: a saving verdict has already
- * written a `CollectionEntry` and, for Watching/CaughtUp, episode ticks. Undo
- * has to reverse those too, or the user is left with a show sitting in their
- * library still reading as fully watched. The deck only ever offers titles
- * that are in neither the decision log nor the collection, so removing both is
- * always safe here — there is no pre-existing state to clobber.
+ * Restoring the decision alone is not enough when the verdict created the
+ * library entry: it wrote a `CollectionEntry` and, for Watching/CaughtUp,
+ * episode ticks, and undo has to reverse those, or the user is left with a
+ * show sitting in their library still reading as fully watched.
+ *
+ * Only what the verdict created is reversed. When the entry was already in the
+ * library before the card was ruled on (the person added it from Detail while
+ * the deck was open, #767), the entry and its ticks are the person's, so they
+ * are left alone. A verdict's own ticks on such an entry are not reversed
+ * either: nothing records which episodes it ticked (issue #790).
  */
 class UndoDecisionUseCase(
     private val repository: TriageDecisionRepository,
@@ -97,8 +107,11 @@ class UndoDecisionUseCase(
     private val progressApi: ProgressApi,
 ) {
     suspend operator fun invoke(mediaId: MediaId, verdict: TriageVerdict) {
+        // Read before the restore soft-deletes the row. A missing row claims
+        // nothing, so nothing is removed.
+        val createdEntry = repository.observeDecision(mediaId).first()?.createdEntry ?: false
         repository.restore(mediaId)
-        if (!verdict.savesToCollection) return
+        if (!verdict.savesToCollection || !createdEntry) return
         progressApi.clearProgress(mediaId)
         collectionApi.remove(mediaId)
     }

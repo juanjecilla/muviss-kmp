@@ -239,6 +239,80 @@ class RecordDecisionUseCaseTest {
         assertEquals(listOf(endedShow.id), h.repository.restored)
     }
 
+    // --- the claim on the library entry (#767) ---
+
+    @Test
+    fun an_entry_added_while_the_deck_was_open_survives_undo() = runTest {
+        val h = harness()
+        // Added from Detail after the card was shown, so the deck's exclusion read is stale.
+        h.collection.add(ongoingDetails)
+
+        h.useCase(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+        UndoDecisionUseCase(h.repository, h.collection, h.progress)(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertEquals(emptyList(), h.collection.removed)
+        assertEquals(emptyList(), h.progress.cleared)
+        assertTrue(h.collection.summaries.value.any { it.mediaId == ongoingShow.id })
+    }
+
+    @Test
+    fun an_entry_added_while_the_deck_was_open_is_not_claimed_by_the_verdict() = runTest {
+        val h = harness()
+        h.collection.add(ongoingDetails)
+
+        h.useCase(ongoingShow, TriageVerdict.LATER).getOrThrow()
+
+        assertFalse(h.repository.decisions.value.getValue(ongoingShow.id).createdEntry)
+    }
+
+    @Test
+    fun an_entry_the_verdict_created_is_claimed_and_removed_by_undo() = runTest {
+        val h = harness()
+
+        h.useCase(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry)
+
+        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(listOf(endedShow.id), h.collection.removed)
+        assertEquals(listOf(endedShow.id), h.progress.cleared)
+    }
+
+    @Test
+    fun a_skip_never_claims_an_entry() = runTest {
+        val h = harness()
+
+        h.useCase(film, TriageVerdict.SKIP).getOrThrow()
+
+        assertFalse(h.repository.decisions.value.getValue(film.id).createdEntry)
+    }
+
+    @Test
+    fun a_retry_keeps_the_claim_the_first_attempt_recorded() = runTest {
+        val h = harness()
+        // The first attempt recorded its claim before its side effects failed. The
+        // retry adds the entry itself, so re-reading the library would now say "already there".
+        h.repository.record(
+            TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
+        )
+
+        h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(listOf(endedShow.id), h.collection.removed)
+    }
+
+    @Test
+    fun undo_with_no_decision_row_removes_nothing_from_the_library() = runTest {
+        val h = harness()
+        h.collection.add(endedDetails)
+
+        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(emptyList(), h.collection.removed)
+        assertEquals(emptyList(), h.progress.cleared)
+    }
+
     /**
      * Derives the status the collection would show, from the ticks the verdict
      * wrote — the assertion that actually matters, since triage never stores a

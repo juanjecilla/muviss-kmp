@@ -1,0 +1,11 @@
+-- #767: whether a triage verdict created the library entry it saved.
+--
+-- Undo removes the library entry only when the verdict created it, so a title the person
+-- added while the deck was open survives. The column has to sync, because undo can run on any
+-- device that holds the decision.
+--
+-- Defaulted true, the value every row written before this column existed was made under. A
+-- push from a build that predates the column omits the key, and PostgREST's merge-duplicates
+-- upsert leaves an existing row's value alone when the key is absent, so such a push cannot
+-- reset a claim either.
+alter table public.triage_decision add column if not exists created_entry boolean not null default true;

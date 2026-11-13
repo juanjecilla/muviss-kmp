@@ -5,6 +5,7 @@ import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,12 +37,14 @@ class TriageDecisionSyncTest {
         engine = SyncEngine(backend, database, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
     }
 
+    @Suppress("LongParameterList") // one row, named at each call site
     private suspend fun writeLocal(
         mediaId: String = matrix,
         verdict: String = "SKIP",
         updatedAt: Long = 1_000,
         isDirty: Boolean = true,
         resolved: Boolean = true,
+        createdEntry: Boolean = true,
     ) {
         database.triageDecisionQueries.upsert(
             mediaId = mediaId,
@@ -54,6 +57,7 @@ class TriageDecisionSyncTest {
             updatedAtEpochMs = updatedAt,
             isDirty = isDirty,
             deleted = false,
+            createdEntry = createdEntry,
         )
     }
 
@@ -73,6 +77,34 @@ class TriageDecisionSyncTest {
         updatedAtEpochMs = updatedAt,
         deleted = deleted,
     )
+
+    @Test
+    fun `the claim a verdict made is pushed with the row`() = runTest {
+        writeLocal(createdEntry = false)
+
+        engine.syncNow()
+
+        assertEquals(false, backend.remoteTriageDecision(matrix)?.createdEntry)
+    }
+
+    @Test
+    fun `a pulled claim is kept, so undo here takes back only what the other device created`() = runTest {
+        backend.seedRemoteTriageDecision(remoteChange(updatedAt = 2_000).copy(createdEntry = false))
+
+        engine.syncNow()
+
+        assertEquals(false, database.triageDecisionQueries.selectById(matrix).executeAsOne().createdEntry)
+    }
+
+    @Test
+    fun `a change without the claim reads as created, the value every older row has`() {
+        val change = Json.decodeFromString(
+            TriageDecisionChange.serializer(),
+            """{"media_id":"tmdb:movie:603","media_type":"movie","verdict":"SKIP","title":"The Matrix","poster_url":null,"decided_at_epoch_ms":1,"resolved":true,"updated_at_epoch_ms":1,"deleted":false}""",
+        )
+
+        assertEquals(true, change.createdEntry)
+    }
 
     @Test
     fun `a dirty decision is pushed and then marked clean`() = runTest {
