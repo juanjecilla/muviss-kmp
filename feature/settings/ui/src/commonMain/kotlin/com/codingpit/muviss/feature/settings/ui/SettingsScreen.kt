@@ -235,13 +235,6 @@ fun SettingsScreen(
             value = pluralStringResource(Res.plurals.muted_genres_count, state.settings.mutedGenres.size, state.settings.mutedGenres.size),
             onClick = onOpenMutedGenres,
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        ActionRow(
-            icon = MuvissIcons.Favorite,
-            label = stringResource(Res.string.taste_profile_title),
-            value = stringResource(Res.string.taste_profile_row_hint),
-            onClick = onOpenTasteProfile,
-        )
         if (tmdbKey != null) {
             val keyState by tmdbKey.state.collectAsStateWithLifecycle()
             if (keyState.visible) {
@@ -296,9 +289,11 @@ fun SettingsScreen(
             onToggle = viewModel::onTriageDeckAnimationsToggled,
         )
 
+        // "Your taste" lives here, not in Content: it is what the What's next? suggestions read (#541).
+        // Not gated on nextPick: the row opens the Taste Profile editor whether or not the prompt rows exist.
+        SectionOverline(stringResource(Res.string.section_next_pick), topPadding = true)
         if (nextPick != null) {
             val nextPickState by nextPick.state.collectAsStateWithLifecycle()
-            SectionOverline(stringResource(Res.string.section_next_pick), topPadding = true)
             SwitchRow(
                 label = stringResource(Res.string.next_pick_prompt),
                 description = stringResource(Res.string.next_pick_prompt_body),
@@ -323,7 +318,15 @@ fun SettingsScreen(
                 selectedCode = nextPickState.resultMode.name,
                 onSelect = { name -> nextPick.onResultModeSelected(ResultMode.fromStored(name)) },
             )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         }
+        ActionRow(
+            icon = MuvissIcons.Favorite,
+            label = stringResource(Res.string.taste_profile_title),
+            value = stringResource(Res.string.taste_profile_row_hint),
+            onClick = onOpenTasteProfile,
+            modifier = Modifier.testTag(TASTE_PROFILE_ROW_TAG),
+        )
 
         SectionOverline(stringResource(Res.string.section_data), topPadding = true)
         ActionRow(
@@ -728,6 +731,7 @@ private fun TriageControlScheme.displayName(): String = stringResource(
 )
 
 internal const val NEXT_PICK_PROMPT_TAG = "nextPickPrompt"
+internal const val TASTE_PROFILE_ROW_TAG = "tasteProfileRow"
 internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
 internal const val FEATURE_REQUEST_TAG = "featureRequest"
 internal const val BUG_REPORT_TAG = "bugReport"
