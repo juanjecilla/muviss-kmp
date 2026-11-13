@@ -77,6 +77,8 @@
     <string name="clear_filters">Quitar filtros</string>
     <string name="all_caught_up_title">Todo al día</string>
     <string name="all_caught_up_body">Has clasificado todo lo que podemos encontrar ahora. Irán apareciendo títulos nuevos a medida que se hagan populares.</string>
+    <string name="seeded_done_title">Ya has visto todas las sugerencias</string>
+    <string name="seeded_done_body">Has revisado las sugerencias de esta sesión. Empieza otra en «¿Qué sigue?» para ver más.</string>
     <string name="review_skipped">Revisar descartadas</string>
     <string name="nothing_skipped">Nada descartado</string>
     <string name="nothing_skipped_body">Los títulos que descartes en el triaje aparecen aquí, por si cambias de opinión.</string>

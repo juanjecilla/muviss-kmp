@@ -145,7 +145,7 @@ class LoadDeckUseCase(
     private val collectionApi: CollectionApi,
     private val clock: AppClock,
     private val resumption: DeckResumption = DeckResumption.NONE,
-) {
+) : DeckFeed {
     suspend operator fun invoke(
         filter: DeckFilter,
         cursor: DeckCursor,
@@ -158,7 +158,7 @@ class LoadDeckUseCase(
      * A refill reads many batches; re-reading the decided and collection sets for each one is what made a
      * heavy user's refill slow.
      */
-    suspend fun open(placement: SnoozePlacement = SnoozePlacement.DEFAULT): DeckSession {
+    override suspend fun open(placement: SnoozePlacement): DeckSession {
         val decided = repository.observeDecidedIds().first()
         val inCollection = collectionApi.observeSummaries().first().map { it.mediaId }.toSet()
         val settled = decided + inCollection
@@ -176,16 +176,21 @@ class LoadDeckUseCase(
         // are handed to the loader as a second source.
         val pending = snoozes.observeSnoozedIds().first() - returning.map { it.mediaId }.toSet()
 
-        return DeckSession(
-            loader = loader,
-            excluded = settled + pending,
-            returning = returning.map { it.toSummary() },
-            placement = placement,
-        )
+        val excludedNow = settled + pending
+        val dueReturning = returning.map { it.toSummary() }
+        return DeckSession { filter, cursor, alreadyShown, wanted ->
+            loader.load(
+                filter = filter,
+                cursor = cursor,
+                excluded = excludedNow + alreadyShown,
+                dueSnoozes = DueSnoozes(cards = dueReturning, placement = placement),
+                wanted = wanted,
+            )
+        }
     }
 
     /** Where the deck stood for [filter] when this device last saved it, rewound per [DeckResume]; page 1 otherwise. */
-    suspend fun restoreCursor(filter: DeckFilter): DeckCursor {
+    override suspend fun restoreCursor(filter: DeckFilter): DeckCursor {
         val saved = resumption.cursors.read(DeckResume.key(filter, resumption.language.current()))
         return DeckResume.restore(saved, clock.nowEpochMs())
     }
@@ -194,21 +199,19 @@ class LoadDeckUseCase(
      * Saves where the deck stands. [unactedMovie] and [unactedTv] are the earliest pages still holding a card
      * the person has not acted on, or null when none does (see [SavedDeckCursor]).
      */
-    suspend fun checkpoint(filter: DeckFilter, cursor: DeckCursor, unactedMovie: Int?, unactedTv: Int?) {
+    override suspend fun checkpoint(filter: DeckFilter, cursor: DeckCursor, unactedMovie: Int?, unactedTv: Int?) {
         val saved = DeckResume.checkpoint(cursor, unactedMovie, unactedTv, clock.nowEpochMs())
         resumption.cursors.write(DeckResume.key(filter, resumption.language.current()), saved)
     }
 }
 
 /**
- * One refill's view of the catalogue: the exclusions and due Snoozes read once by [LoadDeckUseCase.open].
- * Every batch the refill asks for shares them, and a Snooze retires or re-enters once, not once per batch.
+ * One refill's view of the deck: what it must not offer and which Snoozes have come due, read once by [DeckFeed.open].
+ * Every batch the refill asks for shares them, and a Snooze retires or re-enters once, not once per batch. [reader]
+ * is what a batch is read with; the catalogue and a seeded deck each supply their own.
  */
 class DeckSession internal constructor(
-    private val loader: DeckLoader,
-    private val excluded: Set<MediaId>,
-    private val returning: List<MediaSummary>,
-    private val placement: SnoozePlacement,
+    private val reader: suspend (DeckFilter, DeckCursor, Set<MediaId>, Int) -> Result<DeckBatch>,
 ) {
     /** [alreadyShown] carries the cards the refill has handed out so far; a returning Snooze already shown is in it. */
     suspend fun next(
@@ -216,13 +219,7 @@ class DeckSession internal constructor(
         cursor: DeckCursor,
         alreadyShown: Set<MediaId>,
         wanted: Int,
-    ): Result<DeckBatch> = loader.load(
-        filter = filter,
-        cursor = cursor,
-        excluded = excluded + alreadyShown,
-        dueSnoozes = DueSnoozes(cards = returning, placement = placement),
-        wanted = wanted,
-    )
+    ): Result<DeckBatch> = reader(filter, cursor, alreadyShown, wanted)
 }
 
 /**

@@ -81,6 +81,8 @@ import com.codingpit.muviss.feature.settings.ui.ImportRoute
 import com.codingpit.muviss.feature.settings.ui.LocalSystemNotificationSettings
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
+import com.codingpit.muviss.feature.triage.api.TriageDeckSeeds
+import com.codingpit.muviss.feature.triage.ui.SeededDeckRoute
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
 import com.codingpit.muviss.review.ReviewPromptOnCompletion
@@ -341,6 +343,8 @@ private fun MuvissScaffold(
     // today, ADR 0018) shows no way into it — the same rule that hides the
     // profile's sync row. The routes stay registered; nothing links to them.
     val syncAvailability = koinInject<SyncAvailability>()
+    // Next Pick's Deck result hands its titles to Triage through this seam before it opens the seeded deck (#554).
+    val triageSeeds = koinInject<TriageDeckSeeds>()
     val openCoWatch = remember(syncAvailability, navController) {
         coWatchEntry(syncAvailability) { navController.navigate(CompanionsRoute) }
     }
@@ -492,7 +496,13 @@ private fun MuvissScaffold(
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     // Not a bottom-bar destination: reached from the completion sheet and the entry points (EPIC 51).
-                    nextPickSection(navController)
+                    nextPickSection(
+                        navController,
+                        onOpenDeck = { cards ->
+                            triageSeeds.seed(cards)
+                            navController.navigate(SeededDeckRoute)
+                        },
+                    )
                 }
             }
         }

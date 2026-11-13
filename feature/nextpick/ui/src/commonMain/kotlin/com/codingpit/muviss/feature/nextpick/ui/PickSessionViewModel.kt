@@ -155,12 +155,18 @@ class PickSessionViewModel(
     fun snooze(id: MediaId) = act(id, PickOutcome.SNOOZED) { actions.snooze(it.candidate.summary) }
 
     /**
-     * The titles the Deck may take: picks the library does not hold. Triage's undo removes a collection entry and
-     * its ticks, and Triage excludes what is already in the library, so a backlog title could not be swiped there.
+     * The titles the Deck may take (#554): the picks the library does not hold and the person has not acted on. Triage's
+     * undo removes a collection entry and its ticks, and Triage excludes what is already in the library, so a backlog
+     * title could not be swiped there. A pick with an outcome, a write in flight, or a failed write is left out: the
+     * person has already ruled on it here, and it must not come back as a card.
      */
-    fun deckSeeds(): List<MediaSummary> = (_state.value as? PickSessionUiState.Result)?.picks.orEmpty()
-        .filter { it.candidate.libraryStatus == null }
-        .map { it.candidate.summary }
+    fun deckSeeds(): List<MediaSummary> {
+        val result = _state.value as? PickSessionUiState.Result ?: return emptyList()
+        val acted = result.outcomes.keys + result.failed + writing
+        return result.picks
+            .filter { it.candidate.libraryStatus == null && it.candidate.id !in acted }
+            .map { it.candidate.summary }
+    }
 
     private fun step(next: (PickSession) -> PickSession) {
         val now = session ?: return

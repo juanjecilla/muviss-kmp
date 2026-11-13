@@ -97,13 +97,16 @@ class NextPickSettingsRowTest {
     }
 
     @Test
-    fun deck_is_not_offered_until_its_handoff_exists() = runComposeUiTest {
-        showSettings(FakeNextPickPreferences(), FakeFeatureFlags())
+    fun deck_is_offered_now_that_its_handoff_exists() = runComposeUiTest {
+        val preferences = FakeNextPickPreferences()
+        showSettings(preferences, FakeFeatureFlags())
 
         onNodeWithText("Result").performScrollTo().performClick()
         waitForIdle()
+        onNodeWithText("Deck").performClick()
+        waitForIdle()
 
-        assertTrue(onAllNodesWithText("Deck").fetchSemanticsNodes().isEmpty())
+        assertEquals(ResultMode.DECK, preferences.mode.value)
     }
 
     @Test

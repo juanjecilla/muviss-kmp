@@ -222,6 +222,34 @@ class PickSessionViewModelTest {
     }
 
     @Test
+    fun a_pick_the_person_already_acted_on_here_is_not_handed_to_the_deck() {
+        // Given three picks, all in the catalogue (so none is in the library yet), and two of them acted on
+        val added = candidate("1", "Added here")
+        val refused = candidate("2", "Refused here")
+        val untouched = candidate("3", "Untouched")
+        val viewModel = viewModel(listOf(added, refused, untouched), noQuestions, mode = NextPickResultMode.DECK)
+
+        viewModel.add(added.id)
+        viewModel.notForMe(refused.id)
+
+        // When the person opens the Deck, only the pick they have not acted on becomes a card: an acted-on title
+        // would come back in Triage, where an undo could remove what the Add just saved
+        assertEquals(listOf(untouched.id), viewModel.deckSeeds().map { it.id })
+    }
+
+    @Test
+    fun a_pick_whose_write_failed_is_not_handed_to_the_deck() {
+        // Given a pick whose Add failed, so the person has ruled on it here and it must not come back as a card
+        val actions = RecordingNextPickActions().apply { fail = true }
+        val failed = candidate("1", "Failed here")
+        val viewModel = viewModel(listOf(failed, candidate("2")), noQuestions, actions, mode = NextPickResultMode.DECK)
+
+        viewModel.add(failed.id)
+
+        assertEquals(listOf(MediaId.tmdbMovie("2")), viewModel.deckSeeds().map { it.id })
+    }
+
+    @Test
     fun a_second_tap_while_the_add_is_in_flight_writes_once() {
         // Given a pick whose Add is still being written
         val actions = RecordingNextPickActions().apply { hold = CompletableDeferred() }

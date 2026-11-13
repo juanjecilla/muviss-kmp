@@ -100,6 +100,8 @@ import com.codingpit.muviss.feature.triage.ui.generated.resources.pick_date
 import com.codingpit.muviss.feature.triage.ui.generated.resources.release_to
 import com.codingpit.muviss.feature.triage.ui.generated.resources.review_skipped
 import com.codingpit.muviss.feature.triage.ui.generated.resources.searching_deeper
+import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_body
+import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_title
 import com.codingpit.muviss.feature.triage.ui.generated.resources.skipped
 import com.codingpit.muviss.feature.triage.ui.generated.resources.snooze
 import com.codingpit.muviss.feature.triage.ui.generated.resources.snooze_hint
@@ -241,16 +243,19 @@ fun TriageScreen(
                     onOpenSnoozed = onOpenSnoozed,
                     onShowTutorial = viewModel::onShowTutorial,
                 )
-                DeckFilterBar(
-                    selectedType = state.filter.type,
-                    selectedGenreId = state.filter.genreId,
-                    genres = state.genresForFilter,
-                    onTypeChange = viewModel::onTypeFilterChange,
-                    onGenreChange = viewModel::onGenreFilterChange,
-                    showMuted = state.showMuted,
-                    mutedAvailable = state.hasMuted,
-                    onShowMutedToggled = viewModel::onShowMutedToggled,
-                )
+                // A seeded deck is a list Next Pick already ranked: there are no genres to narrow it by and no mutes to show.
+                if (!state.seeded) {
+                    DeckFilterBar(
+                        selectedType = state.filter.type,
+                        selectedGenreId = state.filter.genreId,
+                        genres = state.genresForFilter,
+                        onTypeChange = viewModel::onTypeFilterChange,
+                        onGenreChange = viewModel::onGenreFilterChange,
+                        showMuted = state.showMuted,
+                        mutedAvailable = state.hasMuted,
+                        onShowMutedToggled = viewModel::onShowMutedToggled,
+                    )
+                }
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     when {
@@ -266,9 +271,11 @@ fun TriageScreen(
                         state.topCard == null && state.keepLookingAvailable -> KeepLooking(viewModel::onKeepLooking)
 
                         state.topCard == null -> EmptyDeck(
+                            seeded = state.seeded,
                             filtered = state.filter.isNarrowed,
                             onClearFilters = viewModel::onClearFilters,
                             onOpenSkipped = onOpenSkipped,
+                            onBack = onBack,
                         )
 
                         else -> DeckArea(
@@ -848,8 +855,24 @@ private fun KeepLooking(onKeepLooking: () -> Unit) {
 }
 
 @Composable
-private fun EmptyDeck(filtered: Boolean, onClearFilters: () -> Unit, onOpenSkipped: () -> Unit) {
-    if (filtered) {
+private fun EmptyDeck(
+    seeded: Boolean,
+    filtered: Boolean,
+    onClearFilters: () -> Unit,
+    onOpenSkipped: () -> Unit,
+    onBack: () -> Unit,
+) {
+    // A seeded deck was never the whole catalogue, so "All caught up" would claim something untrue. It says the
+    // picks are done, which is all that is known.
+    if (seeded) {
+        EmptyState(
+            icon = MuvissIcons.CaughtUp,
+            title = stringResource(Res.string.seeded_done_title),
+            body = stringResource(Res.string.seeded_done_body),
+            actionLabel = stringResource(Res.string.action_back),
+            onAction = onBack,
+        )
+    } else if (filtered) {
         EmptyState(
             icon = MuvissIcons.Filter,
             title = stringResource(Res.string.nothing_left_title),
