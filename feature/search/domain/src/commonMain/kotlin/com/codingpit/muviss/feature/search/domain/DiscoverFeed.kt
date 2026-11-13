@@ -97,17 +97,22 @@ class DiscoverFeed(
     private val cache: DiscoverCache,
     private val clock: AppClock,
 ) {
-    suspend fun snapshot(): DiscoverSnapshot = DiscoverSnapshot(
+    /** What is stored, read with the muted genres now in force, which decide whether a stored shelf was complete. */
+    suspend fun snapshot(mutedMovies: MutedGenres = MutedGenres.NONE, mutedTv: MutedGenres = MutedGenres.NONE): DiscoverSnapshot = DiscoverSnapshot(
         movieGenres = cache.genres(MediaType.MOVIE),
         tvGenres = cache.genres(MediaType.TV),
-        popularMovies = popularShelf(MediaType.MOVIE),
-        popularTv = popularShelf(MediaType.TV),
+        popularMovies = popularShelf(MediaType.MOVIE, mutedMovies),
+        popularTv = popularShelf(MediaType.TV, mutedTv),
     )
 
-    /** True when [snapshot] needs the network: a part is missing, or the oldest part is past the TTL. */
+    /**
+     * True when [snapshot] needs the network: a part is missing, a shelf came back partial (so a refresh is owed
+     * even when it is fresh), or the oldest part is past the TTL.
+     */
     fun needsRefresh(snapshot: DiscoverSnapshot): Boolean {
         val complete = snapshot.movieGenres != null && snapshot.tvGenres != null && snapshot.popularMovies != null && snapshot.popularTv != null
-        return !complete || isPastTtl(snapshot)
+        val partial = listOf(snapshot.popularMovies, snapshot.popularTv).any { it?.complete == false }
+        return !complete || partial || isPastTtl(snapshot)
     }
 
     /** Fetches every section, storing each success. [mutedMovies] and [mutedTv] decide how far a shelf reads. */
@@ -161,8 +166,12 @@ class DiscoverFeed(
         return pages.last().page < pages.last().totalPages
     }
 
-    /** The stored pages of a shelf, read in order until one is missing or is the last. */
-    private suspend fun popularShelf(type: MediaType): DiscoverShelf? {
+    /**
+     * The stored pages of a shelf, read in order until one is missing or is the last. The shelf is complete unless
+     * it stopped short of what a refresh owed it: fewer pages than the budget, a next page that was never stored,
+     * and too few visible titles to stop there. That is the state a failed supplemental page leaves behind.
+     */
+    private suspend fun popularShelf(type: MediaType, muted: MutedGenres): DiscoverShelf? {
         val stored = mutableListOf<Saved<PagedResult<MediaSummary>>>()
         var page = 1
         var more = true
@@ -173,11 +182,17 @@ class DiscoverFeed(
             page++
         }
         if (stored.isEmpty()) return null
-        return DiscoverShelf(items = stored.flatMap { it.value.items }, fetchedAtEpochMs = stored.minOf { it.fetchedAtEpochMs })
+        val items = stored.flatMap { it.value.items }
+        val last = stored.last().value
+        val owedMore = stored.size < MAX_SHELF_PAGES && last.page < last.totalPages && visible(items, muted).size < SHELF_MIN_TITLES
+        return DiscoverShelf(items = items, fetchedAtEpochMs = stored.minOf { it.fetchedAtEpochMs }, complete = !owedMore)
     }
 
-    /** What the person would see: the stored titles minus the muted genres. Muting is applied here, never stored. */
-    fun visible(items: List<MediaSummary>, muted: MutedGenres): List<MediaSummary> = items.filterNot(muted::hides)
+    /**
+     * What the person would see: the stored titles minus the muted genres, each title once. Muting is applied here,
+     * never stored. A title can repeat across the pages of a shelf, and a lazy row cannot show one id twice.
+     */
+    fun visible(items: List<MediaSummary>, muted: MutedGenres): List<MediaSummary> = items.distinctBy { it.id }.filterNot(muted::hides)
 
     companion object {
         /** A day is too long to trust a popularity order (TMDB builds it from daily counts). */

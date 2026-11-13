@@ -147,6 +147,29 @@ class DiscoverFeedTest {
         assertEquals(2, cache.popular(MediaType.MOVIE, 2)?.value?.page)
     }
 
+    @Test
+    fun a_partial_shelf_stays_due_for_a_refresh_after_reopening() = runTest {
+        // Page 1 of the TV shelf was stored, page 2 never was, and page 1 is too thin to stop there: the shelf is
+        // partial. Reopening Discover must still ask for the network, not treat the shelf as complete for six hours.
+        val now = clock.now
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), now)
+        cache.saveGenres(MediaType.TV, listOf(Genre("18", "Drama")), now)
+        cache.savePopular(MediaType.MOVIE, 1, page(1, 1, movie("m1")), now)
+        cache.savePopular(MediaType.TV, 1, page(1, 2, *tvTitles("keep", 5)), now)
+
+        val reopened = feed.snapshot()
+
+        assertEquals(false, reopened.popularTv?.complete, "the stored shelf is known to be partial")
+        assertTrue(feed.needsRefresh(reopened), "a partial shelf is owed a refresh even while fresh")
+    }
+
+    @Test
+    fun a_title_repeated_across_pages_is_shown_once() {
+        val repeated = listOf(movie("1"), movie("1"), movie("2"))
+
+        assertEquals(listOf(movie("1"), movie("2")), feed.visible(repeated, MutedGenres.NONE))
+    }
+
     private fun movie(id: String, vararg genres: String) = MediaSummary(MediaId.tmdbMovie(id), id, genreIds = genres.toList())
 
     private fun show(id: String, vararg genres: String) = MediaSummary(MediaId.tmdbTv(id), id, genreIds = genres.toList())

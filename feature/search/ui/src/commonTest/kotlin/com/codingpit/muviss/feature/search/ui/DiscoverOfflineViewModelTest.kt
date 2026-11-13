@@ -170,6 +170,36 @@ class DiscoverOfflineViewModelTest {
     }
 
     @Test
+    fun a_muting_change_during_a_pending_search_forces_the_refresh_once_the_query_clears() = runTest {
+        // A stored copy is fresh, so Discover does not reach TMDB. Unmuting while a query is pending must still
+        // reach TMDB when the query clears: the stored answer was filtered by the old muting.
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        var discoverCalls = 0
+        val settings = FakeMutingApi(MutedGenres(setOf(talk)))
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, page, _ ->
+                    discoverCalls++
+                    Result.success(PagedResult(listOf(drama), page, page))
+                },
+            ),
+            cache,
+            FakeClock(epochMs = 1_000L),
+            settings = settings,
+        )
+        advanceUntilIdle()
+        assertEquals(0, discoverCalls, "a fresh stored copy is shown without a request")
+
+        vm.onQueryChange("drama")
+        settings.configured.value = MutedGenres.NONE
+        vm.onQueryChange("")
+        advanceUntilIdle()
+
+        assertTrue(discoverCalls > 0, "the muting change reached TMDB when Discover came back")
+    }
+
+    @Test
     fun a_cold_start_that_cannot_reach_the_network_keeps_the_error_state() = runTest {
         val vm = viewModel(FakeRepo(movieGenresResult = Result.failure(MetadataError.Offline())), MemoryDiscoverCache(), FakeClock(epochMs = 0L))
         advanceUntilIdle()

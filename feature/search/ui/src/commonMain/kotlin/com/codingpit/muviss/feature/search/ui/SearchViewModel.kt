@@ -151,6 +151,9 @@ class SearchViewModel(
      */
     private var discoverStale = false
 
+    /** The stale Discover was marked by a muting change, so it must reach TMDB: a stored answer is out of date. */
+    private var discoverStaleForced = false
+
     init {
         // The first Discover waits for the first muting, so it is never loaded unmuted and then replaced.
         // A later change reloads whichever mode is showing.
@@ -327,12 +330,15 @@ class SearchViewModel(
     private fun onMutingChanged() {
         val s = _state.value
         val searchPending = s.mode == SearchMode.DISCOVER && s.query.isNotBlank()
-        if (s.mode != SearchMode.DISCOVER || searchPending) discoverStale = true
+        if (s.mode != SearchMode.DISCOVER || searchPending) {
+            discoverStale = true
+            discoverStaleForced = true
+        }
         if (!searchPending) retry()
     }
 
     private fun reloadDiscoverIfStale() {
-        if (discoverStale) loadDiscover()
+        if (discoverStale) loadDiscover(forced = discoverStaleForced)
     }
 
     /**
@@ -345,10 +351,11 @@ class SearchViewModel(
         // last wins, which could be the one that saw the older muting.
         loadJob?.cancel()
         discoverStale = false
+        discoverStaleForced = false
         loadJob = viewModelScope.launchReporting {
-            val snapshot = discoverFeed.snapshot()
             val mutedMovies = mutedFor(MediaType.MOVIE, null)
             val mutedTv = mutedFor(MediaType.TV, null)
+            val snapshot = discoverFeed.snapshot(mutedMovies, mutedTv)
             // A stored copy is on screen at once, so the skeleton never shows over it (#723, #724).
             if (snapshot.isEmpty) {
                 _state.update { it.copy(loading = true, error = null) }
