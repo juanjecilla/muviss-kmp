@@ -5,6 +5,8 @@ package com.codingpit.muviss.feature.triage.ui
 import com.codingpit.muviss.core.common.flags.TriageControlScheme
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.feature.triage.domain.DeckCursorStore
+import com.codingpit.muviss.feature.triage.domain.SavedDeckCursor
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.GenreKey
@@ -363,12 +365,114 @@ class TriageViewModelTest {
     }
 
     @Test
+    fun a_swipe_during_a_refill_does_not_restart_it() = runTest {
+        // #722: a refill is held in flight on its next page; more swipes must not cancel it and ask for that
+        // page again. Each page of this refill is requested exactly once.
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+        assertEquals(10, vm.state.value.cards.size, "the deck is filled to its target before the first swipe")
+
+        val gate = CompletableDeferred<Unit>()
+        harness.source.gate = gate
+        val before = harness.source.requestedPages.size
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) } // the fifth swipe starts a refill
+        assertTrue(harness.source.requestedPages.size > before, "the refill reached the gate before the next swipe")
+        vm.onDecide(TriageVerdict.LATER, viaGesture = false) // the sixth lands in flight
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        val requested = harness.source.requestedPages.drop(before)
+        assertEquals(requested.distinct(), requested, "no page was asked for twice, read $requested")
+        assertTrue(requested.isNotEmpty())
+    }
+
+    @Test
+    fun the_deck_is_filled_to_ten_and_refilled_when_it_falls_to_five() = runTest {
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val vm = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10)).viewModel()
+        advanceUntilIdle()
+        assertEquals(10, vm.state.value.cards.size)
+
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) }
+        advanceUntilIdle()
+
+        assertEquals(10, vm.state.value.cards.size, "five swipes left five cards, which is the low-water mark, so the deck refills to ten")
+    }
+
+    @Test
+    fun a_card_read_past_the_refill_target_is_kept_and_shown_before_any_new_page() = runTest {
+        // Pages of two cards: a refill that needs five cards reads three pages and holds the sixth card back.
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) }
+        advanceUntilIdle()
+        assertTrue(movie("p8-b").id !in vm.state.value.cards.map { it.id }, "held back, not yet on the deck")
+
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) }
+        advanceUntilIdle()
+
+        val ids = vm.state.value.cards.map { it.id }
+        assertTrue(movie("p8-b").id in ids, "the held-back card from page 8 reaches the deck before any new page: ${ids.map { it.external }}")
+        assertEquals(ids.distinct(), ids, "a kept card is never shown twice")
+    }
+
+    @Test
+    fun a_new_visit_resumes_near_the_saved_position_and_skips_what_was_decided() = runTest {
+        val pages = (1..12).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val store = FakeDeckCursorStore()
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 12), cursors = store)
+        val first = harness.viewModel()
+        advanceUntilIdle()
+        // Act on every card of pages 1 to 4. Page 5 is still unacted, so that is where a visit must resume.
+        repeat(8) { first.onDecide(TriageVerdict.LATER, viaGesture = false) }
+        advanceUntilIdle()
+        // The position moves only once each decision persists. Every save has landed once the scheduler is idle.
+        advanceUntilIdle()
+        assertEquals(5, store.saved.values.single().moviesResumePage, "the last decision persisted, so the resume page is the first unacted one")
+
+        val before = harness.source.requestedPages.size
+        val second = harness.viewModel()
+        advanceUntilIdle()
+
+        val firstRequest = harness.source.requestedPages.drop(before).first()
+        assertTrue(firstRequest > 1, "a new visit does not start over at page 1, asked for page $firstRequest")
+        assertTrue(second.state.value.cards.none { it.id.external in setOf("p1-a", "p1-b", "p2-a", "p2-b", "p3-a", "p3-b", "p4-a", "p4-b") }, "decided titles stay out")
+        assertTrue(second.state.value.cards.isNotEmpty())
+    }
+
+    @Test
+    fun a_reset_cancels_the_refill_in_flight_and_starts_from_page_one() = runTest {
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        val gate = CompletableDeferred<Unit>()
+        harness.source.gate = gate
+        val beforeSwipes = harness.source.requestedPages.size
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) } // a refill now waits on the gate
+        assertTrue(harness.source.requestedPages.size > beforeSwipes, "the refill reached the gate before the reset")
+        val beforeReset = harness.source.requestedPages.size
+        vm.retry() // an explicit start over
+        harness.source.gate = null
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, harness.source.requestedPages.drop(beforeReset).first(), "the reset reads from page 1 again: ${harness.source.requestedPages}")
+        val ids = vm.state.value.cards.map { it.id }
+        assertEquals(ids.distinct(), ids, "the superseded refill's results are dropped, not merged in")
+    }
+
+    @Test
     fun `a long run of empty batches stops and offers to keep looking instead of searching forever`() = runTest {
         // #183: deep in a heavily-triaged catalogue, every batch can come back
         // empty for dozens of pages. The refill stops after a bounded number of
         // empty batches rather than holding a bare spinner for minutes.
-        val pagesPerBatch = 5
-        val emptyPages = TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL * pagesPerBatch * 2
+        val emptyPages = TriageViewModel.MAX_PAGES_PER_REFILL * 2
         val fresh = movie("far-back")
         val byNumber = (1..emptyPages).associateWith { emptyList<MediaSummary>() } + ((emptyPages + 1) to listOf(fresh))
         val harness = TriageHarness(moviePages = FakeDeckPages(byNumber, totalPages = emptyPages + 10))
@@ -380,7 +484,7 @@ class TriageViewModelTest {
         assertFalse(vm.state.value.exhausted)
         assertFalse(vm.state.value.searchingDeeper)
         val requestsBeforeStopping = harness.source.requestedPages.size
-        val bound = TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL * pagesPerBatch
+        val bound = TriageViewModel.MAX_PAGES_PER_REFILL
         assertTrue(requestsBeforeStopping in 1..bound, "one refill reads at most $bound pages, read $requestsBeforeStopping")
         val furthest = harness.source.requestedPages.max()
 
@@ -555,5 +659,108 @@ class TriageViewModelTest {
         advanceUntilIdle()
 
         assertFalse(vm.state.value.hasMuted)
+    }
+
+    @Test
+    fun a_decision_that_fails_to_record_keeps_its_page_in_the_saved_position() = runTest {
+        // Page 1 is the only card on page 1, so once it is decided the earliest unacted page is 2 — unless the
+        // failed decision still holds page 1 (#722): then a restart resumes at 1 and cannot skip the card.
+        val pages = FakeDeckPages(mapOf(1 to listOf(movie("p1-a")), 2 to listOf(movie("p2-a"), movie("p2-b"))), totalPages = 2)
+        val store = FakeDeckCursorStore()
+        val harness = TriageHarness(moviePages = pages, cursors = store)
+        harness.details.failure = IllegalStateException("offline")
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        vm.onDecide(TriageVerdict.LATER, viaGesture = false)
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.failedCommit)
+        assertEquals(1, store.saved.values.single().moviesResumePage, "the unpersisted card keeps page 1 in the saved position")
+    }
+
+    @Test
+    fun a_refill_failure_with_cards_left_keeps_the_deck_visible() = runTest {
+        // Ten cards over five pages. Five swipes leave five on the deck, which starts a refill; page 6 then fails.
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10))
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+        harness.source.failFromPage = 6
+
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) }
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.error, "a failed refill does not replace a deck that still has cards")
+        assertEquals(5, vm.state.value.cards.size, "the cards already on the deck are kept")
+        assertNotNull(vm.state.value.topCard, "the deck stays visible")
+        assertNotNull(vm.state.value.refillFailure, "the failure is reported once, as a snackbar")
+    }
+
+    @Test
+    fun a_refill_failure_with_an_empty_deck_still_shows_the_error() = runTest {
+        val harness = TriageHarness(moviePages = FakeDeckPages(mapOf(1 to listOf(movie("p1-a"))), totalPages = 1))
+        harness.source.failure = MetadataError.Offline()
+
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.error, "with nothing to show, the error takes the screen")
+        assertNull(vm.state.value.topCard)
+        assertNull(vm.state.value.refillFailure)
+    }
+
+    @Test
+    fun a_checkpoint_taken_before_a_reset_cannot_land_after_the_reset_position() = runTest {
+        // Writes are held in the store and released newest first, so an out-of-order landing would show up as
+        // a pre-reset value written last. Every write must land in the order it was taken, and the last one
+        // to land must come from after the reset.
+        val pages = (1..10).associateWith { n -> listOf(movie("p$n-a"), movie("p$n-b")) }
+        val store = HeldCursorStore()
+        val harness = TriageHarness(moviePages = FakeDeckPages(pages, totalPages = 10), cursors = store)
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        store.holding = true
+        repeat(5) { vm.onDecide(TriageVerdict.LATER, viaGesture = false) } // checkpoints taken before the reset
+        advanceUntilIdle()
+        store.phase = 1
+        vm.retry()
+        advanceUntilIdle()
+
+        store.holding = false
+        while (store.held.isNotEmpty()) {
+            store.held.removeLast().complete(Unit)
+            advanceUntilIdle()
+        }
+
+        assertEquals(1, store.landed.last(), "the last checkpoint to land was taken after the reset, landed: ${store.landed}")
+    }
+}
+
+/**
+ * A [DeckCursorStore] whose writes wait for the test while [holding] is set, so a checkpoint can stay in flight
+ * across a reset. [landed] records, in the order they landed, the phase each write was issued in.
+ */
+private class HeldCursorStore : DeckCursorStore {
+    val saved = mutableMapOf<String, SavedDeckCursor>()
+    var holding = false
+
+    /** 0 until the test starts the reset; a write records the phase it was issued in. */
+    var phase = 0
+    val held = ArrayDeque<CompletableDeferred<Unit>>()
+    val landed = mutableListOf<Int>()
+
+    override suspend fun read(key: String): SavedDeckCursor? = saved[key]
+
+    override suspend fun write(key: String, saved: SavedDeckCursor) {
+        val issuedIn = phase
+        if (holding) {
+            val gate = CompletableDeferred<Unit>()
+            held.addLast(gate)
+            gate.await()
+        }
+        this.saved[key] = saved
+        landed += issuedIn
     }
 }

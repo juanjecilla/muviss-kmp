@@ -497,7 +497,7 @@ class TriageScreenTest {
     fun a_refill_that_stops_on_empty_batches_offers_keep_looking_not_caught_up() = runComposeUiTest {
         // #183: the catalogue goes on past what one refill reads, so the deck
         // must not claim "All caught up"; "Keep looking" reads on from there.
-        val emptyPages = TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL * 5
+        val emptyPages = TriageViewModel.MAX_PAGES_PER_REFILL
         val fresh = movie("far-back")
         val byNumber = (1..emptyPages).associateWith { emptyList<com.codingpit.muviss.models.MediaSummary>() } + ((emptyPages + 1) to listOf(fresh))
         val harness = TriageHarness(moviePages = FakeDeckPages(byNumber, totalPages = emptyPages + 5))

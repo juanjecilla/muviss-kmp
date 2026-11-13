@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.triage.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
+import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.crash.launchInReporting
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.flags.FeatureFlags
@@ -29,7 +30,9 @@ import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -102,13 +105,18 @@ data class TriageUiState(
      */
     val searchingDeeper: Boolean = false,
     /**
-     * The last refill read [TriageViewModel.MAX_EMPTY_BATCHES_PER_REFILL]
-     * batches without a single new title and stopped, though the catalogue is
-     * not spent. Offered as "Keep looking", which continues from the cursor —
+     * The last refill read its page budget ([TriageViewModel.MAX_PAGES_PER_REFILL])
+     * without a single new title and stopped, though the catalogue is not spent. Offered as "Keep looking", which continues from the cursor —
      * never as "All caught up", which would be false (#183).
      */
     val keepLookingAvailable: Boolean = false,
+    /** A screen-level error: only when the deck is empty, so there is nothing else to show. */
     val error: UiText? = null,
+    /**
+     * A refill failed with cards still on the deck. The deck stays; the screen reports this once as a snackbar,
+     * whose action resumes the refill from the cursor (#722).
+     */
+    val refillFailure: UiText? = null,
     val undoable: UndoableAction? = null,
     val failedCommit: FailedCommit? = null,
     val restored: RestoredCard? = null,
@@ -186,10 +194,54 @@ class TriageViewModel(
 
     private var cursor = DeckCursor()
 
+    /** The filter [cursor] was read for. Null while a reset has not restored one yet, so nothing is saved against a stale position. */
+    private var cursorFilter: DeckFilter? = null
+
     /** Everything already handed to the deck this session, so a refill never repeats a card. */
     private val shown = mutableSetOf<MediaId>()
 
-    private var loadJob: Job? = null
+    /**
+     * Cards a batch read past what the deck needed (#722). The cursor has moved past their pages, so they are
+     * kept here and drained into [TriageUiState.cards] before any network call.
+     */
+    private val overflow = ArrayDeque<MediaSummary>()
+
+    /** The catalogue page each card came from, so a checkpoint can name the earliest page still unacted on. */
+    private val pageOf = mutableMapOf<MediaId, Int>()
+
+    /** The one refill in flight, if any. Swipes never cancel it; only a reset does (#722). */
+    private var refillJob: Job? = null
+
+    /** Bumped by every reset. A refill that finds it changed has been superseded and drops its result. */
+    private var generation = 0
+
+    /** A checkpoint taken at [epoch], the [generation] it was taken in. A reset makes it stale (#722). */
+    private class PendingCheckpoint(
+        val epoch: Int,
+        val filter: DeckFilter,
+        val cursor: DeckCursor,
+        val unactedMovie: Int?,
+        val unactedTv: Int?,
+    )
+
+    /**
+     * Every checkpoint, in the order it was taken. One consumer writes them one at a time, so an older
+     * snapshot can never land after a newer one, and a snapshot from before a reset is skipped rather than
+     * overwriting the reset's own position.
+     */
+    private val checkpoints = Channel<PendingCheckpoint>(Channel.UNLIMITED)
+
+    /**
+     * An action the store has not confirmed yet (a decision whose record is in flight or failed, or a Snooze
+     * not yet written), keyed by card. Its page stays in every checkpoint until the action persists, so a
+     * restart cannot resume past a card the person acted on but nothing has recorded (#722). [token] tells
+     * a superseded action from the one that is still outstanding.
+     */
+    private data class Unpersisted(val summary: MediaSummary, val page: Int?, val filter: DeckFilter, val token: Long)
+
+    private val unpersisted = mutableMapOf<MediaId, Unpersisted>()
+
+    private var unpersistedToken = 0L
 
     /** Monotonic, so undoing the same card twice reads as two separate events. */
     private var restoreToken = 0L
@@ -229,6 +281,17 @@ class TriageViewModel(
             .launchInReporting(viewModelScope)
 
         analytics.track(TriageEvent.DeckOpened)
+        viewModelScope.launchReporting {
+            for (pending in checkpoints) {
+                if (pending.epoch != generation) continue
+                // One failed save costs one report; the next checkpoint still gets written.
+                runCatching { loadDeck.checkpoint(pending.filter, pending.cursor, pending.unactedMovie, pending.unactedTv) }
+                    .onFailure { error ->
+                        if (error is CancellationException) throw error
+                        CrashReporter.recordException(error)
+                    }
+            }
+        }
         viewModelScope.launchReporting { loadGenreChips() }
         // The first deck waits for the first muting: filling it unmuted and then reloading would flash
         // exactly the shows the user muted. A later change (Settings, the chip) reloads from page 1.
@@ -237,7 +300,7 @@ class TriageViewModel(
             .onEach { muting ->
                 val changed = _state.value.filter.muted != muting.effective
                 _state.update { it.copy(filter = it.filter.copy(muted = muting.effective), showMuted = muting.showMuted, hasMuted = muting.hasMuted) }
-                if (firstMuting || changed) refill(reset = true)
+                if (firstMuting || changed) refill(reset = true, restore = true)
                 firstMuting = false
             }
             .launchInReporting(viewModelScope)
@@ -248,19 +311,19 @@ class TriageViewModel(
         if (_state.value.filter.type == type) return
         // Genre ids are per-catalogue, so switching type drops the genre.
         _state.update { it.copy(filter = it.filter.copy(type = type, genreId = null)) }
-        refill(reset = true)
+        refill(reset = true, restore = true)
     }
 
     fun onGenreFilterChange(genreId: String?) {
         if (_state.value.filter.genreId == genreId) return
         _state.update { it.copy(filter = it.filter.copy(genreId = genreId)) }
-        refill(reset = true)
+        refill(reset = true, restore = true)
     }
 
     fun onClearFilters() {
         if (!_state.value.filter.isNarrowed) return
         _state.update { it.copy(filter = it.filter.copy(type = null, genreId = null)) }
-        refill(reset = true)
+        refill(reset = true, restore = true)
     }
 
     /** The chip: lifts muting for this session, or puts it back. Reloads through [SettingsApi.observeMuting]. */
@@ -285,18 +348,25 @@ class TriageViewModel(
                 restored = null,
             )
         }
+        // The saved position moves only once the decision persists; until then its page is held (see [hold]).
+        val token = hold(summary)
         viewModelScope.launchReporting {
-            actions.record(summary, verdict).onFailure { error ->
-                _state.update { current ->
-                    current.copy(
-                        // The failure replaces the Undo (#159). Clearing undoable here
-                        // cancels the Undo snackbar's effect, so the failure takes the
-                        // snackbar slot at once instead of racing it (#569).
-                        undoable = null,
-                        failedCommit = FailedCommit(summary, verdict, error.toUiText(UiText.Resource(Res.string.error_commit))),
-                    )
+            actions.record(summary, verdict)
+                .onSuccess {
+                    settle(summary.id, token)
+                    checkpoint()
                 }
-            }
+                .onFailure { error ->
+                    _state.update { current ->
+                        current.copy(
+                            // The failure replaces the Undo (#159). Clearing undoable here
+                            // cancels the Undo snackbar's effect, so the failure takes the
+                            // snackbar slot at once instead of racing it (#569).
+                            undoable = null,
+                            failedCommit = FailedCommit(summary, verdict, error.toUiText(UiText.Resource(Res.string.error_commit))),
+                        )
+                    }
+                }
         }
         refillIfRunningLow()
     }
@@ -320,6 +390,9 @@ class TriageViewModel(
             )
         }
         shown -= undoable.summary.id
+        // The card is back on the deck, so its page is held by the deck itself, not by this hold.
+        unpersisted.remove(undoable.summary.id)
+        checkpoint()
         viewModelScope.launchReporting {
             when (undoable) {
                 is UndoableAction.Decision -> actions.undo(undoable.summary.id, undoable.verdict)
@@ -401,7 +474,13 @@ class TriageViewModel(
                 restored = null,
             )
         }
-        viewModelScope.launchReporting { actions.snooze(summary, dueAtEpochDay) }
+        // A failed write throws, so the report is made and the hold stays: the card's page is kept, not skipped.
+        val token = hold(summary)
+        viewModelScope.launchReporting {
+            actions.snooze(summary, dueAtEpochDay)
+            settle(summary.id, token)
+            checkpoint()
+        }
         refillIfRunningLow()
     }
 
@@ -410,14 +489,22 @@ class TriageViewModel(
     fun onRetryFailedCommit() {
         val failed = _state.value.failedCommit ?: return
         _state.update { it.copy(failedCommit = null) }
+        val token = unpersisted[failed.summary.id]?.token ?: hold(failed.summary)
         viewModelScope.launchReporting {
-            actions.record(failed.summary, failed.verdict).onFailure { error ->
-                _state.update { it.copy(failedCommit = failed.copy(message = error.toUiText(UiText.Resource(Res.string.error_commit)))) }
-            }
+            actions.record(failed.summary, failed.verdict)
+                .onSuccess {
+                    settle(failed.summary.id, token)
+                    checkpoint()
+                }
+                .onFailure { error ->
+                    _state.update { it.copy(failedCommit = failed.copy(message = error.toUiText(UiText.Resource(Res.string.error_commit)))) }
+                }
         }
     }
 
     fun onFailedCommitDismissed() = _state.update { it.copy(failedCommit = null) }
+
+    fun onRefillFailureDismissed() = _state.update { it.copy(refillFailure = null) }
 
     fun onTutorialDismissed() {
         _state.update { it.copy(tutorialVisible = false) }
@@ -426,7 +513,8 @@ class TriageViewModel(
 
     fun onShowTutorial() = _state.update { it.copy(tutorialVisible = true) }
 
-    fun retry() = refill(reset = true)
+    /** Back to page 1: an explicit start over, so the saved position is not restored (#722). */
+    fun retry() = refill(reset = true, restore = false)
 
     /** Reads on from where the last refill stopped (#183); unlike [retry], it never goes back to page 1. */
     fun onKeepLooking() = refill(reset = false)
@@ -441,79 +529,143 @@ class TriageViewModel(
         if (_state.value.cards.size <= REFILL_THRESHOLD) refill(reset = false)
     }
 
-    private fun refill(reset: Boolean) {
-        loadJob?.cancel()
+    /**
+     * Starts a refill, or does nothing when one is already in flight: a swipe during a refill must not
+     * restart it, because the cursor only moves when a batch lands (#722). A reset cancels the refill in
+     * flight and starts from [restore]d or page-1 position.
+     */
+    private fun refill(reset: Boolean, restore: Boolean = false) {
+        if (!reset && refillJob?.isActive == true) return
         if (reset) {
+            refillJob?.cancel()
+            generation++
             cursor = DeckCursor()
+            cursorFilter = null
             shown.clear()
+            overflow.clear()
+            pageOf.clear()
             _state.update {
-                it.copy(cards = emptyList(), loading = true, error = null, exhausted = false, keepLookingAvailable = false)
+                it.copy(cards = emptyList(), loading = true, error = null, refillFailure = null, exhausted = false, keepLookingAvailable = false)
             }
         } else {
-            _state.update { it.copy(refilling = true, keepLookingAvailable = false) }
+            _state.update { it.copy(refilling = true, keepLookingAvailable = false, refillFailure = null) }
         }
+        val run = generation
+        refillJob = viewModelScope.launchReporting { fillDeck(run, restore) }
+    }
 
-        loadJob = viewModelScope.launchReporting {
-            val filter = _state.value.filter
-            var batchCards: List<MediaSummary> = emptyList()
-            var trulyExhausted: Boolean
+    /**
+     * Fills the deck to [BUFFER_TARGET] cards, drawing on the overflow first and then the catalogue. The page
+     * budget is per refill, so a deck of already-decided titles stops and offers "Keep looking" instead of
+     * walking the catalogue (#183). Stops early when the run is superseded by a reset.
+     */
+    private suspend fun fillDeck(run: Int, restore: Boolean) {
+        val filter = _state.value.filter
+        if (restore) cursor = loadDeck.restoreCursor(filter)
+        cursorFilter = filter
+        takeFromOverflow()
+        val session = loadDeck.open(_state.value.snoozePlacement)
 
-            // DeckLoader bounds a single load() call to a handful of
-            // catalogue pages (MAX_PAGES_PER_BATCH), so deep into a large,
-            // heavily-triaged library one batch can come back with nothing
-            // new while the catalogue (cursor.exhaustedFor) is nowhere near
-            // spent — TMDB's popularity order front-loads exactly the titles
-            // a long-time user already has an opinion about. An empty batch
-            // alone is never the answer, so keep reading — but only for
-            // MAX_EMPTY_BATCHES_PER_REFILL batches (#183). Unbounded, the
-            // worst case was ~1000 sequential requests behind a bare spinner.
-            // Stopping is safe because the cursor survives: "Keep looking"
-            // (onKeepLooking) and the next refillIfRunningLow both continue
-            // from it, whereas only retry() and a filter change reset it.
-            var emptyBatches = 0
-            do {
-                if (emptyBatches > 0) _state.update { it.copy(searchingDeeper = true) }
-                val batch = loadDeck(filter, cursor, alreadyShown = shown, placement = _state.value.snoozePlacement)
-                    .getOrElse { error ->
+        var pagesRead = 0
+        var emptyBatch = false
+        while (bufferedCount() < BUFFER_TARGET && !cursor.exhaustedFor(filter) && pagesRead < MAX_PAGES_PER_REFILL) {
+            if (run != generation) return
+            if (emptyBatch) _state.update { it.copy(searchingDeeper = true) }
+            val batch = session.next(filter, cursor, shown, wanted = BUFFER_TARGET - bufferedCount())
+                .getOrElse { error ->
+                    if (run == generation) {
+                        val message = error.toUiText(UiText.Resource(Res.string.error_load_more))
                         _state.update {
-                            it.copy(loading = false, refilling = false, searchingDeeper = false, error = error.toUiText(UiText.Resource(Res.string.error_load_more)))
+                            // A failed refill never hides the cards it already has: with a deck on screen it is a
+                            // snackbar, and only an empty deck gets the full error and its Retry.
+                            if (it.cards.isEmpty() && overflow.isEmpty()) {
+                                it.copy(loading = false, refilling = false, searchingDeeper = false, error = message)
+                            } else {
+                                it.copy(loading = false, refilling = false, searchingDeeper = false, refillFailure = message)
+                            }
                         }
-                        return@launchReporting
                     }
-                cursor = batch.cursor
-                shown += batch.cards.map { it.id }
-                batchCards = batch.cards
-                trulyExhausted = cursor.exhaustedFor(filter)
-                val nothingNew = batchCards.isEmpty() && !trulyExhausted
-                if (nothingNew) emptyBatches++
-            } while (nothingNew && emptyBatches < MAX_EMPTY_BATCHES_PER_REFILL)
-
-            _state.update { current ->
-                val cards = current.cards + batchCards
-                current.copy(
-                    cards = cards,
-                    loading = false,
-                    refilling = false,
-                    searchingDeeper = false,
-                    error = null,
-                    exhausted = cards.isEmpty() && trulyExhausted,
-                    keepLookingAvailable = cards.isEmpty() && !trulyExhausted,
-                )
-            }
-            if (trulyExhausted && _state.value.cards.isEmpty()) analytics.track(TriageEvent.DeckExhausted)
+                    return
+                }
+            if (run != generation) return
+            pagesRead += batch.pagesRead
+            cursor = batch.cursor
+            pageOf += batch.pageOf
+            shown += batch.cards.map { it.id }
+            shown += batch.overflow.map { it.id }
+            overflow.addAll(batch.overflow)
+            _state.update { it.copy(cards = it.cards + batch.cards) }
+            takeFromOverflow()
+            emptyBatch = batch.cards.isEmpty() && batch.overflow.isEmpty()
+            checkpoint()
         }
+        if (run != generation) return
+
+        val trulyExhausted = cursor.exhaustedFor(filter)
+        _state.update { current ->
+            current.copy(
+                loading = false,
+                refilling = false,
+                searchingDeeper = false,
+                error = null,
+                exhausted = current.cards.isEmpty() && trulyExhausted,
+                keepLookingAvailable = current.cards.isEmpty() && !trulyExhausted,
+            )
+        }
+        if (trulyExhausted && _state.value.cards.isEmpty()) analytics.track(TriageEvent.DeckExhausted)
+        checkpoint()
+    }
+
+    /** Cards on the deck plus those held back for it. */
+    private fun bufferedCount(): Int = _state.value.cards.size + overflow.size
+
+    /** Moves held-back cards onto the deck until it is full. Runs before any network call. */
+    private fun takeFromOverflow() {
+        val room = BUFFER_TARGET - _state.value.cards.size
+        if (room <= 0 || overflow.isEmpty()) return
+        val moved = List(minOf(room, overflow.size)) { overflow.removeFirst() }
+        _state.update { it.copy(cards = it.cards + moved) }
+    }
+
+    /**
+     * Saves where the deck stands for its filter, so a fresh visit (or process) resumes near it (#722). The
+     * saved page is the earliest one still holding a card the person has not acted on, so nothing they have
+     * not seen is skipped. Saves nothing while a reset has not restored a position yet.
+     */
+    private fun checkpoint() {
+        val filter = cursorFilter ?: return
+        val unacted = _state.value.cards + overflow
+        // Only holds taken under this filter: another filter's page numbers say nothing about this one's cursor.
+        val held = unpersisted.values.filter { it.filter == filter }
+        val pages = unacted.map { it.type to pageOf[it.id] } + held.map { it.summary.type to it.page }
+        val unactedMovie = pages.filter { it.first == MediaType.MOVIE }.mapNotNull { it.second }.minOrNull()
+        val unactedTv = pages.filter { it.first == MediaType.TV }.mapNotNull { it.second }.minOrNull()
+        checkpoints.trySend(PendingCheckpoint(generation, filter, cursor, unactedMovie, unactedTv))
+    }
+
+    /** Holds [summary]'s page in every checkpoint until its action persists. Returns the token [settle] needs. */
+    private fun hold(summary: MediaSummary): Long {
+        val token = ++unpersistedToken
+        unpersisted[summary.id] = Unpersisted(summary, pageOf[summary.id], cursorFilter ?: _state.value.filter, token)
+        return token
+    }
+
+    /** Releases the hold once the action persisted, unless a newer action on the same card has taken it over. */
+    private fun settle(id: MediaId, token: Long) {
+        if (unpersisted[id]?.token == token) unpersisted.remove(id)
     }
 
     internal companion object {
         /**
-         * How many batches in a row may come back with nothing new before a
-         * refill stops and offers "Keep looking" (#183). Each batch is up to
-         * `MAX_PAGES_PER_BATCH` catalogue pages, so this bounds one refill to
-         * a few dozen requests instead of the whole 500-page catalogue.
+         * Catalogue pages one refill may read before it stops and offers "Keep looking" (#183). Counted in
+         * pages, not in empty batches: a batch can carry one new title from five pages, and that is progress.
          */
-        const val MAX_EMPTY_BATCHES_PER_REFILL = 4
+        const val MAX_PAGES_PER_REFILL = 20
 
-        /** Refill while there are still cards left to swipe, so the deck never visibly stalls. */
-        const val REFILL_THRESHOLD = 3
+        /** Refill when the deck falls to this many cards (the low-water mark, #722). */
+        const val REFILL_THRESHOLD = 5
+
+        /** The deck is filled up to this many cards, the target a refill aims for. */
+        const val BUFFER_TARGET = 10
     }
 }
