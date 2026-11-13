@@ -74,7 +74,10 @@ fun epochDayOf(epochMs: Long): Long = epochMs / MILLIS_PER_DAY
 fun AppClock.localStartOfDayEpochMs(epochDay: Long): Long {
     val utcMidnight = epochMsAtStartOfDay(epochDay)
     val firstGuess = utcMidnight - utcOffsetMsAt(utcMidnight)
-    return utcMidnight - utcOffsetMsAt(firstGuess)
+    val refined = utcMidnight - utcOffsetMsAt(firstGuess)
+    // A zone whose offset jumps forward at midnight (America/Asuncion, 1 Oct 2023) skips local 00:00. The refined
+    // instant then falls on the previous day, so the day starts at the jump itself: the first instant of the date.
+    return if (localEpochDayOf(refined) == epochDay) refined else firstGuess
 }
 
 /**

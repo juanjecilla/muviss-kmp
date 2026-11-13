@@ -24,6 +24,23 @@ class AppClockLocalDayTest {
     }
 
     @Test
+    fun a_day_whose_midnight_is_skipped_starts_at_the_jump_not_on_the_previous_day() {
+        // America/Asuncion, 1 Oct 2023: the clocks jump from 00:00 (UTC-4) to 01:00 (UTC-3), so local 00:00 never happens.
+        val jump = epochMsAtStartOfDay(epochDayOfCivil(2023, 10, 1)) + 4 * HOUR
+        val clock = object : AppClock {
+            override fun nowEpochMs(): Long = jump
+            override fun utcOffsetMsAt(epochMs: Long): Long = if (epochMs >= jump) -3 * HOUR else -4 * HOUR
+        }
+        val october1 = epochDayOfCivil(2023, 10, 1)
+
+        // The day starts at the jump, the first instant that is on 1 Oct locally, not 03:00 UTC on 30 Sep.
+        assertEquals(jump, clock.localStartOfDayEpochMs(october1))
+        assertEquals(october1, clock.localEpochDayOf(clock.localStartOfDayEpochMs(october1)))
+        // The day after is unaffected: its midnight is 03:00 UTC at the new offset.
+        assertEquals(epochMsAtStartOfDay(october1 + 1) + 3 * HOUR, clock.localStartOfDayEpochMs(october1 + 1))
+    }
+
+    @Test
     fun local_day_before_the_epoch_floors_toward_the_earlier_day() {
         // Given UTC-5 and 02:00 UTC on 1 Jan 1970, which is 21:00 on 31 Dec 1969 locally
         val clock = zone(-5 * HOUR)
