@@ -243,4 +243,83 @@ class PickSessionTest {
         picked += PickMood.ROMANTIC
         assertEquals(setOf(PickMood.ESCAPE), after.criteria.moods)
     }
+
+    /** Skips every question the session offers, and returns the criteria it ends with. */
+    private fun criteriaWhenSkippingAll(context: PickContext): PickCriteria {
+        var session = PickSession.start(context)
+        while (session.question != null) session = session.skip()
+        return session.criteria
+    }
+
+    @Test
+    fun a_liked_movie_format_answers_the_format_question_and_the_session_never_asks_it() {
+        val context = PickContext(
+            length = SessionLength.STANDARD,
+            answeredByProfile = setOf(PickQuestion.FORMAT_AND_TIME),
+            startingCriteria = PickCriteria(type = MediaType.MOVIE),
+        )
+        assertFalse(PickQuestion.FORMAT_AND_TIME in questionsAskedWhenSkippingAll(context))
+        assertEquals(MediaType.MOVIE, criteriaWhenSkippingAll(context).type)
+    }
+
+    @Test
+    fun a_liked_show_format_answers_the_format_question_with_a_show() {
+        val context = PickContext(
+            length = SessionLength.STANDARD,
+            answeredByProfile = setOf(PickQuestion.FORMAT_AND_TIME),
+            startingCriteria = PickCriteria(type = MediaType.TV),
+        )
+        assertFalse(PickQuestion.FORMAT_AND_TIME in questionsAskedWhenSkippingAll(context))
+        assertEquals(MediaType.TV, criteriaWhenSkippingAll(context).type)
+    }
+
+    @Test
+    fun a_format_the_profile_does_not_answer_is_still_asked() {
+        assertTrue(PickQuestion.FORMAT_AND_TIME in questionsAskedWhenSkippingAll(PickContext(length = SessionLength.STANDARD)))
+    }
+
+    /** The session as it stands when [question] is the one to answer, having skipped everything before it. */
+    private fun sessionAt(context: PickContext, question: PickQuestion): PickSession {
+        var session = PickSession.start(context)
+        while (session.question != question) session = session.skip()
+        return session
+    }
+
+    @Test
+    fun a_liked_language_sets_the_original_language_and_the_era_question_still_keeps_it() {
+        // The era question stays asked for its era and services, so it is the question that must not clear the language.
+        val context = PickContext(length = SessionLength.STANDARD, startingCriteria = PickCriteria(originalLanguage = "es"))
+        assertTrue(PickQuestion.ERA_AND_SERVICES in questionsAskedWhenSkippingAll(context))
+
+        val session = PickSession.start(context)
+        assertEquals("es", session.criteria.originalLanguage)
+        val afterEra = sessionAt(context, PickQuestion.ERA_AND_SERVICES).answer(PickAnswer.EraAndServices(PickEra.NEW, null, onlyMyServices = false))
+        assertEquals("es", afterEra.criteria.originalLanguage)
+        assertEquals(PickEra.NEW, afterEra.criteria.era)
+        assertEquals("es", criteriaWhenSkippingAll(context).originalLanguage)
+    }
+
+    @Test
+    fun a_language_answer_on_the_era_question_still_replaces_the_profiles_language() {
+        val context = PickContext(length = SessionLength.STANDARD, startingCriteria = PickCriteria(originalLanguage = "es"))
+        val session = sessionAt(context, PickQuestion.ERA_AND_SERVICES).answer(PickAnswer.EraAndServices(null, "fr", onlyMyServices = false))
+        assertEquals("fr", session.criteria.originalLanguage)
+    }
+
+    @Test
+    fun a_liked_company_answers_the_company_question_and_the_session_never_asks_it() {
+        val context = PickContext(
+            length = SessionLength.STANDARD,
+            answeredByProfile = setOf(PickQuestion.COMPANY),
+            startingCriteria = PickCriteria(company = PickCompany.FAMILY),
+        )
+        assertFalse(PickQuestion.COMPANY in questionsAskedWhenSkippingAll(context))
+        assertEquals(PickCompany.FAMILY, criteriaWhenSkippingAll(context).company)
+    }
+
+    @Test
+    fun a_company_the_profile_does_not_answer_is_still_asked() {
+        // Without a backlog the session is four questions long and reaches the company question.
+        assertTrue(PickQuestion.COMPANY in questionsAskedWhenSkippingAll(PickContext(length = SessionLength.STANDARD, hasBacklog = false)))
+    }
 }

@@ -15,7 +15,8 @@ import kotlinx.coroutines.flow.first
  * anything. The library answers "is there a backlog" and "is there anything to rewatch".
  *
  * `servicesKnown` is true once the Taste Profile names a streaming service (#663), so "only my services" is
- * offered only when it can mean something.
+ * offered only when it can mean something. The formats, languages and companies it names answer their questions
+ * up front (#741, [profileAnswers]).
  *
  * The anchor is not read here: it is the title a Completion just finished, which only the ViewModel knows
  * (the session is opened from it), so the ViewModel sets `anchorCandidate` on the context it is given.
@@ -29,12 +30,15 @@ internal class NextPickContextReader(
 
     override suspend fun read(): PickContext {
         val summaries = collection().observeSummaries().first()
+        val profile = profileAnswers(taste().observe().first())
         return PickContext(
             length = preferences.sessionLength.first(),
             online = connectivity.isOnline.first(),
             hasBacklog = summaries.any { it.status == WatchStatus.NOT_STARTED },
             hasWatchedTitles = summaries.any { it.status == WatchStatus.WATCHED || it.status == WatchStatus.FINISHED },
             servicesKnown = serviceIds(taste()).isNotEmpty(),
+            answeredByProfile = profile.answered,
+            startingCriteria = profile.criteria,
         )
     }
 }

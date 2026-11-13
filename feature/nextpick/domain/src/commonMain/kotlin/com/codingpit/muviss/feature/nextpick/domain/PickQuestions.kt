@@ -72,9 +72,17 @@ sealed interface PickAnswer {
         override fun applyTo(criteria: PickCriteria) = criteria.copy(anchor = anchor)
     }
 
+    /**
+     * A null [originalLanguage] is no answer to the language part, so a language the Taste Profile already set
+     * (#741) survives this answer. Without that, every era answer would silently clear it.
+     */
     data class EraAndServices(val era: PickEra?, val originalLanguage: String?, val onlyMyServices: Boolean) : PickAnswer {
         override val question = PickQuestion.ERA_AND_SERVICES
-        override fun applyTo(criteria: PickCriteria) = criteria.copy(era = era, originalLanguage = originalLanguage, onlyMyServices = onlyMyServices)
+        override fun applyTo(criteria: PickCriteria) = criteria.copy(
+            era = era,
+            originalLanguage = originalLanguage ?: criteria.originalLanguage,
+            onlyMyServices = onlyMyServices,
+        )
     }
 
     data class Company(val company: PickCompany) : PickAnswer {
