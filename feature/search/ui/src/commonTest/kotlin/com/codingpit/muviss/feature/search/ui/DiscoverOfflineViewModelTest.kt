@@ -18,6 +18,7 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -197,6 +198,43 @@ class DiscoverOfflineViewModelTest {
         advanceUntilIdle()
 
         assertTrue(discoverCalls > 0, "the muting change reached TMDB when Discover came back")
+    }
+
+    @Test
+    fun a_cancelled_forced_refresh_leaves_the_unmuted_genre_owed_on_the_next_reload() = runTest {
+        // Unmute during a pending search, clear the query, and hold the TMDB request. Another query cancels it; clearing
+        // that query must still send the refresh, and its answer carries the unmuted genre.
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        val settings = FakeMutingApi(MutedGenres(setOf(talk)))
+        val gate = CompletableDeferred<Unit>()
+        var holding = false
+        val vm = viewModel(
+            FakeRepo(
+                discoverGate = { _, _ -> if (holding) gate.await() },
+                discoverResult = { type, page, _ ->
+                    Result.success(PagedResult(if (type == MediaType.TV) listOf(talkShow, drama) else emptyList(), page, page))
+                },
+            ),
+            cache,
+            FakeClock(epochMs = 1_000L),
+            settings = settings,
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(drama), vm.state.value.popularTv, "the talk show is muted in the stored copy")
+
+        holding = true
+        vm.onQueryChange("drama")
+        settings.configured.value = MutedGenres.NONE
+        vm.onQueryChange("")
+        advanceUntilIdle() // the forced refresh is now held on the gate
+        vm.onQueryChange("dra") // cancels that refresh while it waits
+        vm.onQueryChange("")
+        advanceUntilIdle()
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf(talkShow, drama), vm.state.value.popularTv, "the next reload refreshed, so the unmuted talk show is back")
     }
 
     @Test

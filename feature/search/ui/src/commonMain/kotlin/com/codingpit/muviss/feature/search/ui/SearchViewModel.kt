@@ -146,13 +146,13 @@ class SearchViewModel(
     private var muting = GenreMuting()
 
     /**
-     * Muting changed while Discover was not on screen, so its carousels still carry the old exclusions.
-     * They reload when the user comes back to it, instead of showing the wrong titles until the next retry.
+     * A muting change that Discover has not been re-fetched under. It is owed a network refresh, and it is paid off
+     * only by a refresh that succeeds, so a cancelled or failed one leaves it pending for the next reload.
      */
     private var discoverStale = false
 
-    /** The stale Discover was marked by a muting change, so it must reach TMDB: a stored answer is out of date. */
-    private var discoverStaleForced = false
+    /** Bumped by every muting change, so a refresh that began before one never clears the newer mark. */
+    private var staleMarks = 0
 
     init {
         // The first Discover waits for the first muting, so it is never loaded unmuted and then replaced.
@@ -332,13 +332,13 @@ class SearchViewModel(
         val searchPending = s.mode == SearchMode.DISCOVER && s.query.isNotBlank()
         if (s.mode != SearchMode.DISCOVER || searchPending) {
             discoverStale = true
-            discoverStaleForced = true
+            staleMarks++
         }
         if (!searchPending) retry()
     }
 
     private fun reloadDiscoverIfStale() {
-        if (discoverStale) loadDiscover(forced = discoverStaleForced)
+        if (discoverStale) loadDiscover(forced = true)
     }
 
     /**
@@ -350,8 +350,7 @@ class SearchViewModel(
         // A second load must not race the first: both read `muting` mid-flight, and whichever finishes
         // last wins, which could be the one that saw the older muting.
         loadJob?.cancel()
-        discoverStale = false
-        discoverStaleForced = false
+        val marks = staleMarks
         loadJob = viewModelScope.launchReporting {
             val mutedMovies = mutedFor(MediaType.MOVIE, null)
             val mutedTv = mutedFor(MediaType.TV, null)
@@ -362,6 +361,7 @@ class SearchViewModel(
             } else {
                 _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = false) }
             }
+            // A fresh copy answers without the network, so it does not pay off a muting mark: that needs a refresh.
             if (!forced && !discoverFeed.needsRefresh(snapshot)) return@launchReporting
 
             val refresh = discoverFeed.refresh(mutedMovies, mutedTv)
@@ -376,7 +376,13 @@ class SearchViewModel(
                     discoverSaved = refresh.anyFailed && discoverFeed.isPastTtl(merged),
                 )
             }
+            if (!refresh.anyFailed) settleStale(marks)
         }
+    }
+
+    /** Pays off the muting marks that were in force when a refresh began, unless a newer one arrived meanwhile. */
+    private fun settleStale(marks: Int) {
+        if (staleMarks == marks) discoverStale = false
     }
 
     /** [snapshot] as the Discover shelves show it: the stored titles minus what is muted for this session. */
