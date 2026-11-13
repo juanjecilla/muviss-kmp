@@ -89,8 +89,8 @@ class OssLicensesListTest {
         val message = OssLicensesList.failureMessage(OssLicensesList.Drift(missing = listOf("b:y"), stale = listOf("c:gone")))
         assertContains(message, "b:y")
         assertContains(message, "c:gone")
-        assertContains(message, "the list has no entry for 1 artifact(s) the licensee report lists")
-        assertContains(message, "no longer lists: c:gone")
+        assertContains(message, "the list has no entry for 1 artifact(s) the licensee reports list")
+        assertContains(message, "no licensee report lists any more: c:gone")
         assertContains(message, "./gradlew :app:androidApp:regenerateOssLicenses")
     }
 
@@ -128,7 +128,7 @@ class OssLicensesListTest {
         assertEquals(emptyList(), drift.missing)
         assertEquals(emptyList(), drift.stale)
         assertFalse(drift.isEmpty)
-        assertContains(OssLicensesList.failureMessage(drift), "name, licence or licence URL differs from the licensee report: g:a")
+        assertContains(OssLicensesList.failureMessage(drift), "name, licence or licence URL differs from the licensee reports: g:a")
     }
 
     @Test
@@ -214,11 +214,16 @@ class OssLicensesListTest {
     }
 
     @Test
-    fun a_licence_split_across_both_collections_is_still_one_licence_and_refused_when_it_is_two() {
-        // Fix 2: the size check counts both collections together, so two licences are refused rather than one being shown.
+    fun a_licence_split_across_both_collections_counts_both_and_three_are_refused() {
+        // Fix 2 (#615): both collections count together. Two records are now shown (see the two-licence tests below),
+        // so the refusal starts at three.
+        val two = regeneratedFrom(
+            """{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[{"name":"MIT"}],"unknownLicenses":[{"name":"Custom"}]}""",
+        )
+        assertContains(two, """OssLicense("g", "a", "A", "MIT", null, "Custom", null),""")
         assertFailsWith<IllegalArgumentException> {
             regeneratedFrom(
-                """{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[{"name":"MIT"}],"unknownLicenses":[{"name":"Custom"}]}""",
+                """{"groupId":"g","artifactId":"a","name":"A","spdxLicenses":[{"name":"MIT"},{"name":"BSD"}],"unknownLicenses":[{"name":"Custom"}]}""",
             )
         }
     }
@@ -258,4 +263,126 @@ class OssLicensesListTest {
         assertContains(out, "\"a\\nb\\rc\\\$d\"")
         assertFalse(out.contains("a\nb"))
     }
+
+    // --- #615: the union of every shipped target's report, and up to two licences per artifact ---
+
+    private val mitUrl = "https://opensource.org/license/mit"
+
+    /** A report naming [coordinates] (group:artifact pairs) with one Apache-2.0 licence each. */
+    private fun reportWith(vararg coordinates: String): String = coordinates.joinToString(prefix = "[", postfix = "]") { coordinate ->
+        val (group, artifact) = coordinate.split(":")
+        """{"groupId":"$group","artifactId":"$artifact","name":"$artifact","spdxLicenses":[{"identifier":"Apache-2.0","name":"Apache License 2.0","url":"https://www.apache.org/licenses/LICENSE-2.0"}],"unknownLicenses":[]}"""
+    }
+
+    /** One artifact `g:a` with the given licence records (name to url), in one report. */
+    private fun artifactWith(name: String?, vararg licences: Pair<String, String?>): String {
+        val nameJson = name?.let { "\"$it\"" } ?: "null"
+        val records = licences.joinToString(",") { (licence, url) -> """{"name":"$licence","url":${url?.let { "\"$it\"" } ?: "null"}}""" }
+        return """[{"groupId":"g","artifactId":"a","name":$nameJson,"spdxLicenses":[$records],"unknownLicenses":[]}]"""
+    }
+
+    private fun reports(vararg pairs: Pair<String, String>): List<OssLicensesList.Report> = pairs.map { (label, json) -> OssLicensesList.Report(label, json) }
+
+    private fun listingFor(vararg args: String): String = """    OssLicense(${args.joinToString(", ")}),"""
+
+    @Test
+    fun the_union_lists_an_artifact_only_one_target_ships_and_names_that_target() {
+        // The #655 note: a desktop-only artifact must not read as stale against the Android report alone.
+        val drift = OssLicensesList.drift(
+            reports("Android release" to reportWith("a:x"), "desktop" to reportWith("a:x", "skiko:skiko")),
+            source(entry("a", "x")),
+        )
+        assertEquals(listOf("skiko:skiko"), drift.missing)
+        assertEquals(emptyList(), drift.stale)
+        assertEquals(listOf("desktop"), drift.sources["skiko:skiko"])
+        assertContains(OssLicensesList.failureMessage(drift), "skiko:skiko (desktop)")
+    }
+
+    @Test
+    fun an_entry_no_report_lists_is_stale_even_when_one_of_several_reports_lists_it() {
+        val listed = source(entry("a", "x"), entry("c", "gone"))
+        val drift = OssLicensesList.drift(reports("android" to reportWith("a:x"), "ios" to reportWith("a:x")), listed)
+        assertEquals(listOf("c:gone"), drift.stale)
+    }
+
+    @Test
+    fun an_artifact_two_targets_ship_under_the_same_coordinates_is_one_entry_listing_both_sources() {
+        val rep = reports("android" to reportWith("a:x"), "desktop" to reportWith("a:x"))
+        val drift = OssLicensesList.drift(rep, source(entry("a", "x")))
+        assertTrue(drift.isEmpty)
+        assertEquals(listOf("android", "desktop"), drift.sources["a:x"])
+    }
+
+    @Test
+    fun a_name_that_differs_between_reports_is_refused_naming_both() {
+        // The screen shows one name per artifact, so the reports must agree on it.
+        val error = assertFailsWith<IllegalArgumentException> {
+            OssLicensesList.drift(
+                reports("android" to artifactWith("Alpha", "Apache License 2.0" to null), "desktop" to artifactWith("Beta", "Apache License 2.0" to null)),
+                source(),
+            )
+        }
+        assertContains(error.message!!, "\"Alpha\"")
+        assertContains(error.message!!, "\"Beta\"")
+    }
+
+    @Test
+    fun two_different_licences_from_two_targets_are_two_records_and_the_list_writes_both() {
+        // The owner's decision (#615): an artifact may carry two licence records. Android says MIT, desktop says Apache.
+        val rep = reports(
+            "android" to artifactWith("A", "MIT" to mitUrl),
+            "desktop" to artifactWith("A", "Apache License 2.0" to "https://www.apache.org/licenses/LICENSE-2.0"),
+        )
+        val regenerated = OssLicensesList.regenerate(rep, source(entry("seed", "entry")))
+        assertContains(
+            regenerated,
+            listingFor("\"g\"", "\"a\"", "\"A\"", "\"MIT\"", "\"$mitUrl\"", "\"Apache License 2.0\"", "\"https://www.apache.org/licenses/LICENSE-2.0\""),
+        )
+        assertTrue(OssLicensesList.drift(rep, regenerated).isEmpty)
+    }
+
+    @Test
+    fun a_third_licence_across_the_reports_is_refused() {
+        // More than two records would not fit the Licenses row, so the build stops and says so (#615).
+        val error = assertFailsWith<IllegalArgumentException> {
+            OssLicensesList.regenerate(
+                reports(
+                    "android" to artifactWith("A", "MIT" to mitUrl),
+                    "desktop" to artifactWith("A", "Apache License 2.0" to null),
+                    "iOS" to artifactWith("A", "BSD-3-Clause" to null),
+                ),
+                source(),
+            )
+        }
+        assertContains(error.message!!, "g:a has 3 licences across android, desktop, iOS")
+    }
+
+    @Test
+    fun an_artifact_with_two_licences_in_one_report_is_listed_with_both() {
+        val listed = source(listingFor("\"g\"", "\"a\"", "\"A\"", "\"MIT\"", "\"$mitUrl\"", "\"Apache\"", "null"))
+        assertTrue(OssLicensesList.drift(artifactWith("A", "MIT" to mitUrl), listed).changed.isNotEmpty(), "a second licence the report does not have is a change")
+        val withBoth = reports("only" to artifactWith("A", "MIT" to mitUrl, "Apache" to null))
+        assertTrue(OssLicensesList.drift(withBoth, listed).isEmpty)
+    }
+
+    @Test
+    fun a_second_licence_whose_url_changes_is_changed() {
+        val listed = source(listingFor("\"g\"", "\"a\"", "\"A\"", "\"MIT\"", "\"$mitUrl\"", "\"Apache\"", "\"https://old\""))
+        val drift = OssLicensesList.drift(reports("only" to artifactWith("A", "MIT" to mitUrl, "Apache" to "https://new")), listed)
+        assertEquals(listOf("g:a"), drift.changed)
+    }
+
+    @Test
+    fun a_commented_out_two_licence_entry_does_not_count_as_listed() {
+        val listed = source("    // " + listingFor("\"g\"", "\"a\"", "\"A\"", "\"MIT\"", "\"$mitUrl\"", "\"Apache\"", "null").trimStart())
+        assertEquals(listOf("g:a"), OssLicensesList.drift(reports("only" to artifactWith("A", "MIT" to mitUrl)), listed).missing)
+    }
+
+    @Test
+    fun a_union_regenerated_with_two_licences_is_idempotent() {
+        val rep = reports("android" to artifactWith("A", "MIT" to mitUrl), "desktop" to artifactWith("A", "Apache" to null))
+        val once = OssLicensesList.regenerate(rep, source())
+        assertEquals(once, OssLicensesList.regenerate(rep, once))
+    }
+
 }

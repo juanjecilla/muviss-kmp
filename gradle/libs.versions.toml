@@ -76,9 +76,9 @@ androidx-uiautomator = { module = "androidx.test.uiautomator:uiautomator", versi
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-work-runtimeKtx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidxWork" }
-# Home-screen widgets (EPIC 22). Android-only and Apache-2.0, so it passes
-# :app:androidApp's licensee allow-list; it is added to that module alone and
-# never reaches a KMP source set.
+# Home-screen widgets (EPIC 22). Android-only and Apache-2.0, so it passes the
+# licensee allow-list (`muviss.licensee`); it is added to :app:androidApp alone
+# and never reaches a KMP source set.
 androidx-glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "androidx-glance" }
 androidx-glance-material3 = { module = "androidx.glance:glance-material3", version.ref = "androidx-glance" }
 compose-uiTooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "composeMultiplatform" }
@@ -164,6 +164,8 @@ android-kmpLibrary-gradlePlugin = { module = "com.android.kotlin.multiplatform.l
 kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-composeCompiler-gradlePlugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 compose-gradlePlugin = { module = "org.jetbrains.compose:compose-gradle-plugin", version.ref = "composeMultiplatform" }
+# The licensee allow-list convention (`muviss.licensee`, #615) names its extension type.
+licensee-gradlePlugin = { module = "app.cash.licensee:licensee-gradle-plugin", version.ref = "licensee" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -178,6 +180,5 @@ kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", versio
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
-licensee = { id = "app.cash.licensee", version.ref = "licensee" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 sentry = { id = "io.sentry.android.gradle", version.ref = "sentryGradlePlugin" }

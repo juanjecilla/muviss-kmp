@@ -8,6 +8,26 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     id("muviss.version")
+    id("muviss.licensee")
+}
+
+// About > Licenses (#615). `compose.desktop.currentOs` puts only this host's Skiko runtime on the classpath, so
+// licensee's report would name a different Skiko artifact on each OS and the list would depend on the machine
+// that generated it. licensee therefore checks a configuration that is the runtime classpath plus every desktop
+// OS Compose ships. It is never resolved by the app, so the distribution does not grow.
+val licenseeDesktopAllPlatforms = configurations.create("licenseeDesktopAllPlatforms") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    extendsFrom(configurations.getByName("runtimeClasspath"))
+}
+dependencies {
+    add("licenseeDesktopAllPlatforms", compose.desktop.linux_x64)
+    add("licenseeDesktopAllPlatforms", compose.desktop.macos_x64)
+    add("licenseeDesktopAllPlatforms", compose.desktop.macos_arm64)
+    add("licenseeDesktopAllPlatforms", compose.desktop.windows_x64)
+}
+tasks.named<app.cash.licensee.LicenseeTask>("licensee") {
+    configurationToCheck(licenseeDesktopAllPlatforms)
 }
 
 // The tray icon (EPIC 23) is the app icon. Rather than keep a second copy of the

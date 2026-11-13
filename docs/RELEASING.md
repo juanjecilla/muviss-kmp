@@ -803,39 +803,76 @@ dependency resolves to a license outside the `allow(...)`/`allowUrl(...)`
 list in that build file; bump the list deliberately (not by blanket-allowing
 "unknown") if a legitimately-new license shows up.
 
-What it does *not* do: feed the Settings screen live. `licenseeAndroidRelease`
-only analyzes the **Android** variant's resolved dependency graph (Android is
-this app's primary target, see CLAUDE.md) and writes its
-`build/reports/licensee/androidRelease/artifacts.json` into a module
-(`:app:androidApp`) nothing else depends on — feeding that file's contents
-into `feature/settings/ui`'s Licenses screen without an app→feature dependency
-inversion would need either a cross-module generated-resource pipeline or
-Compose Multiplatform's raw-resource mechanism, either well beyond this
-epic's timebox. Instead, `feature/settings/domain/.../OssLicenses.kt` is a **checked-in**
-`List<OssLicense>` generated from that same `artifacts.json`. To refresh it
-after a dependency change:
+What it does *not* do, by itself: feed the Settings screen live. Each report
+is written into a module's build directory that nothing in the KMP
+`:feature:settings:domain` can depend on, and reading them from there would need
+a cross-module generated-resource pipeline or Compose Multiplatform's
+raw-resource mechanism, well beyond the epic's timebox. Instead,
+`feature/settings/domain/.../OssLicenses.kt` is a **checked-in** `List<OssLicense>`.
+
+**#615: the list covers every shipped target, not only Android.** Each target
+has its own licensee report, all written by the `muviss.licensee` convention
+(build-logic) and all held to one allow-list:
+
+| Target | Task | Report |
+| --- | --- | --- |
+| Android release | `:app:androidApp:licenseeAndroidRelease` | `app/androidApp/build/reports/licensee/androidRelease/artifacts.json` |
+| Desktop (every OS) | `:app:desktopApp:licensee` | `app/desktopApp/build/reports/licensee/artifacts.json` |
+| Web JS | `:app:webApp:licenseeJs` | `app/webApp/build/reports/licensee/js/artifacts.json` |
+| Web Wasm | `:app:webApp:licenseeWasmJs` | `app/webApp/build/reports/licensee/wasmJs/artifacts.json` |
+| iOS (arm64) | `:app:shared:licenseeIosArm64` | `app/shared/build/reports/licensee/iosArm64/artifacts.json` |
+
+The list is the **union** of the five. Two rules keep it independent of the
+machine that builds it:
+
+- The desktop report is taken over a configuration that is the runtime
+  classpath plus the Skiko runtime of every desktop OS Compose ships
+  (`licenseeDesktopAllPlatforms` in `app/desktopApp/build.gradle.kts`).
+  `compose.desktop.currentOs` alone would name a different Skiko artifact on
+  each OS, and the list would then depend on whoever ran the build. The
+  configuration is only ever analyzed, never packaged.
+- The iOS report is arm64 only, since the simulator build is not shipped.
+
+An artifact two targets ship under the same coordinates is one entry. Its name
+must agree across the reports (the screen shows one), and it may carry **at
+most two licence records** (the owner's decision, #615). A second record is
+written as the optional trailing `secondLicenseName`/`secondLicenseUrl` pair of
+`OssLicense(...)`, and the Licenses screen shows both. A third is refused at
+generation, so the build stops and asks for a decision rather than widening the
+screen. `Apache-2.0` alongside `LGPL-2.1-or-later` (JNA, dual-licensed, #826) is
+the case that uses the second record today.
+
+To refresh the list after a dependency change:
 
 ```bash
-./gradlew :app:androidApp:regenerateOssLicenses   # runs licenseeAndroidRelease, then rewrites OssLicenses.kt
+./gradlew :app:androidApp:regenerateOssLicenses   # runs all five report tasks, then rewrites OssLicenses.kt
 git diff feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt
 ```
 
+If the regeneration also changes `gradle/verification-metadata.xml` (a new
+artifact on some target), keep the file's CRLF line endings: Gradle writes LF,
+and a whole-file diff hides the real change.
+
 Commit the rewritten file with the dependency change. The generated entries
-come from the report's name and licence exactly as licensee gives them; the
+come from the reports' names and licences exactly as licensee gives them; the
 hand-written tail at the bottom (the bundled Schibsted Grotesk font, which is
 not a Maven artifact) is kept. `verifyOssLicenses` runs in `check` and fails
-when the report lists an artifact with no entry (missing), or when an entry
-names an artifact the report no longer lists (stale), or lists one artifact
-twice (the Licenses screen keys its rows by artifact), so an artifact added or
-removed without a regeneration breaks CI rather than under-reporting or
-over-reporting on the About screen (#562, #616). It also fails when an entry's
-name, licence or licence URL differs from the report at the same coordinates
-(a version bump that changes what the artifact says it is licensed under,
-#666). Each entry is compared with the text the generator writes for that
-artifact, fallbacks included, so the check and `regenerateOssLicenses` cannot
-disagree. Its failure message names every list and the regenerate command. The
-comparison lives in build-logic's `OssLicensesList` (unit-tested in
-`build-logic/src/test`).
+when a report lists an artifact with no entry (missing; the failure names the
+target it is from), or when an entry names an artifact no report lists any
+more (stale), or lists one artifact twice (the Licenses screen keys its rows by
+artifact), so an artifact added or removed without a regeneration breaks CI
+rather than under-reporting or over-reporting on the About screen (#562, #616,
+#615). It also fails when an entry's name, licence or licence URL differs from
+the union at the same coordinates (a version bump that changes what the artifact
+says it is licensed under, #666). Each entry is compared with the text the
+generator writes for that artifact, fallbacks included, so the check and
+`regenerateOssLicenses` cannot disagree. Its failure message names every list
+and the regenerate command. The comparison lives in build-logic's
+`OssLicensesList` (unit-tested in `build-logic/src/test`).
+
+Not covered by licensee, so not in the list (#825): the npm packages the web
+bundle ships (`sql.js` and the SQLDelight worker), and any iOS framework pulled
+in through SPM or CocoaPods (Sentry's Cocoa SDK, for one).
 
 `docs/PRIVACY.md` and the TMDB attribution constant in
 `feature/settings/domain/.../TmdbAttribution.kt` remain the source of truth
