@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,9 +36,19 @@ import androidx.compose.ui.unit.dp
  * `liveRegion` so a screen reader announces it when it appears rather than only
  * when focus happens to land on it — it can appear after the page has settled,
  * once the lock election resolves.
+ *
+ * [actionLabel] is the one way out, when there is one: reloading a tab that is
+ * not saving (#62). It is absent for the warnings with nothing to do about them,
+ * and the banner keeps its one-line shape without it. Dismissing is still not
+ * offered; the action is the way the warning goes away.
  */
 @Composable
-fun PersistenceBanner(message: String?, modifier: Modifier = Modifier) {
+fun PersistenceBanner(
+    message: String?,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
+) {
     if (message == null) return
     Row(
         modifier = modifier
@@ -50,8 +61,18 @@ fun PersistenceBanner(message: String?, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = message,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onErrorContainer,
         )
+        if (actionLabel != null) {
+            TextButton(onClick = onAction) {
+                Text(
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
     }
 }

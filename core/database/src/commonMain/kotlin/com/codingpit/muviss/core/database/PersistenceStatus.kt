@@ -45,6 +45,14 @@ sealed interface PersistenceState {
     data object WriteFailed : PersistenceState
 
     /**
+     * Another tab saved newer changes after this one opened, and this tab has
+     * changes of its own that are not in what was saved. It stops saving rather
+     * than overwrite that work (#61), and gives up the lock so a reload can take
+     * it. Reloading discards the changes made in this tab.
+     */
+    data object Stale : PersistenceState
+
+    /**
      * Nothing persists anywhere: the browser has no Web Locks, so no tab was
      * elected and every tab is session-only. A private window with site data
      * blocked is the usual cause.
@@ -66,8 +74,14 @@ sealed interface PersistenceState {
  * checked first because when Web Locks is missing nobody is the writer, so
  * `writer` is `false` for an uninteresting reason.
  */
-internal fun persistenceStateOf(writer: Boolean, webLocksSupported: Boolean, lastWriteFailed: Boolean = false): PersistenceState = when {
+internal fun persistenceStateOf(
+    writer: Boolean,
+    webLocksSupported: Boolean,
+    lastWriteFailed: Boolean = false,
+    stale: Boolean = false,
+): PersistenceState = when {
     !webLocksSupported -> PersistenceState.NotPersisted
+    stale -> PersistenceState.Stale
     writer && lastWriteFailed -> PersistenceState.WriteFailed
     writer -> PersistenceState.Durable
     else -> PersistenceState.ReadOnlyTab
@@ -76,6 +90,13 @@ internal fun persistenceStateOf(writer: Boolean, webLocksSupported: Boolean, las
 /** Reports [PersistenceState]. Bound in Koin by the platform that knows the answer. */
 interface PersistenceStatus {
     val state: StateFlow<PersistenceState>
+
+    /**
+     * Reloads the page, which is how a tab that is not saving starts saving
+     * again: the reloaded page reads the latest snapshot and takes the lock
+     * when it is free (#62). Only web has a page to reload.
+     */
+    fun reloadPage() = Unit
 }
 
 /**

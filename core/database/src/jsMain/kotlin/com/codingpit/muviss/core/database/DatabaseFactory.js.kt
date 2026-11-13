@@ -126,7 +126,13 @@ private fun observePersistence(worker: Worker, status: WebPersistenceStatus) {
     port.addEventListener("message", { event ->
         val data = event.asDynamic().data
         if (data != null) {
-            status.report(writer = isWriter(data), webLocksSupported = isSupported(data), lastWriteFailed = isWriteFailed(data))
+            status.report(
+                writer = isWriter(data),
+                webLocksSupported = isSupported(data),
+                lastWriteFailed = isWriteFailed(data),
+                stale = isStale(data),
+                reloadRequested = isReloadRequested(data),
+            )
         }
     })
 }
@@ -155,3 +161,9 @@ private fun isSupported(data: Any?): Boolean = js("!!data.supported")
 
 @Suppress("UnusedParameter")
 private fun isWriteFailed(data: Any?): Boolean = js("!!data.lastWriteFailed")
+
+@Suppress("UnusedParameter")
+private fun isStale(data: Any?): Boolean = js("!!data.stale")
+
+@Suppress("UnusedParameter")
+private fun isReloadRequested(data: Any?): Boolean = js("!!data.reload")

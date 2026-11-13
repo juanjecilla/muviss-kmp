@@ -9,7 +9,9 @@
     <!-- Nav item description while it needs the person's attention (#274), e.g. "Profile, action needed". -->
     <string name="nav_needs_attention">%1$s, action needed</string>
     <!-- Web only: why changes in this tab may not survive. -->
-    <string name="persistence_read_only_tab">Muviss is open in another tab. Changes here won't be saved.</string>
+    <string name="persistence_read_only_tab">Open in another tab. Changes made here won't be saved; reloading discards them.</string>
+    <string name="persistence_stale">Another tab saved newer changes, so this tab won't save. Reloading discards its changes.</string>
+    <string name="persistence_reload_to_save">Reload to start saving</string>
     <string name="persistence_write_failed">Muviss couldn't save your latest changes in this browser. They will be lost if you reload or close this tab.</string>
     <string name="persistence_not_persisted">This browser can't save your library. Changes will be lost when you close this tab.</string>
     <!-- New-episode notifications on desktop and iOS (NotificationText.kt); Android's live in res/. -->

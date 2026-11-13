@@ -183,7 +183,7 @@ jobs:
       # and the web lane is deferred. These run it under the runner's own Node
       # against a faked IndexedDB (#292). Named files: Node 20 has no --test globs.
       - name: Web worker tests (snapshot writes)
-        run: node --test core/database/src/webWorker/test/snapshot-write.test.mjs
+        run: node --test core/database/src/webWorker/test/snapshot-write.test.mjs core/database/src/webWorker/test/snapshot-generation.test.mjs
 
       # Every jvmTest task in the build, resolved by name rather than listed.
       # This used to be a hand-maintained allowlist, which meant a module

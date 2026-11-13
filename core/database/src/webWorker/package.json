@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "main": "muviss-sqljs.worker.js",
+  "scripts": {
+    "test": "node --test test/snapshot-write.test.mjs test/snapshot-generation.test.mjs"
+  },
   "dependencies": {
     "sql.js": "1.15.2"
   }

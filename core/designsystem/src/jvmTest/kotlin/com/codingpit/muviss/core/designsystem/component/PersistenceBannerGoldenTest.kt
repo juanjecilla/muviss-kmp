@@ -25,7 +25,9 @@ import kotlin.test.Test
  */
 class PersistenceBannerGoldenTest {
 
-    private val readOnlyTab = "Muviss is open in another tab. Changes here won't be saved."
+    private val readOnlyTab = "Open in another tab. Changes made here won't be saved; reloading discards them."
+    private val staleTab = "Another tab saved newer changes, so this tab won't save. Reloading discards its changes."
+    private val reload = "Reload to start saving"
 
     @Test
     fun the_read_only_tab_warning_is_legible() = runComposeUiTest {
@@ -39,6 +41,17 @@ class PersistenceBannerGoldenTest {
         setContent { BannerSample(message = readOnlyTab, darkTheme = false) }
 
         assertMatchesGolden("persistence-banner-read-only-tab-light", tolerance = BANNER_TOLERANCE)
+    }
+
+    /**
+     * The out-of-date warning with its reload action (#62). The action is the only
+     * thing that changes the banner's shape, so it gets its own recording.
+     */
+    @Test
+    fun the_stale_tab_warning_offers_a_reload() = runComposeUiTest {
+        setContent { BannerSample(message = staleTab, actionLabel = reload, darkTheme = true) }
+
+        assertMatchesGolden("persistence-banner-stale-reload", tolerance = BANNER_TOLERANCE)
     }
 
     /**
@@ -64,10 +77,10 @@ class PersistenceBannerGoldenTest {
 }
 
 @Composable
-private fun BannerSample(message: String?, darkTheme: Boolean) {
+private fun BannerSample(message: String?, darkTheme: Boolean, actionLabel: String? = null) {
     MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface(width = 412.dp, height = 72.dp) {
-            PersistenceBanner(message = message)
+            PersistenceBanner(message = message, actionLabel = actionLabel)
         }
     }
 }
