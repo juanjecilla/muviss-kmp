@@ -68,6 +68,8 @@ class SqlDelightLocalDataEraser(
             database.triageDecisionQueries.deleteAll()
             database.triageSnoozeQueries.deleteAll()
             database.tasteProfileQueries.deleteAll()
+            // The Triage deck's saved position (#722): this device's deck, not a message to the others.
+            database.triageDeckCursorQueries.deleteAll()
             // Muted Genres decisions and the choice marker (ADR 0036): user data, not a cache.
             database.mutedGenreQueries.deleteAll()
             database.mutedGenreChoiceQueries.deleteAll()

@@ -190,6 +190,19 @@ fun TriageScreen(
         if (result == SnackbarResult.ActionPerformed) viewModel.onRetryFailedCommit() else viewModel.onFailedCommitDismissed()
     }
 
+    // A refill that failed with cards still on the deck: the deck stays, and the failure is said once, here. The
+    // action resumes the refill from where it stopped, so the cards already on the deck are kept.
+    LaunchedEffect(state.refillFailure) {
+        val failure = state.refillFailure ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = failure.resolveAsync(),
+            actionLabel = getString(Res.string.action_retry),
+            duration = SnackbarDuration.Long,
+        )
+        viewModel.onRefillFailureDismissed()
+        if (result == SnackbarResult.ActionPerformed) viewModel.onKeepLooking()
+    }
+
     // The deck takes focus as soon as it has something to show, so arrow keys
     // work without a click first — the primary input on desktop and web, and
     // the accessible path everywhere. Keyed on the first card rather than on

@@ -144,13 +144,21 @@ class LoadDeckUseCase(
     private val snoozes: TriageSnoozeRepository,
     private val collectionApi: CollectionApi,
     private val clock: AppClock,
+    private val resumption: DeckResumption = DeckResumption.NONE,
 ) {
     suspend operator fun invoke(
         filter: DeckFilter,
         cursor: DeckCursor,
         alreadyShown: Set<MediaId> = emptySet(),
         placement: SnoozePlacement = SnoozePlacement.DEFAULT,
-    ): Result<DeckBatch> {
+    ): Result<DeckBatch> = open(placement).next(filter, cursor, alreadyShown, DeckLoader.DEFAULT_BATCH_SIZE)
+
+    /**
+     * Reads what the deck must not offer and which Snoozes have come due, once, for a whole refill (#722).
+     * A refill reads many batches; re-reading the decided and collection sets for each one is what made a
+     * heavy user's refill slow.
+     */
+    suspend fun open(placement: SnoozePlacement = SnoozePlacement.DEFAULT): DeckSession {
         val decided = repository.observeDecidedIds().first()
         val inCollection = collectionApi.observeSummaries().first().map { it.mediaId }.toSet()
         val settled = decided + inCollection
@@ -168,13 +176,53 @@ class LoadDeckUseCase(
         // are handed to the loader as a second source.
         val pending = snoozes.observeSnoozedIds().first() - returning.map { it.mediaId }.toSet()
 
-        return loader.load(
-            filter = filter,
-            cursor = cursor,
-            excluded = settled + pending + alreadyShown,
-            dueSnoozes = DueSnoozes(cards = returning.map { it.toSummary() }, placement = placement),
+        return DeckSession(
+            loader = loader,
+            excluded = settled + pending,
+            returning = returning.map { it.toSummary() },
+            placement = placement,
         )
     }
+
+    /** Where the deck stood for [filter] when this device last saved it, rewound per [DeckResume]; page 1 otherwise. */
+    suspend fun restoreCursor(filter: DeckFilter): DeckCursor {
+        val saved = resumption.cursors.read(DeckResume.key(filter, resumption.language.current()))
+        return DeckResume.restore(saved, clock.nowEpochMs())
+    }
+
+    /**
+     * Saves where the deck stands. [unactedMovie] and [unactedTv] are the earliest pages still holding a card
+     * the person has not acted on, or null when none does (see [SavedDeckCursor]).
+     */
+    suspend fun checkpoint(filter: DeckFilter, cursor: DeckCursor, unactedMovie: Int?, unactedTv: Int?) {
+        val saved = DeckResume.checkpoint(cursor, unactedMovie, unactedTv, clock.nowEpochMs())
+        resumption.cursors.write(DeckResume.key(filter, resumption.language.current()), saved)
+    }
+}
+
+/**
+ * One refill's view of the catalogue: the exclusions and due Snoozes read once by [LoadDeckUseCase.open].
+ * Every batch the refill asks for shares them, and a Snooze retires or re-enters once, not once per batch.
+ */
+class DeckSession internal constructor(
+    private val loader: DeckLoader,
+    private val excluded: Set<MediaId>,
+    private val returning: List<MediaSummary>,
+    private val placement: SnoozePlacement,
+) {
+    /** [alreadyShown] carries the cards the refill has handed out so far; a returning Snooze already shown is in it. */
+    suspend fun next(
+        filter: DeckFilter,
+        cursor: DeckCursor,
+        alreadyShown: Set<MediaId>,
+        wanted: Int,
+    ): Result<DeckBatch> = loader.load(
+        filter = filter,
+        cursor = cursor,
+        excluded = excluded + alreadyShown,
+        dueSnoozes = DueSnoozes(cards = returning, placement = placement),
+        wanted = wanted,
+    )
 }
 
 /**
