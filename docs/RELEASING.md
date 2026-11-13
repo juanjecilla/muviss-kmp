@@ -490,12 +490,20 @@ with no `--write` to preview). One file per listing locale,
   `web`, `desktop`), and anything paid or remotely dark (sync, co-watch, the own
   TMDB key), which never appear in public copy. Phrase a `feat`/`fix` subject
   as something a user would recognise; it is the store text.
-  - **Opting a commit out.** A commit whose body ends in a `Notes: none` trailer
-    (key and value in any case, anywhere in the trailer block) is left out of
-    both the English list and the Spanish count. A `Notes: none` line in prose
-    above the last paragraph does not count. It is for a `feat` with nothing a
-    user can see yet; the version bump still follows the type, so this does not
-    stop a release being a minor one.
+  - **Opting a PR out.** A PR labelled `no-notes` is left out of both the English
+    list and the Spanish count, by the PR number that ends its squash subject
+    (`#572`; one `gh pr list --label no-notes` per run). It is for a `feat` with
+    nothing a user can see yet. A `feat` labelled `no-landing` that changes
+    `feature/` or `app/` must carry `no-notes` too (`landing-guard.sh`). Without
+    a token the label cannot be read: the notes still write, with a notice, and
+    only the trailer below counts. A read that fails is a warning.
+  - **Opting a commit out by trailer (before #572).** A commit whose body ends
+    in a `Notes: none` trailer (key and value in any case, anywhere in the
+    trailer block) is still left out of both lists, so commits already on a
+    release branch keep their meaning. A `Notes: none` line in prose above the
+    last paragraph does not count. Neither opt-out changes the version bump: a
+    `feat` still makes the next release a minor, which is kept on purpose (the
+    version follows the commit type, ADR 0025).
 - **Spanish (and any other non-English locale)** gets one sentence that counts
   the changes ("Muviss 1.2.0 trae 3 novedades y 1 corrección de errores."): a
   commit subject cannot be translated here.

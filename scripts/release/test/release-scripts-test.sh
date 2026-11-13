@@ -71,10 +71,12 @@ r="$(new_repo)"; commit "$r" "chore: init"; base="$(git -C "$r" rev-parse HEAD)"
 mkdir -p "$r/feature/x"; echo a >"$r/feature/x/A.kt"; git -C "$r" add -A; commit "$r" "feat: a"
 guard() { (cd "$r" && TITLE="$1" LABELS="$2" BASE_SHA="$base" HEAD_SHA=HEAD "$SCRIPTS/landing-guard.sh" >/dev/null 2>&1); echo $?; }
 expect_eq "feat touching feature/ only fails" "$(guard 'feat(x): new' '')" "1"
-expect_eq "no-landing label passes" "$(guard 'feat(x): new' 'bug,no-landing')" "0"
 expect_eq "fix PR passes" "$(guard 'fix(x): new' '')" "0"
 mkdir -p "$r/website/src"; echo b >"$r/website/src/b.ts"; git -C "$r" add -A; commit "$r" "feat: site"
 expect_eq "feat touching website/ too passes" "$(guard 'feat(x): new' '')" "0"
+# #572: a no-landing feat is invisible, so it must not reach the notes either.
+expect_eq "no-landing without no-notes fails for a feature change" "$(guard 'feat(x): new' 'bug,no-landing')" "1"
+expect_eq "no-landing and no-notes pass" "$(guard 'feat(x): new' 'bug,no-landing,no-notes')" "0"
 
 echo "check-release-notes.sh"
 tmp="$(mktemp -d)"; mkdir -p "$tmp/scripts/release" "$tmp/fastlane/metadata/android/en-US" "$tmp/fastlane/metadata/android/es-ES" "$tmp/fastlane/release-notes/v1.0.0"
@@ -524,6 +526,39 @@ if grep -q -- 'another trailer' <<<"$out"; then fail "Notes: none among other tr
 if grep -q -- 'invisible fix' <<<"$out"; then fail "a Notes: none fix is listed: $out"; else pass "a Notes: none fix is absent"; fi
 if grep -q '^Muviss 1.1.0 trae 3 novedades y mejoras.$' <<<"$out"; then
   pass "Spanish count matches the English list (opted-out commits not counted)"; else fail "Spanish count: $out"; fi
+
+# #572: the no-notes label is read by PR number, from the squash subject. The fake gh
+# answers `pr list --label no-notes` with FAKE_NO_NOTES, and fails when FAKE_GH_FAIL is set.
+nbin="$(mktemp -d)"
+cat >"$nbin/gh" <<'FAKEGH'
+#!/bin/bash
+echo "gh $*" >>"$FAKE_GH_LOG"
+if [ -n "${FAKE_GH_FAIL:-}" ]; then exit 1; fi
+case "$*" in
+  "pr list"*no-notes*) printf '%s\n' ${FAKE_NO_NOTES:-} ;;
+esac
+exit 0
+FAKEGH
+chmod +x "$nbin/gh"
+FAKE_GH_LOG="$(mktemp)"; export FAKE_GH_LOG
+n="$(new_repo)"
+mkdir -p "$n/scripts/release" "$n/fastlane/metadata/android/en-US" "$n/fastlane/metadata/android/es-ES"
+cp "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$n/scripts/release/"
+git -C "$n" add -A; commit "$n" "chore: init"; git -C "$n" tag -a v1.0.0 -m t
+commit "$n" "feat(lists): a visible feature (#902)"
+commit "$n" "feat(triage): a domain layer with no screen yet (#901)"
+commit "$n" "fix(search): a visible fix (#903)"
+nrn() { (cd "$n" && PATH="$nbin:$PATH" GH_TOKEN=t GH_REPO=muviss/test FAKE_NO_NOTES="${1:-}" scripts/release/release-notes.sh 1.1.0 2>/dev/null); }
+out="$(nrn 901)"
+if grep -q -- 'domain layer' <<<"$out"; then fail "a no-notes PR is listed: $out"; else pass "a PR labelled no-notes is absent, read by its squash number"; fi
+if grep -q -- 'A visible feature' <<<"$out" && grep -q -- 'A visible fix' <<<"$out"; then pass "the other PRs are listed"; else fail "other PRs: $out"; fi
+expect_eq "the label is read once, with the repo named" "$(grep -c 'pr list --repo muviss/test --label no-notes' "$FAKE_GH_LOG")" "1"
+: >"$FAKE_GH_LOG"; out="$(nrn "")"
+if grep -q -- 'domain layer' <<<"$out"; then pass "without the label the PR is listed (trailer only)"; else fail "listed without label: $out"; fi
+out="$(cd "$n" && PATH="$nbin:$PATH" FAKE_GH_FAIL=1 GH_TOKEN=t GH_REPO=muviss/test scripts/release/release-notes.sh 1.1.0 2>/dev/null)"
+expect_eq "a failed label read still writes the notes (a warning, not an error)" "$(grep -c 'visible feature' <<<"$out")" "1"
+out="$(cd "$n" && PATH="$nbin:$PATH" env -u GH_TOKEN -u GH_REPO scripts/release/release-notes.sh 1.1.0 2>"$n/err.txt")"
+if grep -q 'no-notes label is not read' "$n/err.txt"; then pass "no token says so on stderr"; else fail "no token notice: $(cat "$n/err.txt")"; fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
