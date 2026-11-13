@@ -146,6 +146,14 @@ UPDATE collectionEntry
 SET deleted = 1, updatedAtEpochMs = :now, isDirty = 1
 WHERE mediaId = :mediaId;
 
+-- Undoing a removal (#721): brings the soft-deleted row back exactly as it was. Unlike `upsert`, it keeps the
+-- stored Snapshot counts and never rebuilds them from the details on screen, which can be stale offline and
+-- would let seen exceed aired.
+undelete:
+UPDATE collectionEntry
+SET deleted = 0, updatedAtEpochMs = :now, isDirty = 1
+WHERE mediaId = :mediaId AND deleted = 1;
+
 selectDirty:
 SELECT *
 FROM collectionEntry
@@ -162,6 +170,11 @@ clearDirty:
 UPDATE collectionEntry
 SET isDirty = 0
 WHERE mediaId = :mediaId AND updatedAtEpochMs = :pushedAt;
+
+-- How many episodes of a title the user has ticked. The insert path floors its counts at this
+-- (see `SqlDelightCollectionRepository.upsertSnapshot`), the same floor `updateSnapshot` applies.
+seenCountFor:
+SELECT COUNT(*) FROM episodeProgress WHERE mediaId = :mediaId AND seen = 1;
 
 -- The snapshot half of a refresh (EPIC 39, ADR 0020): what TMDB says about a
 -- title, and nothing the user said. It touches neither `updatedAtEpochMs` nor

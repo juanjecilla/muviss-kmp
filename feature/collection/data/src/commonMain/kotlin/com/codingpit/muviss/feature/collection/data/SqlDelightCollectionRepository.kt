@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.collection.data
 
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
@@ -61,6 +62,10 @@ class SqlDelightCollectionRepository(
             return@withContext
         }
         val now = clock.nowEpochMs()
+        // A removed title keeps its ticks, so the counts it comes back with are floored at them, as
+        // `updateSnapshot` does: the provider can report fewer aired episodes than this device already
+        // ticked (a stale or partial catalog), and seen > aired throws in WatchProgress.
+        val ticked = queries.seenCountFor(id).awaitAsOne()
         queries.upsert(
             mediaId = id,
             mediaType = details.type.wireName,
@@ -68,8 +73,8 @@ class SqlDelightCollectionRepository(
             posterUrl = details.summary.posterUrl,
             releaseYear = details.summary.year?.toLong(),
             productionStatus = details.productionStatus.name,
-            totalEpisodes = details.totalEpisodeCount().toLong(),
-            airedEpisodes = details.airedEpisodeCount(clock.todayEpochDay()).toLong(),
+            totalEpisodes = maxOf(details.totalEpisodeCount().toLong(), ticked),
+            airedEpisodes = maxOf(details.airedEpisodeCount(clock.todayEpochDay()).toLong(), ticked),
             favorite = existing?.favorite ?: false,
             genres = details.genres.joinToString(","),
             runtimeMinutes = details.estimatedRuntimeMinutes()?.toLong(),
@@ -115,6 +120,11 @@ class SqlDelightCollectionRepository(
 
     override suspend fun remove(mediaId: MediaId) = withContext(dispatchers.io) {
         queries.softDelete(now = clock.nowEpochMs(), mediaId = mediaId.toString())
+        Unit
+    }
+
+    override suspend fun restore(mediaId: MediaId) = withContext(dispatchers.io) {
+        queries.undelete(now = clock.nowEpochMs(), mediaId = mediaId.toString())
         Unit
     }
 

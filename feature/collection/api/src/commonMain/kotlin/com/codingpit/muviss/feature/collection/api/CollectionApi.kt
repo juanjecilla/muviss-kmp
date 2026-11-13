@@ -36,6 +36,13 @@ interface CollectionApi {
     /** Soft-deletes the entry; a no-op if it was never saved. */
     suspend fun remove(mediaId: MediaId)
 
+    /**
+     * Undoes a [remove] (#721): the entry comes back with its favorite, rating, note, add date and stored
+     * Snapshot, which a plain [add] would reset. A no-op for a title that is not removed. Defaulted so
+     * fakes that never undo a removal keep compiling.
+     */
+    suspend fun restore(mediaId: MediaId) = Unit
+
     suspend fun setFavorite(mediaId: MediaId, favorite: Boolean)
 
     /** Per-show opt-out from EPIC 5's new-episode notifications, independent of the global toggle in Settings. */
