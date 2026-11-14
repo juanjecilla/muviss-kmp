@@ -37,9 +37,11 @@ struct WatchNextView: View {
 
     var body: some View {
         if entry.rows.isEmpty {
+            // Nothing in progress is the Pick Session's job (EPIC 51, #700): the whole empty state opens it.
             EmptyStateView(
                 title: "Nothing in progress",
-                message: "Start watching something and it will show up here."
+                message: "Start watching something and it will show up here.",
+                opensNextPick: true
             )
         } else if entry.rows.allSatisfy({ $0.episodeId == nil }) && entry.justTicked == nil {
             // The upgrade case ADR 0015 accepts: titles are in progress but
@@ -60,9 +62,14 @@ struct WatchNextView: View {
 
 /// `message` rather than `body`: a stored `body` property would collide with
 /// SwiftUI's own `var body: some View`.
+///
+/// `opensNextPick` makes the whole state a link to the Pick Session, with a
+/// visible "What's next?" that says so. The URL comes from `IosWidgetBridge`,
+/// which owns the scheme, so this file names no link of its own.
 private struct EmptyStateView: View {
     let title: LocalizedStringKey
     let message: LocalizedStringKey
+    var opensNextPick: Bool = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -73,8 +80,18 @@ private struct EmptyStateView: View {
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(MuvissWidgetColors.onSurfaceVariant)
+            if opensNextPick {
+                Text("What's next?")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(MuvissWidgetColors.onPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(MuvissWidgetColors.primary, in: Capsule())
+                    .padding(.top, 6)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .widgetURL(opensNextPick ? URL(string: IosWidgetBridge.shared.nextPickUrl) : nil)
     }
 }
 

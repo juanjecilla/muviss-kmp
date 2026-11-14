@@ -55,7 +55,7 @@ export const es: Dictionary = {
     items: [
       { icon: "tv", title: "¿Qué sigue?", body: "¿Has terminado algo, o no sabes qué ver? Unas pocas preguntas dan con tu próxima elección, de tu lista o de títulos nuevos, y te dicen por qué. Con conexión, también puede buscar algo parecido a lo que acabas de terminar. Sin conexión, elige de tu lista. Elige cuántas preguntas hace, si muestra una recomendación o una lista corta, o apaga el aviso, en Ajustes. También puedes decir ahí lo que te gusta: géneros, formatos, servicios y compañía." },
       { icon: "search", title: "Silencia lo que no ves", body: "Los programas de entrevistas, las noticias y la telerrealidad no aparecen por defecto en Descubrir, en tu mazo de triaje ni en «¿Qué sigue?». Elige en Ajustes qué géneros silenciar, o vuelve a verlos con un toque." },
-      { icon: "search", title: "Busca y descubre", body: "Cualquier película o serie de TMDB, además de Para ti, Populares y géneros." },
+      { icon: "search", title: "Busca y descubre", body: "Cualquier película o serie de TMDB, además de Para ti, Populares y géneros. Las listas de géneros y lo popular se abren sin conexión con lo último que viste, y avisan cuando están desactualizados." },
       { icon: "tv", title: "Dónde verla", body: "Qué plataformas, alquileres y tiendas tienen cada título en tu país." },
       { icon: "grid", title: "Tu biblioteca", body: "Filtra por estado o favoritos y ordena por fecha, nota o título." },
       { icon: "heart", title: "Favoritos", body: "Marca lo que te encanta, sin importar cuánto llevas visto." },
@@ -64,7 +64,7 @@ export const es: Dictionary = {
       { icon: "repeat", title: "Historial de revisionados", body: "¿La has visto tres veces? Muviss recuerda cada visionado y cuándo fue." },
       { icon: "star", title: "Puntuaciones y notas", body: "Puntúa títulos y guarda una nota privada en cada uno." },
       { icon: "bell", title: "Avisos de nuevos episodios", body: "Te avisa cuando sale un episodio nuevo de una serie que sigues, solo si lo activas. Desactivado hasta que lo hagas.", platforms: "Android · iOS" },
-      { icon: "widget", title: "Widgets", body: "Tu siguiente episodio en la pantalla de inicio, con marcar (que te dice qué episodio has marcado) y deshacer.", platforms: "Android · iOS" },
+      { icon: "widget", title: "Widgets", body: "Tu siguiente episodio en la pantalla de inicio, con marcar (que te dice qué episodio has marcado) y deshacer. Sin nada en curso, tócalo para abrir ¿Qué sigue? y elegir algo.", platforms: "Android · iOS" },
       { icon: "import", title: "Importa", body: "Trae tu historial desde Trakt, TV Time o un archivo CSV." },
       { icon: "export", title: "Copia y restaura", body: "Tus datos son tuyos: haz una copia en un archivo, restáurala en cualquier dispositivo o bórralo todo." },
       { icon: "export", title: "Copia del dispositivo", body: "Opcionalmente, deja que la copia de iCloud o Google incluya tu biblioteca, para que un teléfono nuevo siga por donde lo dejaste. Desactivada hasta que la actives.", platforms: "Android · iOS" },
