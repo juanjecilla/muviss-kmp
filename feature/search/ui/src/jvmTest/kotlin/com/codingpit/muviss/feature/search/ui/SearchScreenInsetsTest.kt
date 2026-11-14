@@ -12,11 +12,13 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.TestSafeAreaInsets
 import com.codingpit.muviss.core.testing.assertMatchesGolden
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
-import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.NoDiscoverCache
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.models.Genre
@@ -114,11 +116,11 @@ private fun SearchUnderTest(insets: WindowInsets, darkTheme: Boolean = false) {
     val viewModel = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
-        GenresUseCase(repo),
         RecommendationsUseCase(repo),
         FakeSearchCollectionApi(),
         FakeTriageApi(),
         FakeMutingApi(),
+        DiscoverFeed(repo, NoDiscoverCache, FakeClock(epochMs = 0L)),
     )
     // Pinned, never left to default: `MuvissTheme`'s `darkTheme` reads
     // `isSystemInDarkTheme()`, i.e. the *host's* setting, so a golden recorded
