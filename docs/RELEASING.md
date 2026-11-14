@@ -436,7 +436,10 @@ the schedule, the gates and where a fix goes.
   PR's, not the branch head's as the Sunday step judges them (unverified on a live
   PR). The head the approval was read on is pinned: both the merge and the union
   are refused if the release branch has moved since. The script it runs is this
-  run's own commit's copy, not the release branch's.
+  run's own commit's copy, not the release branch's. Every context main's rules
+  require must be green on that head, read from the rules when the merge is
+  judged, so a PR that conflicted from the moment it opened is resolved by hand.
+  The Sunday step still judges the branch head's runs, a gap tracked in #854.
 - **Rehearse the Sunday merge without moving main (#732).** Dispatch
   `release-promote.yml` with `rehearse` and `version` (`rehearse_push` also puts the
   merge commit on `rehearsal/X.Y.Z` as the App, then deletes it). It prints the

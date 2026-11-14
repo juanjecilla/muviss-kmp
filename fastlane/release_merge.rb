@@ -14,6 +14,7 @@
 # The manual path (ship-release.yml, #717) and the Sunday rehearsal (release-promote.yml,
 # #732) use the same plumbing through the command line at the bottom of this file, so
 # neither has its own copy of the rule.
+require "json"
 require "open3"
 require "tmpdir"
 
@@ -227,10 +228,78 @@ module ReleaseMerge
     end
   end
 
+  # The checks a merge into main needs green on its head (#793). The contexts are read from main's rules
+  # when the merge is judged, so no second list exists to drift from them. A context is green when its
+  # newest completed, non-cancelled run passed and no status on the head says otherwise; one with no such
+  # run (not reported, still running, only cancelled) is not green. A run that failed and a status that
+  # passed do not add up to green: any source that says no keeps it unmet.
+  module RequiredChecks
+    GREEN = %w[success skipped neutral].freeze
+    SHA = /\A[0-9a-f]{40}\z/
+    SLUG = %r{\A[\w.-]+/[\w.-]+\z}
+
+    # The rules or the check list could not be read, so nothing can be judged. Holds the merge.
+    class Unreadable < StandardError; end
+
+    # The real reader: `gh api ARGS`, the token from the environment. Returns [stdout, exit status].
+    RUNNER = lambda do |*args|
+      out, _err, status = Open3.capture3("gh", "api", *args)
+      [out, status.exitstatus]
+    end
+
+    module_function
+
+    # The required contexts of `slug` that are not green on `sha`. Empty when every one is.
+    def unmet(sha:, slug:, gh: RUNNER)
+      raise Unreadable, "not a commit sha: #{sha.inspect}" unless SHA.match?(sha.to_s)
+      raise Unreadable, "not a repository: #{slug.inspect}" unless SLUG.match?(slug.to_s)
+
+      required = required_contexts(slug, gh)
+      runs = read(gh, "repos/#{slug}/commits/#{sha}/check-runs?filter=all&per_page=100",
+                  "--paginate", "--jq", ".check_runs[]|{id,name,status,conclusion}")
+      statuses = read(gh, "repos/#{slug}/commits/#{sha}/statuses?per_page=100",
+                      "--paginate", "--jq", ".[]|{context,state}")
+      missing(required, runs, statuses)
+    end
+
+    # The contexts the rules of main require. None readable is an error, not an empty list.
+    def required_contexts(slug, gh)
+      names = read(gh, "repos/#{slug}/rules/branches/main", "--paginate", "--jq",
+                   '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[]?.context').uniq
+      raise Unreadable, "main requires no status checks, so the merge cannot be judged" if names.empty?
+
+      names
+    end
+
+    # Each line of the reply, parsed when it is an object. A non-zero exit keeps gh's stderr out of the message.
+    def read(gh, *args)
+      out, code = gh.call(*args)
+      raise Unreadable, "gh api exited #{code} reading #{args.first.to_s.sub(/\?.*/, '')}" unless code.zero?
+
+      out.lines.map(&:strip).reject(&:empty?).map { |line| line.start_with?("{") ? JSON.parse(line) : line }
+    rescue JSON::ParserError
+      raise Unreadable, "an unreadable reply from gh api for #{args.first.to_s.sub(/\?.*/, '')}"
+    end
+
+    def missing(required, runs, statuses)
+      required.reject do |name|
+        verdicts = []
+        latest = runs.select { |r| r["name"] == name && r["status"] == "completed" && r["conclusion"] != "cancelled" }
+                     .max_by { |r| r["id"].to_i }
+        verdicts << GREEN.include?(latest["conclusion"]) if latest
+        status = statuses.find { |s| s["context"] == name }
+        verdicts << (status["state"] == "success") if status
+        verdicts.any? && verdicts.all?
+      end
+    end
+  end
+
   # The command line the workflows call. Run it from the checkout, with origin
   # reachable. Only `union` and `rehearse --push` write to origin, as whoever the
   # checkout's git credentials are (the release App, in the workflows).
   #
+  #   release_merge.rb unmet SHA                  exit 0 when every context main's rules require is green on SHA;
+  #                                               exit 2 naming the ones that are not; 1 when they cannot be read
   #   release_merge.rb conflicts BRANCH           the paths BRANCH conflicts on with origin/main;
   #                                               exit 2 when one is not allow-listed
   #   release_merge.rb union BRANCH --expect-head SHA
@@ -244,16 +313,19 @@ module ReleaseMerge
   module Cli
     HELD = 2
     CLEAN_IN_GIT = 3
-    USAGE = "usage: release_merge.rb conflicts BRANCH | union BRANCH --expect-head SHA | rehearse VERSION [--push]".freeze
+    USAGE = "usage: release_merge.rb unmet SHA | conflicts BRANCH | union BRANCH --expect-head SHA | rehearse VERSION [--push]".freeze
     # The names the workflows pass. They become refspecs and ref names, so anything else is refused here.
     BRANCH_NAME = %r{\A(release|hotfix)/\d+\.\d+\.\d+\z}
     VERSION_NAME = /\A\d+\.\d+\.\d+\z/
 
     module_function
 
-    def run(argv, repo:, out:, err:)
+    def run(argv, repo:, out:, err:, slug: ENV["GITHUB_REPOSITORY"], gh: RequiredChecks::RUNNER)
       command, *args = argv
       case command
+      when "unmet"
+        sha = args.fetch(0) { return usage(err) }
+        return unmet(sha, slug, gh, out, err)
       when "conflicts" then conflicts(repo, branch_arg(args) { return usage(err) }, out, err)
       when "union"
         expect = option(args, "--expect-head")
@@ -266,7 +338,7 @@ module ReleaseMerge
         rehearse(repo, version, args.include?("--push"), out, err)
       else usage(err)
       end
-    rescue Unresolvable, MainMoved, HeadMoved, RuntimeError => e
+    rescue Unresolvable, MainMoved, HeadMoved, RequiredChecks::Unreadable, RuntimeError => e
       err.puts "release_merge: #{e.message}"
       1
     end
@@ -274,6 +346,17 @@ module ReleaseMerge
     def usage(err)
       err.puts USAGE
       64
+    end
+
+    # 0 when every required context of main is green on sha; HELD (2) naming the ones that are not,
+    # one per line on stdout and in the message on stderr.
+    def unmet(sha, slug, gh, out, err)
+      names = RequiredChecks.unmet(sha: sha, slug: slug, gh: gh)
+      return 0 if names.empty?
+
+      names.each { |name| out.puts name }
+      err.puts "held: required checks not green on #{sha}: #{names.join(', ')}"
+      HELD
     end
 
     # The branch argument when it is a release/X.Y.Z or hotfix/X.Y.Z name; otherwise the block's value (usage).
