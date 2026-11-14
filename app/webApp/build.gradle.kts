@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    // Its licensee reports (JS and Wasm) are part of About > Licenses (#615).
+    id("muviss.licensee")
 }
 
 kotlin {

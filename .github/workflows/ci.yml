@@ -313,9 +313,11 @@ jobs:
       # every PR (debug-signed without the keystore, which is fine here) and
       # fails if R8 wrote no mapping or reported missing classes. The licence
       # allow-list (licensee) is part of `check`, which nothing ran either.
-      # verifyOssLicenses (#562, #616) fails when About > Licenses is missing an
-      # entry for an artifact the release report lists, or keeps one for an
-      # artifact the report no longer lists.
+      # verifyOssLicenses (#562, #616, #615) fails when About > Licenses is missing an
+      # entry for an artifact a shipped target's licensee report lists (the union of
+      # the Android, desktop, web and iOS reports), or keeps one no report lists.
+      # This job runs on Linux, so it is also the check that the list does not
+      # depend on the machine that generated it.
       #
       # The bundle and its two verify tasks are the RC's own command
       # (android-release-build.yml). They are here because the 1.1.0 RC failed

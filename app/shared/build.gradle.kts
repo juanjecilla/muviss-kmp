@@ -3,6 +3,8 @@ import java.util.Properties
 
 plugins {
     id("muviss.kmp.compose")
+    // Its licensee report is the iOS framework's runtime graph (About > Licenses, #615).
+    id("muviss.licensee")
 }
 
 // Sentry DSN is read from local.properties (gitignored) or the SENTRY_DSN env
