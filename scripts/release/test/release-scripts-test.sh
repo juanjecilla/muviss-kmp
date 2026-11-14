@@ -365,6 +365,23 @@ git -C "$f" add -A; commit "$f" "chore(release): edit a 2.5.0 locale"; EDSHA="$(
 : >"$FAKE_GH_LOG"; out="$(ff forward 24 release/2.5.0 "$EDSHA" release/2.6.0 2>/dev/null)"
 expect_eq "an edit carried onto a note the target renamed forwards nothing" "$out" "forward #24 to release/2.6.0: nothing left once the other version's release notes are skipped"
 
+# #718: the frozen changelog (docs/changelog/X.Y.Z.md, #711) is release-only like
+# the notes, so a hand edit to it forwards to develop with its content, and another
+# version's changelog is left out of a release line, as its notes are.
+: >"$FAKE_GH_LOG"
+git -C "$f" switch -q -c release/3.1.0 develop; mkdir -p "$f/docs/changelog"
+echo "Generated changelog." >"$f/docs/changelog/3.1.0.md"; git -C "$f" add -A; commit "$f" "chore(release): cut the 3.1.0 changelog"
+echo "Hand-written changelog for 3.1.0." >"$f/docs/changelog/3.1.0.md"; git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 3.1.0 changelog"
+CHLSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/3.1.0; git -C "$f" switch -q develop
+expect_eq "a changelog-only hand edit forwards to develop" "$(ff forward 25 release/3.1.0 "$CHLSHA" develop)" "forward #25 to develop: opened (clean)"
+expect_eq "the changelog is on the forward branch with its content" "$(git -C "$fo" show forward/pr-25-to-develop:docs/changelog/3.1.0.md)" "Hand-written changelog for 3.1.0."
+expect_eq "its PR says the notes came with the fix" "$(grep -c 'release notes' "$FAKE_GH_LOG")" "1"
+
+git -C "$f" switch -q -c release/3.2.0 develop; git -C "$f" push -q origin release/3.2.0; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; out="$(ff forward 26 release/3.1.0 "$CHLSHA" release/3.2.0 2>/dev/null)"
+expect_eq "another version's changelog forwards nothing to a newer line" "$out" "forward #26 to release/3.2.0: nothing left once the other version's release notes are skipped"
+expect_eq "and no branch is pushed for it" "$(git -C "$fo" rev-parse --verify -q forward/pr-26-to-release-3.2.0 >/dev/null && echo pushed)" ""
+
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'

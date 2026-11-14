@@ -54,19 +54,32 @@ sealed interface WatchNextWidgetUi {
     /**
      * Nothing to show, with the reason — the two empties are genuinely
      * different situations and telling them apart is the difference between
-     * a widget that looks broken and one that tells you what to do.
+     * a widget that looks broken and one that tells you what to do. Each one
+     * also names where tapping it goes, see [EmptyAction].
      */
-    enum class Empty : WatchNextWidgetUi {
-        /** No show is in progress. Adding one is an app-side action. */
-        NOTHING_IN_PROGRESS,
+    enum class Empty(val action: EmptyAction) : WatchNextWidgetUi {
+        /**
+         * No show is in progress. Starting one is the Pick Session's job (EPIC 51), so the
+         * empty state is the way into it rather than a dead end.
+         */
+        NOTHING_IN_PROGRESS(EmptyAction.OPEN_NEXT_PICK),
 
         /**
          * Titles are in progress but no episode can be named for any of them,
          * which after an upgrade means the catalog table is still empty (ADR
          * 0013 ships no backfill). Opening the app once fills it.
          */
-        NO_CATALOG_YET,
+        NO_CATALOG_YET(EmptyAction.OPEN_APP),
     }
+}
+
+/** Where tapping an empty widget goes. */
+enum class EmptyAction {
+    /** The Pick Session, through `muviss://next-pick` (`MuvissDeepLinks`). */
+    OPEN_NEXT_PICK,
+
+    /** The app's start screen, as tapping any part of the widget always has. */
+    OPEN_APP,
 }
 
 /**

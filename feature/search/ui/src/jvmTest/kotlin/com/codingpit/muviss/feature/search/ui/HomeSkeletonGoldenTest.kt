@@ -3,8 +3,11 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.LayoutDirection
 import com.codingpit.muviss.core.designsystem.component.SkeletonHost
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
@@ -44,10 +47,23 @@ class HomeSkeletonGoldenTest {
         assertMatchesGolden("home-skeleton-still", tolerance = HOME_TOLERANCE)
     }
 
-    private fun ComposeUiTest.loadingHome(darkTheme: Boolean, animate: Boolean) {
+    // An RTL Home at a quarter of a sweep, while the band is still on the right of the screen: the band travels
+    // right to left (#746), so its place here mirrors the LTR frame at the same time.
+    @Test
+    fun the_loading_home_under_rtl_sweeps_the_band_from_the_right() = runComposeUiTest {
+        loadingHome(darkTheme = false, animate = true, rtl = true, sweepMillis = RTL_SWEEP_MILLIS)
+        assertMatchesGolden("home-skeleton-rtl", tolerance = HOME_TOLERANCE)
+    }
+
+    private fun ComposeUiTest.loadingHome(
+        darkTheme: Boolean,
+        animate: Boolean,
+        rtl: Boolean = false,
+        sweepMillis: Long = FIXED_SWEEP_MILLIS,
+    ) {
         mainClock.autoAdvance = false
-        setContent { LoadingHomeUnderTest(darkTheme, animate) }
-        mainClock.advanceTimeBy(FIXED_SWEEP_MILLIS, ignoreFrameDuration = true)
+        setContent { LoadingHomeUnderTest(darkTheme, animate, rtl) }
+        mainClock.advanceTimeBy(sweepMillis, ignoreFrameDuration = true)
         waitForIdle()
     }
 }
@@ -55,11 +71,14 @@ class HomeSkeletonGoldenTest {
 /** The tolerance of the Home goldens that carry text (see the class KDoc). */
 private const val HOME_TOLERANCE = 0.04
 
-/** About 0.7 of a sweep in: the highlight band is on the middle of the screen, not at an edge. */
+/** Half a sweep in (the sweep is 1400 ms): the highlight band is on the middle of the screen, not at an edge. */
 private const val FIXED_SWEEP_MILLIS = 700L
 
+/** A quarter of a sweep in, so the RTL band is clearly on the right half of the screen. */
+private const val RTL_SWEEP_MILLIS = 350L
+
 @Composable
-private fun LoadingHomeUnderTest(darkTheme: Boolean, animate: Boolean) {
+private fun LoadingHomeUnderTest(darkTheme: Boolean, animate: Boolean, rtl: Boolean) {
     // The local cards are real; the network sections are still out.
     val state = SearchUiState(
         loading = true,
@@ -68,16 +87,19 @@ private fun LoadingHomeUnderTest(darkTheme: Boolean, animate: Boolean) {
         hasMuted = true,
         animateSkeleton = animate,
     )
+    val direction = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
     GoldenSurface {
-        MuvissTheme(darkTheme = darkTheme) {
-            SkeletonHost(animate = animate) {
-                DiscoverBrowse(
-                    state,
-                    onSelectGenre = { _: Genre, _: MediaType -> },
-                    onOpenDetail = { _: MediaId -> },
-                    onOpenTriage = {},
-                    muted = MutedChip(available = true),
-                )
+        CompositionLocalProvider(LocalLayoutDirection provides direction) {
+            MuvissTheme(darkTheme = darkTheme) {
+                SkeletonHost(animate = animate) {
+                    DiscoverBrowse(
+                        state,
+                        onSelectGenre = { _: Genre, _: MediaType -> },
+                        onOpenDetail = { _: MediaId -> },
+                        onOpenTriage = {},
+                        muted = MutedChip(available = true),
+                    )
+                }
             }
         }
     }
