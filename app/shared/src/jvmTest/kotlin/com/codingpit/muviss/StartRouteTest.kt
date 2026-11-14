@@ -30,4 +30,11 @@ class StartRouteTest {
         // The introduction stays pending for the next plain launch: nothing marks it completed here.
         assertEquals(SearchRoute, startRouteFor(completed = false, hasDeepLink = true))
     }
+
+    @Test
+    fun a_next_pick_widget_launch_on_a_fresh_install_starts_on_search_and_keeps_the_introduction_pending() {
+        // The widget's empty state (muviss://next-pick) is a deep link like any other: the Pick Session is
+        // pushed over Search, and the introduction is not marked done.
+        assertEquals(SearchRoute, startRouteFor(completed = false, hasDeepLink = true))
+    }
 }
