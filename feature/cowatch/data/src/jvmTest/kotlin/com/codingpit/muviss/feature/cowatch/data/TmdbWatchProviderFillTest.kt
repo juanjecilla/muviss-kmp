@@ -87,4 +87,25 @@ class TmdbWatchProviderFillTest {
         assertEquals(listOf(Triple(a, "US", setOf("8"))), cache.puts, "what was answered before the failure is kept; the failed title is not written")
         assertTrue(cache.puts.none { it.first == b }, "a failure is never recorded as on no service")
     }
+
+    @Test
+    fun `a_failed_cache_write_ends_the_batch_without_escaping_the_fill`() = runTest {
+        // A storage failure on one write must not throw out of the fill: the pick reads the cache as it is.
+        val failingCache = object : WatchProviderCache {
+            val puts = mutableListOf<MediaId>()
+
+            override suspend fun get(mediaIds: Set<MediaId>): Map<MediaId, CachedProviders> = emptyMap()
+
+            override suspend fun put(mediaId: MediaId, region: String, flatrateProviderIds: Set<String>) {
+                check(mediaId != a) { "disk full" }
+                puts += mediaId
+            }
+        }
+        val source = ScriptedSource(mapOf(a to Result.success(setOf("8")), b to Result.success(setOf("9"))))
+
+        TmdbWatchProviderFill(failingCache, source).fill(listOf(a, b), region = "US")
+
+        assertEquals(listOf(a), source.asked, "the batch ends at the failed write; the title after it is not fetched")
+        assertTrue(failingCache.puts.isEmpty())
+    }
 }
