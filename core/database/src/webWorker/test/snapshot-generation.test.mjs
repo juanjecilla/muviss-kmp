@@ -236,6 +236,43 @@ test("a waiting tab whose snapshot is out of date reloads, and writes nothing", 
   assert.match(storedText(idb), /INSERT A2/);
 });
 
+test("once a reload is pending, a write is refused rather than acknowledged and lost", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+
+  const b = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A2");
+  await a.flush();
+  a.close();
+  await settle();
+  assert.equal(b.state().reloadRequested, true);
+
+  // The main thread has not reloaded yet: the write must fail, not succeed and vanish.
+  assert.throws(() => b.exec("INSERT B-LATE"), /reloading to start from the latest snapshot/);
+  assert.equal(b.state().localWrites, false, "a refused write is not recorded as this tab's change");
+  assert.doesNotThrow(() => b.exec("SELECT 1"), "reads still run while the page reloads");
+  await settle();
+  assert.equal(idb.data.get(GENERATION), 2);
+  assert.doesNotMatch(storedText(idb), /B-LATE/);
+});
+
+test("a batch that starts with a select but writes is a change, and is saved", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("SELECT 1; INSERT A-BEHIND-SELECT");
+  assert.equal(a.state().localWrites, true, "the write behind the select counts");
+  await a.flush();
+  await settle();
+  assert.match(storedText(idb), /A-BEHIND-SELECT/);
+});
+
 test("a waiting tab with changes of its own gives the lock up rather than overwrite (#61)", async () => {
   const idb = makeIndexedDb();
   const locks = makeLocks();

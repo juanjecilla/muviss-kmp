@@ -459,6 +459,10 @@ async function createDatabase() {
 // of being wrong in this direction is one extra export per burst, while being
 // wrong the other way loses data.
 function isMutation(sql) {
+  // More than one statement: the read check below only sees the first one, so a
+  // `select 1; delete ...` would look like a read. Treated as a change, which is
+  // the safe direction (see above).
+  if (/;\s*\S/.test(sql)) return true;
   return !/^\s*(select|pragma\s+\w+\s*$|explain|with\b[\s\S]*\bselect\b)/i.test(sql);
 }
 
@@ -469,6 +473,13 @@ function onModuleReady() {
     case "exec": {
       if (!data["sql"]) {
         throw new Error("exec: Missing query string");
+      }
+      // A reload is pending: this tab will not save, and the page reloads from the
+      // latest snapshot shortly, which would discard a change made now without the
+      // stale warning. Refuse it before it runs, so the caller gets an error rather
+      // than a success that is then lost (see promote()).
+      if (reloadRequested && isMutation(data.sql)) {
+        throw new Error("exec: this tab is reloading to start from the latest snapshot");
       }
       const results = db.exec(data.sql, data.params)[0] ?? { values: [] };
       if (isMutation(data.sql)) {
