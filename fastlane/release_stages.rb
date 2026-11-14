@@ -159,8 +159,8 @@ module ReleaseStages
   end
 
   # The marker that results from writing `mine` (changed from `base`) onto `fresh`: every field this
-  # writer did not change keeps its value in `fresh`. Two fields never move backwards: the stage only
-  # advances, and the TestFlight record only moves to a newer RC.
+  # writer did not change keeps its value in `fresh`. Three fields never move backwards: the stage only
+  # advances, and the TestFlight record and the candidate (rc_tag) only move to a newer RC.
   def merge_marker(base, mine, fresh)
     merge_value(normalize(base), normalize(mine), normalize(fresh))
   end
@@ -181,14 +181,21 @@ module ReleaseStages
     keep_furthest(merged, fresh)
   end
 
+  # Applied at every level of the merge, so the iOS track's fields are kept the same way as the top level's.
   def keep_furthest(merged, fresh)
     stage = fresh["stage"]
     if STAGES.include?(stage) && STAGES.include?(merged["stage"]) && STAGES.index(stage) > STAGES.index(merged["stage"])
       merged = merged.merge("stage" => stage)
     end
-    return merged unless rc_number(fresh["testflight_rc"]) > rc_number(merged["testflight_rc"])
+    # The newest RC of each kind: the TestFlight upload (iOS) and the candidate on the issue (#695). A
+    # write that read the marker before a newer RC was recorded must not put the older one back.
+    %w[testflight_rc rc_tag].reduce(merged) { |kept, key| keep_newer_rc(kept, fresh, key) }
+  end
 
-    merged.merge("testflight_rc" => fresh["testflight_rc"])
+  def keep_newer_rc(merged, fresh, key)
+    return merged unless rc_number(fresh[key]) > rc_number(merged[key])
+
+    merged.merge(key => fresh[key])
   end
 
   def rc_number(tag)
