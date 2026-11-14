@@ -192,6 +192,9 @@ jobs:
       # The App Store listing's field limits and locale parity (fastlane/metadata/ios).
       - name: iOS App Store metadata
         run: ruby fastlane/test/ios_metadata_test.rb
+      # The iOS release helpers (ADR 0033): the API-key and placeholder checks the lanes trust (#843).
+      - name: iOS release helpers (ADR 0033)
+        run: ruby fastlane/test/ios_release_test.rb
       # The iOS track of the staged train (ADR 0033): gates, supersede, ramp, the
       # merge requirement, and the App Store Connect client against a fake transport.
       - name: iOS staged train (ADR 0033)

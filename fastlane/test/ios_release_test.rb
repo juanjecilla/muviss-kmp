@@ -2,7 +2,7 @@
 # fastlane tests:  ruby -Ifastlane fastlane/test/ios_release_test.rb
 require "minitest/autorun"
 require "tmpdir"
-require "ios_release"
+require_relative "../ios_release"
 
 class IosReleaseTest < Minitest::Test
   def test_missing_api_key_vars_lists_each_blank_or_unset_name
