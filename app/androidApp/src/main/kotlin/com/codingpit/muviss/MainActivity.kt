@@ -38,6 +38,7 @@ import org.koin.core.context.GlobalContext
 class MainActivity : ComponentActivity() {
 
     private var deepLinkMediaId by mutableStateOf<String?>(null)
+    private var openNextPick by mutableStateOf(false)
     private var oauthCode by mutableStateOf<String?>(null)
 
     private val requestNotificationPermission =
@@ -58,6 +59,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         deepLinkMediaId = intent.deepLinkMediaIdExtra()
+        // Read only on a fresh launch: a recreated activity (rotation) gets its launch intent back, and would
+        // otherwise open the Pick Session again over whatever the person had moved on to.
+        openNextPick = savedInstanceState == null && intent.opensNextPick()
         oauthCode = intent.oauthCode()
         notificationPermissions?.attach(
             launch = { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
@@ -71,6 +75,8 @@ class MainActivity : ComponentActivity() {
             MuvissApp(
                 deepLinkMediaId = deepLinkMediaId,
                 onDeepLinkConsumed = { deepLinkMediaId = null },
+                openNextPick = openNextPick,
+                onOpenNextPickConsumed = { openNextPick = false },
                 oauthCode = oauthCode,
                 onOAuthCodeConsumed = { oauthCode = null },
             )
@@ -88,10 +94,17 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         deepLinkMediaId = intent.deepLinkMediaIdExtra()
+        openNextPick = intent.opensNextPick()
         oauthCode = intent.oauthCode()
     }
 
     private fun Intent.deepLinkMediaIdExtra(): String? = getStringExtra(EXTRA_DEEP_LINK_MEDIA_ID)
+
+    /**
+     * The widget's empty state, which carries [EXTRA_OPEN_NEXT_PICK], or a `muviss://next-pick` link from
+     * elsewhere (`MuvissDeepLinks`, the manifest's `next-pick` filter).
+     */
+    private fun Intent.opensNextPick(): Boolean = getBooleanExtra(EXTRA_OPEN_NEXT_PICK, false) || data?.let { MuvissDeepLinks.isNextPick(it.scheme, it.host) } == true
 
     /**
      * The authorization code from an OAuth redirect (`muviss://auth-callback?code=…`,
@@ -106,6 +119,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Set by `notifications.NewEpisodesNotifier` on a per-show notification's tap intent. */
         const val EXTRA_DEEP_LINK_MEDIA_ID = "com.codingpit.muviss.DEEP_LINK_MEDIA_ID"
+
+        /** Set by the "Watch next" widget's empty state to open the Pick Session (EPIC 51, #700). */
+        const val EXTRA_OPEN_NEXT_PICK = "com.codingpit.muviss.OPEN_NEXT_PICK"
 
         // Must match the manifest's intent filter and :core:sync's
         // OAUTH_REDIRECT_URI. Split into scheme/host here because that is how
