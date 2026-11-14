@@ -45,6 +45,10 @@ class NotificationNudgeViewModelTest {
         }
     }
 
+    /**
+     * [off] and [askable] are what the OS says now. The suspend reads answer those and, like iOS, copy them
+     * into a cache; the synchronous reads answer only that cache, which a test can leave behind the OS (#846).
+     */
     private class FakeSystem : SystemNotificationSettings {
         var opened = 0
 
@@ -53,8 +57,28 @@ class NotificationNudgeViewModelTest {
 
         /** False once the OS has stopped asking (#326). */
         var askable = true
-        override fun blocked(): Boolean = off
-        override fun canAskAgain(): Boolean = askable
+
+        private var cachedOff = false
+        private var cachedAskable = true
+
+        /** Sets what the synchronous reads see, as if the platform had not been asked since the OS changed. */
+        fun cache(off: Boolean, askable: Boolean) {
+            cachedOff = off
+            cachedAskable = askable
+        }
+
+        override fun blocked(): Boolean = cachedOff
+        override fun canAskAgain(): Boolean = cachedAskable
+
+        override suspend fun blockedNow(): Boolean {
+            cache(off, askable)
+            return off
+        }
+
+        override suspend fun canAskAgainNow(): Boolean {
+            cache(off, askable)
+            return askable
+        }
 
         override fun open() {
             opened++
@@ -183,5 +207,52 @@ class NotificationNudgeViewModelTest {
 
         assertEquals(false, onboarding.offered.value, "the nudge is spent whatever the OS said")
         assertEquals(true, vm.state.value.blocked)
+    }
+
+    @Test
+    fun a_nudge_built_after_a_refusal_was_undone_in_settings_offers_turn_on_not_a_stale_explanation() = runTest {
+        system.cache(off = true, askable = false)
+        system.off = false
+        system.askable = true
+        val vm = viewModel()
+
+        assertEquals(false, vm.state.value.blocked, "the OS now allows notifications; the cache still says refused")
+        vm.turnOn()
+        assertEquals(1, onboarding.accepted, "the OS would show a prompt, so the tap asks")
+    }
+
+    @Test
+    fun a_turn_on_tapped_after_notifications_were_refused_in_settings_does_not_ask_from_a_stale_cache() = runTest {
+        val vm = viewModel()
+        system.cache(off = false, askable = true)
+        system.off = true
+        system.askable = false
+
+        vm.turnOn()
+
+        assertEquals(0, onboarding.accepted, "the OS now refuses for good; a request would answer no at once")
+        assertEquals(true, vm.state.value.blocked)
+    }
+
+    @Test
+    fun a_switch_turned_off_in_settings_while_the_nudge_is_offered_explains_it_on_resume() = runTest {
+        val vm = viewModel()
+        assertEquals(false, vm.state.value.blocked)
+
+        system.off = true
+        system.askable = false
+        vm.recheckPermission()
+
+        assertEquals(true, vm.state.value.blocked, "offering Turn on now would only answer no")
+        assertEquals(true, vm.state.value.offered, "the nudge itself is still unspent")
+    }
+
+    @Test
+    fun a_refusal_still_in_force_at_construction_explains_at_once_from_a_stale_allowed_cache() = runTest {
+        system.cache(off = false, askable = true)
+        system.off = true
+        system.askable = false
+
+        assertEquals(true, viewModel().state.value.blocked)
     }
 }

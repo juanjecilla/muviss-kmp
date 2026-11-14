@@ -16,24 +16,30 @@ import kotlin.coroutines.resume
  * app's page in the Settings app can undo it.
  *
  * iOS only answers asynchronously (`getNotificationSettingsWithCompletionHandler`), so the
- * last authorization status is cached and both [blocked] and [canAskAgain] read it through
- * the pure mappings in `IosNotificationAuthorization.kt`. [blockedNow] waits for iOS's answer,
- * and is what a screen re-checking on resume uses. The cache is refreshed at startup and
- * after every permission request. Before the first answer it reads "not determined": nothing
+ * last authorization status is cached, and [blocked] and [canAskAgain] read that cache through
+ * the pure mappings in `IosNotificationAuthorization.kt`. Only [blockedNow] and [canAskAgainNow]
+ * wait for iOS's answer; decisions that must see a change the person just made in Settings
+ * (the Notification Nudge, #846) use those. The cache is refreshed at startup and after every
+ * permission request or fresh read. Before the first answer it reads "not determined": nothing
  * is blocked and a prompt can still be shown.
  */
 internal object IosNotificationSettings : SystemNotificationSettings {
 
     private val authorization = AtomicLong(UNAuthorizationStatusNotDetermined)
 
-    override fun blocked(): Boolean {
-        refresh()
-        return notificationBlocked(authorization.value)
-    }
+    /**
+     * The cached answer only. It deliberately does not start a refresh: a fire-and-forget read
+     * issued before a change can complete after a fresher [refreshNow] and overwrite it (#846).
+     * Decisions that must see the change use [blockedNow] / [canAskAgainNow].
+     */
+    override fun blocked(): Boolean = notificationBlocked(authorization.value)
 
+    /** The cached answer only; see [blocked] (#846). */
     override fun canAskAgain(): Boolean = notificationCanAskAgain(authorization.value)
 
     override suspend fun blockedNow(): Boolean = notificationBlocked(refreshNow())
+
+    override suspend fun canAskAgainNow(): Boolean = notificationCanAskAgain(refreshNow())
 
     override fun open() {
         val url = NSURL.URLWithString(UIApplicationOpenNotificationSettingsURLString) ?: return
