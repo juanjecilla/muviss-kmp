@@ -17,6 +17,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 
 /** One sweep's full length, in milliseconds, when a host does not say otherwise. */
 const val DEFAULT_SHIMMER_DURATION_MILLIS: Int = 1400
@@ -43,7 +45,8 @@ fun ShimmerHost(
 ) {
     val progress: State<Float> = if (animate) rememberSweep(durationMillis) else remember { mutableFloatStateOf(0f) }
     val geometry = remember { ShimmerGeometry() }
-    val wave = ShimmerWave(progress = progress, animate = animate, bandFraction = bandFraction, geometry = geometry)
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val wave = ShimmerWave(progress = progress, animate = animate, bandFraction = bandFraction, geometry = geometry, rtl = rtl)
     Box(
         modifier.onGloballyPositioned { coordinates ->
             geometry.left = coordinates.positionInRoot().x
@@ -70,6 +73,7 @@ internal data class ShimmerWave(
     val animate: Boolean,
     val bandFraction: Float,
     val geometry: ShimmerGeometry,
+    val rtl: Boolean,
 )
 
 internal val LocalShimmerWave = staticCompositionLocalOf<ShimmerWave?> { null }

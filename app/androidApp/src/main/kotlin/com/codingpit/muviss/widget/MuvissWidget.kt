@@ -135,28 +135,47 @@ private fun WidgetBody(ui: WatchNextWidgetUi) {
                 Spacer(GlanceModifier.height(8.dp))
             }
 
-            WatchNextWidgetUi.Empty.NOTHING_IN_PROGRESS -> EmptyView(
-                title = LocalContext.current.getString(R.string.widget_nothing_title),
-                body = LocalContext.current.getString(R.string.widget_nothing_body),
-            )
-
-            WatchNextWidgetUi.Empty.NO_CATALOG_YET -> EmptyView(
-                title = LocalContext.current.getString(R.string.widget_no_catalog_title),
-                body = LocalContext.current.getString(R.string.widget_no_catalog_body),
-            )
+            is WatchNextWidgetUi.Empty -> EmptyView(ui)
         }
     }
 }
 
+/**
+ * The empty state. Tapping anywhere on it does what [WatchNextWidgetUi.Empty.action] says: with nothing in
+ * progress that is the Pick Session (#700), which also gets a visible "What's next?" so the tap is discoverable.
+ */
 @Composable
-private fun EmptyView(title: String, body: String) {
+private fun EmptyView(ui: WatchNextWidgetUi.Empty) {
+    val context = LocalContext.current
+    val (title, body) = when (ui) {
+        WatchNextWidgetUi.Empty.NOTHING_IN_PROGRESS ->
+            context.getString(R.string.widget_nothing_title) to context.getString(R.string.widget_nothing_body)
+
+        WatchNextWidgetUi.Empty.NO_CATALOG_YET ->
+            context.getString(R.string.widget_no_catalog_title) to context.getString(R.string.widget_no_catalog_body)
+    }
+    val tap = when (ui.action) {
+        EmptyAction.OPEN_NEXT_PICK -> actionStartActivity<MainActivity>(actionParametersOf(OpenNextPickKey to true))
+        EmptyAction.OPEN_APP -> actionStartActivity<MainActivity>()
+    }
     Column(
-        modifier = GlanceModifier.fillMaxSize().clickable(actionStartActivity<MainActivity>()),
+        modifier = GlanceModifier.fillMaxSize().clickable(tap),
         verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(title, style = TextStyle(color = GlanceTheme.colors.onBackground, fontWeight = FontWeight.Medium))
         Text(body, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 12.sp), maxLines = 2)
+        if (ui.action == EmptyAction.OPEN_NEXT_PICK) {
+            Spacer(GlanceModifier.height(8.dp))
+            Text(
+                context.getString(R.string.widget_next_pick),
+                style = TextStyle(color = GlanceTheme.colors.onPrimary, fontWeight = FontWeight.Medium, fontSize = 12.sp),
+                modifier = GlanceModifier
+                    .background(GlanceTheme.colors.primary)
+                    .cornerRadius(12.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
     }
 }
 
