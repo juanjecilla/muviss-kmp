@@ -47,7 +47,7 @@ internal fun BackupPreviewStep(step: ImportStep.BackupPreview, onConfirm: () -> 
     val summary = step.summary
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            stringResource(Res.string.backup_from, dateText(summary.exportedAtEpochMs.floorDiv(MILLIS_PER_DAY))),
+            stringResource(Res.string.backup_from, dateText(step.exportedOnEpochDay)),
             style = MaterialTheme.typography.titleMedium,
         )
         Text(pluralStringResource(Res.plurals.backup_titles, summary.titleCount, summary.titleCount), style = MaterialTheme.typography.bodyMedium)
@@ -80,5 +80,3 @@ internal fun RestoredStep(result: RestoreResult, onImportAnother: () -> Unit, on
         OutlinedButton(onClick = onImportAnother, modifier = Modifier.fillMaxWidth()) { Text(stringResource(Res.string.import_another)) }
     }
 }
-
-private const val MILLIS_PER_DAY = 86_400_000L
