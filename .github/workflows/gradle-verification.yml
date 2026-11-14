@@ -218,7 +218,9 @@ jobs:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
-          cp "$SRC/verification-metadata.xml" gradle/verification-metadata.xml
+          # The Windows leg writes CRLF. The repository file is LF (.gitattributes, #861), so the
+          # commit must not carry the host's line endings or the diff is the whole file.
+          tr -d '\r' < "$SRC/verification-metadata.xml" > gradle/verification-metadata.xml
           if git diff --quiet -- gradle/verification-metadata.xml; then
             echo "Checksums already cover this branch." >> "$GITHUB_STEP_SUMMARY"
             exit 0
