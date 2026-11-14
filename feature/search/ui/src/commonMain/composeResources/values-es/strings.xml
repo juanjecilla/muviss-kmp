@@ -65,6 +65,7 @@
     <string name="unsnooze">Recuperar</string>
     <string name="stale_notice">%1$s Mostrando lo guardado en este dispositivo.</string>
     <string name="refresh_failed">No se pudo actualizar este título.</string>
+    <string name="discover_refresh_failed">No se pudo actualizar Buscar.</string>
     <string name="skipped_banner">Lo descartaste al llenar tu biblioteca</string>
     <string name="watched_again">Lo he vuelto a ver</string>
     <string name="tick_mistake">Lo marqué por error</string>

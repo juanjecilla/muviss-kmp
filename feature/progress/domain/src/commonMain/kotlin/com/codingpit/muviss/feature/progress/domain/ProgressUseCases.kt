@@ -4,6 +4,7 @@ import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -138,9 +139,18 @@ class ClearProgressUseCase(private val repository: ProgressRepository) {
     suspend operator fun invoke(mediaId: MediaId) = repository.clearForMedia(mediaId)
 }
 
-/** Toggles a movie's single watched tick (see [EpisodeId.forMovie]). */
+/**
+ * Toggles a movie's single watched tick (see [EpisodeId.forMovie]).
+ *
+ * A TV id is a programmer error, not a user error: [EpisodeId.forMovie] would write a synthetic 0/0 episode
+ * for the show, which can push `seenEpisodes` past `airedEpisodes` and make `WatchProgress` throw later.
+ * So the id is rejected before anything is written. Callers report the exception (`launchReporting`).
+ */
 class SetMovieWatchedUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(mediaId: MediaId, watched: Boolean) = repository.setSeen(EpisodeId.forMovie(mediaId), watched)
+    suspend operator fun invoke(mediaId: MediaId, watched: Boolean) {
+        require(mediaId.type == MediaType.MOVIE) { "SetMovieWatchedUseCase needs a movie id, got $mediaId" }
+        repository.setSeen(EpisodeId.forMovie(mediaId), watched)
+    }
 }
 
 /** Fetches a show's season/episode structure, e.g. to compute watch-next. */
