@@ -2,8 +2,12 @@
 
 package com.codingpit.muviss.feature.settings.ui
 
+import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.epochDayOfCivil
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
@@ -33,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -100,17 +105,20 @@ private class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = Unit
 }
 
-private class FakeRestorer : BackupRestorer {
+private class FakeRestorer(private val exportedAtEpochMs: Long = 0L) : BackupRestorer {
     var restored: String? = null
         private set
 
-    override suspend fun summarize(content: String) = BackupSummary(formatVersion = 2, exportedAtEpochMs = 0L, titleCount = 3, episodeCount = 10, listCount = 1)
+    override suspend fun summarize(content: String) = BackupSummary(formatVersion = 2, exportedAtEpochMs = exportedAtEpochMs, titleCount = 3, episodeCount = 10, listCount = 1)
 
     override suspend fun restore(content: String): RestoreResult {
         restored = content
         return RestoreResult(restored = 14, kept = 0)
     }
 }
+
+private const val MINUTE_MS = 60_000L
+private const val HOUR_MS = 3_600_000L
 
 class ImportViewModelTest {
 
@@ -122,13 +130,42 @@ class ImportViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(): ImportViewModel {
+    private fun viewModel(clock: AppClock = FakeClock(0L), backups: BackupRestorer = restorer): ImportViewModel {
         val actions = ImportActions(
             PreviewImportUseCase(listOf(GenericCsvImportParser()), FakeResolver()),
             ApplyImportUseCase(FakeDetailsSource(), FakeCollectionApi(), FakeProgressApi()),
-            restorer,
+            backups,
         )
-        return ImportViewModel(actions)
+        return ImportViewModel(actions, clock)
+    }
+
+    /** Previews a backup exported at [exportedAtEpochMs] for a person whose zone is [utcOffsetMs] from UTC. */
+    private suspend fun TestScope.previewedDayOf(exportedAtEpochMs: Long, utcOffsetMs: Long): Long {
+        val vm = viewModel(
+            clock = FakeClock(exportedAtEpochMs, utcOffsetMs = utcOffsetMs),
+            backups = FakeRestorer(exportedAtEpochMs = exportedAtEpochMs),
+        )
+        vm.onFilePicked("muviss-backup-2026-10-08.json", """{"formatVersion":2,"exportedAtEpochMs":$exportedAtEpochMs}""")
+        advanceUntilIdle()
+        return assertIs<ImportStep.BackupPreview>(vm.state.value.step).exportedOnEpochDay
+    }
+
+    @Test
+    fun a_late_evening_backup_is_dated_by_the_persons_local_day_not_utc() = runTest {
+        // 23:30 UTC on 7 Oct is 01:30 on 8 Oct at UTC+2: the person's day is the 8th, UTC's is the 7th.
+        val day = epochDayOfCivil(2026, 10, 7)
+        val exportedAt = epochMsAtStartOfDay(day + 1) - 30 * MINUTE_MS
+
+        assertEquals(day + 1, previewedDayOf(exportedAt, utcOffsetMs = 2 * HOUR_MS))
+    }
+
+    @Test
+    fun an_early_morning_utc_backup_is_dated_by_the_persons_earlier_local_day() = runTest {
+        // 02:00 UTC on 8 Oct is 21:00 on 7 Oct at UTC-5: UTC's day is the 8th, the person's is the 7th.
+        val day = epochDayOfCivil(2026, 10, 7)
+        val exportedAt = epochMsAtStartOfDay(day + 1) + 2 * HOUR_MS
+
+        assertEquals(day, previewedDayOf(exportedAt, utcOffsetMs = -5 * HOUR_MS))
     }
 
     @Test
