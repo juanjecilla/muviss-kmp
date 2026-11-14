@@ -2,16 +2,20 @@
 
 package com.codingpit.muviss.feature.onboarding.ui
 
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
+import com.codingpit.muviss.feature.settings.api.TasteChoices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -37,7 +41,9 @@ class OnboardingScreenTest {
     fun tearDown() = Dispatchers.resetMain()
 
     // The backup page is platform-gated and desktop has no OS backup to offer, so the screen is built as if on Android.
-    private fun viewModel() = OnboardingViewModel(onboarding, settings, key, flags, FakeSystemNotifications(), canBackUp = true)
+    private val taste = FakeTasteProfileApi()
+
+    private fun viewModel() = OnboardingViewModel(onboarding, settings, key, flags, FakeSystemNotifications(), taste, canBackUp = true)
 
     private fun androidx.compose.ui.test.ComposeUiTest.screen(onFinished: () -> Unit = {}, onOpenImport: () -> Unit = {}) = setContent {
         MuvissTheme(darkTheme = false) { OnboardingScreen(viewModel(), onFinished, onOpenImport) }
@@ -163,6 +169,22 @@ class OnboardingScreenTest {
 
         onNodeWithTag(ONBOARDING_DEVICE_BACKUP_SWITCH_TAG).assertIsOn()
         assertTrue(settings.deviceBackup.value)
+    }
+
+    @Test
+    fun the_taste_page_writes_a_tapped_chip_and_shows_it_selected() = runComposeUiTest {
+        screen()
+        val pages = pagesFor(canNotify = true, byokOffered = true, canBackUp = true)
+        repeat(pages.indexOf(OnboardingPage.TASTE)) { onNodeWithTag(ONBOARDING_NEXT_TAG).performClick() }
+
+        onNodeWithTag(onboardingPageTag(OnboardingPage.TASTE)).assertExists()
+        val netflix = TasteChoices.services.first()
+        onNodeWithTag(onboardingTasteTag(netflix)).performScrollTo().assertIsNotSelected()
+
+        onNodeWithTag(onboardingTasteTag(netflix)).performClick()
+
+        onNodeWithTag(onboardingTasteTag(netflix)).assertIsSelected()
+        assertEquals(listOf(netflix to true), taste.writes)
     }
 
     private companion object {

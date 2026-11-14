@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.settings.domain
 
 import com.codingpit.muviss.feature.nextpick.api.PickCompany
+import com.codingpit.muviss.feature.settings.api.TasteChoices
 import com.codingpit.muviss.feature.settings.api.TasteItem
 import com.codingpit.muviss.feature.settings.api.TasteKind
 import com.codingpit.muviss.models.GenreKey
@@ -43,45 +44,17 @@ object TasteRules {
 }
 
 /**
- * The fixed options a person can choose from, except genres (which come from TMDB's catalogue
- * and so need the network). Static on purpose: the onboarding page offers these offline, on the
- * first launch, before anything has loaded.
- *
- * Services are keyed by TMDB provider id, the id `watchProviders(id, region)` reports, so a later
- * consumer matches by id and never by name. The list is curated and must be checked against
- * TMDB's own catalogue (a follow-up issue); an id that is wrong here shows a logo for the wrong
- * service rather than failing.
+ * The fixed options the editor offers. Formats, services and languages are [TasteChoices] in
+ * `:feature:settings:api`, shared with the first-run introduction; only companies, which need the
+ * Pick Session's enum, live here.
  */
 object TasteCatalog {
     /** Stored upper-case, matching the PickCompany names the Pick Session already uses. */
     val companies: List<TasteItem> = PickCompany.entries.map { TasteItem(TasteKind.COMPANY, it.name, it.name) }
 
-    /** Movies, series, or limited series. Labels are localized in the UI from these keys. */
-    val formats: List<TasteItem> = listOf("MOVIE", "SERIES", "LIMITED_SERIES").map { TasteItem(TasteKind.FORMAT, it, it) }
-
-    val services: List<TasteItem> = listOf(
-        "8" to "Netflix",
-        "9" to "Amazon Prime Video",
-        "337" to "Disney+",
-        "1899" to "Max",
-        "350" to "Apple TV+",
-        "15" to "Hulu",
-        "531" to "Paramount+",
-    ).map { (id, name) -> TasteItem(TasteKind.SERVICE, id, name) }
-
-    /** Names are in each language's own script, so they need no translation. */
-    val languages: List<TasteItem> = listOf(
-        "en" to "English",
-        "es" to "Español",
-        "fr" to "Français",
-        "de" to "Deutsch",
-        "it" to "Italiano",
-        "pt" to "Português",
-        "ja" to "日本語",
-        "ko" to "한국어",
-        "zh" to "中文",
-        "hi" to "हिन्दी",
-    ).map { (code, name) -> TasteItem(TasteKind.LANGUAGE, code, name) }
+    val formats: List<TasteItem> get() = TasteChoices.formats
+    val services: List<TasteItem> get() = TasteChoices.services
+    val languages: List<TasteItem> get() = TasteChoices.languages
 }
 
 /**

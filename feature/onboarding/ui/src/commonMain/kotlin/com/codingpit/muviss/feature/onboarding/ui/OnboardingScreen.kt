@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -17,6 +18,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,6 +46,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.TmdbKeyDialog
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.nextpick.api.PickCompany
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.Res
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_back
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_backup_body
@@ -83,11 +86,26 @@ import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_notifications_title
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_skip
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_start
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_body
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_company
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_company_alone
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_company_family
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_company_partner
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_format_limited
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_format_movie
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_format_series
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_formats
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_more
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_services
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_title
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_watch_next_body
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_watch_next_title
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_watch_next_widget
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_welcome_body
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_welcome_title
+import com.codingpit.muviss.feature.settings.api.TasteChoices
+import com.codingpit.muviss.feature.settings.api.TasteItem
+import com.codingpit.muviss.feature.settings.api.TasteKind
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import org.jetbrains.compose.resources.stringResource
 
@@ -122,6 +140,7 @@ fun OnboardingScreen(
         onUseMuvissKey = viewModel::useMuvissKey,
         onDismissKeyProblem = viewModel::dismissKeyProblem,
         onGenreMutedToggled = viewModel::onGenreMutedToggled,
+        onTasteToggled = viewModel::onTasteToggled,
     )
 }
 
@@ -143,6 +162,7 @@ internal fun OnboardingContent(
     onUseMuvissKey: (() -> Unit) -> Unit,
     onDismissKeyProblem: () -> Unit,
     onGenreMutedToggled: (MutedGenreChoice, Boolean) -> Unit = { _, _ -> },
+    onTasteToggled: (TasteItem, Boolean) -> Unit = { _, _ -> },
 ) {
     val page = state.page ?: return
     Column(
@@ -172,6 +192,7 @@ internal fun OnboardingContent(
                 onUseMuvissKey = onUseMuvissKey,
                 onDismissKeyProblem = onDismissKeyProblem,
                 onGenreMutedToggled = onGenreMutedToggled,
+                onTasteToggled = onTasteToggled,
             )
         }
         Dots(count = state.pages.size, current = state.index)
@@ -203,6 +224,7 @@ private fun PageContent(
     onUseMuvissKey: (() -> Unit) -> Unit,
     onDismissKeyProblem: () -> Unit,
     onGenreMutedToggled: (MutedGenreChoice, Boolean) -> Unit,
+    onTasteToggled: (TasteItem, Boolean) -> Unit,
 ) {
     when (page) {
         OnboardingPage.WELCOME -> Plain(MuvissIcons.Library, Res.string.onboarding_welcome_title, Res.string.onboarding_welcome_body)
@@ -289,9 +311,74 @@ private fun PageContent(
             PageText(stringResource(Res.string.onboarding_muted_more))
         }
 
+        OnboardingPage.TASTE -> Plain(MuvissIcons.Favorite, Res.string.onboarding_taste_title, Res.string.onboarding_taste_body) {
+            val formats = TasteChoices.formats.associateWith { formatName(it) }
+            val companies = PickCompany.entries.map { TasteItem(TasteKind.COMPANY, it.name, it.name) }.associateWith { companyName(it) }
+            TasteGroup(Res.string.onboarding_taste_formats, TasteChoices.formats, state.likedTaste, onTasteToggled) { formats.getValue(it) }
+            TasteGroup(Res.string.onboarding_taste_services, TasteChoices.services, state.likedTaste, onTasteToggled) { it.label }
+            TasteGroup(Res.string.onboarding_taste_company, companies.keys.toList(), state.likedTaste, onTasteToggled) { companies.getValue(it) }
+            Spacer(Modifier.height(MuvissSpacing.s))
+            PageText(stringResource(Res.string.onboarding_taste_more))
+        }
+
         OnboardingPage.DONE -> Plain(MuvissIcons.CheckCircle, Res.string.onboarding_done_title, Res.string.onboarding_done_body)
     }
 }
+
+/** Test tag of one Taste chip, suffixed with the item's id (`KIND:value`): `onboardingTaste-FORMAT:MOVIE`. */
+fun onboardingTasteTag(item: TasteItem): String = "onboardingTaste-${item.id}"
+
+/** A labelled group of chips. Each chip is a toggle the person can flip at any time; the page writes it straight away. */
+@Composable
+private fun TasteGroup(
+    header: org.jetbrains.compose.resources.StringResource,
+    options: List<TasteItem>,
+    liked: Set<String>,
+    onToggle: (TasteItem, Boolean) -> Unit,
+    label: (TasteItem) -> String,
+) {
+    Text(
+        stringResource(header),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = MuvissSpacing.m, bottom = MuvissSpacing.xs),
+    )
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
+    ) {
+        options.forEach { item ->
+            val selected = item.id in liked
+            FilterChip(
+                selected = selected,
+                onClick = { onToggle(item, !selected) },
+                label = { Text(label(item)) },
+                modifier = Modifier.testTag(onboardingTasteTag(item)),
+            )
+        }
+    }
+}
+
+/** The formats are stored as keys, so their names are localized here; services carry their own. */
+@Composable
+private fun formatName(item: TasteItem): String = stringResource(
+    when (item.value) {
+        "SERIES" -> Res.string.onboarding_taste_format_series
+        "LIMITED_SERIES" -> Res.string.onboarding_taste_format_limited
+        else -> Res.string.onboarding_taste_format_movie
+    },
+)
+
+/** The company choices are stored as the Pick Session's enum names, so their labels are localized here. */
+@Composable
+private fun companyName(item: TasteItem): String = stringResource(
+    when (item.value) {
+        "PARTNER" -> Res.string.onboarding_taste_company_partner
+        "FAMILY" -> Res.string.onboarding_taste_company_family
+        else -> Res.string.onboarding_taste_company_alone
+    },
+)
 
 @Composable
 private fun Plain(

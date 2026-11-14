@@ -22,6 +22,45 @@ data class TasteItem(val kind: TasteKind, val value: String, val label: String) 
 }
 
 /**
+ * The fixed options a person chooses from, shared by Settings' editor and the first-run introduction
+ * (#583). Static on purpose: they are offered offline, on the first launch, before anything has loaded.
+ * Genres are not here: they come from TMDB's catalogue, which needs the network.
+ *
+ * Services are keyed by TMDB provider id, the id `watchProviders(id, region)` reports, so a later
+ * consumer matches by id and never by name. The list is curated and must be checked against
+ * TMDB's own catalogue (a follow-up issue); an id that is wrong here shows a logo for the wrong
+ * service rather than failing.
+ */
+object TasteChoices {
+    /** Movies, series, or limited series. Labels are localized in the UI from these keys. */
+    val formats: List<TasteItem> = listOf("MOVIE", "SERIES", "LIMITED_SERIES").map { TasteItem(TasteKind.FORMAT, it, it) }
+
+    val services: List<TasteItem> = listOf(
+        "8" to "Netflix",
+        "9" to "Amazon Prime Video",
+        "337" to "Disney+",
+        "1899" to "Max",
+        "350" to "Apple TV+",
+        "15" to "Hulu",
+        "531" to "Paramount+",
+    ).map { (id, name) -> TasteItem(TasteKind.SERVICE, id, name) }
+
+    /** Names are in each language's own script, so they need no translation. */
+    val languages: List<TasteItem> = listOf(
+        "en" to "English",
+        "es" to "Español",
+        "fr" to "Français",
+        "de" to "Deutsch",
+        "it" to "Italiano",
+        "pt" to "Português",
+        "ja" to "日本語",
+        "ko" to "한국어",
+        "zh" to "中文",
+        "hi" to "हिन्दी",
+    ).map { (code, name) -> TasteItem(TasteKind.LANGUAGE, code, name) }
+}
+
+/**
  * The Taste Profile as peers see it (EPIC 51). Read by the Pick Session and, later,
  * For you and Triage (#406); written from the Settings editor and the onboarding page.
  * Nothing here is inferred from what the person watches: it is only what they said.

@@ -6,6 +6,7 @@ import com.codingpit.muviss.core.common.notifications.platformCanNotify
 import com.codingpit.muviss.core.designsystem.component.TmdbKeyProblem
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
+import com.codingpit.muviss.feature.settings.api.TasteChoices
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -32,6 +33,7 @@ class OnboardingViewModelTest {
     private val key = FakeTmdbKeyApi()
     private val flags = FakeFeatureFlags()
     private val system = FakeSystemNotifications()
+    private val taste = FakeTasteProfileApi()
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -39,7 +41,7 @@ class OnboardingViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel() = OnboardingViewModel(onboarding, settings, key, flags, system)
+    private fun viewModel() = OnboardingViewModel(onboarding, settings, key, flags, system, taste)
 
     @Test
     fun the_alerts_page_needs_a_platform_that_notifies_and_the_key_page_needs_the_offer() {
@@ -49,9 +51,34 @@ class OnboardingViewModelTest {
         assertFalse(OnboardingPage.TMDB_KEY in pagesFor(canNotify = true, byokOffered = false, canBackUp = true))
         assertFalse(OnboardingPage.DEVICE_BACKUP in pagesFor(canNotify = true, byokOffered = true, canBackUp = false))
         assertEquals(
-            listOf(OnboardingPage.WELCOME, OnboardingPage.LIBRARY, OnboardingPage.WATCH_NEXT, OnboardingPage.DISCOVER, OnboardingPage.IMPORT, OnboardingPage.DEVICE_BACKUP, OnboardingPage.MUTED_GENRES, OnboardingPage.DONE),
+            listOf(OnboardingPage.WELCOME, OnboardingPage.LIBRARY, OnboardingPage.WATCH_NEXT, OnboardingPage.DISCOVER, OnboardingPage.IMPORT, OnboardingPage.DEVICE_BACKUP, OnboardingPage.MUTED_GENRES, OnboardingPage.TASTE, OnboardingPage.DONE),
             pagesFor(canNotify = false, byokOffered = false, canBackUp = true),
         )
+    }
+
+    @Test
+    fun the_taste_page_comes_after_the_mutes_so_a_muted_genre_is_never_the_next_thing_offered() {
+        val pages = pagesFor(canNotify = true, byokOffered = true, canBackUp = true)
+        assertEquals(OnboardingPage.MUTED_GENRES, pages[pages.indexOf(OnboardingPage.TASTE) - 1])
+        assertEquals(OnboardingPage.DONE, pages.last())
+    }
+
+    @Test
+    fun the_taste_page_shows_what_is_already_liked_and_writes_each_tap_straight_away() = runTest {
+        val vm = viewModel()
+        val movies = TasteChoices.formats.first()
+        taste.liked.value = listOf(movies)
+        assertEquals(setOf(movies.id), vm.state.value.likedTaste)
+
+        val netflix = TasteChoices.services.first()
+        vm.onTasteToggled(netflix, liked = true)
+        assertEquals(listOf(netflix to true), taste.writes)
+        assertTrue(netflix.id in vm.state.value.likedTaste)
+
+        vm.onTasteToggled(netflix, liked = false)
+        assertEquals(listOf(netflix to true, netflix to false), taste.writes)
+        assertFalse(netflix.id in vm.state.value.likedTaste)
+        assertTrue(movies.id in vm.state.value.likedTaste)
     }
 
     @Test

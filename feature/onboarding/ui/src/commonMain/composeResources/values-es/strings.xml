@@ -51,4 +51,16 @@
     <string name="onboarding_muted_soap">Telenovelas</string>
     <string name="onboarding_muted_soap_examples">Days of Our Lives, Los ricos también lloran</string>
     <string name="onboarding_muted_more">Hay más géneros para elegir en Ajustes, en Géneros silenciados.</string>
+    <string name="onboarding_taste_title">¿Qué te gusta?</string>
+    <string name="onboarding_taste_body">Opcional. Cuéntale a las sugerencias lo que disfrutas y lo usarán. Puedes saltarte este paso y cambiarlo cuando quieras en Ajustes.</string>
+    <string name="onboarding_taste_formats">Lo que ves</string>
+    <string name="onboarding_taste_format_movie">Películas</string>
+    <string name="onboarding_taste_format_series">Series</string>
+    <string name="onboarding_taste_format_limited">Miniseries</string>
+    <string name="onboarding_taste_services">Servicios que usas</string>
+    <string name="onboarding_taste_company">Normalmente viendo con</string>
+    <string name="onboarding_taste_company_alone">Solo</string>
+    <string name="onboarding_taste_company_partner">Pareja</string>
+    <string name="onboarding_taste_company_family">Familia</string>
+    <string name="onboarding_taste_more">Los géneros y los idiomas están en Ajustes, en Tus gustos.</string>
 </resources>
