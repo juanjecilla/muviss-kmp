@@ -1,6 +1,7 @@
 require "minitest/autorun"
 require "fileutils"
 require "open3"
+require "stringio"
 require "tmpdir"
 require_relative "../release_merge"
 
@@ -208,6 +209,192 @@ class ReleaseMergeRepoTest < Minitest::Test
 
   def git(*args)
     out, err, status = Open3.capture3("git", *args, chdir: @dir)
+    raise "git #{args.join(' ')} failed: #{err}" unless status.success?
+
+    out.force_encoding(Encoding::UTF_8).strip
+  end
+end
+
+# The command line the workflows call (#717 manual merge, #732 rehearsal), run in
+# process against a real origin: what it prints, what it exits with, and whether
+# origin's main moved. Exit codes: 0 done, 2 held, 3 git merges it cleanly.
+class ReleaseMergeCliTest < Minitest::Test
+  CHANGELOG_HEAD = "# Changelog\n\nHeader.\n\n".freeze
+
+  def setup
+    @origin = Dir.mktmpdir
+    @dir = Dir.mktmpdir
+    git_in(@origin, "init", "-q", "--bare", "-b", "main")
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "test")
+    git("config", "commit.gpgsign", "false")
+    git("remote", "add", "origin", @origin)
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.2.0 — x\n\nold\n")
+    write("app.txt", "base\n")
+    git("add", "-A"); git("commit", "-q", "-m", "base")
+    git("push", "-q", "origin", "main")
+    @base = git("rev-parse", "HEAD")
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.3.0 — y\n\nmain 1.3.0\n\n## 1.2.0 — x\n\nold\n")
+    git("commit", "-q", "-am", "main: 1.3.0")
+    git("push", "-q", "origin", "main")
+    git("switch", "-q", "-c", "release/1.4.0", @base)
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.4.0 — z\n\nbranch 1.4.0\n\n## 1.2.0 — x\n\nold\n")
+    write("feature.txt", "from the branch\n")
+    git("add", "-A"); git("commit", "-q", "-m", "release: 1.4.0")
+    git("push", "-q", "origin", "release/1.4.0")
+    @branch = git("rev-parse", "HEAD")
+    git("switch", "-q", "main")
+    @main = git("rev-parse", "HEAD")
+  end
+
+  def teardown
+    FileUtils.remove_entry(@origin) if @origin && File.directory?(@origin)
+    FileUtils.remove_entry(@dir) if @dir && File.directory?(@dir)
+  end
+
+  def test_conflicts_names_a_changelog_only_conflict_and_holds_nothing
+    code, out, err = cli("conflicts", "release/1.4.0")
+    assert_equal 0, code, err
+    assert_includes out, "conflicts: CHANGELOG.md"
+  end
+
+  def test_conflicts_holds_a_path_outside_the_allow_list_with_its_name
+    write_and_push_main_edit("app.txt", "main edit\n")
+    git("switch", "-q", "-c", "release/1.5.0", @base)
+    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
+    git("push", "-q", "origin", "release/1.5.0")
+    code, _out, err = cli("conflicts", "release/1.5.0")
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err, "app.txt"
+  end
+
+  def test_union_pushes_the_union_to_main_when_only_the_changelog_conflicts
+    code, out, err = cli("union", "release/1.4.0", "--expect-head", @branch)
+    assert_equal 0, code, err
+    assert_includes out, "CHANGELOG.md resolved"
+    tip = git_in(@origin, "rev-parse", "refs/heads/main")
+    assert_equal [@main, @branch].join(" "), git_in(@origin, "log", "-1", "--format=%P", tip), "main first, then the branch"
+    changelog = git_in(@origin, "show", "#{tip}:CHANGELOG.md")
+    assert_operator changelog.index("## 1.4.0"), :<, changelog.index("## 1.3.0")
+  end
+
+  def test_union_holds_and_pushes_nothing_when_another_path_conflicts
+    write_and_push_main_edit("app.txt", "main edit\n")
+    main_now = git_in(@origin, "rev-parse", "refs/heads/main")
+    git("switch", "-q", "-c", "release/1.5.0", @base)
+    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
+    git("push", "-q", "origin", "release/1.5.0")
+    code, _out, err = cli("union", "release/1.5.0", "--expect-head", git_in(@dir, "rev-parse", "HEAD"))
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err, "app.txt"
+    assert_equal main_now, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_union_refuses_to_guess_when_git_merges_cleanly
+    git("switch", "-q", "-c", "release/1.6.0", @base)
+    write("other.txt", "only the branch\n"); git("add", "-A"); git("commit", "-q", "-m", "clean")
+    git("push", "-q", "origin", "release/1.6.0")
+    code, _out, err = cli("union", "release/1.6.0", "--expect-head", git_in(@dir, "rev-parse", "HEAD"))
+    assert_equal ReleaseMerge::Cli::CLEAN_IN_GIT, code
+    assert_includes err, "nothing pushed"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_rehearse_prints_the_verdict_and_tree_and_moves_nothing
+    code, out, err = cli("rehearse", "1.4.0")
+    assert_equal 0, code, err
+    assert_includes out, "verdict: union of both sides for CHANGELOG.md"
+    assert_match(/^tree [0-9a-f]{40}$/, out)
+    assert_includes out, "changes on main"
+    assert_includes out, "not pushed"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
+  end
+
+  def test_rehearse_push_puts_the_merge_on_a_throwaway_ref_and_deletes_it
+    code, out, err = cli("rehearse", "1.4.0", "--push")
+    assert_equal 0, code, err
+    assert_includes out, "pushed to refs/heads/rehearsal/1.4.0"
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal"), "the ref is deleted after"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main"), "main does not move"
+  end
+
+  def test_rehearse_holds_a_branch_with_a_path_outside_the_allow_list
+    write_and_push_main_edit("app.txt", "main edit\n")
+    git("switch", "-q", "-c", "release/1.5.0", @base)
+    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
+    git("push", "-q", "origin", "release/1.5.0")
+    code, out, _err = cli("rehearse", "1.5.0", "--push")
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes out, "verdict: held"
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
+  end
+
+  def test_union_refuses_a_branch_whose_head_moved_after_approval
+    code, _out, err = cli("union", "release/1.4.0", "--expect-head", @main)
+    assert_equal 1, code
+    assert_includes err, "not the approved"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_union_without_an_approved_head_is_a_usage_error
+    code, _out, err = cli("union", "release/1.4.0")
+    assert_equal 64, code
+    assert_includes err, "usage"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_delete_ref_ignores_a_ref_that_is_already_gone
+    # Raises, and fails the test, unless a missing ref is treated as deleted.
+    ReleaseMerge::Repo.new(dir: @dir).delete_ref("refs/heads/rehearsal/never-pushed")
+  end
+
+  def test_rehearse_push_reports_a_ref_that_will_not_delete
+    # A pre-receive hook on origin refuses every deletion, so the push lands and the cleanup cannot.
+    hook = File.join(@origin, "hooks", "pre-receive")
+    File.write(hook, "#!/bin/sh\nwhile read old new ref; do\n  [ \"$new\" = 0000000000000000000000000000000000000000 ] && exit 1\ndone\nexit 0\n")
+    File.chmod(0o755, hook)
+    code, out, err = cli("rehearse", "1.4.0", "--push")
+    assert_equal 1, code
+    assert_includes out, "pushed to refs/heads/rehearsal/1.4.0"
+    assert_includes err, "may remain on origin"
+    assert_equal "refs/heads/rehearsal/1.4.0", git_in(@origin, "for-each-ref", "--format=%(refname)", "refs/heads/rehearsal")
+  end
+
+  def test_an_unknown_command_is_a_usage_error
+    code, _out, err = cli("bogus")
+    assert_equal 64, code
+    assert_includes err, "usage"
+  end
+
+  private
+
+  # Moves origin's main by one commit that edits `path`, as a later merge into main would.
+  def write_and_push_main_edit(path, text)
+    git("switch", "-q", "main")
+    write(path, text); git("commit", "-q", "-am", "main: #{path}")
+    git("push", "-q", "origin", "main")
+    @main = git("rev-parse", "HEAD")
+  end
+
+  def cli(*argv)
+    out = StringIO.new
+    err = StringIO.new
+    code = ReleaseMerge::Cli.run(argv, repo: ReleaseMerge::Repo.new(dir: @dir), out: out, err: err)
+    [code, out.string, err.string]
+  end
+
+  def write(path, text)
+    File.write(File.join(@dir, path), text)
+  end
+
+  def git(*args)
+    git_in(@dir, *args)
+  end
+
+  def git_in(dir, *args)
+    out, err, status = Open3.capture3("git", *args, chdir: dir)
     raise "git #{args.join(' ')} failed: #{err}" unless status.success?
 
     out.force_encoding(Encoding::UTF_8).strip
