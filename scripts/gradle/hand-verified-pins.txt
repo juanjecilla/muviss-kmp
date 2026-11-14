@@ -1,0 +1,15 @@
+# The versions the hand-verified checksums in gradle/verification-metadata.xml were checked
+# against (#859). A hand-verified checksum is one a person computed from a downloaded release
+# asset, because no CI leg can write it (Binaryen and Node, which the Kotlin plugin fetches outside
+# dependency resolution). check-hand-verified.py reads this file.
+#
+# `kotlin` is the Kotlin version whose plugin defaults these are. Bumping Kotlin in
+# gradle/libs.versions.toml fails the check until the defaults are re-verified on each host and
+# this file is updated; a hand-verified checksum for a version not listed here is pruned by
+# update-verification.sh --prune.
+#
+# Format: `<group>:<name> <version>` per line, and one `kotlin <version>` line.
+kotlin 2.4.21
+com.github.webassembly:binaryen 130
+org.nodejs:node 24.16.0
+org.nodejs:node 26.2.0
