@@ -5,6 +5,7 @@ import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.MetadataProviderRegistry
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderSource
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
 /**
@@ -23,5 +24,7 @@ internal class TmdbWatchProviderSource(
 
     override suspend fun fetchFlatrateIds(mediaId: MediaId): Result<Set<String>> = withContext(dispatchers.io) {
         runCatching { registry.forId(mediaId).watchProviders(mediaId, locale.region).flatrate.map { it.id }.toSet() }
+            // A cancelled fetch is not a failed one: rethrow so the caller's scope stops here.
+            .onFailure { if (it is CancellationException) throw it }
     }
 }
