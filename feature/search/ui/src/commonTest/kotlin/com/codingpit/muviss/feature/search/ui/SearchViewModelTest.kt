@@ -4,12 +4,14 @@ package com.codingpit.muviss.feature.search.ui
 
 import app.cash.turbine.test
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
-import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.NoDiscoverCache
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.domain.SearchRepository
@@ -61,11 +63,11 @@ class SearchViewModelTest {
     ) = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
-        GenresUseCase(repo),
         RecommendationsUseCase(repo),
         collectionApi,
         triageApi,
         settings,
+        DiscoverFeed(repo, NoDiscoverCache, FakeClock(epochMs = 0L)),
         connectivity,
     )
 
