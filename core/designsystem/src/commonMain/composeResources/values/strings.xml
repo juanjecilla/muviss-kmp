@@ -4,6 +4,8 @@
     <string name="action_open_settings">Open Settings</string>
     <string name="action_retry">Retry</string>
     <string name="carousel_see_all">See all ›</string>
+    <!-- Announced once for a loading area (SkeletonHost), not per placeholder. -->
+    <string name="skeleton_loading">Loading</string>
 
     <!-- MetadataError copy (EPIC 31): the same text MetadataError.userMessage carries, translatable. -->
     <string name="error_rate_limited">Too many requests right now. Try again in a moment.</string>
