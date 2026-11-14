@@ -142,6 +142,22 @@ class OnboardingViewModelTest {
     }
 
     @Test
+    fun finishing_waits_for_a_taste_chip_still_being_written() = runTest {
+        val vm = viewModel()
+        val gate = CompletableDeferred<Unit>()
+        taste.gate = gate
+        var finished = false
+
+        vm.onTasteToggled(TasteChoices.services.first(), liked = true)
+        vm.finish { finished = true }
+
+        assertFalse(finished, "leaving would cancel the chip still in flight")
+        gate.complete(Unit)
+        assertTrue(finished)
+        assertEquals(1, taste.writes.size)
+    }
+
+    @Test
     fun skipping_keeps_what_an_earlier_page_already_wrote() = runTest {
         val vm = viewModel()
         vm.onNotificationsToggled(true)

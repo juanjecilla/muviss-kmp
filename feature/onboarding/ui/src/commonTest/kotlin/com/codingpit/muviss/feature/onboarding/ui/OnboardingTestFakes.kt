@@ -117,9 +117,13 @@ internal class FakeTasteProfileApi : TasteProfileApi {
     val liked = MutableStateFlow<List<TasteItem>>(emptyList())
     val writes = mutableListOf<Pair<TasteItem, Boolean>>()
 
+    /** When set, a write waits here before it lands, so a test can leave the page while it is in flight. */
+    var gate: CompletableDeferred<Unit>? = null
+
     override fun observe(): Flow<List<TasteItem>> = liked
 
     override suspend fun setLiked(item: TasteItem, liked: Boolean): Boolean {
+        gate?.await()
         writes += item to liked
         this.liked.value = if (liked) this.liked.value + item else this.liked.value.filterNot { it.id == item.id }
         return true
