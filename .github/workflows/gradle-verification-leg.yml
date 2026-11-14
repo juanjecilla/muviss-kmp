@@ -37,7 +37,10 @@ jobs:
   regenerate:
     name: Regenerate checksums (${{ inputs.os }})
     runs-on: ${{ inputs.os }}
-    timeout-minutes: 150
+    # The macOS leg runs every lane in update-verification.sh, iOS simulator and release included:
+    # 127 min on 2026-11-13/14 (runs 43528225731, 43580031448), and 150 was cancelled at ~2h30 on a
+    # slower runner (43632502978, #873). 240 leaves a 1.9x margin; GitHub's ceiling is 360.
+    timeout-minutes: 240
     permissions:
       contents: read
     outputs:
