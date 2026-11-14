@@ -682,7 +682,7 @@ ivy repository, so it is an ordinary artifact to Gradle).
 
   "Hand-verified" means the checksum was computed from the downloaded archive and matched to GitHub's asset digest (Binaryen) or the release's `SHASUMS256.txt` (Node), and no leg can write it. The macOS x86_64 and Linux aarch64 rows were run by hand with `:app:webApp:wasmJsBrowserDistribution` under strict verification, from an empty Gradle home (#859). `scripts/gradle/hand-verified-pins.txt` records the Kotlin version and tool versions those checksums were checked for: a Kotlin bump fails `check-hand-verified.py` until they are re-verified, and `--prune` drops the hand-verified entries for any version the pins no longer list.
 
-  **Host requirement:** a bare Linux aarch64 image needs `libatomic1` (apt) for Node 26.2.0's Wasm tooling. Without it the checksum passes and the run fails at execution (`libatomic.so.1`, #870). GitHub's ubuntu runners have it. x86_64 is not checked (#874).
+  **Host requirement:** a bare Linux image needs `libatomic1` (apt) for Node 26.2.0's Wasm tooling, on both aarch64 and x86_64. Without it the checksum passes and the run fails at execution (`libatomic.so.1`, #870, #874). GitHub's ubuntu runners have it.
 
   **Unsupported:** Windows on ARM. The plugin asks for `binaryen-130-aarch64-windows.tar.gz`, but the release publishes `arm64-windows`, so the download 404s (#860). 32-bit x86 hosts map to a name no release publishes (`x86_86`).
 - **Not covered, on purpose:** the Kotlin/Native toolchain (`~/.konan`, downloaded by
