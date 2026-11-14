@@ -362,6 +362,20 @@ class ReleaseMergeCliTest < Minitest::Test
     assert_equal "refs/heads/rehearsal/1.4.0", git_in(@origin, "for-each-ref", "--format=%(refname)", "refs/heads/rehearsal")
   end
 
+  def test_a_branch_that_is_not_a_release_or_hotfix_name_is_refused_before_any_git_call
+    code, _out, err = cli("union", "main:refs/heads/main", "--expect-head", @main)
+    assert_equal 64, code
+    assert_includes err, "usage"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_a_version_that_is_not_x_y_z_is_refused
+    code, _out, err = cli("rehearse", "1.4.0 --push")
+    assert_equal 64, code
+    assert_includes err, "usage"
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
+  end
+
   def test_an_unknown_command_is_a_usage_error
     code, _out, err = cli("bogus")
     assert_equal 64, code

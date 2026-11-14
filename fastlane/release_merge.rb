@@ -245,18 +245,25 @@ module ReleaseMerge
     HELD = 2
     CLEAN_IN_GIT = 3
     USAGE = "usage: release_merge.rb conflicts BRANCH | union BRANCH --expect-head SHA | rehearse VERSION [--push]".freeze
+    # The names the workflows pass. They become refspecs and ref names, so anything else is refused here.
+    BRANCH_NAME = %r{\A(release|hotfix)/\d+\.\d+\.\d+\z}
+    VERSION_NAME = /\A\d+\.\d+\.\d+\z/
 
     module_function
 
     def run(argv, repo:, out:, err:)
       command, *args = argv
       case command
-      when "conflicts" then conflicts(repo, args.fetch(0) { return usage(err) }, out, err)
+      when "conflicts" then conflicts(repo, branch_arg(args) { return usage(err) }, out, err)
       when "union"
         expect = option(args, "--expect-head")
-        return usage(err) unless args.fetch(0, nil) && expect
-        union(repo, args.fetch(0), expect, out, err)
-      when "rehearse" then rehearse(repo, args.fetch(0) { return usage(err) }, args.include?("--push"), out, err)
+        branch = branch_arg(args) { return usage(err) }
+        return usage(err) unless expect
+        union(repo, branch, expect, out, err)
+      when "rehearse"
+        version = args.fetch(0) { return usage(err) }
+        return usage(err) unless VERSION_NAME.match?(version)
+        rehearse(repo, version, args.include?("--push"), out, err)
       else usage(err)
       end
     rescue Unresolvable, MainMoved, HeadMoved, RuntimeError => e
@@ -267,6 +274,12 @@ module ReleaseMerge
     def usage(err)
       err.puts USAGE
       64
+    end
+
+    # The branch argument when it is a release/X.Y.Z or hotfix/X.Y.Z name; otherwise the block's value (usage).
+    def branch_arg(args)
+      branch = args.fetch(0) { return yield }
+      BRANCH_NAME.match?(branch) ? branch : yield
     end
 
     # The value after a flag, or nil when the flag is absent or has no value.
