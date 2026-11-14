@@ -86,10 +86,14 @@ private fun BannerSample(message: String?, darkTheme: Boolean, actionLabel: Stri
 }
 
 /**
- * The frame is 412x72dp and one line of text fills most of it, so the glyph
- * edges CoreText and FreeType draw differently are a large share of the image:
- * 3.17% on `ubuntu-latest` against a macOS recording with hinting pinned
- * (`GoldenSurface`, #171), every marked pixel a glyph edge. A colour change —
- * what this golden exists to catch — moves the whole banner, far above this.
+ * The frame is 412x72dp and the text fills most of it, so the glyph edges
+ * CoreText and FreeType draw differently are a large share of the image: every
+ * marked pixel is a glyph edge against a macOS recording with hinting pinned
+ * (`GoldenSurface`, #171). Measured on `ubuntu-latest` (run 43586953160, #840):
+ * read-only tab 4.25%, its light variant 4.12%, the stale-reload warning 6.14%
+ * (two lines of text plus the action). The tolerance sits above the worst of
+ * those. A colour change, what this golden exists to catch, is refused by the
+ * palette check before this is reached, and moves the whole banner far above
+ * this anyway.
  */
-private const val BANNER_TOLERANCE = 0.035
+private const val BANNER_TOLERANCE = 0.08
