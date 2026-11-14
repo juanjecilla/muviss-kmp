@@ -283,6 +283,15 @@ jobs:
       - name: Compile web targets (JS + Wasm) and bundle them
         run: ./gradlew compileKotlinJs compileKotlinWasmJs :app:webApp:jsBrowserDevelopmentWebpack :app:webApp:wasmJsBrowserDevelopmentWebpack --stacktrace
 
+      # The production Wasm bundle (wasmJsBrowserDistribution) is not built on
+      # PRs while web is deferred (#851), but it is the build that fails when
+      # the Binaryen download is missing from gradle/verification-metadata.xml
+      # (#836). Its setup task is that download, so run only that: seconds, not
+      # the optimize pass. The Kotlin plugin picks the artifact per host, so
+      # this guards the Linux x86_64 one, the host this job runs on.
+      - name: Binaryen download passes dependency verification
+        run: ./gradlew :app:webApp:kotlinWasmBinaryenSetup --stacktrace
+
       # kotlin-js-store/ pins every npm package the JS and Wasm builds resolve.
       # Kotlin's own store task does not fail on a stale lock — it rewrites the
       # file with whatever yarn just resolved — so the check is ours: resolve,
