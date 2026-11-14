@@ -26,6 +26,11 @@ case "$(uname -s)" in
   *) ios_tasks=() ;;
 esac
 
+# The Wasm production lane is its Binaryen optimize task, not wasmJsBrowserDistribution: the
+# distribution runs wasmJsProductionExecutableCompileSync, which writes the packages directory
+# that wasmJsBrowserDevelopmentWebpack reads, and Gradle 9.9 rejects the two in one build as an
+# implicit dependency (#873). The optimize task still downloads Binaryen (the checksum #836 added).
+#
 # A lane can fail on a host for reasons that have nothing to do with dependencies (golden images and
 # font rendering differ on Windows, say). The checksums of what that lane resolved are written
 # regardless, and CI is what judges the tests, so the run only warns.
@@ -40,7 +45,7 @@ status=0
   jvmTest :app:androidApp:testDebugUnitTest :app:desktopApp:test \
   compileKotlinJs compileKotlinWasmJs allMetadataJar \
   :app:webApp:jsBrowserDevelopmentWebpack :app:webApp:wasmJsBrowserDevelopmentWebpack \
-  :app:webApp:wasmJsBrowserDistribution \
+  :app:webApp:compileProductionExecutableKotlinWasmJsOptimize \
   "${ios_tasks[@]}" \
   :app:androidApp:assembleDebug :app:androidApp:lintDebug \
   :app:androidApp:assembleRelease :app:androidApp:bundleRelease \
