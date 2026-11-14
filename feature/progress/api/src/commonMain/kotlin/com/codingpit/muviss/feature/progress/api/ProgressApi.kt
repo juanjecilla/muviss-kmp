@@ -46,7 +46,8 @@ data class EpisodePlay(
  *
  * [nextEpisode] is null both for a title fully caught up and for one whose
  * catalog is not available yet — a distinction no caller has needed, and one
- * a widget deliberately blurs into "open the app".
+ * a widget deliberately blurs into "open the app". A title whose only unseen
+ * aired episodes are specials is not returned at all (see [hasOnlySpecialsLeft]).
  */
 data class WatchNextItem(
     val mediaId: MediaId,
@@ -58,6 +59,23 @@ data class WatchNextItem(
 ) {
     /** Fraction of aired episodes seen, for the row's progress bar; null when nothing aired. */
     val progress: Float? get() = if (airedCount > 0) seenCount / airedCount.toFloat() else null
+
+    /**
+     * True when the only aired episodes left unseen are season 0 specials (ADR 0037). [nextEpisode] is then null,
+     * so there is nothing to name, and Watch Next and the Progress tab leave the title out rather than prompt for a
+     * special. `airedCount > 0` here also means its catalog has loaded: an empty catalog counts nothing as aired.
+     */
+    val hasOnlySpecialsLeft: Boolean get() = nextEpisode == null && airedCount > seenCount
+}
+
+/**
+ * A title's "next" answer for one screen (Detail's primary button, ADR 0037): [aired] is the next aired episode
+ * still unseen, which is what a tick writes; [announced] is the next unseen episode whose air date is still ahead.
+ */
+data class NextEpisodes(val aired: Episode?, val announced: Episode?) {
+    companion object {
+        val NONE = NextEpisodes(aired = null, announced = null)
+    }
 }
 
 /**
@@ -69,6 +87,18 @@ data class WatchNextItem(
 interface ProgressApi {
     /** Seen episode ids for [mediaId] (movies use the single id from [EpisodeId.forMovie]). */
     fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>>
+
+    /**
+     * The next-episode answer for a title whose [seasons] the caller already holds (Detail reads them from
+     * TMDB, which can be fresher than the stored catalog), against its [seen] set. Pure: no read, no write.
+     *
+     * It is the same ordering [observeWatchNext] uses ([EpisodeOrdering]), so Detail's button and the Progress
+     * tab cannot disagree about which episode is next. Specials are never returned.
+     */
+    fun nextEpisodes(seasons: List<Season>, seen: Set<EpisodeId>, todayEpochDay: Long): NextEpisodes = NextEpisodes(
+        aired = EpisodeOrdering.nextUnseen(seasons, seen, todayEpochDay),
+        announced = EpisodeOrdering.nextAnnounced(seasons, seen, todayEpochDay),
+    )
 
     /**
      * Every title currently being watched, each with its next unseen aired

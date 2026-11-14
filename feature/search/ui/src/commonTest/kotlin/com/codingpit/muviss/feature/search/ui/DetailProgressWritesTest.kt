@@ -113,8 +113,80 @@ class DetailProgressWritesTest {
         assertEquals(false, vm.state.value.pendingUndo?.createdEntry)
         vm.undoBulkMark()
 
+        // The entry is kept, and Undo takes back the latest tick (episode 2), not the one the entry was created for.
         assertTrue(collection.removed.isEmpty())
-        assertEquals(setOf(episode2.id), progress.seenIds)
+        assertEquals(setOf(episode1.id), progress.seenIds)
+    }
+
+    @Test
+    fun a_single_checkmark_tap_offers_undo_that_takes_the_tick_back() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
+        vm.undoBulkMark()
+
+        assertTrue(progress.seenIds.isEmpty())
+    }
+
+    @Test
+    fun a_single_checkmark_tap_on_an_unsaved_show_undo_removes_the_entry_it_created() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
+        vm.undoBulkMark()
+
+        assertEquals(listOf(show), collection.removed)
+        assertTrue(progress.seenIds.isEmpty())
+    }
+
+    @Test
+    fun a_checkmark_tap_on_an_episode_already_seen_but_not_yet_loaded_writes_nothing_and_offers_no_undo() = runTest {
+        val progress = FakeProgressApi()
+        progress.setEpisodeSeen(episode1.id, seen = true)
+        // The screen's copy was taken before the tick landed: it does not show episode1 as seen yet.
+        progress.firstCollectionSnapshot = emptySet()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+        assertTrue(episode1.id !in vm.state.value.seenEpisodes, "the UI snapshot must exclude the episode")
+        assertTrue(episode1.id in progress.observeSeenEpisodes(show).first(), "the fresh read must include it")
+
+        vm.toggleEpisodeSeen(episode1.id)
+
+        assertNull(vm.state.value.pendingUndo)
+        assertEquals(setOf(episode1.id), progress.seenIds)
+        assertEquals(1, progress.observePlayCounts(show).first()[episode1.id])
+    }
+
+    @Test
+    fun mark_show_seen_with_nothing_aired_adds_no_entry_and_offers_no_undo() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val notAired = MediaDetails(MediaSummary(show, "Not Yet"), seasons = listOf(Season(1, "Season 1", listOf(unairedEpisode))))
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = notAired, id = show)
+
+        vm.markShowSeen()
+
+        assertTrue(collection.added.isEmpty())
+        assertTrue(progress.seenIds.isEmpty())
+        assertNull(vm.state.value.pendingUndo)
+    }
+
+    @Test
+    fun mark_season_seen_with_nothing_aired_adds_no_entry_and_offers_no_undo() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val notAired = Season(1, "Season 1", listOf(unairedEpisode))
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = MediaDetails(MediaSummary(show, "Not Yet"), seasons = listOf(notAired)), id = show)
+
+        vm.markSeasonSeen(notAired)
+
+        assertTrue(collection.added.isEmpty())
+        assertTrue(progress.seenIds.isEmpty())
+        assertNull(vm.state.value.pendingUndo)
     }
 
     @Test
@@ -139,6 +211,19 @@ class DetailProgressWritesTest {
 
         assertEquals(listOf(show), collection.added)
         assertEquals(listOf(episode2.id), progress.markedPrevious)
+    }
+
+    @Test
+    fun catching_up_through_an_already_seen_episode_adds_no_entry_and_writes_nothing() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        progress.setEpisodeSeen(episode1.id, seen = true)
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.markPreviousSeen(episode1.id)
+
+        assertTrue(collection.added.isEmpty())
+        assertTrue(progress.markedPrevious.isEmpty())
     }
 
     @Test

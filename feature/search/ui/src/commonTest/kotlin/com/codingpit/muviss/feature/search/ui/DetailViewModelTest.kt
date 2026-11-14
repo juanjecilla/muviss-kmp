@@ -34,8 +34,12 @@ import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -173,7 +177,26 @@ internal class FakeProgressApi : ProgressApi {
         plays.value = plays.value + (episodeId to (plays.value[episodeId].orEmpty() + now))
     }
 
-    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = plays.map { all -> all.filterValues { it.isNotEmpty() }.keys }
+    /** Holds back every seen-episodes emission until set, as a slow progress read does (#779). */
+    val seenReady = MutableStateFlow(true)
+
+    /**
+     * What the screen's own collection sees, when it differs from the live state: the first collection (the view
+     * model's, at construction) emits this and then stays quiet, while every later read — a write's fresh `first()`
+     * — sees the live plays. Lets a test hold the UI's copy of "seen" behind a fresh read.
+     */
+    var firstCollectionSnapshot: Set<EpisodeId>? = null
+    private var seenCollections = 0
+
+    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = flow {
+        seenReady.first { it }
+        val snapshot = if (seenCollections++ == 0) firstCollectionSnapshot else null
+        if (snapshot != null) {
+            emit(snapshot)
+            awaitCancellation()
+        }
+        emitAll(plays.map { all -> all.filterValues { it.isNotEmpty() }.keys })
+    }
 
     // Watch-next (EPIC 22) — this fake's subject never asks for it.
     override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
@@ -521,6 +544,25 @@ class DetailViewModelTest {
     }
 
     @Test
+    fun the_primary_button_is_loading_until_progress_has_reported_and_then_follows_the_shared_next_episode() = runTest {
+        val collection = FakeCollectionApi()
+        collection.add(tvDetails)
+        val progress = FakeProgressApi().apply { seenReady.value = false }
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+        advanceUntilIdle()
+
+        // The seen set is still empty, so the button must not offer episode 1 as the next tick yet (#779).
+        assertFalse(vm.state.value.progressLoaded)
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null), vm.primaryAction(vm.state.value))
+
+        progress.seenReady.value = true
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.progressLoaded)
+        assertEquals(PrimaryAction.TickNext(episode1), vm.primaryAction(vm.state.value))
+    }
+
+    @Test
     fun toggleEpisodeSeen_updates_state_reactively() = runTest {
         val progressApi = FakeProgressApi()
         val vm = viewModel(progressApi = progressApi, detailsToLoad = tvDetails, id = show)
@@ -575,7 +617,8 @@ class DetailViewModelTest {
         advanceUntilIdle()
         val first = vm.state.value.celebration
 
-        vm.toggleEpisodeSeen(episode2.id)
+        // Undo takes the tick back (a seen episode is no longer a checkmark to toggle), then the same episode is ticked again.
+        vm.undoBulkMark()
         advanceUntilIdle()
         vm.toggleEpisodeSeen(episode2.id)
         advanceUntilIdle()
