@@ -170,4 +170,38 @@ class WatchNextWidgetStateTest {
 
         assertEquals(EpisodeId(got, 1, 1), (ui as WatchNextWidgetUi.Rows).rows.single().undoable)
     }
+
+    /**
+     * The empty state is the way into the Pick Session (EPIC 51, #700): a person with nothing in
+     * progress has nothing to tick, so tapping the widget starts a pick instead of dead-ending.
+     */
+    @Test
+    fun `an empty library makes the empty state open the Pick Session`() {
+        val ui = watchNextWidgetUi(emptyList(), WidgetSize.MEDIUM)
+
+        assertEquals(EmptyAction.OPEN_NEXT_PICK, (ui as WatchNextWidgetUi.Empty).action)
+    }
+
+    @Test
+    fun `the Pick Session action is the same at every widget size`() {
+        for (size in WidgetSize.entries) {
+            assertEquals(
+                EmptyAction.OPEN_NEXT_PICK,
+                (watchNextWidgetUi(emptyList(), size) as WatchNextWidgetUi.Empty).action,
+                "size $size",
+            )
+        }
+    }
+
+    /**
+     * The catalog-not-arrived empty says "open Muviss once", and its action stays the app: the fix
+     * for it is the app's own first-open catalog download, not a pick.
+     */
+    @Test
+    fun `the catalog-not-arrived empty still opens the app rather than the Pick Session`() {
+        val ui = watchNextWidgetUi(listOf(item(got, "Game of Thrones", next = null)), WidgetSize.MEDIUM)
+
+        assertEquals(WatchNextWidgetUi.Empty.NO_CATALOG_YET, ui)
+        assertEquals(EmptyAction.OPEN_APP, (ui as WatchNextWidgetUi.Empty).action)
+    }
 }
