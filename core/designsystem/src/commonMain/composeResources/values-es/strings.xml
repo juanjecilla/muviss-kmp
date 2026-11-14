@@ -3,6 +3,8 @@
     <string name="action_open_settings">Abrir Ajustes</string>
     <string name="action_retry">Reintentar</string>
     <string name="carousel_see_all">Ver todo ›</string>
+    <!-- Announced once for a loading area (SkeletonHost), not per placeholder. -->
+    <string name="skeleton_loading">Cargando</string>
 
     <string name="error_rate_limited">Demasiadas solicitudes ahora mismo. Inténtalo de nuevo en un momento.</string>
     <string name="error_own_key_rejected">TMDB ha rechazado tu clave. Revísala en Ajustes, en Fuente de datos de TMDB.</string>
