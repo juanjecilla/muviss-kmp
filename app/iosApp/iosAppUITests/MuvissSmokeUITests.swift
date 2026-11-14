@@ -37,12 +37,11 @@ final class MuvissSmokeUITests: XCTestCase {
         // Export sits below the fold. Scroll until it is found and tappable. Each check is a predicate
         // expectation with a short wait, so a row that is not on screen yet is "not yet", not a failure.
         let export = app.element(labelled: "Export")
-        let onScreen = tappable(export)
         for _ in 0..<8 {
-            if XCTWaiter.wait(for: [onScreen], timeout: 2) == .completed { break }
+            if XCTWaiter.wait(for: [tappable(export)], timeout: 2) == .completed { break }
             app.swipeUp()
         }
-        XCTAssertEqual(XCTWaiter.wait(for: [onScreen], timeout: 10), .completed, "the Export button never scrolled on screen")
+        XCTAssertEqual(XCTWaiter.wait(for: [tappable(export)], timeout: 10), .completed, "the Export button never scrolled on screen")
         export.tap()
 
         let sheet = app.otherElements["ActivityListView"]
@@ -59,10 +58,11 @@ final class MuvissSmokeUITests: XCTestCase {
     private func reachSearch(_ app: XCUIApplication) {
         let skip = app.element(labelled: "Skip")
         let search = app.element(labelled: "Search")
-        let skippable = tappable(skip)
         let deadline = Date().addingTimeInterval(120)
         while !search.exists, Date() < deadline {
-            if XCTWaiter.wait(for: [skippable], timeout: 1) == .completed {
+            // A fresh expectation per wait: XCTest aborts ("expectations can only be waited on once")
+            // if the same one is waited on again, which the loop does on every pass that is not yet ready.
+            if XCTWaiter.wait(for: [tappable(skip)], timeout: 1) == .completed {
                 skip.tap()
             }
             Thread.sleep(forTimeInterval: 0.5)
