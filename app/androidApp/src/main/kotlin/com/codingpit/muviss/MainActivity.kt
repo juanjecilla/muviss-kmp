@@ -58,11 +58,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        deepLinkMediaId = intent.deepLinkMediaIdExtra()
-        // Read only on a fresh launch: a recreated activity (rotation) gets its launch intent back, and would
-        // otherwise open the Pick Session again over whatever the person had moved on to.
-        openNextPick = savedInstanceState == null && intent.opensNextPick()
-        oauthCode = intent.oauthCode()
+        // A recreated activity (rotation, process death) gets its launch intent back, extras and all:
+        // only a fresh launch reads it, and a recreation restores what was still pending (#805). The
+        // Pick Session request (#806, the widget's empty state or muviss://next-pick) follows the same rule.
+        val isRecreated = savedInstanceState != null
+        deepLinkMediaId = startupExtraValue(
+            isRecreated = isRecreated,
+            fromIntent = intent.deepLinkMediaIdExtra(),
+            savedPending = savedInstanceState?.getString(STATE_PENDING_DEEP_LINK_MEDIA_ID),
+        )
+        openNextPick = startupExtraValue(
+            isRecreated = isRecreated,
+            fromIntent = true.takeIf { intent.opensNextPick() },
+            savedPending = true.takeIf { savedInstanceState?.getBoolean(STATE_PENDING_OPEN_NEXT_PICK) == true },
+        ) ?: false
+        oauthCode = startupExtraValue(isRecreated = isRecreated, fromIntent = intent.oauthCode(), savedPending = null)
         notificationPermissions?.attach(
             launch = { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
             // Android's own answer to "may I ask again?": false after a refusal the OS will no longer show (#326).
@@ -81,6 +91,13 @@ class MainActivity : ComponentActivity() {
                 onOAuthCodeConsumed = { oauthCode = null },
             )
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Only a still-pending value is saved: once the consumer clears it, a recreation has nothing to restore.
+        deepLinkMediaId?.let { outState.putString(STATE_PENDING_DEEP_LINK_MEDIA_ID, it) }
+        if (openNextPick) outState.putBoolean(STATE_PENDING_OPEN_NEXT_PICK, true)
     }
 
     override fun onDestroy() {
@@ -119,6 +136,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Set by `notifications.NewEpisodesNotifier` on a per-show notification's tap intent. */
         const val EXTRA_DEEP_LINK_MEDIA_ID = "com.codingpit.muviss.DEEP_LINK_MEDIA_ID"
+
+        private const val STATE_PENDING_DEEP_LINK_MEDIA_ID = "com.codingpit.muviss.PENDING_DEEP_LINK_MEDIA_ID"
+        private const val STATE_PENDING_OPEN_NEXT_PICK = "com.codingpit.muviss.PENDING_OPEN_NEXT_PICK"
 
         /** Set by the "Watch next" widget's empty state to open the Pick Session (EPIC 51, #700). */
         const val EXTRA_OPEN_NEXT_PICK = "com.codingpit.muviss.OPEN_NEXT_PICK"
