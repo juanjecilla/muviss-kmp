@@ -640,8 +640,13 @@ jobs:
           restore-keys: |
             konan-${{ runner.os }}-
 
+      # Both link steps run under with-memory-sample.sh (#829): a memory line
+      # every 15 s and a summary at exit, so a link that dies with "Gradle
+      # build daemon disappeared" shows what held the RAM. The heaps are not
+      # changed: nothing in the recent runs shows a kill, and the 6 GiB Kotlin
+      # daemon is what the release LTO link needs (gradle.properties).
       - name: Link Kotlin/Native framework (iOS simulator)
-        run: ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+        run: scripts/ios/with-memory-sample.sh ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
 
       # Every module's tests on Kotlin/Native (#67). The JVM runs commonTest
       # everywhere else; this is what catches what only K/N rejects — a comma
@@ -678,6 +683,7 @@ jobs:
       # failure would otherwise first appear while shipping.
       - name: Link the release framework (iOS simulator)
         run: >
+          scripts/ios/with-memory-sample.sh
           ./gradlew :app:shared:linkReleaseFrameworkIosSimulatorArm64
           -Dorg.gradle.jvmargs="-Xmx5g -Dfile.encoding=UTF-8"
           --max-workers=2
