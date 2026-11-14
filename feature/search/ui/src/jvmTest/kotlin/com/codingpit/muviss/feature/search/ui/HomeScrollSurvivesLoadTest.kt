@@ -11,9 +11,11 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.swipeUp
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
-import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.NoDiscoverCache
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.models.Genre
@@ -97,11 +99,11 @@ private fun HomeWhileDiscoverLoads(release: CompletableDeferred<Unit>) {
     val viewModel = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
-        GenresUseCase(repo),
         RecommendationsUseCase(repo),
         FakeSearchCollectionApi(listOf(favorite)),
         FakeTriageApi(),
         FakeMutingApi(),
+        DiscoverFeed(repo, NoDiscoverCache, FakeClock(epochMs = 0L)),
         ConnectivityMonitor.AlwaysOnline,
     )
     MuvissTheme(darkTheme = false) {
