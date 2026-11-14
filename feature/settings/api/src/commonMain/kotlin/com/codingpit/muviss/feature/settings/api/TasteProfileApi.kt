@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.settings.api
 
+import com.codingpit.muviss.feature.nextpick.api.PickCompany
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -58,6 +59,12 @@ object TasteChoices {
         "zh" to "中文",
         "hi" to "हिन्दी",
     ).map { (code, name) -> TasteItem(TasteKind.LANGUAGE, code, name) }
+
+    /**
+     * Who the person usually watches with: the Pick Session's [PickCompany], stored by name, upper-case.
+     * Derived from the enum rather than copied, so the two cannot drift apart.
+     */
+    val companies: List<TasteItem> = PickCompany.entries.map { TasteItem(TasteKind.COMPANY, it.name, it.name) }
 }
 
 /**

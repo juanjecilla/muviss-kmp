@@ -46,7 +46,6 @@ import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.component.TmdbKeyDialog
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
-import com.codingpit.muviss.feature.nextpick.api.PickCompany
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.Res
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_back
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_backup_body
@@ -105,7 +104,6 @@ import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_welcome_title
 import com.codingpit.muviss.feature.settings.api.TasteChoices
 import com.codingpit.muviss.feature.settings.api.TasteItem
-import com.codingpit.muviss.feature.settings.api.TasteKind
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import org.jetbrains.compose.resources.stringResource
 
@@ -313,7 +311,7 @@ private fun PageContent(
 
         OnboardingPage.TASTE -> Plain(MuvissIcons.Favorite, Res.string.onboarding_taste_title, Res.string.onboarding_taste_body) {
             val formats = TasteChoices.formats.associateWith { formatName(it) }
-            val companies = PickCompany.entries.map { TasteItem(TasteKind.COMPANY, it.name, it.name) }.associateWith { companyName(it) }
+            val companies = TasteChoices.companies.associateWith { companyName(it) }
             TasteGroup(Res.string.onboarding_taste_formats, TasteChoices.formats, state.likedTaste, onTasteToggled) { formats.getValue(it) }
             TasteGroup(Res.string.onboarding_taste_services, TasteChoices.services, state.likedTaste, onTasteToggled) { it.label }
             TasteGroup(Res.string.onboarding_taste_company, companies.keys.toList(), state.likedTaste, onTasteToggled) { companies.getValue(it) }

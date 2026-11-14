@@ -1,6 +1,5 @@
 package com.codingpit.muviss.feature.settings.domain
 
-import com.codingpit.muviss.feature.nextpick.api.PickCompany
 import com.codingpit.muviss.feature.settings.api.TasteChoices
 import com.codingpit.muviss.feature.settings.api.TasteItem
 import com.codingpit.muviss.feature.settings.api.TasteKind
@@ -44,13 +43,11 @@ object TasteRules {
 }
 
 /**
- * The fixed options the editor offers. Formats, services and languages are [TasteChoices] in
- * `:feature:settings:api`, shared with the first-run introduction; only companies, which need the
- * Pick Session's enum, live here.
+ * The fixed options the editor offers. They are [TasteChoices] in `:feature:settings:api`, shared
+ * with the first-run introduction; this object only names them for the editor.
  */
 object TasteCatalog {
-    /** Stored upper-case, matching the PickCompany names the Pick Session already uses. */
-    val companies: List<TasteItem> = PickCompany.entries.map { TasteItem(TasteKind.COMPANY, it.name, it.name) }
+    val companies: List<TasteItem> get() = TasteChoices.companies
 
     val formats: List<TasteItem> get() = TasteChoices.formats
     val services: List<TasteItem> get() = TasteChoices.services
