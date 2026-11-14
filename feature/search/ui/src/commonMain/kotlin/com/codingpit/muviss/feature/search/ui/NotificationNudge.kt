@@ -71,21 +71,29 @@ class NotificationNudgeViewModel(
     /**
      * Notifications are off and the OS will not ask again (#326): a request would answer "no" at once, so the
      * nudge explains the blocked switch instead of offering a tap that goes nowhere.
+     *
+     * Both answers are read from the OS now, never from a synchronous cache: on iOS the cache can predate a
+     * change the person just made in Settings (#846), and a decision taken on it would show or hide the wrong line.
      */
-    private fun refusedForGood(): Boolean = system.blocked() && !system.canAskAgain()
+    private suspend fun refusedForGoodNow(off: Boolean): Boolean = off && !system.canAskAgainNow()
 
     init {
         onboarding.observeNotificationNudge(mediaId)
-            .onEach { offered -> _state.update { it.copy(offered = offered, blocked = it.blocked || (offered && refusedForGood())) } }
+            .onEach { offered ->
+                _state.update { it.copy(offered = offered) }
+                // Only a nudge that is due can need an explanation. Spending it must not re-read the OS: a
+                // denial just given would race that read, and clearing it is the resume check's job.
+                if (offered) settleExplanation()
+            }
             .launchInReporting(viewModelScope)
     }
 
     fun turnOn() {
-        if (refusedForGood()) {
-            _state.update { it.copy(blocked = true) }
-            return
-        }
         viewModelScope.launchReporting {
+            if (refusedForGoodNow(system.blockedNow())) {
+                _state.update { it.copy(blocked = true) }
+                return@launchReporting
+            }
             if (onboarding.acceptNotificationNudge() == NotificationNudgeResult.DENIED) {
                 _state.update { it.copy(blocked = true) }
             }
@@ -93,14 +101,20 @@ class NotificationNudgeViewModel(
     }
 
     /**
-     * Asked again each time the screen resumes, because that is how the person returns from system settings:
-     * a permission granted there clears the explanation, and a refusal still in force keeps it.
+     * Asked again each time the screen resumes, because that is how the person returns from system settings.
+     * It can set the explanation as well as clear it: a notification switch turned off there while the nudge is
+     * still offered must explain itself, not keep offering a tap the OS would refuse. A refusal the person just
+     * gave keeps its line after the nudge is spent, for as long as the OS still says off.
      */
     fun recheckPermission() {
-        viewModelScope.launchReporting {
-            val off = system.blockedNow()
-            _state.update { it.copy(blocked = it.blocked && off) }
-        }
+        viewModelScope.launchReporting { settleExplanation() }
+    }
+
+    /** Sets [NotificationNudgeState.blocked] from the OS as it is now and what the nudge already knows. */
+    private suspend fun settleExplanation() {
+        val off = system.blockedNow()
+        val refusedForGood = refusedForGoodNow(off)
+        _state.update { it.copy(blocked = (it.blocked && off) || (it.offered && refusedForGood)) }
     }
 
     fun dismiss() {
