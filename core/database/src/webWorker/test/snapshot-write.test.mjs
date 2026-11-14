@@ -15,14 +15,19 @@ import vm from "node:vm";
 
 const WORKER = new URL("../muviss-sqljs.worker.js", import.meta.url);
 const IMPORT = 'import initSqlJs from "sql.js";';
+const KEY = "muviss.db";
 
 // An IndexedDB whose `put` fails when `failing` is true as it settles, and
 // whose transaction only aborts (as a full quota does) when `aborting` is. With
 // `throwing`, `put` itself throws synchronously instead, as a DataCloneError
 // does. With `hold`, each put waits until the test releases it, to make writes
 // overlap.
+// The generation record is read by `get` and written by `put`, like the snapshot
+// itself. Only the snapshot's put is a write that can fail or be held, so the
+// generation put rides along with it and is applied only when the snapshot
+// write succeeds.
 function fakeIndexedDb() {
-  const fake = { failing: false, aborting: false, throwing: false, puts: [], holds: [] };
+  const fake = { failing: false, aborting: false, throwing: false, puts: [], holds: [], generation: 0 };
   fake.open = () => {
     const req = {};
     queueMicrotask(() => {
@@ -31,7 +36,25 @@ function fakeIndexedDb() {
         transaction: () => {
           const tx = {
             objectStore: () => ({
-              put: (bytes) => {
+              get: () => {
+                const getReq = {};
+                queueMicrotask(() => {
+                  getReq.result = fake.generation;
+                  // As in a browser, an exception from a request handler aborts the transaction.
+                  try {
+                    getReq.onsuccess();
+                  } catch (e) {
+                    tx.error = e;
+                    tx.onabort?.();
+                  }
+                });
+                return getReq;
+              },
+              put: (value, key) => {
+                if (key !== KEY) {
+                  tx.nextGeneration = value;
+                  return;
+                }
                 if (fake.throwing) throw new Error("DataCloneError");
                 const settle = () => {
                   if (fake.aborting) {
@@ -41,7 +64,8 @@ function fakeIndexedDb() {
                     tx.error = new Error("QuotaExceededError");
                     tx.onerror();
                   } else {
-                    fake.puts.push(bytes);
+                    fake.puts.push(value);
+                    fake.generation = tx.nextGeneration;
                     tx.oncomplete();
                   }
                 };
@@ -93,11 +117,11 @@ test("a failed put is announced, and the next successful write clears it", async
 
   indexedDB.failing = true;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true, stale: false, reload: false });
 
   indexedDB.failing = false;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false, stale: false, reload: false });
   assert.equal(indexedDB.puts.length, 1);
 });
 
@@ -106,11 +130,11 @@ test("a put that throws synchronously is a failed write, and the next good one c
 
   indexedDB.throwing = true;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true, stale: false, reload: false });
 
   indexedDB.throwing = false;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false, stale: false, reload: false });
   assert.equal(indexedDB.puts.length, 1);
 });
 
@@ -164,7 +188,7 @@ test("an aborted transaction is a failed write, and does not block the next one"
 test("a snapshot due inside a transaction waits for it instead of failing", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }, getRowsModified: () => 1," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -192,7 +216,7 @@ test("a snapshot due inside a rolled-back transaction is still taken", async () 
 test("changes committed before a transaction are saved before it opens", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }, getRowsModified: () => 1," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -207,7 +231,7 @@ test("changes committed before a transaction are saved before it opens", async (
 test("a save queued behind a slow one still holds the changes made before a transaction", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }, getRowsModified: () => 1," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );

@@ -25,7 +25,9 @@ import kotlin.test.Test
  */
 class PersistenceBannerGoldenTest {
 
-    private val readOnlyTab = "Muviss is open in another tab. Changes here won't be saved."
+    private val readOnlyTab = "Open in another tab. Changes made here won't be saved; reloading discards them."
+    private val staleTab = "Another tab saved newer changes, so this tab won't save. Reloading discards its changes."
+    private val reload = "Reload to start saving"
 
     @Test
     fun the_read_only_tab_warning_is_legible() = runComposeUiTest {
@@ -39,6 +41,17 @@ class PersistenceBannerGoldenTest {
         setContent { BannerSample(message = readOnlyTab, darkTheme = false) }
 
         assertMatchesGolden("persistence-banner-read-only-tab-light", tolerance = BANNER_TOLERANCE)
+    }
+
+    /**
+     * The out-of-date warning with its reload action (#62). The action is the only
+     * thing that changes the banner's shape, so it gets its own recording.
+     */
+    @Test
+    fun the_stale_tab_warning_offers_a_reload() = runComposeUiTest {
+        setContent { BannerSample(message = staleTab, actionLabel = reload, darkTheme = true) }
+
+        assertMatchesGolden("persistence-banner-stale-reload", tolerance = BANNER_TOLERANCE)
     }
 
     /**
@@ -64,19 +77,23 @@ class PersistenceBannerGoldenTest {
 }
 
 @Composable
-private fun BannerSample(message: String?, darkTheme: Boolean) {
+private fun BannerSample(message: String?, darkTheme: Boolean, actionLabel: String? = null) {
     MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface(width = 412.dp, height = 72.dp) {
-            PersistenceBanner(message = message)
+            PersistenceBanner(message = message, actionLabel = actionLabel)
         }
     }
 }
 
 /**
- * The frame is 412x72dp and one line of text fills most of it, so the glyph
- * edges CoreText and FreeType draw differently are a large share of the image:
- * 3.17% on `ubuntu-latest` against a macOS recording with hinting pinned
- * (`GoldenSurface`, #171), every marked pixel a glyph edge. A colour change —
- * what this golden exists to catch — moves the whole banner, far above this.
+ * The frame is 412x72dp and the text fills most of it, so the glyph edges
+ * CoreText and FreeType draw differently are a large share of the image: every
+ * marked pixel is a glyph edge against a macOS recording with hinting pinned
+ * (`GoldenSurface`, #171). Measured on `ubuntu-latest` (run 43586953160, #840):
+ * read-only tab 4.25%, its light variant 4.12%, the stale-reload warning 6.14%
+ * (two lines of text plus the action). The tolerance sits above the worst of
+ * those. A colour change, what this golden exists to catch, is refused by the
+ * palette check before this is reached, and moves the whole banner far above
+ * this anyway.
  */
-private const val BANNER_TOLERANCE = 0.035
+private const val BANNER_TOLERANCE = 0.08

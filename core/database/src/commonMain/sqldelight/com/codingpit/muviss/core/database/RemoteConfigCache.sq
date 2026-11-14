@@ -25,9 +25,17 @@ SELECT value
 FROM remoteConfigCache
 WHERE key = ?;
 
-upsert:
-INSERT OR REPLACE INTO remoteConfigCache(key, value)
-VALUES (?, ?);
+-- A refresh is these two statements, and between them they change a row only
+-- when its value differs. A refresh that finds the same values then changes
+-- nothing, which the web worker does not count as a local change (ADR 0008's
+-- 2026-11-13 amendment). INSERT OR REPLACE would count every key on every
+-- refresh. Not one upsert: SQLDelight's SQLite dialect here is 3.18 and cannot
+-- parse ON CONFLICT.
+updateIfChanged:
+UPDATE remoteConfigCache SET value = :value WHERE key = :key AND value IS NOT :value;
+
+insertIfAbsent:
+INSERT OR IGNORE INTO remoteConfigCache(key, value) VALUES (:key, :value);
 
 deleteAll:
 DELETE FROM remoteConfigCache;

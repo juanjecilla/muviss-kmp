@@ -24,6 +24,10 @@ import initSqlJs from "sql.js";
 const DB_NAME = "muviss-db";
 const STORE = "snapshot";
 const KEY = "muviss.db";
+// The generation of the snapshot in KEY: how many snapshots have been written
+// to it. Every save is a compare-and-set against it (#61), so a tab can only
+// overwrite a snapshot that is the one it was built from.
+const GENERATION_KEY = "muviss.db.generation";
 
 // Coalesces a burst of writes into one export. `markShowAiredSeen` is a single
 // transaction over dozens of episodes, so this is usually the difference
@@ -53,6 +57,29 @@ let lastWriteFailed = false;
 // open write transaction (#637). A snapshot due then is kept pending (`dirty`)
 // and taken once the transaction is over.
 let inTransaction = false;
+// The generation the in-memory database was built from (0 when there was no
+// snapshot). A save is only written while the stored generation still matches.
+let loadedGeneration = 0;
+// True when the startup read failed, so this database may not be the latest one
+// and promotion cannot compare against it. See promote().
+let loadFailed = false;
+// True once a mutation has changed a row in this database. A tab that has not
+// changed one holds nothing the stored snapshot lacks (see promote()). Counted
+// by rows changed, not by statements run: a startup write such as `ensureRow`
+// is an INSERT OR IGNORE that changes nothing on every launch after the first.
+let localWrites = false;
+// True when another tab saved after this database was built and this tab has
+// changes of its own. It never writes again. See becomeStale().
+let stale = false;
+// True when this tab is out of date and holds nothing worth keeping: the page is
+// reloaded to start from the latest snapshot. See promote().
+let reloadRequested = false;
+// Releases the Web Lock this tab is holding, if it holds one. See giveUpLock().
+let releaseLock = null;
+// The startup read, which promotion waits for. See loadSnapshot().
+let snapshotReady = null;
+// The sql.js module, used to open the database at startup.
+let sqlEngine = null;
 
 // --- IndexedDB -------------------------------------------------------------
 
@@ -69,21 +96,41 @@ function openStore() {
   });
 }
 
+// The bytes and their generation, read in one transaction so the pair always
+// comes from the same write. A snapshot saved before generations existed has
+// bytes and no generation, which reads as generation 0.
+async function readSnapshot() {
+  const idb = await openStore();
+  return await new Promise((resolve, reject) => {
+    const tx = idb.transaction(STORE, "readonly");
+    const store = tx.objectStore(STORE);
+    const bytesReq = store.get(KEY);
+    const generationReq = store.get(GENERATION_KEY);
+    tx.oncomplete = () => resolve({ bytes: bytesReq.result ?? null, generation: generationReq.result ?? 0 });
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new DOMException("snapshot read aborted", "AbortError"));
+  });
+}
+
+// Opens the database this tab starts from.
 async function loadSnapshot() {
+  let snapshot;
   try {
-    const idb = await openStore();
-    return await new Promise((resolve, reject) => {
-      const req = idb.transaction(STORE, "readonly").objectStore(STORE).get(KEY);
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => reject(req.error);
-    });
+    snapshot = await readSnapshot();
   } catch (e) {
     // A private window, a browser with site data blocked, or a corrupt store.
     // Starting empty is exactly the old behaviour, so degrade to it rather
-    // than failing the whole database.
+    // than failing the whole database. Remembered, because an empty database
+    // cannot be compared with the stored one when the lock is granted.
     console.warn("[muviss] could not read the snapshot; starting empty", e);
-    return null;
+    loadFailed = true;
+    snapshot = { bytes: null, generation: 0 };
   }
+  loadedGeneration = snapshot.generation;
+  // `new SQL.Database(bytes)` opens the existing file; the no-arg form creates
+  // an empty one. Schema creation and migration are decided on the Kotlin side
+  // from `PRAGMA user_version` — see SchemaEnsuringDriver.
+  db = snapshot.bytes ? new sqlEngine.Database(new Uint8Array(snapshot.bytes)) : new sqlEngine.Database();
 }
 
 // Snapshot writes run one at a time, in order. The debounce timer does not wait
@@ -105,7 +152,7 @@ let saving = false;
 let waiting = null; // { bytes, exportError } for the next write, or null
 
 function saveSnapshot() {
-  if (!isWriter || !db) return saveChain;
+  if (!isWriter || !db || stale) return saveChain;
   if (inTransaction) {
     dirty = true;
     return saveChain;
@@ -136,7 +183,15 @@ function saveSnapshot() {
 
 async function writeSnapshot(bytes, exportError) {
   try {
-    if (bytes) await putSnapshot(bytes);
+    if (stale) return;
+    if (bytes) {
+      const outcome = await putSnapshot(bytes);
+      if (!outcome.ok) {
+        becomeStale();
+        return;
+      }
+      loadedGeneration = outcome.generation;
+    }
     if (exportError) throw exportError;
     if (lastWriteFailed) {
       lastWriteFailed = false;
@@ -147,12 +202,29 @@ async function writeSnapshot(bytes, exportError) {
   }
 }
 
+// A compare-and-set (#61). The write goes in only if the stored generation is
+// still the one this database was built from. Reading and writing in one
+// readwrite transaction is what makes it safe: IndexedDB runs such transactions
+// one at a time against a store, so no other tab can save between the check and
+// the put. A mismatch writes nothing and reports the generation that is stored.
 async function putSnapshot(bytes) {
   const idb = await openStore();
-  await new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
     const tx = idb.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(bytes, KEY);
-    tx.oncomplete = () => resolve();
+    const store = tx.objectStore(STORE);
+    let outcome = null;
+    const generationReq = store.get(GENERATION_KEY);
+    generationReq.onsuccess = () => {
+      const stored = generationReq.result ?? 0;
+      if (stored !== loadedGeneration) {
+        outcome = { ok: false, generation: stored };
+        return;
+      }
+      store.put(bytes, KEY);
+      store.put(stored + 1, GENERATION_KEY);
+      outcome = { ok: true, generation: stored + 1 };
+    };
+    tx.oncomplete = () => resolve(outcome);
     tx.onerror = () => reject(tx.error);
     // A full quota aborts the transaction rather than failing the request,
     // and may fire only `abort`. Unhandled, this promise never settles and
@@ -223,7 +295,13 @@ async function flush() {
 // port arrives through the handler that waits on it — so the first announcement
 // is always made before there is anywhere to send it.
 function announce() {
-  lastPersistence = { writer: isWriter, supported: hasWebLocks(), lastWriteFailed };
+  lastPersistence = {
+    writer: isWriter && !stale,
+    supported: hasWebLocks(),
+    lastWriteFailed,
+    stale,
+    reload: reloadRequested,
+  };
   if (persistencePort) persistencePort.postMessage(lastPersistence);
 }
 
@@ -252,6 +330,10 @@ function hasWebLocks() {
 // that case correct, because the dying worker's lock is released and the queued
 // request is granted a moment later.
 //
+// Queuing has a cost the other way (#61): a granted tab may hold a database
+// older than the stored one. onLockGranted() checks for that before the tab
+// writes anything.
+//
 // Web Locks is unavailable in exactly the contexts where nothing is durable
 // anyway; there, nobody is the writer and the database is session-only.
 function electWriter() {
@@ -261,12 +343,7 @@ function electWriter() {
     return;
   }
   navigator.locks
-    .request(DB_NAME, () => {
-      isWriter = true;
-      announce();
-      // Never resolves: the lock is released when the worker dies with the tab.
-      return new Promise(() => {});
-    })
+    .request(DB_NAME, () => new Promise((release) => onLockGranted(release)))
     .catch((e) => {
       console.warn("[muviss] lock request failed", e);
       announce();
@@ -285,16 +362,96 @@ function electWriter() {
   }, ELECTION_GRACE_MS);
 }
 
+// The lock is granted to a tab that has waited, and this tab's database may be
+// older than the stored snapshot: another tab can have saved while this one
+// waited, and the other tab has just let go. Before writing anything, the tab
+// compares the stored generation with the one its database was built from:
+//
+//   - the same: nothing was saved since, so this database is the latest one and
+//     it may write, including whatever was changed here while it waited;
+//   - different, and nothing was changed here: the database holds nothing the
+//     stored snapshot lacks, so the page reloads and starts from the latest one
+//     (#62). The reload is what a user would do by hand, and it wins the lock
+//     at once because this tab gives it up first;
+//   - different, and something was changed here: those changes are in neither
+//     the stored snapshot nor anything this tab can write without overwriting
+//     the other tab's work, so this tab stops saving and says so (#61). The
+//     user reloads to start over, which the banner states costs these changes.
+//
+// If the stored generation cannot be read, nothing here can be decided, so the
+// tab takes the lock as it did before. A write is still checked against the
+// stored generation, so it still cannot overwrite a newer snapshot.
+function onLockGranted(release) {
+  releaseLock = release;
+  promote();
+}
+
+async function promote() {
+  try {
+    await snapshotReady;
+  } catch {
+    // The startup failure is reported where it happened. There is no database
+    // to promote, so the tab stays as it was.
+    return;
+  }
+  let latest = null;
+  try {
+    latest = await readSnapshot();
+  } catch (e) {
+    console.warn("[muviss] could not check the snapshot when promoted", e);
+  }
+  if (latest && !loadFailed && latest.generation !== loadedGeneration) {
+    if (localWrites) {
+      becomeStale();
+    } else {
+      reloadRequested = true;
+      giveUpLock();
+      announce();
+    }
+    return;
+  }
+  isWriter = true;
+  announce();
+  if (localWrites) saveSnapshot();
+}
+
+// Another tab saved after this database was built, and this tab has changes that
+// are not in it. Saving either way would overwrite the other tab's work, so this
+// tab stops writing and lets go of the lock, which lets a fresh tab (or a reload
+// of this one) take it. Nothing is written after this, so nothing is lost
+// silently: the banner says what a reload costs.
+function becomeStale() {
+  stale = true;
+  isWriter = false;
+  dirty = false;
+  waiting = null;
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  console.warn("[muviss] another tab saved newer changes; this tab will not save");
+  giveUpLock();
+  announce();
+}
+
+// The lock callback never returns while this tab holds it, so letting go is
+// resolving the promise it returned. Dying releases it too, which is the normal
+// way the lock is given up; this is for a tab that must give it up while alive.
+function giveUpLock() {
+  if (releaseLock) {
+    const release = releaseLock;
+    releaseLock = null;
+    release();
+  }
+}
+
 // --- Database --------------------------------------------------------------
 
 async function createDatabase() {
-  const SQL = await initSqlJs({ locateFile: () => "/sql-wasm.wasm" });
+  sqlEngine = await initSqlJs({ locateFile: () => "/sql-wasm.wasm" });
+  snapshotReady = loadSnapshot();
   electWriter();
-  const snapshot = await loadSnapshot();
-  // `new SQL.Database(bytes)` opens the existing file; the no-arg form creates
-  // an empty one. Schema creation and migration are decided on the Kotlin side
-  // from `PRAGMA user_version` — see SchemaEnsuringDriver.
-  db = snapshot ? new SQL.Database(new Uint8Array(snapshot)) : new SQL.Database();
+  await snapshotReady;
 }
 
 // Everything but a plain SELECT changes bytes on disk. Rather than parse SQL,
@@ -314,7 +471,12 @@ function onModuleReady() {
         throw new Error("exec: Missing query string");
       }
       const results = db.exec(data.sql, data.params)[0] ?? { values: [] };
-      if (isMutation(data.sql)) markDirty();
+      if (isMutation(data.sql)) {
+        // A statement that changed no row (an INSERT OR IGNORE on a row that
+        // exists, say) is not a change this tab holds. See promote().
+        if (db.getRowsModified() > 0) localWrites = true;
+        markDirty();
+      }
       return postMessage({ id: data.id, results });
     }
     case "begin_transaction": {

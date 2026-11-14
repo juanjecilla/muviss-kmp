@@ -82,4 +82,34 @@ class PersistenceStateTest {
             persistenceStateOf(writer = true, webLocksSupported = false, lastWriteFailed = true),
         )
     }
+
+    /**
+     * An out-of-date tab (#61) gives up the lock, so `writer` is false, and it must
+     * say so rather than read as an ordinary read-only tab: "open in another tab"
+     * would send the user looking for a tab that may not be there.
+     */
+    @Test
+    fun `a tab whose copy is out of date says so, and is not a read-only tab`() {
+        assertEquals(
+            PersistenceState.Stale,
+            persistenceStateOf(writer = false, webLocksSupported = true, stale = true),
+        )
+    }
+
+    /** Stale is only ever reported by a tab that could be asked to save. Without Web Locks nothing is elected, so support is still checked first. */
+    @Test
+    fun `no Web Locks outranks a stale copy`() {
+        assertEquals(
+            PersistenceState.NotPersisted,
+            persistenceStateOf(writer = false, webLocksSupported = false, stale = true),
+        )
+    }
+
+    @Test
+    fun `a fresh copy is not stale`() {
+        assertEquals(
+            PersistenceState.ReadOnlyTab,
+            persistenceStateOf(writer = false, webLocksSupported = true, stale = false),
+        )
+    }
 }

@@ -41,6 +41,8 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.app.shared.generated.resources.persistence_reload_to_save
+import com.codingpit.muviss.app.shared.generated.resources.persistence_stale
 import com.codingpit.muviss.app.shared.generated.resources.persistence_write_failed
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
@@ -425,7 +427,13 @@ private fun MuvissScaffold(
         // them, on every platform.
         ScreenInsets {
             Column {
-                PersistenceBanner(message = rememberPersistenceWarning())
+                val persistence = koinInject<PersistenceStatus>()
+                val warning = rememberPersistenceWarning(persistence)
+                PersistenceBanner(
+                    message = warning?.message,
+                    actionLabel = warning?.actionLabel,
+                    onAction = persistence::reloadPage,
+                )
                 // The "What's next?" sheet (EPIC 51, #400) is hosted here rather than on a screen: its
                 // trigger is a hot flow, so it must be collecting when a tick finishes a title.
                 CompletionSheetHost(
@@ -500,26 +508,34 @@ private fun MuvissScaffold(
 }
 
 /**
- * The one sentence that describes this session's storage, or null when there is
- * nothing to say.
+ * The sentence that describes this session's storage, and the way out of it when
+ * there is one, or null when there is nothing to say.
  *
  * Null for [PersistenceState.Durable] and for [PersistenceState.Pending] —
  * Pending specifically, so the tab that *is* the writer never flashes a warning
  * in the milliseconds before the lock election answers. Every platform but web
  * is permanently Durable, so the banner is drawn on exactly the platform that
  * has the problem without any of the screens knowing which one that is.
+ *
+ * Only a tab that is not saving because another tab has the lock, or because its
+ * copy is out of date (#62), offers a reload: a reload is what fixes both. It is
+ * not offered where no lock exists at all, or on a failed write, since a reload
+ * changes neither.
  */
 @Composable
-private fun rememberPersistenceWarning(): String? {
-    val status = koinInject<PersistenceStatus>()
+private fun rememberPersistenceWarning(status: PersistenceStatus): PersistenceWarning? {
     val state by status.state.collectAsStateWithLifecycle()
+    val reload = stringResource(Res.string.persistence_reload_to_save)
     return when (state) {
         PersistenceState.Pending, PersistenceState.Durable -> null
-        PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
-        PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
-        PersistenceState.WriteFailed -> stringResource(Res.string.persistence_write_failed)
+        PersistenceState.ReadOnlyTab -> PersistenceWarning(stringResource(Res.string.persistence_read_only_tab), reload)
+        PersistenceState.Stale -> PersistenceWarning(stringResource(Res.string.persistence_stale), reload)
+        PersistenceState.NotPersisted -> PersistenceWarning(stringResource(Res.string.persistence_not_persisted), null)
+        PersistenceState.WriteFailed -> PersistenceWarning(stringResource(Res.string.persistence_write_failed), null)
     }
 }
+
+private class PersistenceWarning(val message: String, val actionLabel: String?)
 
 private fun configureImageLoader() {
     SingletonImageLoader.setSafe { context -> createImageLoader(context) }

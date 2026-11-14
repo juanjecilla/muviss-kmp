@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.database
 
+import kotlinx.browser.window
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +23,23 @@ internal class WebPersistenceStatus : PersistenceStatus {
 
     override val state: StateFlow<PersistenceState> = mutable.asStateFlow()
 
-    fun report(writer: Boolean, webLocksSupported: Boolean, lastWriteFailed: Boolean) {
-        mutable.value = persistenceStateOf(writer, webLocksSupported, lastWriteFailed)
+    /**
+     * [reloadRequested] is the worker deciding this tab is out of date and holding
+     * nothing worth keeping (#62): it reloads now, rather than leaving a banner for
+     * a state the reload fixes on its own.
+     */
+    fun report(
+        writer: Boolean,
+        webLocksSupported: Boolean,
+        lastWriteFailed: Boolean,
+        stale: Boolean,
+        reloadRequested: Boolean,
+    ) {
+        mutable.value = persistenceStateOf(writer, webLocksSupported, lastWriteFailed, stale)
+        if (reloadRequested) reloadPage()
+    }
+
+    override fun reloadPage() {
+        window.location.reload()
     }
 }

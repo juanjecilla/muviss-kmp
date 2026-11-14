@@ -38,13 +38,17 @@ The lock for this package lives in the Kotlin/JS install, not here:
 ## Running its Node test
 
 ```sh
-node --test core/database/src/webWorker/test/snapshot-write.test.mjs
+node --test core/database/src/webWorker/test/snapshot-write.test.mjs core/database/src/webWorker/test/snapshot-generation.test.mjs
 ```
 
-It needs Node only and no `npm install`: the test loads the worker into a fresh
-VM realm with a faked IndexedDB, and stubs the `sql.js` import, since nothing in
-the test executes SQL. CI runs the same command (`.github/workflows/ci.yml`,
-"Web worker tests").
+(`npm test` in this directory runs the same two files.)
+
+Both need Node only and no `npm install`: each loads the worker into a fresh VM
+realm with a faked IndexedDB, and stubs the `sql.js` import, since nothing in the
+tests executes SQL. `snapshot-generation.test.mjs` runs two such realms against
+one shared IndexedDB and one lock manager, so it can check what happens between
+tabs: the generation check, the hand-over of the lock and the reload. CI runs the
+same command (`.github/workflows/ci.yml`, "Web worker tests").
 
 ## Why it must stay a local npm package
 
