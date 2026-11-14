@@ -60,12 +60,14 @@ import com.codingpit.muviss.core.designsystem.component.SkeletonHost
 import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.posterGridCells
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.back_to_discover
 import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_for_you
 import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_popular_movies
 import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_popular_tv
+import com.codingpit.muviss.feature.search.ui.generated.resources.discover_refresh_failed
 import com.codingpit.muviss.feature.search.ui.generated.resources.genre_empty_body
 import com.codingpit.muviss.feature.search.ui.generated.resources.genre_empty_title
 import com.codingpit.muviss.feature.search.ui.generated.resources.genres_movies
@@ -118,7 +120,7 @@ fun SearchScreen(
             // Home, loading or loaded, is one DiscoverBrowse call site: the local cards are real and the network
             // sections are skeletons under their real headers, so the page does not re-flow when the data lands
             // (#723). A second call site would give the loaded page a fresh scroll state and jump it to the top.
-            state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize()) {
+            state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize(), announce = state.discoverSkeleton) {
                 DiscoverBrowse(
                     state,
                     onSelectGenre = viewModel::selectGenre,
@@ -128,6 +130,7 @@ fun SearchScreen(
                     muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
                     onOpenNextPick = onOpenNextPick,
                     scroll = homeScroll,
+                    onRetry = viewModel::retry,
                 )
             }
 
@@ -308,6 +311,7 @@ internal fun DiscoverBrowse(
     // Held by the caller: the skeleton host's sweep is switched off when the load ends, and that recomposes
     // the page beneath it, so a scroll position kept here would be lost (#723).
     scroll: ScrollState = rememberScrollState(),
+    onRetry: () -> Unit = {},
 ) {
     val loading = state.loading
     Column(
@@ -319,6 +323,12 @@ internal fun DiscoverBrowse(
     ) {
         // First run only (EPIC 30, #73): what the app is for, before anything else.
         if (intro.visible) DiscoverIntroCard(onDismiss = intro.onDismiss)
+        // The stored copy is showing because the refresh failed and it is past its TTL (#724).
+        if (state.discoverSaved) {
+            Box(Modifier.padding(horizontal = MuvissSpacing.l)) {
+                StaleBanner(UiText.Resource(Res.string.discover_refresh_failed), onRetry = onRetry, tag = DISCOVER_SAVED_BANNER_TAG)
+            }
+        }
         // Triage's main entry point (ADR 0010). It leads the browse because
         // an empty or thin library is exactly the state it exists to fix.
         TriageEntryCard(onOpenTriage)
@@ -341,6 +351,9 @@ internal fun DiscoverBrowse(
         PopularSection(stringResource(Res.string.carousel_popular_tv), state.popularTv, loading, onOpenDetail)
     }
 }
+
+/** Test tag of the banner that says Discover is showing what was stored, because the refresh failed (#724). */
+internal const val DISCOVER_SAVED_BANNER_TAG = "discoverSavedBanner"
 
 /** The "show muted" chip: whether it is offered, whether it is on, and what tapping it does. */
 internal class MutedChip(val available: Boolean = false, val shown: Boolean = false, val onToggle: () -> Unit = {})

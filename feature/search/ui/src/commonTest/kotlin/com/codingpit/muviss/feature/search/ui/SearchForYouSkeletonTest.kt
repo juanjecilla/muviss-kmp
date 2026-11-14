@@ -3,9 +3,11 @@
 package com.codingpit.muviss.feature.search.ui
 
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
-import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.NoDiscoverCache
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.models.MediaId
@@ -42,11 +44,11 @@ class SearchForYouSkeletonTest {
     private fun viewModel(repo: FakeRepo, collectionApi: FakeSearchCollectionApi) = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
-        GenresUseCase(repo),
         RecommendationsUseCase(repo),
         collectionApi,
         FakeTriageApi(),
         FakeMutingApi(),
+        DiscoverFeed(repo, NoDiscoverCache, FakeClock(epochMs = 0L)),
         ConnectivityMonitor.AlwaysOnline,
     )
 
