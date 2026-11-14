@@ -89,6 +89,9 @@ internal class ConfigCatRemoteConfig(
                 bugReportUrl = client.getValue(KEY_BUG_REPORT_URL, defaults.bugReportUrl.orEmpty())
                     .trim()
                     .takeIf { it.isNotEmpty() },
+                nextPickDefaultResultMode = client.getValue(KEY_NEXT_PICK_DEFAULT_RESULT_MODE, defaults.nextPickDefaultResultMode)
+                    .trim()
+                    .ifEmpty { defaults.nextPickDefaultResultMode },
             )
         } ?: defaults
         state.value = next
@@ -120,6 +123,7 @@ internal class ConfigCatRemoteConfig(
         const val KEY_FEATURE_REQUEST_PROVIDER = "featureRequestProvider"
         const val KEY_FEATURE_REQUEST_URL = "featureRequestUrl"
         const val KEY_BUG_REPORT_URL = "bugReportUrl"
+        const val KEY_NEXT_PICK_DEFAULT_RESULT_MODE = "nextPickDefaultResultMode"
 
         /** One fetch per hour per active device is the budget ADR 0026 sets against the free tier. */
         const val STALE_AFTER_MS: Long = 60L * 60L * 1000L

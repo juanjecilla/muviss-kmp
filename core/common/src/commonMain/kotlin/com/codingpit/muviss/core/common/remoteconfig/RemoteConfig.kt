@@ -20,6 +20,10 @@ import kotlinx.coroutines.flow.StateFlow
  * @property featureRequestUrl the public URL of the Feature Request form, or null when
  *   there is none yet. A null or blank URL hides the row whatever the provider says.
  * @property bugReportUrl the same for the Bug Report form (ADR 0035, #449).
+ * @property nextPickDefaultResultMode the Next Pick result mode a *fresh* `appSettings` row starts with (EPIC 51,
+ *   #556): the stored enum name, `ONE_PICK` or `TOP_PICKS`. Read when the row is created and never again, so a
+ *   person's stored choice is never changed by a served value. Kept as a string because `:core:common` cannot see
+ *   `ResultMode`; the settings data layer reads it and falls back to the enum's own default.
  */
 data class RemoteValues(
     val byokEnabled: Boolean,
@@ -27,7 +31,11 @@ data class RemoteValues(
     val featureRequestProvider: FeatureRequestProvider = FeatureRequestProvider.Tally,
     val featureRequestUrl: String? = null,
     val bugReportUrl: String? = null,
+    val nextPickDefaultResultMode: String = NEXT_PICK_DEFAULT_RESULT_MODE,
 )
+
+/** The compiled default for [RemoteValues.nextPickDefaultResultMode]: `ResultMode.DEFAULT` in `:feature:nextpick:api`. */
+const val NEXT_PICK_DEFAULT_RESULT_MODE: String = "ONE_PICK"
 
 /** The hosted form service behind the Feature Request row. Stored by [key]. */
 enum class FeatureRequestProvider(val key: String) {

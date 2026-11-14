@@ -4,6 +4,8 @@ import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
@@ -33,6 +35,7 @@ class BackupRestoreTest {
         dispatchers,
         FakeClock(9_000L),
         AppVersion("1.2.3", 42L),
+        DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
     )
 
     private fun restorer(database: MuvissDatabase) = SqlDelightBackupRestorer(database, dispatchers)
