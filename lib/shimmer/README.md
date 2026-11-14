@@ -10,8 +10,9 @@ ShimmerHost(animate = !reduceMotion) {
 }
 ```
 
-- `ShimmerHost(animate, durationMillis, bandFraction)` runs the sweep. `animate = false` draws a flat `base` fill and runs no animation.
-- `Modifier.shimmer(base, highlight, animate)` paints one placeholder. Outside a host it sweeps across its own width.
+- `ShimmerHost(animate, durationMillis, bandFraction, angle)` runs the sweep. `animate = false` draws a flat `base` fill and runs no animation.
+- `Modifier.shimmer(base, highlight, animate, angle)` paints one placeholder. Outside a host it sweeps across its own bounds.
+- `angle` is the sweep's direction in degrees: `0` (the default) left to right, `90` top to bottom. Inside a host the host's angle is used for every placeholder under it.
 
 The band is positioned in window coordinates, so two neighbouring placeholders share one edge of the highlight.
 
