@@ -165,6 +165,63 @@ class WatchNextUseCaseTest {
         assertNull(first.single().nextEpisode)
     }
 
+    /** A season 0 special that aired before today and was never watched (ADR 0037). */
+    private val special = Season(0, "Specials", listOf(testEpisode(show, 0, 1, 40)))
+
+    /**
+     * Regular episodes all seen, one aired special unseen: nothing regular is left to name, so the title has no
+     * next episode and must leave Watch Next instead of prompting for the special.
+     */
+    @Test
+    fun drops_a_title_whose_only_unseen_aired_episodes_are_specials() = runTest {
+        val repository = FakeProgressRepository()
+        repository.setSeen(ep1, true)
+        repository.setSeen(ep2, true)
+        val watchNext = useCase(
+            FakeCollectionApi(listOf(collectionSummary(show))),
+            repository,
+            catalogs = mapOf(show to seasons + special),
+        )
+
+        watchNext().test {
+            var items = awaitItem()
+            while (items.isNotEmpty()) items = awaitItem()
+            assertEquals(emptyList(), items)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun keeps_a_title_with_an_unseen_regular_episode_even_when_a_special_is_unseen() = runTest {
+        val watchNext = useCase(
+            FakeCollectionApi(listOf(collectionSummary(show))),
+            FakeProgressRepository(),
+            catalogs = mapOf(show to seasons + special),
+        )
+
+        watchNext().test {
+            var item = awaitItem().firstOrNull()
+            while (item?.nextEpisode == null) item = awaitItem().firstOrNull()
+            assertEquals(ep1, item.nextEpisode?.id)
+            assertEquals(3, item.airedCount)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /** A title whose catalog has not arrived keeps its row: nothing aired is known, so it is not "only specials". */
+    @Test
+    fun keeps_a_title_whose_catalog_has_not_arrived() = runTest {
+        val watchNext = useCase(
+            FakeCollectionApi(listOf(collectionSummary(show, title = "Firefly"))),
+            FakeProgressRepository(),
+            catalogs = emptyMap(),
+        )
+
+        val first = watchNext().first().single()
+        assertEquals(0, first.airedCount)
+        assertEquals(false, first.hasOnlySpecialsLeft)
+    }
+
     private val older = MediaId.tmdbTv("2")
     private val newer = MediaId.tmdbTv("3")
 

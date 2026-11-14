@@ -148,7 +148,11 @@ class DetailProgressWritesTest {
     fun a_checkmark_tap_on_an_episode_already_seen_but_not_yet_loaded_writes_nothing_and_offers_no_undo() = runTest {
         val progress = FakeProgressApi()
         progress.setEpisodeSeen(episode1.id, seen = true)
+        // The screen's copy was taken before the tick landed: it does not show episode1 as seen yet.
+        progress.firstCollectionSnapshot = emptySet()
         val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+        assertTrue(episode1.id !in vm.state.value.seenEpisodes, "the UI snapshot must exclude the episode")
+        assertTrue(episode1.id in progress.observeSeenEpisodes(show).first(), "the fresh read must include it")
 
         vm.toggleEpisodeSeen(episode1.id)
 

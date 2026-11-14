@@ -23,7 +23,9 @@ object EpisodeOrdering {
      * The first aired episode not in [seen], or null if fully caught up (or nothing has aired).
      *
      * Season 0 specials are never "next" (ADR 0037): this walks regular seasons only, so an aired special
-     * that was never watched does not stand in for the next episode.
+     * that was never watched does not stand in for the next episode. The consequence for Watch Next: a title
+     * whose only unseen aired episodes are specials gets a null next episode and is dropped from the list
+     * (`WatchNextItem.hasOnlySpecialsLeft`), rather than shown as "open the app" or prompted with a special.
      */
     fun nextUnseen(seasons: List<Season>, seen: Set<EpisodeId>, todayEpochDay: Long): Episode? = regular(seasons)
         .firstOrNull { episode ->

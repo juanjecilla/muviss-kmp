@@ -34,6 +34,7 @@ import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -179,8 +180,21 @@ internal class FakeProgressApi : ProgressApi {
     /** Holds back every seen-episodes emission until set, as a slow progress read does (#779). */
     val seenReady = MutableStateFlow(true)
 
+    /**
+     * What the screen's own collection sees, when it differs from the live state: the first collection (the view
+     * model's, at construction) emits this and then stays quiet, while every later read — a write's fresh `first()`
+     * — sees the live plays. Lets a test hold the UI's copy of "seen" behind a fresh read.
+     */
+    var firstCollectionSnapshot: Set<EpisodeId>? = null
+    private var seenCollections = 0
+
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = flow {
         seenReady.first { it }
+        val snapshot = if (seenCollections++ == 0) firstCollectionSnapshot else null
+        if (snapshot != null) {
+            emit(snapshot)
+            awaitCancellation()
+        }
         emitAll(plays.map { all -> all.filterValues { it.isNotEmpty() }.keys })
     }
 

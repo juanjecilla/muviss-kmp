@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -59,6 +60,9 @@ class WatchNextUseCase(
         // A play that leaves the order alone must not rebuild every row's flow.
         .distinctUntilChanged()
         .flatMapLatest { watching -> itemsWhileLoadingCatalogs(watching) }
+        // A title whose only unseen aired episodes are specials has no next episode to prompt (ADR 0037), so it
+        // leaves the list. Done here, once, so the Progress tab and both widgets drop it together.
+        .map { items -> items.filterNot { it.hasOnlySpecialsLeft } }
 
     /**
      * Emits rows immediately from whatever catalogs are already cached, and

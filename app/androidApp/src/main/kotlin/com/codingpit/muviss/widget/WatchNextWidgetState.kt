@@ -86,12 +86,16 @@ fun watchNextWidgetUi(
 ): WatchNextWidgetUi {
     if (items.isEmpty()) return WatchNextWidgetUi.Empty.NOTHING_IN_PROGRESS
 
-    val rows = items.take(size.rows).map { item -> item.toRow(justTicked) }
+    val shown = items.take(size.rows)
+    val rows = shown.map { item -> item.toRow(justTicked) }
 
-    // Every row unnamed means the catalog has not arrived, not that the user
-    // is caught up on everything — a caught-up title leaves `Watching` and
-    // would not be in this list at all.
-    if (rows.all { it.episodeLabel == null && it.undoable == null }) {
+    // Every row unnamed AND no aired episode known means the catalog has not arrived. Aired episodes are only
+    // known from a loaded catalog, so a row with them is never "open the app"; a title whose only unseen
+    // episodes are specials is dropped upstream (WatchNextItem.hasOnlySpecialsLeft).
+    val catalogMissing = shown.zip(rows).all { (item, row) ->
+        row.episodeLabel == null && row.undoable == null && item.airedCount == 0
+    }
+    if (catalogMissing) {
         return WatchNextWidgetUi.Empty.NO_CATALOG_YET
     }
     return WatchNextWidgetUi.Rows(rows)

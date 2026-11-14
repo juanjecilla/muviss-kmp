@@ -52,10 +52,27 @@ class WatchNextWidgetStateTest {
      * you what to do.
      */
     @Test
-    fun `rows with no episode at all mean the catalog has not arrived`() {
-        val ui = watchNextWidgetUi(listOf(item(got, "Game of Thrones", next = null)), WidgetSize.MEDIUM)
+    fun `rows with no episode and no aired count mean the catalog has not arrived`() {
+        val ui = watchNextWidgetUi(
+            listOf(item(got, "Game of Thrones", next = null, seen = 0, aired = 0)),
+            WidgetSize.MEDIUM,
+        )
 
         assertEquals(WatchNextWidgetUi.Empty.NO_CATALOG_YET, ui)
+    }
+
+    /**
+     * A loaded catalog that has aired episodes is not a missing one, even when no regular episode is left to name.
+     * Before the fix this read "open the app", which changes nothing: the state only clears once the special is ticked.
+     */
+    @Test
+    fun `aired episodes with no next one never read as a missing catalog`() {
+        val ui = watchNextWidgetUi(
+            listOf(item(got, "Game of Thrones", next = null, seen = 9, aired = 10)),
+            WidgetSize.MEDIUM,
+        )
+
+        assertEquals(1, (ui as WatchNextWidgetUi.Rows).rows.size)
     }
 
     @Test

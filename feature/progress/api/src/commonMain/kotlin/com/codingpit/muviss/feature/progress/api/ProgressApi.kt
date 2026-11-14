@@ -46,7 +46,8 @@ data class EpisodePlay(
  *
  * [nextEpisode] is null both for a title fully caught up and for one whose
  * catalog is not available yet — a distinction no caller has needed, and one
- * a widget deliberately blurs into "open the app".
+ * a widget deliberately blurs into "open the app". A title whose only unseen
+ * aired episodes are specials is not returned at all (see [hasOnlySpecialsLeft]).
  */
 data class WatchNextItem(
     val mediaId: MediaId,
@@ -58,6 +59,13 @@ data class WatchNextItem(
 ) {
     /** Fraction of aired episodes seen, for the row's progress bar; null when nothing aired. */
     val progress: Float? get() = if (airedCount > 0) seenCount / airedCount.toFloat() else null
+
+    /**
+     * True when the only aired episodes left unseen are season 0 specials (ADR 0037). [nextEpisode] is then null,
+     * so there is nothing to name, and Watch Next and the Progress tab leave the title out rather than prompt for a
+     * special. `airedCount > 0` here also means its catalog has loaded: an empty catalog counts nothing as aired.
+     */
+    val hasOnlySpecialsLeft: Boolean get() = nextEpisode == null && airedCount > seenCount
 }
 
 /**
