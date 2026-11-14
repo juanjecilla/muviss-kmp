@@ -85,6 +85,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The migration-order check compares with origin/develop (#727).
+          fetch-depth: 0
+
+      # A migration this change adds must sort after develop's newest (#727). The
+      # test proves the check itself, so the check is not trusted on its own.
+      - name: Migrations sort after develop's
+        run: |
+          scripts/ci/test/migration-order-test.sh
+          scripts/ci/check-migration-order.sh origin/develop
 
       - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
         with:
