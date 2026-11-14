@@ -1,0 +1,4 @@
+# gradle/verification-metadata.xml is written by Gradle and by update-verification.sh, and
+# its line endings must not depend on the host that last regenerated it (#861): the Windows
+# leg writes CRLF, macOS and Linux write LF, and a mismatch makes the whole file a diff.
+gradle/verification-metadata.xml text eol=lf
