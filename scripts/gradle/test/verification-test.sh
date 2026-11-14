@@ -6,6 +6,8 @@
 # Gradle wrapper; it does not touch the repo's own gradle/verification-metadata.xml.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/../../.." && pwd)"
+# The helper behind update-verification.sh --prune (#850) needs no Gradle, so it runs first.
+python3 -I "$root/scripts/gradle/test/strip_generated_checksums_test.py" || exit 1
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/gradle"
 
