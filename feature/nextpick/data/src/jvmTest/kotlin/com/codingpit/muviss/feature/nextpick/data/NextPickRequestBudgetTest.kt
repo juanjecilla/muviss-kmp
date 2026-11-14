@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.nextpick.data
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.network.NotFoundTitles
 import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.collection.api.CollectionApi
@@ -94,6 +95,7 @@ class NextPickRequestBudgetTest {
                     lookup = { services.lookup },
                     fill = { services.fill },
                     region = { "US" },
+                    missing = { NotFoundTitles(clock) },
                 ),
                 DiscoverSource(metadata, collection, thisYear = { 2027 }, muting = PickMuting { MutedGenres.NONE }, taste = { services.taste }, region = { "US" }),
             ),

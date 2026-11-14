@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.nextpick.data
 
+import com.codingpit.muviss.core.network.NotFoundTitles
 import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.nextpick.api.PickCriteria
@@ -50,6 +51,7 @@ internal class OwnServicesCandidates(
     private val lookup: () -> WatchProviderLookup,
     private val fill: () -> WatchProviderFill,
     private val region: () -> String,
+    private val missing: () -> NotFoundTitles,
 ) : PickCandidates {
 
     override suspend fun gather(criteria: PickCriteria, context: PickContext): List<PickCandidate> {
@@ -63,10 +65,15 @@ internal class OwnServicesCandidates(
         return candidates.filter { candidate -> known[candidate.id]?.any { it in services } == true }
     }
 
-    /** Fetches the first [MAX_PROVIDER_FILLS_PER_PICK] titles the cache has no answer for in [region], then re-reads. */
+    /**
+     * Fetches the first [MAX_PROVIDER_FILLS_PER_PICK] titles the cache has no answer for in [region], then re-reads.
+     * A title TMDB recently said does not exist is passed over, so the budget reaches the titles behind it (#762).
+     */
     private suspend fun fillUnknown(ids: Set<MediaId>, regionCode: String): Map<MediaId, Set<String>> {
         val cached = cachedFor(ids, regionCode)
-        val unknown = ids.filterNot { it in cached }.take(MAX_PROVIDER_FILLS_PER_PICK)
+        val uncached = ids.filterNot { it in cached }
+        val recentlyMissing = missing().known(uncached.toSet())
+        val unknown = uncached.filterNot { it in recentlyMissing }.take(MAX_PROVIDER_FILLS_PER_PICK)
         if (unknown.isEmpty()) return cached
         fill().fill(unknown, regionCode)
         return cachedFor(ids, regionCode)

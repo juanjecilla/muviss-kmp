@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.cowatch.data
 
+import com.codingpit.muviss.core.network.NotFoundTitles
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.cowatch.domain.CachedProviders
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderSource
@@ -27,13 +29,16 @@ class TmdbWatchProviderFillTest {
     private class ScriptedSource(private val answers: Map<MediaId, Result<Set<String>>>) : WatchProviderSource {
         override val region: String = "US"
         val asked = mutableListOf<MediaId>()
+        val regions = mutableListOf<String>()
 
-        override suspend fun fetchFlatrateIds(mediaId: MediaId): Result<Set<String>> {
+        override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> {
             asked += mediaId
+            regions += region
             return answers.getValue(mediaId)
         }
     }
 
+    private val notFound = NotFoundTitles(FakeClock(epochMs = 0L))
     private val a = MediaId.tmdbMovie("1")
     private val b = MediaId.tmdbMovie("2")
     private val c = MediaId.tmdbMovie("3")
@@ -43,7 +48,7 @@ class TmdbWatchProviderFillTest {
         val cache = RecordingCache()
         val source = ScriptedSource(mapOf(a to Result.success(setOf("8")), b to Result.success(setOf("9", "337"))))
 
-        TmdbWatchProviderFill(cache, source).fill(listOf(a, b), region = "US")
+        TmdbWatchProviderFill(cache, source, notFound).fill(listOf(a, b), region = "US")
 
         assertEquals(listOf(a, b), source.asked)
         assertEquals(listOf(Triple(a, "US", setOf("8")), Triple(b, "US", setOf("9", "337"))), cache.puts)
@@ -54,7 +59,7 @@ class TmdbWatchProviderFillTest {
         val cache = RecordingCache()
         val source = ScriptedSource(mapOf(a to Result.success(emptySet())))
 
-        TmdbWatchProviderFill(cache, source).fill(listOf(a), region = "US")
+        TmdbWatchProviderFill(cache, source, notFound).fill(listOf(a), region = "US")
 
         assertEquals(listOf(Triple(a, "US", emptySet())), cache.puts)
     }
@@ -64,7 +69,7 @@ class TmdbWatchProviderFillTest {
         val cache = RecordingCache()
         val source = ScriptedSource(mapOf(a to Result.failure(MetadataError.NotFound()), b to Result.success(setOf("8"))))
 
-        TmdbWatchProviderFill(cache, source).fill(listOf(a, b), region = "US")
+        TmdbWatchProviderFill(cache, source, notFound).fill(listOf(a, b), region = "US")
 
         assertEquals(listOf(a, b), source.asked)
         assertEquals(listOf(Triple(b, "US", setOf("8"))), cache.puts)
@@ -81,7 +86,7 @@ class TmdbWatchProviderFillTest {
             ),
         )
 
-        TmdbWatchProviderFill(cache, source).fill(listOf(a, b, c), region = "US")
+        TmdbWatchProviderFill(cache, source, notFound).fill(listOf(a, b, c), region = "US")
 
         assertEquals(listOf(a, b), source.asked, "the title after the failure is not asked about")
         assertEquals(listOf(Triple(a, "US", setOf("8"))), cache.puts, "what was answered before the failure is kept; the failed title is not written")
@@ -103,9 +108,29 @@ class TmdbWatchProviderFillTest {
         }
         val source = ScriptedSource(mapOf(a to Result.success(setOf("8")), b to Result.success(setOf("9"))))
 
-        TmdbWatchProviderFill(failingCache, source).fill(listOf(a, b), region = "US")
+        TmdbWatchProviderFill(failingCache, source, notFound).fill(listOf(a, b), region = "US")
 
         assertEquals(listOf(a), source.asked, "the batch ends at the failed write; the title after it is not fetched")
         assertTrue(failingCache.puts.isEmpty())
+    }
+
+    @Test
+    fun `a_title_the_source_does_not_know_is_remembered_as_missing_for_the_next_pick`() = runTest {
+        val cache = RecordingCache()
+        val source = ScriptedSource(mapOf(a to Result.failure(MetadataError.NotFound()), b to Result.success(setOf("8"))))
+
+        TmdbWatchProviderFill(cache, source, notFound).fill(listOf(a, b), region = "US")
+
+        assertEquals(setOf(a), notFound.known(setOf(a, b)), "a is remembered as missing, b is not")
+    }
+
+    @Test
+    fun `every_fetch_names_the_region_the_batch_was_given`() = runTest {
+        val cache = RecordingCache()
+        val source = ScriptedSource(mapOf(a to Result.success(setOf("8")), b to Result.success(setOf("9"))))
+
+        TmdbWatchProviderFill(cache, source, notFound).fill(listOf(a, b), region = "FR")
+
+        assertEquals(listOf("FR", "FR"), source.regions, "the request and the cache write use the same region")
     }
 }

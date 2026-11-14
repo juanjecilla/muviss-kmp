@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.nextpick.data
 
+import com.codingpit.muviss.core.network.NotFoundTitles
 import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.nextpick.api.PickAnchor
@@ -51,7 +52,12 @@ class OwnServicesCandidatesTest {
     }
 
     /** Records every title asked about and writes [answers] into [lookup], as the real fill writes the cache. */
-    private class RecordingFill(private val lookup: MutableWatchCache, private val answers: (MediaId) -> Set<String>) : WatchProviderFill {
+    private class RecordingFill(
+        private val lookup: MutableWatchCache,
+        private val missingIds: Set<MediaId> = emptySet(),
+        private val notFound: NotFoundTitles? = null,
+        private val answers: (MediaId) -> Set<String>,
+    ) : WatchProviderFill {
         val asked = mutableListOf<MediaId>()
         val regions = mutableListOf<String>()
 
@@ -59,7 +65,8 @@ class OwnServicesCandidatesTest {
             regions += region
             for (id in mediaIds) {
                 asked += id
-                lookup.entries[id] = region to answers(id)
+                // The real fill records "not found" in NotFoundTitles and writes nothing to the cache (#762).
+                if (id in missingIds) notFound?.record(id) else lookup.entries[id] = region to answers(id)
             }
         }
     }
@@ -71,12 +78,14 @@ class OwnServicesCandidatesTest {
         lookup: WatchProviderLookup,
         region: String = "US",
         fill: WatchProviderFill = FailingFill,
+        notFound: NotFoundTitles = NotFoundTitles(fixedClock),
     ): PickCandidates = OwnServicesCandidates(
         inner = CollectionBacklogCandidates({ library }, genreIds, fixedClock),
         taste = { services },
         lookup = { lookup },
         fill = { fill },
         region = { region },
+        missing = { notFound },
     )
 
     @Test
@@ -161,6 +170,7 @@ class OwnServicesCandidatesTest {
             lookup = { NoLookup },
             fill = { NoFill },
             region = { "US" },
+            missing = { NotFoundTitles(fixedClock) },
         )
 
         val picked = source.gather(onMyServices, PickContext(online = true))
@@ -177,6 +187,7 @@ class OwnServicesCandidatesTest {
             lookup = { FakeLookup(mapOf(MediaId.tmdbMovie("7") to ("US" to setOf("337")))) },
             fill = { FailingFill },
             region = { "US" },
+            missing = { NotFoundTitles(fixedClock) },
         )
 
         val picked = source.gather(
@@ -224,6 +235,30 @@ class OwnServicesCandidatesTest {
 
         assertTrue(picked.isEmpty(), "unknown is not claimed as on a service")
         assertTrue(lookup.entries.isEmpty(), "and nothing is written as on no service either")
+    }
+
+    @Test
+    fun `ten_not_found_titles_at_the_head_are_passed_over_on_the_next_pick_and_the_budget_still_holds`() = runTest {
+        // The first ten titles are not on TMDB at all. A pick spends its budget on them and finds nothing; the next pick
+        // must skip them and reach the titles behind them, still asking no more than the cap.
+        val library = FakeLibrary((1..25).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
+        val lookup = MutableWatchCache()
+        val notFound = NotFoundTitles(fixedClock)
+        val head = (1..10).map { MediaId.tmdbMovie("$it") }
+        val fill = RecordingFill(lookup, missingIds = head.toSet(), notFound = notFound) { setOf("8") }
+        val candidates = backlog(library, lookup, fill = fill, notFound = notFound)
+
+        val first = candidates.gather(onMyServices, PickContext(online = true))
+        assertEquals(head, fill.asked, "the first pick asks the head")
+        assertTrue(first.isEmpty(), "nothing on a service was found")
+
+        fill.asked.clear()
+        val second = candidates.gather(onMyServices, PickContext(online = true))
+
+        val behindTheHead = (11..20).map { MediaId.tmdbMovie("$it") }
+        assertEquals(behindTheHead, fill.asked, "the second pick passes over the ten missing titles")
+        assertEquals(behindTheHead, second.map { it.id }, "and the titles behind them are on a service")
+        assertTrue(fill.asked.size <= MAX_PROVIDER_FILLS_PER_PICK, "the budget still caps the request count")
     }
 
     @Test

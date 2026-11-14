@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.cowatch.data
 
 import com.codingpit.muviss.core.common.crash.CrashReporter
+import com.codingpit.muviss.core.network.NotFoundTitles
 import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderSource
@@ -17,11 +18,12 @@ import kotlinx.coroutines.CancellationException
 internal class TmdbWatchProviderFill(
     private val cache: WatchProviderCache,
     private val source: WatchProviderSource,
+    private val notFound: NotFoundTitles,
 ) : WatchProviderFill {
 
     override suspend fun fill(mediaIds: List<MediaId>, region: String) {
         for (mediaId in mediaIds) {
-            val result = source.fetchFlatrateIds(mediaId)
+            val result = source.fetchFlatrateIds(mediaId, region)
             val failure = result.exceptionOrNull()
             if (failure == null) {
                 runCatching { cache.put(mediaId, region, result.getOrThrow()) }.onFailure { error ->
@@ -30,7 +32,10 @@ internal class TmdbWatchProviderFill(
                     CrashReporter.recordException(error)
                     return
                 }
-            } else if (failure !is MetadataError.NotFound) {
+            } else if (failure is MetadataError.NotFound) {
+                // Not an empty answer: the title is remembered as missing, so the next pick passes over it (#762).
+                notFound.record(mediaId)
+            } else {
                 // Offline, rate-limited or unauthorised: the rest of the batch would fail the same way. Keep what is cached.
                 return
             }

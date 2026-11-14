@@ -76,6 +76,7 @@ val nextPickDataModule: Module = module {
                     lookup = lookup,
                     fill = fill,
                     region = region,
+                    missing = { get() },
                 ),
                 DiscoverSource(metadata, collection, thisYear, muting, taste, region),
             ),
