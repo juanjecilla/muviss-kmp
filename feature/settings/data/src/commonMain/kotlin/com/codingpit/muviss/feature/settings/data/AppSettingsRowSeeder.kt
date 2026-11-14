@@ -8,12 +8,15 @@ import com.codingpit.muviss.feature.nextpick.api.ResultMode
 import kotlinx.coroutines.withContext
 
 /**
- * Creates the singleton `appSettings` row when it does not exist yet (EPIC 51, #556). Every settings wrapper calls this
- * before a read or write, in place of a bare `ensureRow()`, so the one place that knows the fresh-row seed is here.
+ * Creates the singleton `appSettings` row when it does not exist yet (EPIC 51, #556). The settings wrappers in this
+ * module call this before a read or write, in place of a bare `ensureRow()`, so the one place that knows the fresh-row
+ * seed is here.
  *
- * A fresh row starts its Next Pick result mode from Remote Config's `nextPickDefaultResultMode`. An existing row is
- * never touched: the `INSERT OR IGNORE` keeps the stored choice, and the check below means the common path reads no
- * Remote Config at all. Read through [RemoteConfig.awaitStored] (the stored copy, never the network).
+ * The served default applies only when this path creates the row. Other modules still create the row with a bare
+ * `ensureRow()` (listed in #853), and whichever writer runs first creates it. A row created that way gets the compiled
+ * default, and the served value is lost for that install. An existing row is never touched: the `INSERT OR IGNORE`
+ * keeps the stored choice, and the check below means the common path reads no Remote Config at all. Read through
+ * [RemoteConfig.awaitStored] (the stored copy, never the network).
  */
 internal class AppSettingsRowSeeder(
     private val queries: AppSettingsQueries,

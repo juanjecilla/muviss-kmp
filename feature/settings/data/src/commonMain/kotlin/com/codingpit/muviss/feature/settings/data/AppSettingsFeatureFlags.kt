@@ -38,7 +38,7 @@ class AppSettingsFeatureFlags(
     private val clock: AppClock,
 ) : FeatureFlags {
 
-    // Same seed as the other settings wrappers, so whichever of them creates the row first makes the same one (#556).
+    // Same seed as the other settings-path wrappers. A row another module creates first gets the compiled default instead (#853).
     private val rowSeeder = AppSettingsRowSeeder(queries, remoteConfig, dispatchers)
 
     override val triageControlScheme: Flow<TriageControlScheme> = settings()

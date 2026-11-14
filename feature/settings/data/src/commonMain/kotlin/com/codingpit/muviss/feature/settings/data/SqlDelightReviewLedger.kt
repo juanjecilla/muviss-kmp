@@ -12,7 +12,8 @@ import kotlinx.coroutines.withContext
  * [ReviewLedger] over the four `appSettings` review columns (`25.sqm`, #410). Per device, never
  * synced and never exported. Every write creates the row through [AppSettingsRowSeeder], the same as the
  * other settings writes, so a counter made after Delete all data starts a fresh row rather than
- * silently dropping the tick, and a fresh row takes its seeded Next Pick default whichever path made it.
+ * silently dropping the tick. A row this ledger creates takes the served Next Pick default; a row another
+ * module created first keeps the compiled default (#853).
  */
 class SqlDelightReviewLedger(
     private val queries: AppSettingsQueries,
