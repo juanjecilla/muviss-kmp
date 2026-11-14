@@ -670,7 +670,19 @@ ivy repository, so it is an ordinary artifact to Gradle).
   artifacts publish no usable PGP key, so signature verification would be a long list
   of `ignored-keys`, which is a weaker statement than a checksum, not a stronger one.
   Checksums it is; revisit if the ecosystem signs consistently.
-- **Binaryen** (the Wasm optimizer, `com.github.webassembly:binaryen`, downloaded by the Kotlin plugin for `wasmJsBrowserDistribution`) is covered for macOS arm64 and x86_64, Linux x86_64 and Windows x86_64. `update-verification.sh` runs that production lane so a regeneration keeps those checksums; `--prune` would otherwise drop them. Any other host (aarch64 Linux, say) fails verification until its checksum is added the same way.
+- **Per-host downloads the Kotlin plugin makes** (outside the build's dependencies, one archive per host): Binaryen (`com.github.webassembly:binaryen:130`, the Wasm optimizer, needed by `wasmJsBrowserDistribution`) and Node (`org.nodejs:node`, 24.16.0 for the JS lanes and 26.2.0 for Wasm). Yarn is one archive for every host. The plugin names a host `<arch>-<os>`: `uname -m` on macOS and Linux, `os.arch` on Windows. Coverage:
+
+  | Host | Binaryen | Node |
+  |---|---|---|
+  | macOS arm64 | hand-verified (#849) | the macOS leg |
+  | macOS x86_64 | hand-verified (#850) | hand-verified (#850) |
+  | Linux x86_64 | the Linux leg | the Linux leg |
+  | Linux aarch64 | hand-verified (#850) | hand-verified (#850) |
+  | Windows x86_64 | the Windows leg | the Windows leg |
+
+  "Hand-verified" means the checksum was computed from the downloaded archive and matched to GitHub's asset digest (Binaryen) or the release's `SHASUMS256.txt` (Node), and no leg can write it. Nothing has yet built on those hosts, so they are unproven (#859). `--prune` keeps these entries.
+
+  **Unsupported:** Windows on ARM. The plugin asks for `binaryen-130-aarch64-windows.tar.gz`, but the release publishes `arm64-windows`, so the download 404s (#860). 32-bit x86 hosts map to a name no release publishes (`x86_86`).
 - **Not covered, on purpose:** the Kotlin/Native toolchain (`~/.konan`, downloaded by
   the Kotlin plugin outside dependency resolution), npm packages (pinned by
   `kotlin-js-store/yarn.lock`, which CI already checks is current), the JDK and
@@ -681,9 +693,11 @@ ivy repository, so it is an ordinary artifact to Gradle).
   Run it on **all three** hosts in turn, macOS, then Linux, then Windows, each starting
   from the file the previous one wrote: some artifacts are chosen by the host (aapt2,
   Skiko's runtime, the Kotlin/Native toolchain), and the iOS lanes only resolve on
-  macOS. It only adds; `--prune` starts from nothing so stale entries go, which makes
-  the three-host order mandatory after a prune: a macOS-only prune drops the Linux and
-  Windows checksums and fails those lanes. By hand, the easy way is
+  macOS. It only adds. `--prune` drops the checksums Gradle wrote (through
+  `scripts/gradle/strip-generated-checksums.py`) and keeps the hand-verified ones, so
+  the three-host order is mandatory after a prune: a macOS-only prune drops the Linux and
+  Windows checksums and fails those lanes. Hand-verified entries are not expired by a
+  version bump; remove them by hand (#859). By hand, the easy way is
   `gh workflow run gradle-verification.yml --ref <feature-branch>`, which runs the three
   legs; it refuses `develop`, `main`, `release/*` and `hotfix/*`, because the push job's
   App can bypass those branches' rulesets. Fix their checksums through a PR. It is also

@@ -10,13 +10,16 @@
 # gradle-verification.yml does all three in turn.
 #
 #   scripts/gradle/update-verification.sh          add what a bump needs
-#   scripts/gradle/update-verification.sh --prune  also drop entries nothing resolves any more
+#   scripts/gradle/update-verification.sh --prune  also drop the checksums Gradle wrote that
+#                                                   no lane resolves any more
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-# --prune starts from nothing, so only what the lanes resolve today is trusted.
+# --prune drops the checksums Gradle wrote and keeps the hand-verified ones (cross-host
+# archives such as Binaryen's macOS x86_64, which no leg can resolve, #850). Deleting the
+# whole file dropped those too. Each host's lanes then write their own again.
 if [ "${1:-}" = "--prune" ]; then
-  rm -f gradle/verification-metadata.xml
+  python3 -I scripts/gradle/strip-generated-checksums.py gradle/verification-metadata.xml
 fi
 
 case "$(uname -s)" in
