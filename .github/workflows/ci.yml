@@ -704,7 +704,13 @@ jobs:
       # Runs the iosAppUITests target through the shared iosApp scheme.
       # The simulator is looked up, not named: the image's device list changes
       # under us (a pinned "iPhone 16" stopped existing).
+      #
+      # Bounded (#784): a hung simulator used to hold the PR for the whole
+      # 75-minute job. A healthy run is about 8 minutes (the xcodebuild
+      # overhead before the first test is most of it), so 20 fails a hang in
+      # minutes. Readiness waits live in the test, not here.
       - name: Run the iOS UI smoke tests (simulator)
+        timeout-minutes: 20
         run: |
           udid=$(scripts/ios/simulator-udid.sh)
           xcodebuild test \
