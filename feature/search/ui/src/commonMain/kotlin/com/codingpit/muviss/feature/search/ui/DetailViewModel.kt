@@ -168,6 +168,19 @@ class DetailViewModel(
     /** Serializes the check-then-add of [addIfAbsent], so only one concurrent caller can claim the entry. */
     private val membershipLock = Mutex()
 
+    /**
+     * Serializes every tap that writes progress and then publishes an Undo. Two taps overlap while the first is
+     * suspended on IO; the tap that created the library entry can publish its Undo last, and Undo would then
+     * remove the entry while the other episode stays seen. The fresh seen-read sits inside the lock too, so a
+     * double tap on one episode cannot pass the guard twice. Always taken before [membershipLock], never after.
+     */
+    private val writeLock = Mutex()
+
+    /** Runs [block] as a reporting coroutine, one write at a time (see [writeLock]). */
+    private fun launchWrite(block: suspend () -> Unit) {
+        viewModelScope.launchReporting { writeLock.withLock { block() } }
+    }
+
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
@@ -437,8 +450,8 @@ class DetailViewModel(
         val caughtUp = details
             ?.takeIf { current.animateTicks && it.completesAiredWith(episodeId, current.seenEpisodes, clock.todayEpochDay()) }
             ?.let { UiText.Resource(Res.string.tick_caught_up, it.summary.title) }
-        viewModelScope.launchReporting {
-            if (episodeId in progressApi.observeSeenEpisodes(mediaId).first()) return@launchReporting
+        launchWrite {
+            if (episodeId in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
             progressApi.tickEpisode(episodeId, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
@@ -463,8 +476,8 @@ class DetailViewModel(
         val caughtUp = details
             ?.takeIf { current.animateTicks && it.completesAiredWith(episode, current.seenEpisodes, clock.todayEpochDay()) }
             ?.let { UiText.Resource(Res.string.tick_caught_up, it.summary.title) }
-        viewModelScope.launchReporting {
-            if (episode in progressApi.observeSeenEpisodes(mediaId).first()) return@launchReporting
+        launchWrite {
+            if (episode in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
             progressApi.tickEpisode(episode, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
@@ -474,9 +487,9 @@ class DetailViewModel(
 
     /** The primary action's tick for a movie that is not watched yet (#721). Offers an Undo unless it was already watched. */
     fun markMovieWatched() {
-        viewModelScope.launchReporting {
+        launchWrite {
             val id = EpisodeId.forMovie(mediaId)
-            if (id in progressApi.observeSeenEpisodes(mediaId).first()) return@launchReporting
+            if (id in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
             progressApi.tickMovie(mediaId, true)
             offerUndo(listOf(id), UiText.Resource(Res.string.movie_marked_watched), createdEntry = created)
@@ -494,8 +507,8 @@ class DetailViewModel(
      * library screen would then throw on. See `ProgressApi.markSeasonAiredSeen`.
      */
     fun markSeasonSeen(season: Season) {
-        viewModelScope.launchReporting {
-            if (airedUnseen(listOf(season)).isEmpty()) return@launchReporting
+        launchWrite {
+            if (airedUnseen(listOf(season)).isEmpty()) return@launchWrite
             val created = addIfAbsent()
             val written = progressApi.markSeasonAiredSeen(season, clock.todayEpochDay())
             offerUndo(written, UiText.Resource(Res.string.undo_season_seen, season.name), createdEntry = created)
@@ -513,8 +526,8 @@ class DetailViewModel(
     /** The "mark whole show seen" action; the caller confirms first. */
     fun markShowSeen() {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launchReporting {
-            if (airedUnseen(seasons).isEmpty()) return@launchReporting
+        launchWrite {
+            if (airedUnseen(seasons).isEmpty()) return@launchWrite
             val created = addIfAbsent()
             val written = progressApi.markShowAiredSeen(seasons, clock.todayEpochDay())
             offerUndo(written, UiText.Resource(Res.string.undo_show_seen), createdEntry = created)
@@ -535,8 +548,9 @@ class DetailViewModel(
      * unsaved title), or the removal it made. Nothing else is touched.
      */
     fun undoBulkMark() {
-        val undo = _state.value.pendingUndo ?: return
-        viewModelScope.launchReporting {
+        // Read under the lock: an Undo tapped while a tick is still writing must see the Undo that tick publishes.
+        launchWrite {
+            val undo = _state.value.pendingUndo ?: return@launchWrite
             if (undo.episodeIds.isNotEmpty()) progressApi.undoBulkMark(undo.episodeIds)
             if (undo.removedFromLibrary) collectionApi.restore(mediaId)
             if (undo.createdEntry) collectionApi.remove(mediaId)
@@ -598,13 +612,13 @@ class DetailViewModel(
      */
     fun markPreviousSeen(episodeId: EpisodeId) {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launchReporting {
+        launchWrite {
             val today = clock.todayEpochDay()
             val aired = seasons.map { season -> season.copy(episodes = season.episodes.filter { it.hasAired(today) }) }
-            if (aired.none { season -> season.episodes.any { it.id == episodeId } }) return@launchReporting
+            if (aired.none { season -> season.episodes.any { it.id == episodeId } }) return@launchWrite
             // Already seen through here: nothing would be ticked, so the title is not saved for it (ADR 0037).
             val seen = progressApi.observeSeenEpisodes(mediaId).first()
-            if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchReporting
+            if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchWrite
             addIfAbsent()
             progressApi.markPreviousSeen(aired, episodeId)
             releaseEntry()
@@ -613,7 +627,7 @@ class DetailViewModel(
 
     /** Toggles a movie's watched flag. */
     fun toggleMovieWatched() {
-        viewModelScope.launchReporting {
+        launchWrite {
             val watched = _state.value.movieWatched
             if (!watched) addIfAbsent()
             progressApi.tickMovie(mediaId, !watched)
