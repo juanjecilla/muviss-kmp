@@ -675,12 +675,12 @@ ivy repository, so it is an ordinary artifact to Gradle).
   | Host | Binaryen | Node |
   |---|---|---|
   | macOS arm64 | hand-verified (#849) | the macOS leg |
-  | macOS x86_64 | hand-verified (#850) | hand-verified (#850) |
+  | macOS x86_64 | hand-verified (#850), built under Rosetta (#859) | hand-verified (#850), built under Rosetta (#859) |
   | Linux x86_64 | the Linux leg | the Linux leg |
-  | Linux aarch64 | hand-verified (#850) | hand-verified (#850) |
+  | Linux aarch64 | hand-verified (#850), built in a linux/arm64 container (#859) | hand-verified (#850), built in a linux/arm64 container (#859) |
   | Windows x86_64 | the Windows leg | the Windows leg |
 
-  "Hand-verified" means the checksum was computed from the downloaded archive and matched to GitHub's asset digest (Binaryen) or the release's `SHASUMS256.txt` (Node), and no leg can write it. Nothing has yet built on those hosts, so they are unproven (#859). `--prune` keeps these entries.
+  "Hand-verified" means the checksum was computed from the downloaded archive and matched to GitHub's asset digest (Binaryen) or the release's `SHASUMS256.txt` (Node), and no leg can write it. The macOS x86_64 and Linux aarch64 rows were run by hand with `:app:webApp:wasmJsBrowserDistribution` under strict verification, from an empty Gradle home (#859). `scripts/gradle/hand-verified-pins.txt` records the Kotlin version and tool versions those checksums were checked for: a Kotlin bump fails `check-hand-verified.py` until they are re-verified, and `--prune` drops the hand-verified entries for any version the pins no longer list.
 
   **Unsupported:** Windows on ARM. The plugin asks for `binaryen-130-aarch64-windows.tar.gz`, but the release publishes `arm64-windows`, so the download 404s (#860). 32-bit x86 hosts map to a name no release publishes (`x86_86`).
 - **Not covered, on purpose:** the Kotlin/Native toolchain (`~/.konan`, downloaded by

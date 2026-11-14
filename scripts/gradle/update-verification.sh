@@ -17,8 +17,10 @@ cd "$(dirname "$0")/../.."
 
 # --prune drops the checksums Gradle wrote and keeps the hand-verified ones (cross-host
 # archives such as Binaryen's macOS x86_64, which no leg can resolve, #850). Deleting the
-# whole file dropped those too. Each host's lanes then write their own again.
+# whole file dropped those too. Each host's lanes then write their own again. It also drops
+# the hand-verified ones for a version the pins do not list (#859), so a bump retires them.
 if [ "${1:-}" = "--prune" ]; then
+  python3 -I scripts/gradle/check-hand-verified.py --prune gradle/verification-metadata.xml gradle/libs.versions.toml
   python3 -I scripts/gradle/strip-generated-checksums.py gradle/verification-metadata.xml
 fi
 
@@ -54,3 +56,7 @@ status=0
 [ "$status" -eq 0 ] || echo "::warning::some lanes failed on this host (exit $status); checksums were still written"
 
 echo "gradle/verification-metadata.xml updated: $(grep -c '<component ' gradle/verification-metadata.xml) components"
+
+# A hand-verified checksum for a version the pins do not list, or a pins file for another Kotlin
+# version, fails here (#859); --prune removes the former.
+python3 -I scripts/gradle/check-hand-verified.py gradle/verification-metadata.xml gradle/libs.versions.toml
