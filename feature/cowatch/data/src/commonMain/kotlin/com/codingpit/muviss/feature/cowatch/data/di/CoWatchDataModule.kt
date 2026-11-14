@@ -1,4 +1,6 @@
 package com.codingpit.muviss.feature.cowatch.data.di
+import com.codingpit.muviss.core.network.NotFoundTitles
+import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.core.sync.secureRandomHex
 import com.codingpit.muviss.feature.collection.api.CollectionApi
@@ -8,6 +10,7 @@ import com.codingpit.muviss.feature.cowatch.data.CompanionSyncer
 import com.codingpit.muviss.feature.cowatch.data.DefaultCoWatchApi
 import com.codingpit.muviss.feature.cowatch.data.SqlDelightCoWatchRepository
 import com.codingpit.muviss.feature.cowatch.data.SqlDelightWatchProviderCache
+import com.codingpit.muviss.feature.cowatch.data.TmdbWatchProviderFill
 import com.codingpit.muviss.feature.cowatch.data.TmdbWatchProviderSource
 import com.codingpit.muviss.feature.cowatch.domain.AcceptInviteUseCase
 import com.codingpit.muviss.feature.cowatch.domain.CoWatchRepository
@@ -41,6 +44,9 @@ val coWatchDataModule: Module = module {
     single<WatchProviderCache> { get<SqlDelightWatchProviderCache>() }
     // #740: the same cache, read-only, for Next Pick's "only my services" (no request is ever made through it).
     single<WatchProviderLookup> { get<SqlDelightWatchProviderCache>() }
+    // #762: the same source and cache, for Next Pick's bounded fill of titles it has never seen.
+    single { NotFoundTitles(get()) }
+    single<WatchProviderFill> { TmdbWatchProviderFill(get(), get(), get()) }
     single<WatchProviderSource> { TmdbWatchProviderSource(get(), get(), get()) }
     single { WatchProviderRefresher(get(), get(), get()) }
     factory { PublishWatchPoolUseCase({ get<CollectionApi>() }, { get<ListsApi>() }, get(), get()) }

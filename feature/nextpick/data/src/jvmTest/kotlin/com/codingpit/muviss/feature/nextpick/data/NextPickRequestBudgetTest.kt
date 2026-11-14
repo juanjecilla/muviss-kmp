@@ -1,6 +1,8 @@
 package com.codingpit.muviss.feature.nextpick.data
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.network.NotFoundTitles
+import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.core.network.WatchProviderLookup
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.nextpick.api.PickAnchor
@@ -39,15 +41,22 @@ import kotlin.test.assertTrue
 class NextPickRequestBudgetTest {
 
     private val finished = MediaId.tmdbTv("1399")
+    private val netflix = TasteItem(TasteKind.SERVICE, "8", "Netflix")
     private val clock: AppClock = fixedClock
 
     private val library = FakeLibrary(listOf(libraryTitle(movie("1"), WatchStatus.NOT_STARTED), libraryTitle(show("1399"), WatchStatus.FINISHED)))
 
-    private fun standard(anchored: Boolean = true, online: Boolean = true) = PickContext(
+    /**
+     * [servicesKnown] must be true for "only my services" to be asked at all: without it the session never offers
+     * the question, the answer is dropped, and the filter does not run. A test of the filter that forgets this
+     * passes vacuously, so the services tests say it explicitly.
+     */
+    private fun standard(anchored: Boolean = true, online: Boolean = true, servicesKnown: Boolean = false) = PickContext(
         length = SessionLength.STANDARD,
         online = online,
         hasBacklog = true,
         hasWatchedTitles = true,
+        servicesKnown = servicesKnown,
         anchorCandidate = if (anchored) finished else null,
     )
 
@@ -73,20 +82,28 @@ class NextPickRequestBudgetTest {
         genreIds: LibraryGenreIds = genreIdsOver(metadata),
         services: OwnServices = OwnServices(),
         library: FakeLibrary = this.library,
+        criteria: PickCriteria? = null,
     ): PickResult {
         val collection: () -> CollectionApi = { library }
         val engine = PickEngine(
             sources = listOf(
-                OwnServicesCandidates(CollectionBacklogCandidates(collection, genreIds, clock), { services.taste }, { services.lookup }, { "US" }),
+                OwnServicesCandidates(
+                    inner = CombinedCandidates(
+                        listOf(CollectionBacklogCandidates(collection, genreIds, clock), AnchorCandidates(metadata, collection), SeedCandidates(metadata, collection)),
+                    ),
+                    taste = { services.taste },
+                    lookup = { services.lookup },
+                    fill = { services.fill },
+                    region = { "US" },
+                    missing = { NotFoundTitles(clock) },
+                ),
                 DiscoverSource(metadata, collection, thisYear = { 2027 }, muting = PickMuting { MutedGenres.NONE }, taste = { services.taste }, region = { "US" }),
-                OwnServicesCandidates(AnchorCandidates(metadata, collection), { services.taste }, { services.lookup }, { "US" }),
-                OwnServicesCandidates(SeedCandidates(metadata, collection), { services.taste }, { services.lookup }, { "US" }),
             ),
             exclusions = PickExclusions { emptySet() },
             history = TasteHistoryReader(CollectionHistoryReader(clock, collection, connectivity(context.online), genreIds), { services.taste }),
             muting = PickMuting { MutedGenres.NONE },
         )
-        return engine.pick(criteriaFor(context, *answers), context)
+        return engine.pick(criteria ?: criteriaFor(context, *answers), context)
     }
 
     @Test
@@ -185,22 +202,87 @@ class NextPickRequestBudgetTest {
     }
 
     @Test
-    fun `only_my_services_costs_no_watch_provider_requests_even_across_every_candidate`() = runTest {
-        // #740: the cache is read, never fetched per candidate, so the backlog and the recommendations cost what they cost without the flag.
-        val metadata = CountingMetadata(discover = mapOf(MediaType.MOVIE to listOf(movie("2"))), recommended = listOf(movie("3")))
-        val cache = object : WatchProviderLookup {
-            override suspend fun cachedFlatrateIds(mediaIds: Set<MediaId>, region: String): Map<MediaId, Set<String>> = mapOf(MediaId.tmdbMovie("1") to setOf("8"))
-        }
+    fun `only_my_services_fills_no_more_than_the_cap_of_uncached_titles_in_one_pick`() = runTest {
+        // #762: 25 backlog titles and none cached. The pick asks TMDB about the cap, and about nothing beyond it.
+        assertEquals(10, MAX_PROVIDER_FILLS_PER_PICK, "the cap is pinned here on purpose: change it deliberately")
+        val metadata = CountingMetadata(flatrateOf = { setOf("8") })
+        val cache = MutableWatchCache()
+        val fill = MetadataWatchFill(metadata, cache)
+        val library = FakeLibrary((1..25).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
 
         pick(
             metadata,
-            standard(),
-            PickAnswer.Anchor(PickAnchor(finished, like = true)),
+            standard(servicesKnown = true, anchored = false),
             PickAnswer.EraAndServices(null, null, onlyMyServices = true),
-            services = OwnServices(FakeTasteProfile(listOf(TasteItem(TasteKind.SERVICE, "8", "Netflix"))), cache),
+            library = library,
+            services = OwnServices(FakeTasteProfile(listOf(netflix)), cache, fill),
         )
 
-        assertEquals(mapOf("genres" to 2, "discover" to 2, "recommendations" to 1, "similar" to 1), metadata.requests)
+        assertEquals(MAX_PROVIDER_FILLS_PER_PICK, metadata.requests["watch"])
+        assertEquals(MAX_PROVIDER_FILLS_PER_PICK, fill.filled.size)
+        assertEquals((1..10).map { MediaId.tmdbMovie("$it") }, fill.filled, "the first titles in library order, no more")
+    }
+
+    @Test
+    fun `the_cap_is_shared_by_the_backlog_and_the_anchor_so_a_pick_never_pays_once_per_source`() = runTest {
+        // Six uncached backlog titles and eight uncached recommendations: the pool holds fourteen, the pick pays for ten.
+        val recommended = (20..27).map { movie("$it") }
+        val metadata = CountingMetadata(recommended = recommended, flatrateOf = { setOf("8") })
+        val cache = MutableWatchCache()
+        val fill = MetadataWatchFill(metadata, cache)
+        val library = FakeLibrary((1..6).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
+
+        // The anchor question takes one of the standard session's four questions, which leaves no room for the services
+        // question. The criteria are handed in so this test is about the budget alone (the session's order is pinned elsewhere).
+        pick(
+            metadata,
+            standard(servicesKnown = true),
+            library = library,
+            services = OwnServices(FakeTasteProfile(listOf(netflix)), cache, fill),
+            criteria = PickCriteria(anchor = PickAnchor(finished, like = true), onlyMyServices = true),
+        )
+
+        assertEquals(MAX_PROVIDER_FILLS_PER_PICK, metadata.requests["watch"], "one budget across the sources, not one per source")
+        assertEquals((1..6).map { MediaId.tmdbMovie("$it") } + (20..23).map { MediaId.tmdbMovie("$it") }, fill.filled, "backlog first, then as much of the recommendations as the rest of the cap allows")
+    }
+
+    @Test
+    fun `successive_picks_reach_further_into_the_library_and_never_ask_again_about_a_title_already_cached`() = runTest {
+        val metadata = CountingMetadata(flatrateOf = { setOf("8") })
+        val cache = MutableWatchCache()
+        val fill = MetadataWatchFill(metadata, cache)
+        val services = OwnServices(FakeTasteProfile(listOf(netflix)), cache, fill)
+        val library = FakeLibrary((1..25).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
+        val answers = arrayOf(PickAnswer.EraAndServices(null, null, onlyMyServices = true))
+
+        pick(metadata, standard(servicesKnown = true, anchored = false), *answers, library = library, services = services)
+        pick(metadata, standard(servicesKnown = true, anchored = false), *answers, library = library, services = services)
+
+        assertEquals(20, metadata.requests["watch"])
+        assertEquals((1..20).map { MediaId.tmdbMovie("$it") }, fill.filled, "titles 11 to 20 on the second pick, none twice")
+    }
+
+    @Test
+    fun `offline_only_my_services_asks_tmdb_nothing_and_judges_the_library_on_its_cache`() = runTest {
+        // The services question is not offered offline, so the flag comes from an answer given before the connection
+        // dropped. The criteria are handed in directly; the session cannot produce this state offline.
+        val metadata = CountingMetadata(flatrateOf = { setOf("8") })
+        val cache = MutableWatchCache().apply { entries[MediaId.tmdbMovie("1")] = "US" to setOf("8") }
+        val fill = MetadataWatchFill(metadata, cache)
+        val library = FakeLibrary((1..3).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
+
+        val result = pick(
+            metadata,
+            standard(servicesKnown = true, online = false),
+            library = library,
+            services = OwnServices(FakeTasteProfile(listOf(netflix)), cache, fill),
+            criteria = PickCriteria(onlyMyServices = true),
+        )
+
+        assertEquals(0, metadata.total)
+        assertTrue(fill.filled.isEmpty())
+        assertTrue(result.offline)
+        assertEquals(listOf(MediaId.tmdbMovie("1")), result.picks.map { it.candidate.id }, "cached and on my service; the other two are unknown and not claimed")
     }
 
     @Test
@@ -227,9 +309,18 @@ class NextPickRequestBudgetTest {
     }
 }
 
-/** What "only my services" reads: the Taste Profile's services and the cached providers. */
-private data class OwnServices(val taste: TasteProfileApi = FakeTasteProfile(), val lookup: WatchProviderLookup = NoWatchLookup)
+/** What "only my services" reads and may fill: the Taste Profile's services, the cache, and the fill that writes it. */
+private data class OwnServices(
+    val taste: TasteProfileApi = FakeTasteProfile(),
+    val lookup: WatchProviderLookup = NoWatchLookup,
+    val fill: WatchProviderFill = NoWatchFill,
+)
 
 private object NoWatchLookup : WatchProviderLookup {
     override suspend fun cachedFlatrateIds(mediaIds: Set<MediaId>, region: String): Map<MediaId, Set<String>> = emptyMap()
+}
+
+/** Only for a session where the fill must never be asked: the flag is off, or the session is not in a pick that filters. */
+private object NoWatchFill : WatchProviderFill {
+    override suspend fun fill(mediaIds: List<MediaId>, region: String) = error("nothing may be filled here")
 }

@@ -42,7 +42,8 @@ data class CachedProviders(
 interface WatchProviderSource {
     val region: String
 
-    suspend fun fetchFlatrateIds(mediaId: MediaId): Result<Set<String>>
+    /** The flatrate provider ids of [mediaId] in [region]. The caller names the region, so a request and the write that follows agree on it. */
+    suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>>
 }
 
 /**
@@ -86,7 +87,7 @@ class WatchProviderRefresher(
             val ids = if (fresh) {
                 existing.flatrateProviderIds
             } else {
-                source.fetchFlatrateIds(mediaId).getOrNull()
+                source.fetchFlatrateIds(mediaId, region).getOrNull()
                     ?.also { cache.put(mediaId, region, it) }
                     ?: existing?.flatrateProviderIds.orEmpty()
             }

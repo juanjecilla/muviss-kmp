@@ -59,14 +59,14 @@ class TmdbWatchProviderSourceTest {
         val source = sourceWith(WatchProvidersOnlyProvider { throw CancellationException("navigated away") })
 
         // A Result.failure here would let the Next Pick fill keep requesting until its next suspension point.
-        assertFailsWith<CancellationException> { source.fetchFlatrateIds(movie) }
+        assertFailsWith<CancellationException> { source.fetchFlatrateIds(movie, "US") }
     }
 
     @Test
     fun `an ordinary lookup failure still comes back as a failed Result`() = runTest {
         val source = sourceWith(WatchProvidersOnlyProvider { throw IllegalStateException("boom") })
 
-        val result = source.fetchFlatrateIds(movie)
+        val result = source.fetchFlatrateIds(movie, "US")
 
         assertTrue(result.isFailure)
         assertIs<IllegalStateException>(result.exceptionOrNull())

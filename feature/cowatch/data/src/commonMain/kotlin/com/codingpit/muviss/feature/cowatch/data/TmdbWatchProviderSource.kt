@@ -22,8 +22,8 @@ internal class TmdbWatchProviderSource(
 
     override val region: String get() = locale.region
 
-    override suspend fun fetchFlatrateIds(mediaId: MediaId): Result<Set<String>> = withContext(dispatchers.io) {
-        runCatching { registry.forId(mediaId).watchProviders(mediaId, locale.region).flatrate.map { it.id }.toSet() }
+    override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> = withContext(dispatchers.io) {
+        runCatching { registry.forId(mediaId).watchProviders(mediaId, region).flatrate.map { it.id }.toSet() }
             // A cancelled fetch is not a failed one: rethrow so the caller's scope stops here.
             .onFailure { if (it is CancellationException) throw it }
     }
