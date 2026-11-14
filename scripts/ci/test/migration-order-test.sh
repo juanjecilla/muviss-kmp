@@ -56,6 +56,14 @@ echo "-- later" >"$r/supabase/migrations/20261101000000_later.sql"; git -C "$r" 
 git -C "$r" switch -q held
 expect_eq "a branch overtaken by develop's newer migration fails" "$(check "$r")" "1"
 
+# The same migration committed independently on both sides: develop took it after the branch was
+# cut, so the three-dot diff lists it as added, but it is already on develop and is not judged.
+r="$(new_repo)"; add_on "$r" both 20261101000000_both.sql
+git -C "$r" switch -q develop
+echo "-- both" >"$r/supabase/migrations/20261101000000_both.sql"; git -C "$r" add -A; git -C "$r" commit -q -m "feat(x): both"
+git -C "$r" switch -q both
+expect_eq "a migration develop also committed, identically, passes" "$(check "$r")" "0"
+
 # A migration already on develop is not an addition: a rename of it is not judged here.
 r="$(new_repo)"; git -C "$r" switch -q -c touch develop
 echo "-- edited" >>"$r/supabase/migrations/20261027000000_taste_profile.sql"; git -C "$r" add -A; git -C "$r" commit -q -m "fix(x): edit"

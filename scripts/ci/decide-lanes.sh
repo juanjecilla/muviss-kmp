@@ -53,7 +53,7 @@ CODE_PATHS="${IOS_PATHS}"'|^(app/androidApp/|app/desktopApp/|app/webApp/|server/
 if grep -E "$IOS_PATHS" <<< "$changed" > /dev/null; then ios=true; else ios=false; fi
 if grep -E "$CODE_PATHS" <<< "$changed" > /dev/null; then code=true; else code=false; fi
 # The server: migrations, pgTAP tests, Edge Functions (#280).
-SUPABASE_PATHS='^supabase/|^\.github/workflows/ci\.yml$|^scripts/ci/decide-lanes\.sh$'
+SUPABASE_PATHS='^supabase/|^\.github/workflows/ci\.yml$|^scripts/ci/decide-lanes\.sh$|^scripts/ci/check-migration-order\.sh$|^scripts/ci/test/migration-order-test\.sh$'
 if grep -E "$SUPABASE_PATHS" <<< "$changed" > /dev/null; then supabase=true; else supabase=false; fi
 
 write_lanes "$code" "$ios" "$supabase"

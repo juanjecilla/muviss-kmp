@@ -22,8 +22,17 @@ base_files="$(git ls-tree --name-only "$BASE" -- "$DIR/")"
 newest_name="$(sed -E 's#.*/##' <<<"$base_files" | grep -E '^[0-9]{14}_.*\.sql$' | sort | tail -1 || true)"
 newest_ts="${newest_name%%_*}"
 
+# The three-dot diff lists what this branch added since the merge base. develop may have taken the
+# same file since then (committed independently on both sides), and that file is not this change's
+# addition: it is already on the base, so it is not judged.
 diff_files="$(git diff --name-only --diff-filter=A "$BASE...HEAD" -- "$DIR/")"
-added="$(sed -E 's#.*/##' <<<"$diff_files")"
+kept=""
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  grep -qxF -- "$path" <<<"$base_files" && continue
+  kept+="$path"$'\n'
+done <<<"$diff_files"
+added="$(sed -E 's#.*/##' <<<"$kept")"
 if [ -z "$added" ]; then
   echo "ok: this change adds no migration"
   exit 0
