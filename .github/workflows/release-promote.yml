@@ -97,6 +97,9 @@ jobs:
           bundler-cache: true
 
       - name: Rehearse the Sunday merge
+        # bash, not the Linux default: its `bash -e` has no pipefail, so the CLI's
+        # exit (HELD, an error) would be lost behind `tee`.
+        shell: bash
         env:
           VERSION: ${{ inputs.version }}
           PUSH: ${{ inputs.rehearse_push }}
@@ -109,8 +112,11 @@ jobs:
             echo "### Rehearsal of release/$VERSION"
             echo
             echo '```'
-            ruby fastlane/release_merge.rb "${ARGS[@]}"
+            # The fence is closed and the exit kept whatever the CLI returned.
+            rc=0
+            ruby fastlane/release_merge.rb "${ARGS[@]}" || rc=$?
             echo '```'
+            exit "$rc"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   promote:

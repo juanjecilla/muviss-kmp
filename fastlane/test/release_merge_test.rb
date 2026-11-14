@@ -270,7 +270,7 @@ class ReleaseMergeCliTest < Minitest::Test
   end
 
   def test_union_pushes_the_union_to_main_when_only_the_changelog_conflicts
-    code, out, err = cli("union", "release/1.4.0")
+    code, out, err = cli("union", "release/1.4.0", "--expect-head", @branch)
     assert_equal 0, code, err
     assert_includes out, "CHANGELOG.md resolved"
     tip = git_in(@origin, "rev-parse", "refs/heads/main")
@@ -285,7 +285,7 @@ class ReleaseMergeCliTest < Minitest::Test
     git("switch", "-q", "-c", "release/1.5.0", @base)
     write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
     git("push", "-q", "origin", "release/1.5.0")
-    code, _out, err = cli("union", "release/1.5.0")
+    code, _out, err = cli("union", "release/1.5.0", "--expect-head", git_in(@dir, "rev-parse", "HEAD"))
     assert_equal ReleaseMerge::Cli::HELD, code
     assert_includes err, "app.txt"
     assert_equal main_now, git_in(@origin, "rev-parse", "refs/heads/main")
@@ -295,7 +295,7 @@ class ReleaseMergeCliTest < Minitest::Test
     git("switch", "-q", "-c", "release/1.6.0", @base)
     write("other.txt", "only the branch\n"); git("add", "-A"); git("commit", "-q", "-m", "clean")
     git("push", "-q", "origin", "release/1.6.0")
-    code, _out, err = cli("union", "release/1.6.0")
+    code, _out, err = cli("union", "release/1.6.0", "--expect-head", git_in(@dir, "rev-parse", "HEAD"))
     assert_equal ReleaseMerge::Cli::CLEAN_IN_GIT, code
     assert_includes err, "nothing pushed"
     assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
@@ -329,6 +329,37 @@ class ReleaseMergeCliTest < Minitest::Test
     assert_equal ReleaseMerge::Cli::HELD, code
     assert_includes out, "verdict: held"
     assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
+  end
+
+  def test_union_refuses_a_branch_whose_head_moved_after_approval
+    code, _out, err = cli("union", "release/1.4.0", "--expect-head", @main)
+    assert_equal 1, code
+    assert_includes err, "not the approved"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_union_without_an_approved_head_is_a_usage_error
+    code, _out, err = cli("union", "release/1.4.0")
+    assert_equal 64, code
+    assert_includes err, "usage"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_delete_ref_ignores_a_ref_that_is_already_gone
+    # Raises, and fails the test, unless a missing ref is treated as deleted.
+    ReleaseMerge::Repo.new(dir: @dir).delete_ref("refs/heads/rehearsal/never-pushed")
+  end
+
+  def test_rehearse_push_reports_a_ref_that_will_not_delete
+    # A pre-receive hook on origin refuses every deletion, so the push lands and the cleanup cannot.
+    hook = File.join(@origin, "hooks", "pre-receive")
+    File.write(hook, "#!/bin/sh\nwhile read old new ref; do\n  [ \"$new\" = 0000000000000000000000000000000000000000 ] && exit 1\ndone\nexit 0\n")
+    File.chmod(0o755, hook)
+    code, out, err = cli("rehearse", "1.4.0", "--push")
+    assert_equal 1, code
+    assert_includes out, "pushed to refs/heads/rehearsal/1.4.0"
+    assert_includes err, "may remain on origin"
+    assert_equal "refs/heads/rehearsal/1.4.0", git_in(@origin, "for-each-ref", "--format=%(refname)", "refs/heads/rehearsal")
   end
 
   def test_an_unknown_command_is_a_usage_error

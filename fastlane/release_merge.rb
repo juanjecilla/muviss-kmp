@@ -26,6 +26,9 @@ module ReleaseMerge
   # A push that did not move main. Never retried with force.
   class MainMoved < StandardError; end
 
+  # The release branch moved after the caller's approval. Nothing is merged from it.
+  class HeadMoved < StandardError; end
+
   # CHANGELOG.md: one `## X.Y.Z — date` section per version, under a header. The
   # union keeps every version once, newest first. The header comes from main,
   # unless the branch's is the one that points at docs/changelog/ (the frozen
@@ -141,11 +144,12 @@ module ReleaseMerge
       git("push", "--quiet", "origin", "#{sha}:#{ref}")
     end
 
-    # Deletes a ref on origin. A missing ref is not an error here.
+    # Deletes a ref on origin. A ref that is already gone is not an error; one
+    # still on origin after a failed delete is, and the message says so.
     def delete_ref(ref)
       git("push", "--quiet", "origin", ":#{ref}")
     rescue RuntimeError
-      nil
+      raise "#{ref} may remain on origin; delete it by hand" unless git("ls-remote", "origin", ref).empty?
     end
 
     # origin's main, fetched now. The merge is judged against this sha.
@@ -229,16 +233,18 @@ module ReleaseMerge
   #
   #   release_merge.rb conflicts BRANCH           the paths BRANCH conflicts on with origin/main;
   #                                               exit 2 when one is not allow-listed
-  #   release_merge.rb union BRANCH               push origin/main + BRANCH's union, when GitHub
+  #   release_merge.rb union BRANCH --expect-head SHA
+  #                                               push origin/main + BRANCH's union, when GitHub
   #                                               refused the merge: 0 pushed, 2 held (paths named),
-  #                                               3 git merges it cleanly (not explained: nothing pushed)
+  #                                               3 git merges it cleanly (not explained: nothing pushed),
+  #                                               1 BRANCH is not at SHA, the head that was approved (nothing pushed)
   #   release_merge.rb rehearse VERSION [--push]  judge and print the Sunday merge of release/VERSION
   #                                               without moving main; --push also puts the merge
   #                                               commit on rehearsal/VERSION as the App, then deletes it
   module Cli
     HELD = 2
     CLEAN_IN_GIT = 3
-    USAGE = "usage: release_merge.rb conflicts BRANCH | union BRANCH | rehearse VERSION [--push]".freeze
+    USAGE = "usage: release_merge.rb conflicts BRANCH | union BRANCH --expect-head SHA | rehearse VERSION [--push]".freeze
 
     module_function
 
@@ -246,11 +252,14 @@ module ReleaseMerge
       command, *args = argv
       case command
       when "conflicts" then conflicts(repo, args.fetch(0) { return usage(err) }, out, err)
-      when "union" then union(repo, args.fetch(0) { return usage(err) }, out, err)
+      when "union"
+        expect = option(args, "--expect-head")
+        return usage(err) unless args.fetch(0, nil) && expect
+        union(repo, args.fetch(0), expect, out, err)
       when "rehearse" then rehearse(repo, args.fetch(0) { return usage(err) }, args.include?("--push"), out, err)
       else usage(err)
       end
-    rescue Unresolvable, MainMoved, RuntimeError => e
+    rescue Unresolvable, MainMoved, HeadMoved, RuntimeError => e
       err.puts "release_merge: #{e.message}"
       1
     end
@@ -258,6 +267,12 @@ module ReleaseMerge
     def usage(err)
       err.puts USAGE
       64
+    end
+
+    # The value after a flag, or nil when the flag is absent or has no value.
+    def option(args, flag)
+      index = args.index(flag)
+      index && args[index + 1]
     end
 
     def conflicts(repo, branch, out, err)
@@ -274,9 +289,12 @@ module ReleaseMerge
       HELD
     end
 
-    def union(repo, branch, out, err)
+    # `expect` is the head the caller approved and checked. The union is built
+    # from the head fetched here, so a head that moved since then is refused.
+    def union(repo, branch, expect, out, err)
       main = repo.main_sha
       head = repo.fetch_branch(branch)
+      raise HeadMoved, "#{branch} is at #{head}, not the approved #{expect}; nothing pushed" unless head == expect
       built = repo.merge_commit(main, head, message: "Merge #{branch} into main")
       if built[:conflicts].empty?
         err.puts "git merges #{branch} into main cleanly, so GitHub's refusal is not explained: nothing pushed"
@@ -311,20 +329,28 @@ module ReleaseMerge
       # A release branch that is months old changes most of the tree, so the list is capped.
       shown = changed.first(25)
       out.puts "changes on main (#{changed.size}): #{shown.join(', ')}#{changed.size > shown.size ? ', ...' : ''}"
-      push ? rehearsal_push(repo, version, commit, out) : out.puts("not pushed (rehearse --push pushes it to rehearsal/#{version} and deletes it)")
+      push ? rehearsal_push(repo, version, commit, out, err) : out.puts("not pushed (rehearse --push pushes it to rehearsal/#{version} and deletes it)")
       0
     end
 
-    # The throwaway ref is deleted whether or not the push worked: a rehearsal leaves nothing behind.
-    def rehearsal_push(repo, version, commit, out)
+    # The throwaway ref is deleted whether or not the push worked, and a delete
+    # that fails is reported (the ref may remain). A failed push is the error
+    # reported, so a cleanup failure after it is only printed.
+    def rehearsal_push(repo, version, commit, out, err)
       ref = "refs/heads/rehearsal/#{version}"
       repo.delete_ref(ref)
       begin
         repo.push_ref(commit, ref)
-        out.puts "pushed to #{ref} as the caller's credentials; deleting it"
-      ensure
-        repo.delete_ref(ref)
+      rescue RuntimeError => e
+        begin
+          repo.delete_ref(ref)
+        rescue RuntimeError => cleanup
+          err.puts "release_merge: #{cleanup.message}"
+        end
+        raise e
       end
+      out.puts "pushed to #{ref} as the caller's credentials; deleting it"
+      repo.delete_ref(ref)
     end
   end
 end

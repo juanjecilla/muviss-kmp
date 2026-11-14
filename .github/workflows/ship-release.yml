@@ -150,6 +150,7 @@ jobs:
           echo "number=$N" >> "$GITHUB_OUTPUT"
 
       - name: Wait for the approval and green checks
+        id: wait
         if: inputs.action != 'open'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -162,18 +163,27 @@ jobs:
           [ "$ACTION" = merge ] && WAIT=0
           deadline=$(( $(date +%s) + WAIT * 60 ))
           while :; do
-            STATE="$(gh pr view "$N" -R "$REPO" --json reviewDecision,mergeStateStatus --jq '"\(.reviewDecision) \(.mergeStateStatus)"')"
+            # The head is read with the approval: the merge is pinned to it (see Merge).
+            VIEW="$(gh pr view "$N" -R "$REPO" --json reviewDecision,mergeStateStatus,headRefOid --jq '"\(.reviewDecision) \(.mergeStateStatus) \(.headRefOid)"')"
+            STATE="${VIEW% *}"
+            HEAD="${VIEW##* }"
             # Every check counted, not just the required ones: pass or skipped only.
             CHECKS="$(gh pr checks "$N" -R "$REPO" --json bucket --jq '[.[].bucket]|if length == 0 then "none" elif any(. == "fail" or . == "cancel") then "fail" elif any(. == "pending") then "pending" else "pass" end' || true)"
-            echo "#$N: $STATE, checks $CHECKS"
+            echo "#$N: $STATE, checks $CHECKS, head $HEAD"
             if [[ "$STATE" == *DIRTY* ]]; then
+              # A back-merge has no checkout and no CHANGELOG.md resolution: as before.
+              if [ "$ACTION" = back-merge ]; then echo "::error::#$N conflicts with its base"; exit 1; fi
               # A conflict with main is judged now, not waited on. Only CHANGELOG.md
               # is resolved by the merge (#717); any other path holds here, named.
               # The checkout keeps no credentials, so git gets the step's token.
+              # The script is this run's own copy, not the release branch's: a branch
+              # cut before this file had its CLI would exit 0 and judge nothing.
+              git show "$GITHUB_SHA:fastlane/release_merge.rb" > "$RUNNER_TEMP/release_merge.rb" \
+                || { echo "::error::this run's commit has no fastlane/release_merge.rb"; exit 1; }
               AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
               export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
                 GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
-              if ! ruby fastlane/release_merge.rb conflicts "$BRANCH"; then
+              if ! ruby "$RUNNER_TEMP/release_merge.rb" conflicts "$BRANCH"; then
                 echo "::error::#$N conflicts with main outside CHANGELOG.md; resolve $BRANCH by hand"; exit 1
               fi
             fi
@@ -181,7 +191,9 @@ jobs:
             # UNSTABLE means a non-passing status, so only CLEAN (or HAS_HOOKS) is green.
             # DIRTY is green here only when the conflict is the CHANGELOG.md one, judged above.
             case "$STATE $CHECKS" in
-              "APPROVED CLEAN pass"|"APPROVED HAS_HOOKS pass"|"APPROVED DIRTY pass") break ;;
+              "APPROVED CLEAN pass"|"APPROVED HAS_HOOKS pass"|"APPROVED DIRTY pass")
+                echo "head=$HEAD" >> "$GITHUB_OUTPUT"
+                break ;;
             esac
             if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "::error::#$N is not mergeable yet ($STATE, checks $CHECKS). Run again with action=merge once it is approved and green."
@@ -208,13 +220,16 @@ jobs:
           ACTION: ${{ inputs.action }}
           BRANCH: ${{ steps.branch.outputs.name }}
           SLUG: ${{ steps.app-merge.outputs.app-slug }}
+          # The head the approval and checks were read on. Both merges are refused if it moved.
+          HEAD: ${{ steps.wait.outputs.head }}
         run: |
+          [ -n "$HEAD" ] || { echo "::error::no approved head was read for #$N"; exit 1; }
           if [ "$ACTION" = back-merge ]; then
-            gh pr merge "$N" -R "$REPO" --merge
+            gh pr merge "$N" -R "$REPO" --merge --match-head-commit "$HEAD"
             echo "Merged back-merge #$N into develop." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          if OUT="$(gh pr merge "$N" -R "$REPO" --merge 2>&1)"; then
+          if OUT="$(gh pr merge "$N" -R "$REPO" --merge --match-head-commit "$HEAD" 2>&1)"; then
             echo "Merged #$N into main: release.yml now tags it and waits for the production approval." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -228,8 +243,11 @@ jobs:
           AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
           export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
+          # This run's own copy of the script, as the wait step uses (not the release branch's).
+          git show "$GITHUB_SHA:fastlane/release_merge.rb" > "$RUNNER_TEMP/release_merge.rb" \
+            || { echo "::error::this run's commit has no fastlane/release_merge.rb"; exit 1; }
           RC=0
-          ruby fastlane/release_merge.rb union "$BRANCH" || RC=$?
+          ruby "$RUNNER_TEMP/release_merge.rb" union "$BRANCH" --expect-head "$HEAD" || RC=$?
           case "$RC" in
             0)
               echo "Merged #$N into main as the union of both sides' CHANGELOG.md (#717). release.yml now tags it and waits for the production approval." >> "$GITHUB_STEP_SUMMARY" ;;

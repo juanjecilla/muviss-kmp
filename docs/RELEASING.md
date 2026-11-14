@@ -434,7 +434,9 @@ the schedule, the gates and where a fix goes.
   run with its paths named, before anything is pushed. Its wait loop judges such
   a conflict at once rather than waiting for it to clear, and its checks are the
   PR's, not the branch head's as the Sunday step judges them (unverified on a live
-  PR).
+  PR). The head the approval was read on is pinned: both the merge and the union
+  are refused if the release branch has moved since. The script it runs is this
+  run's own commit's copy, not the release branch's.
 - **Rehearse the Sunday merge without moving main (#732).** Dispatch
   `release-promote.yml` with `rehearse` and `version` (`rehearse_push` also puts the
   merge commit on `rehearsal/X.Y.Z` as the App, then deletes it). It prints the
