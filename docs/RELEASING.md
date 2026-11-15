@@ -434,7 +434,8 @@ the schedule, the gates and where a fix goes.
   as the union of both sides) and pushes the merge to the branch as the App, with a
   plain push that refuses a branch that moved. A conflict in any other path holds,
   naming it, and pushes nothing. A branch that merges cleanly is left alone, since
-  GitHub merges it. The push gives the PR a new head: its checks run there, and the
+  GitHub merges it. Only `ship` pushes; `merge` holds on a conflicting PR and says
+  to run `ship`. The push gives the PR a new head: its checks run there, and the
   run waits for an approval of that new head, then merges with GitHub's own merge
   pinned to it (`--match-head-commit`). Nothing is pushed to main by this job, so
   there is no ruleset bypass. A merge that fails leaves the checkout clean and pushes

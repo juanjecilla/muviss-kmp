@@ -129,7 +129,10 @@ jobs:
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no rehearsal ref to clean up: '$VERSION' is not X.Y.Z"; exit 0; }
           REF="refs/heads/rehearsal/$VERSION"
-          if [ -n "$(git ls-remote origin "$REF")" ]; then
+          # A failed lookup is not an absent ref: only a lookup that succeeds with no output says so.
+          REMOTE="$(git ls-remote origin "$REF")" \
+            || { echo "::error::could not check $REF on origin; it may remain, so delete it by hand"; exit 1; }
+          if [ -n "$REMOTE" ]; then
             git push --quiet origin ":$REF" \
               || { echo "::error::$REF may remain on origin; delete it by hand"; exit 1; }
             echo "Deleted $REF, which the rehearsal left behind."

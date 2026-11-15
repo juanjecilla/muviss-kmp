@@ -151,11 +151,12 @@ jobs:
           fi
           echo "number=$N" >> "$GITHUB_OUTPUT"
 
-      # Once per run, before the wait: when main and the branch conflict only in CHANGELOG.md, main is merged into
-      # the branch and the merge pushed, so the PR gets its checks on that new head. The wait then reads the new
-      # head, and waits for its approval. No conflict: nothing is pushed. A conflict elsewhere: nothing is pushed.
+      # Once per run, before the wait, and only for ship: when main and the branch conflict only in CHANGELOG.md, main
+      # is merged into the branch and the merge pushed, so the PR gets its checks on that new head. The wait then
+      # reads the new head and waits for its approval. No conflict: nothing is pushed. A conflict elsewhere: nothing
+      # is pushed. action=merge never pushes a branch: a conflicting PR holds there, and ship does the merge of main.
       - name: Merge main into the release branch when they conflict
-        if: inputs.action == 'ship' || inputs.action == 'merge'
+        if: inputs.action == 'ship'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
@@ -243,6 +244,9 @@ jobs:
                 fi ;;
             esac
             if [ "$(date +%s)" -ge "$deadline" ]; then
+              if [[ "$STATE" == *DIRTY* && "$ACTION" = merge ]]; then
+                echo "::error::#$N conflicts with main. action=merge does not change the branch: run action=ship to merge main into it."; exit 1
+              fi
               echo "::error::#$N is not mergeable yet ($STATE, checks $CHECKS). Run again with action=merge once it is approved and green."
               exit 1
             fi

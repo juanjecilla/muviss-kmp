@@ -310,8 +310,22 @@ module ReleaseMerge
       raise Unreadable, "not a repository: #{slug.inspect}" unless SLUG.match?(slug.to_s)
       raise Unreadable, "not a pull request number: #{pr.inspect}" unless pr.to_s.match?(/\A\d+\z/)
 
-      read(gh, "repos/#{slug}/pulls/#{pr}/reviews", "--paginate", "--jq",
-           '.[]|select(.state=="APPROVED")|.commit_id').include?(sha)
+      approvals = read(gh, "repos/#{slug}/pulls/#{pr}/reviews", "--paginate", "--jq",
+                       '.[]|select(.state=="APPROVED")|{commit_id,login:.user.login}')
+      approvals.any? { |approval| approval["commit_id"] == sha && approver?(slug, approval["login"], gh) }
+    end
+
+    # The permission levels that may approve for the repository. An approval from anyone else (read or triage
+    # access, a login GitHub would not issue, or an answer that cannot be read) does not count, so the head is held.
+    APPROVING_PERMISSIONS = %w[admin maintain write].freeze
+    LOGIN = /\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\z/
+
+    # True when `login` has write access to the repository (GitHub's collaborator permission).
+    def approver?(slug, login, gh)
+      return false unless login.is_a?(String) && LOGIN.match?(login)
+
+      out, code = gh.call("repos/#{slug}/collaborators/#{login}/permission", "--jq", ".permission")
+      code.zero? && APPROVING_PERMISSIONS.include?(out.to_s.strip)
     end
 
     # The contexts a branch's rules require, each with the integration it is pinned to (nil: any app).

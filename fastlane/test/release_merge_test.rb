@@ -388,13 +388,79 @@ class ApprovedOnHeadTest < Minitest::Test
   OLD = ("c" * 40).freeze
   REVIEWS = "repos/owner/repo/pulls/7/reviews".freeze
 
-  # The reply is what the request's --jq prints: the commit id of each APPROVED review, one per line.
-  def gh_with(approved_commits, fail: false)
+  # The reply is what the request's --jq prints: one object per APPROVED review (its commit and reviewer), one per
+  # line. Every review here is by `maintainer`, who has write access; the permission lookup is answered per login.
+  def gh_with(approved_commits, fail: false, permissions: { "maintainer" => "write" }, fail_permission: [])
+    reviews = approved_commits.map { |commit| JSON.generate("commit_id" => commit, "login" => "maintainer") }
     lambda do |*args|
       next [nil, 1] if fail
 
-      [approved_commits.join("\n"), 0]
+      path = args.first.sub(/\?.*/, "")
+      if path == REVIEWS
+        [reviews.join("\n"), 0]
+      else
+        login = path[%r{collaborators/([^/]+)/permission}, 1]
+        next [nil, 1] if fail_permission.include?(login)
+
+        [permissions.fetch(login, "none"), 0]
+      end
     end
+  end
+
+  # Approving reviews by the given logins on one commit, with each login's permission (absent means none).
+  PERMISSION_OF = { "reader" => "read", "admin-user" => "admin", "maintainer-user" => "maintain" }.freeze
+
+  def reviews_by(logins, commit: SHA)
+    lambda do |*args|
+      path = args.first.sub(/\?.*/, "")
+      next [logins.map { |login| JSON.generate("commit_id" => commit, "login" => login) }.join("\n"), 0] if path == REVIEWS
+
+      login = path[%r{collaborators/([^/]+)/permission}, 1]
+      [PERMISSION_OF.fetch(login, "none"), 0]
+    end
+  end
+
+  def approved?(gh, commit: SHA)
+    ReleaseMerge::RequiredChecks.approved_on?(sha: commit, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_a_read_only_approval_of_this_head_does_not_count
+    refute approved?(reviews_by(["reader"]))
+  end
+
+  def test_an_approval_by_an_admin_or_a_maintainer_of_this_head_counts
+    assert approved?(reviews_by(["admin-user"]))
+    assert approved?(reviews_by(["maintainer-user"]))
+  end
+
+  def test_a_read_only_approval_does_not_hide_a_write_approval_of_this_head
+    assert approved?(reviews_by(["reader", "admin-user"]))
+  end
+
+  def test_an_approver_whose_permission_cannot_be_read_does_not_count
+    gh = gh_with([SHA], fail_permission: ["maintainer"])
+    refute approved?(gh)
+  end
+
+  def test_an_approver_with_no_permission_on_the_repository_does_not_count
+    gh = gh_with([SHA], permissions: {})
+    refute approved?(gh)
+  end
+
+  def test_a_login_that_is_not_a_github_login_is_refused_before_any_permission_call
+    line = JSON.generate("commit_id" => SHA, "login" => "x/../admin")
+    calls = []
+    gh = lambda do |*args|
+      calls << args.first
+      args.first.end_with?("/reviews") ? [line, 0] : [nil, 1]
+    end
+    refute approved?(gh)
+    assert_empty calls.grep(%r{/permission\z})
+  end
+
+  def test_the_cli_holds_with_exit_2_for_a_read_only_approval_of_this_head
+    code = ReleaseMerge::Cli.run(["approved", "7", SHA], repo: nil, out: StringIO.new, err: StringIO.new, slug: "owner/repo", gh: reviews_by(["reader"]))
+    assert_equal ReleaseMerge::Cli::HELD, code
   end
 
   def test_an_approval_of_this_head_counts
