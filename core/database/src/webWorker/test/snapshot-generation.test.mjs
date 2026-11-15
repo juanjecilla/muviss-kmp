@@ -140,17 +140,30 @@ function holdNextRead(idb) {
 function makeLocks() {
   let held = false;
   const queue = [];
+  let grantWaiters = [];
   const next = () => {
     const grant = queue.shift();
     if (grant) grant();
   };
   return {
+    // Resolves when the lock is next granted, after the granted callback has run
+    // (so the granted tab's promotion has started). Taken before the release that
+    // grants it, so the test can wait for exactly that grant.
+    nextGrant() {
+      return new Promise((resolve) => grantWaiters.push(resolve));
+    },
     request(_name, callback) {
       return new Promise((resolve, reject) => {
         const grant = () => {
           held = true;
           Promise.resolve()
-            .then(callback)
+            .then(() => {
+              const waiters = grantWaiters;
+              grantWaiters = [];
+              const result = callback();
+              waiters.forEach((wake) => wake());
+              return result;
+            })
             .then(
               (value) => {
                 held = false;
@@ -253,8 +266,11 @@ test("a waiting tab whose snapshot is out of date reloads, and writes nothing", 
 
   a.exec("INSERT A2");
   await a.flush(); // generation 2, while b still holds generation 1
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
 
   assert.equal(b.state().reloadRequested, true);
   assert.equal(b.status().reload, true, "the page is told to reload");
@@ -275,8 +291,11 @@ test("once a reload is pending, a write is refused rather than acknowledged and 
   await settle();
   a.exec("INSERT A2");
   await a.flush();
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
   assert.equal(b.state().reloadRequested, true);
 
   // The main thread has not reloaded yet: the write must fail, not succeed and vanish.
@@ -314,8 +333,11 @@ test("a waiting tab with changes of its own gives the lock up rather than overwr
 
   a.exec("INSERT A2");
   await a.flush();
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
 
   assert.equal(b.state().stale, true);
   assert.equal(b.state().isWriter, false);
@@ -363,8 +385,11 @@ test("changes made while waiting are saved when the tab is promoted and nothing 
   const b = await openTab(idb, locks);
   await settle();
   b.exec("INSERT B-OWN");
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
 
   assert.equal(b.state().isWriter, true);
   assert.equal(idb.data.get(GENERATION), 2);
@@ -414,8 +439,11 @@ test("a write that changes no row does not count as this tab's own change", asyn
 
   a.exec("INSERT A2");
   await a.flush();
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
 
   assert.equal(b.state().reloadRequested, true, "out of date and nothing of its own: it reloads");
   assert.equal(b.state().stale, false);
@@ -450,8 +478,11 @@ test("a tab that could not read the snapshot still cannot overwrite it", async (
   await settle();
   assert.equal(b.state().loadedGeneration, 0, "b starts empty");
 
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
   assert.equal(b.state().isWriter, false, "with no baseline and nothing readable to compare, b does not write");
   assert.equal(b.state().reloadRequested, false, "and it has no store it can reload from");
 
@@ -477,8 +508,11 @@ async function reloadingTab() {
   await settle();
   a.exec("INSERT A2");
   await a.flush();
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
   assert.equal(b.state().reloadRequested, true, "the reloading tab has been set up");
   return { idb, b };
 }
@@ -508,11 +542,13 @@ test("a write made while a promotion is being decided makes the tab stale, not s
   // has to see. (Writing before the lock is handed over would miss it: the grant is
   // a later continuation, so the write would run before the read even starts.)
   const read = holdNextRead(idb);
+  const granted = locks.nextGrant();
   a.close();
+  await granted;
   await read.started;
   b.exec("INSERT B-RACE");
   read.release();
-  await settle();
+  await b.run("promotionDone");
   assert.equal(b.state().stale, true, "the change made in the window is not reloaded away");
   assert.equal(b.state().reloadRequested, false);
   assert.doesNotMatch(storedText(idb), /B-RACE/);
@@ -587,8 +623,11 @@ test("a tab whose startup read failed never writes its empty database over a rea
   idb.failReads = false;
   b.exec("INSERT B-EMPTY-BASE");
   await settle();
+  const granted = locks.nextGrant();
   a.close();
-  await settle();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
 
   assert.equal(b.state().isWriter, false, "no baseline, so no writer");
   assert.equal(b.state().stale, true, "it had changes, and the store is newer than its empty database");

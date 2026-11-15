@@ -18,6 +18,22 @@
 // "function")` guard at the bottom is what actually installs the handler.
 // ADR 0008 previously claimed the module type was required on its own merits;
 // it is not, and the amendment corrects that.
+//
+// THE INVARIANT. Three rules, and every branch below is one of them.
+//   1. A tab writes only while it holds the Web Lock.
+//   2. Every write is a compare-and-set: in one readwrite transaction it writes
+//      only if the stored generation is the one this tab's database was built from
+//      or last wrote. So no write can replace a newer snapshot, even when the
+//      checks made earlier were skipped (a promotion whose read failed).
+//   3. A tab stops saving for good, and says so, as soon as it cannot vouch for its
+//      state: an unreadable startup baseline, a moved generation with changes of its
+//      own (promote() or the compare-and-set finds it), or a failed transaction
+//      boundary (the driver's pointer is then on a dead transaction). A tab with no
+//      changes of its own that finds the generation moved reloads instead of
+//      stopping, since it has nothing to lose.
+// A failed boundary keeps the lock, so the banner says the last changes are not
+// saved rather than that another tab holds the database. A stale tab gives the lock
+// up so a reload can take it.
 
 import initSqlJs from "sql.js";
 
@@ -78,6 +94,13 @@ let reloadRequested = false;
 let releaseLock = null;
 // The startup read, which promotion waits for. See loadSnapshot().
 let snapshotReady = null;
+// The last promotion, so a test can wait for it. See onLockGranted().
+let promotionDone = Promise.resolve();
+// True once a transaction boundary (BEGIN, COMMIT or ROLLBACK) has thrown. The
+// driver's transaction pointer is then on a transaction that is over, so every
+// later write runs with the wrong boundaries, and no snapshot is taken from this
+// tab again. See breakTransaction().
+let transactionBroken = false;
 // The sql.js module, used to open the database at startup.
 let sqlEngine = null;
 
@@ -152,7 +175,7 @@ let saving = false;
 let waiting = null; // { bytes, exportError } for the next write, or null
 
 function saveSnapshot() {
-  if (!isWriter || !db || stale || loadFailed) return saveChain;
+  if (!isWriter || !db || stale || loadFailed || transactionBroken) return saveChain;
   if (inTransaction) {
     dirty = true;
     return saveChain;
@@ -244,6 +267,29 @@ function reportFailedWrite(e) {
     lastWriteFailed = true;
     announce();
   }
+}
+
+// A transaction boundary threw. SQLDelight's driver sets its current-transaction
+// pointer before it sends BEGIN, and moves it past a transaction only after that
+// transaction's END or ROLLBACK succeeds. So after a throw the driver believes a
+// dead transaction is still open: its next transaction sends no BEGIN, and the
+// writes it makes are not the ones its caller asked to roll back. Nothing in the
+// worker can repair that. Whether SQLite still holds the transaction open (a
+// deferred constraint) or already undid it (a full disk) is not knowable here, and
+// no ROLLBACK from here would fix the driver's view. So this tab stops saving for
+// good. Its lock is kept, because WriteFailed (not ReadOnlyTab) is the true banner
+// for a writer whose last changes are not saved. The Kotlin side has to rebuild
+// the driver; that is #884.
+function breakTransaction(e) {
+  transactionBroken = true;
+  dirty = false;
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  console.warn("[muviss] a transaction boundary failed; this tab will not save", e);
+  lastWriteFailed = true;
+  announce();
 }
 
 function markDirty() {
@@ -383,7 +429,7 @@ function electWriter() {
 // stored generation, so it still cannot overwrite a newer snapshot.
 function onLockGranted(release) {
   releaseLock = release;
-  promote();
+  promotionDone = promote();
 }
 
 async function promote() {
@@ -458,11 +504,15 @@ function giveUpLock() {
 
 // --- Database --------------------------------------------------------------
 
-async function createDatabase() {
-  sqlEngine = await initSqlJs({ locateFile: () => "/sql-wasm.wasm" });
-  snapshotReady = loadSnapshot();
+// `snapshotReady` is assigned before this returns, so a caller that awaits it
+// (a test, or promote()) never sees the variable still null.
+function createDatabase() {
+  snapshotReady = initSqlJs({ locateFile: () => "/sql-wasm.wasm" }).then((engine) => {
+    sqlEngine = engine;
+    return loadSnapshot();
+  });
   electWriter();
-  await snapshotReady;
+  return snapshotReady;
 }
 
 // Everything but a plain SELECT changes bytes on disk. Rather than parse SQL,
@@ -529,7 +579,13 @@ function onModuleReady() {
         dirty = false;
         saveSnapshot();
       }
-      const results = db.exec("BEGIN TRANSACTION;");
+      let results;
+      try {
+        results = db.exec("BEGIN TRANSACTION;");
+      } catch (e) {
+        breakTransaction(e);
+        throw e;
+      }
       inTransaction = true;
       return postMessage({ id: data.id, results });
     }
@@ -538,39 +594,27 @@ function onModuleReady() {
       try {
         results = db.exec("END TRANSACTION;");
       } catch (e) {
-        // A COMMIT that fails (a deferred constraint, say) can leave SQLite's
-        // transaction open, and export() cannot run inside one. Roll it back so
-        // the next change starts from a clean connection. Nothing to roll back
-        // is not an error here: SQLite may already have undone it.
-        try {
-          db.exec("ROLLBACK TRANSACTION;");
-        } catch {
-          // No transaction was open.
-        }
-        inTransaction = false;
-        // The changes made inside the failed transaction are gone; a snapshot that
-        // came due during it still has to be taken of what is left.
-        if (dirty) markDirty();
+        breakTransaction(e);
         throw e;
       }
-      // Cleared before anything else can throw, so a failure here cannot leave
-      // every later save deferred behind a transaction that is over.
       inTransaction = false;
       // One snapshot per committed transaction, not per statement inside it.
       markDirty();
       return postMessage({ id: data.id, results });
     }
     case "rollback_transaction": {
+      let results;
       try {
-        const results = db.exec("ROLLBACK TRANSACTION;");
-        return postMessage({ id: data.id, results });
-      } finally {
-        // Cleared even when ROLLBACK throws, so a failure cannot leave every
-        // later save deferred behind a transaction that is over. A snapshot that
-        // came due during the transaction still owes the writes committed before it.
-        inTransaction = false;
-        if (dirty) markDirty();
+        results = db.exec("ROLLBACK TRANSACTION;");
+      } catch (e) {
+        breakTransaction(e);
+        throw e;
       }
+      inTransaction = false;
+      // A snapshot that came due during the transaction still owes the writes
+      // committed before it.
+      if (dirty) markDirty();
+      return postMessage({ id: data.id, results });
     }
     // Ours, not SQLDelight's: posted by the main thread on `pagehide`, since a
     // worker cannot observe the page going away. Best-effort — the browser may

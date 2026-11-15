@@ -84,7 +84,8 @@ function fakeIndexedDb() {
   return fake;
 }
 
-function loadWorker() {
+// `sqlite`, when given, is the database the worker runs against (see fakeSqlite).
+function loadWorker(sqlite = null) {
   const source = readFileSync(WORKER, "utf8");
   assert.ok(source.includes(IMPORT), "the worker's sql.js import moved; update this test");
   const indexedDB = fakeIndexedDb();
@@ -102,9 +103,10 @@ function loadWorker() {
   vm.runInContext(source.replace(IMPORT, "const initSqlJs = async () => ({});"), context);
   // Copied on this side: an object made in the worker's realm has that realm's
   // Object.prototype, and deepEqual would refuse it.
-  Object.assign(context, { __version: { n: 0 }, __post: (m) => announced.push({ ...m }) });
+  Object.assign(context, { __version: { n: 0 }, __post: (m) => announced.push({ ...m }), __sqlite: sqlite });
   vm.runInContext(
-    "isWriter = true; db = { export: () => `snapshot ${++__version.n}` };" +
+    "isWriter = true; postMessage = () => {};" +
+      `db = ${sqlite ? "__sqlite" : "{ export: () => `snapshot ${++__version.n}` }"};` +
       "persistencePort = { postMessage: __post };",
     context,
   );
@@ -213,54 +215,135 @@ test("a snapshot due inside a rolled-back transaction is still taken", async () 
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
 });
 
-// A COMMIT that fails (a deferred constraint, say) leaves the transaction open in
-// SQLite. If the worker kept `inTransaction` set after that, every later save
-// would be deferred behind a transaction that is over, and nothing would say so.
-test("a COMMIT that fails does not stop the tab saving its later changes", async () => {
-  const { indexedDB, announced, run } = loadWorker();
-  run(
-    "db = { open: false, endFails: true, exec: (sql) => {" +
-      " if (/^BEGIN/.test(sql)) db.open = true;" +
-      " if (/^END/.test(sql)) { if (db.endFails) { db.endFails = false; throw new Error('deferred constraint failed'); } db.open = false; }" +
-      " if (/^ROLLBACK/.test(sql)) { if (!db.open) throw new Error('no transaction is active'); db.open = false; }" +
-      " return /total_changes/.test(sql) ? [{ values: [[0]] }] : []; }," +
-      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
-      "postMessage = () => {};",
-  );
-  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
-  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 1", id: 2 } })');
-  assert.throws(
-    () => run('onModuleReady.call({ data: { action: "end_transaction", id: 3 } })'),
-    /deferred constraint failed/,
-  );
-  // The failed COMMIT is the caller's error to see. The next change is the tab's
-  // to save, and must reach the store.
-  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 2", id: 4 } })');
+// A stand-in for the SQLite connection, with the behaviour the worker depends on:
+// a transaction holds its writes until END, a failed END may leave the transaction
+// open (a deferred constraint) or undo it (a full disk, or an I/O error), and
+// export() cannot run inside an open transaction. `fail` names the next boundary to
+// throw, once; `undone` makes the throw also undo the transaction.
+function fakeSqlite({ begin = false, end = false, rollback = false, undone = false } = {}) {
+  const faults = { begin, end, rollback };
+  const undo = (sqlite) => {
+    sqlite.open = false;
+    sqlite.pending = [];
+  };
+  const sqlite = {
+    open: false,
+    pending: [],
+    committed: [],
+    exec(sql) {
+      const verb = sql.trim().split(/\s+/)[0].toUpperCase();
+      if (verb === "BEGIN") {
+        if (faults.begin) {
+          faults.begin = false;
+          throw new Error("begin failed");
+        }
+        sqlite.open = true;
+        return [];
+      }
+      if (verb === "END") {
+        if (faults.end) {
+          faults.end = false;
+          if (undone) undo(sqlite);
+          throw new Error("end failed");
+        }
+        sqlite.committed.push(...sqlite.pending);
+        undo(sqlite);
+        return [];
+      }
+      if (verb === "ROLLBACK") {
+        if (faults.rollback) {
+          faults.rollback = false;
+          if (undone) undo(sqlite);
+          throw new Error("rollback failed");
+        }
+        undo(sqlite);
+        return [];
+      }
+      if (/total_changes/i.test(sql)) return [{ values: [[0]] }];
+      if (sqlite.open) sqlite.pending.push(sql);
+      else sqlite.committed.push(sql);
+      return [];
+    },
+    // The stored snapshot is the committed text, so a test can read what was saved.
+    export() {
+      if (sqlite.open) throw new Error("cannot export during a transaction");
+      return sqlite.committed.join(";");
+    },
+    close() {},
+  };
+  return sqlite;
+}
+
+// The Kotlin side, as SQLDelight 2.4.1's WebWorkerDriver runs its transactions
+// (read from the compiled driver): a transaction moves the driver's current
+// pointer to itself before it sends BEGIN, sends BEGIN only when it has no
+// enclosing transaction, sends END or ROLLBACK only from the outermost one, and
+// moves the pointer back only when that send succeeds. So after a throw the
+// pointer stays on a transaction that is over, and the next transaction is nested.
+function kotlinDriver(run) {
+  const send = (action, sql) =>
+    run(`onModuleReady.call({ data: { action: ${JSON.stringify(action)}, sql: ${JSON.stringify(sql ?? "")}, id: 1 } })`);
+  let current = null;
+  return {
+    begin() {
+      const tx = { enclosing: current };
+      current = tx;
+      if (tx.enclosing === null) send("begin_transaction");
+      return tx;
+    },
+    end(tx, successful) {
+      if (tx.enclosing === null) send(successful ? "end_transaction" : "rollback_transaction");
+      current = tx.enclosing;
+    },
+    exec: (sql) => send("exec", sql),
+  };
+}
+
+// A COMMIT that throws leaves the driver's pointer on a transaction that is over.
+// Its next transaction is nested: no BEGIN, and its writes run outside any
+// transaction. Those must not reach the store, and the failure must be announced.
+test("a COMMIT that throws keeps the tab from saving anything after it", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ end: true }));
+  const driver = kotlinDriver(run);
+  const t1 = driver.begin();
+  driver.exec("UPDATE t SET x = 1");
+  assert.throws(() => driver.end(t1, true), /end failed/);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, false);
   await run("flush()");
-  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
-  assert.equal(announced.length, 0);
+  assert.deepEqual(indexedDB.puts, []);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
 });
 
-test("a ROLLBACK that throws does not stop the tab saving its later changes", async () => {
-  const { indexedDB, run } = loadWorker();
-  run(
-    "db = { open: false, rollbackFails: true, exec: (sql) => {" +
-      " if (/^BEGIN/.test(sql)) db.open = true;" +
-      " if (/^END/.test(sql)) db.open = false;" +
-      " if (/^ROLLBACK/.test(sql)) { db.open = false; if (db.rollbackFails) { db.rollbackFails = false; throw new Error('transaction already rolled back'); } }" +
-      " return /total_changes/.test(sql) ? [{ values: [[0]] }] : []; }," +
-      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
-      "postMessage = () => {};",
-  );
-  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
-  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 1", id: 2 } })');
-  assert.throws(
-    () => run('onModuleReady.call({ data: { action: "rollback_transaction", id: 3 } })'),
-    /already rolled back/,
-  );
-  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 2", id: 4 } })');
+// A ROLLBACK that throws after SQLite already undid the transaction: the nested
+// transaction's writes then autocommit. Nothing autocommitted may be saved either.
+test("a ROLLBACK that throws keeps the tab from saving the writes that follow it", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ rollback: true, undone: true }));
+  const driver = kotlinDriver(run);
+  const t1 = driver.begin();
+  driver.exec("UPDATE t SET x = 1");
+  assert.throws(() => driver.end(t1, false), /rollback failed/);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, true);
   await run("flush()");
-  assert.equal(indexedDB.puts.length, 1, "the later change is saved");
+  assert.deepEqual(indexedDB.puts, []);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
+});
+
+// A BEGIN that throws: the pointer is already on the transaction, so the next one is
+// nested and runs without a transaction. Its writes must not be saved either.
+test("a BEGIN that throws keeps the tab from saving the writes that follow it", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ begin: true }));
+  const driver = kotlinDriver(run);
+  assert.throws(() => driver.begin(), /begin failed/);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, true);
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, []);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
 });
 
 test("changes committed before a transaction are saved before it opens", async () => {
