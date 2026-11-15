@@ -23,14 +23,10 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -43,6 +39,8 @@ import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
@@ -108,8 +106,7 @@ fun UpcomingScreen(
 
     // The snackbar's measured height, so the list's end clears a message that wraps (a long error
     // text, a large font) and not only the one-line case (#473).
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     Box(Modifier.fillMaxSize()) {
         PullToRefreshBox(
@@ -122,7 +119,7 @@ fun UpcomingScreen(
                     state.loading -> CircularProgressIndicator(Modifier.padding(top = MuvissSpacing.xxl))
                     state.error != null -> ErrorState(state.error!!, onRetry = viewModel::retry)
                     state.groups.isEmpty() -> UpcomingEmptyState(hasLibraryEntries = state.hasLibraryEntries)
-                    else -> UpcomingList(state.groups, bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight), onOpenDetail)
+                    else -> UpcomingList(state.groups, bottomPadding = snackbarClearance.bottomPadding, onOpenDetail)
                 }
             }
         }
@@ -130,7 +127,7 @@ fun UpcomingScreen(
             snackbarHostState,
             Modifier
                 .align(Alignment.BottomCenter)
-                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .measureSnackbarHeight(snackbarClearance)
                 .semantics { testTag = UPCOMING_SNACKBAR_TAG },
         )
     }

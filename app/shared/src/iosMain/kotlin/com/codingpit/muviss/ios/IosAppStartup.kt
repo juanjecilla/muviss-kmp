@@ -1,6 +1,7 @@
 package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.MuvissCrashReporting
+import com.codingpit.muviss.core.common.motion.SystemMotionPreference
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.widget.AppWidgets
@@ -55,6 +56,7 @@ object IosAppStartup {
                         single { DatabaseDriverFactory() }
                         single<NotificationPermissionRequester> { IosNotificationPermissionRequester }
                         single<SystemNotificationSettings> { IosNotificationSettings }
+                        single<SystemMotionPreference> { IosSystemMotionPreference }
                     },
                 )
             }

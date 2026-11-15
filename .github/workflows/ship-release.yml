@@ -73,7 +73,9 @@ jobs:
           else
             OPEN="$(gh api "repos/$REPO/branches?per_page=100" --paginate --jq '.[].name' | grep -E '^(release|hotfix)/' || true)"
             [ -n "$OPEN" ] || { echo "::error::no release/* or hotfix/* branch is open; the train cuts one (release-train.yml)"; exit 1; }
-            [ "$(echo "$OPEN" | wc -l)" -eq 1 ] || { echo "::error::several are open, pass one as 'branch': $(echo $OPEN)"; exit 1; }
+            # One line for the error annotation: a newline would end it early.
+            LIST="${OPEN//$'\n'/ }"
+            [ "$(echo "$OPEN" | wc -l)" -eq 1 ] || { echo "::error::several are open, pass one as 'branch': $LIST"; exit 1; }
             BRANCH="$OPEN"
           fi
           [[ "$BRANCH" =~ ^(release|hotfix)/[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -132,7 +134,8 @@ jobs:
               OPEN="$(echo "$OPEN" | awk -v b="back-merge/v${INPUT#v}" '$2 == b')"
             fi
             [ -n "$OPEN" ] || { echo "::error::no matching open back-merge/* PR into develop (release.yml opens it after a release)"; exit 1; }
-            [ "$(echo "$OPEN" | wc -l)" -eq 1 ] || { echo "::error::several back-merge PRs are open, pass the version as 'branch': $(echo $OPEN)"; exit 1; }
+            LIST="${OPEN//$'\n'/ }"
+            [ "$(echo "$OPEN" | wc -l)" -eq 1 ] || { echo "::error::several back-merge PRs are open, pass the version as 'branch': $LIST"; exit 1; }
             N="${OPEN%% *}"
           else
             N="$(gh pr list -R "$REPO" --base main --head "$BRANCH" --state open --json number,isCrossRepository --jq '[.[]|select(.isCrossRepository|not)][0].number // empty')"

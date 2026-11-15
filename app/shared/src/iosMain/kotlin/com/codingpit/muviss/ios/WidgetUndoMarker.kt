@@ -14,9 +14,8 @@ import platform.Foundation.NSUserDefaults
  * [IosWidgetRefresher]). The key is read by nothing else, so renaming it only
  * needs this file changed.
  *
- * [defaults] is nullable because `NSUserDefaults(suiteName:)` returns nil for a
- * suite it refuses, and a missing marker must degrade to "no Undo button", never
- * to a crash on the home screen.
+ * [defaults] is nullable because a suite the system refuses (see [openSuite])
+ * must degrade to "no Undo button", never to a crash on the home screen.
  */
 class WidgetUndoMarker(private val defaults: NSUserDefaults?) {
 
@@ -35,6 +34,16 @@ class WidgetUndoMarker(private val defaults: NSUserDefaults?) {
         internal const val KEY = "justTickedEpisodeId"
 
         /** The marker in the App Group both processes share. */
-        fun appGroup(): WidgetUndoMarker = WidgetUndoMarker(NSUserDefaults(suiteName = MUVISS_APP_GROUP))
+        fun appGroup(): WidgetUndoMarker = WidgetUndoMarker(openSuite(MUVISS_APP_GROUP))
+
+        /**
+         * Opens a defaults suite, or returns null when the system refuses it.
+         *
+         * `NSUserDefaults(suiteName:)` is a failable Objective-C initializer, and Kotlin/Native
+         * types it as non-null: when the system refuses the suite the call throws
+         * `NullPointerException` rather than yielding null, so an elvis after it can never run.
+         * Catching is the only way to turn a refusal into the null this marker is built around.
+         */
+        internal fun openSuite(suiteName: String): NSUserDefaults? = runCatching { NSUserDefaults(suiteName = suiteName) }.getOrNull()
     }
 }

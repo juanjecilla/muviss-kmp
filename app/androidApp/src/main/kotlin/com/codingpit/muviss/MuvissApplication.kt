@@ -5,6 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.util.Log
 import com.codingpit.muviss.core.common.connectivity.AndroidConnectivityMonitor
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
+import com.codingpit.muviss.core.common.motion.SystemMotionPreference
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.secrets.SecretStore
@@ -78,6 +79,8 @@ class MuvissApplication : Application() {
                             single<SystemNotificationSettings> { AndroidNotificationSettings(this@MuvissApplication) }
                             // Turning notifications on asks the OS here, not on first launch (EPIC 47).
                             single<NotificationPermissionRequester> { AndroidNotificationPermissionRequester(this@MuvissApplication) }
+                            // A fresh install takes its animations default from "Remove animations" (#394).
+                            single<SystemMotionPreference> { AndroidSystemMotionPreference(this@MuvissApplication) }
                             // An offline error retries itself on reconnect (#249).
                             single<ConnectivityMonitor> { AndroidConnectivityMonitor(this@MuvissApplication) }
                             // Debug builds only: the class-name chain of a swallowed

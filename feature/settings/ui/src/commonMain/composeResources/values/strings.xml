@@ -160,6 +160,6 @@
     <string name="muted_genres_available">All genres</string>
     <string name="muted_genres_tv">TV shows</string>
     <string name="muted_genres_movies">Movies</string>
-    <string name="muted_genres_offline">Couldn\'t load the genre list. Your muted genres above still work.</string>
+    <string name="muted_genres_offline">Couldn't load the genre list. Your muted genres above still work.</string>
     <string name="muted_genres_retry">Retry</string>
 </resources>

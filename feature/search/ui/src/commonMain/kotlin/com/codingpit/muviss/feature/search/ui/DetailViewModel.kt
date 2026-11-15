@@ -336,7 +336,7 @@ class DetailViewModel(
             ?.takeIf { current.animateTicks && it.completesAiredWith(episodeId, current.seenEpisodes, clock.todayEpochDay()) }
             ?.let { UiText.Resource(Res.string.tick_caught_up, it.summary.title) }
         viewModelScope.launchReporting {
-            progressApi.setEpisodeSeen(episodeId, !current.isSeen(episodeId))
+            progressApi.tickEpisode(episodeId, !current.isSeen(episodeId))
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
         }
     }
@@ -427,7 +427,7 @@ class DetailViewModel(
 
     /** Toggles a movie's watched flag. */
     fun toggleMovieWatched() {
-        viewModelScope.launchReporting { progressApi.setMovieWatched(mediaId, !_state.value.movieWatched) }
+        viewModelScope.launchReporting { progressApi.tickMovie(mediaId, !_state.value.movieWatched) }
     }
 }
 

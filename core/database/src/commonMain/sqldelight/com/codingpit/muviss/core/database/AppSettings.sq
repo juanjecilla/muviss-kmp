@@ -102,6 +102,13 @@
 -- backup agent, which runs before Koin exists and so reads the column from the database
 -- file itself.
 --
+-- `motionDefaultApplied` was added in `21.sqm` (#394). The once-ever mark that a
+-- fresh install has taken its `animationsEnabled` default from the OS's reduce-motion
+-- setting. The migration sets it on every row that exists, so an upgraded install never
+-- has its own choice replaced; a row `ensureRow` creates later takes the DEFAULT, 0. A separate
+-- mark rather than `onboardingCompleted`, because a deep-link launch skips the
+-- introduction and leaves Settings reachable before it is done.
+--
 -- `triageSnoozeHintSeen` is a second one-shot onboarding flag beside
 -- `triageTutorialSeen` rather than a reuse of it, because `triageTutorialSeen`
 -- is already true on every install that exists — folding the snooze hint into
@@ -131,7 +138,8 @@ CREATE TABLE appSettings (
     mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality',
     mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    motionDefaultApplied INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -233,3 +241,9 @@ UPDATE appSettings SET deviceBackupEnabled = :deviceBackupEnabled WHERE id = 0;
 -- Settings > Delete all data (EPIC 29, #72): the next ensureRow brings the defaults back.
 deleteRow:
 DELETE FROM appSettings;
+
+selectMotionDefaultApplied:
+SELECT motionDefaultApplied FROM appSettings WHERE id = 0;
+
+markMotionDefaultApplied:
+UPDATE appSettings SET motionDefaultApplied = 1 WHERE id = 0;

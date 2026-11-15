@@ -81,6 +81,29 @@ class TriageScreenErrorCopyTest {
     }
 
     @Test
+    fun the_failed_commit_snackbar_times_out_instead_of_sitting_over_the_buttons() = runComposeUiTest {
+        val harness = TriageHarness(movies = listOf(filmA))
+        harness.details.failure = MetadataError.Offline()
+
+        setContent { MuvissTheme { TriageScreen(harness.viewModel(), onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {}) } }
+        waitForIdle()
+
+        // An action label makes Material3 default to Indefinite. Without an
+        // explicit duration this failure would never leave the screen, and it
+        // would sit over the verdict buttons until tapped.
+        mainClock.autoAdvance = false
+        onNodeWithText("Later").performClick()
+        waitForIdle()
+        mainClock.advanceTimeBy(1_000)
+        waitForIdle()
+        onNodeWithText(MetadataError.Offline().userMessage, substring = true).assertExists()
+
+        mainClock.advanceTimeBy(15_000)
+        waitForIdle()
+        onNodeWithText(MetadataError.Offline().userMessage, substring = true).assertDoesNotExist()
+    }
+
+    @Test
     fun a_commit_time_raw_exception_shows_generic_copy_and_never_its_message() = runComposeUiTest {
         val harness = TriageHarness(movies = listOf(filmA))
         harness.details.failure = IllegalStateException("Unable to resolve host api.themoviedb.org?api_key=SECRET")

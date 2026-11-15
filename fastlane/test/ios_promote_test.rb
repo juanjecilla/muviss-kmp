@@ -20,6 +20,7 @@ class FakeIosGitHub
   end
 
   def release_issues = @issues
+  def issue_body(number) = @issues.find { |i| i["number"] == number }["body"]
   def blockers(version) = @blockers_by_version[version]
   def open_prs_into(_branch) = []
   def run_conclusion(_sha, _workflow) = "success"

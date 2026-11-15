@@ -55,7 +55,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private class FakeProfileRepository(initial: LocalProfile = LocalProfile.DEFAULT) : ProfileRepository {
+internal class FakeProfileRepository(initial: LocalProfile = LocalProfile.DEFAULT) : ProfileRepository {
     val flow = MutableStateFlow(initial)
     var failure: Throwable? = null
 
@@ -70,7 +70,7 @@ private class FakeProfileRepository(initial: LocalProfile = LocalProfile.DEFAULT
     }
 }
 
-private class FakeCollectionApi : CollectionApi {
+internal class FakeCollectionApi : CollectionApi {
     val summaries = MutableStateFlow<List<CollectionSummary>>(emptyList())
 
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = error("not used")
@@ -88,7 +88,7 @@ private class FakeCollectionApi : CollectionApi {
     override suspend fun refreshAndFindNewEpisodes(): List<NewEpisodesResult> = error("not used")
 }
 
-private class FakeProgressApi : ProgressApi {
+internal class FakeProgressApi : ProgressApi {
     val activityDays = MutableStateFlow<Set<Long>>(emptySet())
     val rewatchCounts = MutableStateFlow<Map<MediaId, Int>>(emptyMap())
     val rewatchTimestamps = MutableStateFlow<List<Long>>(emptyList())
@@ -121,7 +121,7 @@ private class FakeProgressApi : ProgressApi {
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = error("not used")
 }
 
-private class FakeSyncRepository(
+internal class FakeSyncRepository(
     override val isAvailable: Boolean = true,
     initialAccount: SyncAccountState = SyncAccountState.SignedOut,
     override val isBackgroundAvailable: Boolean = true,

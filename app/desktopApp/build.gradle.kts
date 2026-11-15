@@ -160,11 +160,10 @@ abstract class VerifyJlinkModules : DefaultTask() {
             .filter { it.isNotEmpty() }
             .toSortedSet()
 
-        val missing = required - resolved
-        // java.base is mandated in every image and is never declared as a root
-        // anywhere, so it is not interesting in either direction.
-        val transitiveOnly = (required - declared).intersect(resolved) - "java.base"
-        val unused = declared - required
+        val verdict = JlinkVerdict(required, declared, resolved)
+        val missing = verdict.missing
+        val transitiveOnly = verdict.transitiveOnly
+        val unused = verdict.unused
 
         val lines = buildList {
             add("declared roots : ${declared.joinToString(", ")}")

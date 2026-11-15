@@ -11,6 +11,7 @@ import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.common.connectivity.DefaultConnectivityMonitor
 import com.codingpit.muviss.core.common.locale.DefaultSystemLocale
 import com.codingpit.muviss.core.common.locale.SystemLocale
+import com.codingpit.muviss.core.common.motion.SystemMotionPreference
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
 import com.codingpit.muviss.core.common.widget.AppWidgets
@@ -24,6 +25,8 @@ val commonModule: Module = module {
     single<SystemNotificationSettings> { SystemNotificationSettings.None }
     // Android and iOS bind a real one from their host (EPIC 47); everywhere else nothing needs asking.
     single<NotificationPermissionRequester> { NotificationPermissionRequester.Granted }
+    // Android and iOS bind the OS's reduce-motion signal from their host (#394); elsewhere there is none.
+    single<SystemMotionPreference> { SystemMotionPreference.None }
     single<AppDispatchers> { DefaultAppDispatchers() }
     single<AppClock> { SystemClock() }
     single { AppVersion.current }

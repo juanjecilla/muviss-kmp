@@ -6,8 +6,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -20,10 +22,12 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.progress.domain.CompletionDetector
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
+import com.codingpit.muviss.feature.progress.domain.TickEpisodeUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import com.codingpit.muviss.models.Episode
@@ -131,6 +135,24 @@ class ProgressTickFeedbackTest {
         mainClock.advanceTimeBy(100)
 
         assertEquals(listOf(EpisodeId(mini, 1, 1) to true, EpisodeId(mini, 1, 1) to false), repository.tickedEpisodes)
+    }
+
+    @Test
+    fun undo_on_the_newest_tick_after_a_replaced_snackbar_reverts_only_that_tick() = runComposeUiTest {
+        val repository = FakeProgressRepository()
+        setContent { WatchNext(seasons = listOf(season(1, 3)), alreadySeen = 0, repository = repository) }
+
+        tapTick()
+        tapTick()
+        mainClock.advanceTimeBy(100)
+        onAllNodesWithText("Undo").assertCountEquals(1)
+        onNodeWithText("Undo").performClick()
+        mainClock.advanceTimeBy(100)
+
+        assertEquals(
+            listOf(EpisodeId(mini, 1, 1) to true, EpisodeId(mini, 1, 2) to true, EpisodeId(mini, 1, 2) to false),
+            repository.tickedEpisodes,
+        )
     }
 
     @Test
@@ -254,7 +276,7 @@ private fun WatchNext(
     }
     val watchNext = ProgressViewModel(
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(repository), ObserveLastWatchedAtUseCase(repository), cache, FakeClock(1_000L * 86_400_000L)),
-        ToggleEpisodeSeenUseCase(repository),
+        TickEpisodeUseCase(ToggleEpisodeSeenUseCase(repository), CompletionDetector.None),
         cache,
         flags,
     )

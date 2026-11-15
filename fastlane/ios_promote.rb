@@ -383,7 +383,7 @@ class IosPromotion
     track = ReleaseStages.ios_of(state).merge("stage" => ReleaseStages::DONE, "completed_on" => @today.iso8601, "holds" => [])
     state = with_track(state, track)
     if state["stage"] == ReleaseStages::DONE
-      @github.update_issue(issue["number"], ReleaseStages.render(state))
+      ReleaseStages.save(@github, issue, state)
       @github.close_issue(issue["number"], "#{version} finished on both stores. Closed.")
     else
       persist(issue, state, "iOS phased release of #{version} reached 100%. Play still has its own track; this issue closes when it finishes.")
@@ -406,7 +406,7 @@ class IosPromotion
   end
 
   def persist(issue, state, comment)
-    @github.update_issue(issue["number"], ReleaseStages.render(state))
+    ReleaseStages.save(@github, issue, state)
     @github.comment(issue["number"], comment)
   end
 end

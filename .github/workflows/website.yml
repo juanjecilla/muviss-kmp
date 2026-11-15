@@ -39,6 +39,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: website/.nvmrc
+          # The runner's cached 22.x lags the release; Astro raises its minimum
+          # patch with no warning (it refused 22.23.3 for 22.23.4).
+          check-latest: true
           cache: npm
           cache-dependency-path: website/package-lock.json
       - run: npm ci

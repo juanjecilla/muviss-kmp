@@ -19,10 +19,12 @@ import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
+import com.codingpit.muviss.feature.progress.domain.CompletionDetector
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
 import com.codingpit.muviss.feature.progress.domain.FetchEpisodeCatalogUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveLastWatchedAtUseCase
 import com.codingpit.muviss.feature.progress.domain.ObserveSeenEpisodesUseCase
+import com.codingpit.muviss.feature.progress.domain.TickEpisodeUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import com.codingpit.muviss.models.Episode
@@ -122,7 +124,7 @@ private fun ManyShows(tickAnimations: Boolean = true, lastEpisodeOnShow1: Boolea
     val flags = FakeFeatureFlags().apply { this.tickAnimations.value = tickAnimations }
     val watchNext = ProgressViewModel(
         WatchNextUseCase({ collectionApi }, ObserveSeenEpisodesUseCase(repository), ObserveLastWatchedAtUseCase(repository), cache, FakeClock(1_000L * 86_400_000L)),
-        ToggleEpisodeSeenUseCase(repository),
+        TickEpisodeUseCase(ToggleEpisodeSeenUseCase(repository), CompletionDetector.None),
         cache,
         flags,
     )

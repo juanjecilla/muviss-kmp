@@ -8,7 +8,9 @@
 # What reaches users: `feat` and `fix` subjects, minus work no store user can
 # see. That is infrastructure scopes (release, ci, build, ops, supabase, ...),
 # other platforms (ios, web, desktop), and paid or remotely-dark features
-# (sync, co-watch, the own TMDB key), which never appear in public copy.
+# (sync, co-watch, the own TMDB key), which never appear in public copy, and any
+# commit whose body ends in a `Notes: none` trailer (a `feat` with nothing user
+# can see yet; AGENTS.md). Neither the list nor the Spanish count sees it.
 # English lists the changes; other locales get a sentence that counts them,
 # since a commit subject cannot be translated here.
 #
@@ -37,8 +39,33 @@ found="$(scripts/release/previous-release.sh HEAD "$VERSION")"
 read -r _ FROM <<<"$found" || true
 range="${FROM:+$FROM..}HEAD"
 
+# The subject of every non-merge commit in the range, except a commit whose body
+# ends in a `Notes: none` trailer: a `feat` that ships no user-visible surface
+# (AGENTS.md). Only the body's last paragraph is read as a trailer block, so the
+# same words in prose above it do not opt a commit out, and the key and value
+# match in any case.
+kept_subjects() {
+  git log --no-merges --format='%s%x1f%b%x1e' "$range" \
+    | awk -v RS="$(printf '\036')" -v FS="$(printf '\037')" '
+      {
+        subject = $1
+        sub(/^[ \t\r\n]+/, "", subject)
+        if (subject == "") next
+        n = split($2, lines, "\n")
+        i = n
+        while (i > 0 && lines[i] ~ /^[ \t\r]*$/) i--
+        optout = 0
+        while (i > 0 && lines[i] !~ /^[ \t\r]*$/) {
+          line = tolower(lines[i])
+          if (line ~ /^[ \t]*notes[ \t]*:[ \t]*none[ \t\r]*$/) optout = 1
+          i--
+        }
+        if (!optout) print subject
+      }'
+}
+
 items() { # <feat|fix> -> one user-facing line per change
-  git log --no-merges --format='%s' "$range" \
+  kept_subjects \
     | grep -E "^$1(\([^)]*\))?!?: " \
     | grep -vE "^$1\(($HIDDEN_SCOPES)\)" \
     | grep -viE "$HIDDEN_WORDS" \

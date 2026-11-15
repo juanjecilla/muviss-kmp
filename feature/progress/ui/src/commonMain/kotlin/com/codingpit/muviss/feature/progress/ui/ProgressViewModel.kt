@@ -11,7 +11,7 @@ import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.progress.domain.EpisodeCatalogCache
-import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
+import com.codingpit.muviss.feature.progress.domain.TickEpisodeUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
 import com.codingpit.muviss.feature.progress.ui.generated.resources.Res
 import com.codingpit.muviss.feature.progress.ui.generated.resources.error_generic
@@ -64,7 +64,7 @@ sealed interface TickOutcome {
  */
 class ProgressViewModel(
     private val watchNext: WatchNextUseCase,
-    private val toggleEpisodeSeen: ToggleEpisodeSeenUseCase,
+    private val toggleEpisodeSeen: TickEpisodeUseCase,
     private val catalogCache: EpisodeCatalogCache,
     featureFlags: FeatureFlags,
 ) : ViewModel() {

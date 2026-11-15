@@ -2,16 +2,14 @@ package com.codingpit.muviss.core.designsystem.component
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
-import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
  * The badge sits on a poster, so the worst case for its amber text is the
- * lightest artwork there can be: a white backdrop under the scrim. The
- * luminance below is the WCAG 2.x formula written out in full rather than read
- * from `Color.luminance()`, so this test checks the number the accessibility
- * note reports, not Compose's implementation of it.
+ * lightest artwork there can be: a white backdrop under the scrim. This is the
+ * formula-level bound; the rendered pixels are measured in jvmTest's
+ * `RatingBadgeRenderedContrastTest`, over the same worst cases and more.
  *
  * WCAG AA requires 4.5:1 for normal text (the badge label is 11 sp) and 3:1 for
  * non-text graphics such as the star icon (SC 1.4.11).
@@ -42,22 +40,6 @@ class RatingBadgeContrastTest {
 
     private fun ratioOverWhitePoster(): Double {
         val backdrop = RatingBadgeScrim.compositeOver(Color.White)
-        return contrastRatio(RatingBadgeAmber, backdrop)
-    }
-
-    private fun relativeLuminance(c: Color): Double {
-        fun linear(channel: Float): Double {
-            val v = channel.toDouble()
-            return if (v <= 0.03928) v / 12.92 else ((v + 0.055) / 1.055).pow(2.4)
-        }
-        return 0.2126 * linear(c.red) + 0.7152 * linear(c.green) + 0.0722 * linear(c.blue)
-    }
-
-    private fun contrastRatio(a: Color, b: Color): Double {
-        val la = relativeLuminance(a)
-        val lb = relativeLuminance(b)
-        val lighter = maxOf(la, lb)
-        val darker = minOf(la, lb)
-        return (lighter + 0.05) / (darker + 0.05)
+        return wcagContrastRatio(RatingBadgeAmber, backdrop)
     }
 }

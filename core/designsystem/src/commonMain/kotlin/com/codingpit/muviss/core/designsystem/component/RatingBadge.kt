@@ -12,9 +12,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.theme.tabular
+
+/** Test tag on the pill; the golden and the rendered-contrast test read its bounds through it. */
+const val RATING_BADGE_TAG = "ratingBadge"
 
 /**
  * Amber on the pill's scrim. Contrast is checked against the lightest
@@ -48,7 +52,7 @@ fun RatingBadge(
     Surface(
         shape = CircleShape,
         color = RatingBadgeScrim,
-        modifier = modifier,
+        modifier = modifier.testTag(RATING_BADGE_TAG),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

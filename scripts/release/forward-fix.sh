@@ -10,6 +10,11 @@
 # forward PR into a release/* branch is a fix in flight, so it holds that
 # version's promotion (release-promote.yml) until it merges.
 #
+# The release notes (fastlane/release-notes/) exist only on the release branch,
+# so a hand edit to them conflicts on develop as delete/modify. Those notes are
+# the fix, so they are taken as the release branch wrote them, and the PR is
+# not empty (#529).
+#
 #   forward-fix.sh targets SOURCE_BRANCH                       newer open release/* branches, then develop
 #   forward-fix.sh forward PR SOURCE_BRANCH MERGE_SHA TARGET   open the forward PR into TARGET
 #   forward-fix.sh all PR SOURCE_BRANCH MERGE_SHA              every target, one PR each
@@ -45,6 +50,60 @@ targets() {
   echo develop
 }
 
+# The release notes of one version belong to that version's release line. On a
+# line of another version their directory is stray (a notes edit to v1.5.0 must
+# not leave a v1.5.0/ directory on release/1.6.0), so a forward to such a line
+# drops them. develop takes every version. Each such path is put back to the
+# target's state (removed when the target does not have it), whether the pick
+# applied cleanly or conflicted on it. Logs to stderr, and records the skipped
+# versions in SKIPPED_NOTES (space separated) for the caller.
+SKIPPED_NOTES=""
+skip_other_version_notes() {
+  local target="$1" sha="$2" path version want
+  want="${target#release/}"
+  [ "$target" = develop ] && return 0
+  while read -r path; do
+    [ -n "$path" ] || continue
+    version="${path#fastlane/release-notes/v}"
+    version="${version%%/*}"
+    [ "$version" = "$want" ] && continue
+    if git cat-file -e "origin/$target:$path" 2>/dev/null; then
+      git checkout -q "origin/$target" -- "$path" || return 1
+      git add -- "$path" || return 1
+    else
+      git rm -q -f --ignore-unmatch -- "$path" || return 1
+    fi
+    if [[ " $SKIPPED_NOTES " != *" $version "* ]]; then
+      echo "skipped v$version notes for $target" >&2
+      SKIPPED_NOTES="$SKIPPED_NOTES $version"
+    fi
+  # The source commit's paths, plus what the pick changed against the target: git can carry
+  # an edit onto a file the target renamed, which the source commit never names. No rename
+  # detection, so both sides of a rename are listed and put back.
+  done < <({ git diff --no-renames --name-only "$sha^1" "$sha"; git diff --no-renames --name-only "origin/$target"; } \
+    | grep -E '^fastlane/release-notes/v[^/]+/' | sort -u || true)
+  return 0
+}
+
+# Resolves a cherry-pick whose only conflicts are release-only notes that the
+# target does not have (DU: deleted by us, modified by them), taking the picked
+# side. Any other conflict, including a notes file both sides changed, returns
+# non-zero and leaves the index for the caller to abort.
+resolve_release_notes() {
+  local unmerged code path
+  unmerged="$(git status --porcelain | grep -E '^(UU|AA|DD|AU|UA|UD|DU) ' || true)"
+  [ -n "$unmerged" ] || return 1
+  while read -r code path; do
+    if [ "$code" != DU ] || [[ "$path" != fastlane/release-notes/* ]]; then
+      return 1
+    fi
+  done <<<"$unmerged"
+  while read -r code path; do
+    git checkout --theirs -- "$path" || return 1
+    git add -- "$path" || return 1
+  done <<<"$unmerged"
+}
+
 # The cherry-pick of a merge commit needs its first parent as the base.
 pick_args() {
   local sha="$1" parents
@@ -55,7 +114,9 @@ pick_args() {
 forward() {
   local pr="$1" source="$2" sha="$3" target="$4"
   local branch="forward/pr-$pr-to-${target//\//-}"
-  local existing body title status="clean" flags
+  local existing body title status="clean" flags notes="" skipped_line=""
+  # Scoped to this target: `all` forwards to several, and develop skips nothing.
+  SKIPPED_NOTES=""
 
   existing="$(gh pr list --repo "$GH_REPO" --head "$branch" --state open --json number --jq '.[0].number // ""')"
   if [ -n "$existing" ]; then
@@ -69,13 +130,29 @@ forward() {
   flags="$(pick_args "$sha")"
   # shellcheck disable=SC2086
   if git cherry-pick $flags "$sha" >/dev/null 2>&1; then
+    # A notes file added by a clean pick (a new locale, say) must not reach a
+    # line of another version either: amend it away.
+    skip_other_version_notes "$target" "$sha"
+    if [ -n "$SKIPPED_NOTES" ] && { ! git diff --cached --quiet || ! git diff --quiet; }; then
+      git commit -q --amend --no-edit --allow-empty
+    fi
+  elif skip_other_version_notes "$target" "$sha" && [ -z "$(git ls-files -u)" ] \
+    && ! git diff --cached --quiet && GIT_EDITOR=true git cherry-pick --continue >/dev/null 2>&1; then
+    # The only conflicts were release notes, now settled above: the pick went on.
     :
+  elif resolve_release_notes && GIT_EDITOR=true git cherry-pick --continue >/dev/null 2>&1; then
+    notes="yes"
   elif [ -z "$(git ls-files -u)" ] && git diff --cached --quiet && git diff --quiet; then
     # Nothing conflicts and nothing changed: the target already has the fix
-    # (it also landed there some other way). A PR would be empty, and on a
-    # release branch it would hold the promotion for nothing.
+    # (it also landed there some other way), or the only change was another
+    # version's release notes. A PR would be empty, and on a release branch it
+    # would hold the promotion for nothing.
     git cherry-pick --abort >/dev/null 2>&1 || git cherry-pick --skip >/dev/null 2>&1 || true
-    echo "forward #$pr to $target: already there, skipped"
+    if [ -n "$SKIPPED_NOTES" ]; then
+      echo "forward #$pr to $target: nothing left once the other version's release notes are skipped"
+    else
+      echo "forward #$pr to $target: already there, skipped"
+    fi
     return 0
   else
     git cherry-pick --abort >/dev/null 2>&1 || true
@@ -84,13 +161,31 @@ forward() {
     status="conflict"
   fi
   if [ "$status" = clean ] && git diff --quiet "origin/$target" HEAD; then
-    echo "forward #$pr to $target: already there, skipped"
+    if [ -n "$SKIPPED_NOTES" ]; then
+      echo "forward #$pr to $target: nothing left once the other version's release notes are skipped"
+    else
+      echo "forward #$pr to $target: already there, skipped"
+    fi
     return 0
   fi
   git push -q --force origin "HEAD:refs/heads/$branch"
 
   title="chore(release): forward #$pr to $target"
   body="Forwards #$pr, merged into \`$source\`, so \`$target\` gets the same fix (ADR 0030). The original is #$pr."
+  if [ -n "$notes" ]; then
+    body="$body
+
+**Release notes.** \`$source\` changed its release notes, which exist only on the release branch. They came with the fix as written there (#529)."
+  fi
+  if [ -n "$SKIPPED_NOTES" ]; then
+    skipped_line="$(for v in $SKIPPED_NOTES; do printf 'v%s, ' "$v"; done)"
+    body="$body
+
+**Release notes.** Left out: the notes of ${skipped_line%, }, which belong to their own release line, not to \`$target\`."
+    if [ "$status" = "conflict" ]; then
+      body="$body When you resolve the conflict below, leave them out too: after the cherry-pick, restore those notes to \`$target\`'s state (or remove them where \`$target\` has none) before pushing."
+    fi
+  fi
   if [ "$status" = "conflict" ]; then
     body="$body
 

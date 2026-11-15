@@ -1,3 +1,4 @@
+import org.gradle.api.plugins.BasePluginExtension
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
@@ -12,6 +13,8 @@ plugins {
     // `lint`, and `:app:androidApp`'s `checkDependencies` then covers the
     // module too (EPIC 31b #164).
     id("com.android.lint")
+    // Supplies `BasePluginExtension.archivesName` below (#493).
+    base
 }
 
 // SDK levels come from the version catalog, like :app:androidApp's, so a
@@ -22,6 +25,15 @@ fun sdkLevel(name: String): Int = catalog.findVersion(name).get().requiredVersio
 
 val moduleNamespace: String = "com.codingpit.muviss." +
     path.removePrefix(":").replace(":", ".").replace("-", "")
+
+// The metadata compilations' klib name (`unique_name=<name>_commonMain`) comes from
+// `archivesName`, falling back to `project.name` (KGP's `baseModuleName`). `project.name`
+// is `api`/`domain`/`data`/`ui` in every feature, so the KLIB loader warned about the
+// same name on every metadata compile that saw two features (#493). Naming it from the
+// Gradle path is what the Android namespace above already does.
+configure<BasePluginExtension> {
+    archivesName.set(path.removePrefix(":").replace(":", "-"))
+}
 
 kotlin {
     compilerOptions {
@@ -71,18 +83,45 @@ kotlin {
 // library warning that cannot be fixed gets a narrow `@Suppress` with a comment;
 // `-PallowWarnings` switches the rule off for a local experiment, never for CI.
 //
-// The metadata compilations of shared source sets are left out: their KLIB loader
-// prints "the same unique_name=api_commonMain found in more than one library"
-// because every feature's `:api`, `:domain`... module has the same short name,
-// and that is a warning about our module naming, not about code (#493). Code in
-// a shared source set is compiled again by each concrete target, so a warning in
-// it is still caught there.
-kotlin.targets.matching { it.platformType != KotlinPlatformType.common }.configureEach {
+// Metadata compilations of shared source sets are checked too (#493), with one
+// exception: `iosMain`. Our own module names are unique (`archivesName`, above), so
+// what the KLIB loader still reports there is library skew, and it only shows up in
+// the compilation that sees Apple's klibs next to the common ones:
+//  - the same library in two Maven groups: Compose 1.12's `org.jetbrains.androidx.*`
+//    forks (lifecycle 2.9.6, savedstate 1.3.6, navigationevent) against Google's
+//    `androidx.*` artifacts (lifecycle 2.11.0, savedstate 1.4.0), and the
+//    `annotation`/`collection` internals Compose pulls in. A catalog bump does not
+//    merge groups, so this needs a dependency substitution across the Compose graph;
+//  - `app.cash.sqldelight:runtime` and `androidx.compose.runtime:runtime` both
+//    name their klib `runtime`, which no version alignment can change.
+// The KLIB warning cannot be silenced per-warning, so `iosMain` stays out until that
+// substitution exists (#670). Its code is compiled
+// again by each concrete iOS target, so a problem in it is still caught there.
+kotlin.targets.configureEach {
     compilations.configureEach {
-        if (!name.contains("test", ignoreCase = true)) {
+        val klibSkewCompilation = target.platformType == KotlinPlatformType.common && name == "iosMain"
+        if (!klibSkewCompilation && !name.contains("test", ignoreCase = true)) {
             compileTaskProvider.configure {
                 compilerOptions.allWarningsAsErrors.set(!providers.gradleProperty("allowWarnings").isPresent)
             }
         }
     }
+}
+
+// Env-gated tests (`assumeTrue` on an environment variable) report SKIPPED. An
+// environment variable is not a Gradle task input unless it is declared, so a
+// later run that sets it reported UP-TO-DATE and never ran the test (#629). Each
+// variable below is an input: setting, changing or unsetting it re-runs the task.
+// While one is set, the task is also never up to date and never restored from the
+// build cache: what these tests read lies outside Gradle's view (the files in
+// MUVISS_POSTER_DIR, the OS keychain behind MUVISS_KSAFE_LIVE, the goldens
+// MUVISS_RECORD_GOLDENS writes), so an unchanged value proves nothing about it.
+// Add a new env-gated test's variable here.
+val envGatedTestVariables = listOf("MUVISS_POSTER_DIR", "MUVISS_KSAFE_LIVE", "MUVISS_RECORD_GOLDENS")
+tasks.withType<Test>().configureEach {
+    val values = envGatedTestVariables.map { name -> name to providers.environmentVariable(name).orElse("") }
+    values.forEach { (name, value) -> inputs.property("env.$name", value) }
+    val anySet = providers.provider { values.any { (_, value) -> value.get().isNotEmpty() } }
+    outputs.upToDateWhen { !anySet.get() }
+    outputs.cacheIf("no env-gated test variable is set") { !anySet.get() }
 }

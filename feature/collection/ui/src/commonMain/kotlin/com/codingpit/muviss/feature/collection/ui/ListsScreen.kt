@@ -33,14 +33,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.EmptyState
 import com.codingpit.muviss.core.designsystem.component.ErrorState
+import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
+import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
@@ -100,8 +99,7 @@ fun ListsScreen(
 
     // The snackbar's measured height, so the end of the list clears a message that wraps (a long
     // name, a large font) and not only the one-line case.
-    var snackbarHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
+    val snackbarClearance = rememberSnackbarClearance()
 
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -114,7 +112,7 @@ fun ListsScreen(
 
                 else -> ListsColumn(
                     state.lists,
-                    bottomPadding = maxOf(MuvissSpacing.bottomContentWithSnackbar, MuvissSpacing.bottomContent + snackbarHeight),
+                    bottomPadding = snackbarClearance.bottomPadding,
                     onOpenList,
                     onEdit = viewModel::startEditing,
                     onDelete = viewModel::deleteList,
@@ -131,7 +129,7 @@ fun ListsScreen(
             snackbarHostState,
             Modifier
                 .align(Alignment.BottomCenter)
-                .onSizeChanged { snackbarHeight = with(density) { it.height.toDp() } }
+                .measureSnackbarHeight(snackbarClearance)
                 .testTag(LISTS_SNACKBAR_TAG),
         )
     }

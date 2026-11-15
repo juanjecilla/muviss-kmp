@@ -102,6 +102,20 @@ class TriageViewModelTest {
     }
 
     @Test
+    fun `a failed commit replaces the undo so the failure is the only snackbar`() = runTest {
+        val harness = TriageHarness(movies = listOf(filmA, filmB))
+        harness.details.failure = IllegalStateException("offline")
+        val vm = harness.viewModel()
+        advanceUntilIdle()
+
+        vm.onDecide(TriageVerdict.LATER, viaGesture = false)
+        advanceUntilIdle()
+
+        assertNotNull(vm.state.value.failedCommit)
+        assertNull(vm.state.value.undoable)
+    }
+
+    @Test
     fun `retrying a failed commit completes it`() = runTest {
         val harness = TriageHarness(movies = listOf(filmA, filmB))
         harness.details.failure = IllegalStateException("offline")
