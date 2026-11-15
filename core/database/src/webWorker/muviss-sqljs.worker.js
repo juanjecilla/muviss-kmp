@@ -152,7 +152,7 @@ let saving = false;
 let waiting = null; // { bytes, exportError } for the next write, or null
 
 function saveSnapshot() {
-  if (!isWriter || !db || stale) return saveChain;
+  if (!isWriter || !db || stale || loadFailed) return saveChain;
   if (inTransaction) {
     dirty = true;
     return saveChain;
@@ -400,7 +400,9 @@ async function promote() {
   } catch (e) {
     console.warn("[muviss] could not check the snapshot when promoted", e);
   }
-  if (latest && !loadFailed && latest.generation !== loadedGeneration) {
+  // A tab whose startup read failed built its database from nothing, so it has no
+  // baseline to compare against: whatever snapshot is stored is newer than it.
+  if (latest && (loadFailed || latest.generation !== loadedGeneration)) {
     if (localWrites) {
       becomeStale();
     } else {
@@ -408,6 +410,15 @@ async function promote() {
       giveUpLock();
       announce();
     }
+    return;
+  }
+  if (loadFailed) {
+    // Neither the startup read nor this one could be read, so there is still no
+    // baseline. This tab must not become the writer: writing its empty database
+    // would replace a snapshot it never saw. It gives the lock up so a tab that
+    // can read the store takes it.
+    giveUpLock();
+    announce();
     return;
   }
   isWriter = true;
@@ -463,7 +474,17 @@ function isMutation(sql) {
   // `select 1; delete ...` would look like a read. Treated as a change, which is
   // the safe direction (see above).
   if (/;\s*\S/.test(sql)) return true;
-  return !/^\s*(select|pragma\s+\w+\s*$|explain|with\b[\s\S]*\bselect\b)/i.test(sql);
+  // A WITH can lead an INSERT, UPDATE or DELETE as well as a SELECT, so it is not
+  // a read. It is counted as a change, which costs one extra export at most.
+  return !/^\s*(select|pragma\s+\w+\s*$|explain)/i.test(sql);
+}
+
+// Rows changed by this connection so far, across every statement it has run. The
+// count is taken before and after each `exec`, not read from getRowsModified():
+// that reports only the last INSERT, UPDATE or DELETE in a batch (sql.js 1.15.2),
+// so an earlier change in the same batch would go unseen.
+function totalChanges() {
+  return Number(db.exec("SELECT total_changes();")[0].values[0][0]);
 }
 
 function onModuleReady() {
@@ -481,12 +502,17 @@ function onModuleReady() {
       if (reloadRequested && isMutation(data.sql)) {
         throw new Error("exec: this tab is reloading to start from the latest snapshot");
       }
-      const results = db.exec(data.sql, data.params)[0] ?? { values: [] };
-      if (isMutation(data.sql)) {
+      const before = totalChanges();
+      let results;
+      try {
+        results = db.exec(data.sql, data.params)[0] ?? { values: [] };
+      } finally {
+        // Accounted even when the batch throws: each statement is committed on its
+        // own, so the ones before the failing one are in the database already.
         // A statement that changed no row (an INSERT OR IGNORE on a row that
         // exists, say) is not a change this tab holds. See promote().
-        if (db.getRowsModified() > 0) localWrites = true;
-        markDirty();
+        if (totalChanges() > before) localWrites = true;
+        if (isMutation(data.sql)) markDirty();
       }
       return postMessage({ id: data.id, results });
     }

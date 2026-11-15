@@ -26,19 +26,23 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // A database whose contents are the text of every statement run against it, so
 // a test can read back exactly what a tab saved.
+// Runs statements one at a time, as sql.js does inside a batch: each one is
+// committed before the next runs, so a statement that fails leaves the ones
+// before it in place. A statement marked NO-OP changes no row, as an INSERT OR
+// IGNORE on an existing row does; one marked FAIL throws.
 class FakeDatabase {
   constructor(bytes) {
     this.text = bytes ? decode(bytes) : "";
-    this.rowsModified = 0;
+    this.changes = 0;
   }
-  // A statement marked NO-OP changes no row, as an INSERT OR IGNORE on an existing row does.
   exec(sql) {
-    this.text += `${sql};`;
-    this.rowsModified = /NO-OP/.test(sql) ? 0 : 1;
+    if (/total_changes\(\)/i.test(sql)) return [{ columns: ["total_changes()"], values: [[this.changes]] }];
+    for (const statement of sql.split(";").map((s) => s.trim()).filter(Boolean)) {
+      if (/FAIL/.test(statement)) throw new Error("statement failed");
+      this.text += `${statement};`;
+      if (/\b(insert|update|delete)\b/i.test(statement) && !/NO-OP/.test(statement)) this.changes += 1;
+    }
     return [];
-  }
-  getRowsModified() {
-    return this.rowsModified;
   }
   export() {
     return encode(this.text);
@@ -421,16 +425,176 @@ test("a tab that could not read the snapshot still cannot overwrite it", async (
   idb.failReads = true;
   const b = await openTab(idb, locks);
   await settle();
-  assert.equal(b.state().loadedGeneration, 0, "b starts empty, as it did before");
+  assert.equal(b.state().loadedGeneration, 0, "b starts empty");
 
   a.close();
   await settle();
-  assert.equal(b.state().isWriter, true, "with nothing readable to compare, the lock is taken as before");
-  assert.equal(b.state().reloadRequested, false);
+  assert.equal(b.state().isWriter, false, "with no baseline and nothing readable to compare, b does not write");
+  assert.equal(b.state().reloadRequested, false, "and it has no store it can reload from");
 
   b.exec("INSERT B");
   await b.flush();
-  assert.equal(b.state().stale, true, "the write is checked against the stored generation");
-  assert.equal(idb.data.get(GENERATION), 1);
+  await settle();
+  assert.equal(idb.data.get(GENERATION), 1, "nothing was written over the snapshot");
   assert.doesNotMatch(storedText(idb), /INSERT B/);
+});
+
+// --- Adversarial cases for the generation protocol ----------------------------
+
+// A tab that has been told to reload: it waited, the writer saved again, and this
+// tab has no changes of its own. Returns the store and the tab.
+async function reloadingTab() {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+  const b = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A2");
+  await a.flush();
+  a.close();
+  await settle();
+  assert.equal(b.state().reloadRequested, true, "the reloading tab has been set up");
+  return { idb, b };
+}
+
+test("a pagehide flush on a tab that is reloading writes nothing", async () => {
+  const { idb, b } = await reloadingTab();
+  const before = storedText(idb);
+  await b.flush();
+  await settle();
+  assert.equal(storedText(idb), before);
+  assert.equal(idb.data.get(GENERATION), 2);
+});
+
+test("a write made while a promotion is being decided makes the tab stale, not silently reloaded", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+  const b = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A2");
+  await a.flush();
+  // The lock is handed over now, and the promotion reads the store before it decides.
+  // This write lands in that window, so the decision must see it.
+  a.close();
+  b.exec("INSERT B-RACE");
+  await settle();
+  assert.equal(b.state().stale, true, "the change made in the window is not reloaded away");
+  assert.equal(b.state().reloadRequested, false);
+  assert.doesNotMatch(storedText(idb), /B-RACE/);
+});
+
+test("a WITH statement that writes is refused once a reload is pending", async () => {
+  const { idb, b } = await reloadingTab();
+  assert.throws(
+    () => b.exec("WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c"),
+    /reloading to start from the latest snapshot/,
+  );
+  await settle();
+  assert.doesNotMatch(storedText(idb), /INSERT INTO t/);
+});
+
+test("a WITH statement that writes is a change, and is saved", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("WITH c AS (SELECT 1) INSERT WITH-WRITE SELECT * FROM c");
+  assert.equal(a.state().localWrites, true, "a WITH that writes counts");
+  await a.flush();
+  await settle();
+  assert.match(storedText(idb), /WITH-WRITE/);
+});
+
+test("a batch whose later statement fails still records the statements before it", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  assert.throws(() => a.exec("INSERT A-PART; FAIL"), /statement failed/);
+  assert.equal(a.state().localWrites, true, "the first statement committed on its own");
+  await a.flush();
+  await settle();
+  assert.match(storedText(idb), /A-PART/, "and it is saved, not left pending");
+});
+
+test("a batch that fails before changing any row records nothing", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  assert.throws(() => a.exec("FAIL; INSERT A-NEVER"), /statement failed/);
+  assert.equal(a.state().localWrites, false);
+});
+
+test("a trailing statement that changes no row does not hide an earlier change in the batch", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A-TRAIL; UPDATE NO-OP t SET id = 2 WHERE 0");
+  assert.equal(a.state().localWrites, true, "the INSERT in the batch counts, whatever ran last");
+  await a.flush();
+  await settle();
+  assert.match(storedText(idb), /A-TRAIL/);
+});
+
+test("a tab whose startup read failed never writes its empty database over a readable snapshot", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+
+  idb.failReads = true; // this tab's startup read fails
+  const b = await openTab(idb, locks);
+  await settle(); // the startup read runs, and fails, before the store is readable again
+  idb.failReads = false;
+  b.exec("INSERT B-EMPTY-BASE");
+  await settle();
+  a.close();
+  await settle();
+
+  assert.equal(b.state().isWriter, false, "no baseline, so no writer");
+  assert.equal(b.state().stale, true, "it had changes, and the store is newer than its empty database");
+  assert.equal(idb.data.get(GENERATION), 1, "its empty database was never written over the snapshot");
+  assert.match(storedText(idb), /INSERT A/);
+  assert.doesNotMatch(storedText(idb), /B-EMPTY-BASE/);
+});
+
+test("a tab whose startup and promotion reads both fail never writes, and passes the lock on", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+
+  idb.failReads = true;
+  const b = await openTab(idb, locks);
+  await settle();
+  a.close();
+  await settle(); // b is granted the lock, cannot read the store, and gives it up
+  b.exec("INSERT B-NO-BASELINE");
+  await b.flush();
+  await settle();
+  assert.equal(b.state().isWriter, false);
+  assert.equal(idb.data.get(GENERATION), 1, "nothing was written by the tab without a baseline");
+  assert.doesNotMatch(storedText(idb), /B-NO-BASELINE/);
+
+  idb.failReads = false;
+  const c = await openTab(idb, locks);
+  await settle();
+  assert.equal(c.state().isWriter, true, "a tab that can read the store takes the lock");
+  c.exec("INSERT C");
+  await c.flush();
+  await settle();
+  assert.match(storedText(idb), /INSERT C/);
 });
