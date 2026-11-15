@@ -477,51 +477,82 @@ class ReleaseMergeCliTest < Minitest::Test
     FileUtils.remove_entry(@dir) if @dir && File.directory?(@dir)
   end
 
-  def test_conflicts_names_a_changelog_only_conflict_and_holds_nothing
-    code, out, err = cli("conflicts", "release/1.4.0")
+  # `sync` runs in the branch's checkout, so these tests check the branch out first.
+  def test_sync_merges_main_into_a_changelog_only_conflict_and_pushes_it_to_the_branch
+    git("switch", "-q", "release/1.4.0")
+    code, out, err = cli("sync", "release/1.4.0")
     assert_equal 0, code, err
-    assert_includes out, "conflicts: CHANGELOG.md"
-  end
-
-  def test_conflicts_holds_a_path_outside_the_allow_list_with_its_name
-    write_and_push_main_edit("app.txt", "main edit\n")
-    git("switch", "-q", "-c", "release/1.5.0", @base)
-    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
-    git("push", "-q", "origin", "release/1.5.0")
-    code, _out, err = cli("conflicts", "release/1.5.0")
-    assert_equal ReleaseMerge::Cli::HELD, code
-    assert_includes err, "app.txt"
-  end
-
-  def test_union_pushes_the_union_to_main_when_only_the_changelog_conflicts
-    code, out, err = cli("union", "release/1.4.0", "--expect-head", @branch)
-    assert_equal 0, code, err
-    assert_includes out, "CHANGELOG.md resolved"
-    tip = git_in(@origin, "rev-parse", "refs/heads/main")
-    assert_equal [@main, @branch].join(" "), git_in(@origin, "log", "-1", "--format=%P", tip), "main first, then the branch"
+    assert_includes out, "pushed"
+    tip = git_in(@origin, "rev-parse", "refs/heads/release/1.4.0")
+    assert_equal [@branch, @main].join(" "), git_in(@origin, "log", "-1", "--format=%P", tip), "the branch first, then main"
     changelog = git_in(@origin, "show", "#{tip}:CHANGELOG.md")
-    assert_operator changelog.index("## 1.4.0"), :<, changelog.index("## 1.3.0")
+    assert_operator changelog.index("## 1.4.0"), :<, changelog.index("## 1.3.0"), "both sides' sections, newest first"
+    assert_equal "from the branch", git_in(@origin, "show", "#{tip}:feature.txt"), "the branch's own work is kept"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main"), "main does not move"
   end
 
-  def test_union_holds_and_pushes_nothing_when_another_path_conflicts
-    write_and_push_main_edit("app.txt", "main edit\n")
-    main_now = git_in(@origin, "rev-parse", "refs/heads/main")
-    git("switch", "-q", "-c", "release/1.5.0", @base)
-    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
-    git("push", "-q", "origin", "release/1.5.0")
-    code, _out, err = cli("union", "release/1.5.0", "--expect-head", git_in(@dir, "rev-parse", "HEAD"))
-    assert_equal ReleaseMerge::Cli::HELD, code
-    assert_includes err, "app.txt"
-    assert_equal main_now, git_in(@origin, "rev-parse", "refs/heads/main")
-  end
-
-  def test_union_refuses_to_guess_when_git_merges_cleanly
+  def test_sync_pushes_nothing_when_the_branch_merges_into_main_cleanly
     git("switch", "-q", "-c", "release/1.6.0", @base)
     write("other.txt", "only the branch\n"); git("add", "-A"); git("commit", "-q", "-m", "clean")
     git("push", "-q", "origin", "release/1.6.0")
-    code, _out, err = cli("union", "release/1.6.0", "--expect-head", git_in(@dir, "rev-parse", "HEAD"))
-    assert_equal ReleaseMerge::Cli::CLEAN_IN_GIT, code
-    assert_includes err, "nothing pushed"
+    tip = git_in(@dir, "rev-parse", "HEAD")
+    code, out, _err = cli("sync", "release/1.6.0")
+    assert_equal 0, code
+    assert_includes out, "nothing to merge"
+    assert_equal tip, git_in(@origin, "rev-parse", "refs/heads/release/1.6.0")
+  end
+
+  def test_sync_holds_a_conflict_outside_the_changelog_with_its_path_and_pushes_nothing
+    write_and_push_main_edit("app.txt", "main edit\n")
+    git("switch", "-q", "-c", "release/1.5.0", @base)
+    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
+    git("push", "-q", "origin", "release/1.5.0")
+    branch_now = git_in(@dir, "rev-parse", "HEAD")
+    code, _out, err = cli("sync", "release/1.5.0")
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err, "app.txt"
+    assert_equal branch_now, git_in(@origin, "rev-parse", "refs/heads/release/1.5.0")
+    refute File.exist?(File.join(@dir, ".git", "MERGE_HEAD")), "no merge is left in progress"
+  end
+
+  def test_a_changelog_the_union_cannot_resolve_aborts_the_merge_and_leaves_the_checkout_clean
+    # Both sides carry a 1.4.0 section with different text: the union refuses to guess, so nothing is merged.
+    git("switch", "-q", "main")
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.4.0 — main\n\nmain's 1.4.0\n\n## 1.3.0 — y\n\nmain 1.3.0\n\n## 1.2.0 — x\n\nold\n")
+    git("commit", "-q", "-am", "main: a different 1.4.0")
+    git("push", "-q", "origin", "main")
+    git("switch", "-q", "release/1.4.0")
+    code, _out, err = cli("sync", "release/1.4.0")
+    assert_equal 1, code
+    assert_includes err, "different text"
+    assert_equal @branch, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0"), "origin's branch is untouched"
+    refute File.exist?(File.join(@dir, ".git", "MERGE_HEAD")), "the merge is aborted, not left half done"
+    assert_empty git_in(@dir, "status", "--porcelain")
+  end
+
+  def test_sync_refuses_a_checkout_that_is_not_at_the_branch_head_and_pushes_nothing
+    git("switch", "-q", "-c", "stale", @base)
+    code, _out, err = cli("sync", "release/1.4.0")
+    assert_equal 1, code
+    assert_includes err, "the checkout is at"
+    assert_equal @branch, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0")
+  end
+
+  def test_push_branch_refuses_a_branch_that_moved_on_origin_and_pushes_nothing
+    git("switch", "-q", "release/1.4.0")
+    write("feature.txt", "moved on origin\n"); git("commit", "-q", "-am", "someone else")
+    git("push", "-q", "origin", "release/1.4.0")
+    moved = git_in(@origin, "rev-parse", "refs/heads/release/1.4.0")
+    write("feature.txt", "ours\n"); git("commit", "-q", "-am", "ours")
+    ours = git("rev-parse", "HEAD")
+    assert_raises(ReleaseMerge::HeadMoved) { ReleaseMerge::Repo.new(dir: @dir).push_branch(ours, "release/1.4.0", expected: @branch) }
+    assert_equal moved, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0"), "origin keeps its own commit"
+  end
+
+  def test_the_union_command_is_gone_and_is_a_usage_error
+    code, _out, err = cli("union", "release/1.4.0", "--expect-head", @branch)
+    assert_equal 64, code
+    assert_includes err, "usage"
     assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
   end
 
@@ -555,20 +586,6 @@ class ReleaseMergeCliTest < Minitest::Test
     assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
   end
 
-  def test_union_refuses_a_branch_whose_head_moved_after_approval
-    code, _out, err = cli("union", "release/1.4.0", "--expect-head", @main)
-    assert_equal 1, code
-    assert_includes err, "not the approved"
-    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
-  end
-
-  def test_union_without_an_approved_head_is_a_usage_error
-    code, _out, err = cli("union", "release/1.4.0")
-    assert_equal 64, code
-    assert_includes err, "usage"
-    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
-  end
-
   def test_delete_ref_ignores_a_ref_that_is_already_gone
     # Raises, and fails the test, unless a missing ref is treated as deleted.
     ReleaseMerge::Repo.new(dir: @dir).delete_ref("refs/heads/rehearsal/never-pushed")
@@ -587,7 +604,7 @@ class ReleaseMergeCliTest < Minitest::Test
   end
 
   def test_a_branch_that_is_not_a_release_or_hotfix_name_is_refused_before_any_git_call
-    code, _out, err = cli("union", "main:refs/heads/main", "--expect-head", @main)
+    code, _out, err = cli("sync", "main:refs/heads/main")
     assert_equal 64, code
     assert_includes err, "usage"
     assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")

@@ -169,6 +169,40 @@ module ReleaseMerge
       git("push", "--quiet", "origin", "#{sha}:refs/heads/main")
     end
 
+    # Merges origin's main into the branch checked out here (HEAD must be the branch), commits the merge and
+    # returns its sha. Only the allow-listed conflicts are resolved (by their union); any other path, or a
+    # failed resolution, aborts the merge, so the checkout is left as it was. Nothing is pushed.
+    def merge_main_into_checkout(main, message:)
+      status = run("git", "merge", "--no-ff", "--no-commit", main)[2]
+      begin
+        unless status.success?
+          paths = git("diff", "--name-only", "--diff-filter=U").lines.map(&:strip).reject(&:empty?)
+          blocked = paths - ALLOWED_CONFLICTS
+          raise Unresolvable, "#{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved" unless blocked.empty?
+
+          paths.each do |path|
+            text = RESOLVERS.fetch(path).call(show(main, path), show("HEAD", path))
+            File.write(File.join(@dir || Dir.pwd, path), text)
+            git("add", "--", path)
+          end
+        end
+        git("commit", "--no-edit", "-m", message)
+        git("rev-parse", "HEAD")
+      rescue StandardError
+        run("git", "merge", "--abort")
+        raise
+      end
+    end
+
+    # Pushes a commit to refs/heads/BRANCH, with no force, after checking origin still has `expected` there.
+    # A branch that moved is refused, and so is any push git would not fast-forward.
+    def push_branch(sha, branch, expected:)
+      remote = git("ls-remote", "origin", "refs/heads/#{branch}").split.first
+      raise HeadMoved, "#{branch} is at #{remote}, not #{expected}" unless remote == expected
+
+      git("push", "--quiet", "origin", "#{sha}:refs/heads/#{branch}")
+    end
+
     private
 
     # `git merge-tree --write-tree` exits 0 when clean and 1 on conflicts; the
@@ -320,27 +354,24 @@ module ReleaseMerge
   end
 
   # The command line the workflows call. Run it from the checkout, with origin
-  # reachable. Only `union` and `rehearse --push` write to origin, as whoever the
+  # reachable. Only `sync` and `rehearse --push` write to origin, as whoever the
   # checkout's git credentials are (the release App, in the workflows).
   #
   #   release_merge.rb approved PR SHA            exit 0 when an approving review of PR is on SHA; 2 when none is (a
   #                                               review of an older commit does not approve the head); 1 when unreadable
   #   release_merge.rb unmet SHA                  exit 0 when every context main's rules require is green on SHA;
   #                                               exit 2 naming the ones that are not; 1 when they cannot be read
-  #   release_merge.rb conflicts BRANCH           the paths BRANCH conflicts on with origin/main;
-  #                                               exit 2 when one is not allow-listed
-  #   release_merge.rb union BRANCH --expect-head SHA
-  #                                               push origin/main + BRANCH's union, when GitHub
-  #                                               refused the merge: 0 pushed, 2 held (paths named),
-  #                                               3 git merges it cleanly (not explained: nothing pushed),
-  #                                               1 BRANCH is not at SHA, the head that was approved (nothing pushed)
+  #   release_merge.rb sync BRANCH                run in BRANCH's checkout (at its origin head). When main and BRANCH
+  #                                               conflict, merges main into BRANCH and pushes the merge as the App
+  #                                               (only CHANGELOG.md is resolved; the new head then needs its own
+  #                                               approval and checks): 0 pushed or nothing to merge, 2 held (a path
+  #                                               outside the allow-list, named; nothing pushed), 1 error (nothing pushed)
   #   release_merge.rb rehearse VERSION [--push]  judge and print the Sunday merge of release/VERSION
   #                                               without moving main; --push also puts the merge
   #                                               commit on rehearsal/VERSION as the App, then deletes it
   module Cli
     HELD = 2
-    CLEAN_IN_GIT = 3
-    USAGE = "usage: release_merge.rb approved PR SHA | unmet SHA | conflicts BRANCH | union BRANCH --expect-head SHA | rehearse VERSION [--push]".freeze
+    USAGE = "usage: release_merge.rb approved PR SHA | unmet SHA | sync BRANCH | rehearse VERSION [--push]".freeze
     # The names the workflows pass. They become refspecs and ref names, so anything else is refused here.
     BRANCH_NAME = %r{\A(release|hotfix)/\d+\.\d+\.\d+\z}
     VERSION_NAME = /\A\d+\.\d+\.\d+\z/
@@ -357,12 +388,7 @@ module ReleaseMerge
         pr = args.fetch(0) { return usage(err) }
         sha = args.fetch(1) { return usage(err) }
         return approved(pr, sha, slug, gh, err)
-      when "conflicts" then conflicts(repo, branch_arg(args) { return usage(err) }, out, err)
-      when "union"
-        expect = option(args, "--expect-head")
-        branch = branch_arg(args) { return usage(err) }
-        return usage(err) unless expect
-        union(repo, branch, expect, out, err)
+      when "sync" then sync(repo, branch_arg(args) { return usage(err) }, out, err)
       when "rehearse"
         version = args.fetch(0) { return usage(err) }
         return usage(err) unless VERSION_NAME.match?(version)
@@ -404,43 +430,27 @@ module ReleaseMerge
       BRANCH_NAME.match?(branch) ? branch : yield
     end
 
-    # The value after a flag, or nil when the flag is absent or has no value.
-    def option(args, flag)
-      index = args.index(flag)
-      index && args[index + 1]
-    end
-
-    def conflicts(repo, branch, out, err)
+    # Run in BRANCH's checkout. A branch that merges cleanly is GitHub's to merge, so nothing is done for it.
+    # A conflict outside the allow-list holds, named. Otherwise main is merged in and the merge is pushed; the
+    # checkout must be at the branch's origin head, so the push is of what was judged.
+    def sync(repo, branch, out, err)
       main = repo.main_sha
       head = repo.fetch_branch(branch)
       paths = repo.conflicts(main, head)
-      out.puts "main #{main}"
-      out.puts "#{branch} #{head}"
-      out.puts(paths.empty? ? "conflicts: none" : "conflicts: #{paths.join(', ')}")
-      blocked = paths - ALLOWED_CONFLICTS
-      return 0 if blocked.empty?
-
-      err.puts "held: #{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved; resolve #{branch} by hand"
-      HELD
-    end
-
-    # `expect` is the head the caller approved and checked. The union is built
-    # from the head fetched here, so a head that moved since then is refused.
-    def union(repo, branch, expect, out, err)
-      main = repo.main_sha
-      head = repo.fetch_branch(branch)
-      raise HeadMoved, "#{branch} is at #{head}, not the approved #{expect}; nothing pushed" unless head == expect
-      built = repo.merge_commit(main, head, message: "Merge #{branch} into main")
-      if built[:conflicts].empty?
-        err.puts "git merges #{branch} into main cleanly, so GitHub's refusal is not explained: nothing pushed"
-        return CLEAN_IN_GIT
+      if paths.empty?
+        out.puts "#{branch} merges into main without conflicts: nothing to merge"
+        return 0
       end
-      unless built[:commit]
-        err.puts "held: #{(built[:conflicts] - ALLOWED_CONFLICTS).join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved; nothing pushed"
+      blocked = paths - ALLOWED_CONFLICTS
+      unless blocked.empty?
+        err.puts "held: #{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved; resolve #{branch} by hand. Nothing pushed."
         return HELD
       end
-      repo.push_main(built[:commit], expected: main)
-      out.puts "pushed #{built[:commit]} to main: #{built[:conflicts].join(', ')} resolved as the union of both sides"
+      checked_out = repo.rev_parse("HEAD")
+      raise HeadMoved, "the checkout is at #{checked_out}, not #{branch} #{head}; nothing pushed" unless checked_out == head
+      commit = repo.merge_main_into_checkout(main, message: "Merge main into #{branch}")
+      repo.push_branch(commit, branch, expected: head)
+      out.puts "pushed #{commit} to #{branch}: main merged in, #{paths.join(', ')} resolved as the union of both sides"
       0
     end
 

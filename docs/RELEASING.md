@@ -427,22 +427,19 @@ the schedule, the gates and where a fix goes.
   Scheduled runs read their workflow files and scripts from the default branch,
   which is `develop`, so a change to them takes effect on the first scheduled run
   after it merges there.
-- **Ship release resolves a `CHANGELOG.md`-only conflict as the Sunday step does (#717).**
-  `ship-release.yml` still tries `gh pr merge` first. When GitHub refuses it as
-  not mergeable, it runs `fastlane/release_merge.rb union`, the same plumbing the
-  Sunday step uses, and pushes the union as the App. Any other conflict holds the
-  run with its paths named, before anything is pushed. Its wait loop judges such
-  a conflict at once rather than waiting for it to clear, and its checks are the
-  PR's, not the branch head's as the Sunday step judges them (unverified on a live
-  PR). The head the approval was read on is pinned: both the merge and the union
-  are refused if the release branch has moved since. The script it runs is this
-  run's own commit's copy, not the release branch's. Every context main's rules
-  require must be green on that head, read from the rules when the merge is
-  judged, so a PR that conflicted from the moment it opened is resolved by hand.
-  The union is pushed as the App, which GitHub's own review and check gates do not
-  cover, so just before it the run reads the approval (`reviewDecision` must be
-  `APPROVED` on the head) and the required checks on that head again, and pushes
-  nothing if either has changed. The Sunday step still judges the branch head's runs, a gap tracked in #854.
+- **Ship release settles a `CHANGELOG.md`-only conflict by merging main into the
+  release branch (#717, #882).** Before it waits, `ship-release.yml` runs
+  `fastlane/release_merge.rb sync BRANCH` in the branch's checkout. When main and
+  the branch conflict only in `CHANGELOG.md`, it merges main in (that file resolved
+  as the union of both sides) and pushes the merge to the branch as the App, with a
+  plain push that refuses a branch that moved. A conflict in any other path holds,
+  naming it, and pushes nothing. A branch that merges cleanly is left alone, since
+  GitHub merges it. The push gives the PR a new head: its checks run there, and the
+  run waits for an approval of that new head, then merges with GitHub's own merge
+  pinned to it (`--match-head-commit`). Nothing is pushed to main by this job, so
+  there is no ruleset bypass. A merge that fails leaves the checkout clean and pushes
+  nothing. The script it runs is this run's own commit's copy, not the release
+  branch's. The Sunday step still judges the branch head's runs, a gap tracked in #854.
 - **Rehearse the Sunday merge without moving main (#732).** Dispatch
   `release-promote.yml` with `rehearse` and `version` (`rehearse_push` also puts the
   merge commit on `rehearsal/X.Y.Z` as the App, then deletes it). It prints the

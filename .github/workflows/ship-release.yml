@@ -15,9 +15,11 @@ name: Ship release
 #   back-merge  after the release: merge release.yml's `back-merge/vX.Y.Z → develop`
 #               PR (merge commit) once approved and green, waiting like ship
 #
-# A conflict with main that is only CHANGELOG.md is resolved here as the Sunday
-# step resolves it (fastlane/release_merge.rb, #717): GitHub refuses the merge, the
-# union of both sides is pushed as the App. Any other conflict holds, with its path.
+# A conflict with main that is only CHANGELOG.md is resolved by merging main into the
+# release branch (fastlane/release_merge.rb sync, #717): the merge is pushed as the App
+# before the wait, so the PR gets its checks on the new head, and the approval has to
+# be given on that head. Nothing is merged into main except by GitHub's own merge,
+# pinned to the approved head. Any other conflict holds, with its path, pushing nothing.
 #
 # Test the RC from Play's internal or beta track before running this.
 on:
@@ -149,6 +151,37 @@ jobs:
           fi
           echo "number=$N" >> "$GITHUB_OUTPUT"
 
+      # Once per run, before the wait: when main and the branch conflict only in CHANGELOG.md, main is merged into
+      # the branch and the merge pushed, so the PR gets its checks on that new head. The wait then reads the new
+      # head, and waits for its approval. No conflict: nothing is pushed. A conflict elsewhere: nothing is pushed.
+      - name: Merge main into the release branch when they conflict
+        if: inputs.action == 'ship' || inputs.action == 'merge'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          # This run's own copy of the CLI, as the wait step uses.
+          RM="$RUNNER_TEMP/release_merge.rb"
+          gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/fastlane/release_merge.rb?ref=$GITHUB_SHA" > "$RM" \
+            || { echo "::error::this run's commit has no readable fastlane/release_merge.rb"; exit 1; }
+          # The merge is a commit of the App's, so it carries the App's identity as release-promote.yml's does.
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
+          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$AUTH"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
+          RC=0
+          ruby "$RM" sync "$BRANCH" || RC=$?
+          case "$RC" in
+            0) ;;
+            2) echo "::error::$BRANCH conflicts with main outside CHANGELOG.md; resolve it by hand. Nothing was pushed."; exit 1 ;;
+            *) echo "::error::merging main into $BRANCH failed; nothing was merged into main"; exit 1 ;;
+          esac
+
       - name: Wait for the approval and green checks
         id: wait
         if: inputs.action != 'open'
@@ -158,7 +191,6 @@ jobs:
           N: ${{ steps.target.outputs.number }}
           ACTION: ${{ inputs.action }}
           WAIT: ${{ inputs.wait_minutes }}
-          BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           # A whole number of minutes, checked before it is used in arithmetic (bash evaluates an array subscript in
           # an arithmetic expression as a command substitution, so the input must not reach it unchecked).
@@ -178,20 +210,9 @@ jobs:
             HEAD="${VIEW##* }"
             # Every check counted, not just the required ones: pass or skipped only.
             CHECKS="$(gh pr checks "$N" -R "$REPO" --json bucket --jq '[.[].bucket]|if length == 0 then "none" elif any(. == "fail" or . == "cancel") then "fail" elif any(. == "pending") then "pending" else "pass" end' || true)"
-            if [[ "$STATE" == *DIRTY* ]]; then
-              # A back-merge has no checkout and no CHANGELOG.md resolution: as before.
-              if [ "$ACTION" = back-merge ]; then echo "::error::#$N conflicts with its base"; exit 1; fi
-              # A conflict with main is judged now, not waited on. Only CHANGELOG.md
-              # is resolved by the merge (#717); any other path holds here, named.
-              # The checkout keeps no credentials, so git gets the step's token.
-              AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
-              echo "::add-mask::$AUTH"
-              export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
-                GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
-              if ! ruby "$RM" conflicts "$BRANCH"; then
-                echo "::error::#$N conflicts with main outside CHANGELOG.md; resolve $BRANCH by hand"; exit 1
-              fi
-            fi
+            # A back-merge has no checkout to merge main into, so a conflict with its base stops it at once. For a
+            # release, the merge step before this one has already pushed the merge; a DIRTY PR is not green below.
+            if [[ "$STATE" == *DIRTY* && "$ACTION" = back-merge ]]; then echo "::error::#$N conflicts with its base"; exit 1; fi
             if [ "$CHECKS" = fail ]; then echo "::error::a check is failing on #$N"; exit 1; fi
             # Every context the rules of main require must be green on this head (#793), CLEAN and DIRTY
             # alike: a check that has not reported, or is still running, is not green. Exit 1 means the
@@ -212,10 +233,10 @@ jobs:
               *) cat "$RUNNER_TEMP/approved.err"; echo "::error::the approvals of #$N could not be read; nothing was merged"; exit 1 ;;
             esac
             echo "#$N: $STATE, checks $CHECKS, required $REQUIRED, head $HEAD"
-            # UNSTABLE means a non-passing status, so only CLEAN (or HAS_HOOKS) is green.
-            # DIRTY is green here only when the conflict is the CHANGELOG.md one, judged above.
+            # UNSTABLE means a non-passing status, so only CLEAN (or HAS_HOOKS) is green. DIRTY is not: a conflict
+            # with main is settled by the merge step before the wait, and a PR still DIRTY here waits or holds.
             case "$STATE $CHECKS" in
-              "APPROVED CLEAN pass"|"APPROVED HAS_HOOKS pass"|"APPROVED DIRTY pass")
+              "APPROVED CLEAN pass"|"APPROVED HAS_HOOKS pass")
                 if [ "$REQUIRED" = green ]; then
                   echo "head=$HEAD" >> "$GITHUB_OUTPUT"
                   break
@@ -241,59 +262,19 @@ jobs:
         if: inputs.action != 'open'
         env:
           GH_TOKEN: ${{ steps.app-merge.outputs.token }}
-          # The reads the wait step made, so the same token that could read them then reads them here.
-          READ_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           N: ${{ steps.target.outputs.number }}
           ACTION: ${{ inputs.action }}
-          BRANCH: ${{ steps.branch.outputs.name }}
-          SLUG: ${{ steps.app-merge.outputs.app-slug }}
-          # The head the approval and checks were read on. Both merges are refused if it moved.
+          # The head the approval and checks were read on. GitHub refuses the merge if it moved.
           HEAD: ${{ steps.wait.outputs.head }}
         run: |
           [ -n "$HEAD" ] || { echo "::error::no approved head was read for #$N"; exit 1; }
+          # GitHub's own merge only: it enforces the rules of main, and --match-head-commit pins it to the head the
+          # wait read. Nothing is pushed to main by this job; a conflict was settled before the wait, by a merge
+          # of main into the branch that the approval above is on.
+          gh pr merge "$N" -R "$REPO" --merge --match-head-commit "$HEAD"
           if [ "$ACTION" = back-merge ]; then
-            gh pr merge "$N" -R "$REPO" --merge --match-head-commit "$HEAD"
             echo "Merged back-merge #$N into develop." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          if OUT="$(gh pr merge "$N" -R "$REPO" --merge --match-head-commit "$HEAD" 2>&1)"; then
+          else
             echo "Merged #$N into main: release.yml now tags it and waits for the production approval." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
           fi
-          echo "$OUT"
-          # Only GitHub's refusal as not mergeable is resolved, as the Sunday step does (#712, #717).
-          grep -qi 'not mergeable' <<<"$OUT" || { echo "::error::#$N was not merged"; exit 1; }
-          # This run's own copy of the script, as the wait step uses (not the release branch's).
-          gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/fastlane/release_merge.rb?ref=$GITHUB_SHA" > "$RUNNER_TEMP/release_merge.rb" \
-            || { echo "::error::this run's commit has no readable fastlane/release_merge.rb"; exit 1; }
-          # The union is pushed as the App, so GitHub's own review and check gates do not apply to it. They are read
-          # again on the approved head, with the reads the wait used: an approval dismissed or a change request
-          # made since the wait, or a rerun still going, holds the union with nothing pushed.
-          VIEW="$(GH_TOKEN="$READ_TOKEN" gh pr view "$N" -R "$REPO" --json reviewDecision,headRefOid --jq '"\(.reviewDecision) \(.headRefOid)"')"
-          [ "$VIEW" = "APPROVED $HEAD" ] || { echo "::error::#$N is no longer approved on $HEAD ($VIEW); nothing was pushed"; exit 1; }
-          RC=0
-          GH_TOKEN="$READ_TOKEN" ruby "$RUNNER_TEMP/release_merge.rb" approved "$N" "$HEAD" || RC=$?
-          [ "$RC" = 0 ] || { echo "::error::no approving review of #$N is on $HEAD now; nothing was pushed"; exit 1; }
-          RC=0
-          GH_TOKEN="$READ_TOKEN" GITHUB_REPOSITORY="$REPO" ruby "$RUNNER_TEMP/release_merge.rb" unmet "$HEAD" || RC=$?
-          [ "$RC" = 0 ] || { echo "::error::the required checks of #$N are not green on $HEAD now; nothing was pushed"; exit 1; }
-          # The union is a commit of the App's, so it carries the App's identity as release-promote.yml's does.
-          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
-          git config user.name "${SLUG}[bot]"
-          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
-          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
-          echo "::add-mask::$AUTH"
-          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
-            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
-          RC=0
-          ruby "$RUNNER_TEMP/release_merge.rb" union "$BRANCH" --expect-head "$HEAD" || RC=$?
-          case "$RC" in
-            0)
-              echo "Merged #$N into main as the union of both sides' CHANGELOG.md (#717). release.yml now tags it and waits for the production approval." >> "$GITHUB_STEP_SUMMARY" ;;
-            2)
-              echo "::error::#$N conflicts with main outside CHANGELOG.md; nothing was pushed. Resolve $BRANCH by hand."; exit 1 ;;
-            3)
-              echo "::error::GitHub refused #$N, but git merges it cleanly, so the refusal is not explained; nothing was pushed."; exit 1 ;;
-            *) exit "$RC" ;;
-          esac
