@@ -312,9 +312,9 @@ private fun PageContent(
         OnboardingPage.TASTE -> Plain(MuvissIcons.Favorite, Res.string.onboarding_taste_title, Res.string.onboarding_taste_body) {
             val formats = TasteChoices.formats.associateWith { formatName(it) }
             val companies = TasteChoices.companies.associateWith { companyName(it) }
-            TasteGroup(Res.string.onboarding_taste_formats, TasteChoices.formats, state.likedTaste, onTasteToggled) { formats.getValue(it) }
-            TasteGroup(Res.string.onboarding_taste_services, TasteChoices.services, state.likedTaste, onTasteToggled) { it.label }
-            TasteGroup(Res.string.onboarding_taste_company, companies.keys.toList(), state.likedTaste, onTasteToggled) { companies.getValue(it) }
+            TasteGroup(Res.string.onboarding_taste_formats, TasteChoices.formats, state, onTasteToggled) { formats.getValue(it) }
+            TasteGroup(Res.string.onboarding_taste_services, TasteChoices.services, state, onTasteToggled) { it.label }
+            TasteGroup(Res.string.onboarding_taste_company, companies.keys.toList(), state, onTasteToggled) { companies.getValue(it) }
             Spacer(Modifier.height(MuvissSpacing.s))
             PageText(stringResource(Res.string.onboarding_taste_more))
         }
@@ -331,7 +331,7 @@ fun onboardingTasteTag(item: TasteItem): String = "onboardingTaste-${item.id}"
 private fun TasteGroup(
     header: org.jetbrains.compose.resources.StringResource,
     options: List<TasteItem>,
-    liked: Set<String>,
+    state: OnboardingUiState,
     onToggle: (TasteItem, Boolean) -> Unit,
     label: (TasteItem) -> String,
 ) {
@@ -347,9 +347,11 @@ private fun TasteGroup(
         verticalArrangement = Arrangement.spacedBy(MuvissSpacing.xs),
     ) {
         options.forEach { item ->
-            val selected = item.id in liked
+            val selected = item.id in state.likedTaste
             FilterChip(
                 selected = selected,
+                // Disabled while its own write is in flight, so a second tap cannot queue a value the first one already set.
+                enabled = item.id !in state.tastePending,
                 onClick = { onToggle(item, !selected) },
                 label = { Text(label(item)) },
                 modifier = Modifier.testTag(onboardingTasteTag(item)),

@@ -158,6 +158,65 @@ class OnboardingViewModelTest {
     }
 
     @Test
+    fun a_taste_chip_ignores_taps_while_its_own_write_is_in_flight() = runTest {
+        val vm = viewModel()
+        val gate = CompletableDeferred<Unit>()
+        taste.gate = gate
+        val netflix = TasteChoices.services.first()
+
+        vm.onTasteToggled(netflix, liked = true)
+        vm.onTasteToggled(netflix, liked = true)
+
+        assertEquals(setOf(netflix.id), vm.state.value.tastePending, "the chip is disabled until its write lands")
+        gate.complete(Unit)
+        assertEquals(listOf(netflix to true), taste.writes, "a second tap must not queue a second write")
+        assertTrue(vm.state.value.tastePending.isEmpty())
+    }
+
+    @Test
+    fun once_finishing_starts_no_new_write_is_accepted_and_the_wait_covers_the_old_ones() = runTest {
+        val vm = viewModel()
+        val gate = CompletableDeferred<Unit>()
+        taste.gate = gate
+        var finished = false
+
+        vm.onTasteToggled(TasteChoices.services.first(), liked = true)
+        vm.finish { finished = true }
+        vm.onTasteToggled(TasteChoices.services[1], liked = true)
+        vm.onNotificationsToggled(true)
+
+        assertFalse(finished, "the write accepted before finishing is still in flight")
+        gate.complete(Unit)
+        assertTrue(finished)
+        assertEquals(1, taste.writes.size, "the write accepted after finishing is refused")
+        assertFalse(settings.notifications.value, "alerts cannot be turned on once the page is closing")
+    }
+
+    @Test
+    fun finishing_twice_completes_the_introduction_once() = runTest {
+        val vm = viewModel()
+        vm.finish {}
+        vm.finish {}
+        advanceUntilIdle()
+
+        assertEquals(1, onboarding.completions)
+    }
+
+    @Test
+    fun taste_is_the_last_page_before_done_on_every_platform() {
+        for (notify in listOf(true, false)) {
+            for (byok in listOf(true, false)) {
+                for (backup in listOf(true, false)) {
+                    val pages = pagesFor(notify, byok, backup)
+                    val where = "notify=$notify byok=$byok backup=$backup"
+                    assertEquals(OnboardingPage.TASTE, pages[pages.size - 2], where)
+                    assertEquals(OnboardingPage.DONE, pages.last(), where)
+                }
+            }
+        }
+    }
+
+    @Test
     fun skipping_keeps_what_an_earlier_page_already_wrote() = runTest {
         val vm = viewModel()
         vm.onNotificationsToggled(true)
