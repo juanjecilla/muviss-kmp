@@ -28,7 +28,7 @@ class WatchProviderRefresherTest {
         var fetchCount = 0
         var nextResult: Result<Set<String>> = Result.success(emptySet())
 
-        override suspend fun fetchFlatrateIds(mediaId: MediaId): Result<Set<String>> {
+        override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> {
             fetchCount++
             return nextResult
         }
