@@ -615,6 +615,26 @@ class ReleaseMergeCliTest < Minitest::Test
     assert_equal moved, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0"), "origin keeps its own commit"
   end
 
+  def test_push_branch_refuses_a_branch_deleted_and_recreated_at_an_ancestor
+    # A plain push would accept this: the origin commit is an ancestor of the new one. The lease refuses it.
+    git("switch", "-q", "release/1.4.0")
+    write("feature.txt", "next\n"); git("commit", "-q", "-am", "next")
+    ours = git("rev-parse", "HEAD")
+    git_in(@origin, "update-ref", "-d", "refs/heads/release/1.4.0")
+    git_in(@origin, "update-ref", "refs/heads/release/1.4.0", @base)
+    assert_raises(ReleaseMerge::HeadMoved) { ReleaseMerge::Repo.new(dir: @dir).push_branch(ours, "release/1.4.0", expected: @branch) }
+    assert_equal @base, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0"), "origin keeps the recreated branch"
+  end
+
+  def test_push_branch_refuses_a_branch_deleted_on_origin
+    git("switch", "-q", "release/1.4.0")
+    write("feature.txt", "next\n"); git("commit", "-q", "-am", "next")
+    ours = git("rev-parse", "HEAD")
+    git_in(@origin, "update-ref", "-d", "refs/heads/release/1.4.0")
+    assert_raises(ReleaseMerge::HeadMoved) { ReleaseMerge::Repo.new(dir: @dir).push_branch(ours, "release/1.4.0", expected: @branch) }
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/release/1.4.0"), "a deleted branch is not recreated"
+  end
+
   def test_the_union_command_is_gone_and_is_a_usage_error
     code, _out, err = cli("union", "release/1.4.0", "--expect-head", @branch)
     assert_equal 64, code

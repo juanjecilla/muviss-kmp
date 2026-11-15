@@ -194,13 +194,15 @@ module ReleaseMerge
       end
     end
 
-    # Pushes a commit to refs/heads/BRANCH, with no force, after checking origin still has `expected` there.
-    # A branch that moved is refused, and so is any push git would not fast-forward.
+    # Pushes a commit to refs/heads/BRANCH only while origin has `expected` there. The lease is part of the push:
+    # git checks origin's value as it updates the ref, so a branch that moved, was deleted, or was deleted and
+    # recreated (even at an ancestor, which a plain push would accept) is refused, not overwritten. The sha is
+    # built on `expected`, so the update is a fast-forward too; nothing is forced.
     def push_branch(sha, branch, expected:)
-      remote = git("ls-remote", "origin", "refs/heads/#{branch}").split.first
-      raise HeadMoved, "#{branch} is at #{remote}, not #{expected}" unless remote == expected
-
-      git("push", "--quiet", "origin", "#{sha}:refs/heads/#{branch}")
+      git("push", "--quiet", "--force-with-lease=refs/heads/#{branch}:#{expected}", "origin", "#{sha}:refs/heads/#{branch}")
+    rescue RuntimeError
+      # git's stderr is not kept (it can carry URLs), so this names what was checked, not why git refused.
+      raise HeadMoved, "refs/heads/#{branch} is not at #{expected} on origin, or the push failed; nothing was moved"
     end
 
     private
