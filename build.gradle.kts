@@ -130,6 +130,34 @@ allprojects {
     linkSentryCocoaFramework()
 }
 
+// --- Web is deferred (docs/EPICS.md, "Web is deferred") ----------------------
+//
+// `muviss.webTests` in gradle.properties is the one switch for the JS and Wasm
+// *test* tasks. Off (the default while web is deferred), every task that
+// compiles or runs a browser test is disabled in every module, and so is the
+// Compose UI check that cannot pass without a runnable JS binary (#686). The
+// web main compiles, the webpack bundles and the npm lockfile check stay on:
+// they are what catches commonMain code a browser target cannot take (#10).
+// To bring the tests back, set the property to true and restore the `web-tests`
+// job's `if:` in .github/workflows/ci.yml.
+val webTestsEnabled: Boolean = providers.gradleProperty("muviss.webTests").orNull?.toBoolean() ?: false
+
+if (!webTestsEnabled) {
+    // Matches the JS/Wasm test lifecycle tasks, their test compilations (main
+    // compiles are not matched), and the Compose checks for those targets.
+    val webTestTask = Regex(
+        "^(js|wasmJs)(Test|BrowserTest|NodeTest)$" +
+            "|^compileTest.*(Js|WasmJs)(Optimize)?$" +
+            "|^checkComposeUiTestConfigurationFor(Js|WasmJs)$" +
+            "|^check(Js|WasmJs)TestComposeLibrariesCompatibility$",
+    )
+    allprojects {
+        tasks.matching { webTestTask.matches(it.name) }.configureEach {
+            enabled = false
+        }
+    }
+}
+
 // --- Sentry's iOS SDK, for Apple link steps ---------------------------------
 //
 // `io.sentry:sentry-kotlin-multiplatform`'s iOS artifacts are cinterop klibs
