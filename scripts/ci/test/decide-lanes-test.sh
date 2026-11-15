@@ -51,6 +51,12 @@ expect "a server change runs the supabase lane" "true false true" "$(lanes pull_
 repo .github/workflows/ci.yml
 expect "a change to the CI file runs the CI it edits" "true true true" "$(lanes pull_request base)"
 
+repo scripts/ci/check-migration-order.sh
+expect "a change to the migration-order checker runs the supabase lane that tests it" "true false true" "$(lanes pull_request base)"
+
+repo scripts/ci/test/migration-order-test.sh
+expect "a change to the migration-order test runs the supabase lane" "true false true" "$(lanes pull_request base)"
+
 repo scripts/ci/decide-lanes.sh
 expect "a change to the lane filter runs every lane" "true true true" "$(lanes pull_request base)"
 # More than a pipe buffer of paths, with the only iOS match first: `echo | grep -q` used to stop
