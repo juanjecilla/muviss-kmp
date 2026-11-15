@@ -534,19 +534,43 @@ function onModuleReady() {
       return postMessage({ id: data.id, results });
     }
     case "end_transaction": {
-      const results = db.exec("END TRANSACTION;");
+      let results;
+      try {
+        results = db.exec("END TRANSACTION;");
+      } catch (e) {
+        // A COMMIT that fails (a deferred constraint, say) can leave SQLite's
+        // transaction open, and export() cannot run inside one. Roll it back so
+        // the next change starts from a clean connection. Nothing to roll back
+        // is not an error here: SQLite may already have undone it.
+        try {
+          db.exec("ROLLBACK TRANSACTION;");
+        } catch {
+          // No transaction was open.
+        }
+        inTransaction = false;
+        // The changes made inside the failed transaction are gone; a snapshot that
+        // came due during it still has to be taken of what is left.
+        if (dirty) markDirty();
+        throw e;
+      }
+      // Cleared before anything else can throw, so a failure here cannot leave
+      // every later save deferred behind a transaction that is over.
       inTransaction = false;
       // One snapshot per committed transaction, not per statement inside it.
       markDirty();
       return postMessage({ id: data.id, results });
     }
     case "rollback_transaction": {
-      const results = db.exec("ROLLBACK TRANSACTION;");
-      inTransaction = false;
-      // A snapshot that came due during the transaction still owes the writes
-      // committed before it.
-      if (dirty) markDirty();
-      return postMessage({ id: data.id, results });
+      try {
+        const results = db.exec("ROLLBACK TRANSACTION;");
+        return postMessage({ id: data.id, results });
+      } finally {
+        // Cleared even when ROLLBACK throws, so a failure cannot leave every
+        // later save deferred behind a transaction that is over. A snapshot that
+        // came due during the transaction still owes the writes committed before it.
+        inTransaction = false;
+        if (dirty) markDirty();
+      }
     }
     // Ours, not SQLDelight's: posted by the main thread on `pagehide`, since a
     // worker cannot observe the page going away. Best-effort — the browser may

@@ -80,6 +80,13 @@ function makeIndexedDb() {
       },
     });
     const run = async () => {
+      // A held read waits here, before it reads anything, until the test releases it.
+      if (mode === "readonly" && idb.gate) {
+        const gate = idb.gate;
+        idb.gate = null;
+        gate.markStarted();
+        await gate.released;
+      }
       for (let i = 0; ; ) {
         await new Promise((resolve) => setImmediate(resolve));
         if (i >= ops.length) break;
@@ -110,6 +117,22 @@ function makeIndexedDb() {
     return req;
   };
   return idb;
+}
+
+// Holds the next readonly transaction, which is the promotion's read of the store,
+// until `release()`. `started` resolves once that read is waiting, so a test can
+// run a write while the read is still pending.
+function holdNextRead(idb) {
+  let markStarted;
+  let release;
+  const started = new Promise((resolve) => {
+    markStarted = resolve;
+  });
+  const released = new Promise((resolve) => {
+    release = resolve;
+  });
+  idb.gate = { markStarted, released };
+  return { started, release };
 }
 
 // Web Locks as the worker uses them: one holder at a time, the rest queue in order,
@@ -480,10 +503,15 @@ test("a write made while a promotion is being decided makes the tab stale, not s
   await settle();
   a.exec("INSERT A2");
   await a.flush();
-  // The lock is handed over now, and the promotion reads the store before it decides.
-  // This write lands in that window, so the decision must see it.
+  // The promotion reads the store before it decides. The read is held here, so the
+  // write below is made while it is still pending, which is the window the decision
+  // has to see. (Writing before the lock is handed over would miss it: the grant is
+  // a later continuation, so the write would run before the read even starts.)
+  const read = holdNextRead(idb);
   a.close();
+  await read.started;
   b.exec("INSERT B-RACE");
+  read.release();
   await settle();
   assert.equal(b.state().stale, true, "the change made in the window is not reloaded away");
   assert.equal(b.state().reloadRequested, false);

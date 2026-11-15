@@ -213,6 +213,56 @@ test("a snapshot due inside a rolled-back transaction is still taken", async () 
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
 });
 
+// A COMMIT that fails (a deferred constraint, say) leaves the transaction open in
+// SQLite. If the worker kept `inTransaction` set after that, every later save
+// would be deferred behind a transaction that is over, and nothing would say so.
+test("a COMMIT that fails does not stop the tab saving its later changes", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  run(
+    "db = { open: false, endFails: true, exec: (sql) => {" +
+      " if (/^BEGIN/.test(sql)) db.open = true;" +
+      " if (/^END/.test(sql)) { if (db.endFails) { db.endFails = false; throw new Error('deferred constraint failed'); } db.open = false; }" +
+      " if (/^ROLLBACK/.test(sql)) { if (!db.open) throw new Error('no transaction is active'); db.open = false; }" +
+      " return /total_changes/.test(sql) ? [{ values: [[0]] }] : []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 1", id: 2 } })');
+  assert.throws(
+    () => run('onModuleReady.call({ data: { action: "end_transaction", id: 3 } })'),
+    /deferred constraint failed/,
+  );
+  // The failed COMMIT is the caller's error to see. The next change is the tab's
+  // to save, and must reach the store.
+  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 2", id: 4 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
+  assert.equal(announced.length, 0);
+});
+
+test("a ROLLBACK that throws does not stop the tab saving its later changes", async () => {
+  const { indexedDB, run } = loadWorker();
+  run(
+    "db = { open: false, rollbackFails: true, exec: (sql) => {" +
+      " if (/^BEGIN/.test(sql)) db.open = true;" +
+      " if (/^END/.test(sql)) db.open = false;" +
+      " if (/^ROLLBACK/.test(sql)) { db.open = false; if (db.rollbackFails) { db.rollbackFails = false; throw new Error('transaction already rolled back'); } }" +
+      " return /total_changes/.test(sql) ? [{ values: [[0]] }] : []; }," +
+      " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 1", id: 2 } })');
+  assert.throws(
+    () => run('onModuleReady.call({ data: { action: "rollback_transaction", id: 3 } })'),
+    /already rolled back/,
+  );
+  run('onModuleReady.call({ data: { action: "exec", sql: "UPDATE t SET x = 2", id: 4 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "the later change is saved");
+});
+
 test("changes committed before a transaction are saved before it opens", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
