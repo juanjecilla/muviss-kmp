@@ -230,8 +230,8 @@ module ReleaseMerge
 
   # The checks a merge needs green on its head (#793). The contexts are read from the rules of main and
   # develop when the merge is judged, so no second list exists to drift from them. A context is green when
-  # its newest completed, non-cancelled run passed and no status on the head says otherwise; one with no
-  # such run (not reported, still running, only cancelled) is not green. A run that failed and a status
+  # its newest non-cancelled run is completed and passed, and no status on the head says otherwise; one with
+  # no such run (not reported, still running, only cancelled) is not green. A run that failed and a status
   # that passed do not add up to green: any source that says no keeps it unmet. A context the rules pin to
   # an integration is met only by that integration's check run.
   module RequiredChecks
@@ -305,9 +305,11 @@ module ReleaseMerge
         pin = req["integration_id"]
         own = runs.select { |r| r["name"] == name && (pin.nil? || r["app_id"] == pin) }
         verdicts = []
-        latest = own.select { |r| r["status"] == "completed" && r["conclusion"] != "cancelled" }
+        # The newest run that was not cancelled decides. One still queued or running has no conclusion yet,
+        # so it is not green, and an older pass cannot stand in for it.
+        latest = own.reject { |r| r["conclusion"] == "cancelled" }
                     .max_by { |r| r["id"].to_i }
-        verdicts << GREEN.include?(latest["conclusion"]) if latest
+        verdicts << (latest["status"] == "completed" && GREEN.include?(latest["conclusion"])) if latest
         unless pin
           status = statuses.find { |s| s["context"] == name }
           verdicts << (status["state"] == "success") if status

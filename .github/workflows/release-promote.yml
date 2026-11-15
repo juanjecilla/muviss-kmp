@@ -119,6 +119,22 @@ jobs:
             exit "$rc"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # A rehearsal that is cancelled or times out between its push and its delete would leave the throwaway
+      # ref on origin. This runs whatever happened above, and only for the rehearsal's own ref name.
+      - name: Delete the rehearsal ref if a run left it behind
+        if: ${{ always() && inputs.rehearse && inputs.rehearse_push }}
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no rehearsal ref to clean up: '$VERSION' is not X.Y.Z"; exit 0; }
+          REF="refs/heads/rehearsal/$VERSION"
+          if [ -n "$(git ls-remote origin "$REF")" ]; then
+            git push --quiet origin ":$REF" \
+              || { echo "::error::$REF may remain on origin; delete it by hand"; exit 1; }
+            echo "Deleted $REF, which the rehearsal left behind."
+          fi
+
   promote:
     # A rehearsal dispatch does nothing else (on a schedule, `inputs.rehearse` is empty).
     if: ${{ !inputs.rehearse }}

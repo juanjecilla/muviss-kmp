@@ -439,7 +439,10 @@ the schedule, the gates and where a fix goes.
   run's own commit's copy, not the release branch's. Every context main's rules
   require must be green on that head, read from the rules when the merge is
   judged, so a PR that conflicted from the moment it opened is resolved by hand.
-  The Sunday step still judges the branch head's runs, a gap tracked in #854.
+  The union is pushed as the App, which GitHub's own review and check gates do not
+  cover, so just before it the run reads the approval (`reviewDecision` must be
+  `APPROVED` on the head) and the required checks on that head again, and pushes
+  nothing if either has changed. The Sunday step still judges the branch head's runs, a gap tracked in #854.
 - **Rehearse the Sunday merge without moving main (#732).** Dispatch
   `release-promote.yml` with `rehearse` and `version` (`rehearse_push` also puts the
   merge commit on `rehearsal/X.Y.Z` as the App, then deletes it). It prints the

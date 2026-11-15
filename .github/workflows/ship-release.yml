@@ -160,6 +160,9 @@ jobs:
           WAIT: ${{ inputs.wait_minutes }}
           BRANCH: ${{ steps.branch.outputs.name }}
         run: |
+          # A whole number of minutes, checked before it is used in arithmetic (bash evaluates an array subscript in
+          # an arithmetic expression as a command substitution, so the input must not reach it unchecked).
+          [[ "$WAIT" =~ ^[0-9]{1,5}$ ]] || { echo "::error::wait_minutes must be a whole number of minutes"; exit 1; }
           [ "$ACTION" = merge ] && WAIT=0
           # This run's own copy of the release-merge CLI, not the release branch's: a branch cut before
           # the CLI had it would exit 0 and judge nothing. It judges the conflicts and the required checks.
@@ -182,6 +185,7 @@ jobs:
               # is resolved by the merge (#717); any other path holds here, named.
               # The checkout keeps no credentials, so git gets the step's token.
               AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+              echo "::add-mask::$AUTH"
               export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
                 GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
               if ! ruby "$RM" conflicts "$BRANCH"; then
@@ -237,6 +241,8 @@ jobs:
         if: inputs.action != 'open'
         env:
           GH_TOKEN: ${{ steps.app-merge.outputs.token }}
+          # The reads the wait step made, so the same token that could read them then reads them here.
+          READ_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           N: ${{ steps.target.outputs.number }}
           ACTION: ${{ inputs.action }}
@@ -258,16 +264,28 @@ jobs:
           echo "$OUT"
           # Only GitHub's refusal as not mergeable is resolved, as the Sunday step does (#712, #717).
           grep -qi 'not mergeable' <<<"$OUT" || { echo "::error::#$N was not merged"; exit 1; }
+          # This run's own copy of the script, as the wait step uses (not the release branch's).
+          gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/fastlane/release_merge.rb?ref=$GITHUB_SHA" > "$RUNNER_TEMP/release_merge.rb" \
+            || { echo "::error::this run's commit has no readable fastlane/release_merge.rb"; exit 1; }
+          # The union is pushed as the App, so GitHub's own review and check gates do not apply to it. They are read
+          # again on the approved head, with the reads the wait used: an approval dismissed or a change request
+          # made since the wait, or a rerun still going, holds the union with nothing pushed.
+          VIEW="$(GH_TOKEN="$READ_TOKEN" gh pr view "$N" -R "$REPO" --json reviewDecision,headRefOid --jq '"\(.reviewDecision) \(.headRefOid)"')"
+          [ "$VIEW" = "APPROVED $HEAD" ] || { echo "::error::#$N is no longer approved on $HEAD ($VIEW); nothing was pushed"; exit 1; }
+          RC=0
+          GH_TOKEN="$READ_TOKEN" ruby "$RUNNER_TEMP/release_merge.rb" approved "$N" "$HEAD" || RC=$?
+          [ "$RC" = 0 ] || { echo "::error::no approving review of #$N is on $HEAD now; nothing was pushed"; exit 1; }
+          RC=0
+          GH_TOKEN="$READ_TOKEN" GITHUB_REPOSITORY="$REPO" ruby "$RUNNER_TEMP/release_merge.rb" unmet "$HEAD" || RC=$?
+          [ "$RC" = 0 ] || { echo "::error::the required checks of #$N are not green on $HEAD now; nothing was pushed"; exit 1; }
           # The union is a commit of the App's, so it carries the App's identity as release-promote.yml's does.
           USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
           git config user.name "${SLUG}[bot]"
           git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
           AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$AUTH"
           export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
-          # This run's own copy of the script, as the wait step uses (not the release branch's).
-          gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/fastlane/release_merge.rb?ref=$GITHUB_SHA" > "$RUNNER_TEMP/release_merge.rb" \
-            || { echo "::error::this run's commit has no readable fastlane/release_merge.rb"; exit 1; }
           RC=0
           ruby "$RUNNER_TEMP/release_merge.rb" union "$BRANCH" --expect-head "$HEAD" || RC=$?
           case "$RC" in

@@ -273,6 +273,17 @@ class RequiredChecksTest < Minitest::Test
     assert_equal ["build"], missing(["build"], runs: [run_of("build", "cancelled")])
   end
 
+  def test_an_older_pass_does_not_cover_a_newer_rerun_still_running
+    # The rerun has no conclusion yet; the older success it supersedes must not make the context green.
+    runs = [run_of("build", "success", id: 1), run_of("build", nil, id: 2, status: "in_progress")]
+    assert_equal ["build"], missing(["build"], runs: runs)
+  end
+
+  def test_an_older_pass_does_not_cover_a_newer_rerun_still_queued
+    runs = [run_of("build", "success", id: 1), run_of("build", nil, id: 2, status: "queued")]
+    assert_equal ["build"], missing(["build"], runs: runs)
+  end
+
   def test_a_newer_failure_outweighs_an_older_pass
     runs = [run_of("build", "success", id: 1), run_of("build", "failure", id: 2)]
     assert_equal ["build"], missing(["build"], runs: runs)
