@@ -221,20 +221,29 @@ class RequiredChecksTest < Minitest::Test
   SHA = ("a" * 40).freeze
   SLUG = "owner/repo".freeze
   RULES = "repos/owner/repo/rules/branches/main".freeze
+  DEVELOP_RULES = "repos/owner/repo/rules/branches/develop".freeze
   RUNS = "repos/owner/repo/commits/#{SHA}/check-runs".freeze
   STATUSES = "repos/owner/repo/commits/#{SHA}/statuses".freeze
+  APP = 15_368
 
-  def run_of(name, conclusion, id: 1, status: "completed")
-    { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion }
+  def run_of(name, conclusion, id: 1, status: "completed", app_id: APP)
+    { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion, "app_id" => app_id }
   end
 
+  # A requirement as the rules endpoint's jq prints it: the context and the integration it is pinned to.
+  def req(name, pin = nil)
+    { "context" => name, "integration_id" => pin }
+  end
+
+  # The names that are not met. Strings are unpinned requirements.
   def missing(required, runs: [], statuses: [])
-    ReleaseMerge::RequiredChecks.missing(required, runs, statuses)
+    list = required.map { |r| r.is_a?(String) ? req(r) : r }
+    ReleaseMerge::RequiredChecks.missing(list, runs, statuses).map { |r| r["context"] }
   end
 
-  # Replies keyed by path. Rules, runs and statuses are the lines a `gh api --paginate` would print.
-  def gh_with(rules: [], runs: [], statuses: [], fail: nil)
-    replies = { RULES => rules, RUNS => runs, STATUSES => statuses }
+  # Replies keyed by path. Each line is what `gh api --paginate --jq` prints: objects as JSON.
+  def gh_with(rules: [], develop: [], runs: [], statuses: [], fail: nil)
+    replies = { RULES => rules, DEVELOP_RULES => develop, RUNS => runs, STATUSES => statuses }
     lambda do |*args|
       path = args.first.sub(/\?.*/, "")
       next [nil, 1] if fail == path
@@ -279,13 +288,40 @@ class RequiredChecksTest < Minitest::Test
     assert_equal ["build"], missing(["build"], runs: [run_of("build", "success")], statuses: statuses)
   end
 
-  def test_a_passing_commit_status_is_green
+  def test_a_passing_commit_status_is_green_for_an_unpinned_context
     assert_empty missing(["Analyze"], statuses: [{ "context" => "Analyze", "state" => "success" }])
   end
 
+  def test_a_same_name_check_from_another_integration_leaves_a_pinned_context_unmet
+    # The regression the review asked for: a green "build" from integration 7 must not satisfy a context pinned to 42.
+    runs = [run_of("build", "success", app_id: 7)]
+    assert_equal ["build"], missing([req("build", 42)], runs: runs)
+  end
+
+  def test_a_pinned_context_is_met_by_its_own_integrations_green_run
+    runs = [run_of("build", "success", app_id: 42)]
+    assert_empty missing([req("build", 42)], runs: runs)
+  end
+
+  def test_a_commit_status_never_satisfies_a_pinned_context
+    statuses = [{ "context" => "build", "state" => "success" }]
+    assert_equal ["build"], missing([req("build", 42)], statuses: statuses)
+  end
+
+  def test_a_pinned_context_only_sees_its_own_integrations_failure_when_it_is_the_newest
+    runs = [run_of("build", "success", id: 1, app_id: 42), run_of("build", "failure", id: 2, app_id: 42)]
+    assert_equal ["build"], missing([req("build", 42)], runs: runs)
+  end
+
   def test_unmet_names_the_contexts_missing_on_the_head
-    gh = gh_with(rules: ["build", "Release tooling tests"], runs: [run_of("build", "success")])
+    gh = gh_with(rules: ["build", "Release tooling tests"].map { |c| req(c) }, runs: [run_of("build", "success")])
     assert_equal ["Release tooling tests"], ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh)
+  end
+
+  def test_a_context_required_only_by_develop_is_judged_too
+    # A back-merge lands on develop: its own contexts count, on top of main's, so the merge is never judged by fewer.
+    gh = gh_with(rules: [req("build")], develop: [req("Features reach the landing")], runs: [run_of("build", "success")])
+    assert_equal ["Features reach the landing"], ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh)
   end
 
   def test_an_unreadable_rules_endpoint_holds_rather_than_passing
@@ -293,8 +329,8 @@ class RequiredChecksTest < Minitest::Test
     assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh) }
   end
 
-  def test_main_with_no_required_contexts_is_an_error_not_a_pass
-    gh = gh_with(rules: [])
+  def test_no_required_contexts_on_either_branch_is_an_error_not_a_pass
+    gh = gh_with(rules: [], develop: [])
     assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh) }
   end
 
@@ -312,12 +348,12 @@ class RequiredChecksTest < Minitest::Test
   end
 
   def test_the_cli_exits_0_when_every_required_context_is_green
-    code, _err = cli_unmet(gh_with(rules: ["build"], runs: [run_of("build", "success")]))
+    code, _err = cli_unmet(gh_with(rules: [req("build")], runs: [run_of("build", "success")]))
     assert_equal 0, code
   end
 
   def test_the_cli_holds_with_exit_2_and_names_the_missing_context
-    code, err = cli_unmet(gh_with(rules: ["build", "Release notes are final"], runs: [run_of("build", "success")]))
+    code, err = cli_unmet(gh_with(rules: [req("build"), req("Release notes are final")], runs: [run_of("build", "success")]))
     assert_equal ReleaseMerge::Cli::HELD, code
     assert_includes err, "Release notes are final"
   end
@@ -332,6 +368,63 @@ class RequiredChecksTest < Minitest::Test
     out = StringIO.new
     err = StringIO.new
     assert_equal 64, ReleaseMerge::Cli.run(["unmet"], repo: nil, out: out, err: err, slug: SLUG, gh: gh_with)
+  end
+end
+
+# An approval counts only on the head it was given on (#793 adversarial pass: a stale approval must hold).
+class ApprovedOnHeadTest < Minitest::Test
+  SHA = ("b" * 40).freeze
+  OLD = ("c" * 40).freeze
+  REVIEWS = "repos/owner/repo/pulls/7/reviews".freeze
+
+  # The reply is what the request's --jq prints: the commit id of each APPROVED review, one per line.
+  def gh_with(approved_commits, fail: false)
+    lambda do |*args|
+      next [nil, 1] if fail
+
+      [approved_commits.join("\n"), 0]
+    end
+  end
+
+  def test_an_approval_of_this_head_counts
+    gh = gh_with([SHA])
+    assert ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_an_approval_of_an_older_head_does_not_count
+    gh = gh_with([OLD])
+    refute ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_a_dismissed_approval_of_this_head_does_not_count
+    # The request's jq keeps APPROVED reviews only, so a dismissed review never reaches the list.
+    gh = gh_with([])
+    refute ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_unreadable_reviews_hold_rather_than_approve
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) do
+      ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh_with([], fail: true))
+    end
+  end
+
+  def test_the_cli_holds_with_exit_2_for_a_stale_approval
+    out = StringIO.new
+    err = StringIO.new
+    code = ReleaseMerge::Cli.run(["approved", "7", SHA], repo: nil, out: out, err: err, slug: "owner/repo", gh: gh_with([OLD]))
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err.string, "no approving review"
+  end
+
+  def test_the_cli_exits_0_for_an_approval_of_this_head
+    code = ReleaseMerge::Cli.run(["approved", "7", SHA], repo: nil, out: StringIO.new, err: StringIO.new, slug: "owner/repo", gh: gh_with([SHA]))
+    assert_equal 0, code
+  end
+
+  def test_the_cli_refuses_a_pr_number_that_is_not_a_number_before_any_call
+    gh = ->(*) { raise "no call expected" }
+    code = ReleaseMerge::Cli.run(["approved", "7 --x", SHA], repo: nil, out: StringIO.new, err: StringIO.new, slug: "owner/repo", gh: gh)
+    assert_equal 1, code
   end
 end
 

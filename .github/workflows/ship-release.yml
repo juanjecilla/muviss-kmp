@@ -163,9 +163,10 @@ jobs:
           [ "$ACTION" = merge ] && WAIT=0
           # This run's own copy of the release-merge CLI, not the release branch's: a branch cut before
           # the CLI had it would exit 0 and judge nothing. It judges the conflicts and the required checks.
+          # Read through the contents API, not git: a back-merge has no checkout to read it from.
           RM="$RUNNER_TEMP/release_merge.rb"
-          git show "$GITHUB_SHA:fastlane/release_merge.rb" > "$RM" \
-            || { echo "::error::this run's commit has no fastlane/release_merge.rb"; exit 1; }
+          gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/fastlane/release_merge.rb?ref=$GITHUB_SHA" > "$RM" \
+            || { echo "::error::this run's commit has no readable fastlane/release_merge.rb"; exit 1; }
           deadline=$(( $(date +%s) + WAIT * 60 ))
           while :; do
             # The head is read with the approval: the merge is pinned to it (see Merge).
@@ -197,6 +198,14 @@ jobs:
               0) REQUIRED=green ;;
               2) REQUIRED="not green: $(tr '\n' ' ' <<<"$UNMET")" ;;
               *) cat "$RUNNER_TEMP/unmet.err"; echo "::error::the required checks of #$N could not be read; nothing was merged"; exit 1 ;;
+            esac
+            # An approval counts only on this head: reviewDecision is per PR, so one of an older commit reads APPROVED too (#793).
+            RC=0
+            GH_TOKEN="$GH_TOKEN" GITHUB_REPOSITORY="$REPO" ruby "$RM" approved "$N" "$HEAD" 2>"$RUNNER_TEMP/approved.err" || RC=$?
+            case "$RC" in
+              0) ;;
+              2) [ "$REQUIRED" = green ] && REQUIRED="no approving review on $HEAD" ;;
+              *) cat "$RUNNER_TEMP/approved.err"; echo "::error::the approvals of #$N could not be read; nothing was merged"; exit 1 ;;
             esac
             echo "#$N: $STATE, checks $CHECKS, required $REQUIRED, head $HEAD"
             # UNSTABLE means a non-passing status, so only CLEAN (or HAS_HOOKS) is green.
@@ -257,8 +266,8 @@ jobs:
           export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
           # This run's own copy of the script, as the wait step uses (not the release branch's).
-          git show "$GITHUB_SHA:fastlane/release_merge.rb" > "$RUNNER_TEMP/release_merge.rb" \
-            || { echo "::error::this run's commit has no fastlane/release_merge.rb"; exit 1; }
+          gh api -H 'Accept: application/vnd.github.raw' "repos/$REPO/contents/fastlane/release_merge.rb?ref=$GITHUB_SHA" > "$RUNNER_TEMP/release_merge.rb" \
+            || { echo "::error::this run's commit has no readable fastlane/release_merge.rb"; exit 1; }
           RC=0
           ruby "$RUNNER_TEMP/release_merge.rb" union "$BRANCH" --expect-head "$HEAD" || RC=$?
           case "$RC" in

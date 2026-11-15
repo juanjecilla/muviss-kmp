@@ -228,11 +228,12 @@ module ReleaseMerge
     end
   end
 
-  # The checks a merge into main needs green on its head (#793). The contexts are read from main's rules
-  # when the merge is judged, so no second list exists to drift from them. A context is green when its
-  # newest completed, non-cancelled run passed and no status on the head says otherwise; one with no such
-  # run (not reported, still running, only cancelled) is not green. A run that failed and a status that
-  # passed do not add up to green: any source that says no keeps it unmet.
+  # The checks a merge needs green on its head (#793). The contexts are read from the rules of main and
+  # develop when the merge is judged, so no second list exists to drift from them. A context is green when
+  # its newest completed, non-cancelled run passed and no status on the head says otherwise; one with no
+  # such run (not reported, still running, only cancelled) is not green. A run that failed and a status
+  # that passed do not add up to green: any source that says no keeps it unmet. A context the rules pin to
+  # an integration is met only by that integration's check run.
   module RequiredChecks
     GREEN = %w[success skipped neutral].freeze
     SHA = /\A[0-9a-f]{40}\z/
@@ -249,26 +250,40 @@ module ReleaseMerge
 
     module_function
 
-    # The required contexts of `slug` that are not green on `sha`. Empty when every one is.
+    # main is what a release lands on and develop what a back-merge lands on. Both lists are judged for
+    # every merge, so a merge is never judged by fewer contexts than main's alone (fail closed).
+    BRANCHES = %w[main develop].freeze
+
+    # The required contexts of `slug` that are not green on `sha`, as names. Empty when every one is.
     def unmet(sha:, slug:, gh: RUNNER)
       raise Unreadable, "not a commit sha: #{sha.inspect}" unless SHA.match?(sha.to_s)
       raise Unreadable, "not a repository: #{slug.inspect}" unless SLUG.match?(slug.to_s)
 
-      required = required_contexts(slug, gh)
+      required = BRANCHES.flat_map { |branch| required_contexts(slug, branch, gh) }.uniq
+      raise Unreadable, "no required status checks on #{BRANCHES.join(' or ')}, so the merge cannot be judged" if required.empty?
+
       runs = read(gh, "repos/#{slug}/commits/#{sha}/check-runs?filter=all&per_page=100",
-                  "--paginate", "--jq", ".check_runs[]|{id,name,status,conclusion}")
+                  "--paginate", "--jq", ".check_runs[]|{id,name,status,conclusion,app_id:.app.id}")
       statuses = read(gh, "repos/#{slug}/commits/#{sha}/statuses?per_page=100",
                       "--paginate", "--jq", ".[]|{context,state}")
-      missing(required, runs, statuses)
+      missing(required, runs, statuses).map { |req| req["context"] }
     end
 
-    # The contexts the rules of main require. None readable is an error, not an empty list.
-    def required_contexts(slug, gh)
-      names = read(gh, "repos/#{slug}/rules/branches/main", "--paginate", "--jq",
-                   '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[]?.context').uniq
-      raise Unreadable, "main requires no status checks, so the merge cannot be judged" if names.empty?
+    # True when an approving review of the pull request was given on `sha`. reviewDecision is per PR, so an
+    # approval of an older commit still reads APPROVED after a push: only an approval of this head counts.
+    def approved_on?(sha:, slug:, pr:, gh: RUNNER)
+      raise Unreadable, "not a commit sha: #{sha.inspect}" unless SHA.match?(sha.to_s)
+      raise Unreadable, "not a repository: #{slug.inspect}" unless SLUG.match?(slug.to_s)
+      raise Unreadable, "not a pull request number: #{pr.inspect}" unless pr.to_s.match?(/\A\d+\z/)
 
-      names
+      read(gh, "repos/#{slug}/pulls/#{pr}/reviews", "--paginate", "--jq",
+           '.[]|select(.state=="APPROVED")|.commit_id').include?(sha)
+    end
+
+    # The contexts a branch's rules require, each with the integration it is pinned to (nil: any app).
+    def required_contexts(slug, branch, gh)
+      read(gh, "repos/#{slug}/rules/branches/#{branch}", "--paginate", "--jq",
+           '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[]?|{context,integration_id}')
     end
 
     # Each line of the reply, parsed when it is an object. A non-zero exit keeps gh's stderr out of the message.
@@ -281,14 +296,22 @@ module ReleaseMerge
       raise Unreadable, "an unreadable reply from gh api for #{args.first.to_s.sub(/\?.*/, '')}"
     end
 
+    # The requirements (hashes with "context" and "integration_id") that are not met. A pinned one is met
+    # only by a check run of its integration: a commit status has no App identity, and a same-name run from
+    # another App does not count. An unpinned one is met by a run or a status of that name.
     def missing(required, runs, statuses)
-      required.reject do |name|
+      required.reject do |req|
+        name = req.fetch("context")
+        pin = req["integration_id"]
+        own = runs.select { |r| r["name"] == name && (pin.nil? || r["app_id"] == pin) }
         verdicts = []
-        latest = runs.select { |r| r["name"] == name && r["status"] == "completed" && r["conclusion"] != "cancelled" }
-                     .max_by { |r| r["id"].to_i }
+        latest = own.select { |r| r["status"] == "completed" && r["conclusion"] != "cancelled" }
+                    .max_by { |r| r["id"].to_i }
         verdicts << GREEN.include?(latest["conclusion"]) if latest
-        status = statuses.find { |s| s["context"] == name }
-        verdicts << (status["state"] == "success") if status
+        unless pin
+          status = statuses.find { |s| s["context"] == name }
+          verdicts << (status["state"] == "success") if status
+        end
         verdicts.any? && verdicts.all?
       end
     end
@@ -298,6 +321,8 @@ module ReleaseMerge
   # reachable. Only `union` and `rehearse --push` write to origin, as whoever the
   # checkout's git credentials are (the release App, in the workflows).
   #
+  #   release_merge.rb approved PR SHA            exit 0 when an approving review of PR is on SHA; 2 when none is (a
+  #                                               review of an older commit does not approve the head); 1 when unreadable
   #   release_merge.rb unmet SHA                  exit 0 when every context main's rules require is green on SHA;
   #                                               exit 2 naming the ones that are not; 1 when they cannot be read
   #   release_merge.rb conflicts BRANCH           the paths BRANCH conflicts on with origin/main;
@@ -313,7 +338,7 @@ module ReleaseMerge
   module Cli
     HELD = 2
     CLEAN_IN_GIT = 3
-    USAGE = "usage: release_merge.rb unmet SHA | conflicts BRANCH | union BRANCH --expect-head SHA | rehearse VERSION [--push]".freeze
+    USAGE = "usage: release_merge.rb approved PR SHA | unmet SHA | conflicts BRANCH | union BRANCH --expect-head SHA | rehearse VERSION [--push]".freeze
     # The names the workflows pass. They become refspecs and ref names, so anything else is refused here.
     BRANCH_NAME = %r{\A(release|hotfix)/\d+\.\d+\.\d+\z}
     VERSION_NAME = /\A\d+\.\d+\.\d+\z/
@@ -326,6 +351,10 @@ module ReleaseMerge
       when "unmet"
         sha = args.fetch(0) { return usage(err) }
         return unmet(sha, slug, gh, out, err)
+      when "approved"
+        pr = args.fetch(0) { return usage(err) }
+        sha = args.fetch(1) { return usage(err) }
+        return approved(pr, sha, slug, gh, err)
       when "conflicts" then conflicts(repo, branch_arg(args) { return usage(err) }, out, err)
       when "union"
         expect = option(args, "--expect-head")
@@ -346,6 +375,14 @@ module ReleaseMerge
     def usage(err)
       err.puts USAGE
       64
+    end
+
+    # 0 when an approving review of pull request PR is on sha; HELD (2) when none is.
+    def approved(pr, sha, slug, gh, err)
+      return 0 if RequiredChecks.approved_on?(sha: sha, slug: slug, pr: pr, gh: gh)
+
+      err.puts "held: no approving review of ##{pr} is on #{sha}"
+      HELD
     end
 
     # 0 when every required context of main is green on sha; HELD (2) naming the ones that are not,
