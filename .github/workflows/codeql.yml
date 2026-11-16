@@ -124,6 +124,19 @@ jobs:
         if: matrix.build-mode == 'manual'
         run: ./gradlew :app:androidApp:assembleDebug compileKotlinJs compileKotlinWasmJs :app:desktopApp:compileKotlin --no-build-cache --stacktrace
 
+      # The Gradle daemon (4 GB heap) and the Kotlin daemon (6 GB) outlive the
+      # build, and `analyze` then gives CodeQL nearly all of the runner's 16 GB
+      # (`--ram=14570`). Together they starved the runner: it was shut down in
+      # the middle of the queries, or lost for 53 minutes (#892). The build's
+      # output is already in the CodeQL database, so the daemons can go.
+      - name: Stop the Gradle and Kotlin daemons
+        if: matrix.build-mode == 'manual'
+        run: |
+          free -m
+          ./gradlew --stop
+          pkill -f KotlinCompileDaemon || true
+          free -m
+
       - name: Analyze
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
