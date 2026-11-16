@@ -9,5 +9,5 @@ val onboardingUiModule: Module = module {
     // Not `viewModelOf`: that would ask Koin for every constructor parameter, including `canBackUp`, a
     // plain Boolean with a platform default that nothing binds, and a fresh install would crash on the
     // first frame of the introduction. `AppGraphTest` resolves this view model to keep it that way.
-    viewModel { OnboardingViewModel(get(), get(), get(), get(), get()) }
+    viewModel { OnboardingViewModel(get(), get(), get(), get(), get(), get()) }
 }
