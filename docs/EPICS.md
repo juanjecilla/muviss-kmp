@@ -480,7 +480,7 @@ runs standing in where they could. What that did and did not buy:
 
 - **Sentry MUVISS-4 (`InvisibleActionTrampolineActivity`, "List adapter activity trampoline invoked without specifying target intent") has no trigger in the current home-screen widget** — #630 (no fix PR: Glance 1.1.1 and 1.2.0 both throw the same guard, and the non-lazy `MuvissWidget` never builds that intent). Root cause and the release it came from are open in #635; the device and Sentry check is #636.
 ### 2026-11-16
-- **Back-merge PRs never got an approval** — #890: `back-merge-auto.yml` approves an untouched `back-merge/vX.Y.Z` PR as `github-actions[bot]` and merges it with a merge commit as the App; the nightly train run flags one open for more than a day (ADR 0030, amendment of 2026-11-16). First live run is the 1.5.0 back-merge.
+- **Back-merge PRs never got an approval** — #890: `back-merge-auto.yml` approves an untouched `back-merge/vX.Y.Z` PR as a second App (its key fenced in a `develop`-only environment) and merges it with a merge commit as the release App; the nightly train run flags one open for more than a day (ADR 0030, amendment of 2026-11-16). First live run is the 1.5.0 back-merge.
 - **The tag job warned that a deleted release branch moved after its RC** — #891: `scripts/release/rc-is-branch-head.sh`, with `git rev-parse --verify -q`. A release branch cut before the fix still prints it.
 - **CodeQL `Analyze (java-kotlin)` fails intermittently on `main` and `develop`** — #892, open.
 

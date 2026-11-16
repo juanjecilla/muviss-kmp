@@ -337,7 +337,7 @@ the schedule, the gates and where a fix goes.
 | `release-rc.yml` | push to `release/**`, `hotfix/**` | tag `vX.Y.Z-rcN`, build (`android-release-build.yml`), Play internal, pre-release |
 | `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App and promote beta → production (20%). A merge GitHub refuses over `CHANGELOG.md` alone is resolved by the union of both sides and pushed as the App (#712) |
 | `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, on a manual merge promote → production (20%), desktop installers, GitHub Release, back-merge PR |
-| `back-merge-auto.yml` | CI or PR guards finished green on a `back-merge/v*` PR | approve the untouched back-merge PR as `github-actions[bot]`, merge it into `develop` with a merge commit as the App (#890) |
+| `back-merge-auto.yml` | CI or PR guards finished green on a `back-merge/v*` PR | approve the untouched back-merge PR as the approver App, merge it into `develop` with a merge commit as the App (#890) |
 | `release-forward.yml` | a PR merged into `release/*` or `hotfix/*` | open the fix again into every newer `release/*` and `develop` |
 | `release-milestone.yml` | a PR opened into `release/*` or `hotfix/*` | milestone `X.Y.Z` on it |
 | `play-rollout-ramp.yml` | daily 08:00 UTC; dispatch | raise the production fraction along the ramp; close the release issue at 100% |
@@ -598,8 +598,8 @@ example `ios` on a docs-only PR) count as passing.
 asks for one approval, and CodeRabbit does not review an App-authored PR, so
 until 1.4.0 that PR waited for a person every week.
 
-`back-merge-auto.yml` now approves it as `github-actions[bot]` and merges it
-with a merge commit as the App. It bypasses nothing: `develop`'s ruleset still
+`back-merge-auto.yml` now approves it as a second App, the approver, and merges
+it with a merge commit as the release App. It bypasses nothing: `develop`'s ruleset still
 requires the approval and the checks, and GitHub refuses the merge without them.
 
 - **Untouched only.** The approval says "this is the release that already
@@ -611,10 +611,17 @@ requires the approval and the checks, and GitHub refuses the merge without them.
   a PR it cannot merge, so nothing triggers it. The nightly train run comments
   on the release issue when a back-merge PR has been open for more than a day
   (`back-merge.sh stale`).
-- **The approver is not the App.** The App is the PR's author and GitHub does
-  not count an author's approval. Actions has to be allowed to approve pull
-  requests, a repository setting that `owner-setup.sh` applies. Without it the
-  workflow fails at the approval and says why; the PR stays open.
+- **The approver is a second App, and its key is fenced.** The release App is
+  the PR's author and GitHub does not count an author's approval. The approver
+  App holds Pull requests write and nothing else. Its key is a secret of the
+  `back-merge` environment, which is restricted to `develop`: a `workflow_run`
+  job runs on the default branch and can read it, a workflow on a pushed branch
+  cannot. `owner-setup.sh` creates the environment. Without the App the
+  workflow fails at its first step and says why; the PR stays open.
+- **Actions is not allowed to approve pull requests, on purpose.** That setting
+  covers the whole repository: any workflow on any pushed branch that asks for
+  `pull-requests: write` could approve its own PR, which makes `develop`'s one
+  approval self-service. Leave it off.
 - **Forward PRs are not covered.** They carry a fix into other branches, which
   is code a person should read (#573).
 

@@ -2,9 +2,9 @@ name: Back-merge
 
 # After a release, release.yml opens `back-merge/vX.Y.Z → develop` as the release
 # App. develop needs one approval and CodeRabbit skips App-authored PRs, so the
-# PR sat green until a person merged it (#890). This workflow approves it as
-# github-actions[bot] and merges it, with a merge commit, as the App (ADR 0030,
-# amendment of 2026-11-16).
+# PR sat green until a person merged it (#890). This workflow approves it as a
+# second App, the approver, and merges it with a merge commit as the release
+# App (ADR 0030, amendment of 2026-11-16).
 #
 # It bypasses nothing: develop's ruleset still asks for the approval and the
 # required checks, and GitHub refuses the merge without them. The approval is a
@@ -15,9 +15,14 @@ name: Back-merge
 # conflicting PR, which gets no CI run and so never reaches this workflow. The
 # nightly train run flags a back-merge PR open for more than a day.
 #
-# Runs on `workflow_run`, from the default branch: it never executes the PR's
-# code. The approver cannot be the App, which is the PR's author; it needs the
-# repository setting that lets Actions approve pull requests (owner-setup.sh).
+# Who approves, and why not GITHUB_TOKEN. The release App is the PR's author, so
+# its approval does not count. Letting Actions approve pull requests is a
+# repository-wide switch: any workflow on any pushed branch could then approve
+# its own PR. The approver App's key is instead a secret of the `back-merge`
+# environment, which only runs on develop. A `workflow_run` job runs on the
+# default branch, so this one can read it; a workflow on another branch cannot.
+#
+# Runs from the default branch: it never executes the PR's code.
 on:
   workflow_run:
     workflows: [CI, PR guards]
@@ -40,10 +45,20 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Holds the approver App's key; restricted to develop (owner-setup.sh).
+    environment: back-merge
     permissions:
       contents: read
-      pull-requests: write # the approval, as github-actions[bot]
     steps:
+      - name: Check for the approver App
+        env:
+          APPROVER_ID: ${{ secrets.APPROVER_APP_ID }}
+        run: |
+          if [ -z "$APPROVER_ID" ]; then
+            echo "::error::The back-merge environment has no APPROVER_APP_ID (scripts/release/owner-setup.sh). The back-merge PR stays open for a person."
+            exit 1
+          fi
+
       - name: Mint a release App token
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -92,10 +107,21 @@ jobs:
           fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
-      - name: Approve as github-actions[bot]
+      - name: Mint an approver App token
+        id: approver
+        if: steps.decide.outputs.number != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.APPROVER_APP_ID }}
+          private-key: ${{ secrets.APPROVER_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          # Writes the review. Nothing else.
+          permission-pull-requests: write
+
+      - name: Approve as the approver App
         if: steps.decide.outputs.number != ''
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.approver.outputs.token }}
           GH_REPO: ${{ github.repository }}
           NUMBER: ${{ steps.decide.outputs.number }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -105,8 +131,7 @@ jobs:
             echo "#$NUMBER is already approved"; exit 0
           fi
           gh pr review "$NUMBER" --approve \
-            --body "This back-merge is untouched: its head is the commit the release tag is on ($TESTED_SHA), and its required checks are green. Approved by the back-merge workflow because CodeRabbit skips App-authored PRs; this is not a code review." \
-            || { echo "::error::The approval was refused. Actions must be allowed to approve pull requests (scripts/release/owner-setup.sh)."; exit 1; }
+            --body "This back-merge is untouched: its head is the commit the release tag is on ($TESTED_SHA), and its required checks are green. Approved by the back-merge workflow because CodeRabbit skips App-authored PRs; this is not a code review."
 
       - name: Merge with a merge commit, as the release App
         if: steps.decide.outputs.number != ''
