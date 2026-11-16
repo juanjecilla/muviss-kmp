@@ -517,7 +517,7 @@ class DetailViewModel(
 
     /** Reverses [markSeasonSeen]: drops the newest viewing of each seen episode in [season]. */
     fun unmarkSeason(season: Season) {
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.unmarkSeason(season)
             _state.update { it.copy(pendingUndo = null) }
         }
@@ -537,7 +537,7 @@ class DetailViewModel(
     /** Reverses [markShowSeen] across every season. */
     fun unmarkShow() {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.unmarkShow(seasons)
             _state.update { it.copy(pendingUndo = null) }
         }
@@ -565,7 +565,7 @@ class DetailViewModel(
 
     /** "I watched this again": records another viewing, leaving earlier ones intact. */
     fun recordRewatch(episodeId: EpisodeId) {
-        viewModelScope.launchReporting {
+        launchWrite {
             addIfAbsent()
             progressApi.recordPlay(episodeId)
             releaseUndoFor(episodeId)
@@ -574,7 +574,7 @@ class DetailViewModel(
 
     /** "I ticked that by mistake": drops the newest viewing only. */
     fun undoLatestPlay(episodeId: EpisodeId) {
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.removeLatestPlay(episodeId)
             releaseUndoFor(episodeId)
         }
@@ -582,7 +582,7 @@ class DetailViewModel(
 
     /** Forgets an episode's entire watch history — the explicit, destructive one. */
     fun clearEpisodeHistory(episodeId: EpisodeId) {
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.clearPlays(episodeId)
             releaseEntry()
         }
