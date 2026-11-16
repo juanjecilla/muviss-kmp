@@ -65,6 +65,97 @@ not updated.
 - **build**: verifyReleaseExceptionClasses runs after the Compose mapping merge (#339)
 
 
+## 1.4.0 — 2026-11-02
+
+### Features
+
+- **settings**: display preferences travel with a data backup (#512)
+- **settings**: a fresh install follows the OS's reduce-motion setting (#511)
+- **store**: App Store screenshots from StoreShot (#507)
+- **store**: Play 7-inch and 10-inch tablet screenshots from StoreShot (#381) (#506)
+- **store**: add a movie detail shot to the Play screenshot set (#434) (#505)
+- **nextpick**: the pick engine and a rule-based ranker (#399) (#508)
+- **network**: discover filters for a Pick Session (#504)
+- **progress**: detect a Completion on a tick the person makes (#501)
+
+### Fixes
+
+- **progress**: hold the completion lock over reads only (#649) (#671)
+- **build**: verifyOssLicenses fails on stale OssLicenses.kt entries (#616) (#655)
+- **progress**: a tick's Undo snackbar takes the slot at once (#613) (#651)
+- **release**: marker writes re-read, merge and read back (#623) (#648)
+- **release**: release-scripts-test.sh passes shellcheck (#621) (#641)
+- **release**: record the iOS TestFlight upload on the release marker (#624)
+- **release**: leave another version's release notes out of a forward (#620)
+- **settings**: About > Licenses lists every artifact the APK ships (#562) (#617)
+- **triage**: a failed save takes the snackbar from Undo at once (#569) (#614)
+- **profile**: sync and copied-link snackbars no longer cover the last row (#612)
+- **designsystem**: plain apostrophes in composeResources strings (#598) (#607)
+- **ios**: catch the refused App Group suite instead of expecting nil (#523) (#591)
+- **release**: forward release-notes edits instead of opening an empty PR (#574)
+- **triage**: the failed-save snackbar times out instead of staying up (#570)
+- **release**: Play's 100% no longer closes the issue while iOS is still ramping (#515)
+- **web**: tell the user when the browser could not save a snapshot (#500)
+
+## 1.3.0 — 2026-10-26
+
+### Features
+
+- **nextpick**: the Pick Session domain (#502)
+- **website**: a support page, and the App Store support URL (#519)
+- **settings**: report a problem through a second hosted form (#457)
+- **ops**: turn each feature request into a GitHub issue (#454)
+- **settings**: request a feature from Settings through a hosted form (#452)
+- **website**: tell users they can request a feature (#456)
+- **settings**: Device Backup, off by default (EPIC #409 WS6) (#435)
+- **ios**: iOS on the staged train, per platform (ADR 0033, WS5) (#432)
+
+### Fixes
+
+- **release**: count a version in flight when the train picks the next one (#530)
+- **release**: the train writes the release notes; they never hold a release (#525)
+- **search**: a next page cannot land on another genre's list (#471) (#498)
+- **a11y**: posters announced once, one watched checkbox, deck back cards hidden, text-size aware grids (#503)
+- **search**: Detail's undo snackbar no longer covers the last row (#476)
+- **collection**: snackbars no longer cover the last row of Lists and Collection (#475)
+- **progress**: Upcoming's list clears a wrapped refresh-failed snackbar (#509)
+- **progress**: Upcoming's last row scrolls clear of the snackbar (#474)
+- **search**: dedupe paged results so a repeated title cannot crash the grid (#472)
+- **designsystem**: rating badge scrim to 70% so amber text holds 4.5:1 (#470)
+- **ios**: resolve the presenting window through the foreground scene (#468)
+- **database**: say what a failed desktop migration means (#453) (#455)
+- **progress**: Watch Next shows the most recently watched first (#445)
+- **progress**: undo snackbar times out and no longer covers the last row (#443)
+
+## 1.2.0 — 2026-10-19
+
+### Features
+
+- **progress**: confirm a tick with a row sweep, milestone burst and a setting (#391) (#395)
+- **settings**: Muted Genres keep talk, news and reality TV out of suggestions (#389)
+- **release**: fixes follow their version and move forward (EPIC 50) (#347)
+- **release**: the Sunday step promotes internal → beta → production (EPIC 50) (#346)
+- **release**: the train stages versions and opens each one's issue (EPIC 50) (#345)
+- **release**: versionCode from the version, not the commit count (EPIC 50) (#344)
+- **onboarding**: first-run introduction, notifications opt-in (EPIC 47) (#323)
+- **settings**: bring your own TMDB key (EPIC 46) (#319)
+- **config**: remote config through ConfigCat and a per-request TMDB credential (EPIC 45) (#315)
+
+### Fixes
+
+- **app**: badge the Profile tab while an account switch waits for a choice (#274) (#380)
+- **profile**: a signed-out user is offered sign-in, not a paywall (#286) (#379)
+- **supabase**: a co-watch addressee may read the author's rows, not delete them (#129) (#378)
+- **ios**: widget Undo clears on refresh, background refresh keeps its pending run, iPad share sheets (#418)
+- **ops**: an ineligible copy of a marker no longer hides the issue to reopen (#408)
+- **ops**: reopen a crash's closed issue when Sentry reports it regressed (#327) (#376)
+- **ui**: a rejected own TMDB key offers a button to Settings (#321) (#373)
+- **release**: the production step checks the beta track before merging (#349) (#360)
+- **settings**: Delete all data refreshes the home-screen widgets (#317) (#355)
+- **release**: the train does not adopt a branch cut before staged releases (#352)
+- **build**: verifyReleaseExceptionClasses runs after the Compose mapping merge (#339)
+
+
 ## 1.1.0 — 2026-10-12
 
 ### Features
