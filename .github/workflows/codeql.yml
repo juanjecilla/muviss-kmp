@@ -133,8 +133,15 @@ jobs:
         if: matrix.build-mode == 'manual'
         run: |
           free -m
+          ps -eo rss,args --sort=-rss | head -6 | cut -c1-160
           ./gradlew --stop
           pkill -f KotlinCompileDaemon || true
+          # Both exit asynchronously; analyze must not start beside them.
+          for _ in $(seq 1 30); do
+            pgrep -f 'GradleDaemon|KotlinCompileDaemon' >/dev/null || break
+            sleep 1
+          done
+          pkill -9 -f 'GradleDaemon|KotlinCompileDaemon' || true
           free -m
 
       - name: Analyze
