@@ -7,6 +7,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
+import com.codingpit.muviss.feature.settings.api.TasteChoices
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import java.util.Locale
 import kotlin.test.AfterTest
@@ -81,6 +82,19 @@ class OnboardingGoldenTest {
     fun muted_genres_in_spanish() = runComposeUiTest {
         Locale.setDefault(Locale.forLanguageTag("es-ES"))
         golden("onboarding-muted-genres-es", state(OnboardingPage.MUTED_GENRES).copy(mutedGenres = defaultsMuted), false, MUTED_GENRES_ES_TOLERANCE)
+    }
+
+    // A few chips already liked, so the selected state is in the frame as well as the unselected one.
+    private val someLiked = setOf(TasteChoices.formats.first().id, TasteChoices.services[0].id, TasteChoices.services[1].id)
+
+    @Test fun taste() = runComposeUiTest { golden("onboarding-taste", state(OnboardingPage.TASTE).copy(likedTaste = someLiked), false) }
+
+    @Test fun taste_dark() = runComposeUiTest { golden("onboarding-taste-dark", state(OnboardingPage.TASTE).copy(likedTaste = someLiked), true) }
+
+    @Test
+    fun taste_in_spanish() = runComposeUiTest {
+        Locale.setDefault(Locale.forLanguageTag("es-ES"))
+        golden("onboarding-taste-es", state(OnboardingPage.TASTE).copy(likedTaste = someLiked), false)
     }
 
     @Test fun done() = runComposeUiTest { golden("onboarding-done", state(OnboardingPage.DONE), false) }

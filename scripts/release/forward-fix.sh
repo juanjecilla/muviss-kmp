@@ -10,10 +10,11 @@
 # forward PR into a release/* branch is a fix in flight, so it holds that
 # version's promotion (release-promote.yml) until it merges.
 #
-# The release notes (fastlane/release-notes/) exist only on the release branch,
-# so a hand edit to them conflicts on develop as delete/modify. Those notes are
-# the fix, so they are taken as the release branch wrote them, and the PR is
-# not empty (#529).
+# The release notes (fastlane/release-notes/) and the frozen changelog
+# (docs/changelog/X.Y.Z.md, #711) exist only on the release branch, so a hand
+# edit to them conflicts on develop as delete/modify. Those files are the fix,
+# so they are taken as the release branch wrote them, and the PR is not empty
+# (#529, #718).
 #
 #   forward-fix.sh targets SOURCE_BRANCH                       newer open release/* branches, then develop
 #   forward-fix.sh forward PR SOURCE_BRANCH MERGE_SHA TARGET   open the forward PR into TARGET
@@ -50,13 +51,23 @@ targets() {
   echo develop
 }
 
+# The version a release-only file belongs to: fastlane/release-notes/vX.Y.Z/...
+# and docs/changelog/X.Y.Z.md. Empty for any other path.
+notes_version() {
+  case "$1" in
+    fastlane/release-notes/v*/*) local v="${1#fastlane/release-notes/v}"; echo "${v%%/*}" ;;
+    docs/changelog/*.md) local f="${1#docs/changelog/}"; echo "${f%.md}" ;;
+  esac
+}
+
 # The release notes of one version belong to that version's release line. On a
 # line of another version their directory is stray (a notes edit to v1.5.0 must
 # not leave a v1.5.0/ directory on release/1.6.0), so a forward to such a line
-# drops them. develop takes every version. Each such path is put back to the
-# target's state (removed when the target does not have it), whether the pick
-# applied cleanly or conflicted on it. Logs to stderr, and records the skipped
-# versions in SKIPPED_NOTES (space separated) for the caller.
+# drops them. The changelog of a version is dropped the same way. develop takes
+# every version. Each such path is put back to the target's state (removed when
+# the target does not have it), whether the pick applied cleanly or conflicted
+# on it. Logs to stderr, and records the skipped versions in SKIPPED_NOTES
+# (space separated) for the caller.
 SKIPPED_NOTES=""
 skip_other_version_notes() {
   local target="$1" sha="$2" path version want
@@ -64,8 +75,8 @@ skip_other_version_notes() {
   [ "$target" = develop ] && return 0
   while read -r path; do
     [ -n "$path" ] || continue
-    version="${path#fastlane/release-notes/v}"
-    version="${version%%/*}"
+    version="$(notes_version "$path")"
+    [ -n "$version" ] || continue
     [ "$version" = "$want" ] && continue
     if git cat-file -e "origin/$target:$path" 2>/dev/null; then
       git checkout -q "origin/$target" -- "$path" || return 1
@@ -81,20 +92,20 @@ skip_other_version_notes() {
   # an edit onto a file the target renamed, which the source commit never names. No rename
   # detection, so both sides of a rename are listed and put back.
   done < <({ git diff --no-renames --name-only "$sha^1" "$sha"; git diff --no-renames --name-only "origin/$target"; } \
-    | grep -E '^fastlane/release-notes/v[^/]+/' | sort -u || true)
+    | grep -E '^(fastlane/release-notes/v[^/]+/|docs/changelog/[^/]+\.md$)' | sort -u || true)
   return 0
 }
 
-# Resolves a cherry-pick whose only conflicts are release-only notes that the
-# target does not have (DU: deleted by us, modified by them), taking the picked
-# side. Any other conflict, including a notes file both sides changed, returns
-# non-zero and leaves the index for the caller to abort.
+# Resolves a cherry-pick whose only conflicts are release-only notes or changelog
+# files that the target does not have (DU: deleted by us, modified by them),
+# taking the picked side. Any other conflict, including a notes file both sides
+# changed, returns non-zero and leaves the index for the caller to abort.
 resolve_release_notes() {
   local unmerged code path
   unmerged="$(git status --porcelain | grep -E '^(UU|AA|DD|AU|UA|UD|DU) ' || true)"
   [ -n "$unmerged" ] || return 1
   while read -r code path; do
-    if [ "$code" != DU ] || [[ "$path" != fastlane/release-notes/* ]]; then
+    if [ "$code" != DU ] || { [[ "$path" != fastlane/release-notes/* ]] && [[ "$path" != docs/changelog/*.md ]]; }; then
       return 1
     fi
   done <<<"$unmerged"

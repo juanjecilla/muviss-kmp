@@ -85,6 +85,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The migration-order check compares with origin/develop (#727).
+          fetch-depth: 0
+
+      # A migration this change adds must sort after develop's newest (#727). The
+      # test proves the check itself, so the check is not trusted on its own.
+      - name: Migrations sort after develop's
+        run: |
+          scripts/ci/test/migration-order-test.sh
+          scripts/ci/check-migration-order.sh origin/develop
 
       - uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3.2.0
         with:
@@ -365,8 +374,10 @@ jobs:
   # It was non-blocking already and never green: #172 (cowatch's JS test bundle
   # cannot resolve `os`/`path`) and #49 (compiler OOM under parallel load).
   # JS and Wasm still *compile* in `build` — that is what catches commonMain
-  # code a browser target cannot take (#10). To bring it back, restore
-  # `if: needs.changes.outputs.code == 'true'` and fix #172 first.
+  # code a browser target cannot take (#10). The Gradle side of the deferral
+  # is `muviss.webTests` in gradle.properties (build.gradle.kts disables the
+  # browser test tasks while it is false); to bring this job back, set that to
+  # true, restore `if: needs.changes.outputs.code == 'true'`, and fix #172 first.
   # See docs/EPICS.md, "Web is deferred".
   web-tests:
     needs: changes
