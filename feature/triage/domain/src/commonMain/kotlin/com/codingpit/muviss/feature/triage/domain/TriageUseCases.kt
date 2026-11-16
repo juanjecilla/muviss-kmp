@@ -110,10 +110,15 @@ class UndoDecisionUseCase(
         // Read before the restore soft-deletes the row. A missing row claims
         // nothing, so nothing is removed.
         val createdEntry = repository.observeDecision(mediaId).first()?.createdEntry ?: false
+        if (verdict.savesToCollection && createdEntry) {
+            // Cleanup first: a failure or cancellation here leaves the decision
+            // readable, so a retried undo still sees createdEntry and finishes.
+            progressApi.clearProgress(mediaId)
+            collectionApi.remove(mediaId)
+        }
+        // Tombstoning the decision last: once it is soft-deleted, observeDecision
+        // reads null and the claim can no longer be read.
         repository.restore(mediaId)
-        if (!verdict.savesToCollection || !createdEntry) return
-        progressApi.clearProgress(mediaId)
-        collectionApi.remove(mediaId)
     }
 }
 

@@ -303,6 +303,26 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
+    fun a_failed_undo_leaves_the_claim_readable_so_a_retry_finishes_the_cleanup() = runTest {
+        val h = harness()
+        h.useCase(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        val undo = UndoDecisionUseCase(h.repository, h.collection, h.progress)
+        h.collection.failRemove = IllegalStateException("disk full")
+
+        assertFailsWith<IllegalStateException> { undo(endedShow.id, TriageVerdict.CAUGHT_UP) }
+
+        // The cleanup failed before the decision was tombstoned, so the claim is still readable.
+        assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry)
+        assertEquals(emptyList(), h.repository.restored)
+
+        h.collection.failRemove = null
+        undo(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(listOf(endedShow.id), h.collection.removed)
+        assertEquals(listOf(endedShow.id), h.repository.restored)
+    }
+
+    @Test
     fun undo_with_no_decision_row_removes_nothing_from_the_library() = runTest {
         val h = harness()
         h.collection.add(endedDetails)
