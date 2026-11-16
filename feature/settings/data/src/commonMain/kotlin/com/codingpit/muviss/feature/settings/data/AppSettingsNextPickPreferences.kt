@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.settings.data
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.database.AppSettingsQueries
 import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.nextpick.api.ResultMode
@@ -23,7 +24,11 @@ import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
 class AppSettingsNextPickPreferences(
     private val queries: AppSettingsQueries,
     private val dispatchers: AppDispatchers,
+    remoteConfig: RemoteConfig,
 ) : NextPickPreferences {
+
+    // A fresh row starts on the Remote Config default for the result mode (#556); an existing row keeps its choice.
+    private val rowSeeder = AppSettingsRowSeeder(queries, remoteConfig, dispatchers)
 
     override val sessionLength: Flow<SessionLength> = settings()
         .map { row -> SessionLength.fromStored(row?.nextPickSessionLength) }
@@ -48,5 +53,5 @@ class AppSettingsNextPickPreferences(
         .mapToOneOrNull(dispatchers.io)
         .onStart { ensureRow() }
 
-    private suspend fun ensureRow() = withContext(dispatchers.io) { queries.ensureRow() }
+    private suspend fun ensureRow() = rowSeeder.ensureRow()
 }

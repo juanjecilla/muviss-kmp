@@ -84,6 +84,8 @@ class SqlDelightLocalDataEraser(
             database.titleWatchProvidersQueries.deleteAll()
             // The last remote config (EPIC 45): a fresh install has none.
             database.remoteConfigCacheQueries.deleteAll()
+            // Discover's stored TMDB answers (#724): a cache of what this install looked at.
+            database.discoverCacheQueries.deleteAll()
             // Whose library this was, and how far it had pulled.
             database.syncCursorQueries.deleteAll()
             database.syncStateQueries.deleteRow()

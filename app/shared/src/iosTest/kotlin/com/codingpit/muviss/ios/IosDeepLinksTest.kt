@@ -14,6 +14,50 @@ class IosDeepLinksTest {
         // IosDeepLinks is a process-wide object, so every test starts from nothing pending.
         IosDeepLinks.clearPendingDeepLink()
         IosDeepLinks.clearPendingOAuthCode()
+        IosDeepLinks.clearPendingOpenNextPick()
+    }
+
+    @Test
+    fun next_pick_link_requests_the_pick_session_and_reports_recognised() {
+        val recognised = IosDeepLinks.handle("muviss://next-pick")
+
+        assertTrue(recognised)
+        assertTrue(IosDeepLinks.pendingOpenNextPick.value)
+        assertNull(IosDeepLinks.pendingDeepLinkMediaId.value)
+    }
+
+    @Test
+    fun next_pick_link_with_a_trailing_path_still_requests_the_pick_session() {
+        // Only the host is routed; a path after it is ignored rather than refused.
+        assertTrue(IosDeepLinks.handle("muviss://next-pick/"))
+        assertTrue(IosDeepLinks.pendingOpenNextPick.value)
+    }
+
+    @Test
+    fun a_next_pick_request_is_cleared_once_consumed() {
+        IosDeepLinks.handle("muviss://next-pick")
+
+        IosDeepLinks.clearPendingOpenNextPick()
+
+        assertFalse(IosDeepLinks.pendingOpenNextPick.value)
+    }
+
+    @Test
+    fun next_pick_on_another_scheme_is_ignored() {
+        val recognised = IosDeepLinks.handle("https://next-pick")
+
+        assertFalse(recognised)
+        assertFalse(IosDeepLinks.pendingOpenNextPick.value)
+    }
+
+    @Test
+    fun a_pending_next_pick_leaves_a_pending_title_alone() {
+        IosDeepLinks.handle("muviss://title/7")
+        IosDeepLinks.handle("muviss://next-pick")
+
+        IosDeepLinks.clearPendingOpenNextPick()
+
+        assertEquals("7", IosDeepLinks.pendingDeepLinkMediaId.value)
     }
 
     @Test

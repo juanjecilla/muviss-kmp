@@ -1268,11 +1268,11 @@ private fun SnoozedBanner(dueAtEpochDay: Long, onUndo: () -> Unit) {
 }
 
 @Composable
-private fun StaleBanner(notice: UiText, onRetry: () -> Unit) {
+internal fun StaleBanner(notice: UiText, onRetry: () -> Unit, tag: String = DETAIL_STALE_BANNER_TAG) {
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.fillMaxWidth().testTag(DETAIL_STALE_BANNER_TAG),
+        modifier = Modifier.fillMaxWidth().testTag(tag),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

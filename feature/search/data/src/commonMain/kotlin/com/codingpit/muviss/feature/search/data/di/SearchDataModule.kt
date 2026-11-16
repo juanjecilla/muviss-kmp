@@ -1,7 +1,11 @@
 package com.codingpit.muviss.feature.search.data.di
 
+import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.feature.search.data.AppSettingsSearchOnboarding
+import com.codingpit.muviss.feature.search.data.SqlDelightDiscoverCache
 import com.codingpit.muviss.feature.search.data.TmdbSearchRepository
+import com.codingpit.muviss.feature.search.domain.DiscoverCache
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
@@ -31,4 +35,8 @@ val searchDataModule: Module = module {
     factory { RecommendationsUseCase(get()) }
     factory { SimilarMediaUseCase(get()) }
     factory { MoreLikeThisUseCase(get(), get()) }
+    // Discover's offline cache (#724): raw TMDB answers, per device, read before the network.
+    single { get<MuvissDatabase>().discoverCacheQueries }
+    single<DiscoverCache> { SqlDelightDiscoverCache(get(), get(), get()) }
+    factory { DiscoverFeed(get(), get(), get()) }
 }
