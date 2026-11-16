@@ -78,7 +78,7 @@ jobs:
           RC_VERSION_CODE="$(scripts/release/version-code.sh "$RC_TAG")"
           # The merge must ship what the candidate was: if the branch moved
           # after its last RC, that newer code was never on a tester's phone.
-          [ "$(git rev-parse "$RC_TAG^{commit}")" = "$(git rev-parse "origin/$HEAD_REF" 2>/dev/null || git rev-parse "$MERGE_SHA^2")" ] \
+          scripts/release/rc-is-branch-head.sh "$RC_TAG" "$HEAD_REF" "$MERGE_SHA" \
             || echo "::warning::$HEAD_REF moved after $RC_TAG; production gets $RC_TAG, not the branch head"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
