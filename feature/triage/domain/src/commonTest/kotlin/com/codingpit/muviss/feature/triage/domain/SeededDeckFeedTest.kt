@@ -65,6 +65,16 @@ class SeededDeckFeedTest {
     }
 
     @Test
+    fun a_title_handed_over_twice_is_offered_once() = runTest {
+        val picked = movie("2")
+
+        val batch = feed(listOf(picked, movie("1"), picked)).open(SnoozePlacement.DEFAULT)
+            .next(DeckFilter(), DeckCursor(), emptySet(), wanted = 10).getOrThrow()
+
+        assertEquals(listOf(picked.id, movie("1").id), batch.cards.map { it.id })
+    }
+
+    @Test
     fun a_type_filter_narrows_the_seeds_without_reading_a_catalogue() = runTest {
         val seeds = listOf(movie("1"), show("2"), movie("3"))
 

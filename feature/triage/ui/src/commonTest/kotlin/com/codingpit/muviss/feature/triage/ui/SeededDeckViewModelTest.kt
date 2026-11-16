@@ -35,7 +35,7 @@ class SeededDeckViewModelTest {
     private val showA = show("10")
 
     @Test
-    fun `a seeded deck offers its titles in the order handed over and reads no catalogue`() = runTest {
+    fun a_seeded_deck_offers_its_titles_in_the_order_handed_over_and_reads_no_catalogue() = runTest {
         val harness = TriageHarness(movies = listOf(movie("99")), tv = listOf(show("98")))
         val ranked = listOf(showA, filmA, filmB)
 
@@ -49,7 +49,7 @@ class SeededDeckViewModelTest {
     }
 
     @Test
-    fun `a seeded deck has no genre chips to narrow it by`() = runTest {
+    fun a_seeded_deck_has_no_genre_chips_to_narrow_it_by() = runTest {
         val vm = TriageHarness(movies = listOf(filmA), genres = listOf(Genre("28", "Action"))).seededViewModel(listOf(filmA))
         advanceUntilIdle()
 
@@ -58,7 +58,7 @@ class SeededDeckViewModelTest {
     }
 
     @Test
-    fun `an empty handoff is the picks done state and never reads the catalogue`() = runTest {
+    fun an_empty_handoff_is_the_picks_done_state_and_never_reads_the_catalogue() = runTest {
         val harness = TriageHarness(movies = listOf(filmA, filmB))
 
         val vm = harness.seededViewModel(emptyList())
@@ -74,7 +74,7 @@ class SeededDeckViewModelTest {
     }
 
     @Test
-    fun `a seeded deck that runs out is exhausted and never offers to keep looking`() = runTest {
+    fun a_seeded_deck_that_runs_out_is_exhausted_and_never_offers_to_keep_looking() = runTest {
         val vm = TriageHarness(movies = listOf(filmA, filmB)).seededViewModel(listOf(filmA, filmB))
         advanceUntilIdle()
 
@@ -88,7 +88,7 @@ class SeededDeckViewModelTest {
     }
 
     @Test
-    fun `a seeded deck saves no position even as it is swiped while a catalogue deck does`() = runTest {
+    fun a_seeded_deck_saves_no_position_even_as_it_is_swiped_while_a_catalogue_deck_does() = runTest {
         val store = FakeDeckCursorStore()
         val harness = TriageHarness(movies = listOf(filmA, filmB), cursors = store)
 
@@ -108,7 +108,7 @@ class SeededDeckViewModelTest {
     }
 
     @Test
-    fun `a seed swiped away stays away through a reset`() = runTest {
+    fun a_seed_swiped_away_stays_away_through_a_reset() = runTest {
         val vm = TriageHarness(movies = listOf(filmA, filmB)).seededViewModel(listOf(filmA, filmB))
         advanceUntilIdle()
         vm.onDecide(TriageVerdict.LATER, viaGesture = false)
@@ -121,7 +121,7 @@ class SeededDeckViewModelTest {
     }
 
     @Test
-    fun `a seed snoozed stays out through a reset`() = runTest {
+    fun a_seed_snoozed_stays_out_through_a_reset() = runTest {
         val vm = TriageHarness(movies = listOf(filmA, filmB)).seededViewModel(listOf(filmA, filmB))
         advanceUntilIdle()
         // The default period is a week, so the snooze commits at once rather than opening the sheet.
@@ -135,7 +135,7 @@ class SeededDeckViewModelTest {
     }
 
     @Test
-    fun `undo of a seed puts it back on top`() = runTest {
+    fun undo_of_a_seed_puts_it_back_on_top() = runTest {
         val vm = TriageHarness(movies = listOf(filmA, filmB)).seededViewModel(listOf(filmA, filmB))
         advanceUntilIdle()
         vm.onDecide(TriageVerdict.LATER, viaGesture = false)

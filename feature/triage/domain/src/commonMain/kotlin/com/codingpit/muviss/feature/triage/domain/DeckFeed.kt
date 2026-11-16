@@ -57,7 +57,8 @@ class SeededDeckFeed(
     private val collectionApi: CollectionApi,
 ) : DeckFeed {
 
-    private val offered: List<MediaSummary> = seeds.current()
+    // Each title once, in the order handed over: a title listed twice would be offered twice in one batch.
+    private val offered: List<MediaSummary> = seeds.current().distinctBy { it.id }
 
     override val seeded: Boolean get() = true
 
