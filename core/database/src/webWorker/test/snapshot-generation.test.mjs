@@ -186,7 +186,9 @@ function makeLocks() {
 
 // Starts a tab: a fresh realm running the worker, which starts itself because
 // `importScripts` exists. Resolves once its database is open.
-async function openTab(idb, locks) {
+// With `engineFails`, the SQL engine never loads (as when its WebAssembly cannot be
+// fetched), so the tab has no database and its startup promise rejects.
+async function openTab(idb, locks, { engineFails = false } = {}) {
   const sandbox = {
     indexedDB: idb,
     navigator: { locks },
@@ -199,14 +201,28 @@ async function openTab(idb, locks) {
     DOMException,
     postMessage() {},
     FakeSql: { Database: FakeDatabase },
+    engineFails,
   };
   const context = vm.createContext(sandbox);
   context.self = context;
-  vm.runInContext(source.replace(IMPORT, "const initSqlJs = async () => FakeSql;"), context);
+  vm.runInContext(
+    source.replace(
+      IMPORT,
+      'const initSqlJs = async () => { if (engineFails) throw new Error("wasm failed"); return FakeSql; };',
+    ),
+    context,
+  );
   const run = (code) => vm.runInContext(code, context);
   // `snapshotReady` is a top-level `let`, so it is visible here; the worker's own
   // `sqlModuleReady` is declared inside the guard that starts it.
-  await run("snapshotReady");
+  if (engineFails) {
+    // A message is what would reach a failed tab; it attaches the handler that
+    // turns the startup rejection into a reply, so nothing is left unhandled.
+    await run("snapshotReady").catch(() => {});
+    run('self.onmessage({ data: { action: "flush", id: 0 } })');
+  } else {
+    await run("snapshotReady");
+  }
   return {
     run,
     exec: (sql) => run(`onModuleReady.call({ data: { action: "exec", sql: ${JSON.stringify(sql)}, id: 1 } })`),
@@ -664,4 +680,20 @@ test("a tab whose startup and promotion reads both fail never writes, and passes
   await c.flush();
   await settle();
   assert.match(storedText(idb), /INSERT C/);
+});
+
+// A tab whose SQL engine never loads holds the lock with no database to write. It
+// must release it, or every other tab waits behind a writer that cannot write. It
+// reports itself as not saving, not as another tab's.
+test("a tab whose database never opened gives the lock up, so a tab that can open the store takes it", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const failed = await openTab(idb, locks, { engineFails: true });
+  await settle();
+  const healthy = await openTab(idb, locks);
+  await settle();
+  await healthy.run("promotionDone");
+  assert.equal(healthy.state().isWriter, true, "the healthy tab takes the lock");
+  assert.equal(failed.state().isWriter, false);
+  assert.equal(failed.status().supported, false, "the failed tab says it is not saving");
 });

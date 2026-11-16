@@ -103,6 +103,9 @@ let promotionDone = Promise.resolve();
 let transactionBroken = false;
 // The sql.js module, used to open the database at startup.
 let sqlEngine = null;
+// True when the engine or the startup read failed: this tab has no database and
+// reports itself as not saving. See promote().
+let startupFailed = false;
 
 // --- IndexedDB -------------------------------------------------------------
 
@@ -343,7 +346,7 @@ async function flush() {
 function announce() {
   lastPersistence = {
     writer: isWriter && !stale,
-    supported: hasWebLocks(),
+    supported: hasWebLocks() && !startupFailed,
     lastWriteFailed,
     stale,
     reload: reloadRequested,
@@ -435,9 +438,15 @@ function onLockGranted(release) {
 async function promote() {
   try {
     await snapshotReady;
-  } catch {
-    // The startup failure is reported where it happened. There is no database
-    // to promote, so the tab stays as it was.
+  } catch (e) {
+    // The engine or the startup read failed, so there is no database to write. A
+    // tab that holds the lock without a database must not keep it: every other tab
+    // would wait behind a writer that cannot write. Released, and announced as not
+    // saving (not as another tab's), because nothing here can save.
+    console.warn("[muviss] the database did not open; this tab will not save", e);
+    startupFailed = true;
+    giveUpLock();
+    announce();
     return;
   }
   let latest = null;
