@@ -337,6 +337,7 @@ the schedule, the gates and where a fix goes.
 | `release-rc.yml` | push to `release/**`, `hotfix/**` | tag `vX.Y.Z-rcN`, build (`android-release-build.yml`), Play internal, pre-release |
 | `release-promote.yml` | Sunday 10:00 UTC; dispatch (`dry_run` defaults on) | every gate, then internal → beta, or merge beta's release PR into `main` as the App and promote beta → production (20%). A merge GitHub refuses over `CHANGELOG.md` alone is resolved by the union of both sides and pushed as the App (#712) |
 | `release.yml` | release/hotfix PR merged into `main`; dispatch | tag `vX.Y.Z`, delete the branch, on a manual merge promote → production (20%), desktop installers, GitHub Release, back-merge PR |
+| `back-merge-auto.yml` | CI or PR guards finished green on a `back-merge/v*` PR | approve the untouched back-merge PR as `github-actions[bot]`, merge it into `develop` with a merge commit as the App (#890) |
 | `release-forward.yml` | a PR merged into `release/*` or `hotfix/*` | open the fix again into every newer `release/*` and `develop` |
 | `release-milestone.yml` | a PR opened into `release/*` or `hotfix/*` | milestone `X.Y.Z` on it |
 | `play-rollout-ramp.yml` | daily 08:00 UTC; dispatch | raise the production fraction along the ramp; close the release issue at 100% |
@@ -557,10 +558,12 @@ Then:
    waits for the approval and checks, and merges it that way.
 5. On a manual merge, approve the `production` deployment in the run. The ramp
    takes it from there; halt with `gh workflow run play-promote.yml -f action=halt`.
-6. Merge the back-merge PR into `develop` **with a merge commit** (it is labelled
-   `no-landing`; resolve conflicts on its `back-merge/vX.Y.Z` branch) — or run
-   **Ship release** with `action: back-merge` (pass the version as `branch` when
-   more than one back-merge PR is open).
+6. The back-merge PR into `develop` merges by itself once its checks are green
+   (`back-merge-auto.yml`, see **Back-merges** below). When it does not, merge
+   it **with a merge commit** (it is labelled `no-landing`; resolve conflicts on
+   its `back-merge/vX.Y.Z` branch) — or run **Ship release** with
+   `action: back-merge` (pass the version as `branch` when more than one
+   back-merge PR is open).
 
 Production gets the build on the beta track: the RC that the Sunday step promoted
 to beta, which its gates required to be the branch head. If the branch has moved
@@ -588,6 +591,32 @@ The approval is **CodeRabbit**'s (`.coderabbit.yaml`, request-changes workflow):
 it approves once every comment it made is resolved. If it is unavailable, an
 admin merges with `gh pr merge --admin` and says so in the PR. Skipped jobs (for
 example `ios` on a docs-only PR) count as passing.
+
+### Back-merges (#890)
+
+`release.yml` opens `back-merge/vX.Y.Z → develop` as the release App. `develop`
+asks for one approval, and CodeRabbit does not review an App-authored PR, so
+until 1.4.0 that PR waited for a person every week.
+
+`back-merge-auto.yml` now approves it as `github-actions[bot]` and merges it
+with a merge commit as the App. It bypasses nothing: `develop`'s ruleset still
+requires the approval and the checks, and GitHub refuses the merge without them.
+
+- **Untouched only.** The approval says "this is the release that already
+  shipped", not "this code was reviewed". It is given only while the PR head is
+  the commit the `vX.Y.Z` tag is on (`scripts/release/back-merge.sh decide`). A
+  branch someone pushed to, to resolve a conflict, is new code: it waits for a
+  person, and the "Release X.Y.Z" issue says so once.
+- **A conflicting back-merge never reaches the workflow.** GitHub runs no CI on
+  a PR it cannot merge, so nothing triggers it. The nightly train run comments
+  on the release issue when a back-merge PR has been open for more than a day
+  (`back-merge.sh stale`).
+- **The approver is not the App.** The App is the PR's author and GitHub does
+  not count an author's approval. Actions has to be allowed to approve pull
+  requests, a repository setting that `owner-setup.sh` applies. Without it the
+  workflow fails at the approval and says why; the PR stays open.
+- **Forward PRs are not covered.** They carry a fix into other branches, which
+  is code a person should read (#573).
 
 ### The release App
 

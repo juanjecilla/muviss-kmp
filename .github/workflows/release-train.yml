@@ -87,6 +87,15 @@ jobs:
           scripts/release/release-issue.sh labels
           ruby fastlane/release_mergeability.rb
 
+      # A back-merge that did not merge by itself (a conflict, a hand
+      # resolution) is said once on its release issue (#890).
+      - name: Flag a back-merge PR open for more than a day
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: scripts/release/back-merge.sh stale
+
   cut:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

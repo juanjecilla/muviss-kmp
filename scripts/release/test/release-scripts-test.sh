@@ -542,5 +542,61 @@ if grep -q -- 'invisible fix' <<<"$out"; then fail "a Notes: none fix is listed:
 if grep -q '^Muviss 1.1.0 trae 3 novedades y mejoras.$' <<<"$out"; then
   pass "Spanish count matches the English list (opted-out commits not counted)"; else fail "Spanish count: $out"; fi
 
+echo "back-merge.sh"
+# The automatic back-merge (#890): only release.yml's own PR, untouched.
+bm="$(new_repo)"; commit "$bm" "chore: init"; commit "$bm" "Merge release/1.4.0"
+git -C "$bm" tag -a v1.4.0 -m v1.4.0; bm_tag="$(git -C "$bm" rev-parse HEAD)"
+commit "$bm" "fix: a hand resolution"; bm_moved="$(git -C "$bm" rev-parse HEAD)"
+decide() { # head-ref base author same-repo head-sha tested-sha
+  (cd "$bm" && HEAD_REF="$1" BASE_REF="$2" AUTHOR="$3" SAME_REPO="$4" HEAD_SHA="$5" TESTED_SHA="$6" \
+    APP_LOGIN=app/muviss-release "$SCRIPTS/back-merge.sh" decide 2>/dev/null)
+}
+expect_eq "an untouched back-merge merges" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_tag")" "merge"
+expect_eq "a branch a person pushed to waits for them" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_moved" "$bm_moved" | cut -d: -f1)" "hold"
+expect_eq "a green run on an older commit does not count" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_moved" | cut -d: -f1)" "hold"
+expect_eq "a back-merge with no tag behind it waits" \
+  "$(decide back-merge/v9.9.9 develop app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "hold"
+expect_eq "a PR someone else opened is not ours" \
+  "$(decide back-merge/v1.4.0 develop someone true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "a fork's branch is not ours" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release false "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "a PR into main is not a back-merge" \
+  "$(decide back-merge/v1.4.0 main app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "another branch is not a back-merge" \
+  "$(decide feat/back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "an unset App login approves nothing" \
+  "$(cd "$bm" && HEAD_REF=back-merge/v1.4.0 BASE_REF=develop AUTHOR= SAME_REPO=true HEAD_SHA="$bm_tag" TESTED_SHA="$bm_tag" APP_LOGIN= "$SCRIPTS/back-merge.sh" decide | cut -d: -f1)" "ignore"
+# notify and stale, against a fake gh.
+bmbin="$(mktemp -d)"
+cat >"$bmbin/gh" <<'FAKEGH'
+#!/bin/bash
+echo "gh $*" >>"$BM_GH_LOG"
+case "$*" in
+  "issue list"*) printf '%s' "${BM_ISSUE:-}" ;;
+  "issue view"*) printf '%s' "${BM_COMMENTS:-}" ;;
+  "pr list"*) printf '%s' "${BM_PRS:-[]}" ;;
+esac
+exit 0
+FAKEGH
+chmod +x "$bmbin/gh"; BM_GH_LOG="$(mktemp)"; export BM_GH_LOG
+bmrun() { PATH="$bmbin:$PATH" "$SCRIPTS/back-merge.sh" "$@"; }
+commented() { grep -c '^gh issue comment' "$BM_GH_LOG"; }
+: >"$BM_GH_LOG"; BM_ISSUE=698 bmrun notify 1.4.0 held-887 "needs a person"
+expect_eq "a hold is commented on the release issue" "$(grep -c '^gh issue comment 698 ' "$BM_GH_LOG")" "1"
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_COMMENTS='<!-- back-merge:held-887 -->' bmrun notify 1.4.0 held-887 "needs a person"
+expect_eq "the same hold is not commented twice" "$(commented)" "0"
+: >"$BM_GH_LOG"; BM_ISSUE= bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null
+expect_eq "no release issue, no comment" "$(commented)" "0"
+bm_prs='[{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false},
+ {"number":900,"headRefName":"back-merge/v1.5.0","createdAt":"2026-11-16T20:00:00Z","isCrossRepository":false},
+ {"number":901,"headRefName":"back-merge/v1.3.0","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":true},
+ {"number":902,"headRefName":"feat/x","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":false}]'
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_prs" NOW=2026-11-16T23:00:00Z bmrun stale
+expect_eq "only a back-merge open for over a day is flagged" "$(commented)" "1"
+expect_eq "and it is the old one" "$(grep -c 'Back-merge #887' "$BM_GH_LOG")" "1"
+
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi

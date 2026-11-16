@@ -103,6 +103,21 @@ do_app_perms() {
   wait_enter && mark app-read-perms
 }
 
+# --- Actions may approve the back-merge PR ----------------------------------------
+# back-merge-auto.yml approves release.yml's back-merge PR as github-actions[bot]:
+# the App opened it, so the App cannot, and CodeRabbit skips App-authored PRs (#890).
+check_actions_approve() {
+  [ "$(gh api "repos/$REPO/actions/permissions/workflow" --jq .can_approve_pull_request_reviews)" = true ]
+}
+do_actions_approve() {
+  say "The back-merge PR (main into develop, after every release) is approved by a workflow,"
+  say "and only when it is untouched. That needs Actions to be allowed to approve pull requests."
+  say "The workflow token stays read-only by default; develop's ruleset is unchanged."
+  confirm "Allow GitHub Actions to approve pull requests in $REPO?" || return 1
+  gh api -X PUT "repos/$REPO/actions/permissions/workflow" \
+    -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true >/dev/null
+}
+
 # --- 5. rulesets ---------------------------------------------------------------
 check_rulesets() {
   local names
@@ -286,6 +301,7 @@ step "CodeRabbit is installed"                             check_coderabbit do_c
 step "the muviss-release GitHub App's secrets are set"      check_app        do_app
 step "the release App can read Actions and Checks"         check_app_perms  do_app_perms
 step "rulesets protect main, develop and v* tags"          check_rulesets   do_rulesets
+step "Actions can approve the back-merge PR"               check_actions_approve do_actions_approve
 step "the production environment needs your approval"      check_env        do_env
 step "the release keystore secrets are set"                check_keystore   do_keystore
 step "TMDB and Sentry secrets are set"                     check_optional   do_optional
