@@ -53,6 +53,7 @@ import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.designsystem.component.LocalOpenTmdbKeySettings
 import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
@@ -91,7 +92,6 @@ import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -551,17 +551,17 @@ private fun MuvissScaffold(
 @Composable
 private fun rememberPersistenceWarning(status: PersistenceStatus): PersistenceWarning? {
     val state by status.state.collectAsStateWithLifecycle()
-    val reload = stringResource(Res.string.persistence_reload_to_save)
+    val reload = UiText.Resource(Res.string.persistence_reload_to_save)
     return when (state) {
         PersistenceState.Pending, PersistenceState.Durable -> null
-        PersistenceState.ReadOnlyTab -> PersistenceWarning(stringResource(Res.string.persistence_read_only_tab), reload)
-        PersistenceState.Stale -> PersistenceWarning(stringResource(Res.string.persistence_stale), reload)
-        PersistenceState.NotPersisted -> PersistenceWarning(stringResource(Res.string.persistence_not_persisted), null)
-        PersistenceState.WriteFailed -> PersistenceWarning(stringResource(Res.string.persistence_write_failed), null)
+        PersistenceState.ReadOnlyTab -> PersistenceWarning(UiText.Resource(Res.string.persistence_read_only_tab), reload)
+        PersistenceState.Stale -> PersistenceWarning(UiText.Resource(Res.string.persistence_stale), reload)
+        PersistenceState.NotPersisted -> PersistenceWarning(UiText.Resource(Res.string.persistence_not_persisted), null)
+        PersistenceState.WriteFailed -> PersistenceWarning(UiText.Resource(Res.string.persistence_write_failed), null)
     }
 }
 
-private class PersistenceWarning(val message: String, val actionLabel: String?)
+private class PersistenceWarning(val message: UiText, val actionLabel: UiText?)
 
 private fun configureImageLoader() {
     SingletonImageLoader.setSafe { context -> createImageLoader(context) }
