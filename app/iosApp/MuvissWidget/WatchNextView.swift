@@ -43,9 +43,11 @@ struct WatchNextView: View {
                 message: "Start watching something and it will show up here.",
                 opensNextPick: true
             )
-        } else if entry.rows.allSatisfy({ $0.episodeId == nil }) && entry.justTicked == nil {
+        } else if entry.rows.allSatisfy({ $0.episodeId == nil && !$0.catalogLoaded }) && entry.justTicked == nil {
             // The upgrade case ADR 0015 accepts: titles are in progress but
-            // the catalog table is still empty, so no episode can be named.
+            // their catalogs have not arrived, so no episode can be named.
+            // A loaded catalog with only specials left never reaches here: the
+            // shared use case drops that title.
             EmptyStateView(
                 title: "Open Muviss once",
                 message: "Episode details are downloaded the first time you open the app."

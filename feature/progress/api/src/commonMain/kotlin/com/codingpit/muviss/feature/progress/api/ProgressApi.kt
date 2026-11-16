@@ -56,16 +56,22 @@ data class WatchNextItem(
     val nextEpisode: Episode?,
     val seenCount: Int = 0,
     val airedCount: Int = 0,
+    /**
+     * Whether this title's episode catalog is available (in memory or stored). False means the catalog has not
+     * arrived yet, so [nextEpisode] and [airedCount] are unknown rather than "nothing": a widget says "open the
+     * app" then, and never mistakes it for a caught-up title.
+     */
+    val catalogLoaded: Boolean = false,
 ) {
     /** Fraction of aired episodes seen, for the row's progress bar; null when nothing aired. */
     val progress: Float? get() = if (airedCount > 0) seenCount / airedCount.toFloat() else null
 
     /**
-     * True when the only aired episodes left unseen are season 0 specials (ADR 0037). [nextEpisode] is then null,
-     * so there is nothing to name, and Watch Next and the Progress tab leave the title out rather than prompt for a
-     * special. `airedCount > 0` here also means its catalog has loaded: an empty catalog counts nothing as aired.
+     * True when the catalog has loaded and the only aired episodes left unseen are season 0 specials (ADR 0037).
+     * [nextEpisode] is then null, so there is nothing to name, and Watch Next and the Progress tab leave the title
+     * out rather than prompt for a special. An unloaded catalog is never "only specials".
      */
-    val hasOnlySpecialsLeft: Boolean get() = nextEpisode == null && airedCount > seenCount
+    val hasOnlySpecialsLeft: Boolean get() = catalogLoaded && nextEpisode == null && airedCount > seenCount
 }
 
 /**

@@ -99,6 +99,7 @@ class WatchNextUseCase(
             nextEpisode = EpisodeOrdering.nextUnseen(seasons, seen, today),
             seenCount = aired.count { it.id in seen },
             airedCount = aired.size,
+            catalogLoaded = catalogMap.containsKey(summary.mediaId),
         )
     }
 }

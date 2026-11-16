@@ -204,6 +204,7 @@ class WatchNextUseCaseTest {
             while (item?.nextEpisode == null) item = awaitItem().firstOrNull()
             assertEquals(ep1, item.nextEpisode?.id)
             assertEquals(3, item.airedCount)
+            assertTrue(item.catalogLoaded)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -211,13 +212,20 @@ class WatchNextUseCaseTest {
     /** A title whose catalog has not arrived keeps its row: nothing aired is known, so it is not "only specials". */
     @Test
     fun keeps_a_title_whose_catalog_has_not_arrived() = runTest {
-        val watchNext = useCase(
-            FakeCollectionApi(listOf(collectionSummary(show, title = "Firefly"))),
-            FakeProgressRepository(),
-            catalogs = emptyMap(),
+        // A failed fetch leaves nothing stored or cached, so the catalog is genuinely absent (not loaded but empty).
+        val unavailable = object : EpisodeCatalogSource {
+            override suspend fun fetch(mediaId: MediaId): Result<List<Season>> = Result.failure(IllegalStateException("catalog unavailable"))
+        }
+        val watchNext = WatchNextUseCase(
+            { FakeCollectionApi(listOf(collectionSummary(show, title = "Firefly"))) },
+            ObserveSeenEpisodesUseCase(FakeProgressRepository()),
+            ObserveLastWatchedAtUseCase(FakeProgressRepository()),
+            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(unavailable), InMemoryEpisodeCatalogStore()),
+            FakeClock(today),
         )
 
         val first = watchNext().first().single()
+        assertEquals(false, first.catalogLoaded)
         assertEquals(0, first.airedCount)
         assertEquals(false, first.hasOnlySpecialsLeft)
     }
