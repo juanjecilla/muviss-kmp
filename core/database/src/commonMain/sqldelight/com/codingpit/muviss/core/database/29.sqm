@@ -1,0 +1,17 @@
+-- Whether a triage verdict created the library entry it saved (#767). The filename is the version
+-- this migrates FROM: 29.sqm takes a v29 database to v30 (fixture 30.db).
+--
+-- NUMBERING: claimed when the #767 branch opened, after #724's 28.sqm (Discover's offline cache,
+-- merged); `verifyMigrations` cannot see a collision, so re-check this number against develop
+-- before merging. Rebuilt on develop after #724 squash-merged, so the chain is contiguous from 28.sqm.
+--
+-- Undo used to remove the library entry for any saving verdict. The deck reads its exclusions once
+-- per refill, so a title the person added from Detail while the deck was open could be swiped and
+-- then undone, and the undo would delete an entry the verdict never created. The flag records the
+-- fact at decision time, so undo removes only what the verdict made.
+--
+-- DEFAULT 1 keeps the behaviour every existing row was written under. The deck only offers titles
+-- outside the library, so a saving verdict made before this column existed almost always created
+-- its entry; there is no record to reconstruct the rare exception from. Only a verdict made after
+-- this migration can carry a 0.
+ALTER TABLE triageDecision ADD COLUMN createdEntry INTEGER NOT NULL DEFAULT 1;

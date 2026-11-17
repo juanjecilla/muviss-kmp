@@ -7,11 +7,11 @@ import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
-import com.codingpit.muviss.feature.progress.domain.EpisodeOrdering
 import com.codingpit.muviss.feature.triage.domain.TriageDetailsSource
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails

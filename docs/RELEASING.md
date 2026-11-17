@@ -427,9 +427,31 @@ the schedule, the gates and where a fix goes.
   Scheduled runs read their workflow files and scripts from the default branch,
   which is `develop`, so a change to them takes effect on the first scheduled run
   after it merges there.
-- **Ship release does not self-resolve yet.** Its manual merge (`ship-release.yml`)
-  still uses `gh pr merge`, so a `CHANGELOG.md` conflict there needs a hand
-  resolution on the branch (#717).
+- **Ship release settles a `CHANGELOG.md`-only conflict by merging main into the
+  release branch (#717, #882).** Before it waits, `ship-release.yml` runs
+  `fastlane/release_merge.rb sync BRANCH` in the branch's checkout. When main and
+  the branch conflict only in `CHANGELOG.md`, it merges main in (that file resolved
+  as the union of both sides) and pushes the merge to the branch as the App, with a
+  plain push that refuses a branch that moved. A conflict in any other path holds,
+  naming it, and pushes nothing. A branch that merges cleanly is left alone, since
+  GitHub merges it. Only `ship` pushes; `merge` holds on a conflicting PR and says
+  to run `ship`.
+  **The approval contract.** Every push to a release branch is a new release
+  candidate (`vX.Y.Z-rcN`, built and uploaded to internal). Production gets the
+  newest candidate, so a merge is only allowed when that candidate is built from
+  the approved head (`release_merge.rb rc`). A sync push therefore stops the run:
+  the new candidate has to be tested on internal, and then ship is run again. The
+  approval is given on the head that is then merged; an approval given before a
+  sync does not carry over, because the head has moved. The push gives the PR a new head: its checks run there, and the
+  run waits for an approval of that new head, then merges with GitHub's own merge
+  pinned to it (`--match-head-commit`). Nothing is pushed to main by this job, so
+  there is no ruleset bypass. A merge that fails leaves the checkout clean and pushes
+  nothing. The script it runs is this run's own commit's copy, not the release
+  branch's. The Sunday step still judges the branch head's runs, a gap tracked in #854.
+- **Rehearse the Sunday merge without moving main (#732).** Dispatch
+  `release-promote.yml` with `rehearse` and `version` (`rehearse_push` also puts the
+  merge commit on `rehearsal/X.Y.Z` as the App, then deletes it). It prints the
+  verdict, the tree and the paths the merge changes; main does not move.
 - **Brakes.** `gh workflow run play-promote.yml -f action=halt` stops a production
   rollout (the ramp leaves a halted release alone until `resume`). A
   `release-blocker` issue or PR in the milestone holds the next Sunday step. The

@@ -65,6 +65,7 @@ class SqlDelightTriageDecisionRepository(
             // Re-triaging a restored title revives its row rather than
             // leaving a tombstone that would hide the new decision.
             deleted = false,
+            createdEntry = decision.createdEntry,
         )
         Unit
     }
@@ -93,6 +94,7 @@ class SqlDelightTriageDecisionRepository(
             posterUrl = posterUrl,
             decidedAtEpochMs = decidedAtEpochMs,
             resolved = resolved,
+            createdEntry = createdEntry,
         )
     }
 
