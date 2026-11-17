@@ -27,6 +27,8 @@
     <string name="nextpick_q_era">¿Nueva o clásica?</string>
     <string name="nextpick_era_new">Nueva</string>
     <string name="nextpick_era_classic">Clásica</string>
+    <string name="nextpick_services_only">Solo mis servicios</string>
+    <string name="nextpick_services_hint">Solo mis servicios deja los títulos que se sabe que están en alguno de tus servicios. Los que aún no se sabe si están en uno quedan fuera, y la lista se completa a medida que la selección llega a más de tu biblioteca.</string>
     <string name="nextpick_q_company">¿Quién la ve?</string>
     <string name="nextpick_company_alone">Solo o sola</string>
     <string name="nextpick_company_partner">En pareja</string>
@@ -48,6 +50,7 @@
     <string name="nextpick_outcome_snoozed">Pospuesta una semana</string>
     <string name="nextpick_action_failed">No se ha podido guardar. Inténtalo de nuevo.</string>
     <string name="nextpick_no_pick">Nada encaja con estas respuestas todavía.</string>
+    <string name="nextpick_no_pick_services">Con solo mis servicios, los títulos que aún no se sabe si están en uno de tus servicios quedan fuera. La lista se completa a medida que la selección llega a más de tu biblioteca, así que vuelve a intentarlo más tarde o cambia una respuesta.</string>
     <string name="nextpick_start_again">Empezar de nuevo</string>
     <string name="nextpick_failed">Algo salió mal. Inténtalo de nuevo.</string>
     <string name="nextpick_retry">Reintentar</string>
