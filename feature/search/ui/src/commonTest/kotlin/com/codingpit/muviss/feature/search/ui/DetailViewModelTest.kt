@@ -98,7 +98,16 @@ internal class FakeCollectionApi : CollectionApi {
 
     override suspend fun savedDetails(mediaId: MediaId): MediaDetails? = saved
 
-    override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = membership
+    /** When set, the next membership collection fails before emitting, as a broken library read would. */
+    var failNextMembershipObservation = false
+
+    override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = flow {
+        if (failNextMembershipObservation) {
+            failNextMembershipObservation = false
+            error("library read failed")
+        }
+        emitAll(membership)
+    }
 
     /** Detail must never read the whole library for one title's status (#600); a call here is a regression. */
     override fun observeSummaries(): Flow<List<CollectionSummary>> = error("Detail reads one title's membership, never the whole library (#600)")
@@ -188,14 +197,30 @@ internal class FakeProgressApi : ProgressApi {
     var firstCollectionSnapshot: Set<EpisodeId>? = null
     private var seenCollections = 0
 
+    /** When set, the next seen-episodes collection fails before emitting, as a broken progress read would. */
+    var failNextSeenObservation = false
+
+    /** Collectors of the seen-episodes flow that are running now: a reload must replace one, never add a second. */
+    var activeSeenCollectors = 0
+        private set
+
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = flow {
-        seenReady.first { it }
-        val snapshot = if (seenCollections++ == 0) firstCollectionSnapshot else null
-        if (snapshot != null) {
-            emit(snapshot)
-            awaitCancellation()
+        if (failNextSeenObservation) {
+            failNextSeenObservation = false
+            error("progress read failed")
         }
-        emitAll(plays.map { all -> all.filterValues { it.isNotEmpty() }.keys })
+        activeSeenCollectors++
+        try {
+            seenReady.first { it }
+            val snapshot = if (seenCollections++ == 0) firstCollectionSnapshot else null
+            if (snapshot != null) {
+                emit(snapshot)
+                awaitCancellation()
+            }
+            emitAll(plays.map { all -> all.filterValues { it.isNotEmpty() }.keys })
+        } finally {
+            activeSeenCollectors--
+        }
     }
 
     // Watch-next (EPIC 22) — this fake's subject never asks for it.

@@ -37,10 +37,12 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -210,27 +212,6 @@ class DetailViewModel(
         triageApi.observeSnooze(mediaId)
             .onEach { snooze -> _state.update { it.copy(snoozedUntilEpochDay = snooze?.dueAtEpochDay) } }
             .launchInReporting(viewModelScope)
-        collectionApi.observeMembership(mediaId)
-            .onEach { membership ->
-                _state.update {
-                    it.copy(
-                        membershipLoaded = true,
-                        saved = membership != null,
-                        favorite = membership?.favorite ?: false,
-                        notificationsMuted = membership?.notificationsMuted ?: false,
-                        rating = membership?.rating,
-                        note = membership?.note,
-                        revisitWillingness = membership?.revisitWillingness,
-                        // Derived by the library for this one title (ADR 0005), in the same read as membership.
-                        // Null for a title not in the library, so only a saved, completed title offers "What's next?".
-                        watchStatus = membership?.status,
-                    )
-                }
-            }
-            .launchInReporting(viewModelScope)
-        progressApi.observeSeenEpisodes(mediaId)
-            .onEach { seen -> _state.update { it.copy(seenEpisodes = seen, progressLoaded = true) } }
-            .launchInReporting(viewModelScope)
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
             .launchInReporting(viewModelScope)
@@ -264,6 +245,11 @@ class DetailViewModel(
             } else {
                 _state.update { it.copy(error = null, staleNotice = null) }
             }
+            // The library and progress observers are restarted after the clearing above, never before it: a read
+            // that fails before its first emission sets the error page, and that must not be wiped by this reload.
+            // Without a restart, a read that failed before reporting leaves its button loading for good.
+            observeMembership()
+            observeProgress()
             loadDetail(mediaId).fold(
                 onSuccess = { d -> _state.update { it.copy(loading = false, details = d, staleNotice = null) } },
                 onFailure = { e ->
@@ -279,6 +265,58 @@ class DetailViewModel(
         }
         loadWhereToWatch()
         loadMoreLikeThisRow()
+    }
+
+    /** The library's read of this title (membership, status, user fields). Replaces any earlier collector, so there is never more than one. */
+    private var membershipObservation: Job? = null
+
+    private fun observeMembership() {
+        membershipObservation?.cancel()
+        membershipObservation = collectionApi.observeMembership(mediaId)
+            .onEach { membership ->
+                _state.update {
+                    it.copy(
+                        membershipLoaded = true,
+                        saved = membership != null,
+                        favorite = membership?.favorite ?: false,
+                        notificationsMuted = membership?.notificationsMuted ?: false,
+                        rating = membership?.rating,
+                        note = membership?.note,
+                        revisitWillingness = membership?.revisitWillingness,
+                        // Derived by the library for this one title (ADR 0005), in the same read as membership.
+                        // Null for a title not in the library, so only a saved, completed title offers "What's next?".
+                        watchStatus = membership?.status,
+                    )
+                }
+            }
+            .catch { e ->
+                failedBeforeReporting(e) { it.membershipLoaded }
+                throw e
+            }
+            .launchInReporting(viewModelScope)
+    }
+
+    /** The seen episodes of this title. Replaces any earlier collector; [DetailUiState.progressLoaded] stays false until one emits. */
+    private var progressObservation: Job? = null
+
+    private fun observeProgress() {
+        progressObservation?.cancel()
+        progressObservation = progressApi.observeSeenEpisodes(mediaId)
+            .onEach { seen -> _state.update { it.copy(seenEpisodes = seen, progressLoaded = true) } }
+            .catch { e ->
+                failedBeforeReporting(e) { it.progressLoaded }
+                throw e
+            }
+            .launchInReporting(viewModelScope)
+    }
+
+    /**
+     * A read that dies before it has reported leaves its button on Loading for good, with nothing to retry from. So
+     * it shows the error page instead, and Retry re-subscribes through [load]. Once the read has reported, a later
+     * failure keeps the last answer: that is stale, not broken.
+     */
+    private fun failedBeforeReporting(e: Throwable, reported: (DetailUiState) -> Boolean) {
+        _state.update { if (reported(it)) it else it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) }
     }
 
     /** The library snapshot plus the stored episode catalog, or null for a title that is not saved. */

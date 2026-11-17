@@ -145,6 +145,52 @@ class DetailProgressWritesTest {
     }
 
     /**
+     * A seen read that dies before it reports leaves the button on Loading. The error page shows instead, and Retry
+     * subscribes again: the read reports, and the error clears.
+     */
+    @Test
+    fun a_progress_read_that_fails_before_reporting_shows_an_error_and_retry_resubscribes() = runTest {
+        val progress = FakeProgressApi().apply { failNextSeenObservation = true }
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        assertTrue(vm.state.value.error != null)
+        assertTrue(!vm.state.value.progressLoaded)
+
+        vm.load()
+
+        assertTrue(vm.state.value.progressLoaded)
+        assertNull(vm.state.value.error)
+    }
+
+    /** The same for the library read: without a membership answer the primary action can never leave Loading. */
+    @Test
+    fun a_library_read_that_fails_before_reporting_shows_an_error_and_retry_resubscribes() = runTest {
+        val collection = FakeCollectionApi().apply { failNextMembershipObservation = true }
+        val vm = viewModel(collectionApi = collection, detailsToLoad = tvDetails, id = show)
+
+        assertTrue(vm.state.value.error != null)
+        assertTrue(!vm.state.value.membershipLoaded)
+
+        vm.load()
+
+        assertTrue(vm.state.value.membershipLoaded)
+        assertNull(vm.state.value.error)
+    }
+
+    /** Every reload cancels the previous seen collector before starting its own: there is never more than one. */
+    @Test
+    fun repeated_reloads_keep_exactly_one_progress_collector() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.load()
+        vm.load()
+        vm.load()
+
+        assertEquals(1, progress.activeSeenCollectors)
+    }
+
+    /**
      * A removal queued behind an in-flight tick publishes its Undo after the tick's, so the Undo left on screen is
      * the removal's and tapping it brings the entry back. The tick is held inside the lock by its fresh read.
      */
