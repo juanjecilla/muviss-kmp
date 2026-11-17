@@ -34,7 +34,13 @@ CREATE TABLE triageDecision (
     deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
     -- Whether this verdict created the library entry it saved (#767). Undo removes the entry
     -- only when true, so a title the person added while the deck was open survives. See 29.sqm.
-    createdEntry INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
+    createdEntry INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    -- The added-at stamp of the entry this verdict created, read right after the add. Undo removes the
+    -- entry only while its current stamp still matches (#902). NULL when no entry was created. See 30.sqm.
+    entryAddedAtEpochMs INTEGER,
+    -- Comma-separated EpisodeId strings this verdict newly ticked; undo un-ticks exactly these (#790).
+    -- See 30.sqm.
+    tickedEpisodeIds TEXT NOT NULL DEFAULT ''
 );
 
 -- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
@@ -78,13 +84,16 @@ ORDER BY decidedAtEpochMs ASC;
 upsert:
 -- `createdEntry` is written on every upsert, never left to the column default: an
 -- INSERT OR REPLACE that omitted it would reset a row's claim to 1 (ADR 0010, #767).
+-- `entryAddedAtEpochMs` and `tickedEpisodeIds` are written on every upsert for the same reason (#902, #790).
 INSERT OR REPLACE INTO triageDecision(
     mediaId, mediaType, verdict, title, posterUrl,
-    decidedAtEpochMs, resolved, updatedAtEpochMs, isDirty, deleted, createdEntry
+    decidedAtEpochMs, resolved, updatedAtEpochMs, isDirty, deleted, createdEntry,
+    entryAddedAtEpochMs, tickedEpisodeIds
 )
 VALUES (
     :mediaId, :mediaType, :verdict, :title, :posterUrl,
-    :decidedAtEpochMs, :resolved, :updatedAtEpochMs, :isDirty, :deleted, :createdEntry
+    :decidedAtEpochMs, :resolved, :updatedAtEpochMs, :isDirty, :deleted, :createdEntry,
+    :entryAddedAtEpochMs, :tickedEpisodeIds
 );
 
 markResolved:

@@ -58,6 +58,8 @@ class TriageDecisionSyncTest {
             isDirty = isDirty,
             deleted = false,
             createdEntry = createdEntry,
+            entryAddedAtEpochMs = null,
+            tickedEpisodeIds = "",
         )
     }
 

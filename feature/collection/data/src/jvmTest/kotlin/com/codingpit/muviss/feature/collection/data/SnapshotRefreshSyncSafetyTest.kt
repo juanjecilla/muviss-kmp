@@ -164,7 +164,8 @@ class SnapshotRefreshSyncSafetyTest {
         assertTrue(after.isDirty)
         assertEquals(20_000L, after.updatedAtEpochMs)
         assertEquals(7L, after.rating, "the re-added title keeps what the user said about it")
-        assertEquals(500L, after.addedAtEpochMs)
+        // The re-add is a new add, so it takes the new date rather than the one from the removed row (#902).
+        assertEquals(20_000L, after.addedAtEpochMs)
     }
 
     @Test
