@@ -220,6 +220,9 @@ class ProgressTickFeedbackTest {
         }
 
         tapTick()
+        // The older tick must be inside its held lookup before the newer one is requested. Otherwise
+        // the newer tick could take the held slot, and the test would be asserting a different race.
+        waitUntil(timeoutMillis = 5_000) { olderStarted.isCompleted }
         tapTick()
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("Marked S1E2 seen").fetchSemanticsNodes().isNotEmpty() }
         assertTrue(olderStarted.isCompleted, "the older tick never looked its message up")
