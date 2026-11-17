@@ -832,7 +832,7 @@ class DetailViewModelTest {
 
         vm.markSeasonSeen(tvDetails.seasons.single())
         advanceUntilIdle()
-        vm.dismissUndo()
+        vm.dismissUndo(checkNotNull(vm.state.value.pendingUndo))
 
         assertNull(vm.state.value.pendingUndo)
         assertEquals(2, vm.state.value.seenCountIn(tvDetails.seasons.single()))

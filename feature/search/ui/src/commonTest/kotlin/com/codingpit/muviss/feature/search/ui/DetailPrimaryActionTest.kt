@@ -159,6 +159,14 @@ class DetailPrimaryActionTest {
     }
 
     @Test
+    fun before_progress_reports_seen_episodes_an_unsaved_title_is_loading_not_add() {
+        // The button must not offer "Add to library" before progress has reported, for an unsaved title either (#779).
+        val state = showState(Season(1, "S1", listOf(episode(1, 1, 10L)))).copy(saved = false, progressLoaded = false)
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null), primaryFor(state))
+    }
+
+    @Test
     fun before_progress_reports_seen_episodes_a_saved_show_is_loading_not_its_first_unseen_episode() {
         // The seen set is empty until the first emission, so "Mark S1·E1 seen" would be a lie for a watched episode (#779).
         val first = episode(1, 1, 10L)

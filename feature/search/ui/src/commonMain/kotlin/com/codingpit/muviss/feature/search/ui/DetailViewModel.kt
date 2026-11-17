@@ -561,9 +561,12 @@ class DetailViewModel(
         }
     }
 
-    /** Acknowledges the undo snackbar without undoing anything. */
-    fun dismissUndo() {
-        _state.update { it.copy(pendingUndo = null) }
+    /**
+     * Acknowledges the undo snackbar without undoing anything. Clears only [shown], and only while it is still the
+     * pending Undo: a snackbar that timed out after a newer Undo was offered must not clear that one.
+     */
+    fun dismissUndo(shown: BulkMarkUndo) {
+        _state.update { if (it.pendingUndo === shown) it.copy(pendingUndo = null) else it }
     }
 
     /** "I watched this again": records another viewing, leaving earlier ones intact. */

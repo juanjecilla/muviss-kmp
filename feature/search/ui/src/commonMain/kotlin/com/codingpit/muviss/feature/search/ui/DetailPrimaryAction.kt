@@ -45,9 +45,10 @@ internal sealed interface PrimaryAction {
  */
 internal fun primaryActionFor(state: DetailUiState, todayEpochDay: Long, next: NextEpisodes): PrimaryAction {
     if (!state.membershipLoaded) return loading()
+    // Progress is awaited for an unsaved title too: "Add to library" before the first seen emission would be a guess (#779).
+    if (!state.progressLoaded) return loading()
     if (!state.saved) return PrimaryAction.Add
     val details = state.details ?: return loading()
-    if (!state.progressLoaded) return loading()
     if (details.type == MediaType.MOVIE) {
         return if (state.movieWatched) PrimaryAction.WatchedAgain(state.moviePlayCount) else PrimaryAction.MarkMovieWatched
     }

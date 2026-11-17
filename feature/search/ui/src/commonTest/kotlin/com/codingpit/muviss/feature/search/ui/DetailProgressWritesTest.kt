@@ -166,6 +166,25 @@ class DetailProgressWritesTest {
     }
 
     /**
+     * A snackbar that timed out after a newer tick offered its Undo must not clear that newer Undo. Dismissing
+     * the stale record leaves the pending one in place.
+     */
+    @Test
+    fun a_dismiss_for_a_replaced_undo_leaves_the_newer_one_pending() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        val stale = checkNotNull(vm.state.value.pendingUndo)
+        vm.toggleEpisodeSeen(episode2.id)
+        val pendingSecond = vm.state.value.pendingUndo
+
+        vm.dismissUndo(stale)
+
+        assertTrue(vm.state.value.pendingUndo === pendingSecond)
+    }
+
+    /**
      * An Undo tapped for the first tick must not reverse the second one: the second tick replaced the pending Undo
      * before the first Undo got the lock, so the tap is stale and writes nothing.
      */
