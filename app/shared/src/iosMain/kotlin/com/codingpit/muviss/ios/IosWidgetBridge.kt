@@ -35,6 +35,8 @@ data class IosWidgetRow(
     val episodeId: String?,
     val seenCount: Int,
     val airedCount: Int,
+    /** False while the title's catalog has not arrived: the widget then says "open the app" rather than "nothing". */
+    val catalogLoaded: Boolean,
 )
 
 /**
@@ -129,6 +131,7 @@ object IosWidgetBridge : KoinComponent {
                     episodeId = item.nextEpisode?.id?.toString(),
                     seenCount = item.seenCount,
                     airedCount = item.airedCount,
+                    catalogLoaded = item.catalogLoaded,
                 )
             }
         }
