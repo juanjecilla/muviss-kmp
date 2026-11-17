@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.search.ui
 
+import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.search.domain.DiscoverCache
@@ -21,6 +22,8 @@ import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -72,12 +75,14 @@ class ForYouOfflineViewModelTest {
         },
     )
 
+    @Suppress("LongParameterList") // one argument per fake; the connectivity signal is the one #924 added
     private fun viewModel(
         repo: FakeRepo,
         cache: DiscoverCache,
         library: FakeSearchCollectionApi,
         settings: FakeMutingApi = FakeMutingApi(),
         triage: FakeTriageApi = FakeTriageApi(),
+        connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
     ) = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
@@ -86,6 +91,7 @@ class ForYouOfflineViewModelTest {
         triage,
         settings,
         DiscoverFeed(repo, cache, FakeClock(epochMs = 1_000L)),
+        connectivity = connectivity,
     )
 
     @Test
@@ -150,6 +156,56 @@ class ForYouOfflineViewModelTest {
 
         assertEquals(listOf(recommended), vm.state.value.forYou)
         assertEquals(listOf(recommended.id), cache.forYou(listOf(seed))?.single()?.items?.map { it.id }, "what TMDB answered is stored for the next offline open")
+    }
+
+    /** #924: a seed that failed while offline is asked again when the connection returns, and only that seed. */
+    @Test
+    fun a_reconnection_asks_again_for_a_seed_that_failed_offline() = runTest {
+        val online = MutableStateFlow(false)
+        var reachable = false
+        val asks = Asks()
+        val repo = FakeRepo(recommendationsResult = { id ->
+            asks.seeds += id
+            if (reachable) Result.success(PagedResult(listOf(recommended), 1, 1)) else Result.failure(MetadataError.Offline())
+        })
+
+        val vm = viewModel(repo, ForYouMemoryCache(), FakeSearchCollectionApi(listOf(favorite(seed))), connectivity = monitorOf(online))
+        advanceUntilIdle()
+        assertEquals(emptyList(), vm.state.value.forYou)
+        assertEquals(listOf(seed), asks.seeds)
+
+        reachable = true
+        online.value = true
+        advanceUntilIdle()
+
+        assertEquals(listOf(recommended), vm.state.value.forYou, "the seed is asked again once the connection is back")
+        assertEquals(listOf(seed, seed), asks.seeds, "one more request, for the seed that failed")
+    }
+
+    /** #924: Discover's Retry refreshes For you too, even when its stored copy is still fresh. */
+    @Test
+    fun a_retry_on_discover_asks_for_every_for_you_seed_even_when_its_copy_is_fresh() = runTest {
+        val cache = ForYouMemoryCache()
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 1_000L)))
+        val asks = Asks()
+        val repo = FakeRepo(recommendationsResult = { id ->
+            asks.seeds += id
+            Result.success(PagedResult(listOf(talkShow), 1, 1))
+        })
+        val vm = viewModel(repo, cache, FakeSearchCollectionApi(listOf(favorite(seed))))
+        advanceUntilIdle()
+        assertEquals(listOf(recommended), vm.state.value.forYou)
+        assertEquals(emptyList(), asks.seeds, "a fresh copy is answered without a request")
+
+        vm.retry()
+        advanceUntilIdle()
+
+        assertEquals(listOf(seed), asks.seeds, "Retry asks TMDB for the seed although its copy is fresh")
+        assertEquals(listOf(talkShow), vm.state.value.forYou)
+    }
+
+    private fun monitorOf(online: Flow<Boolean>) = object : ConnectivityMonitor {
+        override val isOnline: Flow<Boolean> = online
     }
 
     /**

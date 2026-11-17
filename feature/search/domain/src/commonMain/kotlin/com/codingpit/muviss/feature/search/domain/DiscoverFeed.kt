@@ -136,24 +136,35 @@ class DiscoverFeed(
 
     /**
      * [seeds]' answers after a refresh. Only a seed whose stored answer is missing or past [TTL_MS] is asked of
-     * TMDB, so a library change that keeps the seed set costs no request. A seed that fails keeps its stored answer
-     * with its old fetch time, so it stays due; with nothing stored it contributes nothing. What succeeded is
-     * stored. Returned in [seeds]' order.
+     * TMDB, so a library change that keeps the seed set costs no request. [force] asks every seed instead: Discover's
+     * Retry and Refresh do (#924). A seed that fails keeps its stored answer with its old fetch time, so it stays
+     * due; with nothing stored it contributes nothing. What succeeded is stored. Returned in [seeds]' order.
      */
     suspend fun refreshForYou(
         seeds: List<MediaId>,
         stored: List<ForYouAnswer>?,
+        force: Boolean = false,
         recommendations: suspend (MediaId) -> Result<PagedResult<MediaSummary>>,
     ): List<ForYouAnswer> {
         val now = clock.nowEpochMs()
         val byId = stored.orEmpty().associateBy { it.seed }
-        val due = seeds.filter { seed -> byId[seed]?.let { now - it.fetchedAtEpochMs > TTL_MS } ?: true }
+        val due = seeds.filter { seed -> force || (byId[seed]?.let { now - it.fetchedAtEpochMs > TTL_MS } ?: true) }
         val asked = due.associateWith { seed -> recommendations(seed).map { it.items } }
         val answers = seeds.mapNotNull { seed ->
             asked[seed]?.getOrNull()?.let { ForYouAnswer(seed, it, now) } ?: byId[seed]
         }
         if (asked.values.any { it.isSuccess }) cache.saveForYou(seeds, answers)
         return answers
+    }
+
+    /**
+     * True while a seed is still owed after [answers]: its answer is missing or still past [TTL_MS], which is what a
+     * seed whose request failed looks like. The next reconnection asks again only when this holds (#924).
+     */
+    fun forYouStillOwed(seeds: List<MediaId>, answers: List<ForYouAnswer>): Boolean {
+        val now = clock.nowEpochMs()
+        val byId = answers.associateBy { it.seed }
+        return seeds.any { seed -> byId[seed]?.let { now - it.fetchedAtEpochMs > TTL_MS } ?: true }
     }
 
     /**
