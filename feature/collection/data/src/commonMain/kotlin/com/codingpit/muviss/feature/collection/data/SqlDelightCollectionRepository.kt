@@ -78,7 +78,11 @@ class SqlDelightCollectionRepository(
             favorite = existing?.favorite ?: false,
             genres = details.genres.joinToString(","),
             runtimeMinutes = details.estimatedRuntimeMinutes()?.toLong(),
-            addedAtEpochMs = existing?.addedAtEpochMs ?: now,
+            // A re-add of a removed title is a new add, so it gets a new stamp. Triage's undo compares this
+            // stamp to decide whether the entry is still the one a verdict created (#902), so keeping the old
+            // one here would let undo remove an entry the person removed and added back. Undoing a removal
+            // (`restore`) keeps the original stamp, which is the path that is meant to.
+            addedAtEpochMs = now,
             // A genuine user action — a new title, or a removed one added back — so it is stamped and synced.
             updatedAtEpochMs = now,
             isDirty = true,

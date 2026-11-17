@@ -10,6 +10,7 @@ import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.TriageDecision
 import com.codingpit.muviss.feature.triage.domain.TriageDecisionRepository
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -66,6 +67,8 @@ class SqlDelightTriageDecisionRepository(
             // leaving a tombstone that would hide the new decision.
             deleted = false,
             createdEntry = decision.createdEntry,
+            entryAddedAtEpochMs = decision.entryAddedAtEpochMs,
+            tickedEpisodeIds = decision.tickedEpisodeIds.joinToString(separator = TICKED_SEPARATOR) { it.toString() },
         )
         Unit
     }
@@ -95,8 +98,22 @@ class SqlDelightTriageDecisionRepository(
             decidedAtEpochMs = decidedAtEpochMs,
             resolved = resolved,
             createdEntry = createdEntry,
+            entryAddedAtEpochMs = entryAddedAtEpochMs,
+            tickedEpisodeIds = tickedEpisodeIds.toEpisodeIds(),
         )
     }
 
     private fun String.toMediaIdOrNull(): MediaId? = runCatching { MediaId.parse(this) }.getOrNull()
+
+    // An EpisodeId never contains a comma (see 30.sqm). A piece that does not parse is dropped rather
+    // than failing the whole row: losing one un-tick is better than losing the decision.
+    private fun String.toEpisodeIds(): List<EpisodeId> = if (isEmpty()) {
+        emptyList()
+    } else {
+        split(TICKED_SEPARATOR).mapNotNull { runCatching { EpisodeId.parse(it) }.getOrNull() }
+    }
+
+    private companion object {
+        const val TICKED_SEPARATOR = ","
+    }
 }

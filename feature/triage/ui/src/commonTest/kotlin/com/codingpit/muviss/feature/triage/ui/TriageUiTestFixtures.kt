@@ -61,6 +61,7 @@ import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -229,16 +230,31 @@ internal class FakeCollectionApi : CollectionApi {
     val added = mutableListOf<MediaId>()
     val removed = mutableListOf<MediaId>()
 
-    override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = MutableStateFlow(null)
+    /** Each add that makes a new entry stamps it, so undo can tell the entry the verdict made from a later one (#902). */
+    private var nextAddedAt = 1_000L
+
+    override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = summaries.map { all ->
+        all.firstOrNull { it.mediaId == mediaId }?.let { CollectionMembership(it.mediaId, favorite = false) }
+    }
 
     override fun observeSummaries(): Flow<List<CollectionSummary>> = summaries
 
     override suspend fun add(details: MediaDetails) {
         added += details.id
+        if (summaries.value.none { it.mediaId == details.id }) {
+            summaries.value = summaries.value + CollectionSummary(
+                mediaId = details.id,
+                title = details.summary.title,
+                posterUrl = details.summary.posterUrl,
+                status = WatchStatus.NOT_STARTED,
+                addedAtEpochMs = nextAddedAt++,
+            )
+        }
     }
 
     override suspend fun remove(mediaId: MediaId) {
         removed += mediaId
+        summaries.value = summaries.value.filterNot { it.mediaId == mediaId }
     }
 
     override suspend fun setFavorite(mediaId: MediaId, favorite: Boolean) = Unit

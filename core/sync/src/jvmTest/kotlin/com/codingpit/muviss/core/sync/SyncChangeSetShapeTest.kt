@@ -35,4 +35,19 @@ class SyncChangeSetShapeTest {
             "adding a table to sync is a deliberate act — see ADR 0009's six touchpoints, and ADR 0015 for why the episode catalog is not one of them",
         )
     }
+
+    /**
+     * A column is a wire change too: a push that drops a key leaves the server's value alone, so a renamed or
+     * forgotten field would silently stop syncing. #902 and #790 added these two to a decision.
+     */
+    @Test
+    fun `a triage decision change carries the entry stamp and the ticks its verdict wrote`() {
+        assertEquals(
+            listOf(
+                "media_id", "media_type", "verdict", "title", "poster_url", "decided_at_epoch_ms", "resolved",
+                "updated_at_epoch_ms", "deleted", "created_entry", "entry_added_at_epoch_ms", "ticked_episode_ids",
+            ),
+            TriageDecisionChange.serializer().descriptor.elementNames.toList(),
+        )
+    }
 }
