@@ -147,4 +147,7 @@ jobs:
       - name: Analyze
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
+          # By default CodeQL takes ~14.5 GB of the runner's 16 GB. Leave room for
+          # the runner agent and for hosts with no swap (#892).
+          ram: 12000
           category: /language:${{ matrix.language }}
