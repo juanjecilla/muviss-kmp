@@ -547,13 +547,14 @@ class DetailViewModel(
      * Takes back what the last action wrote: exactly the ticks it made, the entry it created (a tick on an
      * unsaved title), or the removal it made. Nothing else is touched.
      */
-    fun undoBulkMark() {
-        // Read under the lock: an Undo tapped while a tick is still writing must see the Undo that tick publishes.
+    fun undoBulkMark(shown: BulkMarkUndo) {
+        // Bound to the Undo the person tapped, not whatever is pending once the lock is free: a write queued ahead
+        // of this tap may have replaced it, and undoing that one would reverse an action this tap never saw.
         launchWrite {
-            val undo = _state.value.pendingUndo ?: return@launchWrite
-            if (undo.episodeIds.isNotEmpty()) progressApi.undoBulkMark(undo.episodeIds)
-            if (undo.removedFromLibrary) collectionApi.restore(mediaId)
-            if (undo.createdEntry) collectionApi.remove(mediaId)
+            if (_state.value.pendingUndo !== shown) return@launchWrite
+            if (shown.episodeIds.isNotEmpty()) progressApi.undoBulkMark(shown.episodeIds)
+            if (shown.removedFromLibrary) collectionApi.restore(mediaId)
+            if (shown.createdEntry) collectionApi.remove(mediaId)
             _state.update { it.copy(pendingUndo = null) }
         }
     }

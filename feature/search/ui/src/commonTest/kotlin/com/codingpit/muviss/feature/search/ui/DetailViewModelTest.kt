@@ -618,7 +618,7 @@ class DetailViewModelTest {
         val first = vm.state.value.celebration
 
         // Undo takes the tick back (a seen episode is no longer a checkmark to toggle), then the same episode is ticked again.
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
         advanceUntilIdle()
         vm.toggleEpisodeSeen(episode2.id)
         advanceUntilIdle()
@@ -710,7 +710,7 @@ class DetailViewModelTest {
         // Names the season, rather than showing a raw template to the user.
         assertEquals("${season.name} marked seen", undo.message.text())
 
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
         advanceUntilIdle()
 
         assertTrue(vm.state.value.isSeen(episode1.id), "the undo took back only what the bulk mark wrote")
@@ -975,7 +975,7 @@ class DetailViewModelTest {
 
         vm.markMovieWatched()
         assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
 
         assertEquals(listOf(mediaId), collection.removed)
         assertTrue(progress.seenIds.isEmpty())
@@ -989,7 +989,7 @@ class DetailViewModelTest {
 
         vm.markMovieWatched()
         assertEquals(false, vm.state.value.pendingUndo?.createdEntry)
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
 
         assertTrue(collection.removed.isEmpty())
     }
@@ -1004,7 +1004,7 @@ class DetailViewModelTest {
         assertEquals(listOf(mediaId), collection.removed)
         assertEquals(true, vm.state.value.pendingUndo?.removedFromLibrary)
 
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
 
         assertEquals(listOf(mediaId), collection.restored)
         assertTrue(collection.removed.size == 1)

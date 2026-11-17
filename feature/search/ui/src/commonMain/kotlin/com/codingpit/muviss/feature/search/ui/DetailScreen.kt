@@ -214,7 +214,7 @@ fun DetailScreen(
     LaunchedEffect(state.pendingUndo) {
         val undo = state.pendingUndo ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(undo.message.resolveAsync(), actionLabel = getString(Res.string.action_undo), duration = SnackbarDuration.Short)
-        if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark() else viewModel.dismissUndo()
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark(undo) else viewModel.dismissUndo()
     }
 
     Box(Modifier.fillMaxSize()) {

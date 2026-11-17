@@ -111,7 +111,7 @@ class DetailProgressWritesTest {
         assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
         vm.toggleEpisodeSeen(episode2.id)
         assertEquals(false, vm.state.value.pendingUndo?.createdEntry)
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
 
         // The entry is kept, and Undo takes back the latest tick (episode 2), not the one the entry was created for.
         assertTrue(collection.removed.isEmpty())
@@ -125,7 +125,7 @@ class DetailProgressWritesTest {
 
         vm.toggleEpisodeSeen(episode1.id)
         assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
 
         assertTrue(progress.seenIds.isEmpty())
     }
@@ -138,10 +138,30 @@ class DetailProgressWritesTest {
 
         vm.toggleEpisodeSeen(episode1.id)
         assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
 
         assertEquals(listOf(show), collection.removed)
         assertTrue(progress.seenIds.isEmpty())
+    }
+
+    /**
+     * An Undo tapped for the first tick must not reverse the second one: the second tick replaced the pending Undo
+     * before the first Undo got the lock, so the tap is stale and writes nothing.
+     */
+    @Test
+    fun an_undo_tapped_for_an_earlier_tick_does_nothing_once_a_later_tick_replaced_it() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        val tappedFirst = checkNotNull(vm.state.value.pendingUndo)
+        vm.toggleEpisodeSeen(episode2.id)
+        val pendingSecond = vm.state.value.pendingUndo
+
+        vm.undoBulkMark(tappedFirst)
+
+        assertEquals(setOf(episode1.id, episode2.id), progress.seenIds)
+        assertTrue(vm.state.value.pendingUndo === pendingSecond)
     }
 
     @Test
@@ -246,9 +266,10 @@ class DetailProgressWritesTest {
 
         vm.tickNext(episode1.id)
         assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
+        val tapped = checkNotNull(vm.state.value.pendingUndo)
         vm.recordRewatch(episode1.id)
         assertNull(vm.state.value.pendingUndo)
-        vm.undoBulkMark()
+        vm.undoBulkMark(tapped)
 
         // Undo would have removed the newest viewing, which is the rewatch; both viewings must remain.
         assertEquals(2, progress.observePlayCounts(show).first()[episode1.id])
