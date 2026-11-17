@@ -119,7 +119,7 @@
     <string name="tick_next_seen">T%1$d·E%2$d marcado como visto</string>
     <string name="removed_from_library">Quitada de la biblioteca</string>
     <plurals name="specials_unseen">
-        <item quantity="one">%d sin ver</item>
-        <item quantity="other">%d sin ver</item>
+        <item quantity="one">%1$d sin ver</item>
+        <item quantity="other">%1$d sin ver</item>
     </plurals>
 </resources>

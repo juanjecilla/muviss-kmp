@@ -678,16 +678,6 @@ class DetailViewModel(
             releaseEntry()
         }
     }
-
-    /** Toggles a movie's watched flag. */
-    fun toggleMovieWatched() {
-        launchWrite {
-            val watched = _state.value.movieWatched
-            if (!watched) addIfAbsent()
-            progressApi.tickMovie(mediaId, !watched)
-            releaseEntry()
-        }
-    }
 }
 
 /**

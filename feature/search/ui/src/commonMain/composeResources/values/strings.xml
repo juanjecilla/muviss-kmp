@@ -137,7 +137,7 @@
     <string name="tick_next_seen">Marked S%1$d·E%2$d seen</string>
     <string name="removed_from_library">Removed from library</string>
     <plurals name="specials_unseen">
-        <item quantity="one">%d unseen</item>
-        <item quantity="other">%d unseen</item>
+        <item quantity="one">%1$d unseen</item>
+        <item quantity="other">%1$d unseen</item>
     </plurals>
 </resources>

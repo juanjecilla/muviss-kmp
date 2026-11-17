@@ -3,11 +3,15 @@
 package com.codingpit.muviss.feature.collection.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.turbine.test
+import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.common.widget.NoOpWidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.model.CountedProgress
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
+import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -18,6 +22,7 @@ import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -147,5 +152,57 @@ class SpecialsCountingIntegrationTest {
         val stored = library.database.collectionEntryQueries.selectById(show.toString()).awaitAsOne()
         assertEquals(1L, stored.airedEpisodes, "a special tick must not raise the snapshot's aired count")
         assertEquals(1, library.entry().airedEpisodes)
+    }
+
+    @Test
+    fun a_special_that_airs_at_midnight_is_counted_without_a_write() = runTest {
+        // 23:59:59 on day 1000. The special airs on day 1001 and is never ticked, so the title is Watched until the clock
+        // passes midnight, and Watching after, with no write in between (#951).
+        val database = inMemoryDatabase()
+        val clock = FakeClock(epochMsAtStartOfDay(1_000L) + 86_399_000L)
+        val repository = SqlDelightCollectionRepository(database.collectionEntryQueries, ImmediateDispatchers(UnconfinedTestDispatcher(testScheduler)), clock)
+        database.setSpecialsCounted(true)
+        repository.upsertSnapshot(
+            MediaDetails(
+                summary = MediaSummary(show, "Show"),
+                productionStatus = ProductionStatus.RETURNING,
+                seasons = listOf(
+                    Season(0, "Specials", listOf(Episode(special, 0, 1, "Special", airDateEpochDay = 1_001L))),
+                    Season(1, "Season 1", listOf(Episode(regular1, 1, 1, "E1", airDateEpochDay = 900L))),
+                ),
+            ),
+        )
+        database.episodeQueries.upsert(special.toString(), show.toString(), 0L, "Specials", 1L, "Special", 1_001L, null, null, 1L)
+        database.tick(regular1)
+
+        repository.observeEntry(show).test {
+            assertEquals(WatchStatus.WATCHED, awaitItem()!!.status)
+
+            clock.advanceBy(1_000L)
+            this@runTest.advanceTimeBy(1_000L)
+
+            assertEquals(WatchStatus.WATCHING, awaitItem()!!.status)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun profile_stats_count_a_special_tick_whatever_the_setting() = runTest {
+        // Stats describe what was watched, not progress: a special's viewing is a Play, read whatever the setting says (#950, ADR 0038).
+        val database = inMemoryDatabase()
+        val clock = FakeClock(epochMsAtStartOfDay(1_000L))
+        val progress = SqlDelightProgressRepository(
+            database.episodeProgressQueries,
+            database.episodePlayQueries,
+            ImmediateDispatchers(UnconfinedTestDispatcher(testScheduler)),
+            clock,
+            NoOpWidgetRefresher,
+        )
+        database.setSpecialsCounted(false)
+        progress.setSeen(special, seen = true)
+        assertEquals(setOf(1_000L), progress.observeSeenActivityEpochDays().first())
+
+        database.setSpecialsCounted(true)
+        assertEquals(setOf(1_000L), progress.observeSeenActivityEpochDays().first())
     }
 }
