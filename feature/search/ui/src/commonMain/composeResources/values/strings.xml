@@ -125,6 +125,8 @@
     <string name="primary_mark_next">Mark S%1$d·E%2$d seen</string>
     <string name="primary_mark_next_a11y">Mark season %1$d episode %2$d as seen</string>
     <string name="primary_caught_up">Caught up ✓</string>
+    <string name="primary_special_unseen">Special unseen</string>
+    <string name="primary_special_unseen_a11y">Go to the unseen special, episode %1$d</string>
     <string name="primary_next_up">Next: S%1$d·E%2$d · %3$s</string>
     <string name="primary_not_aired">Not aired yet</string>
     <string name="primary_premieres">Premieres %1$s</string>

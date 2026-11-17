@@ -2,8 +2,12 @@ package com.codingpit.muviss.feature.search.ui
 
 import com.codingpit.muviss.feature.progress.api.NextEpisodes
 import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.WatchStatus
+
+/** TMDB's season number for "Specials" (ADR 0037): aired and ticked from the list, never "next". */
+internal const val SPECIALS_SEASON_NUMBER = 0
 
 /**
  * What Detail's one filled button does, read from the library state (ADR 0037, #721). It changes with the
@@ -21,6 +25,12 @@ internal sealed interface PrimaryAction {
 
     /** A show with an aired episode still unseen: one tick on [episode], the next one in order. */
     data class TickNext(val episode: Episode) : PrimaryAction
+
+    /**
+     * Every regular episode is seen but an aired special is not (ADR 0037, #797). The button scrolls to the Specials
+     * season, which is expanded so [special] can be ticked from its row. [special] is the first unseen one.
+     */
+    data class SpecialUnseen(val special: Episode) : PrimaryAction
 
     /** Nothing to tick, so the button is disabled and says why. [next] is the next announced episode, if any. */
     data class Waiting(val reason: Reason, val next: Episode?) : PrimaryAction {
@@ -58,12 +68,20 @@ internal fun primaryActionFor(state: DetailUiState, todayEpochDay: Long, next: N
     val anythingAired = details.seasons.any { season -> season.episodes.any { it.hasAired(todayEpochDay) } }
 
     next.aired?.let { return PrimaryAction.TickNext(it) }
+    // The next-episode answer skips specials, so with only one left the title would read "Caught up" while WatchStatus
+    // still counts it (ADR 0037). Finished cannot hold here: it needs every aired special seen too.
+    firstUnseenSpecial(details, state, todayEpochDay)?.let { return PrimaryAction.SpecialUnseen(it) }
     return when {
         state.watchStatus == WatchStatus.FINISHED -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Finished, null)
         !anythingAired -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.NotAiredYet, next.announced)
         else -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, next.announced)
     }
 }
+
+private fun firstUnseenSpecial(details: MediaDetails, state: DetailUiState, todayEpochDay: Long): Episode? = details.seasons
+    .firstOrNull { it.number == SPECIALS_SEASON_NUMBER }
+    ?.episodes
+    ?.firstOrNull { it.hasAired(todayEpochDay) && !state.isSeen(it.id) }
 
 private fun loading() = PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null)
 

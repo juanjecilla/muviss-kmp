@@ -109,6 +109,8 @@
     <string name="primary_caught_up">Al día ✓</string>
     <string name="primary_next_up">Siguiente: T%1$d·E%2$d · %3$s</string>
     <string name="primary_not_aired">Aún no se ha emitido</string>
+    <string name="primary_special_unseen">Especial sin ver</string>
+    <string name="primary_special_unseen_a11y">Ir al especial sin ver, episodio %1$d</string>
     <string name="primary_premieres">Se estrena el %1$s</string>
     <string name="primary_finished">Terminada ✓</string>
     <string name="primary_loading">Cargando…</string>
