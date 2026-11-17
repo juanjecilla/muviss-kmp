@@ -45,6 +45,11 @@ adb_() { "$ADB" $(adb_device_flag) "$@"; }
 pull_database() {
   local out="${1:?usage: pull_database <dir>}"
   mkdir -p "$out"
+  if local_target; then
+    local_session_db "$out"
+    echo "$out/muviss.db"
+    return
+  fi
   local f
   for f in muviss.db muviss.db-wal muviss.db-shm; do
     adb_ exec-out run-as "$PKG" cat "databases/$f" > "$out/$f" 2>/dev/null || true
@@ -63,6 +68,7 @@ pull_database() {
 # is linked" is how a check meant for dev lands on prod.
 #
 #   MUVISS_SUPABASE_TARGET=prod MUVISS_I_MEAN_PROD=yes scripts/sync/...   # prod, deliberately
+#   MUVISS_SUPABASE_TARGET=local scripts/sync/...                       # the stack `supabase start` runs (#287)
 #   SUPABASE_PROJECT_REF=<ref> scripts/sync/...                         # anything else
 MUVISS_DEV_REF="mnleklzanxxpvmakrbxv"   # "Muviss dev"
 MUVISS_PROD_REF="sodjedenvnvsuktbxevt"  # "Muviss app" — real users' data
@@ -79,7 +85,8 @@ resolve_project_ref() {
     case "${MUVISS_SUPABASE_TARGET:-dev}" in
       dev) ref="$MUVISS_DEV_REF" ;;
       prod) ref="$MUVISS_PROD_REF" ;;
-      *) echo "MUVISS_SUPABASE_TARGET must be dev or prod" >&2; return 1 ;;
+      local) ref="local" ;;
+      *) echo "MUVISS_SUPABASE_TARGET must be dev, prod or local" >&2; return 1 ;;
     esac
   fi
   if [ "$ref" = "$MUVISS_PROD_REF" ] && [ "${MUVISS_I_MEAN_PROD:-}" != yes ]; then
@@ -91,7 +98,44 @@ resolve_project_ref() {
 resolve_project_ref || exit 1
 project_ref() { echo "$MUVISS_PROJECT_REF"; }
 
+# ------------------------------------------------------------------ local ---
+
+# The local stack (`supabase start`, from this repo's config). The scripts run
+# unchanged against it: there is no device, so the "signed-in session" is a
+# throwaway account created through the local admin API, and its access token
+# goes into a stand-in database with the one table `access_token` reads. Only
+# ever the local API URL, never a hosted one.
+local_target() { [ "$MUVISS_PROJECT_REF" = local ]; }
+
+# One field of `supabase status`, e.g. local_status API_URL.
+local_status() {
+  supabase status -o json 2>/dev/null \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['$1'])"
+}
+
+# Creates a fresh local account, signs it in, and writes the token into
+# $1/muviss.db. Nothing is printed: the password and token stay in the process.
+local_session_db() {
+  local out=$1 api svc anon email pw tok
+  api=$(local_status API_URL); svc=$(local_status SERVICE_ROLE_KEY); anon=$(local_status ANON_KEY)
+  email="sync-probe-$(python3 -c 'import secrets;print(secrets.token_hex(6))')@muviss.test"
+  pw=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')
+  curl -s -o /dev/null -X POST "$api/auth/v1/admin/users" \
+    -H "apikey: $svc" -H "Authorization: Bearer $svc" -H "Content-Type: application/json" \
+    -d "{\"email\":\"$email\",\"password\":\"$pw\",\"email_confirm\":true}"
+  tok=$(curl -s -X POST "$api/auth/v1/token?grant_type=password" \
+    -H "apikey: $anon" -H "Content-Type: application/json" \
+    -d "{\"email\":\"$email\",\"password\":\"$pw\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))")
+  rm -f "$out/muviss.db"
+  sqlite3 "$out/muviss.db" "CREATE TABLE syncAccount(accessToken TEXT); INSERT INTO syncAccount VALUES('$tok');"
+}
+
 anon_key() {
+  if local_target; then
+    local_status ANON_KEY
+    return
+  fi
   supabase projects api-keys --project-ref "$(project_ref)" -o json 2>/dev/null \
     | python3 -c "import sys,json;print(next(k['api_key'] for k in json.load(sys.stdin) if k.get('name')=='anon'))"
 }
@@ -102,4 +146,10 @@ access_token() {
   sqlite3 "$db" "SELECT COALESCE(accessToken,'') FROM syncAccount;" 2>/dev/null
 }
 
-rest_url() { echo "https://$(project_ref).supabase.co/rest/v1"; }
+rest_url() {
+  if local_target; then
+    echo "$(local_status API_URL)/rest/v1"
+    return
+  fi
+  echo "https://$(project_ref).supabase.co/rest/v1"
+}
