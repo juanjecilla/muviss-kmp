@@ -6,6 +6,7 @@ import com.codingpit.muviss.core.network.DefaultMetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.core.testing.inMemoryDriver
+import com.codingpit.muviss.feature.search.domain.ForYouAnswer
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -15,6 +16,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /** #724: what Discover stores round-trips, is keyed by language, and a row that no longer decodes is a miss. */
@@ -28,7 +30,7 @@ class SqlDelightDiscoverCacheTest {
 
     private val database = inMemoryDatabase()
     private val locale = MutableMetadataLocale()
-    private val cache = SqlDelightDiscoverCache(database.discoverCacheQueries, locale, dispatchers)
+    private val cache = SqlDelightDiscoverCache(database.discoverCacheQueries, database.forYouCacheQueries, locale, dispatchers)
 
     @Test
     fun genres_and_a_popular_page_read_back_as_they_were_stored() = runTest {
@@ -69,7 +71,7 @@ class SqlDelightDiscoverCacheTest {
 
     @Test
     fun the_default_locale_is_what_a_fresh_install_reads_in() = runTest {
-        val fresh = SqlDelightDiscoverCache(database.discoverCacheQueries, DefaultMetadataLocale(), dispatchers)
+        val fresh = SqlDelightDiscoverCache(database.discoverCacheQueries, database.forYouCacheQueries, DefaultMetadataLocale(), dispatchers)
 
         fresh.saveGenres(MediaType.TV, emptyList(), fetchedAtEpochMs = 1L)
 
@@ -91,10 +93,79 @@ class SqlDelightDiscoverCacheTest {
         // A table that is gone makes every write throw: the answer must still come back to the caller.
         val driver = inMemoryDriver()
         driver.execute(null, "DROP TABLE discoverCache", 0)
-        val broken = SqlDelightDiscoverCache(MuvissDatabase(driver).discoverCacheQueries, locale, dispatchers)
+        val broken = SqlDelightDiscoverCache(MuvissDatabase(driver).discoverCacheQueries, MuvissDatabase(driver).forYouCacheQueries, locale, dispatchers)
 
         broken.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 1L)
         broken.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), fetchedAtEpochMs = 1L)
         // Reaching this line without an exception is the assertion: a write that threw would have failed the test.
+    }
+
+    private val seedA = MediaId.tmdbMovie("1")
+    private val seedB = MediaId.tmdbMovie("2")
+    private val seedC = MediaId.tmdbMovie("3")
+
+    private fun answer(seed: MediaId, fetchedAtEpochMs: Long, vararg titles: String) = ForYouAnswer(seed, titles.map { MediaSummary(MediaId.tmdbMovie(it), it) }, fetchedAtEpochMs)
+
+    @Test
+    fun a_for_you_copy_reads_back_in_seed_order_with_each_seeds_fetch_time() = runTest {
+        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 5L, "10"), answer(seedB, 7L, "20")))
+
+        val read = cache.forYou(listOf(seedB, seedA))
+
+        assertEquals(listOf(seedA, seedB), read?.map { it.seed }, "the seeds are a set; the answers come back in the order they were stored")
+        assertEquals(listOf(5L, 7L), read?.map { it.fetchedAtEpochMs })
+        assertEquals(listOf(MediaId.tmdbMovie("10")), read?.first()?.items?.map { it.id })
+    }
+
+    @Test
+    fun a_different_seed_set_or_language_is_a_miss() = runTest {
+        cache.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")))
+
+        assertNull(cache.forYou(listOf(seedA, seedC)), "a new seed changes the key")
+        locale.language = "es-ES"
+        assertNull(cache.forYou(listOf(seedA)), "a language change is a miss")
+    }
+
+    @Test
+    fun a_newer_answer_for_a_seed_survives_a_superseded_write_and_a_superseded_set_is_dropped() = runTest {
+        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 10L, "10"), answer(seedB, 10L, "20")))
+        // A late write of an older answer for A, and a refresh of B alone that is newer.
+        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 5L, "99"), answer(seedB, 12L, "21")))
+
+        val read = cache.forYou(listOf(seedA, seedB))
+        assertEquals(listOf(MediaId.tmdbMovie("10")), read?.first { it.seed == seedA }?.items?.map { it.id })
+        assertEquals(listOf(MediaId.tmdbMovie("21")), read?.first { it.seed == seedB }?.items?.map { it.id })
+
+        // A new seed set replaces the one row: the old set is no longer stored at all.
+        cache.saveForYou(listOf(seedC), listOf(answer(seedC, 20L, "30")))
+        assertNull(cache.forYou(listOf(seedA, seedB)))
+        assertNull(database.forYouCacheQueries.selectByKey(keyOf(listOf(seedA, seedB))).executeAsOneOrNull(), "the superseded set's row is deleted, not kept beside the new one")
+        assertNotNull(database.forYouCacheQueries.selectByKey(keyOf(listOf(seedC))).executeAsOneOrNull())
+    }
+
+    @Test
+    fun a_for_you_row_that_no_longer_decodes_is_a_miss_and_never_a_crash() = runTest {
+        cache.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")))
+        database.forYouCacheQueries.upsert(cacheKey = keyOf(listOf(seedA)), json = """{"not":"a copy"}""")
+
+        assertNull(cache.forYou(listOf(seedA)))
+    }
+
+    @Test
+    fun a_storage_failure_costs_the_for_you_copy_and_never_fails_the_refresh() = runTest {
+        val driver = inMemoryDriver()
+        driver.execute(null, "DROP TABLE forYouCache", 0)
+        val broken = SqlDelightDiscoverCache(MuvissDatabase(driver).discoverCacheQueries, MuvissDatabase(driver).forYouCacheQueries, locale, dispatchers)
+
+        broken.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")))
+        // Reaching this line without an exception is the assertion.
+    }
+
+    /** The key the cache derives for [seeds] in the current language; mirrors the production derivation on purpose. */
+    private fun keyOf(seeds: List<MediaId>): String {
+        val identity = seeds.map { it.toString() }.sorted().joinToString(",") + "|" + locale.language
+        var hash = -3750763034362895579L
+        for (byte in identity.encodeToByteArray()) hash = (hash xor (byte.toLong() and 0xff)) * 0x100000001B3L
+        return "foryou:" + hash.toULong().toString(16).padStart(16, '0')
     }
 }

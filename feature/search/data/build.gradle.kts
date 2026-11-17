@@ -1,5 +1,6 @@
 plugins {
     id("muviss.kmp.library")
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -13,6 +14,8 @@ kotlin {
             implementation(libs.sqldelight.coroutinesExtensions)
             implementation(projects.core.common)
             implementation(libs.koin.core)
+            // The "For you" copy is stored as JSON (#785).
+            implementation(libs.kotlinx.serializationJson)
         }
         commonTest.dependencies {
             implementation(projects.core.network)
