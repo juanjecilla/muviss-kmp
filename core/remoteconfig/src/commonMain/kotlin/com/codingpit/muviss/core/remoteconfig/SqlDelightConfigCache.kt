@@ -15,6 +15,9 @@ internal class SqlDelightConfigCache(private val queries: RemoteConfigCacheQueri
     override suspend fun read(key: String): String? = queries.selectByKey(key).awaitAsOneOrNull()
 
     override suspend fun write(key: String, value: String) {
+        // Skip an unchanged value: INSERT OR REPLACE counts as a changed row even when the value is identical,
+        // and the SDK rewrites the same config on every fetch. Dialect is SQLite 3.18, so no ON CONFLICT (#897).
+        if (queries.selectByKey(key).awaitAsOneOrNull() == value) return
         queries.upsert(key, value)
     }
 }
