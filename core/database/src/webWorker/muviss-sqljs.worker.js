@@ -76,6 +76,10 @@ let inTransaction = false;
 // The generation the in-memory database was built from (0 when there was no
 // snapshot). A save is only written while the stored generation still matches.
 let loadedGeneration = 0;
+// The bytes stored under loadedGeneration, as far as this tab knows them. A save
+// whose export equals these changes nothing (see writeSnapshot). Null when the store
+// was empty.
+let lastStoredBytes = null;
 // True when the startup read failed, so this database may not be the latest one
 // and promotion cannot compare against it. See promote().
 let loadFailed = false;
@@ -153,6 +157,7 @@ async function loadSnapshot() {
     snapshot = { bytes: null, generation: 0 };
   }
   loadedGeneration = snapshot.generation;
+  lastStoredBytes = snapshot.bytes ? new Uint8Array(snapshot.bytes) : null;
   // `new SQL.Database(bytes)` opens the existing file; the no-arg form creates
   // an empty one. Schema creation and migration are decided on the Kotlin side
   // from `PRAGMA user_version` — see SchemaEnsuringDriver.
@@ -207,16 +212,30 @@ function saveSnapshot() {
   return saveChain;
 }
 
+// Exact comparison, not a hash: a hash collision would skip a real save.
+function sameBytes(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 async function writeSnapshot(bytes, exportError) {
   try {
     if (stale) return;
-    if (bytes) {
+    // A save whose export is byte-for-byte the stored snapshot changes nothing, so it
+    // is not written: writing it would advance the generation and make another tab
+    // that is waiting with changes of its own stale for no reason. This covers an
+    // empty or rolled-back transaction and a no-op statement alike.
+    if (bytes && !sameBytes(bytes, lastStoredBytes)) {
       const outcome = await putSnapshot(bytes);
       if (!outcome.ok) {
         becomeStale();
         return;
       }
       loadedGeneration = outcome.generation;
+      lastStoredBytes = bytes;
     }
     if (exportError) throw exportError;
     // Not cleared while a transaction boundary is broken: a write that began before
@@ -534,6 +553,8 @@ function createDatabase() {
 // of being wrong in this direction is one extra export per burst, while being
 // wrong the other way loses data.
 function isMutation(sql) {
+  // Nothing to run (only whitespace or comments) changes nothing.
+  if (sql.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, "").trim() === "") return false;
   // More than one statement: the read check below only sees the first one, so a
   // `select 1; delete ...` would look like a read. Treated as a change, which is
   // the safe direction (see above).
@@ -629,8 +650,10 @@ function onModuleReady() {
         throw e;
       }
       inTransaction = false;
-      // One snapshot per committed transaction, not per statement inside it.
-      markDirty();
+      // One snapshot per committed transaction, not per statement inside it. Only if
+      // the transaction changed something: `dirty` is set by a change inside it, so an
+      // empty transaction schedules nothing, and its generation is not advanced.
+      if (dirty) markDirty();
       return postMessage({ id: data.id, results });
     }
     case "rollback_transaction": {

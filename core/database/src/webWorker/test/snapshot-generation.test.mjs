@@ -740,3 +740,32 @@ test("a tab that cannot read the store at startup or promotion reports itself as
   assert.equal(tab.state().isWriter, false);
   assert.equal(tab.status().supported, false, "not saving, rather than read-only behind another tab");
 });
+
+// Two tabs: the writer completes a transaction that changes nothing and lets go of the
+// lock. The tab waiting with changes of its own must still save once promoted. Before
+// the fix, the empty transaction advanced the generation, and the waiting tab became
+// stale although nothing was written.
+test("a writer's empty transaction does not make a waiting tab with changes stale", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+  const b = await openTab(idb, locks);
+  await settle();
+  b.exec("INSERT B");
+  a.run('onModuleReady.call({ data: { action: "begin_transaction", id: 2 } })');
+  a.run('onModuleReady.call({ data: { action: "end_transaction", id: 3 } })');
+  await a.flush();
+  await settle();
+  assert.equal(idb.data.get(GENERATION), 1, "the empty transaction did not advance the generation");
+  const granted = locks.nextGrant();
+  a.close();
+  await granted;
+  await b.run("promotionDone");
+  await b.run("saveChain");
+  assert.equal(b.state().isWriter, true, "B takes the lock");
+  assert.equal(b.state().stale, false, "B is not stale");
+  assert.match(storedText(idb), /INSERT B/, "B's change is saved");
+});

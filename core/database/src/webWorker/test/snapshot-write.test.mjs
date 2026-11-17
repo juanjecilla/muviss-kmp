@@ -457,3 +457,88 @@ test("a row write that changes no row is not saved, but a schema change is", asy
   await run("flush()");
   assert.deepEqual(indexedDB.puts, ["snapshot 1"], "a schema change is saved even with no row changed");
 });
+
+// A stand-in whose transactions hold their writes until COMMIT and whose ROLLBACK
+// discards them, as SQLite's do. total_changes() counts every row a statement changed,
+// including one a later ROLLBACK undid, as SQLite's does too.
+function transactionalSqlite() {
+  const sqlite = {
+    open: false,
+    changes: 0,
+    pending: [],
+    committed: [],
+    exec(sql) {
+      const verb = sql.trim().split(/\s+/)[0].toUpperCase();
+      if (verb === "BEGIN") {
+        sqlite.open = true;
+        return [];
+      }
+      if (verb === "END" || verb === "COMMIT") {
+        sqlite.committed.push(...sqlite.pending);
+        sqlite.pending = [];
+        sqlite.open = false;
+        return [];
+      }
+      if (verb === "ROLLBACK") {
+        sqlite.pending = [];
+        sqlite.open = false;
+        return [];
+      }
+      if (/total_changes/i.test(sql)) return [{ values: [[sqlite.changes]] }];
+      if (/^(INSERT|UPDATE|DELETE)/i.test(sql)) {
+        sqlite.changes += 1;
+        (sqlite.open ? sqlite.pending : sqlite.committed).push(sql);
+      }
+      return [];
+    },
+    export() {
+      if (sqlite.open) throw new Error("cannot export during a transaction");
+      return sqlite.committed.join(";");
+    },
+    close() {},
+  };
+  return sqlite;
+}
+
+// No-op saves must not reach the store: each would advance the generation for a
+// tab that is waiting with changes of its own. Each case first saves one real change
+// as a baseline, then checks that the no-op adds no write.
+test("an empty transaction saves nothing", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT A", id: 1 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "the baseline is saved");
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 2 } })');
+  run('onModuleReady.call({ data: { action: "end_transaction", id: 3 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "an empty transaction is not a save");
+});
+
+test("a rollback that undoes its transaction's changes saves nothing", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT A", id: 1 } })');
+  await run("flush()");
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 2 } })');
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT X", id: 3 } })');
+  run('onModuleReady.call({ data: { action: "rollback_transaction", id: 4 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "the rolled-back change is not saved as a new snapshot");
+});
+
+test("a batch of only whitespace or comments saves nothing", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT A", id: 1 } })');
+  await run("flush()");
+  run('onModuleReady.call({ data: { action: "exec", sql: "  -- nothing to run\\n /* at all */ ", id: 2 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "a batch with nothing to run is not a save");
+});
+
+test("a transaction that commits a change is still saved", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT Y", id: 2 } })');
+  run('onModuleReady.call({ data: { action: "end_transaction", id: 3 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "a committed change is saved");
+});
