@@ -138,4 +138,30 @@ class CrashReporterCoreTest {
         core.init(config, enabled = true)
         core.recordException(IllegalStateException("x"))
     }
+
+    @Test
+    fun a_routine_failure_is_not_reported_and_anything_else_still_is() {
+        val backend = FakeBackend()
+        val core = CrashReporterCore(backend)
+        val routine = IllegalStateException("routine")
+        val bug = IllegalStateException("bug")
+        core.init(config.copy(isRoutine = { it === routine }), enabled = true)
+
+        core.recordException(routine)
+        core.recordException(bug)
+
+        assertEquals(listOf<Throwable>(bug), backend.captured)
+    }
+
+    @Test
+    fun a_routine_rule_that_throws_reports_the_failure_rather_than_losing_it() {
+        val backend = FakeBackend()
+        val core = CrashReporterCore(backend)
+        val bug = IllegalStateException("bug")
+        core.init(config.copy(isRoutine = { error("rule failed") }), enabled = true)
+
+        core.recordException(bug)
+
+        assertEquals(listOf<Throwable>(bug), backend.captured)
+    }
 }

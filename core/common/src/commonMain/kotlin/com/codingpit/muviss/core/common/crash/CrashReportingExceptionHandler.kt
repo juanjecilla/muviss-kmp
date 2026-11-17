@@ -62,6 +62,11 @@ fun <T> Result<T>.reportFailure(): Result<T> {
  * avoid — without also going silent on everything a `runCatching` was only
  * ever meant to turn into UI copy.
  *
+ * It is the second of two layers. The first is app-wide and applies to every
+ * handled report, this one included: [CrashReportingConfig.isRoutine] drops a
+ * Routine Failure (no connection, the source down) wherever it is reported
+ * from. [isExpected] is for what is routine at one call site only.
+ *
  * Rethrows cancellation exactly like [reportFailure]; a `CancellationException`
  * is never "expected" or "unexpected", it is not a failure at all.
  */
