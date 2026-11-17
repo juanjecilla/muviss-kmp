@@ -42,15 +42,14 @@ class RecordDecisionUseCase(
         require(verdict in TriageVerdict.availableFor(summary.type)) {
             "$verdict is not a valid verdict for a ${summary.type}"
         }
-        // Read before anything is written, so the claim is the library's state
-        // when the person ruled on the card. A title already saved (from Detail,
-        // while the deck was open) is not this verdict's to take back (#767).
+        // The claim is not decided here. It is taken in apply, against the library
+        // at the moment the add lands, so a verdict that never got that far holds
+        // no claim on an entry it did not make (#767).
         val decision = TriageDecision.of(
             summary = summary,
             verdict = verdict,
             nowEpochMs = clock.nowEpochMs(),
             resolved = !verdict.savesToCollection,
-            createdEntry = verdict.savesToCollection && !isInLibrary(summary.id),
         )
         repository.record(decision)
         if (!verdict.savesToCollection) return Result.success(Unit)
@@ -59,12 +58,22 @@ class RecordDecisionUseCase(
 
     private suspend fun isInLibrary(mediaId: MediaId): Boolean = collectionApi.observeMembership(mediaId).first() != null
 
-    /** Re-runs the side effects of a decision that never completed. The claim it stored is kept, never re-read. */
+    /**
+     * Re-runs the side effects of a decision that never completed. A claim an
+     * earlier attempt wrote is kept: that attempt's add made the entry, and the
+     * entry being there now says nothing about who added it.
+     */
     suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision)
 
     private suspend fun apply(decision: TriageDecision): Result<Unit> = runCatching {
         val details = detailsSource.fetch(decision.mediaId).getOrThrow()
+        // Decided against the library just before the add. A title the person
+        // added from Detail while the deck was open is theirs, not this verdict's.
+        val claimed = decision.createdEntry || !isInLibrary(decision.mediaId)
         collectionApi.add(details)
+        // Persisted only after the add has landed: a failed fetch or a failed add
+        // leaves no claim behind for undo to act on later.
+        if (claimed && !decision.createdEntry) repository.record(decision.copy(createdEntry = true))
 
         val today = clock.todayEpochDay()
         when (decision.verdict) {

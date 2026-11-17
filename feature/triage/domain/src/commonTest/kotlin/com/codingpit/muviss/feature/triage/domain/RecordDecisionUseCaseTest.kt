@@ -323,6 +323,27 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
+    fun a_failed_fetch_takes_no_claim_so_a_title_added_before_the_retry_survives_undo() = runTest {
+        val failing = harness(failure = IllegalStateException("offline"))
+        failing.useCase(endedShow, TriageVerdict.CAUGHT_UP)
+        assertFalse(failing.repository.decisions.value.getValue(endedShow.id).createdEntry)
+        // The person adds the title from Detail while the decision is unresolved.
+        failing.collection.add(endedDetails)
+
+        val retrying = RecordDecisionUseCase(
+            failing.repository,
+            failing.collection,
+            failing.progress,
+            FakeTriageDetailsSource(byId = mapOf(endedShow.id to endedDetails)),
+            FakeClock(NOW_EPOCH_MS),
+        )
+        retrying.retry(failing.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+        UndoDecisionUseCase(failing.repository, failing.collection, failing.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(emptyList(), failing.collection.removed)
+    }
+
+    @Test
     fun undo_with_no_decision_row_removes_nothing_from_the_library() = runTest {
         val h = harness()
         h.collection.add(endedDetails)
