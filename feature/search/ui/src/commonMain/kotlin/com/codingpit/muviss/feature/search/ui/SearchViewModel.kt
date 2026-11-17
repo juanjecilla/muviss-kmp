@@ -143,6 +143,19 @@ class SearchViewModel(
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
+    /** Bumped to ask For you again now: a reconnection while a seed is still owed, or Discover's Retry (#924). */
+    private val forYouAgain = MutableStateFlow(0)
+
+    /** Discover's Retries so far, and how many of them a For you run has answered. A run asks every seed while they differ (#924). */
+    private var forYouRetries = 0
+    private var forYouRetriesAnswered = 0
+
+    /** The seeds whose last For you request failed. Owed until they answer, whatever the age of their copy (#924). */
+    private var forYouOwed: Set<MediaId> = emptySet()
+
+    /** Reconnections so far. A For you run compares the count at its start and its end (#924). */
+    private var reconnections = 0
+
     /** The seed set the row on screen was built for; a change clears the row (see the combine's onEach). */
     private var lastForYouSeeds: List<MediaId> = emptyList()
 
@@ -189,7 +202,8 @@ class SearchViewModel(
             triageApi.observeDecidedIds(),
             triageApi.observeSnoozedIds(),
             settings.observeMuting().map { it.effective }.distinctUntilChanged(),
-        ) { library, decided, snoozed, muted -> Triple(library, decided + snoozed, muted) }
+            forYouAgain,
+        ) { library, decided, snoozed, muted, _ -> Triple(library, decided + snoozed, muted) }
             // The flag is set here, before flatMapLatest starts the request, and cleared only by its emission. A
             // cancelled request (a newer library) never clears it, so the skeleton stays up until the live one answers.
             .onEach { (library, _, _) ->
@@ -210,7 +224,12 @@ class SearchViewModel(
         // A failure shown while offline retries itself when the connection
         // comes back, rather than waiting for a tap on Retry (#249).
         connectivity.reconnections()
-            .onEach { if (showsFailure()) retry() else reconnectedBeforeFailure = true }
+            .onEach {
+                reconnections++
+                if (showsFailure()) reload() else reconnectedBeforeFailure = true
+                // A seed still owed (its request failed) is asked again now, whatever its copy's age (#924).
+                if (forYouOwed.isNotEmpty()) forYouAgain.update { it + 1 }
+            }
             .launchInReporting(viewModelScope)
         // A reconnection can land while a request is still in flight and fail
         // after it: remembered, it buys that failure one retry, no more (#249).
@@ -219,7 +238,7 @@ class SearchViewModel(
             .filter { showing -> showing && reconnectedBeforeFailure }
             .onEach {
                 reconnectedBeforeFailure = false
-                retry()
+                reload()
             }
             .launchInReporting(viewModelScope)
     }
@@ -311,7 +330,21 @@ class SearchViewModel(
         }
     }
 
+    /**
+     * The person's Retry: the error screen and the saved-copy banner. On Discover it also asks TMDB for every For you
+     * seed, not only the due ones (#924). A reconnection or a muting change reloads without that: neither is a request
+     * for a fresh answer, and a mute change must cost no request.
+     */
     fun retry() {
+        if (_state.value.mode == SearchMode.DISCOVER) {
+            forYouRetries++
+            forYouAgain.update { it + 1 }
+        }
+        reload()
+    }
+
+    /** Reloads whatever is showing from the network, as [retry] does for Discover's own shelves. */
+    private fun reload() {
         val s = _state.value
         when (s.mode) {
             // An explicit retry asks the network even when the stored copy is still fresh (#724).
@@ -343,7 +376,7 @@ class SearchViewModel(
             discoverStale = true
             staleMarks++
         }
-        if (!searchPending) retry()
+        if (!searchPending) reload()
     }
 
     private fun reloadDiscoverIfStale() {
@@ -490,17 +523,30 @@ class SearchViewModel(
     private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>, muted: MutedGenres): Flow<List<MediaSummary>> = flow {
         val seeds = ForYouSeeding.selectSeeds(library)
         if (seeds.isEmpty()) {
+            forYouOwed = emptySet()
+            forYouRetriesAnswered = forYouRetries
             emit(emptyList())
             return@flow
         }
         val excluded = library.mapTo(mutableSetOf()) { it.mediaId } + decidedIds
         fun shown(answers: List<ForYouAnswer>): List<MediaSummary> = ForYouSeeding.mergeAndExclude(answers.map { it.items }, excluded).filterNot(muted::hides)
 
-        // Captured before the stored read suspends (#965): the language and the erase count the copy is read and written under.
-        val run = discoverFeed.startForYou(seeds)
+        // Everything the run reads before it suspends: the Retry it answers, the seeds it owes, and the reconnections so
+        // far. The language and the erase count are captured with the run itself (#965).
+        val retries = forYouRetries
+        val reconnectsAtStart = reconnections
+        val mustAsk = if (retries > forYouRetriesAnswered) seeds.toSet() else forYouOwed.intersect(seeds)
+        val run = discoverFeed.startForYou(seeds, mustAsk)
         val stored = discoverFeed.forYouStored(run)
         if (stored != null) emit(shown(stored))
-        emit(shown(discoverFeed.refreshForYou(run, stored) { seed -> recommendationsUseCase(seed, fresh = true) }))
+        val refresh = discoverFeed.refreshForYou(run, stored) { seed -> recommendationsUseCase(seed, fresh = true) }
+        // Settled only when the run returns. A run cancelled by a newer library keeps the Retry and the owed seeds it was
+        // given, so the next run still asks for them.
+        forYouRetriesAnswered = retries
+        forYouOwed = refresh.failed
+        emit(shown(refresh.answers))
+        // A reconnection that landed while the request was in flight found it still failing: ask once more, as Discover does (#249, #924).
+        if (forYouOwed.isNotEmpty() && reconnections != reconnectsAtStart) forYouAgain.update { it + 1 }
     }
 
     private companion object {

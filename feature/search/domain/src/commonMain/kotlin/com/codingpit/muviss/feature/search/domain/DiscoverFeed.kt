@@ -23,10 +23,17 @@ data class ForYouAnswer(val seed: MediaId, val items: List<MediaSummary>, val fe
 data class DiscoverRun(val language: String, val erasure: Long, val startedAtEpochMs: Long)
 
 /**
- * One "For you" run: the [run] it captured and the seeds the library gave it. The stored copy is read with this
- * run rather than held in it, because it cannot be known before that read.
+ * One "For you" run: the [run] it captured, the seeds the library gave it, and the seeds it must ask TMDB for even
+ * when their stored answer is fresh: those whose request failed and are still owed, or every seed on a Retry (#924).
+ * The stored copy is read with this run rather than held in it, because it cannot be known before that read.
  */
-data class ForYouRun(val run: DiscoverRun, val seeds: List<MediaId>)
+data class ForYouRun(val run: DiscoverRun, val seeds: List<MediaId>, val mustAsk: Set<MediaId> = emptySet())
+
+/**
+ * A For you refresh: the [answers] in the seeds' order, and the [failed] seeds whose request failed. A failed seed
+ * is owed again on the next run whatever its stored answer's age, so a fresh copy never hides a missed request.
+ */
+data class ForYouRefresh(val answers: List<ForYouAnswer>, val failed: Set<MediaId>)
 
 /**
  * The stored raw TMDB responses behind Discover (#724), and "For you"'s copy (#785). Raw means before Muted Genres
@@ -130,8 +137,8 @@ class DiscoverFeed(
     /** Captures what a Discover run needs before it suspends. Every Discover run starts here. */
     fun startRun(): DiscoverRun = DiscoverRun(language = cache.language(), erasure = erasures.request(), startedAtEpochMs = clock.nowEpochMs())
 
-    /** Captures what a For you run needs, with the seeds the library gave it. */
-    fun startForYou(seeds: List<MediaId>): ForYouRun = ForYouRun(startRun(), seeds)
+    /** Captures what a For you run needs, with the seeds the library gave it and the ones it must ask for regardless (#924). */
+    fun startForYou(seeds: List<MediaId>, mustAsk: Set<MediaId> = emptySet()): ForYouRun = ForYouRun(startRun(), seeds, mustAsk)
 
     /** What is stored in [run]'s language, read with the muted genres now in force, which decide whether a stored shelf was complete. */
     suspend fun snapshot(run: DiscoverRun, mutedMovies: MutedGenres = MutedGenres.NONE, mutedTv: MutedGenres = MutedGenres.NONE): DiscoverSnapshot = DiscoverSnapshot(
@@ -161,21 +168,21 @@ class DiscoverFeed(
     }
 
     /**
-     * [run]'s seeds' answers after a refresh. Only a seed whose stored answer is missing or past [TTL_MS] (at the
-     * moment the run began) is asked of TMDB, so a library change that keeps the seed set costs no request. A seed
-     * that fails keeps its stored answer with its old fetch time, so it stays due; with nothing stored it contributes
-     * nothing. What succeeded is stored in [run]'s language, unless Delete all data ran since the run began
-     * ([DataEraseFence]). Returned in the seeds' order.
+     * [run]'s seeds' answers after a refresh. A seed is asked of TMDB when its stored answer is missing, past [TTL_MS]
+     * (at the moment the run began), or in [ForYouRun.mustAsk]; so a library change that keeps the seed set costs no
+     * request. A seed that fails keeps its stored answer with its old fetch time and is reported in [ForYouRefresh.failed];
+     * with nothing stored it contributes nothing. What succeeded is stored in [run]'s language, unless Delete all data
+     * ran since the run began ([DataEraseFence]). Answers are returned in the seeds' order.
      */
     suspend fun refreshForYou(
         run: ForYouRun,
         stored: List<ForYouAnswer>?,
         recommendations: suspend (MediaId) -> Result<PagedResult<MediaSummary>>,
-    ): List<ForYouAnswer> {
+    ): ForYouRefresh {
         val now = run.run.startedAtEpochMs
         val seeds = run.seeds
         val byId = stored.orEmpty().associateBy { it.seed }
-        val due = seeds.filter { seed -> byId[seed]?.let { now - it.fetchedAtEpochMs > TTL_MS } ?: true }
+        val due = seeds.filter { seed -> seed in run.mustAsk || (byId[seed]?.let { now - it.fetchedAtEpochMs > TTL_MS } ?: true) }
         val asked = due.associateWith { seed -> recommendations(seed).map { it.items } }
         val answers = seeds.mapNotNull { seed ->
             asked[seed]?.getOrNull()?.let { ForYouAnswer(seed, it, now) } ?: byId[seed]
@@ -183,7 +190,7 @@ class DiscoverFeed(
         if (asked.values.any { it.isSuccess }) {
             erasures.write(run.run.erasure) { cache.saveForYou(seeds, answers, run.run.language) }
         }
-        return answers
+        return ForYouRefresh(answers, failed = asked.filterValues { it.isFailure }.keys)
     }
 
     /**

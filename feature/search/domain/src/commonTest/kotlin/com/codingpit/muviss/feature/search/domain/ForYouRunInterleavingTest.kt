@@ -93,7 +93,7 @@ class ForYouRunInterleavingTest {
                 asked += seed
                 at(Point.AFTER_REQUEST)
                 Result.success(answerFor(seed))
-            }
+            }.answers
         }
     }
 
