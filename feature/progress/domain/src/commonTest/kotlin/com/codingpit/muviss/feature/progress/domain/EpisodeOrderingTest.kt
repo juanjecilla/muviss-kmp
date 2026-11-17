@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
@@ -75,5 +76,31 @@ class EpisodeOrderingTest {
     fun upToInclusive_unknown_target_falls_back_to_itself() {
         val unknown = EpisodeId(show, 99, 99)
         assertEquals(listOf(unknown), EpisodeOrdering.upToInclusive(seasons, unknown))
+    }
+
+    @Test
+    fun nextUnseen_never_returns_an_aired_special_even_when_it_sorts_first() {
+        // Season 0 sorts before season 1, so an unwatched aired special would otherwise be "next" (ADR 0037).
+        val special = episode(0, 1, airDateEpochDay = 50)
+        val withSpecial = listOf(Season(0, "Specials", listOf(special))) + seasons
+
+        assertEquals(EpisodeId(show, 1, 1), EpisodeOrdering.nextUnseen(withSpecial, emptySet(), todayEpochDay = 150)?.id)
+    }
+
+    @Test
+    fun nextUnseen_is_null_when_only_an_aired_special_is_unseen() {
+        val special = episode(0, 1, airDateEpochDay = 50)
+        val onlySpecial = listOf(Season(0, "Specials", listOf(special)), Season(1, "Season 1", listOf(episode(1, 1, airDateEpochDay = 100))))
+        val seen = setOf(EpisodeId(show, 1, 1))
+
+        assertNull(EpisodeOrdering.nextUnseen(onlySpecial, seen, todayEpochDay = 150))
+    }
+
+    @Test
+    fun nextAnnounced_is_the_first_unseen_regular_episode_still_ahead() {
+        val special = episode(0, 1, airDateEpochDay = 900)
+        val withSpecial = listOf(Season(0, "Specials", listOf(special))) + seasons
+
+        assertEquals(EpisodeId(show, 2, 2), EpisodeOrdering.nextAnnounced(withSpecial, setOf(EpisodeId(show, 2, 1)), todayEpochDay = 150)?.id)
     }
 }

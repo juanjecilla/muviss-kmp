@@ -11,6 +11,8 @@ import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.progress.api.NextEpisodes
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
@@ -35,10 +37,12 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProviders
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -61,6 +65,10 @@ data class DetailUiState(
      */
     val staleNotice: UiText? = null,
     val saved: Boolean = false,
+    /** Whether the library has reported this title's membership at least once; until then [saved] is only a guess (#779). */
+    val membershipLoaded: Boolean = false,
+    /** Whether progress has reported this title's seen episodes at least once; until then [seenEpisodes] is empty, not "nothing seen" (#779). */
+    val progressLoaded: Boolean = false,
     val favorite: Boolean = false,
     /** Per-show new-episode notification opt-out (EPIC 5); only meaningful while [saved] is true. */
     val notificationsMuted: Boolean = false,
@@ -162,11 +170,34 @@ class DetailViewModel(
     /** Serializes the check-then-add of [addIfAbsent], so only one concurrent caller can claim the entry. */
     private val membershipLock = Mutex()
 
+    /**
+     * Serializes every tap that writes progress and then publishes an Undo. Two taps overlap while the first is
+     * suspended on IO; the tap that created the library entry can publish its Undo last, and Undo would then
+     * remove the entry while the other episode stays seen. The fresh seen-read sits inside the lock too, so a
+     * double tap on one episode cannot pass the guard twice. Always taken before [membershipLock], never after.
+     */
+    private val writeLock = Mutex()
+
+    /** Runs [block] as a reporting coroutine, one write at a time (see [writeLock]). */
+    private fun launchWrite(block: suspend () -> Unit) {
+        viewModelScope.launchReporting { writeLock.withLock { block() } }
+    }
+
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
     /** "Today" for aired-vs-unaired decisions in the season list. */
     val todayEpochDay: Long get() = clock.todayEpochDay()
+
+    /**
+     * What the primary button does for [state] (ADR 0037). The next episode comes from progress's shared query over
+     * the seasons this screen holds, so the button and the Progress tab use one ordering (#779).
+     */
+    internal fun primaryAction(state: DetailUiState): PrimaryAction {
+        val seasons = state.details?.seasons.orEmpty()
+        val next = if (seasons.isEmpty()) NextEpisodes.NONE else progressApi.nextEpisodes(seasons, state.seenEpisodes, todayEpochDay)
+        return primaryActionFor(state, todayEpochDay, next)
+    }
 
     init {
         load()
@@ -180,26 +211,6 @@ class DetailViewModel(
         // the two banners can never both show (ADR 0023).
         triageApi.observeSnooze(mediaId)
             .onEach { snooze -> _state.update { it.copy(snoozedUntilEpochDay = snooze?.dueAtEpochDay) } }
-            .launchInReporting(viewModelScope)
-        collectionApi.observeMembership(mediaId)
-            .onEach { membership ->
-                _state.update {
-                    it.copy(
-                        saved = membership != null,
-                        favorite = membership?.favorite ?: false,
-                        notificationsMuted = membership?.notificationsMuted ?: false,
-                        rating = membership?.rating,
-                        note = membership?.note,
-                        revisitWillingness = membership?.revisitWillingness,
-                        // Derived by the library for this one title (ADR 0005), in the same read as membership.
-                        // Null for a title not in the library, so only a saved, completed title offers "What's next?".
-                        watchStatus = membership?.status,
-                    )
-                }
-            }
-            .launchInReporting(viewModelScope)
-        progressApi.observeSeenEpisodes(mediaId)
-            .onEach { seen -> _state.update { it.copy(seenEpisodes = seen) } }
             .launchInReporting(viewModelScope)
         progressApi.observePlayCounts(mediaId)
             .onEach { counts -> _state.update { it.copy(playCounts = counts) } }
@@ -234,6 +245,11 @@ class DetailViewModel(
             } else {
                 _state.update { it.copy(error = null, staleNotice = null) }
             }
+            // The library and progress observers are restarted after the clearing above, never before it: a read
+            // that fails before its first emission sets the error page, and that must not be wiped by this reload.
+            // Without a restart, a read that failed before reporting leaves its button loading for good.
+            observeMembership()
+            observeProgress()
             loadDetail(mediaId).fold(
                 onSuccess = { d -> _state.update { it.copy(loading = false, details = d, staleNotice = null) } },
                 onFailure = { e ->
@@ -249,6 +265,58 @@ class DetailViewModel(
         }
         loadWhereToWatch()
         loadMoreLikeThisRow()
+    }
+
+    /** The library's read of this title (membership, status, user fields). Replaces any earlier collector, so there is never more than one. */
+    private var membershipObservation: Job? = null
+
+    private fun observeMembership() {
+        membershipObservation?.cancel()
+        membershipObservation = collectionApi.observeMembership(mediaId)
+            .onEach { membership ->
+                _state.update {
+                    it.copy(
+                        membershipLoaded = true,
+                        saved = membership != null,
+                        favorite = membership?.favorite ?: false,
+                        notificationsMuted = membership?.notificationsMuted ?: false,
+                        rating = membership?.rating,
+                        note = membership?.note,
+                        revisitWillingness = membership?.revisitWillingness,
+                        // Derived by the library for this one title (ADR 0005), in the same read as membership.
+                        // Null for a title not in the library, so only a saved, completed title offers "What's next?".
+                        watchStatus = membership?.status,
+                    )
+                }
+            }
+            .catch { e ->
+                failedBeforeReporting(e) { it.membershipLoaded }
+                throw e
+            }
+            .launchInReporting(viewModelScope)
+    }
+
+    /** The seen episodes of this title. Replaces any earlier collector; [DetailUiState.progressLoaded] stays false until one emits. */
+    private var progressObservation: Job? = null
+
+    private fun observeProgress() {
+        progressObservation?.cancel()
+        progressObservation = progressApi.observeSeenEpisodes(mediaId)
+            .onEach { seen -> _state.update { it.copy(seenEpisodes = seen, progressLoaded = true) } }
+            .catch { e ->
+                failedBeforeReporting(e) { it.progressLoaded }
+                throw e
+            }
+            .launchInReporting(viewModelScope)
+    }
+
+    /**
+     * A read that dies before it has reported leaves its button on Loading for good, with nothing to retry from. So
+     * it shows the error page instead, and Retry re-subscribes through [load]. Once the read has reported, a later
+     * failure keeps the last answer: that is stale, not broken.
+     */
+    private fun failedBeforeReporting(e: Throwable, reported: (DetailUiState) -> Boolean) {
+        _state.update { if (reported(it)) it else it.copy(loading = false, error = e.toUiText(UiText.Resource(Res.string.error_generic))) }
     }
 
     /** The library snapshot plus the stored episode catalog, or null for a title that is not saved. */
@@ -310,7 +378,9 @@ class DetailViewModel(
      * (#721): favorite, rating, note, add date and list membership survive, because nothing is rebuilt.
      */
     fun removeFromLibrary() {
-        viewModelScope.launchReporting {
+        // Under writeLock with the tick and the Undo it publishes: an in-flight tick must finish first, so the
+        // removal's Undo is the one left pending. Published outside the lock, the tick could replace it last.
+        launchWrite {
             collectionApi.remove(mediaId)
             _state.update {
                 it.copy(pendingUndo = BulkMarkUndo(emptyList(), UiText.Resource(Res.string.removed_from_library), removedFromLibrary = true))
@@ -406,10 +476,13 @@ class DetailViewModel(
     private var celebrations = 0
 
     /**
-     * Ticks a single episode's checkmark. The tick that leaves nothing aired
-     * unseen also raises [DetailUiState.celebration] (when tick motion is on),
-     * decided before the write from what was on screen at the tap, and raised
-     * only once the write has succeeded.
+     * Ticks a single episode's checkmark, and offers the same Undo a primary tick does (#751: a checkmark tap used
+     * to offer none, so an unsaved title it added could only be removed by hand). The tick that leaves nothing aired
+     * unseen also raises [DetailUiState.celebration] (when tick motion is on), decided before the write from what was
+     * on screen at the tap, and raised only once the write has succeeded.
+     *
+     * Reads progress fresh before writing, as [tickNext] does: the screen's copy can still be loading, and an episode
+     * already seen must not be ticked again or offered for Undo, because Undo would delete a viewing this tap never made.
      */
     fun toggleEpisodeSeen(episodeId: EpisodeId) {
         val current = _state.value
@@ -417,11 +490,16 @@ class DetailViewModel(
         val caughtUp = details
             ?.takeIf { current.animateTicks && it.completesAiredWith(episodeId, current.seenEpisodes, clock.todayEpochDay()) }
             ?.let { UiText.Resource(Res.string.tick_caught_up, it.summary.title) }
-        viewModelScope.launchReporting {
-            if (!current.isSeen(episodeId)) addIfAbsent()
-            progressApi.tickEpisode(episodeId, !current.isSeen(episodeId))
-            releaseEntry()
+        launchWrite {
+            if (episodeId in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
+            val created = addIfAbsent()
+            progressApi.tickEpisode(episodeId, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
+            offerUndo(
+                listOf(episodeId),
+                UiText.Resource(Res.string.tick_next_seen, episodeId.seasonNumber, episodeId.episodeNumber),
+                createdEntry = created,
+            )
         }
     }
 
@@ -438,8 +516,8 @@ class DetailViewModel(
         val caughtUp = details
             ?.takeIf { current.animateTicks && it.completesAiredWith(episode, current.seenEpisodes, clock.todayEpochDay()) }
             ?.let { UiText.Resource(Res.string.tick_caught_up, it.summary.title) }
-        viewModelScope.launchReporting {
-            if (episode in progressApi.observeSeenEpisodes(mediaId).first()) return@launchReporting
+        launchWrite {
+            if (episode in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
             progressApi.tickEpisode(episode, true)
             if (caughtUp != null) _state.update { it.copy(celebration = Celebration(caughtUp, ++celebrations)) }
@@ -449,9 +527,9 @@ class DetailViewModel(
 
     /** The primary action's tick for a movie that is not watched yet (#721). Offers an Undo unless it was already watched. */
     fun markMovieWatched() {
-        viewModelScope.launchReporting {
+        launchWrite {
             val id = EpisodeId.forMovie(mediaId)
-            if (id in progressApi.observeSeenEpisodes(mediaId).first()) return@launchReporting
+            if (id in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
             progressApi.tickMovie(mediaId, true)
             offerUndo(listOf(id), UiText.Resource(Res.string.movie_marked_watched), createdEntry = created)
@@ -469,7 +547,8 @@ class DetailViewModel(
      * library screen would then throw on. See `ProgressApi.markSeasonAiredSeen`.
      */
     fun markSeasonSeen(season: Season) {
-        viewModelScope.launchReporting {
+        launchWrite {
+            if (airedUnseen(listOf(season)).isEmpty()) return@launchWrite
             val created = addIfAbsent()
             val written = progressApi.markSeasonAiredSeen(season, clock.todayEpochDay())
             offerUndo(written, UiText.Resource(Res.string.undo_season_seen, season.name), createdEntry = created)
@@ -478,7 +557,7 @@ class DetailViewModel(
 
     /** Reverses [markSeasonSeen]: drops the newest viewing of each seen episode in [season]. */
     fun unmarkSeason(season: Season) {
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.unmarkSeason(season)
             _state.update { it.copy(pendingUndo = null) }
         }
@@ -487,7 +566,8 @@ class DetailViewModel(
     /** The "mark whole show seen" action; the caller confirms first. */
     fun markShowSeen() {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launchReporting {
+        launchWrite {
+            if (airedUnseen(seasons).isEmpty()) return@launchWrite
             val created = addIfAbsent()
             val written = progressApi.markShowAiredSeen(seasons, clock.todayEpochDay())
             offerUndo(written, UiText.Resource(Res.string.undo_show_seen), createdEntry = created)
@@ -497,7 +577,7 @@ class DetailViewModel(
     /** Reverses [markShowSeen] across every season. */
     fun unmarkShow() {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.unmarkShow(seasons)
             _state.update { it.copy(pendingUndo = null) }
         }
@@ -507,24 +587,29 @@ class DetailViewModel(
      * Takes back what the last action wrote: exactly the ticks it made, the entry it created (a tick on an
      * unsaved title), or the removal it made. Nothing else is touched.
      */
-    fun undoBulkMark() {
-        val undo = _state.value.pendingUndo ?: return
-        viewModelScope.launchReporting {
-            if (undo.episodeIds.isNotEmpty()) progressApi.undoBulkMark(undo.episodeIds)
-            if (undo.removedFromLibrary) collectionApi.restore(mediaId)
-            if (undo.createdEntry) collectionApi.remove(mediaId)
+    fun undoBulkMark(shown: BulkMarkUndo) {
+        // Bound to the Undo the person tapped, not whatever is pending once the lock is free: a write queued ahead
+        // of this tap may have replaced it, and undoing that one would reverse an action this tap never saw.
+        launchWrite {
+            if (_state.value.pendingUndo !== shown) return@launchWrite
+            if (shown.episodeIds.isNotEmpty()) progressApi.undoBulkMark(shown.episodeIds)
+            if (shown.removedFromLibrary) collectionApi.restore(mediaId)
+            if (shown.createdEntry) collectionApi.remove(mediaId)
             _state.update { it.copy(pendingUndo = null) }
         }
     }
 
-    /** Acknowledges the undo snackbar without undoing anything. */
-    fun dismissUndo() {
-        _state.update { it.copy(pendingUndo = null) }
+    /**
+     * Acknowledges the undo snackbar without undoing anything. Clears only [shown], and only while it is still the
+     * pending Undo: a snackbar that timed out after a newer Undo was offered must not clear that one.
+     */
+    fun dismissUndo(shown: BulkMarkUndo) {
+        _state.update { if (it.pendingUndo === shown) it.copy(pendingUndo = null) else it }
     }
 
     /** "I watched this again": records another viewing, leaving earlier ones intact. */
     fun recordRewatch(episodeId: EpisodeId) {
-        viewModelScope.launchReporting {
+        launchWrite {
             addIfAbsent()
             progressApi.recordPlay(episodeId)
             releaseUndoFor(episodeId)
@@ -533,7 +618,7 @@ class DetailViewModel(
 
     /** "I ticked that by mistake": drops the newest viewing only. */
     fun undoLatestPlay(episodeId: EpisodeId) {
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.removeLatestPlay(episodeId)
             releaseUndoFor(episodeId)
         }
@@ -541,10 +626,20 @@ class DetailViewModel(
 
     /** Forgets an episode's entire watch history — the explicit, destructive one. */
     fun clearEpisodeHistory(episodeId: EpisodeId) {
-        viewModelScope.launchReporting {
+        launchWrite {
             progressApi.clearPlays(episodeId)
             releaseEntry()
         }
+    }
+
+    /**
+     * The aired, unseen episodes of [seasons]: the only set a bulk mark may write (ADR 0037). Read fresh, and checked
+     * before the library is touched, so an empty set adds no entry and offers no Undo: a show nothing has aired for
+     * would otherwise be saved by a button that does nothing.
+     */
+    private suspend fun airedUnseen(seasons: List<Season>): List<EpisodeId> {
+        val seen = progressApi.observeSeenEpisodes(mediaId).first()
+        return EpisodeOrdering.airedBy(seasons, clock.todayEpochDay()).filterNot { it in seen }
     }
 
     /** A bulk mark that ticked nothing (already caught up) has nothing to undo, so it offers none. */
@@ -561,10 +656,13 @@ class DetailViewModel(
      */
     fun markPreviousSeen(episodeId: EpisodeId) {
         val seasons = _state.value.details?.seasons ?: return
-        viewModelScope.launchReporting {
+        launchWrite {
             val today = clock.todayEpochDay()
             val aired = seasons.map { season -> season.copy(episodes = season.episodes.filter { it.hasAired(today) }) }
-            if (aired.none { season -> season.episodes.any { it.id == episodeId } }) return@launchReporting
+            if (aired.none { season -> season.episodes.any { it.id == episodeId } }) return@launchWrite
+            // Already seen through here: nothing would be ticked, so the title is not saved for it (ADR 0037).
+            val seen = progressApi.observeSeenEpisodes(mediaId).first()
+            if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchWrite
             addIfAbsent()
             progressApi.markPreviousSeen(aired, episodeId)
             releaseEntry()
@@ -573,7 +671,7 @@ class DetailViewModel(
 
     /** Toggles a movie's watched flag. */
     fun toggleMovieWatched() {
-        viewModelScope.launchReporting {
+        launchWrite {
             val watched = _state.value.movieWatched
             if (!watched) addIfAbsent()
             progressApi.tickMovie(mediaId, !watched)
