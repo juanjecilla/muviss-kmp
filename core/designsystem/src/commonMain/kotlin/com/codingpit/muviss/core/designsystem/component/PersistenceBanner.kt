@@ -2,7 +2,7 @@ package com.codingpit.muviss.core.designsystem.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -31,29 +31,41 @@ import com.codingpit.muviss.core.designsystem.text.resolve
  * only warning the user gets, and the tab that needs the warning is precisely
  * the one with nowhere durable to remember the dismissal.
  *
- * One line, tight padding: it sits above the whole `NavHost` and every vertical
- * pixel it takes is taken from every screen.
+ * Usually one line, tight padding: it sits above the whole `NavHost` and every
+ * vertical pixel it takes is taken from every screen.
+ *
+ * [action] (optional, #881) sits beside the text while both fit, and wraps
+ * below it when they do not. Compose would otherwise measure the action first,
+ * so a long action label at a large font scale could take most of the width and
+ * leave the warning in a narrow, hard-to-read column. A wrapped action is the
+ * only thing that changes shape; the text keeps the full width either way.
  *
  * `liveRegion` so a screen reader announces it when it appears rather than only
  * when focus happens to land on it — it can appear after the page has settled,
  * once the lock election resolves.
  */
 @Composable
-fun PersistenceBanner(message: UiText?, modifier: Modifier = Modifier) {
+fun PersistenceBanner(
+    message: UiText?,
+    modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
+) {
     if (message == null) return
-    Row(
+    FlowRow(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.errorContainer)
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .semantics { liveRegion = LiveRegionMode.Polite },
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = message.resolve(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onErrorContainer,
         )
+        action?.invoke()
     }
 }
