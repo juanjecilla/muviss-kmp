@@ -116,6 +116,7 @@ import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.a11y_collapsed
@@ -1027,8 +1028,8 @@ private fun rememberScrollToSpecials(
 ): () -> Unit {
     val scope = rememberCoroutineScope()
     return {
-        seasons.expanded.value = seasons.expanded.value + SPECIALS_SEASON_NUMBER
-        anchors.indexByKey["season-$SPECIALS_SEASON_NUMBER"]?.let { index ->
+        seasons.expanded.value = seasons.expanded.value + EpisodeOrdering.SPECIALS_SEASON
+        anchors.indexByKey["season-${EpisodeOrdering.SPECIALS_SEASON}"]?.let { index ->
             scope.launch { listState.animateScrollToItem(index) }
         }
     }
@@ -1290,10 +1291,7 @@ private fun SeasonEpisodeRow(
     )
 }
 
-private fun Episode.hasAiredBy(todayEpochDay: Long): Boolean {
-    val airDate = airDateEpochDay
-    return airDate != null && airDate <= todayEpochDay
-}
+private fun Episode.hasAiredBy(todayEpochDay: Long): Boolean = EpisodeOrdering.hasAired(this, todayEpochDay)
 
 @Composable
 private fun SnoozedBanner(dueAtEpochDay: Long, onUndo: () -> Unit) {
