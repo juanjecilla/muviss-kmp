@@ -435,7 +435,14 @@ the schedule, the gates and where a fix goes.
   plain push that refuses a branch that moved. A conflict in any other path holds,
   naming it, and pushes nothing. A branch that merges cleanly is left alone, since
   GitHub merges it. Only `ship` pushes; `merge` holds on a conflicting PR and says
-  to run `ship`. The push gives the PR a new head: its checks run there, and the
+  to run `ship`.
+  **The approval contract.** Every push to a release branch is a new release
+  candidate (`vX.Y.Z-rcN`, built and uploaded to internal). Production gets the
+  newest candidate, so a merge is only allowed when that candidate is built from
+  the approved head (`release_merge.rb rc`). A sync push therefore stops the run:
+  the new candidate has to be tested on internal, and then ship is run again. The
+  approval is given on the head that is then merged; an approval given before a
+  sync does not carry over, because the head has moved. The push gives the PR a new head: its checks run there, and the
   run waits for an approval of that new head, then merges with GitHub's own merge
   pinned to it (`--match-head-commit`). Nothing is pushed to main by this job, so
   there is no ruleset bypass. A merge that fails leaves the checkout clean and pushes

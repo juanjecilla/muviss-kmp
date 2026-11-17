@@ -179,6 +179,10 @@ jobs:
           ruby "$RM" sync "$BRANCH" || RC=$?
           case "$RC" in
             0) ;;
+            # A pushed merge is a new release candidate (release-rc.yml builds every push to the branch). It has not
+            # been tested, so this run stops here: nothing is approved on it and nothing is merged.
+            3) MSG="pushed a merge of main into $BRANCH: that is a new release candidate. Test it on the internal track, then run ship again. Nothing was merged."
+               echo "::error::$MSG"; echo "$MSG" >> "$GITHUB_STEP_SUMMARY"; exit 1 ;;
             2) echo "::error::$BRANCH conflicts with main outside CHANGELOG.md; resolve it by hand. Nothing was pushed."; exit 1 ;;
             *) echo "::error::merging main into $BRANCH failed; nothing was merged into main"; exit 1 ;;
           esac
@@ -192,6 +196,7 @@ jobs:
           N: ${{ steps.target.outputs.number }}
           ACTION: ${{ inputs.action }}
           WAIT: ${{ inputs.wait_minutes }}
+          VERSION: ${{ steps.branch.outputs.version }}
         run: |
           # A whole number of minutes, checked before it is used in arithmetic (bash evaluates an array subscript in
           # an arithmetic expression as a command substitution, so the input must not reach it unchecked).
@@ -233,6 +238,17 @@ jobs:
               2) [ "$REQUIRED" = green ] && REQUIRED="no approving review on $HEAD" ;;
               *) cat "$RUNNER_TEMP/approved.err"; echo "::error::the approvals of #$N could not be read; nothing was merged"; exit 1 ;;
             esac
+            # release.yml promotes the newest vX.Y.Z-rcN tag, not the merged head, so that tag must be built from this
+            # head: otherwise production gets a candidate that lacks what was approved and merged (#793). A release only.
+            if [ "$ACTION" != back-merge ]; then
+              RC=0
+              GH_TOKEN="$GH_TOKEN" GITHUB_REPOSITORY="$REPO" ruby "$RM" rc "$VERSION" "$HEAD" 2>"$RUNNER_TEMP/rc.err" || RC=$?
+              case "$RC" in
+                0) ;;
+                2) [ "$REQUIRED" = green ] && REQUIRED="the newest release candidate is not built from $HEAD" ;;
+                *) cat "$RUNNER_TEMP/rc.err"; echo "::error::the release candidates of #$N could not be read; nothing was merged"; exit 1 ;;
+              esac
+            fi
             echo "#$N: $STATE, checks $CHECKS, required $REQUIRED, head $HEAD"
             # UNSTABLE means a non-passing status, so only CLEAN (or HAS_HOOKS) is green. DIRTY is not: a conflict
             # with main is settled by the merge step before the wait, and a PR still DIRTY here waits or holds.

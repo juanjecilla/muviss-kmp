@@ -369,6 +369,43 @@ module ReleaseMerge
     end
   end
 
+  # The release candidate production gets (release-rc.yml tags every push to release/* as vX.Y.Z-rcN and builds it;
+  # release.yml promotes the NEWEST rc tag, never the merged head). A merge is only safe when that newest candidate
+  # is built from the head that was approved (#793): otherwise production gets a build that lacks what was merged.
+  module ReleaseCandidate
+    VERSION = /\A\d+\.\d+\.\d+\z/
+
+    module_function
+
+    # The commit the newest vVERSION-rcN tag names, or nil when no candidate was ever tagged. Annotated tags are
+    # peeled to their commit. Raises RequiredChecks::Unreadable when GitHub cannot say.
+    def newest_commit(slug, version, gh: RequiredChecks::RUNNER)
+      raise RequiredChecks::Unreadable, "not a repository: #{slug.inspect}" unless RequiredChecks::SLUG.match?(slug.to_s)
+      raise RequiredChecks::Unreadable, "not a release version: #{version.inspect}" unless VERSION.match?(version.to_s)
+
+      refs = RequiredChecks.read(gh, "repos/#{slug}/git/matching-refs/tags/v#{version}-rc", "--paginate", "--jq",
+                                 ".[]|{ref,sha:.object.sha,type:.object.type}")
+      pattern = %r{\Arefs/tags/v#{Regexp.escape(version)}-rc(\d+)\z}
+      newest = refs.select { |r| r.is_a?(Hash) && pattern.match?(r["ref"].to_s) }
+                   .max_by { |r| pattern.match(r["ref"])[1].to_i }
+      return nil unless newest
+
+      sha = newest["sha"]
+      raise RequiredChecks::Unreadable, "not a commit sha: #{sha.inspect}" unless RequiredChecks::SHA.match?(sha.to_s)
+      return sha if newest["type"] == "commit"
+
+      commit = RequiredChecks.read(gh, "repos/#{slug}/git/tags/#{sha}", "--jq", ".object.sha").first
+      raise RequiredChecks::Unreadable, "an unreadable tag object for #{version}" unless RequiredChecks::SHA.match?(commit.to_s)
+
+      commit
+    end
+
+    # True when the newest candidate of `version` is built from `sha`. An older candidate at `sha` is not enough.
+    def at?(slug, version, sha, gh: RequiredChecks::RUNNER)
+      newest_commit(slug, version, gh: gh) == sha
+    end
+  end
+
   # The command line the workflows call. Run it from the checkout, with origin
   # reachable. Only `sync` and `rehearse --push` write to origin, as whoever the
   # checkout's git credentials are (the release App, in the workflows).
@@ -379,15 +416,19 @@ module ReleaseMerge
   #                                               exit 2 naming the ones that are not; 1 when they cannot be read
   #   release_merge.rb sync BRANCH                run in BRANCH's checkout (at its origin head). When main and BRANCH
   #                                               conflict, merges main into BRANCH and pushes the merge as the App
-  #                                               (only CHANGELOG.md is resolved; the new head then needs its own
-  #                                               approval and checks): 0 pushed or nothing to merge, 2 held (a path
-  #                                               outside the allow-list, named; nothing pushed), 1 error (nothing pushed)
+  #                                               (only CHANGELOG.md is resolved): 0 nothing to merge, 3 pushed (the
+  #                                               new head is a new release candidate, to be tested before it is
+  #                                               approved), 2 held (a path outside the allow-list, named; nothing
+  #                                               pushed), 1 error (nothing pushed)
+  #   release_merge.rb rc VERSION SHA             exit 0 when the newest vVERSION-rcN tag is built from SHA; 2 when it
+  #                                               is another commit (named) or there is none; 1 when unreadable
   #   release_merge.rb rehearse VERSION [--push]  judge and print the Sunday merge of release/VERSION
   #                                               without moving main; --push also puts the merge
   #                                               commit on rehearsal/VERSION as the App, then deletes it
   module Cli
     HELD = 2
-    USAGE = "usage: release_merge.rb approved PR SHA | unmet SHA | sync BRANCH | rehearse VERSION [--push]".freeze
+    PUSHED = 3
+    USAGE = "usage: release_merge.rb approved PR SHA | unmet SHA | sync BRANCH | rc VERSION SHA | rehearse VERSION [--push]".freeze
     # The names the workflows pass. They become refspecs and ref names, so anything else is refused here.
     BRANCH_NAME = %r{\A(release|hotfix)/\d+\.\d+\.\d+\z}
     VERSION_NAME = /\A\d+\.\d+\.\d+\z/
@@ -405,6 +446,11 @@ module ReleaseMerge
         sha = args.fetch(1) { return usage(err) }
         return approved(pr, sha, slug, gh, err)
       when "sync" then sync(repo, branch_arg(args) { return usage(err) }, out, err)
+      when "rc"
+        version = args.fetch(0) { return usage(err) }
+        sha = args.fetch(1) { return usage(err) }
+        return usage(err) unless ReleaseCandidate::VERSION.match?(version) && RequiredChecks::SHA.match?(sha)
+        candidate(version, sha, slug, gh, out, err)
       when "rehearse"
         version = args.fetch(0) { return usage(err) }
         return usage(err) unless VERSION_NAME.match?(version)
@@ -467,7 +513,16 @@ module ReleaseMerge
       commit = repo.merge_main_into_checkout(main, message: "Merge main into #{branch}")
       repo.push_branch(commit, branch, expected: head)
       out.puts "pushed #{commit} to #{branch}: main merged in, #{paths.join(', ')} resolved as the union of both sides"
-      0
+      PUSHED
+    end
+
+    # 0 when the newest candidate of VERSION is built from sha; HELD (2) naming the commit it is built from otherwise.
+    def candidate(version, sha, slug, gh, out, err)
+      newest = ReleaseCandidate.newest_commit(slug, version, gh: gh)
+      return 0 if newest == sha
+
+      err.puts "held: the newest release candidate of #{version} is #{newest || 'none'}, not #{sha}; production would get that build"
+      HELD
     end
 
     def rehearse(repo, version, push, out, err)

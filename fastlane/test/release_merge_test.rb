@@ -382,6 +382,95 @@ class RequiredChecksTest < Minitest::Test
   end
 end
 
+# release.yml promotes the newest vX.Y.Z-rcN tag, so the merge is only safe when that tag is built from the approved
+# head (#793). Fake gh: the matching-refs listing, and the peel of an annotated tag.
+class ReleaseCandidateTest < Minitest::Test
+  SLUG = "owner/repo".freeze
+  REFS = "repos/owner/repo/git/matching-refs/tags/v1.4.0-rc".freeze
+  A = ("a" * 40).freeze
+  B = ("b" * 40).freeze
+  T = ("d" * 40).freeze
+
+  def ref(number, sha, type: "commit", name: nil)
+    { "ref" => name || "refs/tags/v1.4.0-rc#{number}", "sha" => sha, "type" => type }
+  end
+
+  # `peeled` maps an annotated tag object's sha to the commit it names.
+  def gh_with(refs, peeled: {}, fail: false)
+    lambda do |*args|
+      path = args.first.sub(/\?.*/, "")
+      next [nil, 1] if fail
+      next [refs.map { |r| JSON.generate(r) }.join("\n"), 0] if path == REFS
+      next [peeled.fetch(path.split("/").last), 0] if path.start_with?("repos/owner/repo/git/tags/")
+
+      raise "unexpected #{path}"
+    end
+  end
+
+  def newest(gh)
+    ReleaseMerge::ReleaseCandidate.newest_commit(SLUG, "1.4.0", gh: gh)
+  end
+
+  def test_the_newest_candidate_is_the_highest_number
+    assert_equal B, newest(gh_with([ref(1, A), ref(2, B)]))
+  end
+
+  def test_rc10_is_newer_than_rc9
+    assert_equal B, newest(gh_with([ref(9, A), ref(10, B)]))
+  end
+
+  def test_an_annotated_candidate_tag_is_peeled_to_its_commit
+    gh = gh_with([ref(1, A), ref(2, T, type: "tag")], peeled: { T => B })
+    assert_equal B, newest(gh)
+  end
+
+  def test_no_candidate_is_nil
+    assert_nil newest(gh_with([]))
+  end
+
+  def test_a_ref_that_is_not_an_rc_number_is_ignored
+    assert_equal A, newest(gh_with([ref(1, A), ref(nil, B, name: "refs/tags/v1.4.0-rcx")]))
+  end
+
+  def test_an_older_candidate_at_the_head_is_not_enough
+    # The newer candidate was built from another commit: production would get that build, not the head.
+    gh = gh_with([ref(1, A), ref(2, B)])
+    refute ReleaseMerge::ReleaseCandidate.at?(SLUG, "1.4.0", A, gh: gh)
+  end
+
+  def test_the_newest_candidate_at_the_head_is_accepted
+    assert ReleaseMerge::ReleaseCandidate.at?(SLUG, "1.4.0", B, gh: gh_with([ref(1, A), ref(2, B)]))
+  end
+
+  def test_an_unreadable_listing_is_an_error_not_a_pass
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { newest(gh_with([], fail: true)) }
+  end
+
+  def test_a_malformed_version_is_refused_before_any_call
+    gh = ->(*) { raise "no call expected" }
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) do
+      ReleaseMerge::ReleaseCandidate.newest_commit(SLUG, "1.4.0 --x", gh: gh)
+    end
+  end
+
+  def test_the_cli_exits_0_when_the_newest_candidate_is_at_the_head
+    code = ReleaseMerge::Cli.run(["rc", "1.4.0", B], repo: nil, out: StringIO.new, err: StringIO.new, slug: SLUG, gh: gh_with([ref(1, A), ref(2, B)]))
+    assert_equal 0, code
+  end
+
+  def test_the_cli_holds_with_exit_2_naming_the_commit_the_newest_candidate_is_built_from
+    err = StringIO.new
+    code = ReleaseMerge::Cli.run(["rc", "1.4.0", A], repo: nil, out: StringIO.new, err: err, slug: SLUG, gh: gh_with([ref(1, A), ref(2, B)]))
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err.string, B
+  end
+
+  def test_the_cli_refuses_a_non_sha_before_any_call
+    code = ReleaseMerge::Cli.run(["rc", "1.4.0", "not-a-sha"], repo: nil, out: StringIO.new, err: StringIO.new, slug: SLUG, gh: ->(*) { raise "no call" })
+    assert_equal 64, code
+  end
+end
+
 # An approval counts only on the head it was given on (#793 adversarial pass: a stale approval must hold).
 class ApprovedOnHeadTest < Minitest::Test
   SHA = ("b" * 40).freeze
@@ -547,7 +636,7 @@ class ReleaseMergeCliTest < Minitest::Test
   def test_sync_merges_main_into_a_changelog_only_conflict_and_pushes_it_to_the_branch
     git("switch", "-q", "release/1.4.0")
     code, out, err = cli("sync", "release/1.4.0")
-    assert_equal 0, code, err
+    assert_equal ReleaseMerge::Cli::PUSHED, code, err
     assert_includes out, "pushed"
     tip = git_in(@origin, "rev-parse", "refs/heads/release/1.4.0")
     assert_equal [@branch, @main].join(" "), git_in(@origin, "log", "-1", "--format=%P", tip), "the branch first, then main"
