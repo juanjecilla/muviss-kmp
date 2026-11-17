@@ -116,7 +116,7 @@ class TmdbDiscoverFiltersTest {
     fun a_provider_without_filters_keeps_a_genre_when_several_are_chosen() = runTest {
         var asked: String? = null
         val genreOnly = object : MetadataProvider by fixture().provider {
-            override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> {
+            override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): PagedResult<MediaSummary> {
                 asked = genreId
                 return PagedResult(emptyList(), page = page, totalPages = page)
             }

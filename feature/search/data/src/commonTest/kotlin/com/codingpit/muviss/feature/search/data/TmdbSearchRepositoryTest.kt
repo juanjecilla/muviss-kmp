@@ -52,26 +52,26 @@ private class FakeProvider(
 
     override suspend fun details(id: MediaId): MediaDetails = MediaDetails(MediaSummary(id, "Title"))
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> {
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): PagedResult<MediaSummary> {
         lastDiscoverGenreId = genreId
         lastDiscoverExcluded = excludedGenreIds
         return PagedResult(discoverResults, page = page, totalPages = page + 1)
     }
 
-    override suspend fun genres(type: MediaType): List<Genre> = genreList
+    override suspend fun genres(type: MediaType, fresh: Boolean): List<Genre> = genreList
 
     override suspend fun watchProviders(id: MediaId, region: String): WatchProviders {
         lastWatchProvidersRegion = region
         return providers
     }
 
-    override suspend fun recommendations(id: MediaId, page: Int): PagedResult<MediaSummary> {
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
         failWith?.let { throw it }
         lastRecommendationsPage = page
         return PagedResult(recs.recommendationsResults, page = page, totalPages = page + 1)
     }
 
-    override suspend fun similar(id: MediaId, page: Int): PagedResult<MediaSummary> {
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
         lastSimilarPage = page
         return PagedResult(recs.similarResults, page = page, totalPages = page + 1)
     }

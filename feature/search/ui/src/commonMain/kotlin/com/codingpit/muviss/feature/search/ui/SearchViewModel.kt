@@ -488,7 +488,7 @@ class SearchViewModel(
 
         val stored = discoverFeed.forYouStored(seeds)
         if (stored != null) emit(shown(stored))
-        emit(shown(discoverFeed.refreshForYou(seeds, stored) { seed -> recommendationsUseCase(seed) }))
+        emit(shown(discoverFeed.refreshForYou(seeds, stored) { seed -> recommendationsUseCase(seed, fresh = true) }))
     }
 
     private companion object {

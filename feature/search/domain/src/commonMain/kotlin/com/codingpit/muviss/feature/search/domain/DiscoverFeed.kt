@@ -156,7 +156,11 @@ class DiscoverFeed(
         return answers
     }
 
-    /** Fetches every section, storing each success. [mutedMovies] and [mutedTv] decide how far a shelf reads. */
+    /**
+     * Fetches every section, storing each success. [mutedMovies] and [mutedTv] decide how far a shelf reads. Every
+     * request is [fresh][SearchRepository.discover]: a refresh is owed a current answer, so the in-memory HTTP cache
+     * may not answer it (#922).
+     */
     suspend fun refresh(mutedMovies: MutedGenres, mutedTv: MutedGenres): DiscoverRefresh = DiscoverRefresh(
         movieGenres = genres(MediaType.MOVIE),
         tvGenres = genres(MediaType.TV),
@@ -171,21 +175,21 @@ class DiscoverFeed(
         return clock.nowEpochMs() - oldest > TTL_MS
     }
 
-    private suspend fun genres(type: MediaType): Result<List<Genre>> = repository.genres(type).onSuccess { list ->
+    private suspend fun genres(type: MediaType): Result<List<Genre>> = repository.genres(type, fresh = true).onSuccess { list ->
         cache.saveGenres(type, list, clock.nowEpochMs())
     }
 
     private suspend fun shelf(type: MediaType, muted: MutedGenres): Result<DiscoverShelf> {
         val now = clock.nowEpochMs()
         val excluded = muted.forType(type)
-        val first = repository.discover(type, page = 1, genreId = null, excludedGenreIds = excluded)
+        val first = repository.discover(type, page = 1, genreId = null, excludedGenreIds = excluded, fresh = true)
             .onSuccess { cache.savePopular(type, 1, it, now) }
             .getOrElse { return Result.failure(it) }
         val pages = mutableListOf(first)
         var complete = true
         while (needsMorePages(pages, muted)) {
             val page = pages.last().page + 1
-            val next = repository.discover(type, page = page, genreId = null, excludedGenreIds = excluded)
+            val next = repository.discover(type, page = page, genreId = null, excludedGenreIds = excluded, fresh = true)
                 .onSuccess { cache.savePopular(type, page, it, now) }
                 .getOrNull()
             if (next == null) {
