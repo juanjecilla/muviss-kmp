@@ -284,6 +284,32 @@ class ReleaseStagesTest < Minitest::Test
     assert_equal "beta", ReleaseStages.parse(issue.body)["stage"]
   end
 
+  # #695: another record-rc run saves rc3 after this writer read the marker and before its save lands.
+  def test_a_concurrent_writer_that_recorded_rc3_is_not_undone_by_a_save_of_rc2
+    issue = MarkerIssue.new(ReleaseStages.render(base_state.merge("rc_tag" => "v1.1.0-rc3")))
+
+    write(issue, base_state.merge("rc_tag" => "v1.1.0-rc2"))
+
+    assert_equal "v1.1.0-rc3", ReleaseStages.parse(issue.body)["rc_tag"]
+  end
+
+  def test_a_concurrent_rc3_on_the_ios_track_is_not_undone_by_a_stale_rc2
+    issue = MarkerIssue.new(ReleaseStages.render(base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.merge("rc_tag" => "v1.1.0-rc3"))))
+    mine = base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.merge("rc_tag" => "v1.1.0-rc2"))
+
+    write(issue, mine)
+
+    assert_equal "v1.1.0-rc3", ReleaseStages.parse(issue.body)["ios"]["rc_tag"]
+  end
+
+  def test_a_save_of_rc2_lands_when_the_marker_has_an_older_candidate
+    issue = MarkerIssue.new(ReleaseStages.render(base_state.merge("rc_tag" => "v1.1.0-rc1")))
+
+    write(issue, base_state.merge("rc_tag" => "v1.1.0-rc2"))
+
+    assert_equal "v1.1.0-rc2", ReleaseStages.parse(issue.body)["rc_tag"]
+  end
+
   def test_a_late_testflight_record_does_not_replace_a_newer_rc
     fresh = base_state.merge(ReleaseStages::IOS_KEY => ReleaseStages.new_ios_state.merge("testflight_rc" => "v1.1.0-rc3"))
     issue = MarkerIssue.new(ReleaseStages.render(fresh))

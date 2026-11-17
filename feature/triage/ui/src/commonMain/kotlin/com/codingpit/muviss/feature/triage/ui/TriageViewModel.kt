@@ -17,9 +17,9 @@ import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckCursor
+import com.codingpit.muviss.feature.triage.domain.DeckFeed
 import com.codingpit.muviss.feature.triage.domain.DeckFilter
 import com.codingpit.muviss.feature.triage.domain.LoadDeckGenresUseCase
-import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageActions
 import com.codingpit.muviss.feature.triage.domain.TriageEvent
 import com.codingpit.muviss.feature.triage.domain.TriageOnboarding
@@ -86,6 +86,8 @@ data class FailedCommit(
 )
 
 data class TriageUiState(
+    /** The deck was handed titles by Next Pick (#554): no filter bar, and the picks-done copy when they run out. */
+    val seeded: Boolean = false,
     val loading: Boolean = true,
     val refilling: Boolean = false,
     val cards: List<MediaSummary> = emptyList(),
@@ -180,7 +182,7 @@ data class TriageUiState(
  */
 @Suppress("LongParameterList") // the seventh is Settings, for Muted Genres (ADR 0031); each is a distinct peer seam
 class TriageViewModel(
-    private val loadDeck: LoadDeckUseCase,
+    private val loadDeck: DeckFeed,
     private val loadGenres: LoadDeckGenresUseCase,
     private val actions: TriageActions,
     onboarding: TriageOnboarding,
@@ -189,7 +191,7 @@ class TriageViewModel(
     private val settings: SettingsApi,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(TriageUiState())
+    private val _state = MutableStateFlow(TriageUiState(seeded = loadDeck.seeded))
     val state: StateFlow<TriageUiState> = _state.asStateFlow()
 
     private var cursor = DeckCursor()
@@ -292,18 +294,24 @@ class TriageViewModel(
                     }
             }
         }
-        viewModelScope.launchReporting { loadGenreChips() }
-        // The first deck waits for the first muting: filling it unmuted and then reloading would flash
-        // exactly the shows the user muted. A later change (Settings, the chip) reloads from page 1.
-        var firstMuting = true
-        settings.observeMuting()
-            .onEach { muting ->
-                val changed = _state.value.filter.muted != muting.effective
-                _state.update { it.copy(filter = it.filter.copy(muted = muting.effective), showMuted = muting.showMuted, hasMuted = muting.hasMuted) }
-                if (firstMuting || changed) refill(reset = true, restore = true)
-                firstMuting = false
-            }
-            .launchInReporting(viewModelScope)
+        if (loadDeck.seeded) {
+            // A seeded deck is the engine's ranked list: it has no genre chips and no mutes of its own (the engine
+            // already applied them), so nothing is read from settings and the deck starts at once.
+            refill(reset = true, restore = true)
+        } else {
+            viewModelScope.launchReporting { loadGenreChips() }
+            // The first deck waits for the first muting: filling it unmuted and then reloading would flash
+            // exactly the shows the user muted. A later change (Settings, the chip) reloads from page 1.
+            var firstMuting = true
+            settings.observeMuting()
+                .onEach { muting ->
+                    val changed = _state.value.filter.muted != muting.effective
+                    _state.update { it.copy(filter = it.filter.copy(muted = muting.effective), showMuted = muting.showMuted, hasMuted = muting.hasMuted) }
+                    if (firstMuting || changed) refill(reset = true, restore = true)
+                    firstMuting = false
+                }
+                .launchInReporting(viewModelScope)
+        }
         viewModelScope.launchReporting { actions.retryUnresolved() }
     }
 
