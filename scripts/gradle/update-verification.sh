@@ -40,6 +40,7 @@ status=0
   jvmTest :app:androidApp:testDebugUnitTest :app:desktopApp:test \
   compileKotlinJs compileKotlinWasmJs allMetadataJar \
   :app:webApp:jsBrowserDevelopmentWebpack :app:webApp:wasmJsBrowserDevelopmentWebpack \
+  :app:webApp:wasmJsBrowserDistribution \
   "${ios_tasks[@]}" \
   :app:androidApp:assembleDebug :app:androidApp:lintDebug \
   :app:androidApp:assembleRelease :app:androidApp:bundleRelease \

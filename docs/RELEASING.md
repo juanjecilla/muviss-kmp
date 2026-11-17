@@ -670,6 +670,7 @@ ivy repository, so it is an ordinary artifact to Gradle).
   artifacts publish no usable PGP key, so signature verification would be a long list
   of `ignored-keys`, which is a weaker statement than a checksum, not a stronger one.
   Checksums it is; revisit if the ecosystem signs consistently.
+- **Binaryen** (the Wasm optimizer, `com.github.webassembly:binaryen`, downloaded by the Kotlin plugin for `wasmJsBrowserDistribution`) is covered for macOS arm64 and x86_64, Linux x86_64 and Windows x86_64. `update-verification.sh` runs that production lane so a regeneration keeps those checksums; `--prune` would otherwise drop them. Any other host (aarch64 Linux, say) fails verification until its checksum is added the same way.
 - **Not covered, on purpose:** the Kotlin/Native toolchain (`~/.konan`, downloaded by
   the Kotlin plugin outside dependency resolution), npm packages (pinned by
   `kotlin-js-store/yarn.lock`, which CI already checks is current), the JDK and
