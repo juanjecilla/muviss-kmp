@@ -48,10 +48,17 @@ const val NUDGE_DISMISS_TAG = "notificationNudgeDismiss"
 data class NotificationNudgeState(
     /** Onboarding says this title should offer the nudge. */
     val offered: Boolean = false,
-    /** The user said yes and the OS said no: explain instead of vanishing. */
+    /** The user said yes and the OS said no for good: explain instead of vanishing. */
     val blocked: Boolean = false,
+    /**
+     * The user said yes, the OS said no, and it would still ask: Turn on stays, so the next tap prompts again (#933).
+     * Kept here rather than in [offered], because spending the nudge has already hidden it from onboarding.
+     */
+    val retryable: Boolean = false,
+    /** A Turn on is being answered. Keeps the banner up while the spend and the answer land (no flicker). */
+    val answering: Boolean = false,
 ) {
-    val visible: Boolean get() = offered || blocked
+    val visible: Boolean get() = offered || blocked || retryable || answering
 }
 
 /**
@@ -77,6 +84,13 @@ class NotificationNudgeViewModel(
      */
     private suspend fun refusedForGoodNow(off: Boolean): Boolean = off && !system.canAskAgainNow()
 
+    /**
+     * Counts the answers to Turn on. A read of the OS that started before an answer and lands after it is out of date,
+     * and must not clear the line that answer just set (#931: iOS's resume read can answer "not denied" from before
+     * the refusal was recorded).
+     */
+    private var answers = 0
+
     init {
         onboarding.observeNotificationNudge(mediaId)
             .onEach { offered ->
@@ -88,14 +102,29 @@ class NotificationNudgeViewModel(
             .launchInReporting(viewModelScope)
     }
 
+    /**
+     * Asks through Settings' own door, so the OS prompt is the one Settings' switch shows. A refusal the OS will ask
+     * about again keeps Turn on (the next tap prompts); one it will not becomes the blocked line. The domain spends the
+     * nudge whatever the answer, so [NotificationNudgeState.answering] keeps the banner up until this has decided.
+     */
     fun turnOn() {
         viewModelScope.launchReporting {
             if (refusedForGoodNow(system.blockedNow())) {
-                _state.update { it.copy(blocked = true) }
+                _state.update { it.copy(blocked = true, retryable = false) }
                 return@launchReporting
             }
-            if (onboarding.acceptNotificationNudge() == NotificationNudgeResult.DENIED) {
-                _state.update { it.copy(blocked = true) }
+            _state.update { it.copy(answering = true) }
+            try {
+                val result = onboarding.acceptNotificationNudge()
+                answers++
+                if (result == NotificationNudgeResult.ENABLED) {
+                    _state.update { it.copy(offered = false, blocked = false, retryable = false) }
+                } else {
+                    val forGood = refusedForGoodNow(system.blockedNow())
+                    _state.update { it.copy(blocked = forGood, retryable = !forGood) }
+                }
+            } finally {
+                _state.update { it.copy(answering = false) }
             }
         }
     }
@@ -112,15 +141,17 @@ class NotificationNudgeViewModel(
 
     /** Sets [NotificationNudgeState.blocked] from the OS as it is now and what the nudge already knows. */
     private suspend fun settleExplanation() {
+        val asked = answers
         val off = system.blockedNow()
         val refusedForGood = refusedForGoodNow(off)
+        if (asked != answers) return
         _state.update { it.copy(blocked = (it.blocked && off) || (it.offered && refusedForGood)) }
     }
 
     fun dismiss() {
         viewModelScope.launchReporting {
             onboarding.dismissNotificationNudge()
-            _state.update { it.copy(blocked = false) }
+            _state.update { it.copy(blocked = false, retryable = false) }
         }
     }
 
