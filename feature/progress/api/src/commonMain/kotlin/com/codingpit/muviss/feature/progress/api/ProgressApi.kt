@@ -78,9 +78,24 @@ data class WatchNextItem(
  * A title's "next" answer for one screen (Detail's primary button, ADR 0037): [aired] is the next aired episode
  * still unseen, which is what a tick writes; [announced] is the next unseen episode whose air date is still ahead.
  */
-data class NextEpisodes(val aired: Episode?, val announced: Episode?) {
+data class NextEpisodes(
+    val aired: Episode?,
+    val announced: Episode?,
+    /** The first aired season-0 special not yet seen, when every regular episode is (ADR 0037, #797). Never [aired]. */
+    val unseenSpecial: Episode? = null,
+    /** Whether any episode, special or regular, has aired by today. Zero aired means "not aired yet", not caught up. */
+    val anyAired: Boolean = false,
+) {
     companion object {
         val NONE = NextEpisodes(aired = null, announced = null)
+
+        /** The one derivation every "next" answer goes through, so Detail and Progress read the same ordering. */
+        fun of(seasons: List<Season>, seen: Set<EpisodeId>, todayEpochDay: Long): NextEpisodes = NextEpisodes(
+            aired = EpisodeOrdering.nextUnseen(seasons, seen, todayEpochDay),
+            announced = EpisodeOrdering.nextAnnounced(seasons, seen, todayEpochDay),
+            unseenSpecial = EpisodeOrdering.firstUnseenSpecial(seasons, seen, todayEpochDay),
+            anyAired = EpisodeOrdering.airedBy(seasons, todayEpochDay).isNotEmpty(),
+        )
     }
 }
 
@@ -101,10 +116,7 @@ interface ProgressApi {
      * It is the same ordering [observeWatchNext] uses ([EpisodeOrdering]), so Detail's button and the Progress
      * tab cannot disagree about which episode is next. Specials are never returned.
      */
-    fun nextEpisodes(seasons: List<Season>, seen: Set<EpisodeId>, todayEpochDay: Long): NextEpisodes = NextEpisodes(
-        aired = EpisodeOrdering.nextUnseen(seasons, seen, todayEpochDay),
-        announced = EpisodeOrdering.nextAnnounced(seasons, seen, todayEpochDay),
-    )
+    fun nextEpisodes(seasons: List<Season>, seen: Set<EpisodeId>, todayEpochDay: Long): NextEpisodes = NextEpisodes.of(seasons, seen, todayEpochDay)
 
     /**
      * Every title currently being watched, each with its next unseen aired
