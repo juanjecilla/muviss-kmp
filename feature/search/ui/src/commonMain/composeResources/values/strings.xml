@@ -76,6 +76,7 @@
     <!-- %1$s is why the refresh failed, e.g. the offline message. -->
     <string name="stale_notice">%1$s Showing what's saved on this device.</string>
     <string name="refresh_failed">Couldn't refresh this title.</string>
+    <string name="discover_refresh_failed">Couldn't refresh Search.</string>
     <string name="skipped_banner">You skipped this during triage</string>
     <string name="watched_again">I watched it again</string>
     <string name="tick_mistake">I ticked it by mistake</string>

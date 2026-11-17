@@ -9,6 +9,7 @@
     <string name="widget_seen">Visto</string>
     <string name="widget_marked_episode">Marcado %1$s ✓</string>
     <string name="widget_open_to_load">Ábrela para cargar episodios</string>
+    <string name="widget_next_pick">¿Qué sigue?</string>
     <string name="notification_tap_to_open">Toca para abrir Muviss</string>
     <string name="notification_episode_out">Ya está disponible %1$s</string>
     <string name="notification_now_available">Ya disponible</string>

@@ -10,8 +10,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
-import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.NoDiscoverCache
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.models.MetadataError
@@ -93,11 +95,11 @@ private fun SearchWithFailure(failure: Throwable?, introVisible: Boolean = false
     val viewModel = SearchViewModel(
         SearchMediaUseCase(repo),
         DiscoverMediaUseCase(repo),
-        GenresUseCase(repo),
         RecommendationsUseCase(repo),
         FakeSearchCollectionApi(),
         FakeTriageApi(),
         FakeMutingApi(),
+        DiscoverFeed(repo, NoDiscoverCache, FakeClock(epochMs = 0L)),
     )
     MuvissTheme(darkTheme = false) {
         SearchScreen(viewModel = viewModel, onOpenDetail = {}, onOpenTriage = {}, introVisible = introVisible, onIntroDismissed = onIntroDismissed)

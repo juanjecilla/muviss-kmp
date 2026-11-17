@@ -9,7 +9,6 @@ kotlin {
             api(projects.models)
             api(projects.feature.settings.api)
             implementation(projects.core.common)
-            implementation(projects.feature.nextpick.api)
             implementation(projects.feature.collection.api)
             implementation(projects.feature.progress.api)
             implementation(libs.kotlinx.coroutinesCore)

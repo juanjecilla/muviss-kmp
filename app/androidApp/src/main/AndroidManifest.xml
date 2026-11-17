@@ -58,6 +58,19 @@
 
                 <data android:scheme="muviss" android:host="auth-callback" />
             </intent-filter>
+
+            <!-- The Pick Session (EPIC 51, #700), opened by the "Watch next" widget's empty state. The host must
+                 stay `MuvissDeepLinks.HOST_NEXT_PICK` in :app:shared; the widget itself targets this activity
+                 explicitly, so this filter is for links from elsewhere. Its own filter, not a second data element
+                 on the OAuth one, so the redirect's filter above stays byte-identical to the ADR 0014 copies. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="muviss" android:host="next-pick" />
+            </intent-filter>
         </activity>
 
         <!-- "Watch next" home-screen widget (EPIC 22). Runs in this process,

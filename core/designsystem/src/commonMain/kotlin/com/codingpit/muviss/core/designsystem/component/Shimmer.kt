@@ -16,20 +16,47 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.generated.resources.Res
+import com.codingpit.muviss.core.designsystem.generated.resources.skeleton_loading
 import com.codingpit.shimmer.ShimmerHost
 import com.codingpit.shimmer.shimmer
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * A loading area: every skeleton below it shares one sweep, so the highlight
  * travels across the screen in turn (`:lib:shimmer` does the drawing). [animate]
  * is the reduced-motion switch (#394, EPIC 52): false draws every placeholder as
  * a flat surface and runs no animation.
+ *
+ * The placeholders carry no semantics, so the area announces itself once, as
+ * "Loading", through [announce]. The announcement is on this host and not on
+ * each placeholder, and it is not merged: a host can wrap real content too (Home
+ * keeps its loaded cards under the skeletons), and that content must stay
+ * reachable. Pass `announce = false` when the host holds no loading content.
  */
 @Composable
-fun SkeletonHost(animate: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    ShimmerHost(modifier = modifier, animate = animate, content = content)
+fun SkeletonHost(
+    animate: Boolean,
+    modifier: Modifier = Modifier,
+    announce: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    val loading = stringResource(Res.string.skeleton_loading)
+    val announced = if (announce) {
+        modifier.semantics {
+            contentDescription = loading
+            liveRegion = LiveRegionMode.Polite
+        }
+    } else {
+        modifier
+    }
+    ShimmerHost(modifier = announced, animate = animate, content = content)
 }
 
 /** The Muviss skin of the shimmer: the surface tones, read from the theme. */

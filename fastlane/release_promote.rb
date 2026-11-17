@@ -7,6 +7,7 @@
 #   ruby fastlane/release_promote.rb complete X.Y.Z            the ramp reached 100%: close the release issue
 #   ruby fastlane/release_promote.rb record-production X.Y.Z   release.yml promoted it (the manual path)
 #   ruby fastlane/release_promote.rb record-testflight vX.Y.Z-rcN   the iOS RC job uploaded it to TestFlight internal (#604)
+#   ruby fastlane/release_promote.rb record-rc vX.Y.Z-rcN          release-rc.yml tagged the candidate: the issue's "Latest RC" (#695)
 #
 # ReleaseGates is pure. ReleasePromotion decides and acts through four adapters
 # (GitHub, git, Play, Sentry) that the tests replace with fakes; the real ones
@@ -231,6 +232,24 @@ class ReleasePromotion
     state = state.merge(ReleaseStages::IOS_KEY => track.merge("testflight_rc" => tag))
     ReleaseStages.save(@github, issue, state)
     @out.puts "recorded #{tag} on the iOS track of #{version}"
+  end
+
+  # release-rc.yml tagged a new candidate (#695). The release issue names the newest one, so its
+  # "Latest RC" is not "none yet" while candidates exist. Only the marker's rc_tag changes: no
+  # comment (every push adds a candidate), and an older tag never replaces a newer one. A
+  # hotfix has no release issue, and that is not an error.
+  def record_rc(tag)
+    version = tag[/\Av(\d+\.\d+\.\d+)-rc\d+\z/, 1]
+    raise ArgumentError, "expected vX.Y.Z-rcN, got #{tag.inspect}" unless version
+
+    issue, state = find(version)
+    return @out.puts("no release issue for #{version}; nothing to record") unless issue
+    return @out.puts("the release issue for #{version} has no readable marker; nothing to record") unless state
+    return if state["rc_tag"] && ReleaseStages.rc_number(state["rc_tag"]) >= ReleaseStages.rc_number(tag)
+
+    state = state.merge("rc_tag" => tag)
+    ReleaseStages.save(@github, issue, state)
+    @out.puts "recorded #{tag} as the latest RC of #{version}"
   end
 
   # release.yml promoted the version itself (the manual path): record it.
@@ -709,15 +728,16 @@ if __FILE__ == $PROGRAM_NAME
     if (summary = ENV["GITHUB_STEP_SUMMARY"])
       File.open(summary, "a") { |f| outcomes.each { |o| f.puts "- #{o.version}: #{o.status}#{o.step ? " (#{o.step})" : ''}#{o.reasons.empty? ? '' : " — #{o.reasons.join('; ')}"}" } }
     end
-  when "complete", "record-production", "record-testflight"
+  when "complete", "record-production", "record-testflight", "record-rc"
     promotion = ReleasePromotion.new(github: github, git: nil, play: nil, sentry: nil, today: Date.today, apply: true)
     case command
     when "complete" then promotion.complete(args.fetch(0))
     when "record-production" then promotion.record_production(args.fetch(0))
+    when "record-rc" then promotion.record_rc(args.fetch(0))
     else promotion.record_testflight(args.fetch(0))
     end
   else
-    warn "usage: release_promote.rb run | complete X.Y.Z | record-production X.Y.Z | record-testflight vX.Y.Z-rcN"
+    warn "usage: release_promote.rb run | complete X.Y.Z | record-production X.Y.Z | record-testflight vX.Y.Z-rcN | record-rc vX.Y.Z-rcN"
     exit 2
   end
 end
