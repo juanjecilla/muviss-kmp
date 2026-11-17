@@ -348,8 +348,9 @@ test("a BEGIN that throws keeps the tab from saving the writes that follow it", 
 
 test("changes committed before a transaction are saved before it opens", async () => {
   const { indexedDB, announced, run } = loadWorker();
+  // The UPDATE changes one row, so the fake counts it, as SQLite would.
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return /total_changes/.test(sql) ? [{ values: [[0]] }] : []; }," +
+    "db = { changes: 0, exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; if (/^UPDATE/.test(sql)) db.changes += 1; return /total_changes/.test(sql) ? [{ values: [[db.changes]] }] : []; }," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -408,4 +409,51 @@ test("a failed export keeps the good copy waiting and still reports the failure"
   await done;
   assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 2"]);
   assert.equal(announced.at(-1).lastWriteFailed, true);
+});
+
+// A save that began before a transaction boundary failed can finish after it. Its
+// success must not clear the failure: the tab stopped saving, and announcing it as
+// saving again would hide that the newest changes are not saved.
+test("a save in flight when a transaction boundary fails does not clear the failure", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  indexedDB.hold = true;
+  run("saveSnapshot()");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(indexedDB.holds.length, 1, "the save is waiting on its IndexedDB write");
+  run('breakTransaction(new Error("boundary failed"))');
+  indexedDB.holds.forEach((release) => release());
+  await run("saveChain");
+  assert.equal(announced.at(-1).lastWriteFailed, true, "the failure is still announced");
+});
+
+// The worker's own classification of what counts as a write (see isMutation).
+test("a WITH statement is a read unless it writes, on whole words only", () => {
+  const { run } = loadWorker();
+  const mutates = (sql) => run(`isMutation(${JSON.stringify(sql)})`);
+  // The rewatch queries in EpisodePlay.sq: reads, and must not dirty a writer.
+  assert.equal(mutates("WITH p AS (SELECT mediaId FROM episodePlay WHERE deleted = 0) SELECT mediaId FROM p"), false);
+  assert.equal(mutates("WITH c AS (SELECT 1 AS n) SELECT n FROM c"), false);
+  assert.equal(mutates("WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c"), true);
+  assert.equal(mutates("WITH c AS (SELECT 1) DELETE FROM t"), true);
+  assert.equal(mutates("WITH c AS (SELECT 1) REPLACE INTO t SELECT * FROM c"), true);
+  assert.equal(mutates("WITH c AS (SELECT 1) UPDATE t SET x = 1"), true);
+});
+
+// An INSERT OR IGNORE that ignored its row, or an UPDATE that matched none, changes
+// nothing the stored snapshot lacks, so it is not saved. DDL is always saved: its
+// change is invisible to total_changes(), and a migration must survive a reload.
+test("a row write that changes no row is not saved, but a schema change is", async () => {
+  const { indexedDB, run } = loadWorker();
+  run(
+    "db = { changes: 0, exec: (sql) => { if (!/NO-OP/.test(sql) && /^(INSERT|UPDATE|DELETE)/.test(sql)) db.changes += 1; return /total_changes/.test(sql) ? [{ values: [[db.changes]] }] : []; }," +
+      " export: () => `snapshot ${++__version.n}` };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT OR IGNORE INTO t VALUES (1) NO-OP", id: 1 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, [], "a write that changed no row is not saved");
+
+  run('onModuleReady.call({ data: { action: "exec", sql: "CREATE TABLE u (x)", id: 2 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"], "a schema change is saved even with no row changed");
 });

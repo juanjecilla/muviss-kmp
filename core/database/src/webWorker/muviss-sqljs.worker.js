@@ -219,7 +219,10 @@ async function writeSnapshot(bytes, exportError) {
       loadedGeneration = outcome.generation;
     }
     if (exportError) throw exportError;
-    if (lastWriteFailed) {
+    // Not cleared while a transaction boundary is broken: a write that began before
+    // the failure can finish after it, and clearing the flag then would announce the
+    // tab as saving when it is not.
+    if (lastWriteFailed && !transactionBroken) {
       lastWriteFailed = false;
       announce();
     }
@@ -471,7 +474,9 @@ async function promote() {
     // Neither the startup read nor this one could be read, so there is still no
     // baseline. This tab must not become the writer: writing its empty database
     // would replace a snapshot it never saw. It gives the lock up so a tab that
-    // can read the store takes it.
+    // can read the store takes it. Reported as not saving, not as read-only: a
+    // lone tab has no other tab to blame, and a reload cannot read the store either.
+    startupFailed = true;
     giveUpLock();
     announce();
     return;
@@ -533,9 +538,24 @@ function isMutation(sql) {
   // `select 1; delete ...` would look like a read. Treated as a change, which is
   // the safe direction (see above).
   if (/;\s*\S/.test(sql)) return true;
-  // A WITH can lead an INSERT, UPDATE or DELETE as well as a SELECT, so it is not
-  // a read. It is counted as a change, which costs one extra export at most.
+  // A WITH is a read unless its statement contains a write keyword. A WITH can
+  // lead a write (`WITH c AS (...) INSERT ...`) as well as a SELECT, so the whole
+  // statement is searched, on whole words only: a column named `deleted` is not a
+  // DELETE. A false positive costs one extra export; a false negative loses data.
+  if (/^\s*with\b/i.test(sql)) return /\b(insert|replace|update|delete)\b/i.test(sql);
   return !/^\s*(select|pragma\s+\w+\s*$|explain)/i.test(sql);
+}
+
+// A statement whose only effect is on rows, as INSERT, UPDATE, DELETE or REPLACE
+// (or a WITH that leads one) is saved only if a row changed: an INSERT OR IGNORE
+// that ignored its row, or an UPDATE that matched none, changed nothing the stored
+// snapshot lacks, so saving it would advance the generation for nothing. Anything
+// else that mutates (DDL, PRAGMA, ANALYZE, several statements) is always saved,
+// because total_changes() does not see a schema change and a migration must not be
+// lost on reload.
+function isRowWriteOnly(sql) {
+  if (/;\s*\S/.test(sql)) return false;
+  return /^\s*(insert|replace|update|delete|with)\b/i.test(sql);
 }
 
 // Rows changed by this connection so far, across every statement it has run. The
@@ -570,8 +590,10 @@ function onModuleReady() {
         // own, so the ones before the failing one are in the database already.
         // A statement that changed no row (an INSERT OR IGNORE on a row that
         // exists, say) is not a change this tab holds. See promote().
-        if (totalChanges() > before) localWrites = true;
-        if (isMutation(data.sql)) markDirty();
+        const changed = totalChanges() > before;
+        if (changed) localWrites = true;
+        // A row-only write that changed no row is not saved (see isRowWriteOnly).
+        if (changed || (isMutation(data.sql) && !isRowWriteOnly(data.sql))) markDirty();
       }
       return postMessage({ id: data.id, results });
     }

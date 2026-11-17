@@ -697,3 +697,46 @@ test("a tab whose database never opened gives the lock up, so a tab that can ope
   assert.equal(failed.state().isWriter, false);
   assert.equal(failed.status().supported, false, "the failed tab says it is not saving");
 });
+
+// A write that changes no row must not advance the generation, or a tab waiting with
+// changes of its own is made stale by a write that changed nothing.
+test("a row write that changes no row does not save or advance the generation", async () => {
+  const idb = makeIndexedDb();
+  const locks = makeLocks();
+  const a = await openTab(idb, locks);
+  await settle();
+  a.exec("INSERT A");
+  await a.flush();
+  assert.equal(idb.data.get(GENERATION), 1);
+  a.exec("INSERT NO-OP A");
+  await a.flush();
+  await settle();
+  assert.equal(idb.data.get(GENERATION), 1, "the no-op write did not advance the generation");
+  assert.equal(storedText(idb), "INSERT A;");
+});
+
+// The rewatch statistics are WITH ... SELECT reads. While a reload is pending they
+// must still run, and must not schedule a save.
+test("a WITH ... SELECT read runs while a reload is pending and saves nothing", async () => {
+  const { idb, b } = await reloadingTab();
+  const before = storedText(idb);
+  assert.doesNotThrow(() => b.exec("WITH p AS (SELECT 1 AS n) SELECT n FROM p"), "the read is not refused");
+  await b.flush();
+  await settle();
+  assert.equal(storedText(idb), before);
+  assert.equal(idb.data.get(GENERATION), 2);
+});
+
+// A tab whose database never opened because IndexedDB cannot be read, and that
+// nothing else can read either, is reported as not saving: nothing is holding it
+// back, and a reload would not help.
+test("a tab that cannot read the store at startup or promotion reports itself as not saving", async () => {
+  const idb = makeIndexedDb();
+  idb.failReads = true;
+  const locks = makeLocks();
+  const tab = await openTab(idb, locks);
+  await settle();
+  await tab.run("promotionDone");
+  assert.equal(tab.state().isWriter, false);
+  assert.equal(tab.status().supported, false, "not saving, rather than read-only behind another tab");
+});
