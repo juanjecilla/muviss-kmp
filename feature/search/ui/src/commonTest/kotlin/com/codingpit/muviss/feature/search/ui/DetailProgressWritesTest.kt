@@ -145,6 +145,27 @@ class DetailProgressWritesTest {
     }
 
     /**
+     * A removal queued behind an in-flight tick publishes its Undo after the tick's, so the Undo left on screen is
+     * the removal's and tapping it brings the entry back. The tick is held inside the lock by its fresh read.
+     */
+    @Test
+    fun a_removal_queued_behind_an_in_flight_tick_keeps_its_own_undo() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        progress.seenReady.value = false
+        vm.toggleEpisodeSeen(episode1.id)
+        vm.removeFromLibrary()
+        progress.seenReady.value = true
+
+        val removal = checkNotNull(vm.state.value.pendingUndo)
+        assertTrue(removal.removedFromLibrary)
+        vm.undoBulkMark(removal)
+        assertEquals(listOf(show), collection.restored)
+    }
+
+    /**
      * An Undo tapped for the first tick must not reverse the second one: the second tick replaced the pending Undo
      * before the first Undo got the lock, so the tap is stale and writes nothing.
      */

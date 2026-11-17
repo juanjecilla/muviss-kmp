@@ -340,7 +340,9 @@ class DetailViewModel(
      * (#721): favorite, rating, note, add date and list membership survive, because nothing is rebuilt.
      */
     fun removeFromLibrary() {
-        viewModelScope.launchReporting {
+        // Under writeLock with the tick and the Undo it publishes: an in-flight tick must finish first, so the
+        // removal's Undo is the one left pending. Published outside the lock, the tick could replace it last.
+        launchWrite {
             collectionApi.remove(mediaId)
             _state.update {
                 it.copy(pendingUndo = BulkMarkUndo(emptyList(), UiText.Resource(Res.string.removed_from_library), removedFromLibrary = true))
