@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.triage.ui
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import com.codingpit.muviss.feature.triage.ui.di.SEEDED_DECK_QUALIFIER
 import com.codingpit.muviss.models.MediaId
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -20,6 +21,15 @@ fun NavGraphBuilder.triageSection(navController: NavController, onOpenDetail: (M
     composable<TriageRoute> {
         TriageScreen(
             viewModel = koinViewModel(),
+            onBack = { navController.popBackStack() },
+            onOpenSkipped = { navController.navigate(SkippedRoute) },
+            onOpenSnoozed = { navController.navigate(SnoozedRoute) },
+            onOpenDetail = onOpenDetail,
+        )
+    }
+    composable<SeededDeckRoute> {
+        TriageScreen(
+            viewModel = koinViewModel(qualifier = SEEDED_DECK_QUALIFIER),
             onBack = { navController.popBackStack() },
             onOpenSkipped = { navController.navigate(SkippedRoute) },
             onOpenSnoozed = { navController.navigate(SnoozedRoute) },

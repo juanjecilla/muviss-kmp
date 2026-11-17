@@ -14,13 +14,15 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.text.UiText
+import com.codingpit.muviss.core.designsystem.text.resolve
 
 /**
  * Says that what the user is doing here will not be saved.
  *
  * Only web ever shows this. Every other platform's database is a file the app
  * owns, so the caller passes a message of `null` and nothing is drawn — the
- * banner takes a nullable string rather than a `PersistenceState` so
+ * banner takes a nullable [UiText] rather than a `PersistenceState` so
  * `:core:designsystem` does not have to depend on `:core:database` to render
  * one line of text.
  *
@@ -37,7 +39,7 @@ import androidx.compose.ui.unit.dp
  * once the lock election resolves.
  */
 @Composable
-fun PersistenceBanner(message: String?, modifier: Modifier = Modifier) {
+fun PersistenceBanner(message: UiText?, modifier: Modifier = Modifier) {
     if (message == null) return
     Row(
         modifier = modifier
@@ -49,7 +51,7 @@ fun PersistenceBanner(message: String?, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = message,
+            text = message.resolve(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onErrorContainer,
         )
