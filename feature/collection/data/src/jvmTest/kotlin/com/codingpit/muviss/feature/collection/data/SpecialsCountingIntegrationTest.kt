@@ -1,0 +1,151 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
+package com.codingpit.muviss.feature.collection.data
+
+import app.cash.sqldelight.async.coroutines.awaitAsOne
+import com.codingpit.muviss.core.database.MuvissDatabase
+import com.codingpit.muviss.core.model.CountedProgress
+import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.core.testing.inMemoryDatabase
+import com.codingpit.muviss.feature.collection.domain.CollectionEntry
+import com.codingpit.muviss.models.Episode
+import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.MediaDetails
+import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaSummary
+import com.codingpit.muviss.models.ProductionStatus
+import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+/**
+ * Season 0 counts toward a title's progress only by the per-device setting, read in SQL (#938, ADR 0038). These run
+ * the real queries, because the parts that matter are the joins and the reconciliation writes, not the Kotlin.
+ *
+ * Day 1000 is "today". Regular episode 1 and the special aired on day 900; regular episode 2 airs on day 900 unless a
+ * test says otherwise.
+ */
+class SpecialsCountingIntegrationTest {
+
+    private val clock = FakeClock(1_000L * 86_400_000L)
+    private val show = MediaId.tmdbTv("1399")
+    private val regular1 = EpisodeId(show, 1, 1)
+    private val regular2 = EpisodeId(show, 1, 2)
+    private val special = EpisodeId(show, 0, 1)
+
+    private class Library(val database: MuvissDatabase, val repository: SqlDelightCollectionRepository)
+
+    private fun library(): Library {
+        val database = inMemoryDatabase()
+        val repository = SqlDelightCollectionRepository(database.collectionEntryQueries, ImmediateDispatchers(UnconfinedTestDispatcher()), clock)
+        return Library(database, repository)
+    }
+
+    private fun details(secondRegularAirDay: Long = 900) = MediaDetails(
+        summary = MediaSummary(show, "Show"),
+        productionStatus = ProductionStatus.RETURNING,
+        seasons = listOf(
+            Season(0, "Specials", listOf(Episode(special, 0, 1, "Special", airDateEpochDay = 900))),
+            Season(1, "Season 1", listOf(Episode(regular1, 1, 1, "E1", airDateEpochDay = 900), Episode(regular2, 1, 2, "E2", airDateEpochDay = secondRegularAirDay))),
+        ),
+    )
+
+    private suspend fun MuvissDatabase.tick(id: EpisodeId, seen: Boolean = true) {
+        episodeProgressQueries.upsert(id.toString(), id.show.toString(), id.seasonNumber.toLong(), id.episodeNumber.toLong(), seen, 1L, true)
+    }
+
+    /** The special in the cached catalog, as a catalog fetch writes it. Not called for the empty-cache cases. */
+    private suspend fun MuvissDatabase.cacheSpecial() {
+        episodeQueries.upsert(special.toString(), show.toString(), 0L, "Specials", 1L, "Special", 900L, null, null, 1L)
+    }
+
+    private suspend fun MuvissDatabase.setSpecialsCounted(enabled: Boolean) {
+        appSettingsQueries.ensureRow()
+        appSettingsQueries.updateCountSpecialsTowardProgress(enabled)
+    }
+
+    private suspend fun Library.entry(): CollectionEntry = repository.observeEntry(show).first()!!
+
+    @Test
+    fun a_seen_special_is_not_counted_while_the_setting_is_off() = runTest {
+        val library = library()
+        library.repository.upsertSnapshot(details())
+        library.database.cacheSpecial()
+        library.database.tick(regular1)
+        library.database.tick(regular2)
+        library.database.tick(special)
+
+        val entry = library.entry()
+
+        assertEquals(CountedProgress(seen = 2, aired = 2), entry.counted)
+        assertEquals(WatchStatus.WATCHED, entry.status)
+    }
+
+    @Test
+    fun an_unseen_aired_special_keeps_the_show_watching_only_while_the_setting_is_on() = runTest {
+        val library = library()
+        library.repository.upsertSnapshot(details())
+        library.database.cacheSpecial()
+        library.database.tick(regular1)
+        library.database.tick(regular2)
+        library.database.tick(special, seen = false)
+
+        assertEquals(WatchStatus.WATCHED, library.entry().status)
+
+        library.database.setSpecialsCounted(true)
+
+        val counted = library.entry()
+        assertEquals(CountedProgress(seen = 2, aired = 3), counted.counted)
+        assertEquals(WatchStatus.WATCHING, counted.status)
+    }
+
+    @Test
+    fun the_library_and_a_single_entry_read_the_same_counts() = runTest {
+        val library = library()
+        library.database.setSpecialsCounted(true)
+        library.repository.upsertSnapshot(details())
+        library.database.cacheSpecial()
+        library.database.tick(regular1)
+        library.database.tick(special)
+
+        val fromLibrary = library.repository.observeAll().first().single()
+        val fromEntry = library.entry()
+
+        assertEquals(fromEntry.counted, fromLibrary.counted)
+        assertEquals(CountedProgress(seen = 2, aired = 3), fromEntry.counted)
+    }
+
+    @Test
+    fun a_special_ticked_before_the_catalog_is_cached_is_not_counted_even_with_the_setting_on() = runTest {
+        // An upgraded install's `episode` cache is empty until the app runs once, so a tick has no aired catalog row to join.
+        val library = library()
+        library.database.setSpecialsCounted(true)
+        library.repository.upsertSnapshot(details())
+        library.database.tick(regular1)
+        library.database.tick(special)
+
+        val entry = library.entry()
+
+        assertEquals(CountedProgress(seen = 1, aired = 2), entry.counted)
+        assertEquals(WatchStatus.WATCHING, entry.status)
+    }
+
+    @Test
+    fun raising_the_snapshot_after_a_pull_ignores_a_special_tick() = runTest {
+        val library = library()
+        // Only the first regular episode had aired when the snapshot was taken.
+        library.repository.upsertSnapshot(details(secondRegularAirDay = 2_000))
+        library.database.tick(regular1)
+        library.database.tick(special)
+
+        library.database.collectionEntryQueries.raiseAiredToSeen(listOf(show.toString()))
+
+        val stored = library.database.collectionEntryQueries.selectById(show.toString()).awaitAsOne()
+        assertEquals(1L, stored.airedEpisodes, "a special tick must not raise the snapshot's aired count")
+        assertEquals(1, library.entry().airedEpisodes)
+    }
+}

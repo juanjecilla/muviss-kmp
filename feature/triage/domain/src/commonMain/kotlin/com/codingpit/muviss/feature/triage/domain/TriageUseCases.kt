@@ -89,7 +89,7 @@ class RecordDecisionUseCase(
 
                 // Exactly the aired episodes — see ProgressApi.markAllAiredSeen
                 // for why this is not markPreviousSeen.
-                MediaType.TV -> progressApi.markAllAiredSeen(details.seasons, today)
+                MediaType.TV -> progressApi.markAllAiredSeen(details.regularSeasons(), today)
             }
         }
         repository.markResolved(decision.mediaId, resolved = true)

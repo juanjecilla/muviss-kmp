@@ -43,11 +43,13 @@ class SqlDelightCollectionRepository(
     private val clock: AppClock,
 ) : CollectionRepository {
 
-    override fun observeAll(): Flow<List<CollectionEntry>> = queries.selectAllWithSeen(::entryOf)
+    // The day an episode counts as aired for the specials counts (#938). Fixed per subscription, as the aired counts are
+    // fixed at write time; the Flow re-runs on every table this query reads, so a tick or a setting change refreshes it.
+    override fun observeAll(): Flow<List<CollectionEntry>> = queries.selectAllWithSeen(clock.todayEpochDay(), ::entryOf)
         .asFlow()
         .mapToList(dispatchers.io)
 
-    override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = queries.selectByIdWithSeen(mediaId.toString(), ::visibleEntryOf)
+    override fun observeEntry(mediaId: MediaId): Flow<CollectionEntry?> = queries.selectByIdWithSeen(clock.todayEpochDay(), mediaId.toString(), ::visibleEntryOf)
         .asFlow()
         .mapToOneOrNull(dispatchers.io)
         .map { it?.entry }
@@ -184,6 +186,9 @@ class SqlDelightCollectionRepository(
         revisitWillingness: Boolean?,
         coWatchPinned: Boolean,
         seenCount: Long,
+        specialsSeen: Long,
+        specialsAired: Long,
+        countSpecials: Long,
     ): Visible = Visible(
         entry = if (deleted) {
             null
@@ -192,6 +197,7 @@ class SqlDelightCollectionRepository(
                 mediaId, mediaType, title, posterUrl, releaseYear, productionStatus, totalEpisodes, airedEpisodes,
                 favorite, genres, runtimeMinutes, addedAtEpochMs, updatedAtEpochMs, isDirty, deleted,
                 notificationsMuted, rating, note, revisitWillingness, coWatchPinned, seenCount,
+                specialsSeen, specialsAired, countSpecials,
             )
         },
     )
@@ -219,6 +225,9 @@ class SqlDelightCollectionRepository(
         revisitWillingness: Boolean?,
         coWatchPinned: Boolean,
         seenCount: Long,
+        specialsSeen: Long,
+        specialsAired: Long,
+        countSpecials: Long,
     ): CollectionEntry = CollectionEntry(
         mediaId = MediaId.parse(mediaId),
         title = title,
@@ -233,6 +242,9 @@ class SqlDelightCollectionRepository(
         favorite = favorite,
         addedAtEpochMs = addedAtEpochMs,
         seenEpisodes = seenCount.toInt(),
+        specialsSeen = specialsSeen.toInt(),
+        specialsAired = specialsAired.toInt(),
+        countSpecials = countSpecials != 0L,
         genres = genres.toGenreList(),
         runtimeMinutes = runtimeMinutes?.toInt(),
         notificationsMuted = notificationsMuted,
@@ -254,7 +266,9 @@ private fun String.toGenreList(): List<String> = if (isBlank()) emptyList() else
  */
 private fun MediaDetails.estimatedRuntimeMinutes(): Int? = when (type) {
     MediaType.MOVIE -> runtimeMinutes
-    MediaType.TV -> seasons.flatMap { it.episodes }.mapNotNull { it.runtimeMinutes }.averageOrNull()
+
+    // Regular seasons only, like every snapshot count: a special's runtime is not the show's (#938).
+    MediaType.TV -> seasons.filter { it.number >= 1 }.flatMap { it.episodes }.mapNotNull { it.runtimeMinutes }.averageOrNull()
 }
 
 private fun List<Int>.averageOrNull(): Int? = if (isEmpty()) null else (sum().toDouble() / size).roundToInt()

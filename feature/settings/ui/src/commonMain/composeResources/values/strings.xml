@@ -38,6 +38,8 @@
     <string name="snooze_placement">Snoozed titles come back</string>
     <string name="tick_animations">Animate episode ticks</string>
     <string name="tick_animations_body">Highlight an episode when you mark it seen</string>
+    <string name="count_specials">Count specials toward progress</string>
+    <string name="count_specials_body">Off: specials are listed but do not change the progress of a show. On: an aired special you have not watched keeps the show in progress.</string>
     <string name="swipe_animations">Swipe animations</string>
     <string name="swipe_animations_body">Cards fly out when decided, and undo brings them back</string>
     <string name="import">Import</string>

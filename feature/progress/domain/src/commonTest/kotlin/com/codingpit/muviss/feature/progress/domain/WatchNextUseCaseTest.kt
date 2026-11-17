@@ -9,6 +9,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,12 +40,14 @@ class WatchNextUseCaseTest {
         repository: FakeProgressRepository,
         catalogs: Map<MediaId, List<Season>> = mapOf(show to seasons),
         store: InMemoryEpisodeCatalogStore = InMemoryEpisodeCatalogStore(),
+        countSpecials: Boolean = false,
     ) = WatchNextUseCase(
         { collectionApi },
         ObserveSeenEpisodesUseCase(repository),
         ObserveLastWatchedAtUseCase(repository),
         EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(catalogs)), store),
         FakeClock(today),
+        flowOf(countSpecials),
     )
 
     @Test
@@ -181,6 +184,7 @@ class WatchNextUseCaseTest {
             FakeCollectionApi(listOf(collectionSummary(show))),
             repository,
             catalogs = mapOf(show to seasons + special),
+            countSpecials = true,
         )
 
         watchNext().test {
@@ -197,6 +201,7 @@ class WatchNextUseCaseTest {
             FakeCollectionApi(listOf(collectionSummary(show))),
             FakeProgressRepository(),
             catalogs = mapOf(show to seasons + special),
+            countSpecials = true,
         )
 
         watchNext().test {

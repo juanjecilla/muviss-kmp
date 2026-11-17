@@ -4,9 +4,11 @@ package com.codingpit.muviss.feature.progress.domain
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.todayEpochDay
+import com.codingpit.muviss.core.model.SpecialsCounting
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering.SPECIALS_SEASON_NUMBER
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,6 +52,8 @@ class WatchNextUseCase(
     private val observeLastWatchedAt: ObserveLastWatchedAtUseCase,
     private val catalogCache: EpisodeCatalogCache,
     private val clock: AppClock,
+    /** The per-device "Count specials toward progress" setting (#938). Defaults to off, the setting's own default. */
+    private val countSpecials: Flow<Boolean> = flowOf(false),
 ) {
 
     operator fun invoke(): Flow<List<WatchNextItem>> = combine(collectionApi().observeSummaries(), observeLastWatchedAt()) { summaries, lastWatched ->
@@ -88,17 +92,30 @@ class WatchNextUseCase(
     private fun itemFlow(summary: CollectionSummary): Flow<WatchNextItem> = combine(
         observeSeenEpisodes(summary.mediaId),
         catalogCache.catalogs,
-    ) { seen, catalogMap ->
+        countSpecials,
+    ) { seen, catalogMap, specialsCounted ->
         val seasons = catalogMap[summary.mediaId].orEmpty()
         val today = clock.todayEpochDay()
-        val aired = EpisodeOrdering.flatten(seasons).filter { ep -> ep.airDateEpochDay?.let { it <= today } == true }
+        val airedRegular = EpisodeOrdering.flatten(seasons.filter { it.number != SPECIALS_SEASON_NUMBER })
+            .filter { ep -> ep.airDateEpochDay?.let { it <= today } == true }
+        val airedSpecials = EpisodeOrdering.flatten(seasons.filter { it.number == SPECIALS_SEASON_NUMBER })
+            .filter { ep -> ep.airDateEpochDay?.let { it <= today } == true }
+        // The same counts the Library and Detail derive status from (#938): a special counts only when it is aired
+        // and the setting says so, and both halves come from the one aired catalog, so seen never exceeds aired.
+        val counted = SpecialsCounting.count(
+            regularSeen = airedRegular.count { it.id in seen },
+            regularAired = airedRegular.size,
+            specialsSeen = airedSpecials.count { it.id in seen },
+            specialsAired = airedSpecials.size,
+            countSpecials = specialsCounted,
+        )
         WatchNextItem(
             mediaId = summary.mediaId,
             title = summary.title,
             posterUrl = summary.posterUrl,
             nextEpisode = EpisodeOrdering.nextUnseen(seasons, seen, today),
-            seenCount = aired.count { it.id in seen },
-            airedCount = aired.size,
+            seenCount = counted.seen,
+            airedCount = counted.aired,
             catalogLoaded = catalogMap.containsKey(summary.mediaId),
         )
     }

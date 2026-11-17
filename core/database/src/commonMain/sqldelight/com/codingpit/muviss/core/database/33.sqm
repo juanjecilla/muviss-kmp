@@ -1,0 +1,11 @@
+-- Whether season 0 (Specials) counts toward a title's progress (#938, ADR 0037). The filename is the version this
+-- migrates FROM: 33.sqm takes a v33 database to v34 (fixture 34.db).
+--
+-- NUMBERING: claimed when the #938 branch opened. Develop ends at 29.sqm, and 30-32 are claimed by open PRs (#920, #913,
+-- #926), so `verifyMigrations` reports a gap until those merge; re-check this number against develop before merging.
+--
+-- Per device and NOT synced, NOT exported, and not in the Display Preferences group: it changes how progress is read on
+-- this device, not what the library holds. DEFAULT 0 is the behaviour every existing install has, since no specials
+-- were ever loaded before this release. Existing rows are read as "not counted", which is also the answer for every
+-- title until the person changes the setting.
+ALTER TABLE appSettings ADD COLUMN countSpecialsTowardProgress INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0;

@@ -169,6 +169,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.season_aired_p
 import com.codingpit.muviss.feature.search.ui.generated.resources.seasons_header
 import com.codingpit.muviss.feature.search.ui.generated.resources.skipped_banner
 import com.codingpit.muviss.feature.search.ui.generated.resources.snoozed_until
+import com.codingpit.muviss.feature.search.ui.generated.resources.specials_unseen
 import com.codingpit.muviss.feature.search.ui.generated.resources.stale_notice
 import com.codingpit.muviss.feature.search.ui.generated.resources.tick_mistake
 import com.codingpit.muviss.feature.search.ui.generated.resources.tmdb_score
@@ -189,6 +190,7 @@ import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -1125,17 +1127,32 @@ internal fun LazyListScope.seasonSection(
     inset: Modifier = Modifier,
 ) {
     item(key = "season-${season.number}", contentType = "seasonHeader") {
-        // The gaps the seasons had as blocks of a Column: a section's own
-        // vertical padding either side of the list's spacing between sections.
-        SeasonHeader(
-            season,
-            summary,
-            expanded,
-            onExpandedChange,
-            actions,
-            inset.padding(top = MuvissSpacing.m + SEASON_PADDING, bottom = if (expanded) 0.dp else SEASON_PADDING),
-            animate = state.animateTicks,
-        )
+        Column {
+            // The gaps the seasons had as blocks of a Column: a section's own
+            // vertical padding either side of the list's spacing between sections.
+            SeasonHeader(
+                season,
+                summary,
+                expanded,
+                onExpandedChange,
+                actions,
+                inset.padding(top = MuvissSpacing.m + SEASON_PADDING, bottom = if (expanded) 0.dp else SEASON_PADDING),
+                animate = state.animateTicks,
+            )
+            // Specials are never "next" and not counted by default (#938): say how many aired ones are still unwatched,
+            // so a header does not read as finished while the show reads Caught up.
+            if (season.number == SPECIALS_SEASON_NUMBER) {
+                val unseen = season.episodes.count { it.hasAired(todayEpochDay) && it.id !in state.seenEpisodes }
+                if (unseen > 0) {
+                    Text(
+                        pluralStringResource(Res.plurals.specials_unseen, unseen, unseen),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = inset.padding(bottom = SEASON_PADDING),
+                    )
+                }
+            }
+        }
     }
     if (expanded) {
         val last = season.episodes.lastOrNull()?.id
