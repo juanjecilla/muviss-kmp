@@ -42,6 +42,9 @@ class RecordDecisionUseCase(
         require(verdict in TriageVerdict.availableFor(summary.type)) {
             "$verdict is not a valid verdict for a ${summary.type}"
         }
+        // The claim is not decided here. It is taken in apply, against the library
+        // at the moment the add lands, so a verdict that never got that far holds
+        // no claim on an entry it did not make (#767).
         val decision = TriageDecision.of(
             summary = summary,
             verdict = verdict,
@@ -53,12 +56,24 @@ class RecordDecisionUseCase(
         return apply(decision)
     }
 
-    /** Re-runs the side effects of a decision that never completed. */
+    private suspend fun isInLibrary(mediaId: MediaId): Boolean = collectionApi.observeMembership(mediaId).first() != null
+
+    /**
+     * Re-runs the side effects of a decision that never completed. A claim an
+     * earlier attempt wrote is kept: that attempt's add made the entry, and the
+     * entry being there now says nothing about who added it.
+     */
     suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision)
 
     private suspend fun apply(decision: TriageDecision): Result<Unit> = runCatching {
         val details = detailsSource.fetch(decision.mediaId).getOrThrow()
+        // Decided against the library just before the add. A title the person
+        // added from Detail while the deck was open is theirs, not this verdict's.
+        val claimed = decision.createdEntry || !isInLibrary(decision.mediaId)
         collectionApi.add(details)
+        // Persisted only after the add has landed: a failed fetch or a failed add
+        // leaves no claim behind for undo to act on later.
+        if (claimed && !decision.createdEntry) repository.record(decision.copy(createdEntry = true))
 
         val today = clock.todayEpochDay()
         when (decision.verdict) {
@@ -82,14 +97,18 @@ class RecordDecisionUseCase(
 }
 
 /**
- * Takes a verdict back, completely.
+ * Takes a verdict back.
  *
- * Restoring the decision alone is not enough: a saving verdict has already
- * written a `CollectionEntry` and, for Watching/CaughtUp, episode ticks. Undo
- * has to reverse those too, or the user is left with a show sitting in their
- * library still reading as fully watched. The deck only ever offers titles
- * that are in neither the decision log nor the collection, so removing both is
- * always safe here — there is no pre-existing state to clobber.
+ * Restoring the decision alone is not enough when the verdict created the
+ * library entry: it wrote a `CollectionEntry` and, for Watching/CaughtUp,
+ * episode ticks, and undo has to reverse those, or the user is left with a
+ * show sitting in their library still reading as fully watched.
+ *
+ * Only what the verdict created is reversed. When the entry was already in the
+ * library before the card was ruled on (the person added it from Detail while
+ * the deck was open, #767), the entry and its ticks are the person's, so they
+ * are left alone. A verdict's own ticks on such an entry are not reversed
+ * either: nothing records which episodes it ticked (issue #790).
  */
 class UndoDecisionUseCase(
     private val repository: TriageDecisionRepository,
@@ -97,10 +116,18 @@ class UndoDecisionUseCase(
     private val progressApi: ProgressApi,
 ) {
     suspend operator fun invoke(mediaId: MediaId, verdict: TriageVerdict) {
+        // Read before the restore soft-deletes the row. A missing row claims
+        // nothing, so nothing is removed.
+        val createdEntry = repository.observeDecision(mediaId).first()?.createdEntry ?: false
+        if (verdict.savesToCollection && createdEntry) {
+            // Cleanup first: a failure or cancellation here leaves the decision
+            // readable, so a retried undo still sees createdEntry and finishes.
+            progressApi.clearProgress(mediaId)
+            collectionApi.remove(mediaId)
+        }
+        // Tombstoning the decision last: once it is soft-deleted, observeDecision
+        // reads null and the claim can no longer be read.
         repository.restore(mediaId)
-        if (!verdict.savesToCollection) return
-        progressApi.clearProgress(mediaId)
-        collectionApi.remove(mediaId)
     }
 }
 

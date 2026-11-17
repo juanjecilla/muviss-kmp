@@ -67,7 +67,11 @@ internal class FakeCollectionApi(initial: List<CollectionSummary> = emptyList())
         )
     }
 
+    /** Thrown by [remove] before it records anything, to simulate a failed cleanup. */
+    var failRemove: Throwable? = null
+
     override suspend fun remove(mediaId: MediaId) {
+        failRemove?.let { throw it }
         removed += mediaId
         summaries.value = summaries.value.filterNot { it.mediaId == mediaId }
     }

@@ -231,6 +231,7 @@ class SqlDelightSettingsRepository(
         decidedAtEpochMs = decidedAtEpochMs,
         updatedAtEpochMs = updatedAtEpochMs,
         resolved = resolved,
+        createdEntry = createdEntry,
     )
 
     private fun EpisodeProgressRow.toExport(): EpisodeProgressExport = EpisodeProgressExport(
