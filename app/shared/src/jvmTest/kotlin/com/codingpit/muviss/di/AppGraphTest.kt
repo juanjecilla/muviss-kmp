@@ -31,6 +31,9 @@ import com.codingpit.muviss.feature.settings.api.SettingsApi
 import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
 import com.codingpit.muviss.feature.triage.api.TriageApi
+import com.codingpit.muviss.feature.triage.api.TriageDeckSeeds
+import com.codingpit.muviss.feature.triage.ui.TriageViewModel
+import com.codingpit.muviss.feature.triage.ui.di.SEEDED_DECK_QUALIFIER
 import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -158,6 +161,18 @@ class AppGraphTest {
     @Test
     fun `the onboarding view model resolves from the assembled graph`() {
         assertNotNull(startGraph().get<OnboardingViewModel>())
+    }
+
+    /**
+     * EPIC 51 (#554): Next Pick's Deck hands its titles over through [TriageDeckSeeds], and the seeded deck is a second
+     * `TriageViewModel` under its own qualifier. Both must resolve, or the Deck result opens a route that cannot build.
+     */
+    @Test
+    fun `the seeded deck resolves from the assembled graph`() {
+        val koin = startGraph()
+        assertNotNull(koin.get<TriageDeckSeeds>())
+        assertNotNull(koin.get<TriageViewModel>(SEEDED_DECK_QUALIFIER))
+        assertNotNull(koin.get<TriageViewModel>())
     }
 
     /** EPIC 51 (#400): the completion sheet's ViewModel is hosted at the app root, so it is built on every launch. */
