@@ -100,15 +100,15 @@ internal class FakeRepo(
     /** What each browse asked the source to leave out, per type. */
     val discoverExcluded = mutableListOf<Pair<MediaType, Set<String>>>()
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> {
         discoverExcluded += type to excludedGenreIds
         discoverGate(page, genreId)
         return discoverResult(type, page, genreId)
     }
-    override suspend fun genres(type: MediaType) = if (type == MediaType.MOVIE) movieGenresResult else tvGenresResult
+    override suspend fun genres(type: MediaType, fresh: Boolean) = if (type == MediaType.MOVIE) movieGenresResult else tvGenresResult
     override suspend fun watchProviders(id: MediaId) = Result.success(WatchProviders())
-    override suspend fun recommendations(id: MediaId, page: Int) = recommendationsResult(id)
-    override suspend fun similar(id: MediaId, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean) = recommendationsResult(id)
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun episodeDetails(episodeId: EpisodeId) = Result.success(EpisodeDetails(episodeId, "Episode", episodeId.seasonNumber, episodeId.episodeNumber))
 }
 

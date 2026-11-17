@@ -186,7 +186,11 @@ class DiscoverFeed(
         return answers
     }
 
-    /** Fetches every section, storing each success. [mutedMovies] and [mutedTv] decide how far a shelf reads. */
+    /**
+     * Fetches every section, storing each success. [mutedMovies] and [mutedTv] decide how far a shelf reads. Every
+     * request is [fresh][SearchRepository.discover]: a refresh is owed a current answer, so the in-memory HTTP cache
+     * may not answer it (#922).
+     */
     suspend fun refresh(run: DiscoverRun, mutedMovies: MutedGenres, mutedTv: MutedGenres): DiscoverRefresh = DiscoverRefresh(
         movieGenres = genres(MediaType.MOVIE, run),
         tvGenres = genres(MediaType.TV, run),
@@ -201,21 +205,21 @@ class DiscoverFeed(
         return run.startedAtEpochMs - oldest > TTL_MS
     }
 
-    private suspend fun genres(type: MediaType, run: DiscoverRun): Result<List<Genre>> = repository.genres(type).onSuccess { list ->
+    private suspend fun genres(type: MediaType, run: DiscoverRun): Result<List<Genre>> = repository.genres(type, fresh = true).onSuccess { list ->
         erasures.write(run.erasure) { cache.saveGenres(type, list, run.startedAtEpochMs, run.language) }
     }
 
     private suspend fun shelf(type: MediaType, muted: MutedGenres, run: DiscoverRun): Result<DiscoverShelf> {
         val now = run.startedAtEpochMs
         val excluded = muted.forType(type)
-        val first = repository.discover(type, page = 1, genreId = null, excludedGenreIds = excluded)
+        val first = repository.discover(type, page = 1, genreId = null, excludedGenreIds = excluded, fresh = true)
             .onSuccess { erasures.write(run.erasure) { cache.savePopular(type, 1, it, now, run.language) } }
             .getOrElse { return Result.failure(it) }
         val pages = mutableListOf(first)
         var complete = true
         while (needsMorePages(pages, muted)) {
             val page = pages.last().page + 1
-            val next = repository.discover(type, page = page, genreId = null, excludedGenreIds = excluded)
+            val next = repository.discover(type, page = page, genreId = null, excludedGenreIds = excluded, fresh = true)
                 .onSuccess { erasures.write(run.erasure) { cache.savePopular(type, page, it, now, run.language) } }
                 .getOrNull()
             if (next == null) {

@@ -68,11 +68,11 @@ internal class FakeDetailRepo(
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = detailsFailure?.let { Result.failure<MediaDetails>(it) } ?: Result.success(details)
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
-    override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+    override suspend fun genres(type: MediaType, fresh: Boolean) = Result.success(emptyList<Genre>())
     override suspend fun watchProviders(id: MediaId) = watchProviders
-    override suspend fun recommendations(id: MediaId, page: Int) = recommendations
-    override suspend fun similar(id: MediaId, page: Int) = similar
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean) = recommendations
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = similar
     override suspend fun episodeDetails(episodeId: EpisodeId) = Result.success(EpisodeDetails(episodeId, "Episode", episodeId.seasonNumber, episodeId.episodeNumber))
 }
 

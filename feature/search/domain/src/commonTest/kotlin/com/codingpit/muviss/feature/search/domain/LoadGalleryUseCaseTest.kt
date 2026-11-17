@@ -28,11 +28,11 @@ class LoadGalleryUseCaseTest {
         override suspend fun search(query: String, page: Int) = error("unused")
         override suspend fun trending() = error("unused")
         override suspend fun details(id: MediaId) = error("unused")
-        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = error("unused")
-        override suspend fun genres(type: MediaType) = error("unused")
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean) = error("unused")
+        override suspend fun genres(type: MediaType, fresh: Boolean) = error("unused")
         override suspend fun watchProviders(id: MediaId) = error("unused")
-        override suspend fun recommendations(id: MediaId, page: Int) = error("unused")
-        override suspend fun similar(id: MediaId, page: Int) = error("unused")
+        override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean) = error("unused")
+        override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = error("unused")
         override suspend fun episodeDetails(episodeId: EpisodeId) = error("unused")
 
         override suspend fun images(id: MediaId): Result<TitleImages> = images.also { imageCalls++ }
