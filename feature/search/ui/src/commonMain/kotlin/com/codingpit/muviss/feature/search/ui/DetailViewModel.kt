@@ -528,6 +528,9 @@ class DetailViewModel(
     /** The primary action's tick for a movie that is not watched yet (#721). Offers an Undo unless it was already watched. */
     fun markMovieWatched() {
         launchWrite {
+            // Guard before any write: SetMovieWatchedUseCase throws on a non-movie id, and addIfAbsent must not
+            // leave a collection entry behind for a rejected tick (#787).
+            if (mediaId.type != MediaType.MOVIE) return@launchWrite
             val id = EpisodeId.forMovie(mediaId)
             if (id in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
