@@ -1,0 +1,9 @@
+What's new in Muviss 1.6.0:
+- The Deck result opens Triage seeded with the picks (#554,)
+- A Taste page in the first-run introduction
+- The home-screen widget's empty state opens the Pick Session
+- Discover opens offline with what it stored
+- The primary action follows the library state; a tick adds the title
+- Skeleton that matches the loaded Home, one wave across it
+- The Pick Session reads the Settings session length and result mode
+- Bug fixes and improvements.
