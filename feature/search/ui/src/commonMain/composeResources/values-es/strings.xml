@@ -75,6 +75,7 @@
     <string name="tick_caught_up">Al día con %1$s</string>
     <string name="undo_season_seen">%1$s marcada como vista</string>
     <string name="undo_show_seen">Todos los episodios emitidos marcados como vistos</string>
+    <string name="undo_caught_up_through">Al día hasta T%1$d·E%2$d</string>
 
     <string name="new_list_name">Nombre de la nueva lista</string>
     <string name="list_with_count">%1$s (%2$d)</string>

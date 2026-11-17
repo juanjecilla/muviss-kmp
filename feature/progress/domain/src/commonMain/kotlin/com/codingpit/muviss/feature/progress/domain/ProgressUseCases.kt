@@ -118,10 +118,13 @@ class ObserveRewatchTimestampsUseCase(private val repository: ProgressRepository
 
 /**
  * Marks every episode at or before [target] (inclusive, across all of
- * [seasons]) as seen — the "I'm caught up through here" catch-up action.
+ * [seasons]) as seen — the "I'm caught up through here" catch-up action — and
+ * returns exactly the ids it ticked. Like [MarkSeasonAiredSeenUseCase], it
+ * writes one first viewing per episode that has none, so an undo can drop
+ * precisely those viewings.
  */
 class MarkPreviousSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(seasons: List<Season>, target: EpisodeId) = repository.setSeenBulk(EpisodeOrdering.upToInclusive(seasons, target), seen = true)
+    suspend operator fun invoke(seasons: List<Season>, target: EpisodeId): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.upToInclusive(seasons, target))
 }
 
 /**
