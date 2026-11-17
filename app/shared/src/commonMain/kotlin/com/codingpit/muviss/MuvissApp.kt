@@ -51,6 +51,7 @@ import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.designsystem.component.LocalOpenTmdbKeySettings
 import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
@@ -81,13 +82,14 @@ import com.codingpit.muviss.feature.settings.ui.ImportRoute
 import com.codingpit.muviss.feature.settings.ui.LocalSystemNotificationSettings
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
+import com.codingpit.muviss.feature.triage.api.TriageDeckSeeds
+import com.codingpit.muviss.feature.triage.ui.SeededDeckRoute
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
 import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -348,6 +350,8 @@ private fun MuvissScaffold(
     // today, ADR 0018) shows no way into it — the same rule that hides the
     // profile's sync row. The routes stay registered; nothing links to them.
     val syncAvailability = koinInject<SyncAvailability>()
+    // Next Pick's Deck result hands its titles to Triage through this seam before it opens the seeded deck (#554).
+    val triageSeeds = koinInject<TriageDeckSeeds>()
     val openCoWatch = remember(syncAvailability, navController) {
         coWatchEntry(syncAvailability) { navController.navigate(CompanionsRoute) }
     }
@@ -508,7 +512,13 @@ private fun MuvissScaffold(
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     // Not a bottom-bar destination: reached from the completion sheet and the entry points (EPIC 51).
-                    nextPickSection(navController)
+                    nextPickSection(
+                        navController,
+                        onOpenDeck = { cards ->
+                            triageSeeds.seed(cards)
+                            navController.navigate(SeededDeckRoute)
+                        },
+                    )
                 }
             }
         }
@@ -526,14 +536,14 @@ private fun MuvissScaffold(
  * has the problem without any of the screens knowing which one that is.
  */
 @Composable
-private fun rememberPersistenceWarning(): String? {
+private fun rememberPersistenceWarning(): UiText? {
     val status = koinInject<PersistenceStatus>()
     val state by status.state.collectAsStateWithLifecycle()
     return when (state) {
         PersistenceState.Pending, PersistenceState.Durable -> null
-        PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
-        PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
-        PersistenceState.WriteFailed -> stringResource(Res.string.persistence_write_failed)
+        PersistenceState.ReadOnlyTab -> UiText.Resource(Res.string.persistence_read_only_tab)
+        PersistenceState.NotPersisted -> UiText.Resource(Res.string.persistence_not_persisted)
+        PersistenceState.WriteFailed -> UiText.Resource(Res.string.persistence_write_failed)
     }
 }
 
