@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
@@ -67,7 +68,7 @@ class PersistenceBannerGoldenTest {
 private fun BannerSample(message: String?, darkTheme: Boolean) {
     MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface(width = 412.dp, height = 72.dp) {
-            PersistenceBanner(message = message)
+            PersistenceBanner(message = message?.let(UiText::Raw))
         }
     }
 }
