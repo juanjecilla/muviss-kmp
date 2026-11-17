@@ -39,16 +39,22 @@ Requires `adb`, `sqlite3`, `curl`, `python3` and the `supabase` CLI.
 
 | Script | Answers |
 |---|---|
-| `sync-status.sh` | Device rows vs server rows vs dirty rows, and the two sync timestamps. Start here. |
+| `sync-status.sh` | Device rows vs server rows vs dirty rows, and the two sync timestamps. Start here. Refuses `MUVISS_SUPABASE_TARGET=local`: there is no device to compare. |
 | `verify-rls.sh` | Can the anon key — which ships inside the app — read or write anyone's data? |
 | `verify-lww-trigger.sh` | Does `discard_stale_write()` fire on the upsert path the client actually uses? |
 | `diagnose-signin.sh` | Why OAuth sign-in didn't complete, walked boundary by boundary. |
 | `verify-server-seq.sh` | Does the `server_seq` trigger stamp, skip stale writes, clamp future timestamps and ignore a client-sent value? Run after `supabase db push` applies `20260920000000_sync_server_seq.sql` (EPIC 39, ADR 0020). |
 | `verify-null-clearing.sh` | Does `"rating":null` clear the column while an omitted key leaves it alone? The check that `FakeSupabaseServer`'s model of PostgREST is right (issue #88). |
 | `verify-pagination.sh` | Does paging by `server_seq` return every row under the project's real `max_rows`? Reports the effective cap (issue #88). |
-| `verify-migration.sh` | Does a schema migration run on a real device against a seeded old database? **Wipes app data.** |
+| `verify-migration.sh` | Does a schema migration run on a real device against a seeded old database? **Wipes app data.** Refuses `MUVISS_SUPABASE_TARGET=local`. |
 
 `lib.sh` is shared helpers; source it, don't run it.
+
+The local stack (`MUVISS_SUPABASE_TARGET=local`, after `supabase start`) runs
+the server-side checks unchanged. `sync-status.sh` and `verify-migration.sh`
+refuse it, since both need a device. `scripts/sync/test/sync-scripts-test.sh`
+proves those refusals without a device, a network or Supabase, and runs in
+`pr-guards.yml`.
 
 ## Two things worth knowing before reading any output
 

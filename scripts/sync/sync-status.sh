@@ -13,6 +13,17 @@ cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
 
+# Refused before anything else: in local mode pull_database creates a throwaway
+# account through the admin API, and this script's device columns would have no
+# device to come from. Row counts for that account are always zero, which reads
+# as an answer but is not one.
+if local_target; then
+  echo "sync-status.sh has no local-stack mode: there is no device to compare against," >&2
+  echo "and the local account is throwaway. Use verify-rls.sh, verify-server-seq.sh," >&2
+  echo "verify-null-clearing.sh, verify-pagination.sh or verify-lww-trigger.sh instead." >&2
+  exit 2
+fi
+
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 

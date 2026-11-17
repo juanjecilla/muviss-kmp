@@ -17,6 +17,15 @@ cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
 
+# Refused before the --force check and before any adb call: this seeds a
+# database on a real device and clears the app's data. The local stack has no
+# device, and nothing about a migration on it would be the device's upgrade path.
+if local_target; then
+  echo "verify-migration.sh does not run against the local stack (MUVISS_SUPABASE_TARGET=local)." >&2
+  echo "It seeds an old database on a real device and wipes the app's data; there is no local equivalent." >&2
+  exit 2
+fi
+
 [ "${1:-}" = "--force" ] || { echo "This wipes the app's data. Re-run with --force if that is fine."; exit 1; }
 FROM="${2:-7}"
 FIXTURES=core/database/src/commonMain/sqldelight/databases
