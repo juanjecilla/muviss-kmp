@@ -18,6 +18,7 @@ import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
 import com.codingpit.muviss.feature.triage.domain.UndoDecisionUseCase
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaSummary
@@ -169,6 +170,23 @@ class TriageCollectionProgressIntegrationTest {
         assertNull(statusOf(ended))
         // Ticks are cleared, not left behind marking a show nobody watched.
         assertEquals(0, database.episodeProgressQueries.selectForMedia(ended.id.toString()).executeAsList().count { it.seen })
+    }
+
+    @Test
+    fun `an entry added while the deck was open keeps its ticks through undo`() = runTest {
+        // Added from Detail after the card was shown, with an episode ticked there.
+        collectionApi.add(ongoing)
+        progressApi.setEpisodeSeen(EpisodeId(ongoing.id, 1, 1), seen = true)
+
+        record(ongoing.summary, TriageVerdict.WATCHING).getOrThrow()
+        UndoDecisionUseCase(triageRepository, collectionApi, progressApi)(ongoing.id, TriageVerdict.WATCHING)
+
+        // The person's entry and their own tick are not the verdict's to take back.
+        assertTrue(statusOf(ongoing) != null)
+        val seen = database.episodeProgressQueries.selectForMedia(ongoing.id.toString()).executeAsList()
+            .filter { it.seen }
+            .map { it.episodeId }
+        assertTrue(EpisodeId(ongoing.id, 1, 1).toString() in seen, "the person's own tick must survive undo")
     }
 
     @Test
