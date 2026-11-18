@@ -34,6 +34,7 @@ class PersonScreenTest {
         id = PersonId.tmdb("1"),
         name = "Some Person",
         biography = "A short biography.",
+        anchors = com.codingpit.muviss.models.PersonAnchors(imdbId = "nm0000138", wikidataId = "Q38111"),
         birthday = "1974-11-11",
         placeOfBirth = "Los Angeles",
         knownForDepartment = "Acting",
@@ -58,6 +59,15 @@ class PersonScreenTest {
         onNode(hasText("Some Person") and SemanticsMatcher.expectValue(SemanticsProperties.Heading, Unit)).assertIsDisplayed()
         onNodeWithText("Born 1974 in Los Angeles").assertIsDisplayed()
         onNodeWithText("A short biography.").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_person_links_out_to_imdb_wikipedia_and_tmdb() = runComposeUiTest {
+        show()
+
+        onNodeWithText("IMDb").assertIsDisplayed()
+        onNodeWithText("Wikipedia").assertIsDisplayed()
+        onNodeWithText("TMDB").assertIsDisplayed()
     }
 
     @Test

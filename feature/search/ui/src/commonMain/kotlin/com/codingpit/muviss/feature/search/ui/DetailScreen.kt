@@ -122,6 +122,7 @@ import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.search.domain.ExternalLinks
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.a11y_collapsed
@@ -582,6 +583,11 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
         item(key = "credits", contentType = "credits") {
             CreditsSection(details, callbacks.credits, modifier = section)
         }
+    }
+
+    item(key = "links", contentType = "links") {
+        val language = linkLanguage()
+        ExternalLinksRow(remember(details, language) { ExternalLinks.forTitle(details.id, details.anchors, language) }, modifier = section)
     }
 
     // A movie's watched state is the primary action at the top (#721), so the body has no toggle of its own.
