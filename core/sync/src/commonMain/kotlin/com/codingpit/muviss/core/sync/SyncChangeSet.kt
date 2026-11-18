@@ -136,7 +136,9 @@ data class ListEntryChange(
  * triage never asks twice only holds on one device.
  *
  * [resolved] rides along so a verdict whose side effects failed on one device
- * is still visible as incomplete on another.
+ * is still visible as incomplete on another. [createdEntry] rides along so undo
+ * on another device takes back only what this verdict created (#767); it
+ * defaults to true, the value every row written before the column has.
  */
 @Serializable
 data class TriageDecisionChange(
@@ -149,6 +151,7 @@ data class TriageDecisionChange(
     val resolved: Boolean,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
     val deleted: Boolean,
+    @SerialName("created_entry") val createdEntry: Boolean = true,
 )
 
 /**
