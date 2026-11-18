@@ -78,8 +78,17 @@ jobs:
           RC_VERSION_CODE="$(scripts/release/version-code.sh "$RC_TAG")"
           # The merge must ship what the candidate was: if the branch moved
           # after its last RC, that newer code was never on a tester's phone.
-          scripts/release/rc-is-branch-head.sh "$RC_TAG" "$HEAD_REF" "$MERGE_SHA" \
-            || echo "::warning::$HEAD_REF moved after $RC_TAG; production gets $RC_TAG, not the branch head"
+          if [ -x scripts/release/rc-is-branch-head.sh ]; then
+            scripts/release/rc-is-branch-head.sh "$RC_TAG" "$HEAD_REF" "$MERGE_SHA" \
+              || echo "::warning::$HEAD_REF moved after $RC_TAG; production gets $RC_TAG, not the branch head"
+          else
+            # A release cut before the helper existed has no copy of it in this
+            # checkout: the same verified comparison, inline (#891).
+            RC_COMMIT="$(git rev-parse "$RC_TAG^{commit}")"
+            HEAD_COMMIT="$(git rev-parse --verify -q "origin/$HEAD_REF^{commit}" || git rev-parse --verify "$MERGE_SHA^2^{commit}")"
+            [ "$RC_COMMIT" = "$HEAD_COMMIT" ] \
+              || echo "::warning::$HEAD_REF moved after $RC_TAG; production gets $RC_TAG, not the branch head"
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Muviss $VERSION" "$MERGE_SHA"
