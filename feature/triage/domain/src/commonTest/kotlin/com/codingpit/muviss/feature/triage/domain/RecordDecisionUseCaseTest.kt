@@ -290,13 +290,15 @@ class RecordDecisionUseCaseTest {
     @Test
     fun a_retry_keeps_the_claim_the_first_attempt_recorded() = runTest {
         val h = harness()
-        // The first attempt recorded its claim before its side effects failed. The
-        // retry adds the entry itself, so re-reading the library would now say "already there".
+        // The first attempt recorded its claim and added the entry before its side effects failed. A retry that
+        // recomputed ownership from the library would now read "already there" and drop the claim (#904).
+        h.collection.add(endedDetails)
         h.repository.record(
             TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
         )
 
         h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+        assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry)
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
