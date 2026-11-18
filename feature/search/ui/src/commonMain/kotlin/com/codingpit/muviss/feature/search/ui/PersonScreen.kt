@@ -25,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +44,7 @@ import com.codingpit.muviss.core.designsystem.component.PosterCard
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.search.domain.ExternalLinks
 import com.codingpit.muviss.feature.search.domain.Filmography
 import com.codingpit.muviss.feature.search.domain.FilmographyEntry
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
@@ -109,6 +111,10 @@ internal fun PersonBody(
     ) {
         item(key = "header", contentType = "header") { PersonHeader(person, inset) }
         person.biography?.let { bio -> item(key = "bio", contentType = "bio") { Biography(bio, inset) } }
+        item(key = "links", contentType = "links") {
+            val language = linkLanguage()
+            ExternalLinksRow(remember(person, language) { ExternalLinks.forPerson(person.id, person.anchors, language) }, modifier = inset)
+        }
 
         if (filmography.knownFor.isNotEmpty()) {
             item(key = "knownFor", contentType = "knownFor") { KnownFor(filmography.knownFor, onOpenDetail, inset) }

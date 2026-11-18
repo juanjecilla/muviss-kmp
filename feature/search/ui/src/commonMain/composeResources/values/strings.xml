@@ -172,4 +172,7 @@
     <string name="person_died">Died %1$s</string>
     <string name="person_bio_more">Read more</string>
     <string name="person_bio_less">Show less</string>
+    <string name="link_imdb">IMDb</string>
+    <string name="link_wikipedia">Wikipedia</string>
+    <string name="link_tmdb">TMDB</string>
 </resources>
