@@ -37,7 +37,9 @@ class RecordDecisionUseCaseTest {
         val progress: FakeProgressApi = FakeProgressApi(),
         val details: FakeTriageDetailsSource,
     ) {
-        val useCase = RecordDecisionUseCase(repository, collection, progress, details, FakeClock(NOW_EPOCH_MS))
+        val ledger = TriageUndoLedger()
+        val useCase = RecordDecisionUseCase(repository, collection, progress, details, FakeClock(NOW_EPOCH_MS), ledger)
+        val undo = UndoDecisionUseCase(repository, collection, progress, ledger)
     }
 
     private fun harness(failure: Throwable? = null) = Harness(
@@ -220,7 +222,7 @@ class RecordDecisionUseCaseTest {
         val h = harness()
         h.useCase(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
 
-        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+        h.undo(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
         assertEquals(listOf(endedShow.id), h.progress.cleared)
@@ -232,7 +234,7 @@ class RecordDecisionUseCaseTest {
         val h = harness()
         h.useCase(endedShow, TriageVerdict.SKIP).getOrThrow()
 
-        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.SKIP)
+        h.undo(endedShow.id, TriageVerdict.SKIP)
 
         assertEquals(emptyList(), h.collection.removed)
         assertEquals(emptyList(), h.progress.cleared)
@@ -248,7 +250,7 @@ class RecordDecisionUseCaseTest {
         h.collection.add(ongoingDetails)
 
         h.useCase(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
-        UndoDecisionUseCase(h.repository, h.collection, h.progress)(ongoingShow.id, TriageVerdict.WATCHING)
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
 
         assertEquals(emptyList(), h.collection.removed)
         assertEquals(emptyList(), h.progress.cleared)
@@ -272,7 +274,7 @@ class RecordDecisionUseCaseTest {
         h.useCase(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
         assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry)
 
-        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+        h.undo(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
         assertEquals(listOf(endedShow.id), h.progress.cleared)
@@ -297,7 +299,7 @@ class RecordDecisionUseCaseTest {
         )
 
         h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
-        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+        h.undo(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
     }
@@ -306,8 +308,8 @@ class RecordDecisionUseCaseTest {
     fun a_failed_undo_leaves_the_claim_readable_so_a_retry_finishes_the_cleanup() = runTest {
         val h = harness()
         h.useCase(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
-        val undo = UndoDecisionUseCase(h.repository, h.collection, h.progress)
         h.collection.failRemove = IllegalStateException("disk full")
+        val undo = h.undo
 
         assertFailsWith<IllegalStateException> { undo(endedShow.id, TriageVerdict.CAUGHT_UP) }
 
@@ -336,9 +338,10 @@ class RecordDecisionUseCaseTest {
             failing.progress,
             FakeTriageDetailsSource(byId = mapOf(endedShow.id to endedDetails)),
             FakeClock(NOW_EPOCH_MS),
+            failing.ledger,
         )
         retrying.retry(failing.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
-        UndoDecisionUseCase(failing.repository, failing.collection, failing.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+        failing.undo(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(emptyList(), failing.collection.removed)
     }
@@ -348,7 +351,7 @@ class RecordDecisionUseCaseTest {
         val h = harness()
         h.collection.add(endedDetails)
 
-        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+        h.undo(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(emptyList(), h.collection.removed)
         assertEquals(emptyList(), h.progress.cleared)

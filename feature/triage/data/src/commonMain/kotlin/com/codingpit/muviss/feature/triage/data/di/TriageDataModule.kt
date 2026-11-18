@@ -44,6 +44,7 @@ import com.codingpit.muviss.feature.triage.domain.TriageDetailsSource
 import com.codingpit.muviss.feature.triage.domain.TriageOnboarding
 import com.codingpit.muviss.feature.triage.domain.TriagePreferences
 import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
+import com.codingpit.muviss.feature.triage.domain.TriageUndoLedger
 import com.codingpit.muviss.feature.triage.domain.UndoDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.UnsnoozeUseCase
 import org.koin.core.module.Module
@@ -68,8 +69,9 @@ val triageDataModule: Module = module {
     single<DeckSource> { TmdbDeckSource(get(), get()) }
     single<TriageDetailsSource> { RegistryTriageDetailsSource(get(), get()) }
     single { DeckLoader(get()) }
+    single { TriageUndoLedger() }
 
-    factory { RecordDecisionUseCase(get(), get(), get(), get(), get()) }
+    factory { RecordDecisionUseCase(get(), get(), get(), get(), get(), get()) }
     factory { RestoreDecisionUseCase(get()) }
     factory { ObserveDecidedIdsUseCase(get()) }
     factory { ObserveSkippedUseCase(get()) }
@@ -91,7 +93,7 @@ val triageDataModule: Module = module {
     single<DeckSeeds> { get<InMemoryDeckSeeds>() }
     factory { SeededDeckFeed(get(), get(), get(), get()) }
     factory { LoadDeckGenresUseCase(get()) }
-    factory { UndoDecisionUseCase(get(), get(), get()) }
+    factory { UndoDecisionUseCase(get(), get(), get(), get()) }
     factory { RetryUnresolvedUseCase(get(), get()) }
     factory { ObserveTutorialSeenUseCase(get()) }
     factory { SetTutorialSeenUseCase(get()) }

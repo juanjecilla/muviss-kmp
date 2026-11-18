@@ -99,7 +99,7 @@ private class FakeProgressApi : ProgressApi {
     override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = Unit
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = Unit
 
-    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
 
     override suspend fun clearProgress(mediaId: MediaId) = Unit
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) = Unit

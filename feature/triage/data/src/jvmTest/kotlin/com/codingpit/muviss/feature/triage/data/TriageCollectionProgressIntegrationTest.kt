@@ -17,6 +17,7 @@ import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
+import com.codingpit.muviss.feature.triage.domain.TriageUndoLedger
 import com.codingpit.muviss.feature.triage.domain.UndoDecisionUseCase
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
@@ -55,6 +56,8 @@ class TriageCollectionProgressIntegrationTest {
     private lateinit var progressApi: RealProgressApi
     private lateinit var detailsSource: CountingDetailsSource
     private lateinit var record: RecordDecisionUseCase
+    private lateinit var undo: UndoDecisionUseCase
+    private val ledger = TriageUndoLedger()
 
     private val ongoing = showDetails(id = "1399", airedCount = 40, unairedCount = 10, productionStatus = ProductionStatus.RETURNING)
     private val ended = showDetails(id = "1396", airedCount = 40, productionStatus = ProductionStatus.ENDED)
@@ -79,7 +82,8 @@ class TriageCollectionProgressIntegrationTest {
         detailsSource = CountingDetailsSource(
             listOf(ongoing, ended, withSpecial, film).associateBy { it.id },
         )
-        record = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, detailsSource, clock)
+        record = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, detailsSource, clock, ledger)
+        undo = UndoDecisionUseCase(triageRepository, collectionApi, progressApi, ledger)
     }
 
     private suspend fun statusOf(details: MediaDetails): WatchStatus? = collectionApi.observeSummaries().first().firstOrNull { it.mediaId == details.id }?.status
@@ -164,7 +168,7 @@ class TriageCollectionProgressIntegrationTest {
     fun `undo reverses the save and the ticks so the title is deck-eligible again`() = runTest {
         record(ended.summary, TriageVerdict.CAUGHT_UP).getOrThrow()
 
-        UndoDecisionUseCase(triageRepository, collectionApi, progressApi)(ended.id, TriageVerdict.CAUGHT_UP)
+        undo(ended.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(emptySet(), triageRepository.observeDecidedIds().first())
         assertNull(statusOf(ended))
@@ -179,7 +183,7 @@ class TriageCollectionProgressIntegrationTest {
         progressApi.setEpisodeSeen(EpisodeId(ongoing.id, 1, 1), seen = true)
 
         record(ongoing.summary, TriageVerdict.WATCHING).getOrThrow()
-        UndoDecisionUseCase(triageRepository, collectionApi, progressApi)(ongoing.id, TriageVerdict.WATCHING)
+        undo(ongoing.id, TriageVerdict.WATCHING)
 
         // The person's entry and their own tick are not the verdict's to take back.
         assertTrue(statusOf(ongoing) != null)
@@ -187,6 +191,39 @@ class TriageCollectionProgressIntegrationTest {
             .filter { it.seen }
             .map { it.episodeId }
         assertTrue(EpisodeId(ongoing.id, 1, 1).toString() in seen, "the person's own tick must survive undo")
+    }
+
+    @Test
+    fun `undo takes back the verdict's ticks on an existing entry and keeps the person's`() = runTest {
+        collectionApi.add(ongoing)
+        progressApi.setEpisodeSeen(EpisodeId(ongoing.id, 1, 1), seen = true)
+
+        record(ongoing.summary, TriageVerdict.CAUGHT_UP).getOrThrow()
+        undo(ongoing.id, TriageVerdict.CAUGHT_UP)
+
+        val seen = database.episodeProgressQueries.selectForMedia(ongoing.id.toString()).executeAsList()
+            .filter { it.seen }
+            .map { it.episodeId }
+        assertEquals(listOf(EpisodeId(ongoing.id, 1, 1).toString()), seen)
+    }
+
+    @Test
+    fun `a rewatch recorded after the verdict keeps its episode seen through undo`() = runTest {
+        collectionApi.add(ongoing)
+
+        record(ongoing.summary, TriageVerdict.CAUGHT_UP).getOrThrow()
+        val rewatched = EpisodeId(ongoing.id, 1, 1)
+        // A play's id carries its timestamp, so a rewatch in the same millisecond would be the same row.
+        (deckClock as FakeClock).advanceBy(60_000)
+        progressApi.recordPlay(rewatched)
+        undo(ongoing.id, TriageVerdict.CAUGHT_UP)
+
+        // Undo drops one viewing per episode it ticked, never the episode's whole history (#919).
+        val seen = database.episodeProgressQueries.selectForMedia(ongoing.id.toString()).executeAsList()
+            .filter { it.seen }
+            .map { it.episodeId }
+        assertEquals(listOf(rewatched.toString()), seen)
+        assertEquals(1, progressApi.observePlayCounts(ongoing.id).first()[rewatched])
     }
 
     @Test
@@ -217,7 +254,7 @@ class TriageCollectionProgressIntegrationTest {
     @Test
     fun `a failed commit still blocks the title from reappearing`() = runTest {
         val offline = CountingDetailsSource(emptyMap())
-        val recordOffline = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, offline, FakeClock(NOW_EPOCH_MS))
+        val recordOffline = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, offline, FakeClock(NOW_EPOCH_MS), ledger)
 
         assertTrue(recordOffline(ongoing.summary, TriageVerdict.LATER).isFailure)
 

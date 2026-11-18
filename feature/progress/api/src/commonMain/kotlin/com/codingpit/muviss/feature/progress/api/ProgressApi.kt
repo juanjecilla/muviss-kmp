@@ -238,8 +238,12 @@ interface ProgressApi {
      * verdict uses. Unlike [markPreviousSeen] this never ticks an unaired or
      * undated episode, which would make seen exceed aired and break status
      * derivation (ADR 0005).
+     *
+     * Returns the ids it actually ticked — the aired episodes that were unseen — so a caller that
+     * has to take the write back (triage's Undo, #919) reverses exactly that and not a tick the
+     * person made at the same time. [undoBulkMark] is the matching reversal.
      */
-    suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long)
+    suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId>
 
     /**
      * Un-ticks every episode (or the movie tick) for [mediaId]. Triage's undo
