@@ -13,3 +13,7 @@ data class DetailRoute(val mediaId: String)
 /** One episode's own page; carries the [com.codingpit.muviss.models.EpisodeId] as its string form. */
 @Serializable
 data class EpisodeDetailRoute(val episodeId: String)
+
+/** One person's page; carries the [com.codingpit.muviss.models.PersonId] as its string form. */
+@Serializable
+data class PersonRoute(val personId: String)

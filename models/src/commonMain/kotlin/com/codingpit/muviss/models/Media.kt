@@ -175,3 +175,46 @@ data class Credit(
         const val CREATOR_DEPARTMENT = "Creator"
     }
 }
+
+/** What the source says about one person: who they are, and every title they are credited on. */
+@Serializable
+data class PersonDetails(
+    val id: PersonId,
+    val name: String,
+    val profileUrl: String? = null,
+    /** In the app's language when the source has it, otherwise in English, otherwise null. */
+    val biography: String? = null,
+    val birthday: String? = null,
+    val deathday: String? = null,
+    val placeOfBirth: String? = null,
+    /** The source's main department for them ("Acting", "Directing"...), the tab that opens first. */
+    val knownForDepartment: String? = null,
+    val anchors: PersonAnchors = PersonAnchors(),
+    /** Their credits as the source lists them: one entry per role, a title may repeat. */
+    val credits: List<PersonCredit> = emptyList(),
+)
+
+/** Cross-source ids of a person, for links out. */
+@Serializable
+data class PersonAnchors(
+    val imdbId: String? = null,
+    val wikidataId: String? = null,
+)
+
+/** One role a person had in one title. */
+@Serializable
+data class PersonCredit(
+    val title: MediaSummary,
+    /** Character played, for an acting credit. */
+    val character: String? = null,
+    /** Job done, for a crew credit. */
+    val job: String? = null,
+    /** True for an acting credit, false for a crew one. */
+    val acting: Boolean,
+    /** Release or first-air date as an epoch day; null when the source has none. */
+    val releaseEpochDay: Long? = null,
+    /** How many people voted on the title, to tell a famous credit from an obscure one. */
+    val voteCount: Int = 0,
+    /** Episodes the person appears in, for a show credit that says so. */
+    val episodeCount: Int? = null,
+)

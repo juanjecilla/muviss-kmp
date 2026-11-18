@@ -16,6 +16,8 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.SourceId
 import com.codingpit.muviss.models.WatchProviders
@@ -174,6 +176,31 @@ class TmdbProvider internal constructor(
                 parameter("language", locale.language)
             }
         return TmdbMapper.episodeDetailToModel(episodeId, dto)
+    }
+
+    /**
+     * One request for the person and their whole filmography. A biography that is blank in the app's
+     * language costs one more, in English; most people TMDB has translated nothing for would otherwise
+     * show an empty page.
+     */
+    override suspend fun person(id: PersonId): PersonDetails {
+        val dto: TmdbPersonDto = get("person/${id.external}") {
+            parameter("language", locale.language)
+            parameter("append_to_response", "combined_credits,external_ids")
+        }
+        val needsFallback = dto.biography.isNullOrBlank() && !locale.language.startsWith("en")
+        // The page is worth showing without the English text, so only a MetadataError is swallowed
+        // here: a cancellation must still cancel.
+        val english = if (needsFallback) {
+            try {
+                get<TmdbPersonDto>("person/${id.external}") { parameter("language", "en-US") }.biography
+            } catch (_: MetadataError) {
+                null
+            }
+        } else {
+            null
+        }
+        return TmdbMapper.personToDetails(dto, english)
     }
 
     private suspend fun movieDetails(externalId: String): MediaDetails {

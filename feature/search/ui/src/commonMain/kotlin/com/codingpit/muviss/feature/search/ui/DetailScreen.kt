@@ -179,6 +179,7 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
@@ -196,6 +197,8 @@ fun DetailScreen(
     onBack: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
     onOpenEpisode: (EpisodeId) -> Unit = {},
+    /** A cast or crew card opens this person; null leaves the cards plain (most tests). */
+    onOpenPerson: ((PersonId) -> Unit)? = null,
     // Null where there is nothing to offer (most tests): Detail works without it.
     nudge: NotificationNudgeViewModel? = null,
     /** "What's next?" (EPIC 51, #545), offered only on a Watched or Finished title. Null draws nothing. */
@@ -235,7 +238,7 @@ fun DetailScreen(
                     navigation = DetailNavigation(onOpenDetail, onOpenEpisode),
                     onAddToList = { showAddToList = true },
                     onEditNote = { editingNote = true },
-                    credits = CreditsCallbacks(onSeeAll = { showCredits = true }, onOpenPerson = null),
+                    credits = CreditsCallbacks(onSeeAll = { showCredits = true }, onOpenPerson = onOpenPerson),
                     onTapSeenEpisode = { tickedEpisode = it },
                     notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
                 )
@@ -300,7 +303,17 @@ fun DetailScreen(
 
     val creditsDetails = state.details
     if (showCredits && creditsDetails != null && creditsDetails.hasCredits()) {
-        CreditsSheet(creditsDetails, onDismiss = { showCredits = false }, onOpenPerson = null)
+        CreditsSheet(
+            creditsDetails,
+            onDismiss = { showCredits = false },
+            // Close the list first: coming back to the title should not land on an open sheet.
+            onOpenPerson = onOpenPerson?.let { open ->
+                { id ->
+                    showCredits = false
+                    open(id)
+                }
+            },
+        )
     }
 
     val detailsMediaId = state.details?.summary?.id

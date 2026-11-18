@@ -12,6 +12,8 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.SourceId
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.withContext
@@ -51,6 +53,12 @@ class TmdbSearchRepository(
             // interface default); surfacing it as a failure lets the screen
             // show its error state rather than an empty one.
             ?: error("This source has no episode details")
+    }
+
+    override suspend fun person(id: PersonId): Result<PersonDetails> = runOnIo {
+        registry.require(id.source).person(id)
+            // Same as episodes: only a provider with no people endpoint returns null.
+            ?: error("This source has no person details")
     }
 
     private suspend fun <T> runOnIo(block: suspend () -> T): Result<T> = withContext(dispatchers.io) { runCatching { block() } }

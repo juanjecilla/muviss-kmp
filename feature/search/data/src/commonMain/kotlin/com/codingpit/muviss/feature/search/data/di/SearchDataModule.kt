@@ -11,6 +11,7 @@ import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
+import com.codingpit.muviss.feature.search.domain.PersonDetailUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.domain.SearchOnboarding
@@ -29,6 +30,7 @@ val searchDataModule: Module = module {
     factory { TrendingUseCase(get()) }
     factory { MediaDetailUseCase(get()) }
     factory { EpisodeDetailUseCase(get()) }
+    factory { PersonDetailUseCase(get()) }
     factory { DiscoverMediaUseCase(get()) }
     factory { GenresUseCase(get()) }
     factory { WatchProvidersUseCase(get()) }

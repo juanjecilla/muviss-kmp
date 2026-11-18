@@ -8,6 +8,8 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.WatchProviders
 
 /**
@@ -114,4 +116,9 @@ class MoreLikeThisUseCase(
 /** Loads one episode's full detail for the episode screen. */
 class EpisodeDetailUseCase(private val repository: SearchRepository) {
     suspend operator fun invoke(episodeId: EpisodeId): Result<EpisodeDetails> = repository.episodeDetails(episodeId)
+}
+
+/** One person's page: who they are and what they are credited on. */
+class PersonDetailUseCase(private val repository: SearchRepository) {
+    suspend operator fun invoke(id: PersonId): Result<PersonDetails> = repository.person(id)
 }

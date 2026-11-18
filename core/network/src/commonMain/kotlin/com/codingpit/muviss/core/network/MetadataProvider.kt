@@ -8,6 +8,8 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.SourceId
 import com.codingpit.muviss.models.WatchProviders
 
@@ -85,6 +87,12 @@ interface MetadataProvider {
      * implement it.
      */
     suspend fun episodeDetails(episodeId: EpisodeId): EpisodeDetails? = null
+
+    /**
+     * One person and everything they are credited on, for the Person screen. Defaults to null
+     * (unsupported) so a provider with no people endpoint need not implement it.
+     */
+    suspend fun person(id: PersonId): PersonDetails? = null
 }
 
 /**
