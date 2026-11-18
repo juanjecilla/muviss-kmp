@@ -134,4 +134,12 @@
     <string name="movie_marked_watched">Marked as watched</string>
     <string name="tick_next_seen">Marked S%1$d·E%2$d seen</string>
     <string name="removed_from_library">Removed from library</string>
+    <string name="action_close">Close</string>
+    <string name="image_viewer_position">%1$d / %2$d</string>
+    <string name="image_viewer_backdrop">Backdrop %1$d of %2$d</string>
+    <string name="image_viewer_poster">Poster %1$d of %2$d</string>
+    <string name="image_viewer_still">Still %1$d of %2$d</string>
+    <string name="image_open_backdrop">View backdrop full screen</string>
+    <string name="image_open_poster">View poster full screen</string>
+    <string name="image_open_still">View still full screen</string>
 </resources>

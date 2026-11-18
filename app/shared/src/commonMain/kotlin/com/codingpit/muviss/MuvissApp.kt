@@ -78,6 +78,7 @@ import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
 import com.codingpit.muviss.feature.search.ui.EpisodeDetailRoute
+import com.codingpit.muviss.feature.search.ui.ImageViewerRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -398,6 +399,9 @@ private fun MuvissScaffold(
         // The introduction is full-screen: nothing in the bar is reachable until it ends.
         showingOnboarding -> NavigationSuiteType.None
 
+        // So is the Image Viewer: artwork edge to edge, nothing but its own controls on top.
+        currentDestination?.hasRoute(ImageViewerRoute::class) == true -> NavigationSuiteType.None
+
         windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) -> NavigationSuiteType.NavigationRail
 
         else -> NavigationSuiteType.NavigationBar
@@ -448,7 +452,7 @@ private fun MuvissScaffold(
         // pixel under the status bar and camera cutout. One wrap fixes all of
         // them, on every platform.
         val immersive = currentDestination?.let {
-            it.hasRoute(DetailRoute::class) || it.hasRoute(EpisodeDetailRoute::class)
+            it.hasRoute(DetailRoute::class) || it.hasRoute(EpisodeDetailRoute::class) || it.hasRoute(ImageViewerRoute::class)
         } == true
         ScreenInsets(immersive = immersive) {
             Column {

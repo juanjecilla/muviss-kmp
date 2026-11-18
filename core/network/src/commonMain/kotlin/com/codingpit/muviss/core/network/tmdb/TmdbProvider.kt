@@ -18,6 +18,7 @@ import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.SourceId
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -175,6 +176,24 @@ class TmdbProvider internal constructor(
             }
         return TmdbMapper.episodeDetailToModel(episodeId, dto)
     }
+
+    override suspend fun images(id: MediaId): TitleImages {
+        val dto: TmdbImagesDto = get("${id.type.tmdbPath}/${id.external}/images") { parameter("include_image_language", imageLanguages()) }
+        return TmdbMapper.imagesToModel(dto)
+    }
+
+    override suspend fun episodeImages(episodeId: EpisodeId): TitleImages {
+        val dto: TmdbImagesDto = get("tv/${episodeId.show.external}/season/${episodeId.seasonNumber}/episode/${episodeId.episodeNumber}/images") {
+            parameter("include_image_language", imageLanguages())
+        }
+        return TmdbMapper.imagesToModel(dto)
+    }
+
+    /**
+     * TMDB drops every image whose language is not listed: art with no text on it is `null`, and English is the common fallback.
+     * `locale.language` is a BCP 47 tag ("es-ES"); this parameter wants the bare ISO 639-1 code, so a regional tag matches nothing.
+     */
+    private fun imageLanguages(): String = listOf(locale.language.substringBefore('-'), "null", "en").distinct().joinToString(",")
 
     private suspend fun movieDetails(externalId: String): MediaDetails {
         val dto: TmdbMovieDetailDto = get("movie/$externalId", fresh = true) {
