@@ -97,7 +97,8 @@ data class SearchUiState(
     /** The skeleton's sweep runs (the in-app animations switch, #394). False draws a flat fill. */
     val animateSkeleton: Boolean = true,
     /**
-     * Discover shows what was stored because the refresh failed and the stored copy is past its TTL (#724).
+     * A saved copy's refresh failed, and the person is told: the stored Discover copy is past its TTL (#724), or
+     * the person asked for the refresh and it failed even inside the TTL (#974), or a forced For you request failed.
      * The screen says so, with a retry, instead of passing an old copy off as current.
      */
     val discoverSaved: Boolean = false,
@@ -171,6 +172,15 @@ class SearchViewModel(
 
     /** A reconnection landed while a For you request was in flight; checked when it finishes (#924). */
     private var reconnectedDuringForYou = false
+
+    /**
+     * Discover's last refresh failed where the person must be told: it was past its TTL, or the person asked for it
+     * (#974). Its own mark, so a For you run never clears a Discover failure, or the other way round.
+     */
+    private var discoverBanner = false
+
+    /** The last forced For you request failed and no automatic one has answered since (#974). */
+    private var forYouBanner = false
 
     /** What Settings and the session chip say right now. Read by every load below. */
     private var muting = GenreMuting()
@@ -353,10 +363,10 @@ class SearchViewModel(
                 forYouForce = true
                 forYouAgain.update { it + 1 }
             }
-            if (!s.discoverBusy) reload()
+            if (!s.discoverBusy) reload(userInitiated = true)
             return
         }
-        reload()
+        reload(userInitiated = true)
     }
 
     /**
@@ -372,12 +382,16 @@ class SearchViewModel(
 
     private fun publishInFlight() = _state.update { it.copy(discoverBusy = discoverLoads > 0, forYouRequesting = forYouRequests > 0) }
 
-    /** Reloads whatever is showing from the network, as [retry] does for Discover's own shelves. */
-    private fun reload() {
+    /**
+     * Reloads whatever is showing from the network, as [retry] does for Discover's own shelves. [userInitiated] is true
+     * only for the person's own Retry or Refresh; a reconnection, a muting change or a second attempt is automatic and
+     * keeps the silent rule inside the TTL (#974).
+     */
+    private fun reload(userInitiated: Boolean = false) {
         val s = _state.value
         when (s.mode) {
             // An explicit retry asks the network even when the stored copy is still fresh (#724).
-            SearchMode.DISCOVER -> loadDiscover(forced = true)
+            SearchMode.DISCOVER -> loadDiscover(forced = true, userInitiated = userInitiated)
 
             SearchMode.SEARCH_RESULTS -> {
                 loadJob?.cancel()
@@ -417,7 +431,7 @@ class SearchViewModel(
      * when [forced] (#724). Stored titles are raw, so the muted genres are applied here, every time: a mute
      * change re-filters the same copy. Only a refresh that fails with nothing stored to show is an error.
      */
-    private fun loadDiscover(forced: Boolean = false) {
+    private fun loadDiscover(forced: Boolean = false, userInitiated: Boolean = false) {
         // A second load must not race the first: both read `muting` mid-flight, and whichever finishes
         // last wins, which could be the one that saw the older muting.
         loadJob?.cancel()
@@ -426,7 +440,7 @@ class SearchViewModel(
             discoverLoads++
             publishInFlight()
             try {
-                loadDiscoverNow(forced, marks)
+                loadDiscoverNow(forced, userInitiated, marks)
             } finally {
                 discoverLoads--
                 publishInFlight()
@@ -434,29 +448,35 @@ class SearchViewModel(
         }
     }
 
-    private suspend fun loadDiscoverNow(forced: Boolean, marks: Int) {
+    /** Publishes the saved-copy banner: Discover's mark or For you's, whichever is set (#974). */
+    private fun publishBanner() = _state.update { it.copy(discoverSaved = discoverBanner || forYouBanner) }
+
+    private suspend fun loadDiscoverNow(forced: Boolean, userInitiated: Boolean, marks: Int) {
         val mutedMovies = mutedFor(MediaType.MOVIE, null)
         val mutedTv = mutedFor(MediaType.TV, null)
         val snapshot = discoverFeed.snapshot(mutedMovies, mutedTv)
+        discoverBanner = false
         // A stored copy is on screen at once, so the skeleton never shows over it (#723, #724).
         if (snapshot.isEmpty) {
             _state.update { it.copy(loading = true, error = null) }
         } else {
-            _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = false) }
+            _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = discoverBanner || forYouBanner) }
         }
         // A fresh copy answers without the network, so it does not pay off a muting mark: that needs a refresh.
         if (!forced && !discoverFeed.needsRefresh(snapshot)) return
 
         val refresh = discoverFeed.refresh(mutedMovies, mutedTv)
         // Nothing stored and a section failed: the error state, as Discover always showed. With a copy on
-        // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL.
+        // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL, or when
+        // the person asked for the refresh: they are told it failed even inside the TTL (#974).
         if (snapshot.isEmpty) refresh.firstFailure?.let { return fail(it) }
         val merged = refresh.mergedInto(snapshot)
+        discoverBanner = refresh.anyFailed && (userInitiated || discoverFeed.isPastTtl(merged))
         _state.update {
             showing(it, merged, mutedMovies, mutedTv).copy(
                 loading = false,
                 error = null,
-                discoverSaved = refresh.anyFailed && discoverFeed.isPastTtl(merged),
+                discoverSaved = discoverBanner || forYouBanner,
             )
         }
         if (!refresh.anyFailed) settleStale(marks)
@@ -577,6 +597,8 @@ class SearchViewModel(
         val seeds = ForYouSeeding.selectSeeds(library)
         if (seeds.isEmpty()) {
             forYouOwed = false
+            forYouBanner = false
+            publishBanner()
             emit(emptyList())
             return
         }
@@ -585,8 +607,25 @@ class SearchViewModel(
 
         val stored = discoverFeed.forYouStored(seeds)
         if (stored != null) emit(shown(stored))
-        val answers = discoverFeed.refreshForYou(seeds, stored, force) { seed -> recommendationsUseCase(seed, fresh = true) }
+        // Whether a request was asked and whether one failed. The owed check cannot see a forced failure inside the TTL,
+        // because the stored answer it keeps is still fresh; the request itself can (#974).
+        var asked = false
+        var askFailed = false
+        val answers = discoverFeed.refreshForYou(seeds, stored, force) { seed ->
+            recommendationsUseCase(seed, fresh = true).also {
+                asked = true
+                if (it.isFailure) askFailed = true
+            }
+        }
         forYouOwed = discoverFeed.forYouStillOwed(seeds, answers)
+        // A forced request says so when it failed. An automatic one stays silent, and clears a mark only when it
+        // answered without failing; a run that asked nothing leaves the mark as it was.
+        forYouBanner = when {
+            force -> askFailed
+            asked && !askFailed -> false
+            else -> forYouBanner
+        }
+        publishBanner()
         emit(shown(answers))
         // A reconnection that landed while the request was in flight found it still failing: ask once more, as Discover does (#249).
         if (forYouOwed && reconnectedDuringForYou) forYouAgain.update { it + 1 }

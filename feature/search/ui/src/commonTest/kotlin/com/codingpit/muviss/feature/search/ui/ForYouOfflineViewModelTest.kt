@@ -33,6 +33,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /** #785: "For you" opens from its stored copy, and muting and the library are applied to that copy at read. */
 class ForYouOfflineViewModelTest {
@@ -180,6 +182,56 @@ class ForYouOfflineViewModelTest {
 
         assertEquals(listOf(recommended), vm.state.value.forYou, "the seed is asked again once the connection is back")
         assertEquals(listOf(seed, seed), asks.seeds, "one more request, for the seed that failed")
+    }
+
+    /** #974: a forced For you request that fails says so inside the TTL, and one that answers clears it. */
+    @Test
+    fun a_forced_for_you_request_that_fails_inside_the_ttl_says_so_until_one_answers() = runTest {
+        val cache = ForYouMemoryCache()
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 1_000L)))
+        val asks = Asks()
+        var answering = false
+        // Discover itself answers, so the mark can only come from For you.
+        val repo = FakeRepo(recommendationsResult = { id ->
+            asks.seeds += id
+            if (answering) Result.success(PagedResult(listOf(talkShow), 1, 1)) else Result.failure(MetadataError.Offline())
+        })
+        val vm = viewModel(repo, cache, FakeSearchCollectionApi(listOf(favorite(seed))))
+        advanceUntilIdle()
+        assertFalse(vm.state.value.discoverSaved, "a fresh copy is answered without a request")
+
+        vm.retry()
+        advanceUntilIdle()
+        assertEquals(listOf(recommended), vm.state.value.forYou, "the stored answer stays on screen")
+        assertTrue(vm.state.value.discoverSaved, "the forced request failed inside the TTL: say so")
+
+        answering = true
+        vm.retry()
+        advanceUntilIdle()
+        assertEquals(listOf(talkShow), vm.state.value.forYou)
+        assertFalse(vm.state.value.discoverSaved, "a forced request that answers clears the mark")
+    }
+
+    /** #974: an automatic For you request that fails stays silent inside the TTL. */
+    @Test
+    fun an_automatic_for_you_request_that_fails_stays_silent() = runTest {
+        val cache = ForYouMemoryCache()
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 1_000L)))
+        val asks = Asks()
+        val repo = FakeRepo(recommendationsResult = { id ->
+            asks.seeds += id
+            Result.failure(MetadataError.Offline())
+        })
+        val library = FakeSearchCollectionApi(listOf(favorite(seed)))
+        val vm = viewModel(repo, cache, library)
+        advanceUntilIdle()
+
+        // A saved title is a new seed set: the request for it is automatic, and it fails.
+        library.library.value = listOf(favorite(seed), favorite(newSeed))
+        advanceUntilIdle()
+
+        assertTrue(asks.seeds.isNotEmpty(), "the new seed set was asked")
+        assertFalse(vm.state.value.discoverSaved, "an automatic request that fails inside the TTL is silent")
     }
 
     /** #924: Discover's Retry refreshes For you too, even when its stored copy is still fresh. */
