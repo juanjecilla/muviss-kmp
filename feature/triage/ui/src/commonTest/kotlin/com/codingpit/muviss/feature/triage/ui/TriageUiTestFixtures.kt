@@ -46,6 +46,7 @@ import com.codingpit.muviss.feature.triage.domain.TriageOnboarding
 import com.codingpit.muviss.feature.triage.domain.TriagePreferences
 import com.codingpit.muviss.feature.triage.domain.TriageSnooze
 import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
+import com.codingpit.muviss.feature.triage.domain.TriageUndoLedger
 import com.codingpit.muviss.feature.triage.domain.UndoDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.UnsnoozeUseCase
 import com.codingpit.muviss.models.Episode
@@ -286,8 +287,9 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = Unit
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = Unit
 
-    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) {
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> {
         markedAllAired += todayEpochDay
+        return emptyList()
     }
 
     override suspend fun clearProgress(mediaId: MediaId) {
@@ -423,7 +425,8 @@ internal class TriageHarness(
     val settings = FakeMutingApi(muted)
     private val clock = FakeClock(NOW_EPOCH_MS)
 
-    private val record = RecordDecisionUseCase(repository, collection, progress, details, clock)
+    private val ledger = TriageUndoLedger()
+    private val record = RecordDecisionUseCase(repository, collection, progress, details, clock, ledger)
 
     fun viewModel() = TriageViewModel(
         LoadDeckUseCase(DeckLoader(source), repository, snoozes, collection, clock, DeckResumption(cursors, DeckLanguage { "en-US" })),
@@ -451,7 +454,7 @@ internal class TriageHarness(
 
     private fun actions() = TriageActions(
         record = record,
-        undo = UndoDecisionUseCase(repository, collection, progress),
+        undo = UndoDecisionUseCase(repository, collection, progress, ledger),
         setTutorialSeen = SetTutorialSeenUseCase(preferences),
         retryUnresolved = RetryUnresolvedUseCase(repository, record),
         snoozing = SnoozeActions(

@@ -293,7 +293,7 @@ internal class FakeProgressApi : ProgressApi {
         markedPrevious += target
     }
 
-    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
 
     override suspend fun clearProgress(mediaId: MediaId) {
         plays.value = emptyMap()

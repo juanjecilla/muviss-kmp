@@ -131,7 +131,7 @@ class MarkPreviousSeenUseCase(private val repository: ProgressRepository) {
  * see [EpisodeOrdering.airedBy] for why the difference matters.
  */
 class MarkAllAiredSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long) = repository.setSeenBulk(EpisodeOrdering.airedBy(seasons, todayEpochDay), seen = true)
+    suspend operator fun invoke(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
 }
 
 /** Un-ticks everything for one title — used to take back a triage verdict. */
