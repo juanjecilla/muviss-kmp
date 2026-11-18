@@ -152,9 +152,11 @@ jobs:
           echo "number=$N" >> "$GITHUB_OUTPUT"
 
       # Once per run, before the wait, and only for ship: when main and the branch conflict only in CHANGELOG.md, main
-      # is merged into the branch and the merge pushed, so the PR gets its checks on that new head. The wait then
-      # reads the new head and waits for its approval. No conflict: nothing is pushed. A conflict elsewhere: nothing
-      # is pushed. action=merge never pushes a branch: a conflicting PR holds there, and ship does the merge of main.
+      # is merged into the branch and the merge pushed, so the PR gets its checks on that new head. A push ENDS the
+      # run (exit 3 -> exit 1 below): the pushed merge is an untested release candidate, so this run waits for
+      # nothing and merges nothing. The next ship run's wait reads that head. Do not make the run continue to the
+      # wait. No conflict: nothing is pushed. A conflict elsewhere: nothing is pushed. action=merge never pushes a
+      # branch: a conflicting PR holds there, and ship does the merge of main.
       - name: Merge main into the release branch when they conflict
         if: inputs.action == 'ship'
         env:
@@ -217,7 +219,8 @@ jobs:
             # Every check counted, not just the required ones: pass or skipped only.
             CHECKS="$(gh pr checks "$N" -R "$REPO" --json bucket --jq '[.[].bucket]|if length == 0 then "none" elif any(. == "fail" or . == "cancel") then "fail" elif any(. == "pending") then "pending" else "pass" end' || true)"
             # A back-merge has no checkout to merge main into, so a conflict with its base stops it at once. For a
-            # release, the merge step before this one has already pushed the merge; a DIRTY PR is not green below.
+            # release, a sync push already ended an earlier run (the merge step above exits), so a DIRTY PR here
+            # was not settled by this run; it is not green below and waits or holds.
             if [[ "$STATE" == *DIRTY* && "$ACTION" = back-merge ]]; then echo "::error::#$N conflicts with its base"; exit 1; fi
             if [ "$CHECKS" = fail ]; then echo "::error::a check is failing on #$N"; exit 1; fi
             # Every context the rules of main require must be green on this head (#793), CLEAN and DIRTY
@@ -251,7 +254,8 @@ jobs:
             fi
             echo "#$N: $STATE, checks $CHECKS, required $REQUIRED, head $HEAD"
             # UNSTABLE means a non-passing status, so only CLEAN (or HAS_HOOKS) is green. DIRTY is not: a conflict
-            # with main is settled by the merge step before the wait, and a PR still DIRTY here waits or holds.
+            # with main is settled by the sync step of an earlier ship run (a push ends that run), and a PR still
+            # DIRTY here waits or holds.
             case "$STATE $CHECKS" in
               "APPROVED CLEAN pass"|"APPROVED HAS_HOOKS pass")
                 if [ "$REQUIRED" = green ]; then
