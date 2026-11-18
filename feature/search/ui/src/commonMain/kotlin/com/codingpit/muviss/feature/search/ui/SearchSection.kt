@@ -7,7 +7,9 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.TitleImage
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -43,6 +45,7 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
             // grows the back stack and Back unwinds it one title at a time.
             onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
             onOpenEpisode = { episodeId -> navController.navigate(EpisodeDetailRoute(episodeId.toString())) },
+            onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(id.toString(), kind.name, url)) },
             nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
             // A finished title's entry opens the session anchored on that title (#664).
             onOpenNextPick = onOpenNextPick,
@@ -51,6 +54,17 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
     composable<EpisodeDetailRoute> { entry ->
         val episodeId = EpisodeId.parse(entry.toRoute<EpisodeDetailRoute>().episodeId)
         val viewModel = koinViewModel<EpisodeDetailViewModel> { parametersOf(episodeId) }
-        EpisodeDetailScreen(viewModel, onBack = { navController.popBackStack() })
+        EpisodeDetailScreen(
+            viewModel,
+            onBack = { navController.popBackStack() },
+            onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(episodeId.show.toString(), kind.name, url, episodeId.toString())) },
+        )
+    }
+    composable<ImageViewerRoute> { entry ->
+        val route = entry.toRoute<ImageViewerRoute>()
+        val viewModel = koinViewModel<ImageViewerViewModel> {
+            parametersOf(ImageViewerArgs(MediaId.parse(route.mediaId), route.episodeId?.let(EpisodeId::parse), ImageKind.valueOf(route.kind), TitleImage(route.seedUrl)))
+        }
+        ImageViewerScreen(viewModel, onClose = { navController.popBackStack() })
     }
 }

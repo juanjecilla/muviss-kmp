@@ -7,6 +7,8 @@ import com.codingpit.muviss.feature.search.ui.DetailPeers
 import com.codingpit.muviss.feature.search.ui.DetailViewModel
 import com.codingpit.muviss.feature.search.ui.DiscoverIntroViewModel
 import com.codingpit.muviss.feature.search.ui.EpisodeDetailViewModel
+import com.codingpit.muviss.feature.search.ui.ImageViewerArgs
+import com.codingpit.muviss.feature.search.ui.ImageViewerViewModel
 import com.codingpit.muviss.feature.search.ui.NotificationNudgeViewModel
 import com.codingpit.muviss.feature.search.ui.SearchViewModel
 import com.codingpit.muviss.models.EpisodeId
@@ -24,4 +26,5 @@ val searchUiModule: Module = module {
     viewModel { (id: MediaId) -> AddToListViewModel(id, get()) }
     viewModel { (id: MediaId) -> NotificationNudgeViewModel(id, get(), get()) }
     viewModel { (id: EpisodeId) -> EpisodeDetailViewModel(id, get(), get(), get()) }
+    viewModel { (args: ImageViewerArgs) -> ImageViewerViewModel(args.mediaId, args.episodeId, args.kind, args.seed, get()) }
 }

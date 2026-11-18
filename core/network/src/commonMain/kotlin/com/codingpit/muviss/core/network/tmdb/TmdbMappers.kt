@@ -13,6 +13,8 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.TitleImage
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
 
@@ -26,6 +28,23 @@ internal object TmdbMapper {
     // Backdrops render edge-to-edge behind the detail hero; w780 is the
     // smallest size that stays sharp at expanded widths.
     const val BACKDROP_BASE = "https://image.tmdb.org/t/p/w780"
+
+    // The Image Viewer pages through full-screen art: w1280 for the wide kinds, w780 for the tall one.
+    // `original` can be several megabytes a page, and nothing here zooms past what these hold.
+    const val GALLERY_WIDE_BASE = "https://image.tmdb.org/t/p/w1280"
+    const val GALLERY_POSTER_BASE = "https://image.tmdb.org/t/p/w780"
+
+    /** Best-voted first (the sort is stable, so TMDB's own order breaks ties), one entry per file. */
+    fun imagesToModel(dto: TmdbImagesDto): TitleImages = TitleImages(
+        backdrops = galleryOf(dto.backdrops, GALLERY_WIDE_BASE),
+        posters = galleryOf(dto.posters, GALLERY_POSTER_BASE),
+        stills = galleryOf(dto.stills, GALLERY_WIDE_BASE),
+    )
+
+    private fun galleryOf(images: List<TmdbImageDto>, base: String): List<TitleImage> = images
+        .distinctBy { it.filePath }
+        .sortedByDescending { it.voteAverage }
+        .map { TitleImage(url = base + it.filePath, aspectRatio = it.aspectRatio.toFloat()) }
 
     fun imageUrl(path: String?): String? = path?.let { IMAGE_BASE + it }
 

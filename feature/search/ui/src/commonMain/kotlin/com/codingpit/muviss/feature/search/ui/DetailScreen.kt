@@ -181,6 +181,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.where_to_watch
 import com.codingpit.muviss.feature.search.ui.generated.resources.your_rating
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -202,6 +203,8 @@ fun DetailScreen(
     onBack: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
     onOpenEpisode: (EpisodeId) -> Unit = {},
+    /** Opens the Image Viewer on a backdrop or poster; the url is the one tapped (see [ImageViewerRoute]). */
+    onOpenImage: (ImageKind, String) -> Unit = { _, _ -> },
     // Null where there is nothing to offer (most tests): Detail works without it.
     nudge: NotificationNudgeViewModel? = null,
     /** "What's next?" (EPIC 51, #545), offered only on a Watched or Finished title. Null draws nothing. */
@@ -242,7 +245,7 @@ fun DetailScreen(
                     onOpenDetail = onOpenDetail,
                     onAddToList = { showAddToList = true },
                     onEditNote = { editingNote = true },
-                    onOpenEpisode = onOpenEpisode,
+                    openers = DetailOpeners(onOpenEpisode, onOpenImage),
                     onTapSeenEpisode = { tickedEpisode = it },
                     notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
                 )
@@ -325,16 +328,25 @@ internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
+/** Where Detail's body sends the person: another episode's page, or an image full screen. */
+private class DetailOpeners(
+    val onOpenEpisode: (EpisodeId) -> Unit,
+    val onOpenImage: (ImageKind, String) -> Unit,
+)
+
 /** The callbacks the screen's body raises, bundled so the two layouts share one shape. */
 private class DetailCallbacks(
     val onOpenDetail: (MediaId) -> Unit,
     val onAddToList: () -> Unit,
     val onEditNote: () -> Unit,
-    val onOpenEpisode: (EpisodeId) -> Unit,
+    private val openers: DetailOpeners,
     val onTapSeenEpisode: (EpisodeId) -> Unit,
     /** The Notification Nudge (EPIC 47), given the title; draws nothing unless it is due. */
     val notificationNudge: (@Composable (title: String) -> Unit)? = null,
-)
+) {
+    val onOpenEpisode: (EpisodeId) -> Unit get() = openers.onOpenEpisode
+    val onOpenImage: (ImageKind, String) -> Unit get() = openers.onOpenImage
+}
 
 /** "What's next?" under the actions of a Watched or Finished title (EPIC 51, #545). Draws nothing otherwise. */
 @Composable
@@ -372,7 +384,7 @@ private fun DetailCompact(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
         contentPadding = PaddingValues(bottom = bottomPadding),
     ) {
-        item(key = "hero", contentType = "hero") { DetailHero(details) }
+        item(key = "hero", contentType = "hero") { DetailHero(details, callbacks.onOpenImage) }
         item(key = "actions", contentType = "actions") {
             Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
                 ActionRow(state, viewModel, callbacks)
@@ -407,7 +419,7 @@ private fun DetailExpanded(
     ) {
         item(key = "hero", contentType = "hero") {
             Column {
-                DetailBackdrop(details, height = 200.dp)
+                DetailBackdrop(details, height = 200.dp, onOpenImage = callbacks.onOpenImage)
                 Row(
                     Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
                     horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
@@ -417,7 +429,8 @@ private fun DetailExpanded(
                             PosterImage(
                                 url = details.summary.posterUrl,
                                 title = details.summary.title,
-                                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
+                                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium)
+                                    .opensImageViewer(details.summary.posterUrl, ImageKind.Poster, callbacks.onOpenImage),
                             )
                         }
                         ActionRow(state, viewModel, callbacks)
@@ -526,9 +539,10 @@ private fun DetailBackdrop(
     // The hero draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
     topInset: androidx.compose.ui.unit.Dp = WindowInsets.safeDrawing.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding(),
+    onOpenImage: (ImageKind, String) -> Unit = { _, _ -> },
 ) {
     val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(height + topInset)) {
+    Box(Modifier.fillMaxWidth().height(height + topInset).testTag(DETAIL_BACKDROP_TAG).opensImageViewer(details.backdropUrl, ImageKind.Backdrop, onOpenImage)) {
         if (details.backdropUrl != null) {
             AsyncImage(
                 model = details.backdropUrl,
@@ -556,9 +570,9 @@ private fun DetailBackdrop(
 
 /** Compact hero: backdrop + poster overlapping down into the content. */
 @Composable
-private fun DetailHero(details: MediaDetails) {
+private fun DetailHero(details: MediaDetails, onOpenImage: (ImageKind, String) -> Unit) {
     Box(Modifier.fillMaxWidth()) {
-        DetailBackdrop(details, height = 200.dp)
+        DetailBackdrop(details, height = 200.dp, onOpenImage = onOpenImage)
         Row(
             Modifier
                 .align(Alignment.BottomStart)
@@ -571,7 +585,8 @@ private fun DetailHero(details: MediaDetails) {
                 PosterImage(
                     url = details.summary.posterUrl,
                     title = details.summary.title,
-                    modifier = Modifier.width(72.dp).height(108.dp).clip(MaterialTheme.shapes.small),
+                    modifier = Modifier.width(72.dp).height(108.dp).clip(MaterialTheme.shapes.small).testTag(DETAIL_POSTER_TAG)
+                        .opensImageViewer(details.summary.posterUrl, ImageKind.Poster, onOpenImage),
                     size = PosterSize.Grid,
                 )
             }
