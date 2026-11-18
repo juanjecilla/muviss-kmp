@@ -28,7 +28,7 @@ class PersistenceBannerGoldenTest {
 
     private val readOnlyTab = "Open in another tab. Changes made here won't be saved; reloading discards them."
     private val staleTab = "Another tab saved newer changes, so this tab won't save. Reloading discards its changes."
-    private val reload = "Reload to start saving"
+    private val reload = "Reload this tab"
 
     @Test
     fun the_read_only_tab_warning_is_legible() = runComposeUiTest {

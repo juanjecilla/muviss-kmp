@@ -544,9 +544,10 @@ private fun MuvissScaffold(
  * has the problem without any of the screens knowing which one that is.
  *
  * Only a tab that is not saving because another tab has the lock, or because its
- * copy is out of date (#62), offers a reload: a reload is what fixes both. It is
- * not offered where no lock exists at all, or on a failed write, since a reload
- * changes neither.
+ * copy is out of date (#62), offers a reload. A reload fixes an out-of-date copy
+ * outright; behind another tab's lock it only returns this tab to read-only until
+ * that tab is closed, so the label does not promise saving. It is not offered
+ * where no lock exists at all, or on a failed write, since a reload changes neither.
  */
 @Composable
 private fun rememberPersistenceWarning(status: PersistenceStatus): PersistenceWarning? {
