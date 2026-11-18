@@ -665,5 +665,18 @@ elif git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
   expect_rc "a deleted branch whose merge carries a commit after the RC moved" "$c" 1
 else fail "a deleted branch whose merge carries a commit after the RC moved: could not delete the ref, fallback not tested"; fi
 
+
+# update-verification.sh names failed tasks: a test task only warns, anything else fails the leg (#880).
+log="$(mktemp)"
+printf '> Task :core:foo:jvmTest FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed test task only warns" "$status" "0"
+expect_eq "the warning names the test task" "$(grep -c '::warning::.*:core:foo:jvmTest' <<<"$out")" "1"
+printf '> Task :core:foo:jvmTest FAILED\n> Task :app:webApp:wasmJsProductionSync FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed non-test task fails the leg" "$status" "1"
+expect_eq "the error names the build task" "$(grep -c '::error::.*wasmJsProductionSync' <<<"$out")" "1"
+git -C "$SCRIPTS/../.." checkout -q -- gradle/verification-metadata.xml 2>/dev/null || true
+
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
