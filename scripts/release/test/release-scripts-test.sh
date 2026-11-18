@@ -553,15 +553,21 @@ rc_repo() { # prints the clone's path; $1 = commits on the branch after the RC
   git -C "$o" tag -a v1.4.0-rc1 -m rc
   [ "${1:-0}" -eq 0 ] || commit "$o" "fix: after the rc"
   git -C "$o" switch -q main; git -C "$o" merge -q --no-ff release/1.4.0 -m "Merge release/1.4.0"
-  c="$(mktemp -d)"; git clone -q "$o" "$c"; echo "$c"
+  c="$(mktemp -d)"; git clone -q --origin origin "$o" "$c"; echo "$c"
 }
 rc_head() { (cd "$1" && "$SCRIPTS/rc-is-branch-head.sh" v1.4.0-rc1 release/1.4.0 "$(git rev-parse origin/main)" >/dev/null 2>&1); echo $?; }
-c="$(rc_repo 0)"; git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0
-expect_eq "a deleted branch whose RC is the merge's second parent did not move" "$(rc_head "$c")" "0"
+# The deleted-branch cases only test the fallback if the ref is really gone:
+# a failed update-ref would leave the helper reading the same commit either way.
+c="$(rc_repo 0)"
+if git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
+  expect_eq "a deleted branch whose RC is the merge's second parent did not move" "$(rc_head "$c")" "0"
+else fail "a deleted branch whose RC is the merge's second parent: could not delete the ref, fallback not tested"; fi
 expect_eq "a branch still on its RC did not move" "$(rc_head "$(rc_repo 0)")" "0"
 expect_eq "a branch with a commit after its RC moved" "$(rc_head "$(rc_repo 1)")" "1"
-c="$(rc_repo 1)"; git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0
-expect_eq "a deleted branch whose merge carries a commit after the RC moved" "$(rc_head "$c")" "1"
+c="$(rc_repo 1)"
+if git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
+  expect_eq "a deleted branch whose merge carries a commit after the RC moved" "$(rc_head "$c")" "1"
+else fail "a deleted branch whose merge carries a commit after the RC moved: could not delete the ref, fallback not tested"; fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
