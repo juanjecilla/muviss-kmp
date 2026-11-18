@@ -3,12 +3,19 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -34,8 +41,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
@@ -43,6 +53,7 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
@@ -83,14 +94,16 @@ fun EpisodeDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
 
+    LightStatusBarIcons()
+
     Box(Modifier.fillMaxSize()) {
         when {
-            state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(MuvissSpacing.xl))
+            state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).statusBarsPadding().padding(MuvissSpacing.xl))
 
             state.error != null -> ErrorState(
                 message = state.error!!,
                 onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier.align(Alignment.Center).statusBarsPadding(),
             )
 
             state.details != null -> EpisodeBody(
@@ -158,9 +171,28 @@ private fun EpisodeBody(
 }
 
 @Composable
-private fun EpisodeStill(details: EpisodeDetails) {
-    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
-        PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize())
+private fun EpisodeStill(
+    details: EpisodeDetails,
+    // The still draws under the status bar (the route is immersive), so it grows by the inset.
+    // A parameter because Skiko reports zero insets: tests pass a synthetic value.
+    topInset: Dp = WindowInsets.safeDrawing.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding(),
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(maxWidth * 9f / 16f + topInset)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize())
+            // Keeps the status icons legible over any artwork, light or dark.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(topInset + 56.dp)
+                    .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 1f to Color.Transparent)),
+            )
+        }
     }
 }
 

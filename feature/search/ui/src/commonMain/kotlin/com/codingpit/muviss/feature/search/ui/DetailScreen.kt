@@ -25,12 +25,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -108,6 +113,7 @@ import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.resolve
@@ -217,16 +223,18 @@ fun DetailScreen(
         if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark(undo) else viewModel.dismissUndo(undo)
     }
 
+    LightStatusBarIcons()
+
     Box(Modifier.fillMaxSize()) {
         when {
             state.loading -> CircularProgressIndicator(
-                Modifier.align(Alignment.Center).padding(MuvissSpacing.xl),
+                Modifier.align(Alignment.Center).statusBarsPadding().padding(MuvissSpacing.xl),
             )
 
             state.error != null -> ErrorState(
                 message = state.error!!,
                 onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier.align(Alignment.Center).statusBarsPadding(),
             )
 
             state.details != null -> BoxWithConstraints {
@@ -512,9 +520,15 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
 
 /** 16:9 backdrop with a gradient into the background color. */
 @Composable
-private fun DetailBackdrop(details: MediaDetails, height: androidx.compose.ui.unit.Dp) {
+private fun DetailBackdrop(
+    details: MediaDetails,
+    height: androidx.compose.ui.unit.Dp,
+    // The hero draws under the status bar (the route is immersive), so it grows by the inset.
+    // A parameter because Skiko reports zero insets: tests pass a synthetic value.
+    topInset: androidx.compose.ui.unit.Dp = WindowInsets.safeDrawing.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding(),
+) {
     val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(height)) {
+    Box(Modifier.fillMaxWidth().height(height + topInset)) {
         if (details.backdropUrl != null) {
             AsyncImage(
                 model = details.backdropUrl,
@@ -529,6 +543,13 @@ private fun DetailBackdrop(details: MediaDetails, height: androidx.compose.ui.un
             Modifier
                 .fillMaxSize()
                 .background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to background)),
+        )
+        // Keeps the status icons legible over any artwork, light or dark.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(topInset + 56.dp)
+                .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 1f to Color.Transparent)),
         )
     }
 }
