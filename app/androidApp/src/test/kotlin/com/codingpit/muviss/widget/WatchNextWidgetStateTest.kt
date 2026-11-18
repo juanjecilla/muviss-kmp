@@ -35,7 +35,24 @@ class WatchNextWidgetStateTest {
         next: Episode? = episode(show, 1, 1, "Winter Is Coming"),
         seen: Int = 3,
         aired: Int = 10,
-    ) = WatchNextItem(show, title, posterUrl = null, nextEpisode = next, seenCount = seen, airedCount = aired)
+    ) = WatchNextItem(
+        show,
+        title,
+        posterUrl = null,
+        nextEpisode = next,
+        seenCount = seen,
+        airedCount = aired,
+        catalogLoaded = true,
+    )
+
+    /** A title whose catalog has not arrived: nothing is known about its episodes yet. */
+    private fun notArrived(show: MediaId, title: String) = WatchNextItem(
+        show,
+        title,
+        posterUrl = null,
+        nextEpisode = null,
+        catalogLoaded = false,
+    )
 
     @Test
     fun `an empty library says nothing is in progress`() {
@@ -52,10 +69,27 @@ class WatchNextWidgetStateTest {
      * you what to do.
      */
     @Test
-    fun `rows with no episode at all mean the catalog has not arrived`() {
-        val ui = watchNextWidgetUi(listOf(item(got, "Game of Thrones", next = null)), WidgetSize.MEDIUM)
+    fun `rows with no episode and no loaded catalog mean the catalog has not arrived`() {
+        val ui = watchNextWidgetUi(
+            listOf(notArrived(got, "Game of Thrones")),
+            WidgetSize.MEDIUM,
+        )
 
         assertEquals(WatchNextWidgetUi.Empty.NO_CATALOG_YET, ui)
+    }
+
+    /**
+     * A loaded catalog that has aired episodes is not a missing one, even when no regular episode is left to name.
+     * Before the fix this read "open the app", which changes nothing: the state only clears once the special is ticked.
+     */
+    @Test
+    fun `aired episodes with no next one never read as a missing catalog`() {
+        val ui = watchNextWidgetUi(
+            listOf(item(got, "Game of Thrones", next = null, seen = 9, aired = 10)),
+            WidgetSize.MEDIUM,
+        )
+
+        assertEquals(1, (ui as WatchNextWidgetUi.Rows).rows.size)
     }
 
     @Test
@@ -199,7 +233,7 @@ class WatchNextWidgetStateTest {
      */
     @Test
     fun `the catalog-not-arrived empty still opens the app rather than the Pick Session`() {
-        val ui = watchNextWidgetUi(listOf(item(got, "Game of Thrones", next = null)), WidgetSize.MEDIUM)
+        val ui = watchNextWidgetUi(listOf(notArrived(got, "Game of Thrones")), WidgetSize.MEDIUM)
 
         assertEquals(WatchNextWidgetUi.Empty.NO_CATALOG_YET, ui)
         assertEquals(EmptyAction.OPEN_APP, (ui as WatchNextWidgetUi.Empty).action)

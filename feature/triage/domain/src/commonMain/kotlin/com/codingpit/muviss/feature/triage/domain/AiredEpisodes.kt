@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.triage.domain
 
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
