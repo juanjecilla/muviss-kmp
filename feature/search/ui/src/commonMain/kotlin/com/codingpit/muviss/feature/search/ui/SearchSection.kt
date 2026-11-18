@@ -11,11 +11,21 @@ import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.TitleImage
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
-/** Registers the search + detail destinations into the app NavGraphBuilder. */
-fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: () -> Unit, onOpenNextPick: (anchor: MediaId?) -> Unit) {
+/**
+ * Registers the search + detail destinations into the app NavGraphBuilder. [refreshRequests] is how the desktop
+ * View menu's Ctrl/Cmd+R reaches Discover (#965); the app shell owns the menu, so it passes the flow down.
+ */
+fun NavGraphBuilder.searchSection(
+    navController: NavController,
+    onOpenTriage: () -> Unit,
+    onOpenNextPick: (anchor: MediaId?) -> Unit,
+    refreshRequests: Flow<Unit> = emptyFlow(),
+) {
     composable<SearchRoute> {
         val viewModel = koinViewModel<SearchViewModel>()
         val intro = koinViewModel<DiscoverIntroViewModel>()
@@ -24,6 +34,7 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
             viewModel = viewModel,
             introVisible = introVisible,
             onIntroDismissed = intro::dismiss,
+            refreshRequests = refreshRequests,
             onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
             // Triage's route lives in a peer feature's :ui (ADR 0004), so the
             // app shell owns the navigation and passes it down.

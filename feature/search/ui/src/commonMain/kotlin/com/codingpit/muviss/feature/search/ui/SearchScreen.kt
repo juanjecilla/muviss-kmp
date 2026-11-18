@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,14 +35,27 @@ import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -49,6 +63,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.codingpit.muviss.core.common.platform.platformHasPullToRefresh
 import com.codingpit.muviss.core.designsystem.component.CarouselHeader
 import com.codingpit.muviss.core.designsystem.component.ChipSkeleton
 import com.codingpit.muviss.core.designsystem.component.EmptyState
@@ -67,6 +82,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.back_to_discov
 import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_for_you
 import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_popular_movies
 import com.codingpit.muviss.feature.search.ui.generated.resources.carousel_popular_tv
+import com.codingpit.muviss.feature.search.ui.generated.resources.discover_refresh
 import com.codingpit.muviss.feature.search.ui.generated.resources.discover_refresh_failed
 import com.codingpit.muviss.feature.search.ui.generated.resources.genre_empty_body
 import com.codingpit.muviss.feature.search.ui.generated.resources.genre_empty_title
@@ -89,6 +105,8 @@ import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.ceil
 
@@ -101,16 +119,61 @@ fun SearchScreen(
     onIntroDismissed: () -> Unit = {},
     /** The way into the Pick Session (EPIC 51). Null draws no entry. */
     onOpenNextPick: (() -> Unit)? = null,
+    /** Asks Discover to refresh from outside the screen: the desktop View menu's Ctrl/Cmd+R (#965). */
+    refreshRequests: Flow<Unit> = emptyFlow(),
+    /** Pull from the top of Discover refreshes it. Touch platforms only; elsewhere the keyboard does it (#965). */
+    pullToRefresh: Boolean = platformHasPullToRefresh,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val homeScroll = rememberScrollState()
+    val focus = remember { FocusRequester() }
+    // Set by a pull and cleared once the refresh it started has landed, so the pull indicator is not shown for a
+    // refresh that the app started itself (the first load, a reconnection).
+    var pullRequested by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = MuvissSpacing.l)) {
-        SearchPill(
-            query = state.query,
-            onQueryChange = viewModel::onQueryChange,
-            modifier = Modifier.fillMaxWidth().padding(vertical = MuvissSpacing.m),
-        )
+    LaunchedEffect(refreshRequests) { refreshRequests.collect { viewModel.refresh() } }
+    LaunchedEffect(state.refreshing) { if (!state.refreshing) pullRequested = false }
+    // Without a pull there is no other gesture for a refresh, so the screen takes the keyboard for Ctrl/Cmd+R. It
+    // asks for focus once, when it appears: a focus target that never had focus gets no key events at all.
+    val keyboardRefresh = !pullToRefresh
+    LaunchedEffect(keyboardRefresh) { if (keyboardRefresh) focus.requestFocus() }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = MuvissSpacing.l)
+            .then(
+                if (keyboardRefresh) {
+                    Modifier.focusRequester(focus).focusable().onPreviewKeyEvent { event ->
+                        if (isRefreshChord(event.type, event.key, event.isCtrlPressed, event.isMetaPressed)) {
+                            viewModel.refresh()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
+        // The refresh control sits beside the pill, not in the scrolling page, so it stays put while Discover scrolls.
+        // It is offered only where a refresh applies: Discover with nothing typed, since a reload there would cancel
+        // a search that is still waiting to run.
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = MuvissSpacing.m),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.s),
+        ) {
+            SearchPill(
+                query = state.query,
+                onQueryChange = viewModel::onQueryChange,
+                modifier = Modifier.weight(1f),
+            )
+            if (state.mode == SearchMode.DISCOVER && state.query.isBlank()) {
+                RefreshButton(enabled = !state.refreshing, onClick = viewModel::refresh)
+            }
+        }
 
         when {
             state.error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -120,18 +183,36 @@ fun SearchScreen(
             // Home, loading or loaded, is one DiscoverBrowse call site: the local cards are real and the network
             // sections are skeletons under their real headers, so the page does not re-flow when the data lands
             // (#723). A second call site would give the loaded page a fresh scroll state and jump it to the top.
-            state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize(), announce = state.discoverSkeleton) {
-                DiscoverBrowse(
-                    state,
-                    onSelectGenre = viewModel::selectGenre,
-                    onOpenDetail = onOpenDetail,
-                    onOpenTriage = onOpenTriage,
-                    intro = DiscoverIntro(introVisible, onIntroDismissed),
-                    muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
-                    onOpenNextPick = onOpenNextPick,
-                    scroll = homeScroll,
-                    onRetry = viewModel::retry,
-                )
+            // The pull wraps the page, not the header: the refresh control above it is the same action.
+            state.mode == SearchMode.DISCOVER -> {
+                val home: @Composable () -> Unit = {
+                    SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize(), announce = state.discoverSkeleton) {
+                        DiscoverBrowse(
+                            state,
+                            onSelectGenre = viewModel::selectGenre,
+                            onOpenDetail = onOpenDetail,
+                            onOpenTriage = onOpenTriage,
+                            intro = DiscoverIntro(introVisible, onIntroDismissed),
+                            muted = MutedChip(state.hasMuted, state.showMuted, viewModel::onShowMutedToggled),
+                            onOpenNextPick = onOpenNextPick,
+                            scroll = homeScroll,
+                            onRetry = viewModel::retry,
+                        )
+                    }
+                }
+                // A typed query has no pull: a reload would cancel the search waiting to run (see SearchViewModel.refresh).
+                if (pullToRefresh && state.query.isBlank()) {
+                    PullToRefreshBox(
+                        isRefreshing = pullRequested && state.refreshing,
+                        onRefresh = {
+                            pullRequested = true
+                            viewModel.refresh()
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    ) { home() }
+                } else {
+                    home()
+                }
             }
 
             state.loading -> SkeletonHost(animate = state.animateSkeleton, modifier = Modifier.fillMaxSize()) { LoadingSkeletonGrid() }
@@ -216,6 +297,23 @@ internal fun SearchPill(
         }
     }
 }
+
+/**
+ * The refresh control beside the search pill (#965). Disabled while Discover or For you is being fetched, so a tap
+ * cannot start a second request; the view model refuses the same, for the pull and the keyboard.
+ */
+@Composable
+private fun RefreshButton(enabled: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.testTag(DISCOVER_REFRESH_TAG)) {
+        Icon(MuvissIcons.Refresh, contentDescription = stringResource(Res.string.discover_refresh))
+    }
+}
+
+/** Test tag of the Discover refresh control (#965). */
+internal const val DISCOVER_REFRESH_TAG = "discoverRefresh"
+
+/** Ctrl or Cmd with R, pressed: the chord that refreshes Discover (#965). A function of its inputs, so the chord is unit-tested without a window. */
+internal fun isRefreshChord(type: KeyEventType, key: Key, ctrl: Boolean, meta: Boolean): Boolean = type == KeyEventType.KeyDown && key == Key.R && (ctrl || meta)
 
 /** Poster-shaped shimmer placeholders while a search or a genre loads. */
 @Composable

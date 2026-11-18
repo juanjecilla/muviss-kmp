@@ -105,7 +105,14 @@ internal class FakeRepo(
         discoverGate(page, genreId)
         return discoverResult(type, page, genreId)
     }
-    override suspend fun genres(type: MediaType, fresh: Boolean) = if (type == MediaType.MOVIE) movieGenresResult else tvGenresResult
+
+    /** Every genre request, so a test can tell a Discover reload from a refusal. */
+    val genreRequests = mutableListOf<MediaType>()
+
+    override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> {
+        genreRequests += type
+        return if (type == MediaType.MOVIE) movieGenresResult else tvGenresResult
+    }
     override suspend fun watchProviders(id: MediaId) = Result.success(WatchProviders())
     override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean) = recommendationsResult(id)
     override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))

@@ -23,6 +23,7 @@ import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.flow.MutableSharedFlow
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -115,6 +116,21 @@ class MuvissAppController internal constructor(
     fun openNextPickFrom(anchor: MediaId?) {
         if (!graphReady) return
         navController.navigate(NextPickRoute(anchor?.toString())) { launchSingleTop = true }
+    }
+
+    /**
+     * Refresh requests from the desktop View menu (#965), collected by Search's screen. A flow rather than a call
+     * into the screen: the screen lives in a `NavHost` this controller cannot reach. Buffered for one, so a request
+     * that arrives before the collector does is not lost.
+     */
+    internal val refreshRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Asks Discover to refresh (#965). A no-op unless Search is the destination on screen, so the menu item and its
+     * chord do nothing anywhere else, and not on the first-run introduction.
+     */
+    fun refreshDiscover() {
+        if (currentDestination?.route == SearchRoute && !showingOnboarding) refreshRequests.tryEmit(Unit)
     }
 
     /**
