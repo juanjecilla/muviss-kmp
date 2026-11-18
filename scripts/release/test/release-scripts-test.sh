@@ -626,7 +626,7 @@ echo "rc-is-branch-head.sh"
 # Every setup step runs under set -e in a subshell: a failure prints nothing, so
 # the caller sees an empty path and records a setup failure instead of testing
 # a half-built repo. The guard matters: `git -C ""` runs in the current directory.
-rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on the branch after the RC
+rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on the branch after the RC, before the merge; $2 = 1: the branch gets a commit after the merge
   (
     set -e
     o="$(new_repo)"; [ -n "$o" ]
@@ -635,6 +635,8 @@ rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on 
     git -C "$o" tag -a v1.4.0-rc1 -m rc
     if [ "${1:-0}" -ne 0 ]; then commit "$o" "fix: after the rc"; fi
     git -C "$o" switch -q main; git -C "$o" merge -q --no-ff release/1.4.0 -m "Merge release/1.4.0"
+    # The branch moves on after the merge, so the merge's second parent stays the RC while the ref does not.
+    if [ "${2:-0}" -ne 0 ]; then git -C "$o" switch -q release/1.4.0; commit "$o" "fix: after the merge"; git -C "$o" switch -q main; fi
     c="$(mktemp -d)"; [ -n "$c" ]
     git clone -q --origin origin "$o" "$c"
     echo "$c"
@@ -664,6 +666,18 @@ if [ -z "$c" ]; then fail "a deleted branch whose merge carries a commit after t
 elif git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
   expect_rc "a deleted branch whose merge carries a commit after the RC moved" "$c" 1
 else fail "a deleted branch whose merge carries a commit after the RC moved: could not delete the ref, fallback not tested"; fi
+# The merge's second parent is the RC, but the branch ref advanced after the merge: the helper must read the ref
+# while it exists (moved), and fall back to the second parent once the ref is deleted (did not move). A helper
+# that always used the second parent would answer 0 in the first case.
+c="$(rc_repo 0 1)"
+if [ -z "$c" ]; then fail "a branch that advanced after the merge: RC fixture setup failed"
+elif [ "$(git -C "$c" rev-parse origin/release/1.4.0)" = "$(git -C "$c" rev-parse 'v1.4.0-rc1^{commit}')" ]; then fail "a branch that advanced after the merge: the fixture ref did not advance"
+else
+  expect_rc "a branch that advanced after the merge, ref present, moved" "$c" 1
+  if git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
+    expect_rc "the same branch once its ref is deleted falls back to the second parent, did not move" "$c" 0
+  else fail "a branch that advanced after the merge: could not delete the ref, fallback not tested"; fi
+fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
