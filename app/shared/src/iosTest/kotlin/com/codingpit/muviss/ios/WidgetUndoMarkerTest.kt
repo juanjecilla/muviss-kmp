@@ -2,6 +2,7 @@ package com.codingpit.muviss.ios
 
 import platform.Foundation.NSUUID
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -29,6 +30,19 @@ class WidgetUndoMarkerTest {
         marker.markJustTicked("550/1/2")
         marker.clear()
 
+        assertNull(marker.justTicked())
+    }
+
+    /** #888: the ticked title is stored beside the episode, so the widget can keep the row, and clear drops both. */
+    @Test
+    fun the_ticked_title_is_kept_with_the_marker_until_clear() {
+        val marker = WidgetUndoMarker(WidgetUndoMarker.openSuite("muviss.test.${NSUUID().UUIDString()}"))
+
+        marker.markJustTicked("550/1/2", "Game of Thrones")
+        assertEquals("Game of Thrones", marker.justTickedTitle())
+
+        marker.clear()
+        assertNull(marker.justTickedTitle())
         assertNull(marker.justTicked())
     }
 

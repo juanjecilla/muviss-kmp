@@ -92,11 +92,13 @@ class MuvissWidget :
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent {
             val items by progressApi.observeWatchNext().collectAsState(initial = emptyList())
-            val justTicked = parseEpisodeId(currentState<Preferences>()[JustTickedKey])
+            val marker = currentState<Preferences>()
+            val justTicked = parseEpisodeId(marker[JustTickedKey])
+            val justTickedTitle = marker[JustTickedTitleKey]
 
             GlanceTheme(colors = MuvissGlanceColors) {
                 val size = WidgetSize.forHeightDp(LocalSize.current.height.value.toInt())
-                WidgetBody(watchNextWidgetUi(items, size, justTicked))
+                WidgetBody(watchNextWidgetUi(items, size, justTicked, justTickedTitle))
             }
         }
     }
