@@ -571,32 +571,53 @@ expect_eq "an unset App login approves nothing" \
   "$(cd "$bm" && HEAD_REF=back-merge/v1.4.0 BASE_REF=develop AUTHOR= SAME_REPO=true HEAD_SHA="$bm_tag" TESTED_SHA="$bm_tag" APP_LOGIN= "$SCRIPTS/back-merge.sh" decide | cut -d: -f1)" "ignore"
 # notify and stale, against a fake gh.
 bmbin="$(mktemp -d)"
+# The fake gh logs every call. BM_FAIL=<text> makes any call whose arguments
+# contain that text exit 1 (a failed read or write), so each path is reachable.
 cat >"$bmbin/gh" <<'FAKEGH'
 #!/bin/bash
 echo "gh $*" >>"$BM_GH_LOG"
+if [ -n "${BM_FAIL:-}" ] && [[ "$*" == *"$BM_FAIL"* ]]; then exit 1; fi
 case "$*" in
   "issue list"*) printf '%s' "${BM_ISSUE:-}" ;;
   "issue view"*) printf '%s' "${BM_COMMENTS:-}" ;;
-  "pr list"*) printf '%s' "${BM_PRS:-[]}" ;;
+  "api "*) printf '%s' "${BM_PRS:-}" ;;
 esac
 exit 0
 FAKEGH
 chmod +x "$bmbin/gh"; BM_GH_LOG="$(mktemp)"; export BM_GH_LOG
 bmrun() { PATH="$bmbin:$PATH" "$SCRIPTS/back-merge.sh" "$@"; }
 commented() { grep -c '^gh issue comment' "$BM_GH_LOG"; }
-: >"$BM_GH_LOG"; BM_ISSUE=698 bmrun notify 1.4.0 held-887 "needs a person"
+: >"$BM_GH_LOG"; BM_ISSUE=698 bmrun notify 1.4.0 held-887 "needs a person"; st=$?
 expect_eq "a hold is commented on the release issue" "$(grep -c '^gh issue comment 698 ' "$BM_GH_LOG")" "1"
-: >"$BM_GH_LOG"; BM_ISSUE=698 BM_COMMENTS='<!-- back-merge:held-887 -->' bmrun notify 1.4.0 held-887 "needs a person"
+expect_eq "and that notify exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_COMMENTS='<!-- back-merge:held-887 -->' bmrun notify 1.4.0 held-887 "needs a person"; st=$?
 expect_eq "the same hold is not commented twice" "$(commented)" "0"
-: >"$BM_GH_LOG"; BM_ISSUE= bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null
+expect_eq "a notice already posted exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE= bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
 expect_eq "no release issue, no comment" "$(commented)" "0"
-bm_prs='[{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false},
- {"number":900,"headRefName":"back-merge/v1.5.0","createdAt":"2026-11-16T20:00:00Z","isCrossRepository":false},
- {"number":901,"headRefName":"back-merge/v1.3.0","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":true},
- {"number":902,"headRefName":"feat/x","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":false}]'
-: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_prs" NOW=2026-11-16T23:00:00Z bmrun stale
+expect_eq "no release issue exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_FAIL="issue view" bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "a comment that cannot be read posts nothing" "$(commented)" "0"
+expect_eq "and exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+: >"$BM_GH_LOG"; BM_FAIL="issue list" bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "a release issue that cannot be looked up posts nothing" "$(commented)" "0"
+expect_eq "and exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+# stale: one object per line, as the gh api --jq in stale() prints them.
+bm_prs='{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false}
+{"number":900,"headRefName":"back-merge/v1.5.0","createdAt":"2026-11-16T20:00:00Z","isCrossRepository":false}
+{"number":901,"headRefName":"back-merge/v1.3.0","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":true}
+{"number":902,"headRefName":"feat/x","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":false}'
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_prs" NOW=2026-11-16T23:00:00Z bmrun stale; st=$?
 expect_eq "only a back-merge open for over a day is flagged" "$(commented)" "1"
 expect_eq "and it is the old one" "$(grep -c 'Back-merge #887' "$BM_GH_LOG")" "1"
+expect_eq "and a clean stale run exits 0" "$st" "0"
+expect_eq "stale lists PRs through gh api, paginated" "$(grep -c '^gh api --paginate repos/{owner}/{repo}/pulls' "$BM_GH_LOG")" "1"
+# A notice that fails must not stop the next stale PR, and the run fails.
+bm_two='{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false}
+{"number":888,"headRefName":"back-merge/v1.4.1","createdAt":"2026-11-15T17:00:00Z","isCrossRepository":false}'
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_two" BM_FAIL="Back-merge #887" NOW=2026-11-16T23:00:00Z bmrun stale 2>/dev/null; st=$?
+expect_eq "a failed notice does not stop the next stale PR" "$(grep -c 'Back-merge #888' "$BM_GH_LOG")" "1"
+expect_eq "and the stale run exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
 
 echo "rc-is-branch-head.sh"
 # release.yml's tag job: did the release branch move after its last RC? (#891)

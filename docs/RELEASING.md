@@ -644,6 +644,9 @@ requires the approval and the checks, and GitHub refuses the merge without them.
   covers the whole repository: any workflow on any pushed branch that asks for
   `pull-requests: write` could approve its own PR, which makes `develop`'s one
   approval self-service. Leave it off.
+- **A push after the approval does not dismiss it on develop yet (#986).** The
+  merge is pinned to the approved commit, and a failed merge dismisses the
+  approval; a person merging a moved head by hand is the open case.
 - **Forward PRs are not covered.** They carry a fix into other branches, which
   is code a person should read (#573).
 

@@ -31,10 +31,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
-
 jobs:
   merge:
     name: Approve and merge an untouched back-merge
@@ -45,6 +41,11 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # On the job, not the workflow: a run this job's `if` skips never enters the
+    # group, so it cannot replace a pending run that is waiting for checks.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
     # Holds the approver App's key; restricted to develop (owner-setup.sh).
     environment: back-merge
     permissions:
@@ -83,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           pr="$(gh pr list --head "$BRANCH" --base develop --state open \
-            --json number,author,baseRefName,headRefName,headRefOid,isCrossRepository --jq '.[0] // empty')"
+            --json number,author,baseRefName,headRefName,headRefOid,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)] | .[0] // empty')"
           [ -n "$pr" ] || { echo "no open PR into develop for $BRANCH; nothing to do"; exit 0; }
           number="$(jq -r .number <<<"$pr")"
           verdict="$(HEAD_REF="$(jq -r .headRefName <<<"$pr")" BASE_REF="$(jq -r .baseRefName <<<"$pr")" \
@@ -100,11 +101,22 @@ jobs:
             *) exit 0 ;;
           esac
           # The other workflow's required checks may still be running; its own
-          # completion starts this job again.
-          if ! gh pr checks "$number" --required >/dev/null; then
-            echo "#$number has a required check that is not green yet; the next run decides"
-            exit 0
-          fi
+          # completion starts this job again. Pending and failing are the same
+          # clean exit; a lookup that could not be read fails the run, because no
+          # later completion is guaranteed to come back and look again.
+          checks="$(GH_REPO="$GH_REPO" gh pr checks "$number" --required --json bucket \
+            --jq '[.[].bucket] | if length == 0 then "none" elif any(. == "fail" or . == "cancel") then "fail" elif any(. == "pending") then "pending" else "pass" end' \
+            2>"$RUNNER_TEMP/checks.err")" || true
+          case "$checks" in
+            pass) ;;
+            pending|fail)
+              echo "#$number has required checks that are $checks; the next run decides"
+              exit 0 ;;
+            *)
+              cat "$RUNNER_TEMP/checks.err" >&2
+              echo "::error::could not read the required checks of #$number; rerun this workflow"
+              exit 1 ;;
+          esac
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
       - name: Mint an approver App token
@@ -118,22 +130,34 @@ jobs:
           # Writes the review. Nothing else.
           permission-pull-requests: write
 
+      # The review is pinned to the tested commit (commit_id). `gh pr review`
+      # would approve whatever the head is when it is submitted.
       - name: Approve as the approver App
+        id: approve
         if: steps.decide.outputs.number != ''
         env:
           GH_TOKEN: ${{ steps.approver.outputs.token }}
           GH_REPO: ${{ github.repository }}
           NUMBER: ${{ steps.decide.outputs.number }}
           TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          APPROVER_LOGIN: ${{ steps.approver.outputs.app-slug }}[bot]
         run: |
           set -euo pipefail
-          if [ "$(gh pr view "$NUMBER" --json reviewDecision --jq .reviewDecision)" = APPROVED ]; then
-            echo "#$NUMBER is already approved"; exit 0
+          # An approval already on this commit, not dismissed, is enough.
+          have="$(gh api --paginate "repos/$GH_REPO/pulls/$NUMBER/reviews" \
+            --jq '.[] | select(.user.login == env.APPROVER_LOGIN and .state == "APPROVED" and .commit_id == env.TESTED_SHA) | .id' \
+            | wc -l)"
+          if [ "$have" -gt 0 ]; then
+            echo "#$NUMBER is already approved on $TESTED_SHA"; exit 0
           fi
-          gh pr review "$NUMBER" --approve \
-            --body "This back-merge is untouched: its head is the commit the release tag is on ($TESTED_SHA), and its required checks are green. Approved by the back-merge workflow because CodeRabbit skips App-authored PRs; this is not a code review."
+          review="$(gh api -X POST "repos/$GH_REPO/pulls/$NUMBER/reviews" \
+            -f commit_id="$TESTED_SHA" -f event=APPROVE \
+            -f body="This back-merge is untouched: its head is the commit the release tag is on ($TESTED_SHA), and its required checks are green. Approved by the back-merge workflow because CodeRabbit skips App-authored PRs; this is not a code review." \
+            --jq .id)"
+          echo "review_id=$review" >> "$GITHUB_OUTPUT"
 
       - name: Merge with a merge commit, as the release App
+        id: merge
         if: steps.decide.outputs.number != ''
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -144,5 +168,26 @@ jobs:
           set -euo pipefail
           # Never a squash: it would copy the release without its history, and
           # the next release PR into main would conflict with itself.
+          # --match-head-commit refuses if a person pushed since the approval.
           gh pr merge "$NUMBER" --merge --match-head-commit "$TESTED_SHA"
           echo "Merged back-merge #$NUMBER into develop." >> "$GITHUB_STEP_SUMMARY"
+
+      # develop does not dismiss an approval when a commit is pushed after it
+      # (see the release doc's back-merge section). If the merge fails after this
+      # run approved, the approval would still count for a head it never
+      # reviewed, so it is dismissed here. Untested live: whether the approver
+      # App may dismiss its own review.
+      - name: Dismiss the approval when the merge did not happen
+        if: failure() && steps.approve.outputs.review_id != ''
+        env:
+          GH_TOKEN: ${{ steps.approver.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.decide.outputs.number }}
+          REVIEW_ID: ${{ steps.approve.outputs.review_id }}
+        run: |
+          set -euo pipefail
+          if ! gh api -X PUT "repos/$GH_REPO/pulls/$NUMBER/reviews/$REVIEW_ID/dismissals" \
+            -f message="The back-merge did not merge at this commit; the approval no longer applies." >/dev/null; then
+            echo "::error::could not dismiss the approval $REVIEW_ID on #$NUMBER; dismiss it by hand before merging anything else into develop"
+            exit 1
+          fi

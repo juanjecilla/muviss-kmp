@@ -38,33 +38,49 @@ decide() {
   echo merge
 }
 
+# A failed read or write returns nonzero and posts nothing: a read that failed
+# must not look like "no comment yet" and post a second notice.
 notify() {
-  local version="$1" key="$2" message="$3" issue marker
+  local version="$1" key="$2" message="$3" issue comments marker
   marker="<!-- back-merge:$key -->"
   issue="$(gh issue list --label release --state all --search "\"Release $version\" in:title" \
-    --json number,title --jq ".[] | select(.title == \"Release $version\") | .number" | sed -n 1p)"
+    --json number,title --jq ".[] | select(.title == \"Release $version\") | .number" | sed -n 1p)" \
+    || { echo "could not look up \"Release $version\"" >&2; return 1; }
   [ -n "$issue" ] || { echo "no \"Release $version\" issue; nothing to comment on" >&2; return 0; }
-  if gh issue view "$issue" --json comments --jq '.comments[].body' | grep -qF -- "$marker"; then
+  comments="$(gh issue view "$issue" --json comments --jq '.comments[].body')" \
+    || { echo "could not read the comments of \"Release $version\"" >&2; return 1; }
+  if grep -qF -- "$marker" <<<"$comments"; then
     return 0
   fi
   gh issue comment "$issue" --body "$(printf '%s\n\n%s' "$marker" "$message")" >/dev/null
 }
 
+# One notice per stale PR. A PR whose notice fails does not stop the others;
+# the run fails at the end, so a rerun sees it.
 stale() {
-  local prs
-  prs="$(gh pr list --base develop --state open --limit 100 --json number,headRefName,createdAt,isCrossRepository)"
-  PRS="$prs" NOW="${NOW:-}" ruby -rjson -rtime -e '
+  local prs due version number failed=0
+  # gh api pages through every open PR into develop; a plain gh pr list is
+  # capped by its --limit.
+  prs="$(gh api --paginate "repos/{owner}/{repo}/pulls?base=develop&state=open&per_page=100" \
+    --jq '.[] | {number, headRefName: .head.ref, createdAt: .created_at, isCrossRepository: (.head.repo.full_name != .base.repo.full_name)}')"
+  due="$(PRS="$prs" NOW="${NOW:-}" ruby -rjson -rtime -e '
     now = ENV["NOW"].to_s.empty? ? Time.now.utc : Time.parse(ENV["NOW"])
-    JSON.parse(ENV["PRS"]).each do |pr|
+    ENV["PRS"].each_line do |line|
+      next if line.strip.empty?
+      pr = JSON.parse(line)
       next if pr["isCrossRepository"]
       version = pr["headRefName"][%r{\Aback-merge/v(\d+\.\d+\.\d+)\z}, 1] or next
       next if now - Time.parse(pr["createdAt"]) < 24 * 3600
       puts "#{version} #{pr["number"]}"
     end
-  ' | while read -r version number; do
+  ')"
+  while read -r version number; do
+    [ -n "$version" ] || continue
     notify "$version" "stale-$number" \
-      "Back-merge #$number (\`v$version\` into \`develop\`) has been open for more than a day. It did not merge by itself: see the PR for why, and merge it with a merge commit (docs/RELEASING.md)."
-  done
+      "Back-merge #$number (\`v$version\` into \`develop\`) has been open for more than a day. It did not merge by itself: see the PR for why, and merge it with a merge commit (docs/RELEASING.md)." \
+      || { echo "could not notify about back-merge #$number" >&2; failed=1; }
+  done <<<"$due"
+  return "$failed"
 }
 
 case "${1:-}" in
