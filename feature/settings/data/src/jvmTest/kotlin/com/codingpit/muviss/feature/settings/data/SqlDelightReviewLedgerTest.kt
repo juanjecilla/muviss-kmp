@@ -1,6 +1,8 @@
 package com.codingpit.muviss.feature.settings.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
+import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.common.review.ReviewRecord
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import kotlinx.coroutines.CoroutineDispatcher
@@ -19,7 +21,11 @@ private class ImmediateReviewDispatchers(d: CoroutineDispatcher) : AppDispatcher
 class SqlDelightReviewLedgerTest {
 
     private val database = inMemoryDatabase()
-    private val ledger = SqlDelightReviewLedger(database.appSettingsQueries, ImmediateReviewDispatchers(UnconfinedTestDispatcher()))
+    private val ledger = SqlDelightReviewLedger(
+        database.appSettingsQueries,
+        DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
+        ImmediateReviewDispatchers(UnconfinedTestDispatcher()),
+    )
 
     @Test
     fun a_fresh_device_reads_as_never_stamped_with_no_ticks_and_no_ask() = runTest {
@@ -58,5 +64,19 @@ class SqlDelightReviewLedgerTest {
         val record = ledger.read()
         assertEquals(1_000L, record.installedAtEpochMs)
         assertNull(record.lastAskedAtEpochMs)
+    }
+
+    @Test
+    fun a_tick_on_a_fresh_row_seeds_the_served_next_pick_default_whichever_write_creates_it() = runTest {
+        // The ledger is often the first writer on a fresh install: its row must take the served default, not ONE_PICK.
+        val served = SqlDelightReviewLedger(
+            database.appSettingsQueries,
+            DefaultsRemoteConfig(RemoteValues(byokEnabled = false, nextPickDefaultResultMode = "TOP_PICKS")),
+            ImmediateReviewDispatchers(UnconfinedTestDispatcher()),
+        )
+
+        served.countTick()
+
+        assertEquals("TOP_PICKS", database.appSettingsQueries.selectSettings().executeAsOne().nextPickResultMode)
     }
 }
