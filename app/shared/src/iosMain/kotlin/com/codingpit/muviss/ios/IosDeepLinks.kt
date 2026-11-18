@@ -1,5 +1,6 @@
 package com.codingpit.muviss.ios
 
+import com.codingpit.muviss.MuvissDeepLinks
 import com.codingpit.muviss.core.sync.OAUTH_REDIRECT_URI
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,16 +30,23 @@ import platform.Foundation.NSURLComponents
  *   profile screen, because the redirect can arrive on a cold start long after
  *   `ProfileViewModel` is gone.
  *
- * Both are cleared by their consumer once acted on, so backgrounding and
+ * - `muviss://next-pick` — the widget's empty state (EPIC 51). Feeds
+ *   [pendingOpenNextPick], which `MainViewController` passes to
+ *   `MuvissApp(openNextPick)`, the same way Android's manifest filter reaches
+ *   `MainActivity`.
+ *
+ * All three are cleared by their consumer once acted on, so backgrounding and
  * foregrounding the app does not re-navigate or re-redeem.
  */
 object IosDeepLinks {
 
     private val pendingDeepLinkMediaIdState = MutableStateFlow<String?>(null)
     private val pendingOAuthCodeState = MutableStateFlow<String?>(null)
+    private val pendingOpenNextPickState = MutableStateFlow(false)
 
     val pendingDeepLinkMediaId: StateFlow<String?> = pendingDeepLinkMediaIdState.asStateFlow()
     val pendingOAuthCode: StateFlow<String?> = pendingOAuthCodeState.asStateFlow()
+    val pendingOpenNextPick: StateFlow<Boolean> = pendingOpenNextPickState.asStateFlow()
 
     fun clearPendingDeepLink() {
         pendingDeepLinkMediaIdState.value = null
@@ -46,6 +54,10 @@ object IosDeepLinks {
 
     fun clearPendingOAuthCode() {
         pendingOAuthCodeState.value = null
+    }
+
+    fun clearPendingOpenNextPick() {
+        pendingOpenNextPickState.value = false
     }
 
     /** Used by [IosNotificationCenter] for a notification tap, which carries an id rather than a URL. */
@@ -73,6 +85,11 @@ object IosDeepLinks {
                 // "muviss://title/<id>" — the id is the path, minus its leading slash.
                 val mediaId = components.path?.removePrefix("/")?.takeIf { it.isNotBlank() } ?: return false
                 openTitle(mediaId)
+                true
+            }
+
+            MuvissDeepLinks.HOST_NEXT_PICK -> {
+                pendingOpenNextPickState.value = true
                 true
             }
 

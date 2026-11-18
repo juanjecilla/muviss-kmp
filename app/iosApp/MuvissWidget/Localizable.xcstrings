@@ -141,6 +141,16 @@
           }
         }
       }
+    },
+    "What's next?": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué sigue?"
+          }
+        }
+      }
     }
   }
 }

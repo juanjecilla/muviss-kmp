@@ -7,6 +7,8 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
@@ -84,11 +86,30 @@ class DetailGoldenTest {
         assertMatchesGolden("detail-seasons-dark", tolerance = DETAIL_TOLERANCE)
     }
 
-    private fun ComposeUiTest.showDetail(darkTheme: Boolean) {
-        setContent { DetailUnderTest(darkTheme) }
+    /**
+     * The two-pane layout (≥ 840 dp), where the icon row sits under the poster and the seasons sit beside it. The
+     * compact goldens above never reach it, so a change to the expanded arrangement would otherwise go unseen (#751).
+     */
+    @Test
+    fun a_saved_show_opens_on_its_header_at_expanded_width() = runComposeUiTest {
+        showDetail(darkTheme = false, width = EXPANDED_WIDTH)
+        assertMatchesGolden("detail-show-expanded", tolerance = DETAIL_TOLERANCE)
+    }
+
+    @Test
+    fun a_saved_show_opens_on_its_header_at_expanded_width_dark() = runComposeUiTest {
+        showDetail(darkTheme = true, width = EXPANDED_WIDTH)
+        assertMatchesGolden("detail-show-expanded-dark", tolerance = DETAIL_TOLERANCE)
+    }
+
+    private fun ComposeUiTest.showDetail(darkTheme: Boolean, width: Dp = 412.dp) {
+        setContent { DetailUnderTest(darkTheme, width) }
         waitForIdle()
     }
 }
+
+/** Above the expanded breakpoint (840 dp) with room for both panes. */
+private val EXPANDED_WIDTH = 900.dp
 
 /** Epoch day 20_000 is 2024-10-04. Season 2 premieres that day, so its later episodes are unaired. */
 private const val TODAY_EPOCH_DAY = 20_000L
@@ -133,7 +154,7 @@ private val severanceDetails = MediaDetails(
 )
 
 @Composable
-private fun DetailUnderTest(darkTheme: Boolean) {
+private fun DetailUnderTest(darkTheme: Boolean, width: Dp) {
     val repo = FakeDetailRepo(details = severanceDetails)
     // In the library, with season 1 watched through episode 3.
     val collection = FakeCollectionApi().apply { runBlocking { add(severanceDetails) } }
@@ -149,7 +170,7 @@ private fun DetailUnderTest(darkTheme: Boolean) {
         FixedClock(),
     )
     MuvissTheme(darkTheme = darkTheme) {
-        GoldenSurface {
+        GoldenSurface(width = width) {
             DetailScreen(viewModel = viewModel, onBack = {}, onOpenDetail = {}, onOpenEpisode = {})
         }
     }

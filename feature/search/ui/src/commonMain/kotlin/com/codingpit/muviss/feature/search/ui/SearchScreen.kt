@@ -120,7 +120,7 @@ fun SearchScreen(
             // Home, loading or loaded, is one DiscoverBrowse call site: the local cards are real and the network
             // sections are skeletons under their real headers, so the page does not re-flow when the data lands
             // (#723). A second call site would give the loaded page a fresh scroll state and jump it to the top.
-            state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize()) {
+            state.mode == SearchMode.DISCOVER -> SkeletonHost(animate = state.animateSkeleton && state.discoverSkeleton, modifier = Modifier.fillMaxSize(), announce = state.discoverSkeleton) {
                 DiscoverBrowse(
                     state,
                     onSelectGenre = viewModel::selectGenre,

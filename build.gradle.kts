@@ -130,6 +130,34 @@ allprojects {
     linkSentryCocoaFramework()
 }
 
+// --- Web is deferred (docs/EPICS.md, "Web is deferred") ----------------------
+//
+// `muviss.webTests` in gradle.properties is the one switch for the JS and Wasm
+// *test* tasks. Off (the default while web is deferred), every task that
+// compiles or runs a browser test is disabled in every module, and so is the
+// Compose UI check that cannot pass without a runnable JS binary (#686). The
+// web main compiles, the webpack bundles and the npm lockfile check stay on:
+// they are what catches commonMain code a browser target cannot take (#10).
+// To bring the tests back, set the property to true and restore the `web-tests`
+// job's `if:` in .github/workflows/ci.yml.
+val webTestsEnabled: Boolean = providers.gradleProperty("muviss.webTests").orNull?.toBoolean() ?: false
+
+if (!webTestsEnabled) {
+    // Matches the JS/Wasm test lifecycle tasks, their test compilations (main
+    // compiles are not matched), and the Compose checks for those targets.
+    val webTestTask = Regex(
+        "^(js|wasmJs)(Test|BrowserTest|NodeTest)$" +
+            "|^compileTest.*(Js|WasmJs)(Optimize)?$" +
+            "|^checkComposeUiTestConfigurationFor(Js|WasmJs)$" +
+            "|^check(Js|WasmJs)TestComposeLibrariesCompatibility$",
+    )
+    allprojects {
+        tasks.matching { webTestTask.matches(it.name) }.configureEach {
+            enabled = false
+        }
+    }
+}
+
 // --- Sentry's iOS SDK, for Apple link steps ---------------------------------
 //
 // `io.sentry:sentry-kotlin-multiplatform`'s iOS artifacts are cinterop klibs
@@ -280,12 +308,17 @@ tasks.named("check") { dependsOn("verifyComposeStringEscapes") }
 // keeps a transitive range at whatever version the lock already holds, so a
 // patched release inside the range never arrives. These force the patched
 // minimum for the packages whose fix is compatible with every range that
-// requests them (same major). serialize-javascript (6 -> 7), minimatch, glob and
+// requests them (same major). minimatch, glob and
 // diff are left out: the fix is a major bump their consumers do not accept.
-// brace-expansion is left out too: minimatch 3 asks for ^1.1.7 and minimatch 9
-// for ^2.0.2, and Yarn 1 cannot scope a resolution by range (it reads
-// "brace-expansion@^1.1.7" as a package name and fails the install), so one pin
-// would force a major on one of the two.
+// body-parser and brace-expansion have two majors each in the tree, so one pin
+// would force a major on one of them, and Yarn 1 resolutions do not reach a
+// direct dependency by path ("karma/body-parser" leaves the range in place).
+// Their patches sit inside the ranges already declared, so they are re-resolved
+// in the lock instead: drop the stale `body-parser@^1.19.0:`-style entries from
+// the staged build/js/yarn.lock, `yarn install --ignore-scripts` there with
+// Kotlin's yarn (`~/.gradle/yarn/yarn-v1.22.22`), then copy it back.
+// serialize-javascript is fixed by bumping our own copy-webpack-plugin pin to 14
+// (which asks for ^7), not by a pin here. picomatch has no patched release yet.
 // Build-time tooling only; none of it ships in the app bundle.
 val yarnSecurityPins = mapOf(
     "fast-uri" to "3.1.9",

@@ -17,6 +17,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 
 /** One sweep's full length, in milliseconds, when a host does not say otherwise. */
 const val DEFAULT_SHIMMER_DURATION_MILLIS: Int = 1400
@@ -32,6 +34,7 @@ const val DEFAULT_SHIMMER_BAND_FRACTION: Float = 0.8f
  *
  * [angle] is the sweep's direction in degrees: 0 left to right (the default),
  * 90 top to bottom, 45 diagonally. Every placeholder under the host follows it.
+ * Under an RTL layout the host reflects it, so 0 runs right to left.
  *
  * [animate] false draws every placeholder as a flat fill and runs no animation
  * at all. Hosts pass the reduced-motion switch here.
@@ -47,7 +50,8 @@ fun ShimmerHost(
 ) {
     val progress: State<Float> = if (animate) rememberSweep(durationMillis) else remember { mutableFloatStateOf(0f) }
     val geometry = remember { ShimmerGeometry() }
-    val wave = ShimmerWave(progress = progress, animate = animate, bandFraction = bandFraction, angle = angle, geometry = geometry)
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val wave = ShimmerWave(progress = progress, animate = animate, bandFraction = bandFraction, angle = angle, geometry = geometry, rtl = rtl)
     Box(
         modifier.onGloballyPositioned { coordinates ->
             val topLeft = coordinates.positionInRoot()
@@ -80,6 +84,7 @@ internal data class ShimmerWave(
     val bandFraction: Float,
     val angle: Float,
     val geometry: ShimmerGeometry,
+    val rtl: Boolean,
 )
 
 internal val LocalShimmerWave = staticCompositionLocalOf<ShimmerWave?> { null }

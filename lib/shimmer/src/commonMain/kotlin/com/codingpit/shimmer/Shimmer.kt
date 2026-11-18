@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -23,11 +25,12 @@ import kotlin.math.sin
  * across a band that sweeps in the direction [angle] gives.
  *
  * [angle] is in degrees: 0 sweeps left to right (the default), 90 top to
- * bottom. Inside a [ShimmerHost] the host's band and angle are used, so
- * neighbours line up and [angle] here is ignored. Outside one the placeholder
- * sweeps across its own bounds at [angle], which is the old per-item behaviour
- * at the default. [animate] false, or a host with `animate = false`, draws
- * `base` as a flat fill.
+ * bottom. Under an RTL layout the sweep is reflected across the vertical axis,
+ * so 0 runs right to left and 90 is unchanged. Inside a [ShimmerHost] the
+ * host's band, angle and layout direction are used, so neighbours line up and
+ * [angle] here is ignored. Outside one the placeholder sweeps across its own
+ * bounds at [angle], which is the old per-item behaviour at the default.
+ * [animate] false, or a host with `animate = false`, draws `base` as a flat fill.
  */
 fun Modifier.shimmer(base: Color, highlight: Color, animate: Boolean = true, angle: Float = 0f): Modifier = composed {
     val hosted = LocalShimmerWave.current
@@ -37,7 +40,9 @@ fun Modifier.shimmer(base: Color, highlight: Color, animate: Boolean = true, ang
     val live = animate && (hosted?.animate ?: true)
     val bandFraction = hosted?.bandFraction ?: DEFAULT_SHIMMER_BAND_FRACTION
     val sweepAngle = hosted?.angle ?: angle
-    val direction = remember(sweepAngle) { sweepDirection(sweepAngle) }
+    // A host decides the direction for all of its placeholders, so the band stays one band across them.
+    val mirrored = hosted?.rtl ?: (LocalLayoutDirection.current == LayoutDirection.Rtl)
+    val direction = remember(sweepAngle, mirrored) { sweepDirection(sweepAngle, mirrored) }
     val geometry = remember { ShimmerGeometry() }
     val frame = hosted?.geometry
 
@@ -69,10 +74,16 @@ fun Modifier.shimmer(base: Color, highlight: Color, animate: Boolean = true, ang
         }
 }
 
-/** The unit vector the band travels along for [angle] degrees, in window coordinates (y points down). */
-internal fun sweepDirection(angle: Float): Offset {
+/**
+ * The unit vector the band travels along for [angle] degrees, in window
+ * coordinates (y points down). [mirrored] (RTL) reflects it across the vertical
+ * axis: the x component flips and the y component is kept, so the default
+ * sweep runs right to left and a top-to-bottom sweep does not change.
+ */
+internal fun sweepDirection(angle: Float, mirrored: Boolean = false): Offset {
     val radians = angle.toDouble() * PI / 180.0
-    return Offset(cos(radians).toFloat(), sin(radians).toFloat())
+    val x = cos(radians).toFloat()
+    return Offset(if (mirrored) -x else x, sin(radians).toFloat())
 }
 
 /**

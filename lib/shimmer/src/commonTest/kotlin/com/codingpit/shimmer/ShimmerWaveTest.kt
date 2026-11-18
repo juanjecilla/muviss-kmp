@@ -39,6 +39,70 @@ class ShimmerWaveTest {
     }
 
     @Test
+    fun under_rtl_the_band_starts_just_off_the_right_edge() {
+        // 100 wide: the band's left edge sits at x=100, wholly right of the host, at progress 0.
+        val direction = sweepDirection(0f, mirrored = true)
+        val bandStart = bandStartAlongSweep(0f, Offset(0f, 0f), Size(100f, 200f), direction, band = 50f)
+        val (_, end) = bandEndsInItem(bandStart, 50f, direction, itemTopLeft = Offset(0f, 0f))
+
+        assertEquals(100f, end.x, absoluteTolerance = 1e-3f)
+    }
+
+    @Test
+    fun under_rtl_the_band_ends_just_off_the_left_edge() {
+        // At progress 1 the band's right edge sits at x=0 and its left edge at -band, wholly left of the host.
+        val direction = sweepDirection(0f, mirrored = true)
+        val bandStart = bandStartAlongSweep(1f, Offset(0f, 0f), Size(100f, 200f), direction, band = 50f)
+        val (_, end) = bandEndsInItem(bandStart, 50f, direction, itemTopLeft = Offset(0f, 0f))
+
+        assertEquals(-50f, end.x, absoluteTolerance = 1e-3f)
+    }
+
+    @Test
+    fun under_rtl_the_band_is_the_ltr_band_mirrored_across_the_host_at_every_progress() {
+        // The two bands' edges sum to the host width, so the RTL band is the LTR one reflected across its centre.
+        val ltrDirection = sweepDirection(0f)
+        val rtlDirection = sweepDirection(0f, mirrored = true)
+        for (step in 0..10) {
+            val progress = step / 10f
+            val ltrStart = bandStartAlongSweep(progress, Offset(0f, 0f), Size(300f, 200f), ltrDirection, band = 240f)
+            val rtlStart = bandStartAlongSweep(progress, Offset(0f, 0f), Size(300f, 200f), rtlDirection, band = 240f)
+            val (_, ltrEnd) = bandEndsInItem(ltrStart, 240f, ltrDirection, itemTopLeft = Offset(0f, 0f))
+            val (_, rtlEnd) = bandEndsInItem(rtlStart, 240f, rtlDirection, itemTopLeft = Offset(0f, 0f))
+
+            // The LTR band's right edge and the RTL band's left edge are mirror images across the host's centre.
+            assertEquals(300f - ltrEnd.x, rtlEnd.x, absoluteTolerance = 0.001f)
+        }
+    }
+
+    @Test
+    fun under_rtl_the_default_sweep_runs_right_to_left() {
+        val direction = sweepDirection(0f, mirrored = true)
+
+        assertEquals(-1f, direction.x, absoluteTolerance = 1e-6f)
+        assertEquals(0f, direction.y, absoluteTolerance = 1e-6f)
+    }
+
+    @Test
+    fun under_rtl_a_quarter_turn_still_sweeps_top_to_bottom() {
+        // Reflection across the vertical axis leaves a vertical sweep alone.
+        val direction = sweepDirection(90f, mirrored = true)
+
+        assertEquals(0f, direction.x, absoluteTolerance = 1e-6f)
+        assertEquals(1f, direction.y, absoluteTolerance = 1e-6f)
+    }
+
+    @Test
+    fun under_rtl_the_band_in_a_sibling_lands_on_the_same_edge_on_screen() {
+        val direction = sweepDirection(0f, mirrored = true)
+        val bandStart = bandStartAlongSweep(0.4f, Offset(0f, 0f), Size(300f, 200f), direction, band = 240f)
+        val (startInA, _) = bandEndsInItem(bandStart, 240f, direction, itemTopLeft = Offset(0f, 0f))
+        val (startInB, _) = bandEndsInItem(bandStart, 240f, direction, itemTopLeft = Offset(120f, 0f))
+
+        assertEquals(startInA.x, startInB.x + 120f, absoluteTolerance = 1e-3f)
+    }
+
+    @Test
     fun two_siblings_show_the_same_band_edge_on_screen() {
         // Item A starts at window x=0, item B at x=120. The band is computed once for the
         // host, so both items must draw its ends at the same window position.
