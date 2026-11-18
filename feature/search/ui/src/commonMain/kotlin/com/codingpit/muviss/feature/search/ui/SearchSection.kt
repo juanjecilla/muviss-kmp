@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.PersonId
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -43,6 +44,7 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
             // grows the back stack and Back unwinds it one title at a time.
             onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
             onOpenEpisode = { episodeId -> navController.navigate(EpisodeDetailRoute(episodeId.toString())) },
+            onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
             nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
             // A finished title's entry opens the session anchored on that title (#664).
             onOpenNextPick = onOpenNextPick,
@@ -51,6 +53,20 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
     composable<EpisodeDetailRoute> { entry ->
         val episodeId = EpisodeId.parse(entry.toRoute<EpisodeDetailRoute>().episodeId)
         val viewModel = koinViewModel<EpisodeDetailViewModel> { parametersOf(episodeId) }
-        EpisodeDetailScreen(viewModel, onBack = { navController.popBackStack() })
+        EpisodeDetailScreen(
+            viewModel,
+            onBack = { navController.popBackStack() },
+            onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
+        )
+    }
+    composable<PersonRoute> { entry ->
+        val personId = PersonId.parse(entry.toRoute<PersonRoute>().personId)
+        val viewModel = koinViewModel<PersonViewModel> { parametersOf(personId) }
+        PersonScreen(
+            viewModel,
+            onBack = { navController.popBackStack() },
+            // Same recursion as "More like this": a title opens Detail, a person on that opens another page, Back unwinds it.
+            onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
+        )
     }
 }

@@ -161,4 +161,15 @@
     <string name="department_lighting">Lighting</string>
     <string name="department_crew">Crew</string>
     <string name="department_other">Other</string>
+    <string name="person_known_for">Known for</string>
+    <string name="person_tab_acting">Acting</string>
+    <string name="person_in_library">In your library</string>
+    <string name="person_upcoming">Upcoming</string>
+    <string name="person_no_credits">No credits listed.</string>
+    <!-- %1$s is a year, %2$s a place. -->
+    <string name="person_born_in">Born %1$s in %2$s</string>
+    <string name="person_born">Born %1$s</string>
+    <string name="person_died">Died %1$s</string>
+    <string name="person_bio_more">Read more</string>
+    <string name="person_bio_less">Show less</string>
 </resources>

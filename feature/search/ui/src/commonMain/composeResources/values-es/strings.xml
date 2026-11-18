@@ -141,4 +141,14 @@
     <string name="department_lighting">Iluminación</string>
     <string name="department_crew">Equipo técnico</string>
     <string name="department_other">Otros</string>
+    <string name="person_known_for">Conocido por</string>
+    <string name="person_tab_acting">Interpretación</string>
+    <string name="person_in_library">En tu biblioteca</string>
+    <string name="person_upcoming">Próximamente</string>
+    <string name="person_no_credits">No hay créditos.</string>
+    <string name="person_born_in">Nació en %1$s, %2$s</string>
+    <string name="person_born">Nació en %1$s</string>
+    <string name="person_died">Falleció en %1$s</string>
+    <string name="person_bio_more">Leer más</string>
+    <string name="person_bio_less">Mostrar menos</string>
 </resources>

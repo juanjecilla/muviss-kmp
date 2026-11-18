@@ -8,9 +8,11 @@ import com.codingpit.muviss.feature.search.ui.DetailViewModel
 import com.codingpit.muviss.feature.search.ui.DiscoverIntroViewModel
 import com.codingpit.muviss.feature.search.ui.EpisodeDetailViewModel
 import com.codingpit.muviss.feature.search.ui.NotificationNudgeViewModel
+import com.codingpit.muviss.feature.search.ui.PersonViewModel
 import com.codingpit.muviss.feature.search.ui.SearchViewModel
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.PersonId
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.core.module.dsl.viewModelOf
@@ -24,4 +26,5 @@ val searchUiModule: Module = module {
     viewModel { (id: MediaId) -> AddToListViewModel(id, get()) }
     viewModel { (id: MediaId) -> NotificationNudgeViewModel(id, get(), get()) }
     viewModel { (id: EpisodeId) -> EpisodeDetailViewModel(id, get(), get(), get()) }
+    viewModel { (id: PersonId) -> PersonViewModel(id, get(), get(), get()) }
 }
