@@ -528,6 +528,8 @@ class DetailViewModel(
     /** The primary action's tick for a movie that is not watched yet (#721). Offers an Undo unless it was already watched. */
     fun markMovieWatched() {
         launchWrite {
+            // Before any write: a TV id would be rejected by the tick (#777), but only after the entry was added (#787).
+            if (mediaId.type != MediaType.MOVIE) return@launchWrite
             val id = EpisodeId.forMovie(mediaId)
             if (id in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
@@ -665,16 +667,6 @@ class DetailViewModel(
             if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchWrite
             addIfAbsent()
             progressApi.markPreviousSeen(aired, episodeId)
-            releaseEntry()
-        }
-    }
-
-    /** Toggles a movie's watched flag. */
-    fun toggleMovieWatched() {
-        launchWrite {
-            val watched = _state.value.movieWatched
-            if (!watched) addIfAbsent()
-            progressApi.tickMovie(mediaId, !watched)
             releaseEntry()
         }
     }
