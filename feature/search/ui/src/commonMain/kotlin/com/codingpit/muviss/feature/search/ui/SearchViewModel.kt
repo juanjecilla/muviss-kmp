@@ -33,6 +33,7 @@ import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -89,6 +90,10 @@ data class SearchUiState(
     val hasForYouSeeds: Boolean = false,
     /** The "For you" request is in flight. Its own flag: Discover can finish first and clear [loading] while it still waits. */
     val forYouLoading: Boolean = false,
+    /** A Discover load is in flight: the first one (skeleton) or a refresh. Counted by [SearchViewModel] (#965). */
+    val discoverBusy: Boolean = false,
+    /** A For you request is in flight, forced or not. Its own flag: the stored copy clears [forYouLoading] first (#965). */
+    val forYouRequesting: Boolean = false,
     /** The skeleton's sweep runs (the in-app animations switch, #394). False draws a flat fill. */
     val animateSkeleton: Boolean = true,
     /**
@@ -105,6 +110,9 @@ data class SearchUiState(
 
     /** Home has anything still loading, so its skeletons animate. Once nothing is, the sweep stops. */
     val discoverSkeleton: Boolean get() = loading || forYouSkeleton
+
+    /** Discover or For you is being fetched: the refresh control is off until it lands, so a second request cannot start (#965). */
+    val refreshing: Boolean get() = discoverBusy || forYouRequesting
 }
 
 /**
@@ -142,6 +150,15 @@ class SearchViewModel(
 
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
+
+    /**
+     * Discover loads in flight. Counted rather than flagged: a load cancelled by a newer one ends late, and a plain
+     * flag it cleared on the way out would clear the newer load's mark too (#965).
+     */
+    private var discoverLoads = 0
+
+    /** For you requests in flight, forced or not (see [forYouFlow]). Counted for the same reason as [discoverLoads]. */
+    private var forYouRequests = 0
 
     /** Bumped to ask For you again now: a reconnection while a seed is still owed, or Discover's Retry (#924). */
     private val forYouAgain = MutableStateFlow(0)
@@ -326,12 +343,34 @@ class SearchViewModel(
      * for a fresh answer, and a mute change must cost no request.
      */
     fun retry() {
-        if (_state.value.mode == SearchMode.DISCOVER) {
-            forYouForce = true
-            forYouAgain.update { it + 1 }
+        val s = _state.value
+        if (s.mode == SearchMode.DISCOVER) {
+            // Not while a refresh is in flight: a second request would cancel the first and ask TMDB twice (#965).
+            // An error on screen means Discover itself is idle, but For you may still be loading, so Discover's
+            // part is retried then.
+            if (s.error == null && s.refreshing) return
+            if (!s.forYouRequesting) {
+                forYouForce = true
+                forYouAgain.update { it + 1 }
+            }
+            if (!s.discoverBusy) reload()
+            return
         }
         reload()
     }
+
+    /**
+     * The person asks for a fresh Discover and For you: the refresh control, pull-to-refresh, Ctrl/Cmd+R (#965).
+     * Only on Discover with a blank query. A typed query still inside its debounce is still mode DISCOVER, and a
+     * reload there would cancel the search that is waiting to run.
+     */
+    fun refresh() {
+        val s = _state.value
+        if (s.mode != SearchMode.DISCOVER || s.query.isNotBlank()) return
+        retry()
+    }
+
+    private fun publishInFlight() = _state.update { it.copy(discoverBusy = discoverLoads > 0, forYouRequesting = forYouRequests > 0) }
 
     /** Reloads whatever is showing from the network, as [retry] does for Discover's own shelves. */
     private fun reload() {
@@ -384,32 +423,43 @@ class SearchViewModel(
         loadJob?.cancel()
         val marks = staleMarks
         loadJob = viewModelScope.launchReporting {
-            val mutedMovies = mutedFor(MediaType.MOVIE, null)
-            val mutedTv = mutedFor(MediaType.TV, null)
-            val snapshot = discoverFeed.snapshot(mutedMovies, mutedTv)
-            // A stored copy is on screen at once, so the skeleton never shows over it (#723, #724).
-            if (snapshot.isEmpty) {
-                _state.update { it.copy(loading = true, error = null) }
-            } else {
-                _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = false) }
+            discoverLoads++
+            publishInFlight()
+            try {
+                loadDiscoverNow(forced, marks)
+            } finally {
+                discoverLoads--
+                publishInFlight()
             }
-            // A fresh copy answers without the network, so it does not pay off a muting mark: that needs a refresh.
-            if (!forced && !discoverFeed.needsRefresh(snapshot)) return@launchReporting
-
-            val refresh = discoverFeed.refresh(mutedMovies, mutedTv)
-            // Nothing stored and a section failed: the error state, as Discover always showed. With a copy on
-            // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL.
-            if (snapshot.isEmpty) refresh.firstFailure?.let { return@launchReporting fail(it) }
-            val merged = refresh.mergedInto(snapshot)
-            _state.update {
-                showing(it, merged, mutedMovies, mutedTv).copy(
-                    loading = false,
-                    error = null,
-                    discoverSaved = refresh.anyFailed && discoverFeed.isPastTtl(merged),
-                )
-            }
-            if (!refresh.anyFailed) settleStale(marks)
         }
+    }
+
+    private suspend fun loadDiscoverNow(forced: Boolean, marks: Int) {
+        val mutedMovies = mutedFor(MediaType.MOVIE, null)
+        val mutedTv = mutedFor(MediaType.TV, null)
+        val snapshot = discoverFeed.snapshot(mutedMovies, mutedTv)
+        // A stored copy is on screen at once, so the skeleton never shows over it (#723, #724).
+        if (snapshot.isEmpty) {
+            _state.update { it.copy(loading = true, error = null) }
+        } else {
+            _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = false) }
+        }
+        // A fresh copy answers without the network, so it does not pay off a muting mark: that needs a refresh.
+        if (!forced && !discoverFeed.needsRefresh(snapshot)) return
+
+        val refresh = discoverFeed.refresh(mutedMovies, mutedTv)
+        // Nothing stored and a section failed: the error state, as Discover always showed. With a copy on
+        // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL.
+        if (snapshot.isEmpty) refresh.firstFailure?.let { return fail(it) }
+        val merged = refresh.mergedInto(snapshot)
+        _state.update {
+            showing(it, merged, mutedMovies, mutedTv).copy(
+                loading = false,
+                error = null,
+                discoverSaved = refresh.anyFailed && discoverFeed.isPastTtl(merged),
+            )
+        }
+        if (!refresh.anyFailed) settleStale(marks)
     }
 
     /** Pays off the muting marks that were in force when a refresh began, unless a newer one arrived meanwhile. */
@@ -509,6 +559,17 @@ class SearchViewModel(
      * from the copy, and a mute change re-filters the same stored answers.
      */
     private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>, muted: MutedGenres): Flow<List<MediaSummary>> = flow {
+        forYouRequests++
+        publishInFlight()
+        try {
+            emitForYou(library, decidedIds, muted)
+        } finally {
+            forYouRequests--
+            publishInFlight()
+        }
+    }
+
+    private suspend fun FlowCollector<List<MediaSummary>>.emitForYou(library: List<CollectionSummary>, decidedIds: Set<MediaId>, muted: MutedGenres) {
         // Read once per run: a forced request (Retry) is asked once, and a library change after it does not repeat it.
         val force = forYouForce
         forYouForce = false
@@ -517,7 +578,7 @@ class SearchViewModel(
         if (seeds.isEmpty()) {
             forYouOwed = false
             emit(emptyList())
-            return@flow
+            return
         }
         val excluded = library.mapTo(mutableSetOf()) { it.mediaId } + decidedIds
         fun shown(answers: List<ForYouAnswer>): List<MediaSummary> = ForYouSeeding.mergeAndExclude(answers.map { it.items }, excluded).filterNot(muted::hides)

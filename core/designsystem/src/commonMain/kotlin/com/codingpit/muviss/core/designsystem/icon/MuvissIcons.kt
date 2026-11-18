@@ -51,6 +51,9 @@ object MuvissIcons {
     val Sort: ImageVector get() = stroked("Sort", "M4 6h16M7 12h10M10 18h4")
     val Filter: ImageVector get() = stroked("Filter", "M4 5h16l-6 7v5l-4 2v-7z")
 
+    /** A circular arrow, the Feather "rotate-cw" glyph in the outlined style of the rest of the set (#965). */
+    val Refresh: ImageVector get() = stroked("Refresh", "M23 4v6h-6", "M20.49 15a9 9 0 1 1-2.12-9.36L23 10")
+
     // Tracking
     val Check: ImageVector get() = stroked("Check", "M5 13l4 4L19 7")
     val CheckCircle: ImageVector get() = filled("CheckCircle", CHECK_CIRCLE_PATH)
