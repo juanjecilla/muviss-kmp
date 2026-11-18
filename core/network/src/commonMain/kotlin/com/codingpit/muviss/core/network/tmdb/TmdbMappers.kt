@@ -12,6 +12,9 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonAnchors
+import com.codingpit.muviss.models.PersonCredit
+import com.codingpit.muviss.models.PersonDetails
 import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
@@ -23,6 +26,9 @@ import com.codingpit.muviss.models.WatchProviders
 internal object TmdbMapper {
     /** Two characters at most per person: a voice actor with eleven roles is a wall of text on a 64dp card. */
     private const val MAX_CHARACTERS_SHOWN = 2
+
+    /** TMDB's "Talk" (10767) and "News" (10763) TV genre ids. */
+    private val TALK_AND_NEWS_GENRES = setOf(10767, 10763)
 
     const val IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
@@ -206,6 +212,54 @@ internal object TmdbMapper {
             cast = dto.aggregateCredits?.cast.orEmpty().sortedBy { it.order }.mapNotNull { it.toCredit() },
             // A show's creators come first: they are what "Created by" reads, and `created_by` is not in the credits.
             crew = (dto.createdBy.map { it.toCredit() } + dto.aggregateCredits?.crew.orEmpty().mapNotNull { it.toCredit() }),
+        )
+    }
+
+    /**
+     * A person's page. [fallbackBiography] is the English one, asked for only when the biography in the
+     * app's language is blank. Appearances as themselves on a talk or news programme are left out of
+     * the credits: a famous actor has thousands, and they bury the work the person is known for.
+     */
+    fun personToDetails(dto: TmdbPersonDto, fallbackBiography: String? = null): PersonDetails {
+        val credits = dto.combinedCredits
+        return PersonDetails(
+            id = PersonId.tmdb(dto.id.toString()),
+            name = dto.name,
+            profileUrl = imageUrl(dto.profilePath),
+            biography = dto.biography?.takeIf { it.isNotBlank() } ?: fallbackBiography?.takeIf { it.isNotBlank() },
+            birthday = dto.birthday?.takeIf { it.isNotBlank() },
+            deathday = dto.deathday?.takeIf { it.isNotBlank() },
+            placeOfBirth = dto.placeOfBirth?.takeIf { it.isNotBlank() },
+            knownForDepartment = dto.knownForDepartment?.takeIf { it.isNotBlank() },
+            anchors = PersonAnchors(
+                imdbId = dto.externalIds?.imdbId?.takeIf { it.isNotBlank() },
+                wikidataId = dto.externalIds?.wikidataId?.takeIf { it.isNotBlank() },
+            ),
+            credits = credits?.cast.orEmpty().mapNotNull { it.toPersonCredit(acting = true) } +
+                credits?.crew.orEmpty().mapNotNull { it.toPersonCredit(acting = false) },
+        )
+    }
+
+    private fun TmdbPersonCreditDto.toPersonCredit(acting: Boolean): PersonCredit? {
+        val type = when (mediaType) {
+            "movie" -> MediaType.MOVIE
+            "tv" -> MediaType.TV
+            else -> return null
+        }
+        val summary = discoverResultToSummary(
+            type,
+            TmdbResultDto(id, mediaType, title, name, posterPath, overview, releaseDate, firstAirDate, voteAverage, genreIds),
+        )
+        if (summary.title.isBlank()) return null
+        if (acting && type == MediaType.TV && genreIds.any { it in TALK_AND_NEWS_GENRES }) return null
+        return PersonCredit(
+            title = summary,
+            character = character?.takeIf { it.isNotBlank() },
+            job = job?.takeIf { it.isNotBlank() },
+            acting = acting,
+            releaseEpochDay = airDateToEpochDay(if (type == MediaType.MOVIE) releaseDate else firstAirDate),
+            voteCount = voteCount,
+            episodeCount = episodeCount?.takeIf { it > 0 },
         )
     }
 

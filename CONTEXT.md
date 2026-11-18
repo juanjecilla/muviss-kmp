@@ -35,7 +35,19 @@ _Avoid_: album, carousel, slideshow.
 The full-screen page that shows a Gallery, one image at a time, starting on the image the person tapped. The person pages through it, zooms into an image, and leaves it.
 _Avoid_: lightbox, preview, fullscreen mode.
 
-**ProductionStatus**:
+**Person**:
+Someone credited on a title, such as an actor, a director or a creator. Shown only through the titles they are credited on; Muviss has no accounts, profiles or following for them, and nothing about a Person is kept.
+_Avoid_: actor, talent, celebrity, cast member (a cast member is one kind of Credit, not a kind of Person).
+
+**Credit**:
+One Person's part in one title: the character they played or the job they did. A Person with two jobs on the same title has two Credits.
+_Avoid_: role (ambiguous between the part played and the job done), appearance.
+
+**Filmography**:
+Every title a Person has a Credit on, arranged for reading: one row per title with that Person's roles, newest first, with unreleased titles on top. It is a record of their work, so Muted Genres do not hide anything in it.
+_Avoid_: portfolio, known for (that is only the best-known handful at the top of it).
+
+>**ProductionStatus**:
 Whether a title is still in production. For TV it distinguishes an ongoing show (Returning) from a completed one (Ended/Canceled) — the basis for Watched vs Finished.
 
 **CollectionEntry**:
@@ -178,7 +190,7 @@ _Avoid_: expected error (every handled error is expected somewhere), noise.
 ### Co-watch
 
 **Companion**:
-Another person's Muviss account the user has linked with, in order to work out what to watch together. The only concept in the product that refers to anyone other than the user, and it goes no further than this: there is no way to find, follow or be seen by one.
+Another person's Muviss account the user has linked with, in order to work out what to watch together. The only concept in the product that refers to another Muviss user, and it goes no further than this: there is no way to find, follow or be seen by one. (A Person is someone credited on a title, not a user.)
 _Avoid_: friend, follower, contact (they imply a social graph this product does not have); partner.
 
 **Companion Link**:

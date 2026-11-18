@@ -10,6 +10,7 @@ import androidx.navigation.toRoute
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.TitleImage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -65,6 +66,7 @@ fun NavGraphBuilder.searchSection(
             onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
             onOpenEpisode = { episodeId -> navController.navigate(EpisodeDetailRoute(episodeId.toString())) },
             onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(id.toString(), kind.name, url)) },
+            onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
             nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
             // A finished title's entry opens the session anchored on that title (#664).
             onOpenNextPick = onOpenNextPick,
@@ -77,6 +79,7 @@ fun NavGraphBuilder.searchSection(
             viewModel,
             onBack = { navController.popBackStack() },
             onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(episodeId.show.toString(), kind.name, url, episodeId.toString())) },
+            onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
         )
     }
     composable<ImageViewerRoute> { entry ->
@@ -85,5 +88,15 @@ fun NavGraphBuilder.searchSection(
             parametersOf(ImageViewerArgs(MediaId.parse(route.mediaId), route.episodeId?.let(EpisodeId::parse), ImageKind.valueOf(route.kind), TitleImage(route.seedUrl)))
         }
         ImageViewerScreen(viewModel, onClose = { navController.popBackStack() })
+    }
+    composable<PersonRoute> { entry ->
+        val personId = PersonId.parse(entry.toRoute<PersonRoute>().personId)
+        val viewModel = koinViewModel<PersonViewModel> { parametersOf(personId) }
+        PersonScreen(
+            viewModel,
+            onBack = { navController.popBackStack() },
+            // Same recursion as "More like this": a title opens Detail, a person on that opens another page, Back unwinds it.
+            onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
+        )
     }
 }

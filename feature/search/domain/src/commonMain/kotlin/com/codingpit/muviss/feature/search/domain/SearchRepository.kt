@@ -8,6 +8,8 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
 
@@ -54,4 +56,10 @@ interface SearchRepository {
 
     /** The stills the source has for one episode. Defaults to none, as [images] does. */
     suspend fun episodeImages(episodeId: EpisodeId): Result<TitleImages> = Result.success(TitleImages())
+
+    /**
+     * One person and their credits. Defaulted to a failure so the hand-written fakes of this contract
+     * (one per ui test suite) keep compiling; [TmdbSearchRepository][com.codingpit.muviss.feature.search.data.TmdbSearchRepository] overrides it.
+     */
+    suspend fun person(id: PersonId): Result<PersonDetails> = Result.failure(UnsupportedOperationException("This source has no person details"))
 }

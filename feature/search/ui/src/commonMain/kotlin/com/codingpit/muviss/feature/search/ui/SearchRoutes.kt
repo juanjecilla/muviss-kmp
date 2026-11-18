@@ -21,3 +21,7 @@ data class EpisodeDetailRoute(val episodeId: String)
  */
 @Serializable
 data class ImageViewerRoute(val mediaId: String, val kind: String, val seedUrl: String, val episodeId: String? = null)
+
+/** One person's page; carries the [com.codingpit.muviss.models.PersonId] as its string form. */
+@Serializable
+data class PersonRoute(val personId: String)

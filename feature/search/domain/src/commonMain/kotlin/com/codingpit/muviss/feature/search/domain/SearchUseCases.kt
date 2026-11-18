@@ -9,6 +9,8 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.TitleImage
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.flow.Flow
@@ -148,4 +150,9 @@ class LoadGalleryUseCase(private val repository: SearchRepository) {
         val rest = others.filter { it.fileKey != seed.fileKey }.distinctBy { it.fileKey }
         return Gallery(listOf(sameFile ?: seed) + rest)
     }
+}
+
+/** One person's page: who they are and what they are credited on. */
+class PersonDetailUseCase(private val repository: SearchRepository) {
+    suspend operator fun invoke(id: PersonId): Result<PersonDetails> = repository.person(id)
 }

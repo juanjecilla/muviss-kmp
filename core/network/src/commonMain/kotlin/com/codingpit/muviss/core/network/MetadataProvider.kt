@@ -8,6 +8,8 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.SourceId
 import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
@@ -99,6 +101,12 @@ interface MetadataProvider {
 
     /** The stills the source has for one episode, best first. Defaults to empty, as [images] does. */
     suspend fun episodeImages(episodeId: EpisodeId): TitleImages = TitleImages()
+
+    /**
+     * One person and everything they are credited on, for the Person screen. Defaults to null
+     * (unsupported) so a provider with no people endpoint need not implement it.
+     */
+    suspend fun person(id: PersonId): PersonDetails? = null
 }
 
 /**

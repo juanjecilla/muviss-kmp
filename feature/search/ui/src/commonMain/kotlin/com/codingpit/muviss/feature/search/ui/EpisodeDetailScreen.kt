@@ -74,6 +74,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.undo_last
 import com.codingpit.muviss.models.EpisodeCredit
 import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.ImageKind
+import com.codingpit.muviss.models.PersonId
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -91,6 +92,8 @@ fun EpisodeDetailScreen(
     onBack: () -> Unit,
     /** Opens the Image Viewer on the episode's stills; the url is the one tapped (see [ImageViewerRoute]). */
     onOpenImage: (ImageKind, String) -> Unit = { _, _ -> },
+    /** A guest star or crew card opens this person; null leaves the cards plain. */
+    onOpenPerson: ((PersonId) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
@@ -120,6 +123,7 @@ fun EpisodeDetailScreen(
                     onUndoLatest = viewModel::undoLatestPlay,
                     onClearHistory = { confirmClear = true },
                     onOpenImage = onOpenImage,
+                    onOpenPerson = onOpenPerson,
                 )
             }
 
@@ -153,6 +157,7 @@ private fun EpisodeBody(
     onUndoLatest: () -> Unit,
     onClearHistory: () -> Unit,
     onOpenImage: (ImageKind, String) -> Unit,
+    onOpenPerson: ((PersonId) -> Unit)?,
 ) {
     val scroll = rememberScrollState()
     Column(
@@ -177,8 +182,8 @@ private fun EpisodeBody(
 
             WatchHistorySection(state, onWatchedAgain, onUndoLatest, onClearHistory)
 
-            CreditRow(stringResource(Res.string.guest_stars), details.guestStars) { it.character }
-            CreditRow(stringResource(Res.string.crew), details.crew) { it.job }
+            CreditRow(stringResource(Res.string.guest_stars), details.guestStars, onOpenPerson) { it.character }
+            CreditRow(stringResource(Res.string.crew), details.crew, onOpenPerson) { it.job }
         }
     }
 }
@@ -269,13 +274,13 @@ private fun WatchHistorySection(
 }
 
 @Composable
-private fun CreditRow(title: String, credits: List<EpisodeCredit>, subtitleOf: (EpisodeCredit) -> String?) {
+private fun CreditRow(title: String, credits: List<EpisodeCredit>, onOpenPerson: ((PersonId) -> Unit)?, subtitleOf: (EpisodeCredit) -> String?) {
     if (credits.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         CarouselHeader(title, modifier = Modifier.padding(top = MuvissSpacing.s))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             items(credits, key = { it.name + it.character + it.job }) { credit ->
-                PersonCard(credit.name, credit.profileUrl, subtitleOf(credit), onClick = null)
+                PersonCard(credit.name, credit.profileUrl, subtitleOf(credit), onClick = credit.personId?.let { id -> onOpenPerson?.let { open -> { open(id) } } })
             }
         }
     }
