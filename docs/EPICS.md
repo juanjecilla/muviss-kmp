@@ -301,6 +301,7 @@ Written 2026-09-19 after a repo, docs and CI audit. Roadmap code-complete (EPICs
 | — | EPIC 51 What's next?: a Pick Session after a Completion (and from Discover, Progress, Library, Detail) that ends in a Next Pick; Taste Profile; rules over the user's own history behind a ranker seam (ADR 0032) | #396 |
 | — | EPIC 53 Feature Request: a Settings row that opens a hosted Tally form in the browser, Typeform behind a Remote Config switch, dark until the owner sets the URL (ADR 0035) | #447 |
 | — | EPIC 52 Tick animations: Progress and Detail confirm a tick, a burst on milestones, `tickAnimations` setting (`19.sqm`) | #391 |
+| — | People on Detail: cast and key crew on Detail with a full credits list, a Person screen with a Filmography, and IMDb / Wikipedia / TMDB links; network-only TMDB data, no schema change | #988 (pieces #989, #990) |
 | 14 | Public flip and v1.0.0 launch | #81 |
 
 EPIC 38 sits in wave 10 despite its number: it is parallel, low risk and speeds up the rest.

@@ -204,6 +204,7 @@ fun DetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddToList by remember { mutableStateOf(false) }
     var editingNote by remember { mutableStateOf(false) }
+    var showCredits by rememberSaveable { mutableStateOf(false) }
     var tickedEpisode by remember { mutableStateOf<EpisodeId?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     // The snackbar's measured height, so the list's end clears a wrapped message too.
@@ -231,10 +232,10 @@ fun DetailScreen(
 
             state.details != null -> BoxWithConstraints {
                 val callbacks = DetailCallbacks(
-                    onOpenDetail = onOpenDetail,
+                    navigation = DetailNavigation(onOpenDetail, onOpenEpisode),
                     onAddToList = { showAddToList = true },
                     onEditNote = { editingNote = true },
-                    onOpenEpisode = onOpenEpisode,
+                    credits = CreditsCallbacks(onSeeAll = { showCredits = true }, onOpenPerson = null),
                     onTapSeenEpisode = { tickedEpisode = it },
                     notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
                 )
@@ -297,6 +298,11 @@ fun DetailScreen(
         )
     }
 
+    val creditsDetails = state.details
+    if (showCredits && creditsDetails != null && creditsDetails.hasCredits()) {
+        CreditsSheet(creditsDetails, onDismiss = { showCredits = false }, onOpenPerson = null)
+    }
+
     val detailsMediaId = state.details?.summary?.id
     if (showAddToList && detailsMediaId != null) {
         val addToListViewModel = koinViewModel<AddToListViewModel> { parametersOf(detailsMediaId) }
@@ -319,10 +325,10 @@ internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
 /** The callbacks the screen's body raises, bundled so the two layouts share one shape. */
 private class DetailCallbacks(
-    val onOpenDetail: (MediaId) -> Unit,
+    val navigation: DetailNavigation,
     val onAddToList: () -> Unit,
     val onEditNote: () -> Unit,
-    val onOpenEpisode: (EpisodeId) -> Unit,
+    val credits: CreditsCallbacks,
     val onTapSeenEpisode: (EpisodeId) -> Unit,
     /** The Notification Nudge (EPIC 47), given the title; draws nothing unless it is due. */
     val notificationNudge: (@Composable (title: String) -> Unit)? = null,
@@ -441,6 +447,12 @@ internal const val DETAIL_ACTIONS_TAG = "detailActions"
 /** The bulk-mark undo snackbar's host, so a test can find where it sits over the list. */
 internal const val DETAIL_SNACKBAR_TAG = "detailSnackbar"
 
+/** Where Detail can send the person from its list: another title, or one episode. */
+private class DetailNavigation(
+    val onOpenDetail: (MediaId) -> Unit,
+    val onOpenEpisode: (EpisodeId) -> Unit,
+)
+
 /** What the list items read: one bundle, so the item builders keep short signatures. */
 private class DetailListContext(
     val state: DetailUiState,
@@ -500,6 +512,12 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
         }
     }
 
+    if (details.hasCredits()) {
+        item(key = "credits", contentType = "credits") {
+            CreditsSection(details, callbacks.credits, modifier = section)
+        }
+    }
+
     // A movie's watched state is the primary action at the top (#721), so the body has no toggle of its own.
     if (details.type == MediaType.TV) seasonItems(context, inset)
 
@@ -507,7 +525,7 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
         item(key = "providers", contentType = "providers") { Box(section) { WhereToWatchSection(providers) } }
     }
 
-    item(key = "moreLikeThis", contentType = "moreLikeThis") { Box(section) { MoreLikeThisSection(state.moreLikeThis, callbacks.onOpenDetail) } }
+    item(key = "moreLikeThis", contentType = "moreLikeThis") { Box(section) { MoreLikeThisSection(state.moreLikeThis, callbacks.navigation.onOpenDetail) } }
 }
 
 /** 16:9 backdrop with a gradient into the background color. */
@@ -965,7 +983,7 @@ private fun LazyListScope.seasonItems(context: DetailListContext, inset: Modifie
                     if (state.isSeen(episodeId)) callbacks.onTapSeenEpisode(episodeId) else viewModel.toggleEpisodeSeen(episodeId)
                 },
                 onCatchUp = viewModel::markPreviousSeen,
-                onOpenEpisode = callbacks.onOpenEpisode,
+                onOpenEpisode = callbacks.navigation.onOpenEpisode,
             ),
             inset = inset,
         )

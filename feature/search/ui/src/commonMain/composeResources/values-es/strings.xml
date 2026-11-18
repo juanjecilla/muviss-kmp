@@ -116,4 +116,29 @@
     <string name="movie_marked_watched">Marcada como vista</string>
     <string name="tick_next_seen">T%1$d·E%2$d marcado como visto</string>
     <string name="removed_from_library">Quitada de la biblioteca</string>
+    <string name="cast">Reparto</string>
+    <string name="credits_title">Reparto y equipo</string>
+    <string name="directed_by">Dirigida por %1$s</string>
+    <string name="created_by">Creada por %1$s</string>
+    <plurals name="credit_role_episodes">
+        <item quantity="one">%1$s · %2$d ep.</item>
+        <item quantity="other">%1$s · %2$d eps.</item>
+    </plurals>
+    <plurals name="credit_episodes">
+        <item quantity="one">%1$d ep.</item>
+        <item quantity="other">%1$d eps.</item>
+    </plurals>
+    <string name="department_creator">Creadores</string>
+    <string name="department_directing">Dirección</string>
+    <string name="department_writing">Guion</string>
+    <string name="department_production">Producción</string>
+    <string name="department_camera">Cámara</string>
+    <string name="department_editing">Montaje</string>
+    <string name="department_sound">Sonido</string>
+    <string name="department_art">Arte</string>
+    <string name="department_costume">Vestuario y maquillaje</string>
+    <string name="department_visual_effects">Efectos visuales</string>
+    <string name="department_lighting">Iluminación</string>
+    <string name="department_crew">Equipo técnico</string>
+    <string name="department_other">Otros</string>
 </resources>
