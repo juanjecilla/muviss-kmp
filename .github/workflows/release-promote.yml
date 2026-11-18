@@ -18,6 +18,12 @@ name: Release promote
 #
 # Dispatch it to see every decision first: dry_run defaults to true, and a
 # dry run changes nothing, on GitHub or in Play.
+#
+# `rehearse` (#732) runs the Sunday merge for one version against live origin/main
+# and prints what it would do: the verdict, the merge commit's tree and the paths
+# it changes. Nothing moves on main. With `rehearse_push` it also puts that merge
+# commit on refs/heads/rehearsal/VERSION as the release App, which proves the App's
+# identity and push credentials, then deletes the ref.
 on:
   schedule:
     - cron: '0 10 * * 0'
@@ -28,21 +34,118 @@ on:
         type: boolean
         default: true
       version:
-        description: 'Only this version (X.Y.Z); blank = every version in flight'
+        description: 'Only this version (X.Y.Z); blank = every version in flight. With rehearse: the version to rehearse'
         type: string
         default: ''
+      rehearse:
+        description: 'Rehearse the Sunday merge of VERSION against live origin/main, print the verdict and the tree, and change nothing on main'
+        type: boolean
+        default: false
+      rehearse_push:
+        description: 'With rehearse: also push the merge commit to refs/heads/rehearsal/VERSION as the release App, then delete it'
+        type: boolean
+        default: false
 
-# Shared with the daily ramp, so a Sunday step and a rollout change never edit
-# the production release at the same time.
-concurrency:
-  group: play-promote
-  cancel-in-progress: false
+# No workflow-level concurrency: GitHub replaces a pending run in a group when a newer one queues, so a
+# rehearsal dispatch in the production group could cancel a queued Sunday run. Each job sets its own group.
 
 permissions:
   contents: read
 
 jobs:
+  # The rehearsal (#732): a dispatch only, and it changes nothing on main, so it has its own group and
+  # never waits on, or replaces, a production run.
+  rehearse:
+    if: ${{ inputs.rehearse }}
+    concurrency:
+      group: release-rehearsal
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # The App's token stays in the checkout, so the push below is the App's.
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Fetch the release branches and tags
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: git fetch --prune --tags --force origin '+refs/heads/*:refs/remotes/origin/*'
+
+      # The commit carries the App's identity, as the Sunday step's does (release-promote's promote job).
+      - name: Commit as the release App
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          bundler-cache: true
+
+      - name: Rehearse the Sunday merge
+        # bash, not the Linux default: its `bash -e` has no pipefail, so the CLI's
+        # exit (HELD, an error) would be lost behind `tee`.
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          PUSH: ${{ inputs.rehearse_push }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::set version to X.Y.Z, the version to rehearse"; exit 1; }
+          ARGS=(rehearse "$VERSION")
+          [ "$PUSH" = true ] && ARGS+=(--push)
+          {
+            echo "### Rehearsal of release/$VERSION"
+            echo
+            echo '```'
+            # The fence is closed and the exit kept whatever the CLI returned.
+            rc=0
+            ruby fastlane/release_merge.rb "${ARGS[@]}" || rc=$?
+            echo '```'
+            exit "$rc"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # A rehearsal that is cancelled or times out between its push and its delete would leave the throwaway
+      # ref on origin. This runs whatever happened above, and only for the rehearsal's own ref name.
+      - name: Delete the rehearsal ref if a run left it behind
+        if: ${{ always() && inputs.rehearse && inputs.rehearse_push }}
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "no rehearsal ref to clean up: '$VERSION' is not X.Y.Z"; exit 0; }
+          REF="refs/heads/rehearsal/$VERSION"
+          # A failed lookup is not an absent ref: only a lookup that succeeds with no output says so.
+          REMOTE="$(git ls-remote origin "$REF")" \
+            || { echo "::error::could not check $REF on origin; it may remain, so delete it by hand"; exit 1; }
+          if [ -n "$REMOTE" ]; then
+            git push --quiet origin ":$REF" \
+              || { echo "::error::$REF may remain on origin; delete it by hand"; exit 1; }
+            echo "Deleted $REF, which the rehearsal left behind."
+          fi
+
   promote:
+    # A rehearsal dispatch does nothing else (on a schedule, `inputs.rehearse` is empty).
+    if: ${{ !inputs.rehearse }}
+    # Shared with the daily ramp (play-promote.yml), so a Sunday step and a rollout change never edit the production
+    # release at the same time. Never cancelled: a production run is only ever queued behind another.
+    concurrency:
+      group: play-promote
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
