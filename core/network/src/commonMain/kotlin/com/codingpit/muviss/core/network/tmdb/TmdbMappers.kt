@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.models.Credit
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeCredit
 import com.codingpit.muviss.models.EpisodeDetails
@@ -11,12 +12,20 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
 
 internal object TmdbMapper {
+    /** The most cast and crew a title keeps. A long-running show lists thousands; nobody scrolls that far. */
+    const val MAX_CAST = 100
+    const val MAX_CREW = 150
+
+    /** Two characters at most per person: a voice actor with eleven roles is a wall of text on a 64dp card. */
+    private const val MAX_CHARACTERS_SHOWN = 2
+
     const val IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
     // Provider logos render small (a couple dozen dp); w92 is TMDB's smallest
@@ -147,12 +156,14 @@ internal object TmdbMapper {
                 rating = dto.voteAverage,
                 genreIds = dto.genres.mapNotNull { it.id?.toString() },
             ),
-            anchors = MediaAnchors(imdbId = dto.externalIds?.imdbId),
+            anchors = anchorsOf(dto.externalIds),
             genres = dto.genres.map { it.name },
             runtimeMinutes = dto.runtime,
             productionStatus = ProductionStatus.RELEASED,
             seasons = emptyList(),
             backdropUrl = backdropUrl(dto.backdropPath),
+            cast = dto.credits?.cast.orEmpty().sortedBy { it.order }.mapNotNull { it.toCredit() }.take(MAX_CAST),
+            crew = dto.credits?.crew.orEmpty().mapNotNull { it.toCredit() }.take(MAX_CREW),
         )
     }
 
@@ -168,12 +179,54 @@ internal object TmdbMapper {
                 rating = dto.voteAverage,
                 genreIds = dto.genres.mapNotNull { it.id?.toString() },
             ),
-            anchors = MediaAnchors(imdbId = dto.externalIds?.imdbId),
+            anchors = anchorsOf(dto.externalIds),
             genres = dto.genres.map { it.name },
             runtimeMinutes = null,
             productionStatus = tvProductionStatus(dto.status),
             seasons = seasons,
             backdropUrl = backdropUrl(dto.backdropPath),
+            cast = dto.aggregateCredits?.cast.orEmpty().sortedBy { it.order }.mapNotNull { it.toCredit() }.take(MAX_CAST),
+            // A show's creators come first: they are what "Created by" reads, and `created_by` is not in the credits.
+            crew = (dto.createdBy.map { it.toCredit() } + dto.aggregateCredits?.crew.orEmpty().mapNotNull { it.toCredit() }).take(MAX_CREW),
+        )
+    }
+
+    private fun anchorsOf(ids: TmdbExternalIdsDto?) = MediaAnchors(
+        imdbId = ids?.imdbId?.takeIf { it.isNotBlank() },
+        wikidataId = ids?.wikidataId?.takeIf { it.isNotBlank() },
+    )
+
+    // TMDB sends a nameless row now and then; a Credit that names nobody cannot be shown or opened.
+    private fun TmdbCastDto.toCredit(): Credit? = name.takeIf { it.isNotBlank() }?.let {
+        Credit(PersonId.tmdb(id.toString()), it, imageUrl(profilePath), character = character?.takeIf { c -> c.isNotBlank() })
+    }
+
+    private fun TmdbCrewDto.toCredit(): Credit? = name.takeIf { it.isNotBlank() }?.let {
+        Credit(PersonId.tmdb(id.toString()), it, imageUrl(profilePath), job = job?.takeIf { j -> j.isNotBlank() }, department = department?.takeIf { d -> d.isNotBlank() })
+    }
+
+    private fun TmdbCreatorDto.toCredit() = Credit(PersonId.tmdb(id.toString()), name, imageUrl(profilePath), job = Credit.CREATOR_JOB, department = Credit.CREATOR_DEPARTMENT)
+
+    private fun TmdbAggregateCastDto.toCredit(): Credit? = name.takeIf { it.isNotBlank() }?.let {
+        val roles = roles.sortedByDescending { r -> r.episodeCount ?: 0 }
+        Credit(
+            personId = PersonId.tmdb(id.toString()),
+            name = it,
+            profileUrl = imageUrl(profilePath),
+            character = roles.mapNotNull { r -> r.character?.takeIf { c -> c.isNotBlank() } }.distinct().take(MAX_CHARACTERS_SHOWN).joinToString(" / ").ifEmpty { null },
+            episodeCount = (totalEpisodeCount ?: roles.sumOf { r -> r.episodeCount ?: 0 }).takeIf { n -> n > 0 },
+        )
+    }
+
+    private fun TmdbAggregateCrewDto.toCredit(): Credit? = name.takeIf { it.isNotBlank() }?.let {
+        val jobs = jobs.sortedByDescending { j -> j.episodeCount ?: 0 }
+        Credit(
+            personId = PersonId.tmdb(id.toString()),
+            name = it,
+            profileUrl = imageUrl(profilePath),
+            job = jobs.mapNotNull { j -> j.job?.takeIf { n -> n.isNotBlank() } }.distinct().joinToString(", ").ifEmpty { null },
+            department = department?.takeIf { d -> d.isNotBlank() },
+            episodeCount = (totalEpisodeCount ?: jobs.sumOf { j -> j.episodeCount ?: 0 }).takeIf { n -> n > 0 },
         )
     }
 
@@ -226,6 +279,7 @@ internal object TmdbMapper {
 
     private fun TmdbEpisodeCreditDto.toCredit(): EpisodeCredit = EpisodeCredit(
         name = name,
+        personId = id?.let { PersonId.tmdb(it.toString()) },
         character = character?.takeIf { it.isNotBlank() },
         job = job?.takeIf { it.isNotBlank() },
         profileUrl = imageUrl(profilePath),
