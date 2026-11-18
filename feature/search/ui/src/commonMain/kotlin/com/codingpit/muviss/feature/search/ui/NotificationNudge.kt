@@ -79,12 +79,17 @@ class NotificationNudgeViewModel(
     private suspend fun refusedForGoodNow(off: Boolean): Boolean = off && !system.canAskAgainNow()
 
     /**
-     * Bumped by every permission decision (a turn-on tap) and by dismissal. A settlement reads the OS
-     * first and writes afterwards, so a read that straddles one of these is stale and must not write (#846 review).
+     * Advanced by every permission decision (a turn-on tap that is taken, its answer, a dismissal). An OS read
+     * that began while it was [decisionEpoch] was before the decision and may answer the old state, so it must
+     * not write once the epoch has moved (#846 review). Advancing it on the answer too is what stops a read
+     * started after a turn-on began, but before its denial landed, from clearing that denial.
      */
-    private var permissionEpoch = 0
+    private var decisionEpoch = 0
 
-    /** The settlement in flight. Replaced, never queued: only the latest OS read may write. */
+    /** Numbers each settlement, so the latest one wins even when an older OS read answers last. */
+    private var settleSeq = 0
+
+    /** The settlement in flight. Replaced, never queued. Cancelling it is an optimisation: the guards decide. */
     private var settlement: Job? = null
 
     init {
@@ -100,15 +105,16 @@ class NotificationNudgeViewModel(
     }
 
     fun turnOn() {
-        val decision = ++permissionEpoch
+        val decision = ++decisionEpoch
         settlement?.cancel()
         viewModelScope.launchReporting {
             if (refusedForGoodNow(system.blockedNow())) {
-                explainIfCurrent(decision)
+                commitDecision(decision, explain = true)
                 return@launchReporting
             }
-            if (onboarding.acceptNotificationNudge() == NotificationNudgeResult.DENIED) {
-                explainIfCurrent(decision)
+            when (onboarding.acceptNotificationNudge()) {
+                NotificationNudgeResult.DENIED -> commitDecision(decision, explain = true)
+                NotificationNudgeResult.ENABLED -> commitDecision(decision, explain = false)
             }
         }
     }
@@ -121,28 +127,35 @@ class NotificationNudgeViewModel(
      */
     fun recheckPermission() = settle()
 
-    /** Shows the explanation for a denial, unless the person dismissed or decided again while it was being taken. */
-    private fun explainIfCurrent(decision: Int) {
-        if (permissionEpoch == decision) _state.update { it.copy(blocked = true) }
+    /**
+     * Writes the outcome of a decision, if no other decision or dismissal has happened since it began. The write
+     * advances the epoch, so every settlement and turn-on that began before it becomes stale.
+     */
+    private fun commitDecision(decision: Int, explain: Boolean) {
+        if (decisionEpoch != decision) return
+        ++decisionEpoch
+        settlement?.cancel()
+        _state.update { it.copy(blocked = explain) }
     }
 
     /**
-     * Sets [NotificationNudgeState.blocked] from the OS as it is now and what the nudge already knows. A newer
-     * settlement replaces this one; a permission decision or dismissal during the read makes the answer stale.
+     * Sets [NotificationNudgeState.blocked] from the OS as it is now and what the nudge already knows. Writes only
+     * if this is still the latest settlement and no decision or dismissal began during its read.
      */
     private fun settle() {
         settlement?.cancel()
-        val started = permissionEpoch
+        val seq = ++settleSeq
+        val epoch = decisionEpoch
         settlement = viewModelScope.launchReporting {
             val off = system.blockedNow()
             val refusedForGood = refusedForGoodNow(off)
-            if (permissionEpoch != started) return@launchReporting
+            if (seq != settleSeq || epoch != decisionEpoch) return@launchReporting
             _state.update { it.copy(blocked = (it.blocked && off) || (it.offered && refusedForGood)) }
         }
     }
 
     fun dismiss() {
-        ++permissionEpoch
+        ++decisionEpoch
         settlement?.cancel()
         // Synchronous, so a denial from a turn-on still in flight cannot re-show the line after this tap.
         _state.update { it.copy(blocked = false) }

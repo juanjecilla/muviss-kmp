@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -15,6 +16,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -75,12 +77,16 @@ class NotificationNudgeViewModelTest {
         override fun blocked(): Boolean = cachedOff
         override fun canAskAgain(): Boolean = cachedAskable
 
-        /** When set, the next OS read answers what the OS said when it started, and only returns after this completes. */
+        /**
+         * When set, the next OS read answers what the OS said when it started, and only returns after this completes.
+         * Non-cancellable on purpose: an iOS answer already on its way cannot be recalled, so only the view model's
+         * guards may stop it writing.
+         */
         var heldRead: CompletableDeferred<Unit>? = null
 
         override suspend fun blockedNow(): Boolean {
             val answer = off
-            heldRead?.also { heldRead = null }?.await()
+            heldRead?.also { heldRead = null }?.let { withContext(NonCancellable) { it.await() } }
             cache(off, askable)
             return answer
         }
@@ -309,5 +315,76 @@ class NotificationNudgeViewModelTest {
         held.complete(Unit)
 
         assertEquals(false, vm.state.value.visible, "the person dismissed the nudge before the answer came back")
+    }
+
+    @Test
+    fun a_read_that_began_after_a_turn_on_but_before_its_denial_does_not_clear_the_denial() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = false
+        system.askable = true
+        val accepted = CompletableDeferred<Unit>()
+        onboarding.heldAccept = accepted
+        val vm = viewModel()
+        vm.turnOn()
+        val read = CompletableDeferred<Unit>()
+        system.heldRead = read
+        vm.recheckPermission()
+
+        accepted.complete(Unit)
+        assertEquals(true, vm.state.value.blocked, "the denial landed")
+
+        read.complete(Unit)
+        assertEquals(true, vm.state.value.blocked, "the resume read began before the denial and still said allowed")
+    }
+
+    @Test
+    fun a_resume_read_that_began_before_a_denial_cannot_clear_the_denial() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = false
+        system.askable = true
+        val vm = viewModel()
+        val read = CompletableDeferred<Unit>()
+        system.heldRead = read
+        vm.recheckPermission()
+
+        vm.turnOn()
+        assertEquals(true, vm.state.value.blocked, "the person was just refused")
+
+        read.complete(Unit)
+        assertEquals(true, vm.state.value.blocked, "the resume read began before the denial and said allowed")
+    }
+
+    @Test
+    fun a_stale_settlement_cannot_overwrite_the_answer_of_a_newer_one() = runTest {
+        system.off = false
+        system.askable = true
+        val vm = viewModel()
+        val stale = CompletableDeferred<Unit>()
+        system.heldRead = stale
+        vm.recheckPermission()
+
+        system.off = true
+        system.askable = false
+        vm.recheckPermission()
+        assertEquals(true, vm.state.value.blocked, "the newer check sees the refusal")
+
+        stale.complete(Unit)
+        assertEquals(true, vm.state.value.blocked, "the older check answered last and said allowed")
+    }
+
+    @Test
+    fun a_granted_turn_on_clears_an_explanation_that_the_os_no_longer_gives() = runTest {
+        system.off = true
+        system.askable = false
+        val vm = viewModel()
+        assertEquals(true, vm.state.value.blocked)
+
+        system.off = false
+        system.askable = true
+        onboarding.answer = NotificationNudgeResult.ENABLED
+        vm.turnOn()
+
+        assertEquals(1, onboarding.accepted)
+        assertEquals(false, vm.state.value.blocked, "the OS granted the permission; the line must not say otherwise")
     }
 }
