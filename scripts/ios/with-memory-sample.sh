@@ -33,8 +33,9 @@ sample() {
       echo "memory $now rss_mb=$((rss / 1024)) $comm"
     done <<< "$top"
     # One machine-readable line per sample for the summary: time, free%, the
-    # largest RSS in KB.
-    echo "$now ${free:-} $(head -n 1 <<< "$top" | awk '{ print $1 }')" >> "$log"
+    # largest RSS in KB. free% is always written, as n/a when unknown, so RSS
+    # stays in the third field for every sample.
+    echo "$now ${free:-n/a} $(head -n 1 <<< "$top" | awk '{ print $1 }')" >> "$log"
     sleep "$interval"
   done
 }
@@ -53,7 +54,7 @@ trap - EXIT
 # The command may run for less than one interval; the summary then says so
 # rather than reporting nothing.
 count="$(wc -l < "$log" | tr -d ' ')"
-lowest="$(awk '$2 != "" { if (min == "" || $2 + 0 < min + 0) min = $2 } END { if (min != "") print min "%" }' "$log")"
+lowest="$(awk '$2 != "" && $2 != "n/a" { if (min == "" || $2 + 0 < min + 0) min = $2 } END { if (min != "") print min "%" }' "$log")"
 peak="$(awk '$3 != "" { if ($3 + 0 > max) max = $3 + 0 } END { if (max != "") printf "%d MB", max / 1024 }' "$log")"
 echo "memory summary: lowest free=${lowest:-n/a}, largest process RSS=${peak:-n/a}, over $count samples"
 rm -f "$log"

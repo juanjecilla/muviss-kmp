@@ -716,6 +716,11 @@ jobs:
       - name: iOS version script tests
         run: scripts/ios/test/set-version-test.sh
 
+      # The memory sampler's summary (#829): a run without memory_pressure, or
+      # with one that prints no percentage, must not put RSS in the free column.
+      - name: iOS memory sampler tests
+        run: scripts/ios/test/with-memory-sample-test.sh
+
       # The XCUITest smoke path: launch, get past onboarding, reach Search and
       # open Settings. Offline-safe, English-only (see MuvissSmokeUITests).
       # Runs the iosAppUITests target through the shared iosApp scheme.
