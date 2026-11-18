@@ -665,5 +665,21 @@ elif git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
   expect_rc "a deleted branch whose merge carries a commit after the RC moved" "$c" 1
 else fail "a deleted branch whose merge carries a commit after the RC moved: could not delete the ref, fallback not tested"; fi
 
+# owner-setup.sh: the release-and-hotfix ruleset body (#985). The script talks to gh
+# on load, so only the JSON producer is lifted out and run.
+if command -v jq >/dev/null; then
+  eval "$(sed -n '/^ruleset_checks_only()/,/^JSON$/p' "$SCRIPTS/owner-setup.sh")
+}"
+  body="$(ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' '[{"context":"build"}]')"
+  expect_eq "release-and-hotfix ruleset targets release/* and hotfix/*" \
+    "$(jq -r '.conditions.ref_name.include | join(",")' <<<"$body")" "refs/heads/release/*,refs/heads/hotfix/*"
+  expect_eq "release-and-hotfix ruleset has status checks only" \
+    "$(jq -r '[.rules[].type] | join(",")' <<<"$body")" "required_status_checks"
+  expect_eq "release-and-hotfix ruleset lets admins bypass" \
+    "$(jq -r '.bypass_actors[0].actor_type' <<<"$body")" "RepositoryRole"
+  expect_eq "owner-setup creates the release-and-hotfix ruleset" \
+    "$(grep -c 'ruleset_checks_only release-and-hotfix' "$SCRIPTS/owner-setup.sh")" "1"
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi

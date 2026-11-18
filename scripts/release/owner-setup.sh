@@ -169,7 +169,8 @@ do_approver() {
 check_rulesets() {
   local names
   names="$(gh api "repos/$REPO/rulesets" --jq '.[].name' 2>/dev/null)"
-  grep -qx main <<<"$names" && grep -qx develop <<<"$names" && grep -qx release-tags <<<"$names"
+  grep -qx main <<<"$names" && grep -qx develop <<<"$names" && grep -qx release-tags <<<"$names" \
+    && grep -qx release-and-hotfix <<<"$names"
 }
 ruleset_branch() { # name ref merge_methods checks_json dismiss_stale last_push
   cat <<JSON
@@ -194,15 +195,32 @@ ruleset_branch() { # name ref merge_methods checks_json dismiss_stale last_push
 }
 JSON
 }
+# Status checks only: release/* and hotfix/* are pushed by the release App and by
+# people, so no approval, deletion or non-fast-forward rule belongs here (#576, #985).
+ruleset_checks_only() { # name refs_json checks_json
+  cat <<JSON
+{
+  "name": "$1", "target": "branch", "enforcement": "active",
+  "conditions": { "ref_name": { "include": $2, "exclude": [] } },
+  "bypass_actors": [ { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" } ],
+  "rules": [
+    { "type": "required_status_checks", "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": $3 } }
+  ]
+}
+JSON
+}
 do_rulesets() {
   local app_id
   app_id="$(gh variable get RELEASE_APP_ID --repo "$REPO" 2>/dev/null)"
   [ -n "$app_id" ] || { say "Do the release App step first (its ID goes on the tag ruleset)."; return 1; }
   say "main:    PR + 1 approval (CodeRabbit), merge commits only, CI + main guards"
   say "develop: PR + 1 approval, squash (features) or merge (back-merges), CI + landing guard"
+  say "release/*, hotfix/*: CI checks only, no approval or deletion rule"
   say "v* tags: only admins and the release App may create, move or delete them"
-  say "Admins (you) can bypass all three."
-  confirm "Apply the three rulesets?" || return 1
+  say "Admins (you) can bypass all four."
+  confirm "Apply the four rulesets?" || return 1
   local c='{"context":"build"},{"context":"desktop"},{"context":"ios"},{"context":"Release tooling tests"}'
   # Stale-approval dismissal is off on develop on purpose until the owner decides
   # (#986): turning it on changes the review policy of every PR into develop.
@@ -211,6 +229,8 @@ do_rulesets() {
     | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
   ruleset_branch develop refs/heads/develop '["squash","merge"]' \
     "[$c,{\"context\":\"Features reach the landing\"}]" false false \
+    | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
+  ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' "[$c]" \
     | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
   cat <<JSON | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null
 {
@@ -349,7 +369,7 @@ step "the no-landing label exists"                         check_labels     do_l
 step "CodeRabbit is installed"                             check_coderabbit do_coderabbit
 step "the muviss-release GitHub App's secrets are set"      check_app        do_app
 step "the release App can read Actions and Checks"         check_app_perms  do_app_perms
-step "rulesets protect main, develop and v* tags"          check_rulesets   do_rulesets
+step "rulesets protect main, develop, release/hotfix branches and v* tags"          check_rulesets   do_rulesets
 step "the approver App can approve the back-merge PR"      check_approver   do_approver
 step "the production environment needs your approval"      check_env        do_env
 step "the release keystore secrets are set"                check_keystore   do_keystore
