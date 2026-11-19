@@ -141,6 +141,13 @@ then on. If you find yours already claimed when you rebase, renumber yours — i
 is a file rename and a `git grep`, and it is far cheaper than two documents
 sharing an identity on `main`.
 
+## Working in a git worktree
+
+Run `scripts/dev/worktree-setup.sh` once inside a new worktree before any Gradle
+task. `local.properties` (the SDK location and every key) is gitignored and does
+not follow a worktree, so without it Android tasks fail with `SDK location not
+found`. The script copies the main checkout's file and never overwrites one.
+
 ## Before you finish
 
 - The landing and the Play listing reflect the change, or the PR is labelled
