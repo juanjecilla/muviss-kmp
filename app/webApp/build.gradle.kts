@@ -30,10 +30,10 @@ kotlin {
         // `:core:database`'s web persistence driver to load it; see EPIC 13
         // and `docs/adr/0008-migration-baseline-and-deferred-web-persistence.md`).
         jsMain.dependencies {
-            implementation(devNpm("copy-webpack-plugin", "12.0.2"))
+            implementation(devNpm("copy-webpack-plugin", "14.0.0"))
         }
         wasmJsMain.dependencies {
-            implementation(devNpm("copy-webpack-plugin", "12.0.2"))
+            implementation(devNpm("copy-webpack-plugin", "14.0.0"))
         }
     }
 }
