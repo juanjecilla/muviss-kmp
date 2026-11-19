@@ -1,0 +1,14 @@
+-- For you's offline copy (#785). The filename is the version this migrates FROM: 31.sqm takes a v31 database
+-- to v32 (fixture 32.db).
+--
+-- NUMBERING: claimed when the #785 branch opened, as the assignment asked: 30 belongs to another lane. develop's
+-- newest migration is 29.sqm (fixture 30.db) and no ref carries a 30.sqm yet. Until that lane's 30.sqm lands, the
+-- chain has a gap at v30 to v31; see the PR body for what `verifyMigrations` did with it. If the other lane merges
+-- second, it renumbers; `verifyMigrations` cannot see a collision.
+--
+-- A cache table, not user data (ADR 0015's family, like `discoverCache` from #724). Nothing to backfill: an
+-- upgraded install has no stored For you copy until its first online load.
+CREATE TABLE forYouCache (
+    cacheKey TEXT NOT NULL PRIMARY KEY,
+    json TEXT NOT NULL
+);
