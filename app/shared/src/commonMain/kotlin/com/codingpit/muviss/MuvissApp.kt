@@ -486,6 +486,7 @@ private fun MuvissScaffold(
                         navController,
                         onOpenTriage = { navController.navigate(TriageRoute) },
                         onOpenNextPick = controller::openNextPickFrom,
+                        refreshRequests = controller.refreshRequests,
                     )
                     collectionSection(
                         navController,

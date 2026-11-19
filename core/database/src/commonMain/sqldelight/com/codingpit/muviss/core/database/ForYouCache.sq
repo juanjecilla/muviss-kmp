@@ -1,0 +1,30 @@
+-- Discover's "For you" offline copy (#785): the raw recommendations for one seed set, stored as JSON. A cache, not
+-- user data, like `discoverCache` (#724) it is absent from `SyncChangeSet`, the export and a restore, and Delete all
+-- data wipes it (`SqlDelightLocalDataEraser`).
+--
+-- One row, for the seed set in force. The key is a hash of the seeds and the TMDB language, so a seed change or a
+-- language change is a miss, never a stale list. Muted genres and the library are applied when the copy is read,
+-- so they are not in the row. Each seed's answer carries its own fetch time, which is how a failed seed keeps its
+-- stored answer and stays due.
+CREATE TABLE forYouCache (
+    cacheKey TEXT NOT NULL PRIMARY KEY,
+    json TEXT NOT NULL
+);
+
+selectByKey:
+SELECT *
+FROM forYouCache
+WHERE cacheKey = :cacheKey;
+
+upsert:
+INSERT OR REPLACE INTO forYouCache(cacheKey, json)
+VALUES (:cacheKey, :json);
+
+-- Only the seed set in force is kept: a superseded set's copy is never read again, so it is dropped on write.
+deleteOthers:
+DELETE FROM forYouCache
+WHERE cacheKey != :keep;
+
+-- Settings > Delete all data (EPIC 29). A local cache, so hard.
+deleteAll:
+DELETE FROM forYouCache;

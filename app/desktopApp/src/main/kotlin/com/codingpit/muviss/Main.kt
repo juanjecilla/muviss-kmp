@@ -245,6 +245,13 @@ private fun FrameWindowScope.MuvissMenuBar(
                     onClick = { controller.navigateTo(destination) },
                 )
             }
+            // Discover's refresh (#965). Enabled only while Search is showing: it refreshes Discover, not the app.
+            Item(
+                text = HostText.menuRefresh(),
+                enabled = controller.currentDestination?.key == "search" && !controller.showingOnboarding,
+                shortcut = refreshShortcut,
+                onClick = controller::refreshDiscover,
+            )
             Separator()
             // Not a destination: the Pick Session is a session, not a tab, so it has no
             // MuvissDestination.key to key its shortcut by. It gets its own binding below.
@@ -304,6 +311,13 @@ internal val viewShortcuts: Map<String, KeyShortcut> = mapOf(
  * Session is a session rather than one of the five tabs. Ctrl/Cmd+N.
  */
 internal val nextPickShortcut: KeyShortcut = accelerator(Key.N)
+
+/**
+ * Discover's refresh (#965), kept out of [viewShortcuts] for the same reason: that map is keyed by destination. Ctrl/Cmd+R.
+ * Search's screen also takes the chord from the keyboard. If both see one press, SearchViewModel refuses the second
+ * request while the first is in flight, so the press still asks TMDB once.
+ */
+internal val refreshShortcut: KeyShortcut = accelerator(Key.R)
 
 /**
  * The tray icon: the same artwork the installers use, loaded off the classpath
