@@ -28,6 +28,13 @@ interface SystemNotificationSettings {
      */
     fun canAskAgain(): Boolean = true
 
+    /**
+     * [canAskAgain], asked of the OS now (#846). A platform that answers asynchronously (iOS) reads
+     * its last cached answer from [canAskAgain]; a decision that must not act on a stale answer, such
+     * as the Notification Nudge's, uses this instead. Platforms that answer synchronously keep the default.
+     */
+    suspend fun canAskAgainNow(): Boolean = canAskAgain()
+
     /** Opens the system screen where the user can allow them again. */
     fun open()
 
