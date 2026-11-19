@@ -32,6 +32,10 @@ const val DEFAULT_SHIMMER_BAND_FRACTION: Float = 0.8f
  * its own animation. The band is positioned in window coordinates: an item
  * draws the part of the band that falls on it, so neighbours share one edge.
  *
+ * [angle] is the sweep's direction in degrees: 0 left to right (the default),
+ * 90 top to bottom, 45 diagonally. Every placeholder under the host follows it.
+ * Under an RTL layout the host reflects it, so 0 runs right to left.
+ *
  * [animate] false draws every placeholder as a flat fill and runs no animation
  * at all. Hosts pass the reduced-motion switch here.
  */
@@ -41,16 +45,20 @@ fun ShimmerHost(
     animate: Boolean = true,
     durationMillis: Int = DEFAULT_SHIMMER_DURATION_MILLIS,
     bandFraction: Float = DEFAULT_SHIMMER_BAND_FRACTION,
+    angle: Float = 0f,
     content: @Composable () -> Unit,
 ) {
     val progress: State<Float> = if (animate) rememberSweep(durationMillis) else remember { mutableFloatStateOf(0f) }
     val geometry = remember { ShimmerGeometry() }
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val wave = ShimmerWave(progress = progress, animate = animate, bandFraction = bandFraction, geometry = geometry, rtl = rtl)
+    val wave = ShimmerWave(progress = progress, animate = animate, bandFraction = bandFraction, angle = angle, geometry = geometry, rtl = rtl)
     Box(
         modifier.onGloballyPositioned { coordinates ->
-            geometry.left = coordinates.positionInRoot().x
+            val topLeft = coordinates.positionInRoot()
+            geometry.left = topLeft.x
+            geometry.top = topLeft.y
             geometry.width = coordinates.size.width.toFloat()
+            geometry.height = coordinates.size.height.toFloat()
         },
     ) {
         CompositionLocalProvider(LocalShimmerWave provides wave, content = content)
@@ -64,7 +72,9 @@ fun ShimmerHost(
  */
 internal class ShimmerGeometry {
     var left: Float = 0f
+    var top: Float = 0f
     var width: Float = 0f
+    var height: Float = 0f
 }
 
 @Immutable
@@ -72,6 +82,7 @@ internal data class ShimmerWave(
     val progress: State<Float>,
     val animate: Boolean,
     val bandFraction: Float,
+    val angle: Float,
     val geometry: ShimmerGeometry,
     val rtl: Boolean,
 )
