@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.settings.domain
 
+import com.codingpit.muviss.feature.settings.api.TasteChoices
 import com.codingpit.muviss.feature.settings.api.TasteItem
 import com.codingpit.muviss.feature.settings.api.TasteKind
 import com.codingpit.muviss.models.GenreKey
@@ -33,6 +34,22 @@ class TasteProfileDomainTest {
     fun item_id_is_kind_colon_value_and_matches_the_stored_key() {
         assertEquals("GENRE:movie:28", action.id)
         assertEquals("SERVICE:8", netflix.id)
+    }
+
+    @Test
+    fun bundled_onboarding_genres_are_twelve_tmdb_ids_per_type_and_round_trip_through_taste_rules() {
+        // The same ids the Muted Genres page keys on (ADR 0031): a Taste like must be the row a Muted Genre would stand for.
+        assertEquals(12, TasteChoices.movieGenres.size)
+        assertEquals(12, TasteChoices.tvGenres.size)
+        for ((type, items) in listOf(MediaType.MOVIE to TasteChoices.movieGenres, MediaType.TV to TasteChoices.tvGenres)) {
+            for (item in items) {
+                val id = item.value.substringAfter(':')
+                assertEquals(item, TasteRules.genreItem(type, id, item.label), "${item.value} is built as Settings builds it")
+                assertEquals(GenreKey(type, id), TasteRules.genreKeyOf(item), "${item.value} parses back to its key")
+            }
+        }
+        val mutable = setOf("10763", "10764", "10766", "10767") // Talk, News, Reality, Soap: the Muted Genres page's TV choices
+        assertTrue(TasteChoices.tvGenres.none { TasteRules.genreKeyOf(it)?.id in mutable }, "a page chip is never a genre that page can mute")
     }
 
     @Test
