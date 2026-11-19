@@ -37,6 +37,8 @@ val searchDataModule: Module = module {
     factory { MoreLikeThisUseCase(get(), get()) }
     // Discover's offline cache (#724): raw TMDB answers, per device, read before the network.
     single { get<MuvissDatabase>().discoverCacheQueries }
-    single<DiscoverCache> { SqlDelightDiscoverCache(get(), get(), get()) }
+    // "For you"'s copy (#785) lives in the same cache, in its own table.
+    single { get<MuvissDatabase>().forYouCacheQueries }
+    single<DiscoverCache> { SqlDelightDiscoverCache(get(), get(), get(), get()) }
     factory { DiscoverFeed(get(), get(), get()) }
 }

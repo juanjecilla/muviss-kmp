@@ -16,6 +16,7 @@ import com.codingpit.muviss.feature.collection.api.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.DiscoverSnapshot
+import com.codingpit.muviss.feature.search.domain.ForYouAnswer
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
@@ -142,6 +143,18 @@ class SearchViewModel(
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
+    /** Bumped to ask For you again now: a reconnection while a seed is still owed, or Discover's Retry (#924). */
+    private val forYouAgain = MutableStateFlow(0)
+
+    /** Set by Discover's Retry: the next For you request asks every seed, not only the due ones (#924). */
+    private var forYouForce = false
+
+    /** A seed is still owed after the last For you request (it failed), so a reconnection asks again (#924). */
+    private var forYouOwed = false
+
+    /** A reconnection landed while a For you request was in flight; checked when it finishes (#924). */
+    private var reconnectedDuringForYou = false
+
     /** What Settings and the session chip say right now. Read by every load below. */
     private var muting = GenreMuting()
 
@@ -185,7 +198,8 @@ class SearchViewModel(
             triageApi.observeDecidedIds(),
             triageApi.observeSnoozedIds(),
             settings.observeMuting().map { it.effective }.distinctUntilChanged(),
-        ) { library, decided, snoozed, muted -> Triple(library, decided + snoozed, muted) }
+            forYouAgain,
+        ) { library, decided, snoozed, muted, _ -> Triple(library, decided + snoozed, muted) }
             // The flag is set here, before flatMapLatest starts the request, and cleared only by its emission. A
             // cancelled request (a newer library) never clears it, so the skeleton stays up until the live one answers.
             .onEach { (library, _, _) ->
@@ -201,7 +215,11 @@ class SearchViewModel(
         // A failure shown while offline retries itself when the connection
         // comes back, rather than waiting for a tap on Retry (#249).
         connectivity.reconnections()
-            .onEach { if (showsFailure()) retry() else reconnectedBeforeFailure = true }
+            .onEach {
+                if (showsFailure()) reload() else reconnectedBeforeFailure = true
+                reconnectedDuringForYou = true
+                if (forYouOwed) forYouAgain.update { it + 1 }
+            }
             .launchInReporting(viewModelScope)
         // A reconnection can land while a request is still in flight and fail
         // after it: remembered, it buys that failure one retry, no more (#249).
@@ -210,7 +228,7 @@ class SearchViewModel(
             .filter { showing -> showing && reconnectedBeforeFailure }
             .onEach {
                 reconnectedBeforeFailure = false
-                retry()
+                reload()
             }
             .launchInReporting(viewModelScope)
     }
@@ -302,7 +320,21 @@ class SearchViewModel(
         }
     }
 
+    /**
+     * The person's Retry: the error screen and the saved-copy banner. On Discover it also asks TMDB for every For you
+     * seed, not only the due ones (#924). A reconnection or a muting change reloads without that: neither is a request
+     * for a fresh answer, and a mute change must cost no request.
+     */
     fun retry() {
+        if (_state.value.mode == SearchMode.DISCOVER) {
+            forYouForce = true
+            forYouAgain.update { it + 1 }
+        }
+        reload()
+    }
+
+    /** Reloads whatever is showing from the network, as [retry] does for Discover's own shelves. */
+    private fun reload() {
         val s = _state.value
         when (s.mode) {
             // An explicit retry asks the network even when the stored copy is still fresh (#724).
@@ -334,7 +366,7 @@ class SearchViewModel(
             discoverStale = true
             staleMarks++
         }
-        if (!searchPending) retry()
+        if (!searchPending) reload()
     }
 
     private fun reloadDiscoverIfStale() {
@@ -464,21 +496,39 @@ class SearchViewModel(
 
     /**
      * Seeds recommendations from [library]'s favorites/top-rated titles via
-     * [ForYouSeeding.selectSeeds], fetches each seed's recommendations, and
-     * merges them with [ForYouSeeding.mergeAndExclude]. Emits an empty list —
-     * which hides the section — when the library carries no signal yet, same
-     * "no error, just hidden" treatment as [DetailViewModel]'s watch-providers
-     * and more-like-this rows.
+     * [ForYouSeeding.selectSeeds], and merges each seed's answer with
+     * [ForYouSeeding.mergeAndExclude]. Emits an empty list — which hides the
+     * section — when the library carries no signal yet, same "no error, just
+     * hidden" treatment as [DetailViewModel]'s watch-providers and more-like-this
+     * rows.
+     *
+     * The answers are stored for the seed set (#785): the stored copy is shown
+     * first, then the refresh, which asks TMDB only for the seeds whose answer is
+     * missing or past its TTL. The library and the decided titles are applied at
+     * every emission, so a title saved, skipped or snoozed meanwhile never returns
+     * from the copy, and a mute change re-filters the same stored answers.
      */
     private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>, muted: MutedGenres): Flow<List<MediaSummary>> = flow {
+        // Read once per run: a forced request (Retry) is asked once, and a library change after it does not repeat it.
+        val force = forYouForce
+        forYouForce = false
+        reconnectedDuringForYou = false
         val seeds = ForYouSeeding.selectSeeds(library)
         if (seeds.isEmpty()) {
+            forYouOwed = false
             emit(emptyList())
             return@flow
         }
         val excluded = library.mapTo(mutableSetOf()) { it.mediaId } + decidedIds
-        val recommendationsBySeed = seeds.map { seed -> recommendationsUseCase(seed).getOrNull()?.items.orEmpty() }
-        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, excluded).filterNot(muted::hides))
+        fun shown(answers: List<ForYouAnswer>): List<MediaSummary> = ForYouSeeding.mergeAndExclude(answers.map { it.items }, excluded).filterNot(muted::hides)
+
+        val stored = discoverFeed.forYouStored(seeds)
+        if (stored != null) emit(shown(stored))
+        val answers = discoverFeed.refreshForYou(seeds, stored, force) { seed -> recommendationsUseCase(seed, fresh = true) }
+        forYouOwed = discoverFeed.forYouStillOwed(seeds, answers)
+        emit(shown(answers))
+        // A reconnection that landed while the request was in flight found it still failing: ask once more, as Discover does (#249).
+        if (forYouOwed && reconnectedDuringForYou) forYouAgain.update { it + 1 }
     }
 
     private companion object {
