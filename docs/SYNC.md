@@ -421,7 +421,7 @@ Notes:
   group of `appSettings` as **one row per account**, primary key `user_id`:
   the ten members, one `updated_at_epoch_ms` stamp for the group, and no
   `deleted` column, since the group is never removed. Device switches are not in
-  it. Migration `20261113000000_display_preferences_sync.sql`; pgTAP in
+  it. Migration `20261119000000_display_preferences_sync.sql`; pgTAP in
   `supabase/tests/database/display_preferences_rls.test.sql`.
 
 ## How a sync cycle works (EPIC 39, ADR 0020)
