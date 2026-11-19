@@ -1,6 +1,7 @@
 package com.codingpit.muviss.ios
 
 import com.codingpit.muviss.MuvissCrashReporting
+import com.codingpit.muviss.MuvissDeepLinks
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
@@ -34,6 +35,8 @@ data class IosWidgetRow(
     val episodeId: String?,
     val seenCount: Int,
     val airedCount: Int,
+    /** False while the title's catalog has not arrived: the widget then says "open the app" rather than "nothing". */
+    val catalogLoaded: Boolean,
 )
 
 /**
@@ -56,6 +59,12 @@ data class IosWidgetRow(
 object IosWidgetBridge : KoinComponent {
 
     private val progressApi: ProgressApi by inject()
+
+    /**
+     * The link the widget's empty state opens (`muviss://next-pick`, EPIC 51). Owned here, next to the
+     * parser in `IosDeepLinks`, so the SwiftUI side names no scheme or host of its own.
+     */
+    val nextPickUrl: String = MuvissDeepLinks.NEXT_PICK_URL
 
     private val undoMarker: WidgetUndoMarker by lazy { WidgetUndoMarker.appGroup() }
 
@@ -122,6 +131,7 @@ object IosWidgetBridge : KoinComponent {
                     episodeId = item.nextEpisode?.id?.toString(),
                     seenCount = item.seenCount,
                     airedCount = item.airedCount,
+                    catalogLoaded = item.catalogLoaded,
                 )
             }
         }

@@ -241,6 +241,7 @@ internal class RemoteApplier(private val database: MuvissDatabase, private val c
             updatedAtEpochMs = change.updatedAtEpochMs,
             isDirty = false,
             deleted = change.deleted,
+            createdEntry = change.createdEntry,
         )
     }
 

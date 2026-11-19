@@ -31,7 +31,10 @@ CREATE TABLE triageDecision (
     resolved INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     updatedAtEpochMs INTEGER NOT NULL,
     isDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
-    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    deleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    -- Whether this verdict created the library entry it saved (#767). Undo removes the entry
+    -- only when true, so a title the person added while the deck was open survives. See 29.sqm.
+    createdEntry INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1
 );
 
 -- Sync's selectDirty reads only these (EPIC 28, 15.sqm).
@@ -73,13 +76,15 @@ ORDER BY decidedAtEpochMs ASC;
 
 -- Re-triaging a restored title overwrites its previous verdict in place.
 upsert:
+-- `createdEntry` is written on every upsert, never left to the column default: an
+-- INSERT OR REPLACE that omitted it would reset a row's claim to 1 (ADR 0010, #767).
 INSERT OR REPLACE INTO triageDecision(
     mediaId, mediaType, verdict, title, posterUrl,
-    decidedAtEpochMs, resolved, updatedAtEpochMs, isDirty, deleted
+    decidedAtEpochMs, resolved, updatedAtEpochMs, isDirty, deleted, createdEntry
 )
 VALUES (
     :mediaId, :mediaType, :verdict, :title, :posterUrl,
-    :decidedAtEpochMs, :resolved, :updatedAtEpochMs, :isDirty, :deleted
+    :decidedAtEpochMs, :resolved, :updatedAtEpochMs, :isDirty, :deleted, :createdEntry
 );
 
 markResolved:

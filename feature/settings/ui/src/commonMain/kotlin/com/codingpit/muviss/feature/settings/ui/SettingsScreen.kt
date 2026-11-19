@@ -235,13 +235,6 @@ fun SettingsScreen(
             value = pluralStringResource(Res.plurals.muted_genres_count, state.settings.mutedGenres.size, state.settings.mutedGenres.size),
             onClick = onOpenMutedGenres,
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        ActionRow(
-            icon = MuvissIcons.Favorite,
-            label = stringResource(Res.string.taste_profile_title),
-            value = stringResource(Res.string.taste_profile_row_hint),
-            onClick = onOpenTasteProfile,
-        )
         if (tmdbKey != null) {
             val keyState by tmdbKey.state.collectAsStateWithLifecycle()
             if (keyState.visible) {
@@ -296,9 +289,11 @@ fun SettingsScreen(
             onToggle = viewModel::onTriageDeckAnimationsToggled,
         )
 
+        // "Your taste" lives here, not in Content: it is what the What's next? suggestions read (#541).
+        // Not gated on nextPick: the row opens the Taste Profile editor whether or not the prompt rows exist.
+        SectionOverline(stringResource(Res.string.section_next_pick), topPadding = true)
         if (nextPick != null) {
             val nextPickState by nextPick.state.collectAsStateWithLifecycle()
-            SectionOverline(stringResource(Res.string.section_next_pick), topPadding = true)
             SwitchRow(
                 label = stringResource(Res.string.next_pick_prompt),
                 description = stringResource(Res.string.next_pick_prompt_body),
@@ -318,12 +313,19 @@ fun SettingsScreen(
             PickerRow(
                 label = stringResource(Res.string.next_pick_result),
                 value = nextPickState.resultMode.label(),
-                // Deck is not offered until its handoff exists (#554): choosing it would open a button that does nothing.
-                options = ResultMode.entries.filter { it != ResultMode.DECK }.map { it.name to it.label() },
+                options = ResultMode.entries.map { it.name to it.label() },
                 selectedCode = nextPickState.resultMode.name,
                 onSelect = { name -> nextPick.onResultModeSelected(ResultMode.fromStored(name)) },
             )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         }
+        ActionRow(
+            icon = MuvissIcons.Favorite,
+            label = stringResource(Res.string.taste_profile_title),
+            value = stringResource(Res.string.taste_profile_row_hint),
+            onClick = onOpenTasteProfile,
+            modifier = Modifier.testTag(TASTE_PROFILE_ROW_TAG),
+        )
 
         SectionOverline(stringResource(Res.string.section_data), topPadding = true)
         ActionRow(
@@ -433,18 +435,22 @@ private fun AppTheme.label(): StringResource = when (this) {
  * denied permission is sticky, so the switch above would store a preference
  * that does nothing; this says so and opens the one place it can be fixed.
  * Re-checked on resume, because that is how the user comes back from there.
+ *
+ * The state starts unknown (`null`), not from the synchronous `blocked()`: on iOS
+ * that is a cache that can predate a change made in iOS Settings, so the first
+ * frame would show a stale line (#856). Nothing is shown until the OS has answered.
  */
 @Composable
 private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     val system = LocalSystemNotificationSettings.current
-    var blocked by remember { mutableStateOf(system.blocked()) }
+    var blocked by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     LifecycleResumeEffect(system) {
         // Awaited, not the cached blocked(): iOS only answers asynchronously.
         val check = scope.launch { blocked = system.blockedNow() }
         onPauseOrDispose { check.cancel() }
     }
-    if (!enabledInApp || !blocked) return
+    if (!enabledInApp || blocked != true) return
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().testTag(NOTIFICATIONS_BLOCKED_TAG),
@@ -728,6 +734,7 @@ private fun TriageControlScheme.displayName(): String = stringResource(
 )
 
 internal const val NEXT_PICK_PROMPT_TAG = "nextPickPrompt"
+internal const val TASTE_PROFILE_ROW_TAG = "tasteProfileRow"
 internal const val REPLAY_INTRODUCTION_TAG = "replayIntroduction"
 internal const val FEATURE_REQUEST_TAG = "featureRequest"
 internal const val BUG_REPORT_TAG = "bugReport"

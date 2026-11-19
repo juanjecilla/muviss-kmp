@@ -1,0 +1,11 @@
+What's new in Muviss 1.4.0:
+- Display preferences travel with a data backup
+- A fresh install follows the OS's reduce-motion setting
+- The pick engine and a rule-based ranker
+- Discover filters for a Pick Session
+- Detect a Completion on a tick the person makes
+- Hold the completion lock over reads only
+- A tick's Undo snackbar takes the slot at once
+- About > Licenses lists every artifact the APK ships
+- A failed save takes the snackbar from Undo at once
+- Bug fixes and improvements.

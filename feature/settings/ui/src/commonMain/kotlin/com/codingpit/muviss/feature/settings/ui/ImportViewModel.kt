@@ -2,8 +2,10 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.crash.launchReporting
 import com.codingpit.muviss.core.common.crash.reportUnexpectedFailure
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.toUiText
 import com.codingpit.muviss.feature.settings.domain.BackupSummary
@@ -27,8 +29,11 @@ sealed interface ImportStep {
     data class Applying(val done: Int, val total: Int) : ImportStep
     data class Summary(val result: ImportApplyResult) : ImportStep
 
-    /** A Muviss backup was picked (EPIC 29, #72): what it holds, before restoring it. */
-    data class BackupPreview(val fileName: String, val summary: BackupSummary) : ImportStep
+    /**
+     * A Muviss backup was picked (EPIC 29, #72): what it holds, before restoring it. [exportedOnEpochDay] is the
+     * export's day in the person's time zone (#770), resolved here so the screen only renders it.
+     */
+    data class BackupPreview(val fileName: String, val summary: BackupSummary, val exportedOnEpochDay: Long) : ImportStep
     data object Restoring : ImportStep
     data class Restored(val result: RestoreResult) : ImportStep
 }
@@ -54,7 +59,10 @@ data class ImportUiState(
  * view model produces data for the platform seam to consume; here the
  * platform seam produces data for the view model to consume).
  */
-class ImportViewModel(private val actions: ImportActions) : ViewModel() {
+class ImportViewModel(
+    private val actions: ImportActions,
+    private val clock: AppClock,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(ImportUiState())
     val state: StateFlow<ImportUiState> = _state.asStateFlow()
@@ -109,7 +117,8 @@ class ImportViewModel(private val actions: ImportActions) : ViewModel() {
                 .fold(
                     onSuccess = { summary ->
                         pendingBackup = content
-                        _state.update { it.copy(step = ImportStep.BackupPreview(fileName, summary), error = null) }
+                        val exportedOn = clock.localEpochDayOf(summary.exportedAtEpochMs)
+                        _state.update { it.copy(step = ImportStep.BackupPreview(fileName, summary, exportedOn), error = null) }
                     },
                     onFailure = { e -> _state.update { ImportUiState(error = e.importErrorMessage()) } },
                 )

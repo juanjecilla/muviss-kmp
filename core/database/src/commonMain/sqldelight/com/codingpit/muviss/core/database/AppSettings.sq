@@ -194,6 +194,15 @@ ensureRow:
 INSERT OR IGNORE INTO appSettings(id, theme, language, region, notificationsEnabled)
 VALUES (0, 'SYSTEM', '', 'US', 0);
 
+-- EPIC 51 (#556): `ensureRow` for a row that does not exist yet, with the Next Pick result mode it starts on
+-- (from Remote Config's `nextPickDefaultResultMode`) instead of the column DEFAULT. The literals are `ensureRow`'s
+-- on purpose: AppSettingsRowSeeder calls this only when no row exists, so the two produce the same fresh row apart
+-- from that one column, and `AppSettingsRowSeedTest` pins it. A row that exists is untouched (`INSERT OR IGNORE`),
+-- so a later served value never reaches a person who already has one. No `.sqm`: no column changes.
+ensureRowWithNextPickMode:
+INSERT OR IGNORE INTO appSettings(id, theme, language, region, notificationsEnabled, nextPickResultMode)
+VALUES (0, 'SYSTEM', '', 'US', 0, :nextPickResultMode);
+
 updateTheme:
 UPDATE appSettings SET theme = :theme WHERE id = 0;
 

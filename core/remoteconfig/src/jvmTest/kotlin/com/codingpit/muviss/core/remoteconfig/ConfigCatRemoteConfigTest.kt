@@ -1,6 +1,7 @@
 package com.codingpit.muviss.core.remoteconfig
 
 import com.codingpit.muviss.core.common.remoteconfig.FeatureRequestProvider
+import com.codingpit.muviss.core.common.remoteconfig.NEXT_PICK_DEFAULT_RESULT_MODE
 import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
@@ -112,6 +113,35 @@ class ConfigCatRemoteConfigTest {
         config.refreshIfStale()
         assertEquals(FeatureRequestProvider.Tally, config.values.value.featureRequestProvider)
         assertNull(config.values.value.featureRequestUrl)
+    }
+
+    @Test
+    fun a_served_next_pick_default_replaces_the_compiled_one() = runTest {
+        body = """
+            {"p":{"u":"https://cdn-eu.configcat.com","r":0,"s":"salt"},
+             "f":{"nextPickDefaultResultMode":{"t":1,"v":{"s":"TOP_PICKS"}}}}
+        """.trimIndent()
+        val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
+        config.refreshIfStale()
+        assertEquals("TOP_PICKS", config.values.value.nextPickDefaultResultMode)
+    }
+
+    @Test
+    fun a_blank_served_next_pick_default_keeps_the_compiled_one() = runTest {
+        body = """
+            {"p":{"u":"https://cdn-eu.configcat.com","r":0,"s":"salt"},
+             "f":{"nextPickDefaultResultMode":{"t":1,"v":{"s":"  "}}}}
+        """.trimIndent()
+        val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
+        config.refreshIfStale()
+        assertEquals(NEXT_PICK_DEFAULT_RESULT_MODE, config.values.value.nextPickDefaultResultMode)
+    }
+
+    @Test
+    fun a_config_without_the_next_pick_key_keeps_the_compiled_default() = runTest {
+        val config = remote(sdkKey(), inMemoryDatabase(), FakeClock(0))
+        config.refreshIfStale()
+        assertEquals(NEXT_PICK_DEFAULT_RESULT_MODE, config.values.value.nextPickDefaultResultMode)
     }
 
     @Test

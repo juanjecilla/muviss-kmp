@@ -13,10 +13,13 @@ import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.settings.api.NotificationsChange
 import com.codingpit.muviss.feature.settings.api.SaveTmdbKeyResult
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.TasteItem
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
 import com.codingpit.muviss.feature.settings.api.TmdbDataSource
 import com.codingpit.muviss.feature.settings.api.TmdbKeyApi
 import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaType
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,14 +27,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 
 /** The pages, in order. Three are conditional; see [pagesFor]. */
-enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, DEVICE_BACKUP, NOTIFICATIONS, TMDB_KEY, MUTED_GENRES, DONE }
+enum class OnboardingPage { WELCOME, LIBRARY, WATCH_NEXT, DISCOVER, IMPORT, DEVICE_BACKUP, NOTIFICATIONS, TMDB_KEY, MUTED_GENRES, TASTE, DONE }
 
 /**
  * The pages this device shows: the alerts page needs a platform that notifies (not web), the backup page needs a
  * platform whose OS backup Muviss can honour (Device Backup, ADR 0034), and the TMDB key page appears only while
- * the app offers an Own TMDB Key (`byokEnabled`).
+ * the app offers an Own TMDB Key (`byokEnabled`). The Taste page follows the mutes, so a genre already muted is
+ * not the next thing offered.
  */
 fun pagesFor(canNotify: Boolean, byokOffered: Boolean, canBackUp: Boolean): List<OnboardingPage> = OnboardingPage.entries.filter {
     when (it) {
@@ -72,6 +77,10 @@ data class OnboardingUiState(
     val mutedGenres: Set<MutedGenreChoice> = emptySet(),
     /** Poster urls per genre, best-effort: absent offline, and the page shows its text examples alone. */
     val genrePosters: Map<MutedGenreChoice, List<String>> = emptyMap(),
+    /** [TasteItem.id]s the person currently likes; the Taste page's chips read it. */
+    val likedTaste: Set<String> = emptySet(),
+    /** [TasteItem.id]s whose write is still in flight; their chips are disabled until it lands, so a second tap cannot race it. */
+    val tastePending: Set<String> = emptySet(),
 ) {
     val page: OnboardingPage? get() = pages.getOrNull(index)
     val isFirst: Boolean get() = index == 0
@@ -83,18 +92,29 @@ data class OnboardingUiState(
  * Settings' and the key's own doors, so Skip needs to do nothing but end the flow: it keeps
  * whatever was already set and marks onboarding completed.
  */
+@Suppress("LongParameterList") // one Koin dependency per contract the pages write through; the seventh is the Taste Profile (#583)
 class OnboardingViewModel(
     private val onboarding: OnboardingApi,
     private val settings: SettingsApi,
     private val tmdbKey: TmdbKeyApi,
     featureFlags: FeatureFlags,
     private val systemNotifications: SystemNotificationSettings,
+    private val tasteProfile: TasteProfileApi,
     /** Whether the backup page is offered; the platform's answer in the app, a fixed one in tests. */
     private val canBackUp: Boolean = platformCanBackUp,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingUiState())
     val state: StateFlow<OnboardingUiState> = _state.asStateFlow()
+
+    /**
+     * Every write this page starts, so [finish] can wait for them. Leaving cancels the view model's scope,
+     * which would otherwise drop a write still in flight. Only touched on the main thread.
+     */
+    private val pendingWrites = mutableListOf<Job>()
+
+    /** Set once [finish] starts: no new write is accepted after it, so the wait in [finish] is complete. */
+    private var finishing = false
 
     init {
         viewModelScope.launchReporting {
@@ -117,7 +137,33 @@ class OnboardingViewModel(
                 _state.update { it.copy(mutedGenres = muted) }
             }
             .launchInReporting(viewModelScope)
+        tasteProfile.observe()
+            .onEach { items -> _state.update { it.copy(likedTaste = items.mapTo(linkedSetOf()) { item -> item.id }) } }
+            .launchInReporting(viewModelScope)
         loadGenrePosters()
+    }
+
+    /**
+     * Likes or unlikes one Taste chip. Written as it is tapped, like every other page. The API refuses a
+     * muted genre; the Taste page offers none, so the refusal cannot happen from here. A chip whose write
+     * is still in flight ignores further taps (its chip is disabled meanwhile), so writes for one item
+     * never race each other.
+     */
+    fun onTasteToggled(item: TasteItem, liked: Boolean) {
+        if (finishing || item.id in _state.value.tastePending) return
+        _state.update { it.copy(tastePending = it.tastePending + item.id) }
+        write {
+            try {
+                tasteProfile.setLiked(item, liked)
+            } finally {
+                _state.update { it.copy(tastePending = it.tastePending - item.id) }
+            }
+        }
+    }
+
+    private fun write(block: suspend CoroutineScope.() -> Unit): Job {
+        pendingWrites.removeAll { it.isCompleted }
+        return viewModelScope.launchReporting(block).also { pendingWrites += it }
     }
 
     /**
@@ -134,38 +180,53 @@ class OnboardingViewModel(
     }
 
     fun onGenreMutedToggled(choice: MutedGenreChoice, muted: Boolean) {
-        viewModelScope.launchReporting { settings.setGenreMuted(choice.key, choice.tmdbName, muted) }
+        if (finishing) return
+        write { settings.setGenreMuted(choice.key, choice.tmdbName, muted) }
     }
 
     fun next() = _state.update { if (it.isLast) it else it.copy(index = it.index + 1) }
 
     fun back() = _state.update { if (it.isFirst) it else it.copy(index = it.index - 1) }
 
-    /** Start and Skip alike: whatever the pages wrote stays, and the introduction is done. */
+    /**
+     * Start and Skip alike: whatever the pages wrote stays, and the introduction is done. The first call
+     * closes the page to new writes and waits for the ones already accepted: leaving clears this view model
+     * and cancels its scope, so a choice still being written would be lost. A second call does nothing.
+     */
     fun finish(onFinished: () -> Unit) {
+        if (finishing) return
+        finishing = true
+        val accepted = pendingWrites.toList()
         viewModelScope.launchReporting {
-            // Leaving clears this view model and cancels its scope, so a backup choice still being
-            // written would be lost; wait for it first.
-            deviceBackupWrite?.join()
-            onboarding.markCompleted()
+            var completed = false
+            try {
+                accepted.joinAll()
+                onboarding.markCompleted()
+                completed = true
+            } finally {
+                // A failed save reopens the page, so the person can try Start again.
+                if (!completed) finishing = false
+            }
             onFinished()
         }
     }
 
     fun onNotificationsToggled(enabled: Boolean) {
-        viewModelScope.launchReporting {
+        if (finishing) return
+        write {
             val change = settings.setNotificationsEnabled(enabled)
             _state.update { it.copy(notificationsDenied = change == NotificationsChange.DENIED) }
         }
     }
 
-    /** The backup page's switch (ADR 0034). Nothing is copied now; the OS decides at its next backup. */
-    // The latest backup write, which finish() waits for. Each toggle waits for the one before it, so they land in order.
+    /** The latest backup write; each toggle waits for the one before it, so they land in order. */
     private var deviceBackupWrite: Job? = null
 
+    /** The backup page's switch (ADR 0034). Nothing is copied now; the OS decides at its next backup. */
     fun onDeviceBackupToggled(enabled: Boolean) {
+        if (finishing) return
         val previous = deviceBackupWrite
-        deviceBackupWrite = viewModelScope.launchReporting {
+        deviceBackupWrite = write {
             previous?.join()
             settings.setDeviceBackupEnabled(enabled)
         }
@@ -174,9 +235,9 @@ class OnboardingViewModel(
     fun openSystemNotificationSettings() = systemNotifications.open()
 
     fun saveKey(raw: String, onSaved: () -> Unit) {
-        if (_state.value.keyChecking) return
+        if (finishing || _state.value.keyChecking) return
         _state.update { it.copy(keyChecking = true, keyProblem = null) }
-        viewModelScope.launchReporting {
+        write {
             // As in Settings' TmdbKeyViewModel: a store failure throws out of save, and the
             // dialog is locked while `keyChecking`, so it is released whatever happens.
             var problem: TmdbKeyProblem? = TmdbKeyProblem.COULD_NOT_CHECK
@@ -195,7 +256,8 @@ class OnboardingViewModel(
     }
 
     fun useMuvissKey(onDone: () -> Unit) {
-        viewModelScope.launchReporting {
+        if (finishing) return
+        write {
             tmdbKey.clear()
             _state.update { it.copy(keyProblem = null) }
             onDone()
