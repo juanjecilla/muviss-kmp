@@ -308,7 +308,7 @@ tasks.named("check") { dependsOn("verifyComposeStringEscapes") }
 // keeps a transitive range at whatever version the lock already holds, so a
 // patched release inside the range never arrives. These force the patched
 // minimum for the packages whose fix is compatible with every range that
-// requests them (same major). serialize-javascript (6 -> 7), minimatch, glob and
+// requests them (same major). minimatch, glob and
 // diff are left out: the fix is a major bump their consumers do not accept.
 // body-parser and brace-expansion have two majors each in the tree, so one pin
 // would force a major on one of them, and Yarn 1 resolutions do not reach a
@@ -317,6 +317,8 @@ tasks.named("check") { dependsOn("verifyComposeStringEscapes") }
 // in the lock instead: drop the stale `body-parser@^1.19.0:`-style entries from
 // the staged build/js/yarn.lock, `yarn install --ignore-scripts` there with
 // Kotlin's yarn (`~/.gradle/yarn/yarn-v1.22.22`), then copy it back.
+// serialize-javascript is fixed by bumping our own copy-webpack-plugin pin to 14
+// (which asks for ^7), not by a pin here. picomatch has no patched release yet.
 // Build-time tooling only; none of it ships in the app bundle.
 val yarnSecurityPins = mapOf(
     "fast-uri" to "3.1.9",
