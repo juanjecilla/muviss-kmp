@@ -30,6 +30,8 @@ same_file() { [ "$1" -ef "$2" ]; }
 is_absolute() { case "$1" in /*) return 0 ;; *) return 1 ;; esac; }
 # no_temp DIR: the script left no temp file behind in DIR.
 no_temp() { ! ls -A "$1" | grep -q '^\.local\.properties\.'; }
+# empty_dir DIR: DIR is a directory with no entries.
+empty_dir() { [ -d "$1" ] && [ -z "$(ls -A "$1")" ]; }
 
 root="$(mktemp -d)"
 trap 'rm -rf "$root"' EXIT
@@ -44,10 +46,12 @@ git -C "$main" -c user.name=test -c user.email=test@example.invalid commit -q -m
 git -C "$main" worktree add -q "$wt" -b feature
 
 # Shims for the race and failure cases; everything else runs the real tools.
-#   RACE_LN=PATH  another process creates PATH just before the script's ln, so the
-#                 script's publish (hard link for the copy, symlink for --link) meets
-#                 an existing entry.
-#   FAIL_COPY=1   the copy leaves a partial file at its destination, then fails.
+#   RACE_LN=PATH      another process creates PATH just before the script's ln, so the
+#                     publish (hard link for the copy, symlink for --link) meets an
+#                     existing file.
+#   RACE_LN_DIR=PATH  another process creates a directory at PATH just before the
+#                     script's ln, which would otherwise link inside it.
+#   FAIL_COPY=1       the copy leaves a partial file at its destination, then fails.
 shim="$root/shim"
 mkdir "$shim"
 REAL_CP="$(command -v cp)"
@@ -63,7 +67,9 @@ fi
 EOF
 cat > "$shim/ln" <<'EOF'
 #!/bin/bash
-if [ -n "${RACE_LN:-}" ]; then
+if [ -n "${RACE_LN_DIR:-}" ]; then
+  mkdir "$RACE_LN_DIR"
+elif [ -n "${RACE_LN:-}" ]; then
   printf 'keep-me\n' > "$RACE_LN"
   chmod 644 "$RACE_LN"
 fi
@@ -113,6 +119,13 @@ check "the destination created meanwhile keeps its contents" same_as "$(cat "$wt
 check "the destination created meanwhile keeps its mode (644)" same_as "$(file_mode "$wt/local.properties")" 644
 check "a lost race leaves no temp file" no_temp "$wt"
 rm -f "$wt/local.properties"
+
+out="$(cd "$wt" && PATH="$shim:$PATH" RACE_LN_DIR="$wt/local.properties" "$SCRIPT" 2>&1)"; rc=$?
+check "a directory created at the destination during the run fails (exit 1)" [ "$rc" = 1 ]
+check "the directory created meanwhile stays a directory" [ -d "$wt/local.properties" ]
+check "no entry is added inside the directory created meanwhile" empty_dir "$wt/local.properties"
+check "a lost directory race leaves no temp file" no_temp "$wt"
+rmdir "$wt/local.properties"
 
 out="$(cd "$wt" && PATH="$shim:$PATH" FAIL_COPY=1 "$SCRIPT" 2>&1)"; rc=$?
 check "a failed copy exits 1" [ "$rc" = 1 ]
@@ -221,6 +234,12 @@ check "the file created meanwhile stays a regular file" [ ! -L "$wt/local.proper
 check "a lost --link race leaves no temp file" no_temp "$wt"
 rm -f "$wt/local.properties"
 
+out="$(cd "$wt" && PATH="$shim:$PATH" RACE_LN_DIR="$wt/local.properties" "$SCRIPT" --link 2>&1)"; rc=$?
+check "--link into a directory created meanwhile fails (exit 1)" [ "$rc" = 1 ]
+check "the directory created meanwhile stays a directory" [ -d "$wt/local.properties" ]
+check "--link adds no link inside the directory created meanwhile" empty_dir "$wt/local.properties"
+rmdir "$wt/local.properties"
+
 run_in "$wt" --bogus
 check "an unknown option exits 2" [ "$rc" = 2 ]
 run_in "$wt" --link --check
@@ -259,6 +278,32 @@ rm "$wt/local.properties"
 run_in "$wt" --link
 check "after removing the stale copy, --link links it (exit 0)" [ "$rc" = 0 ]
 check "the refreshed worktree is a live link" is_link "$wt/local.properties"
+
+echo "worktree-setup.sh --check when the main checkout's file cannot be compared"
+
+rm -f "$wt/local.properties"
+run_in "$wt"
+check "a copy is made for the comparison cases (exit 0)" [ "$rc" = 0 ]
+copy_before="$(cksum < "$wt/local.properties")"
+mv "$main/local.properties" "$root/gone.properties"
+run_in "$wt" --check
+check "--check with a regular copy and a missing main file exits 1" [ "$rc" = 1 ]
+check "--check with a missing main file does not print the key" lacks "$out" "$ROTATED"
+run_in "$wt"
+check "the default run with a missing main file still exits 0" [ "$rc" = 0 ]
+check "the default run leaves the copy unchanged" same_as "$(cksum < "$wt/local.properties")" "$copy_before"
+mv "$root/gone.properties" "$main/local.properties"
+
+if [ "$(id -u)" = 0 ]; then
+  echo "  skip  --check with an unreadable main file (running as root, which reads mode 000)"
+else
+  chmod 000 "$main/local.properties"
+  run_in "$wt" --check
+  check "--check with an unreadable main file exits 1" [ "$rc" = 1 ]
+  run_in "$wt"
+  check "the default run with an unreadable main file exits 0" [ "$rc" = 0 ]
+  chmod 644 "$main/local.properties"
+fi
 
 echo "worktree-setup.sh in the main checkout"
 

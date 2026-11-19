@@ -73,7 +73,7 @@ fi
 
 if [ -e "$target" ]; then
   if [ "$mode" = link ]; then
-    echo "local.properties already exists here as a regular file; --link never overwrites it. Remove it and re-run with --link." >&2
+    echo "local.properties already exists here and is not a link; --link never overwrites it. Remove it and re-run with --link." >&2
     exit 1
   fi
   if [ ! -f "$target" ]; then
@@ -83,8 +83,12 @@ if [ -e "$target" ]; then
     fi
     exit 0
   fi
-  if [ ! -f "$source" ]; then
-    echo "local.properties here is left unchanged; the main checkout has no file to compare it with."
+  # A copy whose source cannot be read cannot be compared: --check must not pass it.
+  if [ ! -f "$source" ] || [ ! -r "$source" ]; then
+    echo "local.properties here is left unchanged; the main checkout's file is missing or unreadable, so it cannot be compared." >&2
+    if [ "$mode" = check ]; then
+      exit 1
+    fi
     exit 0
   fi
   if ! cmp -s "$source" "$target"; then
@@ -115,12 +119,21 @@ if [ ! -r "$source" ]; then
   exit 1
 fi
 
+# Publishing: `ln` refuses to replace an existing file or link. But when the
+# destination is a directory, `ln` creates an entry inside it and succeeds. So after
+# every `ln` the destination is checked to be the entry we meant to create; if not,
+# the one stray entry this call made is removed and the call fails.
+
 if [ "$mode" = link ]; then
-  # ln -s refuses to replace an existing entry, so a file created since the check
-  # above is never clobbered.
   if ln -s "$source" "$target" 2>/dev/null; then
-    echo "Linked this worktree's local.properties to the main checkout's file (contents not shown)."
-    exit 0
+    if [ -L "$target" ]; then
+      echo "Linked this worktree's local.properties to the main checkout's file (contents not shown)."
+      exit 0
+    fi
+    # A directory appeared at the destination: ln linked inside it. Remove that entry.
+    rm -f "$target/$(basename "$source")"
+    echo "A directory appeared at the destination meanwhile; nothing linked." >&2
+    exit 1
   fi
   if [ -e "$target" ] || [ -L "$target" ]; then
     echo "local.properties appeared in this worktree meanwhile; --link did not replace it." >&2
@@ -131,8 +144,8 @@ if [ "$mode" = link ]; then
 fi
 
 # The copy is prepared under a temp name beside the target, so it can be published
-# with a hard link: `ln` refuses to replace an existing entry, and the target shows
-# up complete or not at all. A partial copy never reaches the target name.
+# with a hard link: the target shows up complete or not at all, and a partial copy
+# never reaches the target name.
 tmp=""
 cleanup() {
   if [ -n "$tmp" ]; then
@@ -147,10 +160,16 @@ cp "$source" "$tmp"
 chmod 600 "$tmp"
 
 if ln "$tmp" "$target" 2>/dev/null; then
-  rm -f "$tmp"
-  tmp=""
-  echo "Copied local.properties from the main checkout into this worktree (contents not shown)."
-  exit 0
+  if [ "$target" -ef "$tmp" ]; then
+    rm -f "$tmp"
+    tmp=""
+    echo "Copied local.properties from the main checkout into this worktree (contents not shown)."
+    exit 0
+  fi
+  # A directory appeared at the destination: ln linked the temp file inside it.
+  rm -f "$target/$(basename "$tmp")"
+  echo "A directory appeared at the destination meanwhile; nothing copied." >&2
+  exit 1
 fi
 
 # ln failed: either something appeared at the target after the check above (leave it
