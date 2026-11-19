@@ -4,11 +4,16 @@ package com.codingpit.muviss.feature.settings.ui
 
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.FakeFeatureFlags
@@ -22,6 +27,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * The "What's next?" section and the "Your taste" row of Settings (EPIC 51, #542, #587), in both themes.
@@ -60,7 +66,18 @@ class WhatsNextSettingsGoldenTest {
         showSettings(darkTheme = false)
         onNodeWithText(TASTE_ROW_LABEL).performScrollTo()
         waitForIdle()
+        assertLabelOnOneLine(TASTE_ROW_LABEL)
         assertMatchesGolden("settings-your-taste", tolerance = SECTION_TOLERANCE)
+    }
+
+    /** #810: at 200% font scale the label still fits on one line, the value is what gives way. */
+    @Test
+    fun your_taste_label_stays_on_one_line_at_double_font_scale() = runComposeUiTest {
+        showSettings(darkTheme = false, fontScale = 2f)
+        onNodeWithText(TASTE_ROW_LABEL).performScrollTo()
+        waitForIdle()
+        assertLabelOnOneLine(TASTE_ROW_LABEL)
+        assertMatchesGolden("settings-your-taste-font-200", tolerance = SECTION_TOLERANCE)
     }
 
     @Test
@@ -71,24 +88,35 @@ class WhatsNextSettingsGoldenTest {
         assertMatchesGolden("settings-your-taste-dark", tolerance = SECTION_TOLERANCE)
     }
 
-    private fun ComposeUiTest.showSettings(darkTheme: Boolean) {
+    /** One text layout, so the label has not wrapped: a second line would make the count two. */
+    private fun ComposeUiTest.assertLabelOnOneLine(label: String) {
+        val layouts = mutableListOf<TextLayoutResult>()
+        onNodeWithText(label).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        assertEquals(1, layouts.single().lineCount, "\"$label\" should stay on one line")
+    }
+
+    private fun ComposeUiTest.showSettings(darkTheme: Boolean, fontScale: Float = 1f) {
         val flags = FakeFeatureFlags()
         // Built once, outside composition, so a recomposition cannot rebuild a view model and reset its state.
         val settings = settingsViewModel(FakeRepository(), flags = flags)
         val nextPick = NextPickSettingsViewModel(flags, FakeNextPickPreferences())
         setContent {
-            MuvissTheme(darkTheme = darkTheme) {
-                GoldenSurface {
-                    // The shell's safe area, without the bottom inset: the nav bar pads that side, as in the app.
-                    ScreenInsets(insets = TestSafeAreaInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)) {
-                        SettingsScreen(
-                            settings,
-                            onOpenLicenses = {},
-                            onOpenImport = {},
-                            onOpenTriage = {},
-                            onOpenTasteProfile = {},
-                            nextPick = nextPick,
-                        )
+            // Scales text only, as the user's font setting does: density and every other size stay the same.
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
+                MuvissTheme(darkTheme = darkTheme) {
+                    GoldenSurface {
+                        // The shell's safe area, without the bottom inset: the nav bar pads that side, as in the app.
+                        ScreenInsets(insets = TestSafeAreaInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)) {
+                            SettingsScreen(
+                                settings,
+                                onOpenLicenses = {},
+                                onOpenImport = {},
+                                onOpenTriage = {},
+                                onOpenTasteProfile = {},
+                                nextPick = nextPick,
+                            )
+                        }
                     }
                 }
             }
