@@ -1,6 +1,7 @@
 require "minitest/autorun"
 require "fileutils"
 require "open3"
+require "stringio"
 require "tmpdir"
 require_relative "../release_merge"
 
@@ -208,6 +209,622 @@ class ReleaseMergeRepoTest < Minitest::Test
 
   def git(*args)
     out, err, status = Open3.capture3("git", *args, chdir: @dir)
+    raise "git #{args.join(' ')} failed: #{err}" unless status.success?
+
+    out.force_encoding(Encoding::UTF_8).strip
+  end
+end
+
+# The required contexts of main, read from its rules, judged on the head (#793 decision A): a context
+# with no passing run is not green, for CLEAN and DIRTY alike. No network: `gh` is a fake keyed by path.
+class RequiredChecksTest < Minitest::Test
+  SHA = ("a" * 40).freeze
+  SLUG = "owner/repo".freeze
+  RULES = "repos/owner/repo/rules/branches/main".freeze
+  DEVELOP_RULES = "repos/owner/repo/rules/branches/develop".freeze
+  RUNS = "repos/owner/repo/commits/#{SHA}/check-runs".freeze
+  STATUSES = "repos/owner/repo/commits/#{SHA}/statuses".freeze
+  APP = 15_368
+
+  def run_of(name, conclusion, id: 1, status: "completed", app_id: APP)
+    { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion, "app_id" => app_id }
+  end
+
+  # A requirement as the rules endpoint's jq prints it: the context and the integration it is pinned to.
+  def req(name, pin = nil)
+    { "context" => name, "integration_id" => pin }
+  end
+
+  # The names that are not met. Strings are unpinned requirements.
+  def missing(required, runs: [], statuses: [])
+    list = required.map { |r| r.is_a?(String) ? req(r) : r }
+    ReleaseMerge::RequiredChecks.missing(list, runs, statuses).map { |r| r["context"] }
+  end
+
+  # Replies keyed by path. Each line is what `gh api --paginate --jq` prints: objects as JSON.
+  def gh_with(rules: [], develop: [], runs: [], statuses: [], fail: nil)
+    replies = { RULES => rules, DEVELOP_RULES => develop, RUNS => runs, STATUSES => statuses }
+    lambda do |*args|
+      path = args.first.sub(/\?.*/, "")
+      next [nil, 1] if fail == path
+
+      lines = replies.fetch(path) { raise "unexpected #{path}" }
+      [lines.map { |l| l.is_a?(String) ? l : JSON.generate(l) }.join("\n"), 0]
+    end
+  end
+
+  def test_a_context_whose_newest_run_passed_is_green
+    assert_empty missing(["build"], runs: [run_of("build", "success")])
+  end
+
+  def test_a_skipped_context_is_green
+    assert_empty missing(["ios"], runs: [run_of("ios", "skipped")])
+  end
+
+  def test_a_context_with_no_run_is_not_green
+    assert_equal ["Release tooling tests"], missing(["Release tooling tests"], runs: [run_of("build", "success")])
+  end
+
+  def test_a_context_still_running_is_not_green
+    assert_equal ["build"], missing(["build"], runs: [run_of("build", nil, status: "in_progress")])
+  end
+
+  def test_a_context_that_only_cancelled_is_not_green
+    assert_equal ["build"], missing(["build"], runs: [run_of("build", "cancelled")])
+  end
+
+  def test_an_older_pass_does_not_cover_a_newer_rerun_still_running
+    # The rerun has no conclusion yet; the older success it supersedes must not make the context green.
+    runs = [run_of("build", "success", id: 1), run_of("build", nil, id: 2, status: "in_progress")]
+    assert_equal ["build"], missing(["build"], runs: runs)
+  end
+
+  def test_an_older_pass_does_not_cover_a_newer_rerun_still_queued
+    runs = [run_of("build", "success", id: 1), run_of("build", nil, id: 2, status: "queued")]
+    assert_equal ["build"], missing(["build"], runs: runs)
+  end
+
+  def test_a_newer_failure_outweighs_an_older_pass
+    runs = [run_of("build", "success", id: 1), run_of("build", "failure", id: 2)]
+    assert_equal ["build"], missing(["build"], runs: runs)
+  end
+
+  def test_a_rerun_that_passed_after_a_failure_is_green
+    runs = [run_of("build", "failure", id: 1), run_of("build", "success", id: 2)]
+    assert_empty missing(["build"], runs: runs)
+  end
+
+  def test_a_passing_run_does_not_cover_a_failing_status
+    statuses = [{ "context" => "build", "state" => "failure" }]
+    assert_equal ["build"], missing(["build"], runs: [run_of("build", "success")], statuses: statuses)
+  end
+
+  def test_a_passing_commit_status_is_green_for_an_unpinned_context
+    assert_empty missing(["Analyze"], statuses: [{ "context" => "Analyze", "state" => "success" }])
+  end
+
+  def test_a_same_name_check_from_another_integration_leaves_a_pinned_context_unmet
+    # The regression the review asked for: a green "build" from integration 7 must not satisfy a context pinned to 42.
+    runs = [run_of("build", "success", app_id: 7)]
+    assert_equal ["build"], missing([req("build", 42)], runs: runs)
+  end
+
+  def test_a_pinned_context_is_met_by_its_own_integrations_green_run
+    runs = [run_of("build", "success", app_id: 42)]
+    assert_empty missing([req("build", 42)], runs: runs)
+  end
+
+  def test_a_commit_status_never_satisfies_a_pinned_context
+    statuses = [{ "context" => "build", "state" => "success" }]
+    assert_equal ["build"], missing([req("build", 42)], statuses: statuses)
+  end
+
+  def test_a_pinned_context_only_sees_its_own_integrations_failure_when_it_is_the_newest
+    runs = [run_of("build", "success", id: 1, app_id: 42), run_of("build", "failure", id: 2, app_id: 42)]
+    assert_equal ["build"], missing([req("build", 42)], runs: runs)
+  end
+
+  def test_unmet_names_the_contexts_missing_on_the_head
+    gh = gh_with(rules: ["build", "Release tooling tests"].map { |c| req(c) }, runs: [run_of("build", "success")])
+    assert_equal ["Release tooling tests"], ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh)
+  end
+
+  def test_a_context_required_only_by_develop_is_judged_too
+    # A back-merge lands on develop: its own contexts count, on top of main's, so the merge is never judged by fewer.
+    gh = gh_with(rules: [req("build")], develop: [req("Features reach the landing")], runs: [run_of("build", "success")])
+    assert_equal ["Features reach the landing"], ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh)
+  end
+
+  def test_an_unreadable_rules_endpoint_holds_rather_than_passing
+    gh = gh_with(fail: RULES)
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh) }
+  end
+
+  def test_no_required_contexts_on_either_branch_is_an_error_not_a_pass
+    gh = gh_with(rules: [], develop: [])
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: SLUG, gh: gh) }
+  end
+
+  def test_a_malformed_sha_or_slug_is_refused_before_any_call
+    gh = ->(*) { raise "no call expected" }
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { ReleaseMerge::RequiredChecks.unmet(sha: "main", slug: SLUG, gh: gh) }
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { ReleaseMerge::RequiredChecks.unmet(sha: SHA, slug: "a b", gh: gh) }
+  end
+
+  def cli_unmet(gh, sha: SHA)
+    out = StringIO.new
+    err = StringIO.new
+    code = ReleaseMerge::Cli.run(["unmet", sha], repo: nil, out: out, err: err, slug: SLUG, gh: gh)
+    [code, err.string]
+  end
+
+  def test_the_cli_exits_0_when_every_required_context_is_green
+    code, _err = cli_unmet(gh_with(rules: [req("build")], runs: [run_of("build", "success")]))
+    assert_equal 0, code
+  end
+
+  def test_the_cli_holds_with_exit_2_and_names_the_missing_context
+    code, err = cli_unmet(gh_with(rules: [req("build"), req("Release notes are final")], runs: [run_of("build", "success")]))
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err, "Release notes are final"
+  end
+
+  def test_the_cli_exits_1_when_the_rules_cannot_be_read_without_echoing_stderr
+    code, err = cli_unmet(gh_with(fail: RULES))
+    assert_equal 1, code
+    assert_includes err, "gh api exited 1"
+  end
+
+  def test_the_cli_refuses_a_missing_sha_with_usage
+    out = StringIO.new
+    err = StringIO.new
+    assert_equal 64, ReleaseMerge::Cli.run(["unmet"], repo: nil, out: out, err: err, slug: SLUG, gh: gh_with)
+  end
+end
+
+# release.yml promotes the newest vX.Y.Z-rcN tag, so the merge is only safe when that tag is built from the approved
+# head (#793). Fake gh: the matching-refs listing, and the peel of an annotated tag.
+class ReleaseCandidateTest < Minitest::Test
+  SLUG = "owner/repo".freeze
+  REFS = "repos/owner/repo/git/matching-refs/tags/v1.4.0-rc".freeze
+  A = ("a" * 40).freeze
+  B = ("b" * 40).freeze
+  T = ("d" * 40).freeze
+
+  def ref(number, sha, type: "commit", name: nil)
+    { "ref" => name || "refs/tags/v1.4.0-rc#{number}", "sha" => sha, "type" => type }
+  end
+
+  # `peeled` maps an annotated tag object's sha to the commit it names.
+  def gh_with(refs, peeled: {}, fail: false)
+    lambda do |*args|
+      path = args.first.sub(/\?.*/, "")
+      next [nil, 1] if fail
+      next [refs.map { |r| JSON.generate(r) }.join("\n"), 0] if path == REFS
+      next [peeled.fetch(path.split("/").last), 0] if path.start_with?("repos/owner/repo/git/tags/")
+
+      raise "unexpected #{path}"
+    end
+  end
+
+  def newest(gh)
+    ReleaseMerge::ReleaseCandidate.newest_commit(SLUG, "1.4.0", gh: gh)
+  end
+
+  def test_the_newest_candidate_is_the_highest_number
+    assert_equal B, newest(gh_with([ref(1, A), ref(2, B)]))
+  end
+
+  def test_rc10_is_newer_than_rc9
+    assert_equal B, newest(gh_with([ref(9, A), ref(10, B)]))
+  end
+
+  def test_an_annotated_candidate_tag_is_peeled_to_its_commit
+    gh = gh_with([ref(1, A), ref(2, T, type: "tag")], peeled: { T => B })
+    assert_equal B, newest(gh)
+  end
+
+  def test_no_candidate_is_nil
+    assert_nil newest(gh_with([]))
+  end
+
+  def test_a_ref_that_is_not_an_rc_number_is_ignored
+    assert_equal A, newest(gh_with([ref(1, A), ref(nil, B, name: "refs/tags/v1.4.0-rcx")]))
+  end
+
+  def test_an_older_candidate_at_the_head_is_not_enough
+    # The newer candidate was built from another commit: production would get that build, not the head.
+    gh = gh_with([ref(1, A), ref(2, B)])
+    refute ReleaseMerge::ReleaseCandidate.at?(SLUG, "1.4.0", A, gh: gh)
+  end
+
+  def test_the_newest_candidate_at_the_head_is_accepted
+    assert ReleaseMerge::ReleaseCandidate.at?(SLUG, "1.4.0", B, gh: gh_with([ref(1, A), ref(2, B)]))
+  end
+
+  def test_an_unreadable_listing_is_an_error_not_a_pass
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) { newest(gh_with([], fail: true)) }
+  end
+
+  def test_a_malformed_version_is_refused_before_any_call
+    gh = ->(*) { raise "no call expected" }
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) do
+      ReleaseMerge::ReleaseCandidate.newest_commit(SLUG, "1.4.0 --x", gh: gh)
+    end
+  end
+
+  def test_the_cli_exits_0_when_the_newest_candidate_is_at_the_head
+    code = ReleaseMerge::Cli.run(["rc", "1.4.0", B], repo: nil, out: StringIO.new, err: StringIO.new, slug: SLUG, gh: gh_with([ref(1, A), ref(2, B)]))
+    assert_equal 0, code
+  end
+
+  def test_the_cli_holds_with_exit_2_naming_the_commit_the_newest_candidate_is_built_from
+    err = StringIO.new
+    code = ReleaseMerge::Cli.run(["rc", "1.4.0", A], repo: nil, out: StringIO.new, err: err, slug: SLUG, gh: gh_with([ref(1, A), ref(2, B)]))
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err.string, B
+  end
+
+  def test_the_cli_refuses_a_non_sha_before_any_call
+    code = ReleaseMerge::Cli.run(["rc", "1.4.0", "not-a-sha"], repo: nil, out: StringIO.new, err: StringIO.new, slug: SLUG, gh: ->(*) { raise "no call" })
+    assert_equal 64, code
+  end
+end
+
+# An approval counts only on the head it was given on (#793 adversarial pass: a stale approval must hold).
+class ApprovedOnHeadTest < Minitest::Test
+  SHA = ("b" * 40).freeze
+  OLD = ("c" * 40).freeze
+  REVIEWS = "repos/owner/repo/pulls/7/reviews".freeze
+
+  # The reply is what the request's --jq prints: one object per APPROVED review (its commit and reviewer), one per
+  # line. Every review here is by `maintainer`, who has write access; the permission lookup is answered per login.
+  def gh_with(approved_commits, fail: false, permissions: { "maintainer" => "write" }, fail_permission: [])
+    reviews = approved_commits.map { |commit| JSON.generate("commit_id" => commit, "login" => "maintainer") }
+    lambda do |*args|
+      next [nil, 1] if fail
+
+      path = args.first.sub(/\?.*/, "")
+      if path == REVIEWS
+        [reviews.join("\n"), 0]
+      else
+        login = path[%r{collaborators/([^/]+)/permission}, 1]
+        next [nil, 1] if fail_permission.include?(login)
+
+        [permissions.fetch(login, "none"), 0]
+      end
+    end
+  end
+
+  # Approving reviews by the given logins on one commit, with each login's permission (absent means none).
+  PERMISSION_OF = { "reader" => "read", "admin-user" => "admin", "maintainer-user" => "maintain" }.freeze
+
+  def reviews_by(logins, commit: SHA)
+    lambda do |*args|
+      path = args.first.sub(/\?.*/, "")
+      next [logins.map { |login| JSON.generate("commit_id" => commit, "login" => login) }.join("\n"), 0] if path == REVIEWS
+
+      login = path[%r{collaborators/([^/]+)/permission}, 1]
+      [PERMISSION_OF.fetch(login, "none"), 0]
+    end
+  end
+
+  def approved?(gh, commit: SHA)
+    ReleaseMerge::RequiredChecks.approved_on?(sha: commit, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_a_read_only_approval_of_this_head_does_not_count
+    refute approved?(reviews_by(["reader"]))
+  end
+
+  def test_an_approval_by_an_admin_or_a_maintainer_of_this_head_counts
+    assert approved?(reviews_by(["admin-user"]))
+    assert approved?(reviews_by(["maintainer-user"]))
+  end
+
+  def test_a_read_only_approval_does_not_hide_a_write_approval_of_this_head
+    assert approved?(reviews_by(["reader", "admin-user"]))
+  end
+
+  def test_an_approver_whose_permission_cannot_be_read_does_not_count
+    gh = gh_with([SHA], fail_permission: ["maintainer"])
+    refute approved?(gh)
+  end
+
+  def test_an_approver_with_no_permission_on_the_repository_does_not_count
+    gh = gh_with([SHA], permissions: {})
+    refute approved?(gh)
+  end
+
+  def test_a_login_that_is_not_a_github_login_is_refused_before_any_permission_call
+    line = JSON.generate("commit_id" => SHA, "login" => "x/../admin")
+    calls = []
+    gh = lambda do |*args|
+      calls << args.first
+      args.first.end_with?("/reviews") ? [line, 0] : [nil, 1]
+    end
+    refute approved?(gh)
+    assert_empty calls.grep(%r{/permission\z})
+  end
+
+  def test_the_cli_holds_with_exit_2_for_a_read_only_approval_of_this_head
+    code = ReleaseMerge::Cli.run(["approved", "7", SHA], repo: nil, out: StringIO.new, err: StringIO.new, slug: "owner/repo", gh: reviews_by(["reader"]))
+    assert_equal ReleaseMerge::Cli::HELD, code
+  end
+
+  def test_an_approval_of_this_head_counts
+    gh = gh_with([SHA])
+    assert ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_an_approval_of_an_older_head_does_not_count
+    gh = gh_with([OLD])
+    refute ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_a_dismissed_approval_of_this_head_does_not_count
+    # The request's jq keeps APPROVED reviews only, so a dismissed review never reaches the list.
+    gh = gh_with([])
+    refute ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh)
+  end
+
+  def test_unreadable_reviews_hold_rather_than_approve
+    assert_raises(ReleaseMerge::RequiredChecks::Unreadable) do
+      ReleaseMerge::RequiredChecks.approved_on?(sha: SHA, slug: "owner/repo", pr: 7, gh: gh_with([], fail: true))
+    end
+  end
+
+  def test_the_cli_holds_with_exit_2_for_a_stale_approval
+    out = StringIO.new
+    err = StringIO.new
+    code = ReleaseMerge::Cli.run(["approved", "7", SHA], repo: nil, out: out, err: err, slug: "owner/repo", gh: gh_with([OLD]))
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err.string, "no approving review"
+  end
+
+  def test_the_cli_exits_0_for_an_approval_of_this_head
+    code = ReleaseMerge::Cli.run(["approved", "7", SHA], repo: nil, out: StringIO.new, err: StringIO.new, slug: "owner/repo", gh: gh_with([SHA]))
+    assert_equal 0, code
+  end
+
+  def test_the_cli_refuses_a_pr_number_that_is_not_a_number_before_any_call
+    gh = ->(*) { raise "no call expected" }
+    code = ReleaseMerge::Cli.run(["approved", "7 --x", SHA], repo: nil, out: StringIO.new, err: StringIO.new, slug: "owner/repo", gh: gh)
+    assert_equal 1, code
+  end
+end
+
+# The command line the workflows call (#717 manual merge, #732 rehearsal), run in
+# process against a real origin: what it prints, what it exits with, and whether
+# origin's main moved. Exit codes: 0 done, 2 held, 3 git merges it cleanly.
+class ReleaseMergeCliTest < Minitest::Test
+  CHANGELOG_HEAD = "# Changelog\n\nHeader.\n\n".freeze
+
+  def setup
+    @origin = Dir.mktmpdir
+    @dir = Dir.mktmpdir
+    git_in(@origin, "init", "-q", "--bare", "-b", "main")
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "test")
+    git("config", "commit.gpgsign", "false")
+    git("remote", "add", "origin", @origin)
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.2.0 — x\n\nold\n")
+    write("app.txt", "base\n")
+    git("add", "-A"); git("commit", "-q", "-m", "base")
+    git("push", "-q", "origin", "main")
+    @base = git("rev-parse", "HEAD")
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.3.0 — y\n\nmain 1.3.0\n\n## 1.2.0 — x\n\nold\n")
+    git("commit", "-q", "-am", "main: 1.3.0")
+    git("push", "-q", "origin", "main")
+    git("switch", "-q", "-c", "release/1.4.0", @base)
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.4.0 — z\n\nbranch 1.4.0\n\n## 1.2.0 — x\n\nold\n")
+    write("feature.txt", "from the branch\n")
+    git("add", "-A"); git("commit", "-q", "-m", "release: 1.4.0")
+    git("push", "-q", "origin", "release/1.4.0")
+    @branch = git("rev-parse", "HEAD")
+    git("switch", "-q", "main")
+    @main = git("rev-parse", "HEAD")
+  end
+
+  def teardown
+    FileUtils.remove_entry(@origin) if @origin && File.directory?(@origin)
+    FileUtils.remove_entry(@dir) if @dir && File.directory?(@dir)
+  end
+
+  # `sync` runs in the branch's checkout, so these tests check the branch out first.
+  def test_sync_merges_main_into_a_changelog_only_conflict_and_pushes_it_to_the_branch
+    git("switch", "-q", "release/1.4.0")
+    code, out, err = cli("sync", "release/1.4.0")
+    assert_equal ReleaseMerge::Cli::PUSHED, code, err
+    assert_includes out, "pushed"
+    tip = git_in(@origin, "rev-parse", "refs/heads/release/1.4.0")
+    assert_equal [@branch, @main].join(" "), git_in(@origin, "log", "-1", "--format=%P", tip), "the branch first, then main"
+    changelog = git_in(@origin, "show", "#{tip}:CHANGELOG.md")
+    assert_operator changelog.index("## 1.4.0"), :<, changelog.index("## 1.3.0"), "both sides' sections, newest first"
+    assert_equal "from the branch", git_in(@origin, "show", "#{tip}:feature.txt"), "the branch's own work is kept"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main"), "main does not move"
+  end
+
+  def test_sync_pushes_nothing_when_the_branch_merges_into_main_cleanly
+    git("switch", "-q", "-c", "release/1.6.0", @base)
+    write("other.txt", "only the branch\n"); git("add", "-A"); git("commit", "-q", "-m", "clean")
+    git("push", "-q", "origin", "release/1.6.0")
+    tip = git_in(@dir, "rev-parse", "HEAD")
+    code, out, _err = cli("sync", "release/1.6.0")
+    assert_equal 0, code
+    assert_includes out, "nothing to merge"
+    assert_equal tip, git_in(@origin, "rev-parse", "refs/heads/release/1.6.0")
+  end
+
+  def test_sync_holds_a_conflict_outside_the_changelog_with_its_path_and_pushes_nothing
+    write_and_push_main_edit("app.txt", "main edit\n")
+    git("switch", "-q", "-c", "release/1.5.0", @base)
+    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
+    git("push", "-q", "origin", "release/1.5.0")
+    branch_now = git_in(@dir, "rev-parse", "HEAD")
+    code, _out, err = cli("sync", "release/1.5.0")
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes err, "app.txt"
+    assert_equal branch_now, git_in(@origin, "rev-parse", "refs/heads/release/1.5.0")
+    refute File.exist?(File.join(@dir, ".git", "MERGE_HEAD")), "no merge is left in progress"
+  end
+
+  def test_a_changelog_the_union_cannot_resolve_aborts_the_merge_and_leaves_the_checkout_clean
+    # Both sides carry a 1.4.0 section with different text: the union refuses to guess, so nothing is merged.
+    git("switch", "-q", "main")
+    write("CHANGELOG.md", CHANGELOG_HEAD + "## 1.4.0 — main\n\nmain's 1.4.0\n\n## 1.3.0 — y\n\nmain 1.3.0\n\n## 1.2.0 — x\n\nold\n")
+    git("commit", "-q", "-am", "main: a different 1.4.0")
+    git("push", "-q", "origin", "main")
+    git("switch", "-q", "release/1.4.0")
+    code, _out, err = cli("sync", "release/1.4.0")
+    assert_equal 1, code
+    assert_includes err, "different text"
+    assert_equal @branch, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0"), "origin's branch is untouched"
+    refute File.exist?(File.join(@dir, ".git", "MERGE_HEAD")), "the merge is aborted, not left half done"
+    assert_empty git_in(@dir, "status", "--porcelain")
+  end
+
+  def test_sync_refuses_a_checkout_that_is_not_at_the_branch_head_and_pushes_nothing
+    git("switch", "-q", "-c", "stale", @base)
+    code, _out, err = cli("sync", "release/1.4.0")
+    assert_equal 1, code
+    assert_includes err, "the checkout is at"
+    assert_equal @branch, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0")
+  end
+
+  def test_push_branch_refuses_a_branch_that_moved_on_origin_and_pushes_nothing
+    git("switch", "-q", "release/1.4.0")
+    write("feature.txt", "moved on origin\n"); git("commit", "-q", "-am", "someone else")
+    git("push", "-q", "origin", "release/1.4.0")
+    moved = git_in(@origin, "rev-parse", "refs/heads/release/1.4.0")
+    write("feature.txt", "ours\n"); git("commit", "-q", "-am", "ours")
+    ours = git("rev-parse", "HEAD")
+    assert_raises(ReleaseMerge::HeadMoved) { ReleaseMerge::Repo.new(dir: @dir).push_branch(ours, "release/1.4.0", expected: @branch) }
+    assert_equal moved, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0"), "origin keeps its own commit"
+  end
+
+  def test_push_branch_refuses_a_branch_deleted_and_recreated_at_an_ancestor
+    # A plain push would accept this: the origin commit is an ancestor of the new one. The lease refuses it.
+    git("switch", "-q", "release/1.4.0")
+    write("feature.txt", "next\n"); git("commit", "-q", "-am", "next")
+    ours = git("rev-parse", "HEAD")
+    git_in(@origin, "update-ref", "-d", "refs/heads/release/1.4.0")
+    git_in(@origin, "update-ref", "refs/heads/release/1.4.0", @base)
+    assert_raises(ReleaseMerge::HeadMoved) { ReleaseMerge::Repo.new(dir: @dir).push_branch(ours, "release/1.4.0", expected: @branch) }
+    assert_equal @base, git_in(@origin, "rev-parse", "refs/heads/release/1.4.0"), "origin keeps the recreated branch"
+  end
+
+  def test_push_branch_refuses_a_branch_deleted_on_origin
+    git("switch", "-q", "release/1.4.0")
+    write("feature.txt", "next\n"); git("commit", "-q", "-am", "next")
+    ours = git("rev-parse", "HEAD")
+    git_in(@origin, "update-ref", "-d", "refs/heads/release/1.4.0")
+    assert_raises(ReleaseMerge::HeadMoved) { ReleaseMerge::Repo.new(dir: @dir).push_branch(ours, "release/1.4.0", expected: @branch) }
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/release/1.4.0"), "a deleted branch is not recreated"
+  end
+
+  def test_the_union_command_is_gone_and_is_a_usage_error
+    code, _out, err = cli("union", "release/1.4.0", "--expect-head", @branch)
+    assert_equal 64, code
+    assert_includes err, "usage"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_rehearse_prints_the_verdict_and_tree_and_moves_nothing
+    code, out, err = cli("rehearse", "1.4.0")
+    assert_equal 0, code, err
+    assert_includes out, "verdict: union of both sides for CHANGELOG.md"
+    assert_match(/^tree [0-9a-f]{40}$/, out)
+    assert_includes out, "changes on main"
+    assert_includes out, "not pushed"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
+  end
+
+  def test_rehearse_push_puts_the_merge_on_a_throwaway_ref_and_deletes_it
+    code, out, err = cli("rehearse", "1.4.0", "--push")
+    assert_equal 0, code, err
+    assert_includes out, "pushed to refs/heads/rehearsal/1.4.0"
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal"), "the ref is deleted after"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main"), "main does not move"
+  end
+
+  def test_rehearse_holds_a_branch_with_a_path_outside_the_allow_list
+    write_and_push_main_edit("app.txt", "main edit\n")
+    git("switch", "-q", "-c", "release/1.5.0", @base)
+    write("app.txt", "branch edit\n"); git("commit", "-q", "-am", "release: app")
+    git("push", "-q", "origin", "release/1.5.0")
+    code, out, _err = cli("rehearse", "1.5.0", "--push")
+    assert_equal ReleaseMerge::Cli::HELD, code
+    assert_includes out, "verdict: held"
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
+  end
+
+  def test_delete_ref_ignores_a_ref_that_is_already_gone
+    # Raises, and fails the test, unless a missing ref is treated as deleted.
+    ReleaseMerge::Repo.new(dir: @dir).delete_ref("refs/heads/rehearsal/never-pushed")
+  end
+
+  def test_rehearse_push_reports_a_ref_that_will_not_delete
+    # A pre-receive hook on origin refuses every deletion, so the push lands and the cleanup cannot.
+    hook = File.join(@origin, "hooks", "pre-receive")
+    File.write(hook, "#!/bin/sh\nwhile read old new ref; do\n  [ \"$new\" = 0000000000000000000000000000000000000000 ] && exit 1\ndone\nexit 0\n")
+    File.chmod(0o755, hook)
+    code, out, err = cli("rehearse", "1.4.0", "--push")
+    assert_equal 1, code
+    assert_includes out, "pushed to refs/heads/rehearsal/1.4.0"
+    assert_includes err, "may remain on origin"
+    assert_equal "refs/heads/rehearsal/1.4.0", git_in(@origin, "for-each-ref", "--format=%(refname)", "refs/heads/rehearsal")
+  end
+
+  def test_a_branch_that_is_not_a_release_or_hotfix_name_is_refused_before_any_git_call
+    code, _out, err = cli("sync", "main:refs/heads/main")
+    assert_equal 64, code
+    assert_includes err, "usage"
+    assert_equal @main, git_in(@origin, "rev-parse", "refs/heads/main")
+  end
+
+  def test_a_version_that_is_not_x_y_z_is_refused
+    code, _out, err = cli("rehearse", "1.4.0 --push")
+    assert_equal 64, code
+    assert_includes err, "usage"
+    assert_empty git_in(@origin, "for-each-ref", "refs/heads/rehearsal")
+  end
+
+  def test_an_unknown_command_is_a_usage_error
+    code, _out, err = cli("bogus")
+    assert_equal 64, code
+    assert_includes err, "usage"
+  end
+
+  private
+
+  # Moves origin's main by one commit that edits `path`, as a later merge into main would.
+  def write_and_push_main_edit(path, text)
+    git("switch", "-q", "main")
+    write(path, text); git("commit", "-q", "-am", "main: #{path}")
+    git("push", "-q", "origin", "main")
+    @main = git("rev-parse", "HEAD")
+  end
+
+  def cli(*argv)
+    out = StringIO.new
+    err = StringIO.new
+    code = ReleaseMerge::Cli.run(argv, repo: ReleaseMerge::Repo.new(dir: @dir), out: out, err: err)
+    [code, out.string, err.string]
+  end
+
+  def write(path, text)
+    File.write(File.join(@dir, path), text)
+  end
+
+  def git(*args)
+    git_in(@dir, *args)
+  end
+
+  def git_in(dir, *args)
+    out, err, status = Open3.capture3("git", *args, chdir: dir)
     raise "git #{args.join(' ')} failed: #{err}" unless status.success?
 
     out.force_encoding(Encoding::UTF_8).strip

@@ -21,10 +21,13 @@ import com.codingpit.muviss.ios.IosDeepLinks
 @Suppress("FunctionNaming")
 fun MainViewController() = ComposeUIViewController {
     val deepLinkMediaId by IosDeepLinks.pendingDeepLinkMediaId.collectAsStateWithLifecycle()
+    val openNextPick by IosDeepLinks.pendingOpenNextPick.collectAsStateWithLifecycle()
     val oauthCode by IosDeepLinks.pendingOAuthCode.collectAsStateWithLifecycle()
     MuvissApp(
         deepLinkMediaId = deepLinkMediaId,
         onDeepLinkConsumed = { IosDeepLinks.clearPendingDeepLink() },
+        openNextPick = openNextPick,
+        onOpenNextPickConsumed = { IosDeepLinks.clearPendingOpenNextPick() },
         oauthCode = oauthCode,
         onOAuthCodeConsumed = { IosDeepLinks.clearPendingOAuthCode() },
     )

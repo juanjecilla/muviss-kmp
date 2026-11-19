@@ -107,6 +107,18 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "### Release candidate \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
 
+      # The release issue names the newest candidate (#695), where "Latest RC" said "none yet" until
+      # the promotion. It is its own step, and does not fail the job: the build and the pre-release
+      # wait on this job, and a missing record is only a stale line on the issue.
+      - name: Record the candidate on the release issue
+        if: steps.has-app.outputs.ok == 'true' && steps.next.outputs.tag != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.next.outputs.tag }}
+        run: ruby fastlane/release_promote.rb record-rc "$TAG"
+
   build:
     needs: tag
     if: needs.tag.outputs.tag != ''
@@ -225,7 +237,7 @@ jobs:
 
       - name: Set up JDK 21 (Corretto)
         if: steps.ready.outputs.ok == 'true'
-        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: corretto
           java-version: '21'

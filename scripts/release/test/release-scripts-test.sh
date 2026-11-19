@@ -367,6 +367,23 @@ git -C "$f" add -A; commit "$f" "chore(release): edit a 2.5.0 locale"; EDSHA="$(
 : >"$FAKE_GH_LOG"; out="$(ff forward 24 release/2.5.0 "$EDSHA" release/2.6.0 2>/dev/null)"
 expect_eq "an edit carried onto a note the target renamed forwards nothing" "$out" "forward #24 to release/2.6.0: nothing left once the other version's release notes are skipped"
 
+# #718: the frozen changelog (docs/changelog/X.Y.Z.md, #711) is release-only like
+# the notes, so a hand edit to it forwards to develop with its content, and another
+# version's changelog is left out of a release line, as its notes are.
+: >"$FAKE_GH_LOG"
+git -C "$f" switch -q -c release/3.1.0 develop; mkdir -p "$f/docs/changelog"
+echo "Generated changelog." >"$f/docs/changelog/3.1.0.md"; git -C "$f" add -A; commit "$f" "chore(release): cut the 3.1.0 changelog"
+echo "Hand-written changelog for 3.1.0." >"$f/docs/changelog/3.1.0.md"; git -C "$f" add -A; commit "$f" "chore(release): hand-edit the 3.1.0 changelog"
+CHLSHA="$(git -C "$f" rev-parse HEAD)"; git -C "$f" push -q origin release/3.1.0; git -C "$f" switch -q develop
+expect_eq "a changelog-only hand edit forwards to develop" "$(ff forward 25 release/3.1.0 "$CHLSHA" develop)" "forward #25 to develop: opened (clean)"
+expect_eq "the changelog is on the forward branch with its content" "$(git -C "$fo" show forward/pr-25-to-develop:docs/changelog/3.1.0.md)" "Hand-written changelog for 3.1.0."
+expect_eq "its PR says the notes came with the fix" "$(grep -c 'release notes' "$FAKE_GH_LOG")" "1"
+
+git -C "$f" switch -q -c release/3.2.0 develop; git -C "$f" push -q origin release/3.2.0; git -C "$f" switch -q develop
+: >"$FAKE_GH_LOG"; out="$(ff forward 26 release/3.1.0 "$CHLSHA" release/3.2.0 2>/dev/null)"
+expect_eq "another version's changelog forwards nothing to a newer line" "$out" "forward #26 to release/3.2.0: nothing left once the other version's release notes are skipped"
+expect_eq "and no branch is pushed for it" "$(git -C "$fo" rev-parse --verify -q forward/pr-26-to-release-3.2.0 >/dev/null && echo pushed)" ""
+
 echo "milestone.sh (ADR 0030)"
 mbin="$(mktemp -d)"
 cat >"$mbin/gh" <<'FAKEGH'
@@ -559,6 +576,129 @@ out="$(cd "$n" && PATH="$nbin:$PATH" FAKE_GH_FAIL=1 GH_TOKEN=t GH_REPO=muviss/te
 expect_eq "a failed label read still writes the notes (a warning, not an error)" "$(grep -c 'visible feature' <<<"$out")" "1"
 out="$(cd "$n" && PATH="$nbin:$PATH" env -u GH_TOKEN -u GH_REPO scripts/release/release-notes.sh 1.1.0 2>"$n/err.txt")"
 if grep -q 'no-notes label is not read' "$n/err.txt"; then pass "no token says so on stderr"; else fail "no token notice: $(cat "$n/err.txt")"; fi
+
+echo "back-merge.sh"
+# The automatic back-merge (#890): only release.yml's own PR, untouched.
+bm="$(new_repo)"; commit "$bm" "chore: init"; commit "$bm" "Merge release/1.4.0"
+git -C "$bm" tag -a v1.4.0 -m v1.4.0; bm_tag="$(git -C "$bm" rev-parse HEAD)"
+commit "$bm" "fix: a hand resolution"; bm_moved="$(git -C "$bm" rev-parse HEAD)"
+decide() { # head-ref base author same-repo head-sha tested-sha
+  (cd "$bm" && HEAD_REF="$1" BASE_REF="$2" AUTHOR="$3" SAME_REPO="$4" HEAD_SHA="$5" TESTED_SHA="$6" \
+    APP_LOGIN=app/muviss-release "$SCRIPTS/back-merge.sh" decide 2>/dev/null)
+}
+expect_eq "an untouched back-merge merges" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_tag")" "merge"
+expect_eq "a branch a person pushed to waits for them" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_moved" "$bm_moved" | cut -d: -f1)" "hold"
+expect_eq "a green run on an older commit does not count" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_moved" | cut -d: -f1)" "hold"
+expect_eq "a back-merge with no tag behind it waits" \
+  "$(decide back-merge/v9.9.9 develop app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "hold"
+expect_eq "a PR someone else opened is not ours" \
+  "$(decide back-merge/v1.4.0 develop someone true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "a fork's branch is not ours" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release false "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "a PR into main is not a back-merge" \
+  "$(decide back-merge/v1.4.0 main app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "another branch is not a back-merge" \
+  "$(decide feat/back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "an unset App login approves nothing" \
+  "$(cd "$bm" && HEAD_REF=back-merge/v1.4.0 BASE_REF=develop AUTHOR= SAME_REPO=true HEAD_SHA="$bm_tag" TESTED_SHA="$bm_tag" APP_LOGIN= "$SCRIPTS/back-merge.sh" decide | cut -d: -f1)" "ignore"
+# notify and stale, against a fake gh.
+bmbin="$(mktemp -d)"
+# The fake gh logs every call. BM_FAIL=<text> makes any call whose arguments
+# contain that text exit 1 (a failed read or write), so each path is reachable.
+cat >"$bmbin/gh" <<'FAKEGH'
+#!/bin/bash
+echo "gh $*" >>"$BM_GH_LOG"
+if [ -n "${BM_FAIL:-}" ] && [[ "$*" == *"$BM_FAIL"* ]]; then exit 1; fi
+case "$*" in
+  "issue list"*) printf '%s' "${BM_ISSUE:-}" ;;
+  "issue view"*) printf '%s' "${BM_COMMENTS:-}" ;;
+  "api "*) printf '%s' "${BM_PRS:-}" ;;
+esac
+exit 0
+FAKEGH
+chmod +x "$bmbin/gh"; BM_GH_LOG="$(mktemp)"; export BM_GH_LOG
+bmrun() { PATH="$bmbin:$PATH" "$SCRIPTS/back-merge.sh" "$@"; }
+commented() { grep -c '^gh issue comment' "$BM_GH_LOG"; }
+: >"$BM_GH_LOG"; BM_ISSUE=698 bmrun notify 1.4.0 held-887 "needs a person"; st=$?
+expect_eq "a hold is commented on the release issue" "$(grep -c '^gh issue comment 698 ' "$BM_GH_LOG")" "1"
+expect_eq "and that notify exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_COMMENTS='<!-- back-merge:held-887 -->' bmrun notify 1.4.0 held-887 "needs a person"; st=$?
+expect_eq "the same hold is not commented twice" "$(commented)" "0"
+expect_eq "a notice already posted exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE= bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "no release issue, no comment" "$(commented)" "0"
+expect_eq "no release issue exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_FAIL="issue view" bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "a comment that cannot be read posts nothing" "$(commented)" "0"
+expect_eq "and exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+: >"$BM_GH_LOG"; BM_FAIL="issue list" bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "a release issue that cannot be looked up posts nothing" "$(commented)" "0"
+expect_eq "and exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+# stale: one object per line, as the gh api --jq in stale() prints them.
+bm_prs='{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false}
+{"number":900,"headRefName":"back-merge/v1.5.0","createdAt":"2026-11-16T20:00:00Z","isCrossRepository":false}
+{"number":901,"headRefName":"back-merge/v1.3.0","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":true}
+{"number":902,"headRefName":"feat/x","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":false}'
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_prs" NOW=2026-11-16T23:00:00Z bmrun stale; st=$?
+expect_eq "only a back-merge open for over a day is flagged" "$(commented)" "1"
+expect_eq "and it is the old one" "$(grep -c 'Back-merge #887' "$BM_GH_LOG")" "1"
+expect_eq "and a clean stale run exits 0" "$st" "0"
+expect_eq "stale lists PRs through gh api, paginated" "$(grep -c '^gh api --paginate repos/{owner}/{repo}/pulls' "$BM_GH_LOG")" "1"
+# A notice that fails must not stop the next stale PR, and the run fails.
+bm_two='{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false}
+{"number":888,"headRefName":"back-merge/v1.4.1","createdAt":"2026-11-15T17:00:00Z","isCrossRepository":false}'
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_two" BM_FAIL="Back-merge #887" NOW=2026-11-16T23:00:00Z bmrun stale 2>/dev/null; st=$?
+expect_eq "a failed notice does not stop the next stale PR" "$(grep -c 'Back-merge #888' "$BM_GH_LOG")" "1"
+expect_eq "and the stale run exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+
+echo "rc-is-branch-head.sh"
+# release.yml's tag job: did the release branch move after its last RC? (#891)
+# An origin with main and release/1.4.0, the RC on the branch head, and a clone
+# that merged the branch into main, as the checkout in the tag job is.
+# Every setup step runs under set -e in a subshell: a failure prints nothing, so
+# the caller sees an empty path and records a setup failure instead of testing
+# a half-built repo. The guard matters: `git -C ""` runs in the current directory.
+rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on the branch after the RC
+  (
+    set -e
+    o="$(new_repo)"; [ -n "$o" ]
+    commit "$o" "chore: init"; git -C "$o" branch main
+    git -C "$o" switch -q -c release/1.4.0; commit "$o" "chore(release): start 1.4.0"
+    git -C "$o" tag -a v1.4.0-rc1 -m rc
+    if [ "${1:-0}" -ne 0 ]; then commit "$o" "fix: after the rc"; fi
+    git -C "$o" switch -q main; git -C "$o" merge -q --no-ff release/1.4.0 -m "Merge release/1.4.0"
+    c="$(mktemp -d)"; [ -n "$c" ]
+    git clone -q --origin origin "$o" "$c"
+    echo "$c"
+  )
+}
+# expect_rc <label> <clone> <expected>: the setup is checked first (the clone must
+# exist and have origin/main); only then is the helper's exit status compared.
+expect_rc() {
+  local label="$1" clone="$2" want="$3" status
+  if [ -z "$clone" ] || ! (cd "$clone" && git rev-parse --verify -q origin/main >/dev/null); then
+    fail "$label: RC fixture setup failed (no usable clone)"; return
+  fi
+  (cd "$clone" && "$SCRIPTS/rc-is-branch-head.sh" v1.4.0-rc1 release/1.4.0 "$(git rev-parse origin/main)" >/dev/null 2>&1); status=$?
+  expect_eq "$label" "$status" "$want"
+}
+# The deleted-branch cases only test the fallback if the ref is really gone:
+# a failed update-ref would leave the helper reading the same commit either way.
+c="$(rc_repo 0)"
+if [ -z "$c" ]; then fail "a deleted branch whose RC is the merge's second parent: RC fixture setup failed"
+elif git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
+  expect_rc "a deleted branch whose RC is the merge's second parent did not move" "$c" 0
+else fail "a deleted branch whose RC is the merge's second parent: could not delete the ref, fallback not tested"; fi
+expect_rc "a branch still on its RC did not move" "$(rc_repo 0)" 0
+expect_rc "a branch with a commit after its RC moved" "$(rc_repo 1)" 1
+c="$(rc_repo 1)"
+if [ -z "$c" ]; then fail "a deleted branch whose merge carries a commit after the RC moved: RC fixture setup failed"
+elif git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
+  expect_rc "a deleted branch whose merge carries a commit after the RC moved" "$c" 1
+else fail "a deleted branch whose merge carries a commit after the RC moved: could not delete the ref, fallback not tested"; fi
 
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi

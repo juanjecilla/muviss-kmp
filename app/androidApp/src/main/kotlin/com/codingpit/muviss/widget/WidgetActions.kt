@@ -18,6 +18,9 @@ val EpisodeIdKey = ActionParameters.Key<String>("episodeId")
 /** The media id a row tap opens, matching [MainActivity.EXTRA_DEEP_LINK_MEDIA_ID]. */
 val DeepLinkMediaIdKey = ActionParameters.Key<String>(MainActivity.EXTRA_DEEP_LINK_MEDIA_ID)
 
+/** Set on the widget's empty-state tap, matching [MainActivity.EXTRA_OPEN_NEXT_PICK] (#700). */
+val OpenNextPickKey = ActionParameters.Key<Boolean>(MainActivity.EXTRA_OPEN_NEXT_PICK)
+
 /** Where the "just ticked, offer Undo" marker lives, per widget instance. */
 internal val JustTickedKey = stringPreferencesKey("justTickedEpisodeId")
 

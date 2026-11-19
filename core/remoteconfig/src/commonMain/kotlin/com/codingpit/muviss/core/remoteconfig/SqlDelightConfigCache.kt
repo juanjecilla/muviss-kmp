@@ -15,6 +15,9 @@ internal class SqlDelightConfigCache(private val queries: RemoteConfigCacheQueri
     override suspend fun read(key: String): String? = queries.selectByKey(key).awaitAsOneOrNull()
 
     override suspend fun write(key: String, value: String) {
-        queries.upsert(key, value)
+        // Both statements, in this order, and each is harmless to repeat: together
+        // they are an upsert that changes no row when the value is already stored.
+        queries.updateIfChanged(value = value, key = key)
+        queries.insertIfAbsent(key = key, value = value)
     }
 }
