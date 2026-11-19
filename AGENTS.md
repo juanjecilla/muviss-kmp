@@ -111,14 +111,7 @@ feature is released. When a PR adds or changes something a user can see:
 A `feat` PR with nothing for the landing — paid, invisible, not user-facing —
 carries the `no-landing` label; CI's `landing-guard` fails it otherwise.
 
-The release notes are built from the same `feat`/`fix` subjects, so a `feat`
-with no user-visible surface (a domain layer with no screen yet, say) must not
-reach them either. It does one of two things: uses a non-`feat` type
-(`refactor`, `chore`) when it is not really a feature, or keeps `feat` and ends
-its commit body with a `Notes: none` trailer, which `release-notes.sh` skips
-(`docs/RELEASING.md` § Release notes). The trailer must be in the squash commit's
-body; when merging, `gh pr merge --squash --body "<body>"` keeps it there. It
-does not change the version bump: a `feat` still makes the next release a minor.
+The release notes are built from the same `feat`/`fix` subjects, so a `feat` with no user-visible surface (a domain layer with no screen yet, say) must not reach them either. It does one of two things: uses a non-`feat` type (`refactor`, `chore`) when it is not really a feature, or keeps `feat` and adds the `no-notes` label to the PR. `release-notes.sh` reads the label by the PR number that ends the squash subject, so the commit body needs nothing. `landing-guard` requires the label on a `feat` that takes `no-landing` and changes `feature/` or `app/`. A `Notes: none` trailer in a commit body still opts that commit out, for commits already on a release branch. The label does not change the version bump: a `feat` still makes the next release a minor. That is deliberate, because the version follows the commit type (ADR 0025), not what users see (#572).
 
 ## Claim ADR and schema numbers when the branch opens, not when it merges
 

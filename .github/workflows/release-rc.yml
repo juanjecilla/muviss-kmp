@@ -60,6 +60,9 @@ jobs:
         if: steps.has-app.outputs.ok == 'true'
         env:
           BRANCH: ${{ github.ref_name }}
+          # The no-notes label is read by PR number (release-notes.sh, #572).
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           VERSION="${BRANCH#*/}"
           scripts/release/release-notes.sh "$VERSION" --write

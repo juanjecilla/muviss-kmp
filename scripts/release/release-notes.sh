@@ -9,8 +9,11 @@
 # see. That is infrastructure scopes (release, ci, build, ops, supabase, ...),
 # other platforms (ios, web, desktop), and paid or remotely-dark features
 # (sync, co-watch, the own TMDB key), which never appear in public copy, and any
-# commit whose body ends in a `Notes: none` trailer (a `feat` with nothing user
-# can see yet; AGENTS.md). Neither the list nor the Spanish count sees it.
+# PR labelled `no-notes` (a `feat` with nothing user can see yet; AGENTS.md, #572).
+# The label is read by the PR number at the end of a squash subject. A commit
+# whose body ends in a `Notes: none` trailer is still left out too, as before
+# #572, so the commits already on a release branch keep their meaning. Neither the
+# list nor the Spanish count sees it.
 # English lists the changes; other locales get a sentence that counts them,
 # since a commit subject cannot be translated here.
 #
@@ -39,14 +42,32 @@ found="$(scripts/release/previous-release.sh HEAD "$VERSION")"
 read -r _ FROM <<<"$found" || true
 range="${FROM:+$FROM..}HEAD"
 
-# The subject of every non-merge commit in the range, except a commit whose body
-# ends in a `Notes: none` trailer: a `feat` that ships no user-visible surface
-# (AGENTS.md). Only the body's last paragraph is read as a trailer block, so the
-# same words in prose above it do not opt a commit out, and the key and value
-# match in any case.
+# The PRs labelled `no-notes` (#572), by number: a squash subject ends in its PR
+# number, and one list serves the whole run. Without a token the label cannot be
+# read, which is said on stderr; the trailer still counts. A failed read is a
+# warning, not an error: notes never block a release.
+opted_out_prs() {
+  if [ -z "${GH_TOKEN:-}" ] || [ -z "${GH_REPO:-}" ]; then
+    echo "notice: GH_TOKEN and GH_REPO are not set, so the no-notes label is not read" >&2
+    return 0
+  fi
+  local numbers
+  if ! numbers="$(gh pr list --repo "$GH_REPO" --label no-notes --state all --limit 5000 --json number --jq '.[].number' 2>/dev/null)"; then
+    echo "::warning::could not read the no-notes label; only the Notes: none trailer counts" >&2
+    return 0
+  fi
+  tr '\n' ' ' <<<"$numbers"
+}
+OPTED_OUT_PRS="$(opted_out_prs)"
+
+# The subject of every non-merge commit in the range, except a PR labelled
+# `no-notes` and a commit whose body ends in a `Notes: none` trailer: a `feat`
+# that ships no user-visible surface (AGENTS.md). Only the body's last paragraph
+# is read as a trailer block, so the same words in prose above it do not opt a
+# commit out, and the key and value match in any case.
 kept_subjects() {
   git log --no-merges --format='%s%x1f%b%x1e' "$range" \
-    | awk -v RS="$(printf '\036')" -v FS="$(printf '\037')" '
+    | awk -v RS="$(printf '\036')" -v FS="$(printf '\037')" -v prs="$OPTED_OUT_PRS" '
       {
         subject = $1
         sub(/^[ \t\r\n]+/, "", subject)
@@ -59,6 +80,11 @@ kept_subjects() {
           line = tolower(lines[i])
           if (line ~ /^[ \t]*notes[ \t]*:[ \t]*none[ \t\r]*$/) optout = 1
           i--
+        }
+        if (match(subject, /\(#[0-9]+\)[ \t]*$/)) {
+          num = substr(subject, RSTART, RLENGTH)
+          gsub(/[^0-9]/, "", num)
+          if (index(" " prs " ", " " num " ")) optout = 1
         }
         if (!optout) print subject
       }'
