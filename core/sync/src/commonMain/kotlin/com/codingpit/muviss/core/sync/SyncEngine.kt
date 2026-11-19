@@ -283,6 +283,11 @@ class SyncEngine(
         beforePush()
         database.appSettingsQueries.ensureRow()
 
+        // The one table-specific ordering in the cycle (ADR 0036): a dirty Display Preferences group is
+        // merged with the account's copy before it is sent, so a device that has never seen the account
+        // cannot push its defaults over the account's values.
+        pullDirtyDisplayPreferences()
+
         val pushed = changeLog.pushDirty { backend.push(it) }
 
         var cursors = changeLog.loadCursors()
@@ -319,6 +324,22 @@ class SyncEngine(
         database.appSettingsQueries.updateLastSyncedAt(finishedAt)
         database.syncStateQueries.recordSuccess(finishedAt)
         return SyncOutcome.Success(pushedCount = pushed, pulledCount = pulled, syncedAtEpochMs = finishedAt)
+    }
+
+    /**
+     * Reads the account's copy of a dirty Display Preferences group before the push (ADR 0036, #643).
+     *
+     * The page is applied, but its cursor is not saved: the main pull reads the same copy again and moves
+     * the cursor once the cycle has drained, as every table does. A group with a stamp of its own resumes
+     * from its cursor, so only a copy newer than the last one applied is merged. A group stamped `0` (a
+     * backfill or a legacy restore) reads from the beginning and is replaced whole, never merged; so does a
+     * device that has never pulled the table.
+     */
+    private suspend fun pullDirtyDisplayPreferences() {
+        val stamp = changeLog.dirtyDisplayPreferencesStamp() ?: return
+        val cursors = changeLog.loadCursors()
+        val after = if (stamp > 0) cursors else cursors - SyncTable.DISPLAY_PREFERENCES
+        backend.pull(after, setOf(SyncTable.DISPLAY_PREFERENCES)) { page -> applier.applyPage(page) }.getOrThrow()
     }
 
     private suspend fun currentOwner(): String? = database.syncStateQueries.selectState().awaitAsOneOrNull()?.ownerAccountId
