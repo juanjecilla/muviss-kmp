@@ -51,8 +51,14 @@ class RemoteConfigCacheMigrationTest {
     fun `a stored value is replaced, not duplicated, and deleteAll empties the table`() = runBlocking {
         val driver = upgraded()
         val queries = MuvissDatabase(driver).remoteConfigCacheQueries
-        queries.upsert("k", "one")
-        queries.upsert("k", "two")
+
+        // The two statements the cache writes (SqlDelightConfigCache.write), in order.
+        suspend fun write(key: String, value: String) {
+            queries.updateIfChanged(value = value, key = key)
+            queries.insertIfAbsent(key = key, value = value)
+        }
+        write("k", "one")
+        write("k", "two")
         assertEquals("two", queries.selectByKey("k").executeAsOne())
         queries.deleteAll()
         assertNull(queries.selectByKey("k").executeAsOneOrNull())
