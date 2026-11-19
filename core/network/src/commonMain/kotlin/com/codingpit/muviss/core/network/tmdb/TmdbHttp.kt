@@ -95,13 +95,13 @@ internal suspend inline fun <T> tmdbCall(onFailure: (failure: Throwable, mapped:
     throw mapped
 }
 
-/** Status to error: 429, 401 and 404 have their own cases, anything else non-2xx is [MetadataError.Unknown]. */
+/** Status to error: 429, 401 and 404 have their own cases, anything else non-2xx is [MetadataError.Unknown] carrying the status. */
 internal fun HttpResponse.toMetadataErrorOrNull(): MetadataError? = when {
     status.value in SUCCESS_RANGE -> null
     status == HttpStatusCode.TooManyRequests -> MetadataError.RateLimited(retryAfterSeconds())
     status == HttpStatusCode.Unauthorized -> MetadataError.Unauthorized()
     status == HttpStatusCode.NotFound -> MetadataError.NotFound()
-    else -> MetadataError.Unknown()
+    else -> MetadataError.Unknown(status.value)
 }
 
 /**
