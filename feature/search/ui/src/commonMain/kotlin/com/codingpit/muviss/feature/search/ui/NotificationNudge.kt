@@ -34,6 +34,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.nudge_open_set
 import com.codingpit.muviss.feature.search.ui.generated.resources.nudge_question
 import com.codingpit.muviss.feature.search.ui.generated.resources.nudge_turn_on
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,11 +86,18 @@ class NotificationNudgeViewModel(
     private suspend fun refusedForGoodNow(off: Boolean): Boolean = off && !system.canAskAgainNow()
 
     /**
-     * Counts the answers to Turn on. A read of the OS that started before an answer and lands after it is out of date,
-     * and must not clear the line that answer just set (#931: iOS's resume read can answer "not denied" from before
-     * the refusal was recorded).
+     * Advanced by every permission decision (a turn-on tap that is taken, its answer, a dismissal). An OS read
+     * that began while it was [decisionEpoch] was before the decision and may answer the old state, so it must
+     * not write once the epoch has moved (#846 review). Advancing it on the answer too is what stops a read
+     * started after a turn-on began, but before its denial landed, from clearing that denial.
      */
-    private var answers = 0
+    private var decisionEpoch = 0
+
+    /** Numbers each settlement, so the latest one wins even when an older OS read answers last. */
+    private var settleSeq = 0
+
+    /** The settlement in flight. Replaced, never queued. Cancelling it is an optimisation: the guards decide. */
+    private var settlement: Job? = null
 
     init {
         onboarding.observeNotificationNudge(mediaId)
@@ -97,7 +105,8 @@ class NotificationNudgeViewModel(
                 _state.update { it.copy(offered = offered) }
                 // Only a nudge that is due can need an explanation. Spending it must not re-read the OS: a
                 // denial just given would race that read, and clearing it is the resume check's job.
-                if (offered) settleExplanation()
+                // Settling runs as its own job so the collector keeps taking offers while the OS is asked.
+                if (offered) settle()
             }
             .launchInReporting(viewModelScope)
     }
@@ -108,20 +117,22 @@ class NotificationNudgeViewModel(
      * nudge whatever the answer, so [NotificationNudgeState.answering] keeps the banner up until this has decided.
      */
     fun turnOn() {
+        val decision = ++decisionEpoch
+        settlement?.cancel()
         viewModelScope.launchReporting {
             if (refusedForGoodNow(system.blockedNow())) {
-                _state.update { it.copy(blocked = true, retryable = false) }
+                commitDecision(decision, blocked = true, retryable = false)
                 return@launchReporting
             }
             _state.update { it.copy(answering = true) }
             try {
-                val result = onboarding.acceptNotificationNudge()
-                answers++
-                if (result == NotificationNudgeResult.ENABLED) {
-                    _state.update { it.copy(offered = false, blocked = false, retryable = false) }
-                } else {
-                    val forGood = refusedForGoodNow(system.blockedNow())
-                    _state.update { it.copy(blocked = forGood, retryable = !forGood) }
+                when (onboarding.acceptNotificationNudge()) {
+                    NotificationNudgeResult.DENIED -> {
+                        val forGood = refusedForGoodNow(system.blockedNow())
+                        commitDecision(decision, blocked = forGood, retryable = !forGood)
+                    }
+
+                    NotificationNudgeResult.ENABLED -> commitDecision(decision, blocked = false, retryable = false)
                 }
             } finally {
                 _state.update { it.copy(answering = false) }
@@ -135,23 +146,42 @@ class NotificationNudgeViewModel(
      * still offered must explain itself, not keep offering a tap the OS would refuse. A refusal the person just
      * gave keeps its line after the nudge is spent, for as long as the OS still says off.
      */
-    fun recheckPermission() {
-        viewModelScope.launchReporting { settleExplanation() }
+    fun recheckPermission() = settle()
+
+    /**
+     * Writes the outcome of a decision, if no other decision or dismissal has happened since it began. The write
+     * advances the epoch, so every settlement and turn-on that began before it becomes stale.
+     */
+    private fun commitDecision(decision: Int, blocked: Boolean, retryable: Boolean) {
+        if (decisionEpoch != decision) return
+        ++decisionEpoch
+        settlement?.cancel()
+        _state.update { it.copy(blocked = blocked, retryable = retryable) }
     }
 
-    /** Sets [NotificationNudgeState.blocked] from the OS as it is now and what the nudge already knows. */
-    private suspend fun settleExplanation() {
-        val asked = answers
-        val off = system.blockedNow()
-        val refusedForGood = refusedForGoodNow(off)
-        if (asked != answers) return
-        _state.update { it.copy(blocked = (it.blocked && off) || (it.offered && refusedForGood)) }
+    /**
+     * Sets [NotificationNudgeState.blocked] from the OS as it is now and what the nudge already knows. Writes only
+     * if this is still the latest settlement and no decision or dismissal began during its read.
+     */
+    private fun settle() {
+        settlement?.cancel()
+        val seq = ++settleSeq
+        val epoch = decisionEpoch
+        settlement = viewModelScope.launchReporting {
+            val off = system.blockedNow()
+            val refusedForGood = refusedForGoodNow(off)
+            if (seq != settleSeq || epoch != decisionEpoch) return@launchReporting
+            _state.update { it.copy(blocked = (it.blocked && off) || (it.offered && refusedForGood)) }
+        }
     }
 
     fun dismiss() {
+        ++decisionEpoch
+        settlement?.cancel()
+        // Synchronous, so a denial from a turn-on still in flight cannot re-show the line after this tap.
+        _state.update { it.copy(blocked = false, retryable = false, answering = false) }
         viewModelScope.launchReporting {
             onboarding.dismissNotificationNudge()
-            _state.update { it.copy(blocked = false, retryable = false) }
         }
     }
 

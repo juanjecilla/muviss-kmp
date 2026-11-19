@@ -7,7 +7,6 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationOpenNotificationSettingsURLString
 import platform.UserNotifications.UNAuthorizationStatusNotDetermined
 import platform.UserNotifications.UNUserNotificationCenter
-import kotlin.concurrent.AtomicLong
 import kotlin.coroutines.resume
 
 /**
@@ -25,17 +24,17 @@ import kotlin.coroutines.resume
  */
 internal object IosNotificationSettings : SystemNotificationSettings {
 
-    private val authorization = AtomicLong(UNAuthorizationStatusNotDetermined)
+    private val authorization = LatestAuthorization(UNAuthorizationStatusNotDetermined)
 
     /**
      * The cached answer only. It deliberately does not start a refresh: a fire-and-forget read
      * issued before a change can complete after a fresher [refreshNow] and overwrite it (#846).
      * Decisions that must see the change use [blockedNow] / [canAskAgainNow].
      */
-    override fun blocked(): Boolean = notificationBlocked(authorization.value)
+    override fun blocked(): Boolean = notificationBlocked(authorization.status)
 
     /** The cached answer only; see [blocked] (#846). */
-    override fun canAskAgain(): Boolean = notificationCanAskAgain(authorization.value)
+    override fun canAskAgain(): Boolean = notificationCanAskAgain(authorization.status)
 
     override suspend fun blockedNow(): Boolean = notificationBlocked(refreshNow())
 
@@ -47,16 +46,21 @@ internal object IosNotificationSettings : SystemNotificationSettings {
     }
 
     fun refresh() {
+        val read = authorization.nextRead()
         UNUserNotificationCenter.currentNotificationCenter().getNotificationSettingsWithCompletionHandler { settings ->
-            authorization.value = settings?.authorizationStatus ?: UNAuthorizationStatusNotDetermined
+            authorization.publish(read, settings?.authorizationStatus ?: UNAuthorizationStatusNotDetermined)
         }
     }
 
-    /** Waits for iOS's answer, caches it, and returns the status. */
+    /**
+     * Waits for iOS's answer, caches it if it is the newest read, and returns this read's status. The return value
+     * can be older than the cache when a later read answered first; deciders guard for that themselves (#846).
+     */
     suspend fun refreshNow(): Long = suspendCancellableCoroutine { continuation ->
+        val read = authorization.nextRead()
         UNUserNotificationCenter.currentNotificationCenter().getNotificationSettingsWithCompletionHandler { settings ->
             val status = settings?.authorizationStatus ?: UNAuthorizationStatusNotDetermined
-            authorization.value = status
+            authorization.publish(read, status)
             continuation.resume(status)
         }
     }
