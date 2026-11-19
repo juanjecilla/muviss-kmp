@@ -142,12 +142,70 @@ class DetailPrimaryActionTest {
 
     @Test
     fun an_aired_special_does_not_make_a_show_not_aired_yet() {
-        // Specials are never ticked by this button, but one that has aired means the show is not "not aired yet".
+        // The regular premiere has not aired, so nothing regular is left to tick, but the aired special is: Special unseen,
+        // not "not aired yet" (#797).
         val special = episode(0, 1, airDay = 5)
         val future = episode(1, 1, airDay = 100)
         val state = showState(Season(0, "Specials", listOf(special)), Season(1, "Season 1", listOf(future)))
 
-        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, future), primaryFor(state))
+        assertEquals(PrimaryAction.SpecialUnseen(special), primaryFor(state))
+    }
+
+    @Test
+    fun every_regular_episode_seen_with_an_aired_special_unseen_is_special_unseen() {
+        val special = episode(0, 1, airDay = 5)
+        val regular = episode(1, 1, airDay = 10)
+        val state = showState(
+            Season(0, "Specials", listOf(special)),
+            Season(1, "Season 1", listOf(regular)),
+            seen = setOf(regular.id),
+            status = WatchStatus.WATCHING,
+        )
+
+        assertEquals(PrimaryAction.SpecialUnseen(special), primaryFor(state))
+    }
+
+    @Test
+    fun the_special_unseen_state_names_the_first_unseen_special_in_order() {
+        val first = episode(0, 1, airDay = 5)
+        val second = episode(0, 2, airDay = 6)
+        val regular = episode(1, 1, airDay = 10)
+        val state = showState(
+            Season(0, "Specials", listOf(first, second)),
+            Season(1, "Season 1", listOf(regular)),
+            seen = setOf(regular.id, first.id),
+            status = WatchStatus.WATCHING,
+        )
+
+        assertEquals(PrimaryAction.SpecialUnseen(second), primaryFor(state))
+    }
+
+    @Test
+    fun a_seen_special_with_every_regular_episode_seen_is_caught_up_not_special_unseen() {
+        val special = episode(0, 1, airDay = 5)
+        val regular = episode(1, 1, airDay = 10)
+        val announced = episode(1, 2, airDay = 99)
+        val state = showState(
+            Season(0, "Specials", listOf(special)),
+            Season(1, "Season 1", listOf(regular, announced)),
+            seen = setOf(regular.id, special.id),
+        )
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, announced), primaryFor(state))
+    }
+
+    @Test
+    fun an_unaired_special_is_never_special_unseen() {
+        val special = episode(0, 1, airDay = 500)
+        val regular = episode(1, 1, airDay = 10)
+        val state = showState(
+            Season(0, "Specials", listOf(special)),
+            Season(1, "Season 1", listOf(regular)),
+            seen = setOf(regular.id),
+            status = WatchStatus.WATCHING,
+        )
+
+        assertEquals(PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, null), primaryFor(state))
     }
 
     @Test

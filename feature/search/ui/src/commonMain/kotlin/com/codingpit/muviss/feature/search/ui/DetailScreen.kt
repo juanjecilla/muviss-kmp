@@ -37,8 +37,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -73,6 +75,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -156,6 +159,8 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.primary_mark_n
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_next_up
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_not_aired
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_premieres
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_special_unseen
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_special_unseen_a11y
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_buy
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_rent
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_stream
@@ -182,6 +187,7 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -360,19 +366,25 @@ private fun DetailCompact(
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     val inset = Modifier.padding(horizontal = MuvissSpacing.l)
+    val listState = rememberLazyListState()
+    val anchors = remember { DetailScrollAnchors() }
+    val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        state = listState,
         contentPadding = PaddingValues(bottom = bottomPadding),
     ) {
-        item(key = "hero", contentType = "hero") { DetailHero(details) }
-        item(key = "actions", contentType = "actions") {
-            Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-                ActionRow(state, viewModel, callbacks)
-                CompletedNextPickEntry(state, onOpenNextPick)
+        indexed(anchors) {
+            item(key = "hero", contentType = "hero") { DetailHero(details) }
+            item(key = "actions", contentType = "actions") {
+                Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                    ActionRow(state, viewModel, callbacks, scrollToSpecials)
+                    CompletedNextPickEntry(state, onOpenNextPick)
+                }
             }
+            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
+            item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
         }
-        detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
-        item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
     }
     SeasonsDialogs(seasons, viewModel)
 }
@@ -393,40 +405,46 @@ private fun DetailExpanded(
     val bodyColumn = Modifier
         .padding(start = MuvissSpacing.xxl + POSTER_COLUMN_WIDTH + MuvissSpacing.xl, end = MuvissSpacing.xxl)
         .widthIn(max = 640.dp)
+    val listState = rememberLazyListState()
+    val anchors = remember { DetailScrollAnchors() }
+    val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        state = listState,
         contentPadding = PaddingValues(bottom = bottomPadding),
     ) {
-        item(key = "hero", contentType = "hero") {
-            Column {
-                DetailBackdrop(details, height = 200.dp)
-                Row(
-                    Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
-                    horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
-                ) {
-                    Column(Modifier.width(POSTER_COLUMN_WIDTH), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-                        Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
-                            PosterImage(
-                                url = details.summary.posterUrl,
-                                title = details.summary.title,
-                                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
-                            )
-                        }
-                        ActionRow(state, viewModel, callbacks)
-                    }
-                    Column(
-                        Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
-                        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        indexed(anchors) {
+            item(key = "hero", contentType = "hero") {
+                Column {
+                    DetailBackdrop(details, height = 200.dp)
+                    Row(
+                        Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
+                        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
                     ) {
-                        Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
-                        MetadataLine(details)
-                        CompletedNextPickEntry(state, onOpenNextPick)
+                        Column(Modifier.width(POSTER_COLUMN_WIDTH), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
+                            Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
+                                PosterImage(
+                                    url = details.summary.posterUrl,
+                                    title = details.summary.title,
+                                    modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
+                                )
+                            }
+                            ActionRow(state, viewModel, callbacks, scrollToSpecials)
+                        }
+                        Column(
+                            Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
+                            verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+                        ) {
+                            Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
+                            MetadataLine(details)
+                            CompletedNextPickEntry(state, onOpenNextPick)
+                        }
                     }
                 }
             }
+            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), bodyColumn)
+            item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
         }
-        detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), bodyColumn)
-        item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
     }
     SeasonsDialogs(seasons, viewModel)
 }
@@ -592,6 +610,7 @@ private fun ActionRow(
     state: DetailUiState,
     viewModel: DetailViewModel,
     callbacks: DetailCallbacks,
+    onScrollToSpecials: () -> Unit,
 ) {
     val pill: @Composable () -> Unit = {
         PrimaryActionButton(
@@ -600,6 +619,7 @@ private fun ActionRow(
             onMarkMovieWatched = viewModel::markMovieWatched,
             onWatchedAgain = { state.details?.let { callbacks.onTapSeenEpisode(EpisodeId.forMovie(it.id)) } },
             onTickNext = { episode -> viewModel.tickNext(episode.id) },
+            onSpecialUnseen = onScrollToSpecials,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -659,6 +679,7 @@ internal fun PrimaryActionButton(
     onMarkMovieWatched: () -> Unit,
     onWatchedAgain: () -> Unit,
     onTickNext: (Episode) -> Unit,
+    onSpecialUnseen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val look = when (action) {
@@ -676,6 +697,13 @@ internal fun PrimaryActionButton(
             subtitle = action.episode.name.takeIf { it.isNotBlank() },
             description = stringResource(Res.string.primary_mark_next_a11y, action.episode.seasonNumber, action.episode.episodeNumber),
             onClick = { onTickNext(action.episode) },
+        )
+
+        is PrimaryAction.SpecialUnseen -> PrimaryLook(
+            label = stringResource(Res.string.primary_special_unseen),
+            subtitle = action.special.name.takeIf { it.isNotBlank() },
+            description = stringResource(Res.string.primary_special_unseen_a11y, action.special.episodeNumber),
+            onClick = onSpecialUnseen,
         )
 
         is PrimaryAction.Waiting -> waitingLook(action)
@@ -983,6 +1011,26 @@ private fun SeasonsDialogs(seasons: SeasonsController, viewModel: DetailViewMode
             },
             onDismiss = { seasons.confirmMarkShow.value = false },
         )
+    }
+}
+
+/**
+ * The Special unseen button's scroll (#797): opens the Specials season, then brings its header into view. The
+ * index comes from [anchors], which the list fills as it is built, so a header that is not composed yet can be
+ * reached.
+ */
+@Composable
+private fun rememberScrollToSpecials(
+    listState: LazyListState,
+    anchors: DetailScrollAnchors,
+    seasons: SeasonsController,
+): () -> Unit {
+    val scope = rememberCoroutineScope()
+    return {
+        seasons.expanded.value = seasons.expanded.value + SPECIALS_SEASON_NUMBER
+        anchors.indexByKey["season-$SPECIALS_SEASON_NUMBER"]?.let { index ->
+            scope.launch { listState.animateScrollToItem(index) }
+        }
     }
 }
 
