@@ -100,6 +100,7 @@ import com.codingpit.muviss.feature.triage.ui.generated.resources.pick_date
 import com.codingpit.muviss.feature.triage.ui.generated.resources.release_to
 import com.codingpit.muviss.feature.triage.ui.generated.resources.review_skipped
 import com.codingpit.muviss.feature.triage.ui.generated.resources.searching_deeper
+import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_back
 import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_body
 import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_title
 import com.codingpit.muviss.feature.triage.ui.generated.resources.skipped
@@ -863,13 +864,14 @@ private fun EmptyDeck(
     onBack: () -> Unit,
 ) {
     // A seeded deck was never the whole catalogue, so "All caught up" would claim something untrue. It says the
-    // picks are done, which is all that is known.
+    // picks are done, which is all that is known. Its way out is back to Next Pick, which is where the picks came
+    // from; a restored deck (#768) has no picks to show, so this copy is what it offers.
     if (seeded) {
         EmptyState(
             icon = MuvissIcons.CaughtUp,
             title = stringResource(Res.string.seeded_done_title),
             body = stringResource(Res.string.seeded_done_body),
-            actionLabel = stringResource(Res.string.action_back),
+            actionLabel = stringResource(Res.string.seeded_done_back),
             onAction = onBack,
         )
     } else if (filtered) {
