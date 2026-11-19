@@ -6,10 +6,10 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.licensee)
     alias(libs.plugins.sentry)
     alias(libs.plugins.baselineprofile)
     id("muviss.version")
+    id("muviss.licensee")
 }
 
 kotlin {
@@ -24,30 +24,16 @@ kotlin {
 // under the configuration cache; `app.cash.licensee` runs clean under it
 // (verified: `:app:androidApp:licenseeAndroidDebug`/`licenseeAndroidRelease`
 // both store a configuration-cache entry successfully) and is wired into
-// `check` by the plugin itself. It fails the build if a dependency ships a
-// license outside the allow-list below — bump the list deliberately if a new
-// one shows up. The Settings > About > Licenses screen does *not* read this
-// task's output live (see feature/settings/domain's OssLicenses.kt for why);
-// `regenerateOssLicenses` rewrites that file from the report, and
-// `verifyOssLicenses` (wired into `check`, below) fails when it has fallen behind.
+// `check` by the plugin itself. The licence classes every shipped target allows
+// (Apache-2.0, MIT, BSD-3-Clause, the ConfigCat URLs) live in the `muviss.licensee`
+// convention, shared with :app:desktopApp, :app:webApp and :app:shared (#615). What
+// is left here is Android-only and allowed by exact coordinates. Bump the lists
+// deliberately if a new licence shows up. The Settings > About > Licenses screen
+// does *not* read these reports live (see feature/settings/domain's OssLicenses.kt
+// for why); `regenerateOssLicenses` rewrites that file from every target's report,
+// and `verifyOssLicenses` (wired into `check`, below) fails when it has fallen behind.
 // -----------------------------------------------------------------------
 licensee {
-    allow("Apache-2.0")
-    allow("MIT")
-    // EPIC 22: `androidx.glance:glance-appwidget-external-protobuf` is
-    // Glance's repackaged protobuf, and (EPIC 46) KSafe's DataStore brings the
-    // same thing as `androidx.datastore:datastore-preferences-external-protobuf`
-    // — the only BSD-3-Clause artifacts in the graph. Permissive, attribution-only, no Play Store implication — added
-    // deliberately rather than by widening the list to "anything permissive".
-    allow("BSD-3-Clause")
-    allowUrl("https://opensource.org/license/mit")
-    // EPIC 45: ConfigCat's Kotlin SDK and its one non-Kotlin-stdlib dependency
-    // (kotlin-semver) are MIT, but their POMs name the licence by the URL of
-    // the LICENSE file on GitHub instead of an SPDX id. Checked against each
-    // repository's licence file, and pinned to exactly these two URLs rather
-    // than allowing "any raw.githubusercontent.com".
-    allowUrl("https://raw.githubusercontent.com/configcat/kotlin-sdk/main/LICENSE")
-    allowUrl("https://raw.githubusercontent.com/z4kn4fein/kotlin-semver/main/LICENSE")
     // #410: Play In-App Review and the Google Play services artifacts it pulls in. Their POMs name
     // Google's Android SDK / Play Core terms by URL, not an SPDX id, so none of them is OSS. They are
     // allowed here by exact coordinates, one line each, rather than by the terms URL: the URL would
@@ -129,34 +115,75 @@ dependencies {
 }
 
 // -----------------------------------------------------------------------
-// About > Licenses coverage (#562, #616). OssLicenses.kt is checked in, so it can
-// drift from the licensee report as dependencies move. Both tasks read the
-// release variant's report (the one the APK ships):
-//   verifyOssLicenses      fails, in `check`, when the report lists an artifact
+// About > Licenses coverage (#562, #616, #615). OssLicenses.kt is checked in, so it can
+// drift from the licensee reports as dependencies move. The list is the union of
+// every shipped target's runtime graph, one licensee report per target (#615):
+//   Android release  this module's variant the APK ships
+//   desktop          :app:desktopApp, for every desktop OS (see its build file)
+//   web JS / Wasm    :app:webApp
+//   iOS              :app:shared's iosArm64 framework
+// Each report's task is a dependency of both tasks below, so the reports exist
+// by the time they are read; the paths are plain strings so this stays
+// configuration-cache compatible.
+//   verifyOssLicenses      fails, in `check`, when the union lists an artifact
 //                          the list has no entry for, or the list has an entry
-//                          for an artifact the report no longer lists.
-//   regenerateOssLicenses  rewrites the generated entries from the report and
+//                          for an artifact no report lists, or the two disagree
+//                          on what an entry says.
+//   regenerateOssLicenses  rewrites the generated entries from the union and
 //                          keeps the hand-written tail (the bundled font).
 // The decisions live in build-logic's OssLicensesList (unit-tested there). The
 // task actions only read and write files, so they do not capture the build
 // script (configuration cache).
 // -----------------------------------------------------------------------
-val ossLicensesReport = layout.buildDirectory.file("reports/licensee/androidRelease/artifacts.json")
+class OssLicenseTarget(val label: String, val task: String, val report: File)
+
+val ossLicenseTargets = listOf(
+    OssLicenseTarget(
+        label = "Android release",
+        task = ":app:androidApp:licenseeAndroidRelease",
+        report = layout.buildDirectory.get().asFile.resolve("reports/licensee/androidRelease/artifacts.json"),
+    ),
+    OssLicenseTarget(
+        label = "desktop",
+        task = ":app:desktopApp:licensee",
+        report = rootProject.file("app/desktopApp/build/reports/licensee/artifacts.json"),
+    ),
+    OssLicenseTarget(
+        label = "web JS",
+        task = ":app:webApp:licenseeJs",
+        report = rootProject.file("app/webApp/build/reports/licensee/js/artifacts.json"),
+    ),
+    OssLicenseTarget(
+        label = "web Wasm",
+        task = ":app:webApp:licenseeWasmJs",
+        report = rootProject.file("app/webApp/build/reports/licensee/wasmJs/artifacts.json"),
+    ),
+    OssLicenseTarget(
+        label = "iOS",
+        task = ":app:shared:licenseeIosArm64",
+        report = rootProject.file("app/shared/build/reports/licensee/iosArm64/artifacts.json"),
+    ),
+)
 val ossLicensesSource =
     rootProject.layout.projectDirectory.file("feature/settings/domain/src/commonMain/kotlin/com/codingpit/muviss/feature/settings/domain/OssLicenses.kt")
 
+// Resolved at configuration time, so the task actions below capture plain values and not this script.
+val ossLicenseReportFiles: List<Pair<String, File>> = ossLicenseTargets.map { it.label to it.report }
+
 val verifyOssLicenses = tasks.register("verifyOssLicenses") {
     group = "verification"
-    description = "Fails if About > Licenses is out of step with licensee's release report, missing or stale entries (#562, #616)."
-    dependsOn("licenseeAndroidRelease")
-    inputs.file(ossLicensesReport)
+    description = "Fails if About > Licenses is out of step with the licensee reports of every shipped target (#562, #616, #615)."
+    ossLicenseTargets.forEach {
+        dependsOn(it.task)
+        inputs.file(it.report)
+    }
     inputs.file(ossLicensesSource)
-    val report = ossLicensesReport.get().asFile
+    val reports = ossLicenseReportFiles
     val source = ossLicensesSource.asFile
     doLast {
-        val drift = OssLicensesList.drift(report.readText(), source.readText())
+        val drift = OssLicensesList.drift(reports.map { (label, file) -> OssLicensesList.Report(label, file.readText()) }, source.readText())
         check(drift.isEmpty) { OssLicensesList.failureMessage(drift) }
-        logger.lifecycle("About > Licenses matches the licensee release report, both ways")
+        logger.lifecycle("About > Licenses matches the licensee reports of ${reports.size} targets, both ways")
     }
 }
 
@@ -166,13 +193,13 @@ tasks.named("check") {
 
 tasks.register("regenerateOssLicenses") {
     group = "help"
-    description = "Rewrites feature/settings/domain's OssLicenses.kt from the licensee release report (#562)."
-    dependsOn("licenseeAndroidRelease")
-    val report = ossLicensesReport.get().asFile
+    description = "Rewrites feature/settings/domain's OssLicenses.kt from the licensee reports of every shipped target (#562, #615)."
+    ossLicenseTargets.forEach { dependsOn(it.task) }
+    val reports = ossLicenseReportFiles
     val source = ossLicensesSource.asFile
     doLast {
-        source.writeText(OssLicensesList.regenerate(report.readText(), source.readText()))
-        logger.lifecycle("Regenerated $source from $report")
+        source.writeText(OssLicensesList.regenerate(reports.map { (label, file) -> OssLicensesList.Report(label, file.readText()) }, source.readText()))
+        logger.lifecycle("Regenerated $source from ${reports.size} licensee reports")
     }
 }
 
