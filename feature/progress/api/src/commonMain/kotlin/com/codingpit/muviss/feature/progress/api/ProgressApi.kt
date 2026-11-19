@@ -229,8 +229,12 @@ interface ProgressApi {
     /** Takes back exactly the ids a bulk mark reported writing — the undo snackbar's action. */
     suspend fun undoBulkMark(episodeIds: List<EpisodeId>)
 
-    /** Marks every episode at or before [target] across [seasons] as seen — the "catch me up" action. Already-seen episodes keep the history they have. */
-    suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId)
+    /**
+     * Marks every episode at or before [target] across [seasons] as seen — the "catch me up" action — and returns
+     * exactly the ids it ticked, so its undo can take back those and nothing else. Already-seen episodes keep the
+     * history they have and are not in the result, so a catch-up that ticks nothing returns an empty list.
+     */
+    suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId): List<EpisodeId>
 
     /**
      * Marks every episode that has aired by [todayEpochDay] as seen, and

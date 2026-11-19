@@ -24,6 +24,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.refresh_failed
 import com.codingpit.muviss.feature.search.ui.generated.resources.removed_from_library
 import com.codingpit.muviss.feature.search.ui.generated.resources.tick_caught_up
 import com.codingpit.muviss.feature.search.ui.generated.resources.tick_next_seen
+import com.codingpit.muviss.feature.search.ui.generated.resources.undo_caught_up_through
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_season_seen
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_show_seen
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -663,9 +664,10 @@ class DetailViewModel(
             // Already seen through here: nothing would be ticked, so the title is not saved for it (ADR 0037).
             val seen = progressApi.observeSeenEpisodes(mediaId).first()
             if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchWrite
-            addIfAbsent()
-            progressApi.markPreviousSeen(aired, episodeId)
-            releaseEntry()
+            val created = addIfAbsent()
+            val written = progressApi.markPreviousSeen(aired, episodeId)
+            // Nothing ticked means nothing to take back, so an Undo already on screen stays as it was.
+            offerUndo(written, UiText.Resource(Res.string.undo_caught_up_through, episodeId.seasonNumber, episodeId.episodeNumber), createdEntry = created)
         }
     }
 
