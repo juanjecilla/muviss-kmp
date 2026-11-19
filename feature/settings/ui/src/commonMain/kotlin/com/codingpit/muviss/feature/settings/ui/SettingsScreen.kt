@@ -436,18 +436,22 @@ private fun AppTheme.label(): StringResource = when (this) {
  * denied permission is sticky, so the switch above would store a preference
  * that does nothing; this says so and opens the one place it can be fixed.
  * Re-checked on resume, because that is how the user comes back from there.
+ *
+ * The state starts unknown (`null`), not from the synchronous `blocked()`: on iOS
+ * that is a cache that can predate a change made in iOS Settings, so the first
+ * frame would show a stale line (#856). Nothing is shown until the OS has answered.
  */
 @Composable
 private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     val system = LocalSystemNotificationSettings.current
-    var blocked by remember { mutableStateOf(system.blocked()) }
+    var blocked by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     LifecycleResumeEffect(system) {
         // Awaited, not the cached blocked(): iOS only answers asynchronously.
         val check = scope.launch { blocked = system.blockedNow() }
         onPauseOrDispose { check.cancel() }
     }
-    if (!enabledInApp || !blocked) return
+    if (!enabledInApp || blocked != true) return
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().testTag(NOTIFICATIONS_BLOCKED_TAG),
