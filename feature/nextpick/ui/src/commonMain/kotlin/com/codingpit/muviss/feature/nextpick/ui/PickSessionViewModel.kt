@@ -36,6 +36,8 @@ sealed interface PickSessionUiState {
         val canGoBack: Boolean,
         /** The title the session is about when it was opened from a Completion; "more like it" is about this one (#548). */
         val anchor: MediaId? = null,
+        /** Whether the person's services are known, so the question offers "only my services" (#815). */
+        val offersServices: Boolean = false,
     ) : PickSessionUiState
 
     /**
@@ -51,8 +53,11 @@ sealed interface PickSessionUiState {
         val failed: Set<MediaId> = emptySet(),
     ) : PickSessionUiState
 
-    /** The rules found nothing that fits; the screen says so and offers to start again. */
-    data object NoPick : PickSessionUiState
+    /**
+     * The rules found nothing that fits; the screen says so and offers to start again. [onlyMyServices] is set when the
+     * answers included "only my services", so the screen can say what an empty result means under that flag (#762).
+     */
+    data class NoPick(val onlyMyServices: Boolean = false) : PickSessionUiState
 
     data object Failed : PickSessionUiState
 }
@@ -188,6 +193,7 @@ class PickSessionViewModel(
                 offline = !read.online,
                 canGoBack = previous.isNotEmpty(),
                 anchor = read.anchorCandidate,
+                offersServices = read.servicesKnown,
             )
         } else {
             pickNext()
@@ -207,7 +213,7 @@ class PickSessionViewModel(
             }
             val next = result.picks.filter { it.candidate.id !in shown }.take(count)
             if (next.isEmpty()) {
-                _state.value = PickSessionUiState.NoPick
+                _state.value = PickSessionUiState.NoPick(onlyMyServices = live.criteria.onlyMyServices)
             } else {
                 shown += next.map { it.candidate.id }
                 _state.value = PickSessionUiState.Result(mode, next, result.offline)

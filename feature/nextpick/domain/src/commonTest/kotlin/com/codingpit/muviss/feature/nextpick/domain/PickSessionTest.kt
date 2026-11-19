@@ -101,9 +101,67 @@ class PickSessionTest {
             session = session.skip()
         }
         assertFalse(PickQuestion.ANCHOR in rest)
-        assertFalse(PickQuestion.ERA_AND_SERVICES in rest)
         // The skipped anchor used one of the four standard slots, so Company is past the cap now.
         assertEquals(listOf(PickQuestion.FORMAT_AND_TIME, PickQuestion.MOOD), rest)
+    }
+
+    @Test
+    fun my_list_still_asks_the_era_question_because_era_ranks_the_library() {
+        // Library-only pick, no services known: the question is asked for its era chips alone.
+        val asked = questionsAskedThroughMyList(PickContext(length = SessionLength.STANDARD))
+        assertEquals(listOf(PickQuestion.FORMAT_AND_TIME, PickQuestion.MOOD, PickQuestion.ERA_AND_SERVICES), asked)
+    }
+
+    @Test
+    fun my_list_with_services_known_reaches_the_services_question_at_standard_length() {
+        val asked = questionsAskedThroughMyList(PickContext(length = SessionLength.STANDARD, servicesKnown = true))
+        assertEquals(listOf(PickQuestion.FORMAT_AND_TIME, PickQuestion.ERA_AND_SERVICES, PickQuestion.MOOD), asked)
+    }
+
+    @Test
+    fun my_list_is_not_asked_the_era_question_offline() {
+        val asked = questionsAskedThroughMyList(PickContext(length = SessionLength.STANDARD, online = false, servicesKnown = true))
+        assertFalse(PickQuestion.ERA_AND_SERVICES in asked)
+    }
+
+    /** A library-only session answered with MY_LIST after any skipped questions, returning what it asked after the source. */
+    private fun questionsAskedThroughMyList(context: PickContext): List<PickQuestion> {
+        var session = PickSession.start(context)
+        val asked = mutableListOf<PickQuestion>()
+        while (session.question != null && session.question != PickQuestion.SOURCE) session = session.skip()
+        if (session.question == PickQuestion.SOURCE) session = session.answer(PickAnswer.Source(PickSource.MY_LIST))
+        while (true) {
+            val q = session.question ?: break
+            asked += q
+            session = session.skip()
+        }
+        return asked
+    }
+
+    @Test
+    fun with_services_known_the_services_question_comes_before_mood() {
+        assertEquals(
+            listOf(PickQuestion.SOURCE, PickQuestion.FORMAT_AND_TIME, PickQuestion.ERA_AND_SERVICES, PickQuestion.MOOD),
+            questionsAskedWhenSkippingAll(PickContext(length = SessionLength.STANDARD, servicesKnown = true)),
+        )
+    }
+
+    @Test
+    fun an_anchored_standard_session_with_services_known_reaches_the_services_question() {
+        val context = PickContext(length = SessionLength.STANDARD, servicesKnown = true, anchorCandidate = finished)
+        assertEquals(
+            listOf(PickQuestion.ANCHOR, PickQuestion.SOURCE, PickQuestion.FORMAT_AND_TIME, PickQuestion.ERA_AND_SERVICES),
+            questionsAskedWhenSkippingAll(context),
+        )
+    }
+
+    @Test
+    fun an_anchored_standard_session_without_services_keeps_mood_in_its_four_slots() {
+        val context = PickContext(length = SessionLength.STANDARD, anchorCandidate = finished)
+        assertEquals(
+            listOf(PickQuestion.ANCHOR, PickQuestion.SOURCE, PickQuestion.FORMAT_AND_TIME, PickQuestion.MOOD),
+            questionsAskedWhenSkippingAll(context),
+        )
     }
 
     @Test
