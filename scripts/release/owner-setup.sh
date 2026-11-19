@@ -103,13 +103,75 @@ do_app_perms() {
   wait_enter && mark app-read-perms
 }
 
+# --- the approver App, for the back-merge PR --------------------------------------
+# back-merge-auto.yml approves release.yml's back-merge PR: the release App
+# opened it, so its own approval does not count, and CodeRabbit skips
+# App-authored PRs (#890). The approver's key is an environment secret, and the
+# environment runs on develop only, so a workflow on a pushed branch cannot
+# read it and approve its own PR. (Letting Actions approve pull requests would
+# give every workflow on every branch that power; leave that setting off.)
+# The deployment policies of the back-merge environment as "type:name" pairs,
+# joined. Exactly "branch:develop" is the only state the workflow can run in: a
+# tag rule named develop does not admit a branch run, and any other rule would
+# let the approver's key be read from a branch the workflow never reviewed.
+approver_policies() {
+  gh api "repos/$REPO/environments/back-merge/deployment-branch-policies?per_page=100" \
+    --jq '[.branch_policies[] | "\(.type):\(.name)"] | join(",")' 2>/dev/null
+}
+check_approver() {
+  [ "$(approver_policies)" = "branch:develop" ] \
+    && gh secret list --repo "$REPO" --env back-merge --json name --jq '.[].name' 2>/dev/null | grep -qx APPROVER_APP_PRIVATE_KEY \
+    && gh secret list --repo "$REPO" --env back-merge --json name --jq '.[].name' 2>/dev/null | grep -qx APPROVER_APP_ID
+}
+do_approver() {
+  say "The back-merge PR (main into develop, after every release) is approved by a workflow,"
+  say "and only when it is untouched. Create a second private GitHub App for that approval:"
+  say "  name: muviss-approver   homepage: https://github.com/$REPO   webhook: off"
+  say "  repository permissions: Pull requests RW, Metadata R. Nothing else."
+  say "  where can it be installed: only this account"
+  say "Then: generate a private key (.pem), and install the App on $REPO only."
+  open_url "https://github.com/settings/apps/new"
+  wait_enter || return 1
+  local app_id pem
+  read -r -p "    App ID (numeric, on the App's page): " app_id
+  read -r -p "    Path to the downloaded .pem: " pem
+  [ -n "$app_id" ] && [ -f "$pem" ] || { say "need both"; return 1; }
+  say "Its key goes into a 'back-merge' environment that only develop may use."
+  printf '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' \
+    | gh api -X PUT "repos/$REPO/environments/back-merge" --input - >/dev/null || return 1
+  # Add the develop branch rule if it is missing, then verify the whole list
+  # before either secret is written: a rule that is already there is not removed
+  # by this script, so an extra one stops setup and is named for the owner.
+  if [ "$(approver_policies)" != "branch:develop" ]; then
+    gh api -X POST "repos/$REPO/environments/back-merge/deployment-branch-policies" \
+      -f name=develop -f type=branch >/dev/null || return 1
+  fi
+  if [ "$(approver_policies)" != "branch:develop" ]; then
+    say "The back-merge environment allows more than the develop branch: $(approver_policies)"
+    say "Remove the other deployment rules on the environment, then run the wizard again."
+    say "The approver's key was not stored."
+    return 1
+  fi
+  # Both writes must succeed. On a failure, what was written is removed, so the
+  # next run finds the step not done and stores both again from the same .pem.
+  if gh secret set APPROVER_APP_ID --repo "$REPO" --env back-merge --body "$app_id" >/dev/null \
+    && gh secret set APPROVER_APP_PRIVATE_KEY --repo "$REPO" --env back-merge <"$pem" >/dev/null; then
+    say "Delete the .pem from your downloads once it is in a password manager."
+    return 0
+  fi
+  say "Storing the approver's secrets failed; removing what was written. Run the wizard again."
+  gh secret delete APPROVER_APP_ID --repo "$REPO" --env back-merge >/dev/null 2>&1 || true
+  gh secret delete APPROVER_APP_PRIVATE_KEY --repo "$REPO" --env back-merge >/dev/null 2>&1 || true
+  return 1
+}
+
 # --- 5. rulesets ---------------------------------------------------------------
 check_rulesets() {
   local names
   names="$(gh api "repos/$REPO/rulesets" --jq '.[].name' 2>/dev/null)"
   grep -qx main <<<"$names" && grep -qx develop <<<"$names" && grep -qx release-tags <<<"$names"
 }
-ruleset_branch() { # name ref merge_methods checks_json
+ruleset_branch() { # name ref merge_methods checks_json dismiss_stale last_push
   cat <<JSON
 {
   "name": "$1", "target": "branch", "enforcement": "active",
@@ -120,9 +182,9 @@ ruleset_branch() { # name ref merge_methods checks_json
     { "type": "non_fast_forward" },
     { "type": "pull_request", "parameters": {
         "required_approving_review_count": 1,
-        "dismiss_stale_reviews_on_push": false,
+        "dismiss_stale_reviews_on_push": $5,
         "require_code_owner_review": false,
-        "require_last_push_approval": false,
+        "require_last_push_approval": $6,
         "required_review_thread_resolution": false,
         "allowed_merge_methods": $3 } },
     { "type": "required_status_checks", "parameters": {
@@ -142,11 +204,13 @@ do_rulesets() {
   say "Admins (you) can bypass all three."
   confirm "Apply the three rulesets?" || return 1
   local c='{"context":"build"},{"context":"desktop"},{"context":"ios"},{"context":"Release tooling tests"}'
+  # Stale-approval dismissal is off on develop on purpose until the owner decides
+  # (#986): turning it on changes the review policy of every PR into develop.
   ruleset_branch main refs/heads/main '["merge"]' \
-    "[$c,{\"context\":\"PRs into main come from release/* or hotfix/*\"},{\"context\":\"Release notes are final\"}]" \
+    "[$c,{\"context\":\"PRs into main come from release/* or hotfix/*\"},{\"context\":\"Release notes are final\"}]" false false \
     | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
   ruleset_branch develop refs/heads/develop '["squash","merge"]' \
-    "[$c,{\"context\":\"Features reach the landing\"}]" \
+    "[$c,{\"context\":\"Features reach the landing\"}]" false false \
     | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
   cat <<JSON | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null
 {
@@ -286,6 +350,7 @@ step "CodeRabbit is installed"                             check_coderabbit do_c
 step "the muviss-release GitHub App's secrets are set"      check_app        do_app
 step "the release App can read Actions and Checks"         check_app_perms  do_app_perms
 step "rulesets protect main, develop and v* tags"          check_rulesets   do_rulesets
+step "the approver App can approve the back-merge PR"      check_approver   do_approver
 step "the production environment needs your approval"      check_env        do_env
 step "the release keystore secrets are set"                check_keystore   do_keystore
 step "TMDB and Sentry secrets are set"                     check_optional   do_optional
