@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.search.domain
 
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MutedGenres
@@ -10,16 +11,25 @@ import com.codingpit.muviss.models.PagedResult
 /** A value the cache holds, with the moment it was fetched from TMDB (#724). */
 data class Saved<T>(val value: T, val fetchedAtEpochMs: Long)
 
+/** One seed's raw recommendations as stored for "For you" (#785), and when TMDB answered for it. */
+data class ForYouAnswer(val seed: MediaId, val items: List<MediaSummary>, val fetchedAtEpochMs: Long)
+
 /**
- * The stored raw TMDB responses behind Discover (#724). Raw means before Muted Genres: the caller filters at
- * read, so a mute change never shows stale titles. Keys carry the language, so a language change is a miss.
- * [NoDiscoverCache] is the cache of a test or a build without one.
+ * The stored raw TMDB responses behind Discover (#724), and "For you"'s copy (#785). Raw means before Muted Genres
+ * and before the library: the caller filters at read, so a mute change never shows stale titles. Keys carry the
+ * language, so a language change is a miss. [NoDiscoverCache] is the cache of a test or a build without one.
  */
 interface DiscoverCache {
     suspend fun genres(type: MediaType): Saved<List<Genre>>?
     suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long)
     suspend fun popular(type: MediaType, page: Int): Saved<PagedResult<MediaSummary>>?
     suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long)
+
+    /** The answers stored for the seed set [seeds], or null when that set has none. A different set is a miss. */
+    suspend fun forYou(seeds: List<MediaId>): List<ForYouAnswer>? = null
+
+    /** Stores [answers] for the seed set [seeds]. An answer replaces a stored one for the same seed only when it is newer. */
+    suspend fun saveForYou(seeds: List<MediaId>, answers: List<ForYouAnswer>) = Unit
 }
 
 object NoDiscoverCache : DiscoverCache {
@@ -113,6 +123,37 @@ class DiscoverFeed(
         val complete = snapshot.movieGenres != null && snapshot.tvGenres != null && snapshot.popularMovies != null && snapshot.popularTv != null
         val partial = listOf(snapshot.popularMovies, snapshot.popularTv).any { it?.complete == false }
         return !complete || partial || isPastTtl(snapshot)
+    }
+
+    /**
+     * The stored "For you" answers for [seeds], in seed order, or null when no copy is stored for this seed set. A
+     * seed set that changed is a miss, so a library change never shows the previous set's titles.
+     */
+    suspend fun forYouStored(seeds: List<MediaId>): List<ForYouAnswer>? {
+        val stored = cache.forYou(seeds) ?: return null
+        return seeds.mapNotNull { seed -> stored.firstOrNull { it.seed == seed } }
+    }
+
+    /**
+     * [seeds]' answers after a refresh. Only a seed whose stored answer is missing or past [TTL_MS] is asked of
+     * TMDB, so a library change that keeps the seed set costs no request. A seed that fails keeps its stored answer
+     * with its old fetch time, so it stays due; with nothing stored it contributes nothing. What succeeded is
+     * stored. Returned in [seeds]' order.
+     */
+    suspend fun refreshForYou(
+        seeds: List<MediaId>,
+        stored: List<ForYouAnswer>?,
+        recommendations: suspend (MediaId) -> Result<PagedResult<MediaSummary>>,
+    ): List<ForYouAnswer> {
+        val now = clock.nowEpochMs()
+        val byId = stored.orEmpty().associateBy { it.seed }
+        val due = seeds.filter { seed -> byId[seed]?.let { now - it.fetchedAtEpochMs > TTL_MS } ?: true }
+        val asked = due.associateWith { seed -> recommendations(seed).map { it.items } }
+        val answers = seeds.mapNotNull { seed ->
+            asked[seed]?.getOrNull()?.let { ForYouAnswer(seed, it, now) } ?: byId[seed]
+        }
+        if (asked.values.any { it.isSuccess }) cache.saveForYou(seeds, answers)
+        return answers
     }
 
     /** Fetches every section, storing each success. [mutedMovies] and [mutedTv] decide how far a shelf reads. */

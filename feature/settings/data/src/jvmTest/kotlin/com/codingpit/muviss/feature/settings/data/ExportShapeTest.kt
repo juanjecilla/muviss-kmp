@@ -15,6 +15,10 @@ import kotlin.test.assertEquals
  * it can be refetched from TMDB, and including it would inflate an export by
  * an order of magnitude with data the importing install would overwrite on
  * first refresh anyway (ADR 0015).
+ *
+ * The Discover caches (`discoverCache`, #724, and `forYouCache`, #785) are in
+ * the same family and are left out for the same reason. The exact field list
+ * below is what keeps them out, and a restore never writes them.
  */
 class ExportShapeTest {
 

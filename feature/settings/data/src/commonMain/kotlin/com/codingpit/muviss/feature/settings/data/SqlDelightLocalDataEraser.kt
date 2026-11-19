@@ -86,6 +86,8 @@ class SqlDelightLocalDataEraser(
             database.remoteConfigCacheQueries.deleteAll()
             // Discover's stored TMDB answers (#724): a cache of what this install looked at.
             database.discoverCacheQueries.deleteAll()
+            // And "For you"'s copy of the recommendations for the library it was built from (#785).
+            database.forYouCacheQueries.deleteAll()
             // Whose library this was, and how far it had pulled.
             database.syncCursorQueries.deleteAll()
             database.syncStateQueries.deleteRow()
