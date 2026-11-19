@@ -65,6 +65,7 @@
     <string name="unsnooze">Recuperar</string>
     <string name="stale_notice">%1$s Mostrando lo guardado en este dispositivo.</string>
     <string name="refresh_failed">No se pudo actualizar este título.</string>
+    <string name="discover_refresh_failed">No se pudo actualizar Buscar.</string>
     <string name="skipped_banner">Lo descartaste al llenar tu biblioteca</string>
     <string name="watched_again">Lo he vuelto a ver</string>
     <string name="tick_mistake">Lo marqué por error</string>
@@ -109,6 +110,7 @@
     <string name="primary_not_aired">Aún no se ha emitido</string>
     <string name="primary_premieres">Se estrena el %1$s</string>
     <string name="primary_finished">Terminada ✓</string>
+    <string name="primary_loading">Cargando…</string>
     <string name="remove_from_library">Quitar de la biblioteca</string>
     <string name="mark_show_seen_none_aired">Aún no se ha emitido nada</string>
     <string name="movie_marked_watched">Marcada como vista</string>

@@ -111,10 +111,188 @@ class DetailProgressWritesTest {
         assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
         vm.toggleEpisodeSeen(episode2.id)
         assertEquals(false, vm.state.value.pendingUndo?.createdEntry)
-        vm.undoBulkMark()
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
 
+        // The entry is kept, and Undo takes back the latest tick (episode 2), not the one the entry was created for.
         assertTrue(collection.removed.isEmpty())
-        assertEquals(setOf(episode2.id), progress.seenIds)
+        assertEquals(setOf(episode1.id), progress.seenIds)
+    }
+
+    @Test
+    fun a_single_checkmark_tap_offers_undo_that_takes_the_tick_back() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
+
+        assertTrue(progress.seenIds.isEmpty())
+    }
+
+    @Test
+    fun a_single_checkmark_tap_on_an_unsaved_show_undo_removes_the_entry_it_created() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
+
+        assertEquals(listOf(show), collection.removed)
+        assertTrue(progress.seenIds.isEmpty())
+    }
+
+    /**
+     * A seen read that dies before it reports leaves the button on Loading. The error page shows instead, and Retry
+     * subscribes again: the read reports, and the error clears.
+     */
+    @Test
+    fun a_progress_read_that_fails_before_reporting_shows_an_error_and_retry_resubscribes() = runTest {
+        val progress = FakeProgressApi().apply { failNextSeenObservation = true }
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        assertTrue(vm.state.value.error != null)
+        assertTrue(!vm.state.value.progressLoaded)
+
+        vm.load()
+
+        assertTrue(vm.state.value.progressLoaded)
+        assertNull(vm.state.value.error)
+    }
+
+    /** The same for the library read: without a membership answer the primary action can never leave Loading. */
+    @Test
+    fun a_library_read_that_fails_before_reporting_shows_an_error_and_retry_resubscribes() = runTest {
+        val collection = FakeCollectionApi().apply { failNextMembershipObservation = true }
+        val vm = viewModel(collectionApi = collection, detailsToLoad = tvDetails, id = show)
+
+        assertTrue(vm.state.value.error != null)
+        assertTrue(!vm.state.value.membershipLoaded)
+
+        vm.load()
+
+        assertTrue(vm.state.value.membershipLoaded)
+        assertNull(vm.state.value.error)
+    }
+
+    /** Every reload cancels the previous seen collector before starting its own: there is never more than one. */
+    @Test
+    fun repeated_reloads_keep_exactly_one_progress_collector() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.load()
+        vm.load()
+        vm.load()
+
+        assertEquals(1, progress.activeSeenCollectors)
+    }
+
+    /**
+     * A removal queued behind an in-flight tick publishes its Undo after the tick's, so the Undo left on screen is
+     * the removal's and tapping it brings the entry back. The tick is held inside the lock by its fresh read.
+     */
+    @Test
+    fun a_removal_queued_behind_an_in_flight_tick_keeps_its_own_undo() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        progress.seenReady.value = false
+        vm.toggleEpisodeSeen(episode1.id)
+        vm.removeFromLibrary()
+        progress.seenReady.value = true
+
+        val removal = checkNotNull(vm.state.value.pendingUndo)
+        assertTrue(removal.removedFromLibrary)
+        vm.undoBulkMark(removal)
+        assertEquals(listOf(show), collection.restored)
+    }
+
+    /**
+     * A snackbar that timed out after a newer tick offered its Undo must not clear that newer Undo. Dismissing
+     * the stale record leaves the pending one in place.
+     */
+    @Test
+    fun a_dismiss_for_a_replaced_undo_leaves_the_newer_one_pending() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        val stale = checkNotNull(vm.state.value.pendingUndo)
+        vm.toggleEpisodeSeen(episode2.id)
+        val pendingSecond = vm.state.value.pendingUndo
+
+        vm.dismissUndo(stale)
+
+        assertTrue(vm.state.value.pendingUndo === pendingSecond)
+    }
+
+    /**
+     * An Undo tapped for the first tick must not reverse the second one: the second tick replaced the pending Undo
+     * before the first Undo got the lock, so the tap is stale and writes nothing.
+     */
+    @Test
+    fun an_undo_tapped_for_an_earlier_tick_does_nothing_once_a_later_tick_replaced_it() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.toggleEpisodeSeen(episode1.id)
+        val tappedFirst = checkNotNull(vm.state.value.pendingUndo)
+        vm.toggleEpisodeSeen(episode2.id)
+        val pendingSecond = vm.state.value.pendingUndo
+
+        vm.undoBulkMark(tappedFirst)
+
+        assertEquals(setOf(episode1.id, episode2.id), progress.seenIds)
+        assertTrue(vm.state.value.pendingUndo === pendingSecond)
+    }
+
+    @Test
+    fun a_checkmark_tap_on_an_episode_already_seen_but_not_yet_loaded_writes_nothing_and_offers_no_undo() = runTest {
+        val progress = FakeProgressApi()
+        progress.setEpisodeSeen(episode1.id, seen = true)
+        // The screen's copy was taken before the tick landed: it does not show episode1 as seen yet.
+        progress.firstCollectionSnapshot = emptySet()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+        assertTrue(episode1.id !in vm.state.value.seenEpisodes, "the UI snapshot must exclude the episode")
+        assertTrue(episode1.id in progress.observeSeenEpisodes(show).first(), "the fresh read must include it")
+
+        vm.toggleEpisodeSeen(episode1.id)
+
+        assertNull(vm.state.value.pendingUndo)
+        assertEquals(setOf(episode1.id), progress.seenIds)
+        assertEquals(1, progress.observePlayCounts(show).first()[episode1.id])
+    }
+
+    @Test
+    fun mark_show_seen_with_nothing_aired_adds_no_entry_and_offers_no_undo() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val notAired = MediaDetails(MediaSummary(show, "Not Yet"), seasons = listOf(Season(1, "Season 1", listOf(unairedEpisode))))
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = notAired, id = show)
+
+        vm.markShowSeen()
+
+        assertTrue(collection.added.isEmpty())
+        assertTrue(progress.seenIds.isEmpty())
+        assertNull(vm.state.value.pendingUndo)
+    }
+
+    @Test
+    fun mark_season_seen_with_nothing_aired_adds_no_entry_and_offers_no_undo() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val notAired = Season(1, "Season 1", listOf(unairedEpisode))
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = MediaDetails(MediaSummary(show, "Not Yet"), seasons = listOf(notAired)), id = show)
+
+        vm.markSeasonSeen(notAired)
+
+        assertTrue(collection.added.isEmpty())
+        assertTrue(progress.seenIds.isEmpty())
+        assertNull(vm.state.value.pendingUndo)
     }
 
     @Test
@@ -142,6 +320,19 @@ class DetailProgressWritesTest {
     }
 
     @Test
+    fun catching_up_through_an_already_seen_episode_adds_no_entry_and_writes_nothing() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        progress.setEpisodeSeen(episode1.id, seen = true)
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.markPreviousSeen(episode1.id)
+
+        assertTrue(collection.added.isEmpty())
+        assertTrue(progress.markedPrevious.isEmpty())
+    }
+
+    @Test
     fun mark_previous_seen_on_an_unaired_target_does_nothing() = runTest {
         val collection = FakeCollectionApi()
         val progress = FakeProgressApi()
@@ -161,9 +352,10 @@ class DetailProgressWritesTest {
 
         vm.tickNext(episode1.id)
         assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
+        val tapped = checkNotNull(vm.state.value.pendingUndo)
         vm.recordRewatch(episode1.id)
         assertNull(vm.state.value.pendingUndo)
-        vm.undoBulkMark()
+        vm.undoBulkMark(tapped)
 
         // Undo would have removed the newest viewing, which is the rewatch; both viewings must remain.
         assertEquals(2, progress.observePlayCounts(show).first()[episode1.id])

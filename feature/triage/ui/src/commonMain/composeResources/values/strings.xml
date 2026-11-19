@@ -77,6 +77,8 @@
     <string name="clear_filters">Clear filters</string>
     <string name="all_caught_up_title">All caught up</string>
     <string name="all_caught_up_body">You've triaged everything we can find right now. New titles will show up as they get popular.</string>
+    <string name="seeded_done_title">Your picks are done</string>
+    <string name="seeded_done_body">You have been through the picks from this session. Start another pick in What's next? for more.</string>
     <string name="review_skipped">Review skipped</string>
     <string name="nothing_skipped">Nothing skipped</string>
     <string name="nothing_skipped_body">Titles you skip during triage show up here, in case you change your mind.</string>

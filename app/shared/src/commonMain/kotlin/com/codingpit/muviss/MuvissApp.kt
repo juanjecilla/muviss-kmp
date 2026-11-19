@@ -41,6 +41,8 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.app.shared.generated.resources.persistence_reload_to_save
+import com.codingpit.muviss.app.shared.generated.resources.persistence_stale
 import com.codingpit.muviss.app.shared.generated.resources.persistence_write_failed
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
@@ -51,6 +53,7 @@ import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.designsystem.component.LocalOpenTmdbKeySettings
 import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
+import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
@@ -81,13 +84,14 @@ import com.codingpit.muviss.feature.settings.ui.ImportRoute
 import com.codingpit.muviss.feature.settings.ui.LocalSystemNotificationSettings
 import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
+import com.codingpit.muviss.feature.triage.api.TriageDeckSeeds
+import com.codingpit.muviss.feature.triage.ui.SeededDeckRoute
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
 import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -106,6 +110,9 @@ import org.koin.dsl.module
  * [onDeepLinkConsumed] so backgrounding/foregrounding the app doesn't
  * re-navigate. Both default to no-op for platforms with no such deep link.
  *
+ * [openNextPick] is the `muviss://next-pick` link (the widget's empty state, EPIC 51): it opens the Pick
+ * Session over the start screen, cleared through [onOpenNextPickConsumed] like [deepLinkMediaId].
+ *
  * [oauthCode] is the same idea for sign-in (ADR 0014): the authorization code
  * from a `muviss://auth-callback` redirect, cleared through
  * [onOAuthCodeConsumed] once redeemed. It is handled here rather than in the
@@ -122,6 +129,8 @@ import org.koin.dsl.module
 fun MuvissApp(
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
+    openNextPick: Boolean = false,
+    onOpenNextPickConsumed: () -> Unit = {},
     oauthCode: String? = null,
     onOAuthCodeConsumed: () -> Unit = {},
     controller: MuvissAppController = rememberMuvissAppController(),
@@ -159,13 +168,13 @@ fun MuvissApp(
                 // "TMDB rejected your key" offers a way to Settings, where the key lives (#321).
                 LocalOpenTmdbKeySettings provides { controller.destinations.firstOrNull { it.route == SettingsRoute }?.let(controller::navigateTo) },
             ) {
-                val startRoute = rememberStartRoute(deepLinkMediaId)
+                val startRoute = rememberStartRoute(hasDeepLink = deepLinkMediaId != null || openNextPick)
                 if (startRoute == null) {
                     // The decision is one local read; drawing nothing meanwhile beats flashing
                     // the Search tab (and the trending request it makes) before the introduction.
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 } else {
-                    MuvissScaffold(controller, startRoute, deepLinkMediaId, onDeepLinkConsumed)
+                    MuvissScaffold(controller, startRoute, deepLinkMediaId, onDeepLinkConsumed, openNextPick, onOpenNextPickConsumed)
                 }
             }
         }
@@ -292,10 +301,10 @@ private fun CompleteOAuthOnRedirect(authCode: String?, onConsumed: () -> Unit) {
  * finishes, and a start destination that followed it would rebuild the graph under the user.
  */
 @Composable
-private fun rememberStartRoute(deepLinkMediaId: String?): Any? {
+private fun rememberStartRoute(hasDeepLink: Boolean): Any? {
     val onboarding = koinInject<OnboardingApi>()
     val completed by produceState<Boolean?>(initialValue = null) { value = onboarding.observeCompleted().first() }
-    val route = remember(completed) { startRouteFor(completed, hasDeepLink = deepLinkMediaId != null) }
+    val route = remember(completed) { startRouteFor(completed, hasDeepLink = hasDeepLink) }
     // A fresh install takes its animations default from the OS's reduce-motion setting, once, on its first
     // launch whatever the start route; the use case keeps its own mark, so a choice made in Settings
     // afterwards is never touched (#394).
@@ -332,6 +341,8 @@ private fun MuvissScaffold(
     startRoute: Any,
     deepLinkMediaId: String? = null,
     onDeepLinkConsumed: () -> Unit = {},
+    openNextPick: Boolean = false,
+    onOpenNextPickConsumed: () -> Unit = {},
 ) {
     val navController = controller.navController
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -341,6 +352,8 @@ private fun MuvissScaffold(
     // today, ADR 0018) shows no way into it — the same rule that hides the
     // profile's sync row. The routes stay registered; nothing links to them.
     val syncAvailability = koinInject<SyncAvailability>()
+    // Next Pick's Deck result hands its titles to Triage through this seam before it opens the seeded deck (#554).
+    val triageSeeds = koinInject<TriageDeckSeeds>()
     val openCoWatch = remember(syncAvailability, navController) {
         coWatchEntry(syncAvailability) { navController.navigate(CompanionsRoute) }
     }
@@ -360,6 +373,15 @@ private fun MuvissScaffold(
         if (deepLinkMediaId != null) {
             navController.navigate(DetailRoute(deepLinkMediaId))
             onDeepLinkConsumed()
+        }
+    }
+
+    // The widget's empty state (muviss://next-pick). Opened over whatever the start route was, the way the
+    // Library's entry opens it, so back returns to where the launch landed.
+    LaunchedEffect(openNextPick) {
+        if (openNextPick) {
+            controller.openNextPick()
+            onOpenNextPickConsumed()
         }
     }
 
@@ -425,7 +447,13 @@ private fun MuvissScaffold(
         // them, on every platform.
         ScreenInsets {
             Column {
-                PersistenceBanner(message = rememberPersistenceWarning())
+                val persistence = koinInject<PersistenceStatus>()
+                val warning = rememberPersistenceWarning(persistence)
+                PersistenceBanner(
+                    message = warning?.message,
+                    actionLabel = warning?.actionLabel,
+                    onAction = persistence::reloadPage,
+                )
                 // The "What's next?" sheet (EPIC 51, #400) is hosted here rather than on a screen: its
                 // trigger is a hot flow, so it must be collecting when a tick finishes a title.
                 CompletionSheetHost(
@@ -492,7 +520,13 @@ private fun MuvissScaffold(
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     // Not a bottom-bar destination: reached from the completion sheet and the entry points (EPIC 51).
-                    nextPickSection(navController)
+                    nextPickSection(
+                        navController,
+                        onOpenDeck = { cards ->
+                            triageSeeds.seed(cards)
+                            navController.navigate(SeededDeckRoute)
+                        },
+                    )
                 }
             }
         }
@@ -500,26 +534,35 @@ private fun MuvissScaffold(
 }
 
 /**
- * The one sentence that describes this session's storage, or null when there is
- * nothing to say.
+ * The sentence that describes this session's storage, and the way out of it when
+ * there is one, or null when there is nothing to say.
  *
  * Null for [PersistenceState.Durable] and for [PersistenceState.Pending] —
  * Pending specifically, so the tab that *is* the writer never flashes a warning
  * in the milliseconds before the lock election answers. Every platform but web
  * is permanently Durable, so the banner is drawn on exactly the platform that
  * has the problem without any of the screens knowing which one that is.
+ *
+ * Only a tab that is not saving because another tab has the lock, or because its
+ * copy is out of date (#62), offers a reload. A reload fixes an out-of-date copy
+ * outright; behind another tab's lock it only returns this tab to read-only until
+ * that tab is closed, so the label does not promise saving. It is not offered
+ * where no lock exists at all, or on a failed write, since a reload changes neither.
  */
 @Composable
-private fun rememberPersistenceWarning(): String? {
-    val status = koinInject<PersistenceStatus>()
+private fun rememberPersistenceWarning(status: PersistenceStatus): PersistenceWarning? {
     val state by status.state.collectAsStateWithLifecycle()
+    val reload = UiText.Resource(Res.string.persistence_reload_to_save)
     return when (state) {
         PersistenceState.Pending, PersistenceState.Durable -> null
-        PersistenceState.ReadOnlyTab -> stringResource(Res.string.persistence_read_only_tab)
-        PersistenceState.NotPersisted -> stringResource(Res.string.persistence_not_persisted)
-        PersistenceState.WriteFailed -> stringResource(Res.string.persistence_write_failed)
+        PersistenceState.ReadOnlyTab -> PersistenceWarning(UiText.Resource(Res.string.persistence_read_only_tab), reload)
+        PersistenceState.Stale -> PersistenceWarning(UiText.Resource(Res.string.persistence_stale), reload)
+        PersistenceState.NotPersisted -> PersistenceWarning(UiText.Resource(Res.string.persistence_not_persisted), null)
+        PersistenceState.WriteFailed -> PersistenceWarning(UiText.Resource(Res.string.persistence_write_failed), null)
     }
 }
+
+private class PersistenceWarning(val message: UiText, val actionLabel: UiText?)
 
 private fun configureImageLoader() {
     SingletonImageLoader.setSafe { context -> createImageLoader(context) }
