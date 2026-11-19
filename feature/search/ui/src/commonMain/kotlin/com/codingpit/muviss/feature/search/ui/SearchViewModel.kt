@@ -16,6 +16,7 @@ import com.codingpit.muviss.feature.collection.api.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.DiscoverSnapshot
+import com.codingpit.muviss.feature.search.domain.ForYouAnswer
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
@@ -464,11 +465,17 @@ class SearchViewModel(
 
     /**
      * Seeds recommendations from [library]'s favorites/top-rated titles via
-     * [ForYouSeeding.selectSeeds], fetches each seed's recommendations, and
-     * merges them with [ForYouSeeding.mergeAndExclude]. Emits an empty list —
-     * which hides the section — when the library carries no signal yet, same
-     * "no error, just hidden" treatment as [DetailViewModel]'s watch-providers
-     * and more-like-this rows.
+     * [ForYouSeeding.selectSeeds], and merges each seed's answer with
+     * [ForYouSeeding.mergeAndExclude]. Emits an empty list — which hides the
+     * section — when the library carries no signal yet, same "no error, just
+     * hidden" treatment as [DetailViewModel]'s watch-providers and more-like-this
+     * rows.
+     *
+     * The answers are stored for the seed set (#785): the stored copy is shown
+     * first, then the refresh, which asks TMDB only for the seeds whose answer is
+     * missing or past its TTL. The library and the decided titles are applied at
+     * every emission, so a title saved, skipped or snoozed meanwhile never returns
+     * from the copy, and a mute change re-filters the same stored answers.
      */
     private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>, muted: MutedGenres): Flow<List<MediaSummary>> = flow {
         val seeds = ForYouSeeding.selectSeeds(library)
@@ -477,8 +484,11 @@ class SearchViewModel(
             return@flow
         }
         val excluded = library.mapTo(mutableSetOf()) { it.mediaId } + decidedIds
-        val recommendationsBySeed = seeds.map { seed -> recommendationsUseCase(seed).getOrNull()?.items.orEmpty() }
-        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, excluded).filterNot(muted::hides))
+        fun shown(answers: List<ForYouAnswer>): List<MediaSummary> = ForYouSeeding.mergeAndExclude(answers.map { it.items }, excluded).filterNot(muted::hides)
+
+        val stored = discoverFeed.forYouStored(seeds)
+        if (stored != null) emit(shown(stored))
+        emit(shown(discoverFeed.refreshForYou(seeds, stored) { seed -> recommendationsUseCase(seed, fresh = true) }))
     }
 
     private companion object {

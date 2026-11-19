@@ -82,18 +82,18 @@ internal class CountingMetadata(
         return PagedResult(discover[type].orEmpty(), page = page, totalPages = 1)
     }
 
-    override suspend fun recommendations(id: MediaId, page: Int): PagedResult<MediaSummary> {
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
         count("recommendations")
         failRecommendations?.let { throw it }
         return PagedResult(recommended, page = page, totalPages = 1)
     }
 
-    override suspend fun similar(id: MediaId, page: Int): PagedResult<MediaSummary> {
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
         count("similar")
         return PagedResult(similarTitles, page = page, totalPages = 1)
     }
 
-    override suspend fun genres(type: MediaType): List<Genre> {
+    override suspend fun genres(type: MediaType, fresh: Boolean): List<Genre> {
         count("genres")
         return emptyList()
     }

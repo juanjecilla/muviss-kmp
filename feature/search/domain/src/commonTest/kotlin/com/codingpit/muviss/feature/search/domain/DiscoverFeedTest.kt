@@ -244,7 +244,7 @@ class DiscoverFeedTest {
 
         fun discoverPages(type: MediaType): List<Int> = requests.filter { it.first == type }.map { it.second }
 
-        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> {
             requests += type to page
             if (failEverything) return Result.failure(MetadataError.Offline())
             val source = if (type == MediaType.MOVIE) movies else tvs
@@ -252,7 +252,7 @@ class DiscoverFeedTest {
             return Result.success(answer)
         }
 
-        override suspend fun genres(type: MediaType): Result<List<Genre>> {
+        override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> {
             if (failEverything) return Result.failure(MetadataError.Offline())
             val answer = if (type == MediaType.MOVIE) movieGenres else tvGenres
             return answer?.let { Result.success(it) } ?: Result.failure(MetadataError.Offline())
@@ -262,8 +262,8 @@ class DiscoverFeedTest {
         override suspend fun trending(): Result<List<MediaSummary>> = error("not used")
         override suspend fun details(id: MediaId): Result<MediaDetails> = error("not used")
         override suspend fun watchProviders(id: MediaId): Result<WatchProviders> = error("not used")
-        override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
-        override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = error("not used")
         override suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails> = error("not used")
     }
 }
