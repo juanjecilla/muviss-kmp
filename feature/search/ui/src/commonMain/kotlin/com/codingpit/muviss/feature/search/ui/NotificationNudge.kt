@@ -49,10 +49,17 @@ const val NUDGE_DISMISS_TAG = "notificationNudgeDismiss"
 data class NotificationNudgeState(
     /** Onboarding says this title should offer the nudge. */
     val offered: Boolean = false,
-    /** The user said yes and the OS said no: explain instead of vanishing. */
+    /** The user said yes and the OS said no for good: explain instead of vanishing. */
     val blocked: Boolean = false,
+    /**
+     * The user said yes, the OS said no, and it would still ask: Turn on stays, so the next tap prompts again (#933).
+     * Kept here rather than in [offered], because spending the nudge has already hidden it from onboarding.
+     */
+    val retryable: Boolean = false,
+    /** A Turn on is being answered. Keeps the banner up while the spend and the answer land (no flicker). */
+    val answering: Boolean = false,
 ) {
-    val visible: Boolean get() = offered || blocked
+    val visible: Boolean get() = offered || blocked || retryable || answering
 }
 
 /**
@@ -104,17 +111,31 @@ class NotificationNudgeViewModel(
             .launchInReporting(viewModelScope)
     }
 
+    /**
+     * Asks through Settings' own door, so the OS prompt is the one Settings' switch shows. A refusal the OS will ask
+     * about again keeps Turn on (the next tap prompts); one it will not becomes the blocked line. The domain spends the
+     * nudge whatever the answer, so [NotificationNudgeState.answering] keeps the banner up until this has decided.
+     */
     fun turnOn() {
         val decision = ++decisionEpoch
         settlement?.cancel()
         viewModelScope.launchReporting {
             if (refusedForGoodNow(system.blockedNow())) {
-                commitDecision(decision, explain = true)
+                commitDecision(decision, blocked = true, retryable = false)
                 return@launchReporting
             }
-            when (onboarding.acceptNotificationNudge()) {
-                NotificationNudgeResult.DENIED -> commitDecision(decision, explain = true)
-                NotificationNudgeResult.ENABLED -> commitDecision(decision, explain = false)
+            _state.update { it.copy(answering = true) }
+            try {
+                when (onboarding.acceptNotificationNudge()) {
+                    NotificationNudgeResult.DENIED -> {
+                        val forGood = refusedForGoodNow(system.blockedNow())
+                        commitDecision(decision, blocked = forGood, retryable = !forGood)
+                    }
+
+                    NotificationNudgeResult.ENABLED -> commitDecision(decision, blocked = false, retryable = false)
+                }
+            } finally {
+                _state.update { it.copy(answering = false) }
             }
         }
     }
@@ -131,11 +152,11 @@ class NotificationNudgeViewModel(
      * Writes the outcome of a decision, if no other decision or dismissal has happened since it began. The write
      * advances the epoch, so every settlement and turn-on that began before it becomes stale.
      */
-    private fun commitDecision(decision: Int, explain: Boolean) {
+    private fun commitDecision(decision: Int, blocked: Boolean, retryable: Boolean) {
         if (decisionEpoch != decision) return
         ++decisionEpoch
         settlement?.cancel()
-        _state.update { it.copy(blocked = explain) }
+        _state.update { it.copy(blocked = blocked, retryable = retryable) }
     }
 
     /**
@@ -158,7 +179,7 @@ class NotificationNudgeViewModel(
         ++decisionEpoch
         settlement?.cancel()
         // Synchronous, so a denial from a turn-on still in flight cannot re-show the line after this tap.
-        _state.update { it.copy(blocked = false) }
+        _state.update { it.copy(blocked = false, retryable = false, answering = false) }
         viewModelScope.launchReporting {
             onboarding.dismissNotificationNudge()
         }

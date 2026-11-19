@@ -30,6 +30,9 @@ class NotificationNudgeViewModelTest {
         var accepted = 0
         var dismissed = 0
 
+        /** Runs as the OS answers, so a test can change what the system says before the answer comes back. */
+        var onAnswer: () -> Unit = {}
+
         /** When set, the next accept spends the nudge and then waits here before answering (a turn-on still in flight). */
         var heldAccept: CompletableDeferred<Unit>? = null
 
@@ -43,6 +46,7 @@ class NotificationNudgeViewModelTest {
             accepted++
             offered.value = false // the real one spends the nudge whatever the OS said
             heldAccept?.also { heldAccept = null }?.await()
+            onAnswer()
             return answer
         }
 
@@ -131,6 +135,8 @@ class NotificationNudgeViewModelTest {
     @Test
     fun a_refusal_keeps_a_line_that_says_why_instead_of_vanishing() = runTest {
         onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        system.askable = false
         val vm = viewModel()
         vm.turnOn()
 
@@ -141,6 +147,8 @@ class NotificationNudgeViewModelTest {
     @Test
     fun the_blocked_line_can_open_system_settings_and_dismissing_clears_it() = runTest {
         onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        system.askable = false
         val vm = viewModel()
         vm.turnOn()
         vm.openSystemSettings()
@@ -216,7 +224,10 @@ class NotificationNudgeViewModelTest {
     @Test
     fun a_denial_just_given_keeps_its_explanation_after_the_nudge_is_spent_and_on_resume() = runTest {
         onboarding.answer = NotificationNudgeResult.DENIED
-        system.off = true
+        onboarding.onAnswer = {
+            system.off = true
+            system.askable = false
+        }
         val vm = viewModel()
         vm.turnOn()
         vm.recheckPermission()
@@ -292,6 +303,10 @@ class NotificationNudgeViewModelTest {
         onboarding.answer = NotificationNudgeResult.DENIED
         system.off = false
         system.askable = true
+        onboarding.onAnswer = {
+            system.off = true
+            system.askable = false
+        }
         val held = CompletableDeferred<Unit>()
         system.heldRead = held
         val vm = viewModel()
@@ -322,6 +337,10 @@ class NotificationNudgeViewModelTest {
         onboarding.answer = NotificationNudgeResult.DENIED
         system.off = false
         system.askable = true
+        onboarding.onAnswer = {
+            system.off = true
+            system.askable = false
+        }
         val accepted = CompletableDeferred<Unit>()
         onboarding.heldAccept = accepted
         val vm = viewModel()
@@ -342,6 +361,10 @@ class NotificationNudgeViewModelTest {
         onboarding.answer = NotificationNudgeResult.DENIED
         system.off = false
         system.askable = true
+        onboarding.onAnswer = {
+            system.off = true
+            system.askable = false
+        }
         val vm = viewModel()
         val read = CompletableDeferred<Unit>()
         system.heldRead = read
@@ -386,5 +409,56 @@ class NotificationNudgeViewModelTest {
 
         assertEquals(1, onboarding.accepted)
         assertEquals(false, vm.state.value.blocked, "the OS granted the permission; the line must not say otherwise")
+    }
+
+    @Test
+    fun a_first_refusal_keeps_turn_on_and_the_next_tap_asks_the_os_again() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        val vm = viewModel()
+
+        vm.turnOn()
+
+        assertEquals(false, vm.state.value.blocked, "the OS will still ask, so no blocked line")
+        assertEquals(true, vm.state.value.visible, "the nudge stays up with Turn on")
+        assertEquals(true, vm.state.value.retryable)
+
+        vm.turnOn()
+
+        assertEquals(2, onboarding.accepted, "the second tap goes through Settings' door and prompts again")
+        assertEquals(false, vm.state.value.blocked)
+    }
+
+    @Test
+    fun a_second_refusal_the_os_will_not_repeat_shows_the_blocked_line() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        onboarding.onAnswer = { if (onboarding.accepted == 2) system.askable = false }
+        val vm = viewModel()
+        vm.turnOn()
+
+        vm.turnOn()
+
+        assertEquals(true, vm.state.value.blocked)
+        assertEquals(false, vm.state.value.retryable)
+        assertEquals(true, vm.state.value.visible)
+        vm.openSystemSettings()
+        assertEquals(1, system.opened)
+    }
+
+    @Test
+    fun a_second_tap_the_os_grants_hides_the_nudge() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        val vm = viewModel()
+        vm.turnOn()
+
+        onboarding.answer = NotificationNudgeResult.ENABLED
+        system.off = false
+        vm.turnOn()
+
+        assertEquals(2, onboarding.accepted)
+        assertEquals(false, vm.state.value.visible)
+        assertEquals(false, vm.state.value.retryable)
     }
 }
