@@ -1,0 +1,21 @@
+-- Whether season 0 (Specials) counts toward a title's progress (#938, ADR 0038). The filename is the version this
+-- migrates FROM: 33.sqm takes a v33 database to v34 (fixture 34.db).
+--
+-- NUMBERING: claimed when the #938 branch opened. Develop ends at 29.sqm, and 30-32 are claimed by open PRs (#920, #913,
+-- #926), so `verifyMigrations` reports a gap until those merge; re-check this number against develop before merging.
+--
+-- Per device and NOT synced, NOT exported, and not in the Display Preferences group: it changes how progress is read on
+-- this device, not what the library holds. DEFAULT 0 is what every install gets, except one that already has a special
+-- ticked (below): before this release no UI could tick a special, so an existing special tick is the only sign that the
+-- person already had specials in their progress, and the setting stays on for them so that nothing they had counted
+-- stops counting. Every other install stays off. Only a seen tick on a real special (season 0, episode 1 or later)
+-- counts; a movie's single element is also season 0, but its episode is 0, so a movie tick does not turn it on. Ticks
+-- are never deleted.
+ALTER TABLE appSettings ADD COLUMN countSpecialsTowardProgress INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0;
+
+UPDATE appSettings
+SET countSpecialsTowardProgress = 1
+WHERE EXISTS (
+    SELECT 1 FROM episodeProgress
+    WHERE seen = 1 AND seasonNumber = 0 AND episodeNumber > 0
+);

@@ -64,6 +64,8 @@ import com.codingpit.muviss.feature.settings.ui.generated.resources.action_close
 import com.codingpit.muviss.feature.settings.ui.generated.resources.animations
 import com.codingpit.muviss.feature.settings.ui.generated.resources.animations_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.app_version
+import com.codingpit.muviss.feature.settings.ui.generated.resources.count_specials
+import com.codingpit.muviss.feature.settings.ui.generated.resources.count_specials_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports
 import com.codingpit.muviss.feature.settings.ui.generated.resources.crash_reports_body
 import com.codingpit.muviss.feature.settings.ui.generated.resources.delete_all
@@ -234,6 +236,13 @@ fun SettingsScreen(
             label = stringResource(Res.string.muted_genres_title),
             value = pluralStringResource(Res.plurals.muted_genres_count, state.settings.mutedGenres.size, state.settings.mutedGenres.size),
             onClick = onOpenMutedGenres,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        SwitchRow(
+            label = stringResource(Res.string.count_specials),
+            description = stringResource(Res.string.count_specials_body),
+            checked = state.countSpecialsTowardProgress,
+            onToggle = viewModel::onCountSpecialsToggled,
         )
         if (tmdbKey != null) {
             val keyState by tmdbKey.state.collectAsStateWithLifecycle()

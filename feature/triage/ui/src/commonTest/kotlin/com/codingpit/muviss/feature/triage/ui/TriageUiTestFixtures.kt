@@ -136,6 +136,8 @@ internal class FakeFeatureFlags(
     }
 
     override suspend fun setCompletionPromptEnabled(enabled: Boolean) = Unit
+    override val countSpecialsTowardProgress: Flow<Boolean> = MutableStateFlow(false)
+    override suspend fun setCountSpecialsTowardProgress(enabled: Boolean) = Unit
 
     override suspend fun setSyncAutomatically(enabled: Boolean) {
         autoSync.value = enabled

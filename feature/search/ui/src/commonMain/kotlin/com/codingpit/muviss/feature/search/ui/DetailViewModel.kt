@@ -84,6 +84,11 @@ data class DetailUiState(
     val revisitWillingness: Boolean? = null,
     /** Seen episode ids (movies use the single id from [EpisodeId.forMovie]) — drives checkmarks, season bars, and the movie toggle. */
     val seenEpisodes: Set<EpisodeId> = emptySet(),
+    /**
+     * Whether the per-device "Count specials toward progress" setting is on (#938, ADR 0037). Off by default; while off,
+     * an unseen aired special leaves the primary action on "Caught up" rather than "Special unseen".
+     */
+    val specialsCounted: Boolean = false,
     /** Null while loading; an empty [WatchProviders] once loaded means "hide the section" — no failure surfaced, it's a nice-to-have. */
     val watchProviders: WatchProviders? = null,
     /** "More like this" row (EPIC 16): recommendations, falling back to similar titles when TMDB has no recommendations for this title. Empty hides the row. */
@@ -158,6 +163,8 @@ class DetailViewModel(
     private val clock: AppClock,
     connectivity: ConnectivityMonitor = ConnectivityMonitor.AlwaysOnline,
     animateTicks: Flow<Boolean> = flowOf(true),
+    /** The per-device "Count specials toward progress" setting (#938); the primary action reads it. Off by default. */
+    countSpecials: Flow<Boolean> = flowOf(false),
 ) : ViewModel() {
 
     private val collectionApi: CollectionApi get() = peers.collection
@@ -203,6 +210,9 @@ class DetailViewModel(
         load()
         animateTicks
             .onEach { animate -> _state.update { it.copy(animateTicks = animate) } }
+            .launchInReporting(viewModelScope)
+        countSpecials
+            .onEach { counted -> _state.update { it.copy(specialsCounted = counted) } }
             .launchInReporting(viewModelScope)
         triageApi.observeDecision(mediaId)
             .onEach { decision -> _state.update { it.copy(skipped = decision?.verdict == TriageVerdict.SKIP) } }
@@ -665,16 +675,6 @@ class DetailViewModel(
             if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchWrite
             addIfAbsent()
             progressApi.markPreviousSeen(aired, episodeId)
-            releaseEntry()
-        }
-    }
-
-    /** Toggles a movie's watched flag. */
-    fun toggleMovieWatched() {
-        launchWrite {
-            val watched = _state.value.movieWatched
-            if (!watched) addIfAbsent()
-            progressApi.tickMovie(mediaId, !watched)
             releaseEntry()
         }
     }

@@ -19,13 +19,13 @@ class TmdbSeasonFetchTest {
     private fun appended(request: io.ktor.client.request.HttpRequestData): List<Int> = request.url.parameters["append_to_response"].orEmpty().split(",")
         .filter { it.startsWith("season/") }.map { it.removePrefix("season/").toInt() }
 
-    private fun handler(seasonCount: Int, omit: Set<Int> = emptySet()): MockRequestHandler = { request ->
+    private fun handler(seasonCount: Int, omit: Set<Int> = emptySet(), specials: Boolean = false): MockRequestHandler = { request ->
         val seasons = appended(request)
         val singleSeason = Regex("/tv/1399/season/(\\d+)$").find(request.url.encodedPath)?.groupValues?.get(1)?.toInt()
         when {
             singleSeason != null -> respondJson(seasonJson(singleSeason))
             seasons.isNotEmpty() -> respondJson(tvWithAppendedSeasons(seasons, omit))
-            else -> respondJson(tvShowJson(seasonCount))
+            else -> respondJson(tvShowJson(seasonCount, specials))
         }
     }
 
@@ -54,12 +54,43 @@ class TmdbSeasonFetchTest {
     }
 
     @Test
-    fun season_zero_specials_are_never_requested() = runTest {
-        val fixture = ProviderFixture(handler = handler(3))
+    fun season_zero_is_requested_only_when_listed() = runTest {
+        val fixture = ProviderFixture(handler = handler(3, specials = true))
 
-        fixture.provider.details(MediaId.tmdbTv("1399"))
+        val details = fixture.provider.details(MediaId.tmdbTv("1399"))
 
-        assertTrue(fixture.requests.flatMap(::appended).none { it == 0 })
+        // show + one request for the specials + one append for seasons 1..3.
+        assertEquals(3, fixture.requests.size)
+        assertTrue(fixture.requests.any { it.url.encodedPath.endsWith("/tv/1399/season/0") }, fixture.urls.toString())
+        assertTrue(fixture.requests.flatMap(::appended).none { it == 0 }, "specials are never appended")
+        assertEquals(listOf(0, 1, 2, 3), details.seasons.map { it.number })
+    }
+
+    @Test
+    fun season_zero_is_not_requested_when_not_listed() = runTest {
+        val fixture = ProviderFixture(handler = handler(3, specials = false))
+
+        val details = fixture.provider.details(MediaId.tmdbTv("1399"))
+
+        assertTrue(fixture.urls.none { it.contains("/season/0") }, fixture.urls.toString())
+        assertEquals(listOf(1, 2, 3), details.seasons.map { it.number })
+    }
+
+    @Test
+    fun a_failed_specials_request_fails_the_detail_load_like_any_season() = runTest {
+        val fixture = ProviderFixture(
+            handler = { request ->
+                if (request.url.encodedPath.endsWith("/season/0")) {
+                    respondJson("{}", HttpStatusCode.NotFound)
+                } else {
+                    respondJson(tvShowJson(2, specials = true))
+                }
+            },
+        )
+
+        val failure = runCatching { fixture.provider.details(MediaId.tmdbTv("1399")) }.exceptionOrNull()
+
+        assertTrue(failure is com.codingpit.muviss.models.MetadataError, "was $failure")
     }
 
     @Test

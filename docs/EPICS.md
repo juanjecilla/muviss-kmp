@@ -669,3 +669,7 @@ Added 2026-10-19 from a grilling session. **ADR 0035**; vocabulary in `CONTEXT.m
 **What.** A **Request a feature** row in Settings > About, on all six targets, that opens a Tally form in the system browser with `version`/`platform`/`os`/`locale` as hidden fields. Remote Config serves `featureRequestProvider` (`tally` | `typeform` | `off`) and `featureRequestUrl`; the compiled defaults are `FEATURE_REQUEST_PROVIDER`/`FEATURE_REQUEST_URL`, blank so it ships dark. `scripts/feedback/tally-form.sh` creates/updates/publishes the form from `scripts/feedback/tally-form.json`; owner steps in `docs/RELEASING.md` §13. Responses arrive by Tally's email notification.
 
 **Follow-ups, each with an issue:** responses become GitHub issues through a polled Ops Bridge connector (#448, connector #3); a Bug Report form and row with its own connector (#449); verifying on devices (#450: desktop confirmed from the real app, Android, iOS, web and Typeform pending); the landing line (#451); a desktop DB migration error (#453).
+
+## EPIC 53 follow-up: specials (#938, ADR 0038)
+
+**Schema claim: `33.sqm` (fixture `34.db`)**, taking a v33 database to v34: `appSettings.countSpecialsTowardProgress`, per device, default off. Develop ends at `29.sqm`, and `30`-`32` are claimed by open PRs, so `verifyMigrations` reports the gap until they merge; re-check the number before merging. Specials load from TMDB on their own request (`TmdbProvider`) and are counted by choice at read time only (`SpecialsCounting`, ADR 0038). Follow-ups are issues.
