@@ -38,6 +38,29 @@ class ScreenInsetsTest {
     }
 
     @Test
+    fun an_immersive_screen_keeps_the_top_for_itself() = runComposeUiTest {
+        setContent {
+            ScreenInsets(immersive = true, insets = TestSafeAreaInsets) {
+                Box(Modifier.testTag(CONTENT).fillMaxSize())
+            }
+        }
+
+        onNodeWithTag(CONTENT).assertTopPositionInRootIsEqualTo(0.dp)
+    }
+
+    @Test
+    fun an_immersive_screen_still_clears_the_sides() = runComposeUiTest {
+        setContent {
+            ScreenInsets(immersive = true, insets = WindowInsets(left = 20.dp, top = 48.dp, right = 20.dp, bottom = 0.dp)) {
+                Box(Modifier.testTag(CONTENT).fillMaxSize())
+            }
+        }
+
+        onNodeWithTag(CONTENT).assertLeftPositionInRootIsEqualTo(20.dp)
+        onNodeWithTag(CONTENT).assertTopPositionInRootIsEqualTo(0.dp)
+    }
+
+    @Test
     fun horizontal_insets_are_applied_too() = runComposeUiTest {
         setContent {
             ScreenInsets(insets = WindowInsets(left = 20.dp, top = 0.dp, right = 20.dp, bottom = 0.dp)) {

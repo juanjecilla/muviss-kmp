@@ -29,6 +29,11 @@ import androidx.compose.ui.Modifier
  * `Scaffold` sees what is left rather than padding the same band a second time.
  * No explicit `consumeWindowInsets` is needed.
  *
+ * [immersive] leaves the top alone for a screen whose hero artwork draws under the status bar
+ * (Detail, Episode Detail). Such a screen owns its top inset: it grows the image by it and pads
+ * its own controls. Without this the band above the image shows the theme background, which
+ * reads as a black bar in dark theme.
+ *
  * [insets] is a parameter rather than a hard-coded read because Skiko — the
  * renderer behind `runComposeUiTest` — reports zero insets, so this would be
  * untestable off-device otherwise. Tests pass a synthetic value; production
@@ -36,10 +41,12 @@ import androidx.compose.ui.Modifier
  */
 @Composable
 fun ScreenInsets(
+    immersive: Boolean = false,
     insets: WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     content: @Composable () -> Unit,
 ) {
-    Box(Modifier.windowInsetsPadding(insets)) {
+    val applied = if (immersive) insets.only(WindowInsetsSides.Horizontal) else insets
+    Box(Modifier.windowInsetsPadding(applied)) {
         content()
     }
 }
