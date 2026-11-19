@@ -31,5 +31,8 @@ if [ ! -f "$source" ]; then
   exit 1
 fi
 
+# Created under the umask above, so it is never group- or world-readable, even
+# for an instant; the explicit chmod pins 0600 whatever the source's mode was.
 cp "$source" "$target"
+chmod 600 "$target"
 echo "Copied local.properties from the main checkout into this worktree (contents not shown)."

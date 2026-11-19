@@ -16,7 +16,10 @@ check() {
     failures=$((failures + 1))
   fi
 }
-is_mode_600() { [ "$(stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1")" = 600 ]; }
+# GNU stat first: on GNU, `stat -f` succeeds and prints filesystem data, so the
+# BSD form must not be tried first. On BSD/macOS `stat -c` is an error.
+file_mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+is_mode_600() { [ "$(file_mode "$1")" = 600 ]; }
 contains() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
 lacks() { ! contains "$1" "$2"; }
 same_as() { [ "$1" = "$2" ]; }
@@ -42,6 +45,13 @@ check "copies into a worktree and exits 0" [ "$rc" = 0 ]
 check "the copy is byte-identical to the main checkout's file" cmp -s "$main/local.properties" "$wt/local.properties"
 check "the copy is owner-only (0600)" is_mode_600 "$wt/local.properties"
 check "the output does not print the secret" lacks "$out" "$SECRET"
+
+rm "$wt/local.properties"
+chmod 666 "$main/local.properties"
+out="$(cd "$wt" && umask 000 && "$SCRIPT" 2>&1)"; rc=$?
+check "a world-writable source under umask 000 still exits 0" [ "$rc" = 0 ]
+check "a world-writable source under umask 000 yields a 0600 copy" is_mode_600 "$wt/local.properties"
+chmod 644 "$main/local.properties"
 
 printf 'keep-me\n' > "$wt/local.properties"
 run_in "$wt"
