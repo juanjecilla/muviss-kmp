@@ -16,8 +16,8 @@ cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
 
-REST=$(rest_url)
-ANON=$(anon_key)
+REST=$(rest_url) || { echo "could not work out the REST URL"; exit 1; }
+ANON=$(anon_key) || { echo "could not read the anon key"; exit 1; }
 [ -n "$ANON" ] || { echo "could not read the anon key"; exit 1; }
 
 fail=0

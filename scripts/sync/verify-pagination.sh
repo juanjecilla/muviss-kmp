@@ -22,11 +22,12 @@ N="${N:-1500}"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-DB=$(pull_database "$WORK")
+DB=$(pull_database "$WORK") || exit 1
 TOKEN=$(access_token "$DB")
 [ -n "$TOKEN" ] || { echo "nobody is signed in on the device — sign in first"; exit 1; }
-ANON=$(anon_key)
-REST="$(rest_url)/episode_progress"
+ANON=$(anon_key) || { echo "could not read the anon key"; exit 1; }
+REST=$(rest_url) || { echo "could not work out the REST URL"; exit 1; }
+REST="$REST/episode_progress"
 PREFIX="tmdb:tv:000000-page-probe"
 
 python3 - "$N" "$PREFIX" > "$WORK/body.json" <<'PY'
@@ -51,17 +52,25 @@ for chunk in "$WORK"/chunk-*.json; do
   echo "insert $(basename "$chunk") -> HTTP $code"
 done
 
-seen=0; largest=0; after=0; pages=0
+seen=0; largest=0; after=0; pages=0; broken=0
 while :; do
   page=$(curl -s "$REST?select=episode_id,server_seq&media_id=eq.$PREFIX&order=server_seq.asc&limit=500&server_seq=gt.$after" \
     -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN")
-  read -r count last < <(printf '%s' "$page" | python3 -c "import sys,json;d=json.load(sys.stdin);print(len(d), d[-1]['server_seq'] if d else 0)")
+  read -r count last < <(printf '%s' "$page" | python3 -c "import sys,json;d=json.load(sys.stdin);print(len(d), d[-1]['server_seq'] if d else 0)" 2>/dev/null)
+  # An empty or non-numeric count is a failed request or an error body, not an
+  # empty page. Stop the loop here: `[ "" -eq 0 ]` is false, so it would spin.
+  case "$count" in ''|*[!0-9]*) echo "  a page could not be read (request or JSON failed)"; broken=1; break ;; esac
   [ "$count" -eq 0 ] && break
+  # A non-empty page must move the cursor forward, or the next request repeats it.
+  case "$last" in ''|*[!0-9]*) echo "  a page had no server_seq"; broken=1; break ;; esac
+  if [ "$last" -le "$after" ]; then echo "  the cursor did not advance past $after"; broken=1; break; fi
   pages=$((pages + 1)); seen=$((seen + count)); after=$last
   [ "$count" -gt "$largest" ] && largest=$count
 done
 echo "paged $seen of $N rows in $pages pages; the largest page was $largest"
 [ "$largest" -lt 500 ] && echo "  (a page smaller than the requested 500 that was not the last means the project's max_rows is $largest)"
 
+# Cleanup runs on every path, including a broken page, so no probe rows stay behind.
 curl -s -o /dev/null -X DELETE "$REST?media_id=eq.$PREFIX" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"
+if [ "$broken" -eq 1 ]; then echo "FAIL: paging stopped early; the probe rows were cleaned up"; exit 1; fi
 if [ "$seen" -eq "$N" ]; then echo "OK: every row came back"; exit 0; else echo "FAIL: $((N - seen)) rows were never returned"; exit 1; fi

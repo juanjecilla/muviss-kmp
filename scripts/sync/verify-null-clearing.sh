@@ -21,11 +21,12 @@ cd "$(dirname "$0")/../.." || exit 1
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-DB=$(pull_database "$WORK")
+DB=$(pull_database "$WORK") || exit 1
 TOKEN=$(access_token "$DB")
 [ -n "$TOKEN" ] || { echo "nobody is signed in on the device — sign in first"; exit 1; }
-ANON=$(anon_key)
-REST="$(rest_url)/collection_entry"
+ANON=$(anon_key) || { echo "could not read the anon key"; exit 1; }
+REST=$(rest_url) || { echo "could not work out the REST URL"; exit 1; }
+REST="$REST/collection_entry"
 MEDIA="tmdb:movie:000000-null-probe"
 
 upsert() { # $1 updated_at, $2 json members after updated_at

@@ -28,8 +28,9 @@ refuse_local diagnose-signin
 
 echo "=== 1. is the provider enabled? (expect 302 to the provider) ==="
 PROVIDER="${1:-github}"
+BASE=$(rest_url) || { echo "could not work out the API URL" >&2; exit 1; }
 curl -s -o /dev/null -D - \
-  "$(rest_url | sed 's|/rest/v1||')/auth/v1/authorize?provider=$PROVIDER&redirect_to=muviss%3A%2F%2Fauth-callback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=s256" \
+  "${BASE%/rest/v1}/auth/v1/authorize?provider=$PROVIDER&redirect_to=muviss%3A%2F%2Fauth-callback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=s256" \
   | grep -iE '^HTTP/|^location:' | sed -E 's/(client_id=)[^&]*/\1<redacted>/'
 
 echo
