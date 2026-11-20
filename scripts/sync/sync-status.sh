@@ -12,11 +12,15 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
+# Reads the device's own tables, which the local stack's stand-in does not have.
+refuse_local sync-status
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-DB=$(pull_database "$WORK")
+# A failed pull stops here. Carrying on would read an empty database, report
+# "signed out" and exit 0, which looks exactly like a real sign-out.
+DB=$(pull_database "$WORK") || exit 1
 
 echo "=== session ==="
 sqlite3 "$DB" "SELECT CASE WHEN accessToken IS NULL THEN 'signed out'
@@ -36,8 +40,8 @@ if [ -z "$TOKEN" ]; then
   echo "(signed out — skipping the server side)"
   exit 0
 fi
-ANON=$(anon_key)
-REST=$(rest_url)
+ANON=$(anon_key) || { echo "could not read the anon key" >&2; exit 1; }
+REST=$(rest_url) || { echo "could not work out the REST URL" >&2; exit 1; }
 
 remote_count() {
   curl -s "$REST/$1?select=*" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" \

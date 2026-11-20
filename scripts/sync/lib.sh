@@ -46,7 +46,8 @@ pull_database() {
   local out="${1:?usage: pull_database <dir>}"
   mkdir -p "$out"
   if local_target; then
-    local_session_db "$out"
+    local_session_db "$out" \
+      || { echo "could not create the local test session (is \`supabase start\` running?)" >&2; exit 1; }
     echo "$out/muviss.db"
     return
   fi
@@ -100,35 +101,59 @@ project_ref() { echo "$MUVISS_PROJECT_REF"; }
 
 # ------------------------------------------------------------------ local ---
 
-# The local stack (`supabase start`, from this repo's config). The scripts run
-# unchanged against it: there is no device, so the "signed-in session" is a
-# throwaway account created through the local admin API, and its access token
-# goes into a stand-in database with the one table `access_token` reads. Only
-# ever the local API URL, never a hosted one.
+# The local stack (`supabase start`, from this repo's config). There is no
+# device, so the "signed-in session" is a throwaway account created through the
+# local admin API, and its access token goes into a stand-in database with the
+# one table `access_token` reads. Only ever the local API URL, never a hosted one.
+#
+# Which scripts run against it: the ones that talk to the server only —
+# verify-rls, verify-lww-trigger, verify-null-clearing, verify-pagination,
+# verify-server-seq. Those read nothing from the database but the token.
+# The scripts that need a phone (sync-status, verify-migration, diagnose-signin)
+# call refuse_local and stop before they touch anything.
 local_target() { [ "$MUVISS_PROJECT_REF" = local ]; }
 
-# One field of `supabase status`, e.g. local_status API_URL.
+# For the scripts that need a device. verify-migration in particular runs
+# `pm clear` on whatever phone is attached, so this must run before any adb_.
+refuse_local() {
+  if local_target; then
+    echo "$1 needs an Android device, and MUVISS_SUPABASE_TARGET=local has none. Run it with the default target and the device attached." >&2
+    exit 1
+  fi
+}
+
+# One field of `supabase status`, e.g. local_status API_URL. Fails, and prints
+# nothing, when the stack is not running or the field is missing.
 local_status() {
-  supabase status -o json 2>/dev/null \
-    | python3 -c "import sys,json;print(json.load(sys.stdin)['$1'])"
+  local v
+  v=$(supabase status -o json 2>/dev/null \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['$1'])" 2>/dev/null) || return 1
+  [ -n "$v" ] || return 1
+  echo "$v"
 }
 
 # Creates a fresh local account, signs it in, and writes the token into
-# $1/muviss.db. Nothing is printed: the password and token stay in the process.
+# $1/muviss.db. Returns non-zero, and writes no database, when any step fails:
+# a missing token would otherwise read as "signed out" and exit 0.
+# Nothing is printed: the password and token stay in the process.
 local_session_db() {
-  local out=$1 api svc anon email pw tok
-  api=$(local_status API_URL); svc=$(local_status SERVICE_ROLE_KEY); anon=$(local_status ANON_KEY)
+  local out=$1 api svc anon email pw tok code
+  api=$(local_status API_URL) || return 1
+  svc=$(local_status SERVICE_ROLE_KEY) || return 1
+  anon=$(local_status ANON_KEY) || return 1
   email="sync-probe-$(python3 -c 'import secrets;print(secrets.token_hex(6))')@muviss.test"
   pw=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')
-  curl -s -o /dev/null -X POST "$api/auth/v1/admin/users" \
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$api/auth/v1/admin/users" \
     -H "apikey: $svc" -H "Authorization: Bearer $svc" -H "Content-Type: application/json" \
-    -d "{\"email\":\"$email\",\"password\":\"$pw\",\"email_confirm\":true}"
+    -d "{\"email\":\"$email\",\"password\":\"$pw\",\"email_confirm\":true}")
+  case "$code" in 2??) ;; *) return 1 ;; esac
   tok=$(curl -s -X POST "$api/auth/v1/token?grant_type=password" \
     -H "apikey: $anon" -H "Content-Type: application/json" \
     -d "{\"email\":\"$email\",\"password\":\"$pw\"}" \
-    | python3 -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))")
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])" 2>/dev/null) || return 1
+  [ -n "$tok" ] || return 1
   rm -f "$out/muviss.db"
-  sqlite3 "$out/muviss.db" "CREATE TABLE syncAccount(accessToken TEXT); INSERT INTO syncAccount VALUES('$tok');"
+  sqlite3 "$out/muviss.db" "CREATE TABLE syncAccount(accessToken TEXT); INSERT INTO syncAccount VALUES('$tok');" || return 1
 }
 
 anon_key() {
@@ -136,8 +161,11 @@ anon_key() {
     local_status ANON_KEY
     return
   fi
-  supabase projects api-keys --project-ref "$(project_ref)" -o json 2>/dev/null \
-    | python3 -c "import sys,json;print(next(k['api_key'] for k in json.load(sys.stdin) if k.get('name')=='anon'))"
+  local key
+  key=$(supabase projects api-keys --project-ref "$(project_ref)" -o json 2>/dev/null \
+    | python3 -c "import sys,json;print(next(k['api_key'] for k in json.load(sys.stdin) if k.get('name')=='anon'))" 2>/dev/null) || return 1
+  [ -n "$key" ] || return 1
+  echo "$key"
 }
 
 # The access token of whoever is signed in on the device. Empty when signed out.
@@ -148,7 +176,9 @@ access_token() {
 
 rest_url() {
   if local_target; then
-    echo "$(local_status API_URL)/rest/v1"
+    local api
+    api=$(local_status API_URL) || return 1
+    echo "$api/rest/v1"
     return
   fi
   echo "https://$(project_ref).supabase.co/rest/v1"

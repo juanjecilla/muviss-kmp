@@ -23,6 +23,8 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
+# Steps 2, 3 and 4 read the device's logcat and database.
+refuse_local diagnose-signin
 
 echo "=== 1. is the provider enabled? (expect 302 to the provider) ==="
 PROVIDER="${1:-github}"
@@ -42,7 +44,7 @@ adb_ logcat -d 2>&1 | grep -E "START .*muviss://auth-callback" | tail -5 || echo
 echo
 echo "=== 4. is there a session now? ==="
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
-DB=$(pull_database "$WORK")
+DB=$(pull_database "$WORK") || exit 1
 sqlite3 "$DB" "SELECT CASE WHEN accessToken IS NULL THEN '  no session stored'
   ELSE '  signed in as '||COALESCE(email,'(no email)') END FROM syncAccount;"
 
