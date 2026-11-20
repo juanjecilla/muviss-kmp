@@ -10,6 +10,11 @@
 #
 # ALLOWED_CONFLICTS is the whole list. A conflict in any other path is not
 # resolved here, and the caller holds with the path named.
+#
+# The manual path (ship-release.yml, #717) and the Sunday rehearsal (release-promote.yml,
+# #732) use the same plumbing through the command line at the bottom of this file, so
+# neither has its own copy of the rule.
+require "json"
 require "open3"
 require "tmpdir"
 
@@ -21,6 +26,9 @@ module ReleaseMerge
 
   # A push that did not move main. Never retried with force.
   class MainMoved < StandardError; end
+
+  # The release branch moved after the caller's approval. Nothing is merged from it.
+  class HeadMoved < StandardError; end
 
   # CHANGELOG.md: one `## X.Y.Z — date` section per version, under a header. The
   # union keeps every version once, newest first. The header comes from main,
@@ -115,6 +123,36 @@ module ReleaseMerge
       status.success? ? out.strip : nil
     end
 
+    # origin's refs/heads/<branch>, fetched now; its sha.
+    def fetch_branch(branch)
+      git("fetch", "--quiet", "origin", "+refs/heads/#{branch}:refs/remotes/origin/#{branch}")
+      git("rev-parse", "origin/#{branch}")
+    end
+
+    # The tree of a commit.
+    def tree_of(commit)
+      git("rev-parse", "#{commit}^{tree}")
+    end
+
+    # The paths that differ between two commits (no renames).
+    def changed_paths(from, to)
+      git("diff", "--no-renames", "--name-only", from, to).lines.map(&:strip).reject(&:empty?)
+    end
+
+    # Pushes a sha to a ref that is not main, with no force. Only the rehearsal
+    # uses it, on a throwaway ref it deletes again.
+    def push_ref(sha, ref)
+      git("push", "--quiet", "origin", "#{sha}:#{ref}")
+    end
+
+    # Deletes a ref on origin. A ref that is already gone is not an error; one
+    # still on origin after a failed delete is, and the message says so.
+    def delete_ref(ref)
+      git("push", "--quiet", "origin", ":#{ref}")
+    rescue RuntimeError
+      raise "#{ref} may remain on origin; delete it by hand" unless git("ls-remote", "origin", ref).empty?
+    end
+
     # origin's main, fetched now. The merge is judged against this sha.
     def main_sha
       git("fetch", "--quiet", "origin", "main")
@@ -129,6 +167,42 @@ module ReleaseMerge
       raise MainMoved, "main is at #{remote}, not #{expected}" unless remote == expected
 
       git("push", "--quiet", "origin", "#{sha}:refs/heads/main")
+    end
+
+    # Merges origin's main into the branch checked out here (HEAD must be the branch), commits the merge and
+    # returns its sha. Only the allow-listed conflicts are resolved (by their union); any other path, or a
+    # failed resolution, aborts the merge, so the checkout is left as it was. Nothing is pushed.
+    def merge_main_into_checkout(main, message:)
+      status = run("git", "merge", "--no-ff", "--no-commit", main)[2]
+      begin
+        unless status.success?
+          paths = git("diff", "--name-only", "--diff-filter=U").lines.map(&:strip).reject(&:empty?)
+          blocked = paths - ALLOWED_CONFLICTS
+          raise Unresolvable, "#{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved" unless blocked.empty?
+
+          paths.each do |path|
+            text = RESOLVERS.fetch(path).call(show(main, path), show("HEAD", path))
+            File.write(File.join(@dir || Dir.pwd, path), text)
+            git("add", "--", path)
+          end
+        end
+        git("commit", "--no-edit", "-m", message)
+        git("rev-parse", "HEAD")
+      rescue StandardError
+        run("git", "merge", "--abort")
+        raise
+      end
+    end
+
+    # Pushes a commit to refs/heads/BRANCH only while origin has `expected` there. The lease is part of the push:
+    # git checks origin's value as it updates the ref, so a branch that moved, was deleted, or was deleted and
+    # recreated (even at an ancestor, which a plain push would accept) is refused, not overwritten. The sha is
+    # built on `expected`, so the update is a fast-forward too; nothing is forced.
+    def push_branch(sha, branch, expected:)
+      git("push", "--quiet", "--force-with-lease=refs/heads/#{branch}:#{expected}", "origin", "#{sha}:refs/heads/#{branch}")
+    rescue RuntimeError
+      # git's stderr is not kept (it can carry URLs), so this names what was checked, not why git refused.
+      raise HeadMoved, "refs/heads/#{branch} is not at #{expected} on origin, or the push failed; nothing was moved"
     end
 
     private
@@ -189,4 +263,314 @@ module ReleaseMerge
       [out.force_encoding(Encoding::UTF_8), err, status]
     end
   end
+
+  # The checks a merge needs green on its head (#793). The contexts are read from the rules of main and
+  # develop when the merge is judged, so no second list exists to drift from them. A context is green when
+  # its newest non-cancelled run is completed and passed, and no status on the head says otherwise; one with
+  # no such run (not reported, still running, only cancelled) is not green. A run that failed and a status
+  # that passed do not add up to green: any source that says no keeps it unmet. A context the rules pin to
+  # an integration is met only by that integration's check run.
+  module RequiredChecks
+    GREEN = %w[success skipped neutral].freeze
+    SHA = /\A[0-9a-f]{40}\z/
+    SLUG = %r{\A[\w.-]+/[\w.-]+\z}
+
+    # The rules or the check list could not be read, so nothing can be judged. Holds the merge.
+    class Unreadable < StandardError; end
+
+    # The real reader: `gh api ARGS`, the token from the environment. Returns [stdout, exit status].
+    RUNNER = lambda do |*args|
+      out, _err, status = Open3.capture3("gh", "api", *args)
+      [out, status.exitstatus]
+    end
+
+    module_function
+
+    # main is what a release lands on and develop what a back-merge lands on. Both lists are judged for
+    # every merge, so a merge is never judged by fewer contexts than main's alone (fail closed).
+    BRANCHES = %w[main develop].freeze
+
+    # The required contexts of `slug` that are not green on `sha`, as names. Empty when every one is.
+    def unmet(sha:, slug:, gh: RUNNER)
+      raise Unreadable, "not a commit sha: #{sha.inspect}" unless SHA.match?(sha.to_s)
+      raise Unreadable, "not a repository: #{slug.inspect}" unless SLUG.match?(slug.to_s)
+
+      required = BRANCHES.flat_map { |branch| required_contexts(slug, branch, gh) }.uniq
+      raise Unreadable, "no required status checks on #{BRANCHES.join(' or ')}, so the merge cannot be judged" if required.empty?
+
+      runs = read(gh, "repos/#{slug}/commits/#{sha}/check-runs?filter=all&per_page=100",
+                  "--paginate", "--jq", ".check_runs[]|{id,name,status,conclusion,app_id:.app.id}")
+      statuses = read(gh, "repos/#{slug}/commits/#{sha}/statuses?per_page=100",
+                      "--paginate", "--jq", ".[]|{context,state}")
+      missing(required, runs, statuses).map { |req| req["context"] }
+    end
+
+    # True when an approving review of the pull request was given on `sha`. reviewDecision is per PR, so an
+    # approval of an older commit still reads APPROVED after a push: only an approval of this head counts.
+    def approved_on?(sha:, slug:, pr:, gh: RUNNER)
+      raise Unreadable, "not a commit sha: #{sha.inspect}" unless SHA.match?(sha.to_s)
+      raise Unreadable, "not a repository: #{slug.inspect}" unless SLUG.match?(slug.to_s)
+      raise Unreadable, "not a pull request number: #{pr.inspect}" unless pr.to_s.match?(/\A\d+\z/)
+
+      approvals = read(gh, "repos/#{slug}/pulls/#{pr}/reviews", "--paginate", "--jq",
+                       '.[]|select(.state=="APPROVED")|{commit_id,login:.user.login}')
+      approvals.any? { |approval| approval["commit_id"] == sha && approver?(slug, approval["login"], gh) }
+    end
+
+    # The permission levels that may approve for the repository. An approval from anyone else (read or triage
+    # access, a login GitHub would not issue, or an answer that cannot be read) does not count, so the head is held.
+    APPROVING_PERMISSIONS = %w[admin maintain write].freeze
+    LOGIN = /\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\z/
+
+    # True when `login` has write access to the repository (GitHub's collaborator permission).
+    def approver?(slug, login, gh)
+      return false unless login.is_a?(String) && LOGIN.match?(login)
+
+      out, code = gh.call("repos/#{slug}/collaborators/#{login}/permission", "--jq", ".permission")
+      code.zero? && APPROVING_PERMISSIONS.include?(out.to_s.strip)
+    end
+
+    # The contexts a branch's rules require, each with the integration it is pinned to (nil: any app).
+    def required_contexts(slug, branch, gh)
+      read(gh, "repos/#{slug}/rules/branches/#{branch}", "--paginate", "--jq",
+           '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[]?|{context,integration_id}')
+    end
+
+    # Each line of the reply, parsed when it is an object. A non-zero exit keeps gh's stderr out of the message.
+    def read(gh, *args)
+      out, code = gh.call(*args)
+      raise Unreadable, "gh api exited #{code} reading #{args.first.to_s.sub(/\?.*/, '')}" unless code.zero?
+
+      out.lines.map(&:strip).reject(&:empty?).map { |line| line.start_with?("{") ? JSON.parse(line) : line }
+    rescue JSON::ParserError
+      raise Unreadable, "an unreadable reply from gh api for #{args.first.to_s.sub(/\?.*/, '')}"
+    end
+
+    # The requirements (hashes with "context" and "integration_id") that are not met. A pinned one is met
+    # only by a check run of its integration: a commit status has no App identity, and a same-name run from
+    # another App does not count. An unpinned one is met by a run or a status of that name.
+    def missing(required, runs, statuses)
+      required.reject do |req|
+        name = req.fetch("context")
+        pin = req["integration_id"]
+        own = runs.select { |r| r["name"] == name && (pin.nil? || r["app_id"] == pin) }
+        verdicts = []
+        # The newest run that was not cancelled decides. One still queued or running has no conclusion yet,
+        # so it is not green, and an older pass cannot stand in for it.
+        latest = own.reject { |r| r["conclusion"] == "cancelled" }
+                    .max_by { |r| r["id"].to_i }
+        verdicts << (latest["status"] == "completed" && GREEN.include?(latest["conclusion"])) if latest
+        unless pin
+          status = statuses.find { |s| s["context"] == name }
+          verdicts << (status["state"] == "success") if status
+        end
+        verdicts.any? && verdicts.all?
+      end
+    end
+  end
+
+  # The release candidate production gets (release-rc.yml tags every push to release/* as vX.Y.Z-rcN and builds it;
+  # release.yml promotes the NEWEST rc tag, never the merged head). A merge is only safe when that newest candidate
+  # is built from the head that was approved (#793): otherwise production gets a build that lacks what was merged.
+  module ReleaseCandidate
+    VERSION = /\A\d+\.\d+\.\d+\z/
+
+    module_function
+
+    # The commit the newest vVERSION-rcN tag names, or nil when no candidate was ever tagged. Annotated tags are
+    # peeled to their commit. Raises RequiredChecks::Unreadable when GitHub cannot say.
+    def newest_commit(slug, version, gh: RequiredChecks::RUNNER)
+      raise RequiredChecks::Unreadable, "not a repository: #{slug.inspect}" unless RequiredChecks::SLUG.match?(slug.to_s)
+      raise RequiredChecks::Unreadable, "not a release version: #{version.inspect}" unless VERSION.match?(version.to_s)
+
+      refs = RequiredChecks.read(gh, "repos/#{slug}/git/matching-refs/tags/v#{version}-rc", "--paginate", "--jq",
+                                 ".[]|{ref,sha:.object.sha,type:.object.type}")
+      pattern = %r{\Arefs/tags/v#{Regexp.escape(version)}-rc(\d+)\z}
+      newest = refs.select { |r| r.is_a?(Hash) && pattern.match?(r["ref"].to_s) }
+                   .max_by { |r| pattern.match(r["ref"])[1].to_i }
+      return nil unless newest
+
+      sha = newest["sha"]
+      raise RequiredChecks::Unreadable, "not a commit sha: #{sha.inspect}" unless RequiredChecks::SHA.match?(sha.to_s)
+      return sha if newest["type"] == "commit"
+
+      commit = RequiredChecks.read(gh, "repos/#{slug}/git/tags/#{sha}", "--jq", ".object.sha").first
+      raise RequiredChecks::Unreadable, "an unreadable tag object for #{version}" unless RequiredChecks::SHA.match?(commit.to_s)
+
+      commit
+    end
+
+    # True when the newest candidate of `version` is built from `sha`. An older candidate at `sha` is not enough.
+    def at?(slug, version, sha, gh: RequiredChecks::RUNNER)
+      newest_commit(slug, version, gh: gh) == sha
+    end
+  end
+
+  # The command line the workflows call. Run it from the checkout, with origin
+  # reachable. Only `sync` and `rehearse --push` write to origin, as whoever the
+  # checkout's git credentials are (the release App, in the workflows).
+  #
+  #   release_merge.rb approved PR SHA            exit 0 when an approving review of PR is on SHA; 2 when none is (a
+  #                                               review of an older commit does not approve the head); 1 when unreadable
+  #   release_merge.rb unmet SHA                  exit 0 when every context main's rules require is green on SHA;
+  #                                               exit 2 naming the ones that are not; 1 when they cannot be read
+  #   release_merge.rb sync BRANCH                run in BRANCH's checkout (at its origin head). When main and BRANCH
+  #                                               conflict, merges main into BRANCH and pushes the merge as the App
+  #                                               (only CHANGELOG.md is resolved): 0 nothing to merge, 3 pushed (the
+  #                                               new head is a new release candidate, to be tested before it is
+  #                                               approved), 2 held (a path outside the allow-list, named; nothing
+  #                                               pushed), 1 error (nothing pushed)
+  #   release_merge.rb rc VERSION SHA             exit 0 when the newest vVERSION-rcN tag is built from SHA; 2 when it
+  #                                               is another commit (named) or there is none; 1 when unreadable
+  #   release_merge.rb rehearse VERSION [--push]  judge and print the Sunday merge of release/VERSION
+  #                                               without moving main; --push also puts the merge
+  #                                               commit on rehearsal/VERSION as the App, then deletes it
+  module Cli
+    HELD = 2
+    PUSHED = 3
+    USAGE = "usage: release_merge.rb approved PR SHA | unmet SHA | sync BRANCH | rc VERSION SHA | rehearse VERSION [--push]".freeze
+    # The names the workflows pass. They become refspecs and ref names, so anything else is refused here.
+    BRANCH_NAME = %r{\A(release|hotfix)/\d+\.\d+\.\d+\z}
+    VERSION_NAME = /\A\d+\.\d+\.\d+\z/
+
+    module_function
+
+    def run(argv, repo:, out:, err:, slug: ENV["GITHUB_REPOSITORY"], gh: RequiredChecks::RUNNER)
+      command, *args = argv
+      case command
+      when "unmet"
+        sha = args.fetch(0) { return usage(err) }
+        return unmet(sha, slug, gh, out, err)
+      when "approved"
+        pr = args.fetch(0) { return usage(err) }
+        sha = args.fetch(1) { return usage(err) }
+        return approved(pr, sha, slug, gh, err)
+      when "sync" then sync(repo, branch_arg(args) { return usage(err) }, out, err)
+      when "rc"
+        version = args.fetch(0) { return usage(err) }
+        sha = args.fetch(1) { return usage(err) }
+        return usage(err) unless ReleaseCandidate::VERSION.match?(version) && RequiredChecks::SHA.match?(sha)
+        candidate(version, sha, slug, gh, out, err)
+      when "rehearse"
+        version = args.fetch(0) { return usage(err) }
+        return usage(err) unless VERSION_NAME.match?(version)
+        rehearse(repo, version, args.include?("--push"), out, err)
+      else usage(err)
+      end
+    rescue Unresolvable, MainMoved, HeadMoved, RequiredChecks::Unreadable, RuntimeError => e
+      err.puts "release_merge: #{e.message}"
+      1
+    end
+
+    def usage(err)
+      err.puts USAGE
+      64
+    end
+
+    # 0 when an approving review of pull request PR is on sha; HELD (2) when none is.
+    def approved(pr, sha, slug, gh, err)
+      return 0 if RequiredChecks.approved_on?(sha: sha, slug: slug, pr: pr, gh: gh)
+
+      err.puts "held: no approving review of ##{pr} is on #{sha}"
+      HELD
+    end
+
+    # 0 when every required context of main is green on sha; HELD (2) naming the ones that are not,
+    # one per line on stdout and in the message on stderr.
+    def unmet(sha, slug, gh, out, err)
+      names = RequiredChecks.unmet(sha: sha, slug: slug, gh: gh)
+      return 0 if names.empty?
+
+      names.each { |name| out.puts name }
+      err.puts "held: required checks not green on #{sha}: #{names.join(', ')}"
+      HELD
+    end
+
+    # The branch argument when it is a release/X.Y.Z or hotfix/X.Y.Z name; otherwise the block's value (usage).
+    def branch_arg(args)
+      branch = args.fetch(0) { return yield }
+      BRANCH_NAME.match?(branch) ? branch : yield
+    end
+
+    # Run in BRANCH's checkout. A branch that merges cleanly is GitHub's to merge, so nothing is done for it.
+    # A conflict outside the allow-list holds, named. Otherwise main is merged in and the merge is pushed; the
+    # checkout must be at the branch's origin head, so the push is of what was judged.
+    def sync(repo, branch, out, err)
+      main = repo.main_sha
+      head = repo.fetch_branch(branch)
+      paths = repo.conflicts(main, head)
+      if paths.empty?
+        out.puts "#{branch} merges into main without conflicts: nothing to merge"
+        return 0
+      end
+      blocked = paths - ALLOWED_CONFLICTS
+      unless blocked.empty?
+        err.puts "held: #{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved; resolve #{branch} by hand. Nothing pushed."
+        return HELD
+      end
+      checked_out = repo.rev_parse("HEAD")
+      raise HeadMoved, "the checkout is at #{checked_out}, not #{branch} #{head}; nothing pushed" unless checked_out == head
+      commit = repo.merge_main_into_checkout(main, message: "Merge main into #{branch}")
+      repo.push_branch(commit, branch, expected: head)
+      out.puts "pushed #{commit} to #{branch}: main merged in, #{paths.join(', ')} resolved as the union of both sides"
+      PUSHED
+    end
+
+    # 0 when the newest candidate of VERSION is built from sha; HELD (2) naming the commit it is built from otherwise.
+    def candidate(version, sha, slug, gh, out, err)
+      newest = ReleaseCandidate.newest_commit(slug, version, gh: gh)
+      return 0 if newest == sha
+
+      err.puts "held: the newest release candidate of #{version} is #{newest || 'none'}, not #{sha}; production would get that build"
+      HELD
+    end
+
+    def rehearse(repo, version, push, out, err)
+      branch = "release/#{version}"
+      main = repo.main_sha
+      head = repo.fetch_branch(branch)
+      built = repo.merge_commit(main, head, message: "Rehearsal: merge #{branch} into main")
+      out.puts "main #{main}"
+      out.puts "#{branch} #{head}"
+      blocked = built[:conflicts] - ALLOWED_CONFLICTS
+      unless blocked.empty?
+        out.puts "verdict: held, #{blocked.join(', ')} conflict and only #{ALLOWED_CONFLICTS.join(', ')} can be resolved"
+        return HELD
+      end
+      out.puts(built[:conflicts].empty? ? "verdict: clean, git merges it; no union needed" : "verdict: union of both sides for #{built[:conflicts].join(', ')}")
+      commit = built[:commit]
+      out.puts "merge commit #{commit}"
+      out.puts "tree #{repo.tree_of(commit)}"
+      changed = repo.changed_paths(main, commit)
+      # A release branch that is months old changes most of the tree, so the list is capped.
+      shown = changed.first(25)
+      out.puts "changes on main (#{changed.size}): #{shown.join(', ')}#{changed.size > shown.size ? ', ...' : ''}"
+      push ? rehearsal_push(repo, version, commit, out, err) : out.puts("not pushed (rehearse --push pushes it to rehearsal/#{version} and deletes it)")
+      0
+    end
+
+    # The throwaway ref is deleted whether or not the push worked, and a delete
+    # that fails is reported (the ref may remain). A failed push is the error
+    # reported, so a cleanup failure after it is only printed.
+    def rehearsal_push(repo, version, commit, out, err)
+      ref = "refs/heads/rehearsal/#{version}"
+      repo.delete_ref(ref)
+      begin
+        repo.push_ref(commit, ref)
+      rescue RuntimeError => e
+        begin
+          repo.delete_ref(ref)
+        rescue RuntimeError => cleanup
+          err.puts "release_merge: #{cleanup.message}"
+        end
+        raise e
+      end
+      out.puts "pushed to #{ref} as the caller's credentials; deleting it"
+      repo.delete_ref(ref)
+    end
+  end
+end
+
+if $PROGRAM_NAME == __FILE__
+  exit ReleaseMerge::Cli.run(ARGV, repo: ReleaseMerge::Repo.new, out: $stdout, err: $stderr)
 end
