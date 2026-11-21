@@ -24,19 +24,22 @@ import kotlinx.coroutines.test.runTest
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
+import org.koin.core.module.Module
+import org.koin.dsl.koinApplication
 import org.koin.dsl.module
+import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
  * #927: every bare `ensureRow()` writer of `appSettings` leaves the same unchosen row, so the served Next Pick default
- * still reaches it. Each test starts from a fresh graph whose unchosen row is already in place, as it is after launch in
- * production (see [startGraph]), runs one writer through its own path on the real graph and the real database, and reads
- * `NextPickPreferences.resultMode` with a served default of TOP_PICKS. The second half of each test makes a choice first
- * and checks that the same write leaves it alone.
+ * still reaches it. Each test runs one writer through its own path on the real graph and the real database, first on a
+ * graph with no settings row (the writer must create it), then on one where a choice was stored first (the write must
+ * leave it alone). The reader is `NextPickPreferences.resultMode`, with a served default of TOP_PICKS.
  *
  * Run from `:app:shared`, the only module that sees every writer and the reader together. Not covered here: the profile
  * writers (their `ensureRow` is the profile singleton, not `appSettings`) and the sync push cycle (needs an authenticated
@@ -59,20 +62,36 @@ class NextPickResultModeWritersTest {
      * emission of the same flow runs that `ensureRow()` to completion first, which makes the starting state
      * deterministic. Without the wait the row appeared or did not depending on which thread won, the flake in #1026.
      */
+    private fun graphModules(directory: File, served: String): List<Module> = appModules + module {
+        single { DatabaseDriverFactory(directory) }
+        single<SecretStore> { InMemorySecretStore() }
+        single<RemoteConfig> { ServedRemoteConfig(served) }
+    }
+
+    /**
+     * Builds the graph as a started global one, and waits for its startup work before returning. `SettingsLocaleSync`
+     * is `createdAtStart`, so `startKoin` launches its `observeSettings()` collection on `Dispatchers.Default`, and that
+     * flow's `onStart` runs `ensureRow()`. Awaiting one emission of the same flow runs that `ensureRow()` to completion
+     * first, which makes this graph's starting state deterministic (the flake in #1026). Used by the stored-choice phase.
+     */
     private suspend fun startGraph(served: String): Koin {
         val directory = createTempDirectory("muviss-next-pick-writers").toFile()
-        val app = startKoin {
-            modules(
-                appModules + module {
-                    single { DatabaseDriverFactory(directory) }
-                    single<SecretStore> { InMemorySecretStore() }
-                    single<RemoteConfig> { ServedRemoteConfig(served) }
-                },
-            )
-        }
+        val app = startKoin { modules(graphModules(directory, served)) }
         koin = app.koin
         app.koin.get<SettingsRepository>().observeSettings().first()
         return app.koin
+    }
+
+    /**
+     * Builds the graph without starting it, and without creating its eager instances. `koinApplication` creates them by
+     * default, and `SettingsLocaleSync`'s `createdAtStart` collector would then write the row on its own thread, racing
+     * the missing-row check. With `createEagerInstances = false` nothing writes `appSettings` until a writer does, which
+     * is the state a writer meets on a fresh install with no row. Not registered as the global Koin, so [tearDown] has
+     * nothing to stop.
+     */
+    private fun unstartedGraph(served: String): Koin {
+        val directory = createTempDirectory("muviss-next-pick-writers-absent").toFile()
+        return koinApplication(createEagerInstances = false) { modules(graphModules(directory, served)) }.koin
     }
 
     private fun Koin.settingsRow() = get<MuvissDatabase>().appSettingsQueries.selectSettings().executeAsOneOrNull()
@@ -80,17 +99,19 @@ class NextPickResultModeWritersTest {
     private suspend fun Koin.resultMode(): ResultMode = get<NextPickPreferences>().resultMode.first()
 
     /**
-     * Starts with no row, runs [write], and expects the served default with the choice still unwritten. Then restarts,
-     * makes a stored choice, runs [write] again, and expects that choice to win.
+     * Two phases. The first starts with no row, so the writer's own `ensureRow()` creates it: the row must be there
+     * afterwards with no stored result mode, before anything reads the resolved mode (the reader can create the row
+     * itself, so reading first would hide a writer that did not). The second makes a stored choice, runs [write] again,
+     * and expects that choice to win.
      */
     private suspend fun assertWriterLeavesServedDefault(write: suspend (Koin) -> Unit) {
-        val fresh = startGraph(served = "TOP_PICKS")
-        assertNull(fresh.settingsRow()?.nextPickResultMode, "the row the app starts with has no stored choice")
-        write(fresh)
-        assertEquals(ResultMode.TOP_PICKS, fresh.resultMode(), "a row this writer created takes the served default")
-        assertNull(fresh.settingsRow()?.nextPickResultMode, "the default is served, not written into the row")
-        stopKoin()
-        koin = null
+        val absent = unstartedGraph(served = "TOP_PICKS")
+        assertNull(absent.settingsRow(), "the row does not exist before the writer runs")
+        write(absent)
+        assertNotNull(absent.settingsRow(), "the writer creates the row when it is missing")
+        assertNull(absent.settingsRow()?.nextPickResultMode, "the row the writer created has no stored result mode")
+        assertEquals(ResultMode.TOP_PICKS, absent.resultMode(), "a row this writer created takes the served default")
+        assertNull(absent.settingsRow()?.nextPickResultMode, "the default is served, not written into the row")
 
         val chosen = startGraph(served = "TOP_PICKS")
         chosen.get<NextPickPreferences>().setResultMode(ResultMode.DECK)
