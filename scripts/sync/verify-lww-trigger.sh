@@ -50,8 +50,11 @@ stored() { # Prints the stored title. A failed read prints a marker that matches
 fail=0
 
 code=$(upsert ORIGINAL 2000); rc=$?
-echo "1. seed at t=2000                -> HTTP $code, stored: $(stored)"
+seeded=$(stored)
+echo "1. seed at t=2000                -> HTTP $code, stored: $seeded"
 [ "$rc" -eq 0 ] || { echo "  <-- the seed write was refused"; fail=1; }
+# The stale step below proves nothing unless the baseline row is really there.
+[ "$seeded" = ORIGINAL ] || { echo "  <-- the seed did not land, so the stale write has no baseline"; fail=1; }
 
 code=$(upsert STALE 1000); rc=$?
 got=$(stored)
