@@ -16,15 +16,9 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
-
-# Refused before the --force check and before any adb call: this seeds a
-# database on a real device and clears the app's data. The local stack has no
-# device, and nothing about a migration on it would be the device's upgrade path.
-if local_target; then
-  echo "verify-migration.sh does not run against the local stack (MUVISS_SUPABASE_TARGET=local)." >&2
-  echo "It seeds an old database on a real device and wipes the app's data; there is no local equivalent." >&2
-  exit 2
-fi
+# Before the --force check and before any adb_ call: the local stack has no
+# device, and pm clear on an attached phone would wipe its app data.
+refuse_local verify-migration "There is no local equivalent: a migration only proves something on a device's own upgrade path."
 
 [ "${1:-}" = "--force" ] || { echo "This wipes the app's data. Re-run with --force if that is fine."; exit 1; }
 FROM="${2:-7}"
@@ -57,7 +51,7 @@ adb_ shell "run-as $PKG sh -c 'cat /data/local/tmp/muviss.db > databases/muviss.
 adb_ shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 sleep 8
 
-AFTER=$(pull_database "$WORK/after")
+AFTER=$(pull_database "$WORK/after") || exit 1
 echo
 echo "user_version : $(sqlite3 "$AFTER" 'PRAGMA user_version;')"
 echo "episodePlay  : $(sqlite3 "$AFTER" "SELECT group_concat(name||':'||type) FROM pragma_table_info('episodePlay');")"

@@ -42,7 +42,7 @@ Requires `adb`, `sqlite3`, `curl`, `python3` and the `supabase` CLI.
 | `sync-status.sh` | Device rows vs server rows vs dirty rows, and the two sync timestamps. Start here. Refuses `MUVISS_SUPABASE_TARGET=local`: there is no device to compare. |
 | `verify-rls.sh` | Can the anon key — which ships inside the app — read or write anyone's data? |
 | `verify-lww-trigger.sh` | Does `discard_stale_write()` fire on the upsert path the client actually uses? |
-| `diagnose-signin.sh` | Why OAuth sign-in didn't complete, walked boundary by boundary. |
+| `diagnose-signin.sh` | Why OAuth sign-in didn't complete, walked boundary by boundary. Refuses `MUVISS_SUPABASE_TARGET=local`: its logcat and device steps need a phone. |
 | `verify-server-seq.sh` | Does the `server_seq` trigger stamp, skip stale writes, clamp future timestamps and ignore a client-sent value? Run after `supabase db push` applies `20260920000000_sync_server_seq.sql` (EPIC 39, ADR 0020). |
 | `verify-null-clearing.sh` | Does `"rating":null` clear the column while an omitted key leaves it alone? The check that `FakeSupabaseServer`'s model of PostgREST is right (issue #88). |
 | `verify-pagination.sh` | Does paging by `server_seq` return every row under the project's real `max_rows`? Reports the effective cap (issue #88). |
@@ -50,10 +50,30 @@ Requires `adb`, `sqlite3`, `curl`, `python3` and the `supabase` CLI.
 
 `lib.sh` is shared helpers; source it, don't run it.
 
-The local stack (`MUVISS_SUPABASE_TARGET=local`, after `supabase start`) runs
-the server-side checks unchanged. `sync-status.sh` and `verify-migration.sh`
-refuse it, since both need a device. `scripts/sync/test/sync-scripts-test.sh`
-proves those refusals without a device, a network or Supabase, and runs in
+### The local stack
+
+`MUVISS_SUPABASE_TARGET=local` points the scripts at the stack `supabase start`
+runs. There is no device there, so the signed-in session is a throwaway account
+made through the local admin API, and its token goes into a stand-in database
+with only `syncAccount.accessToken`.
+
+- **Run against local:** `verify-rls.sh`, `verify-lww-trigger.sh`,
+  `verify-null-clearing.sh`, `verify-pagination.sh`, `verify-server-seq.sh`.
+  They read nothing from the database but the token.
+- **Refuse local** (`refuse_local` in `lib.sh`, before any read or `adb` call):
+  `sync-status.sh`, `diagnose-signin.sh`, `verify-migration.sh`. The last one
+  runs `pm clear`, so the refusal has to come first.
+
+A session that cannot be created fails closed: no database is written, and
+`pull_database` returns non-zero, so a failed setup never reads as "signed out".
+Every request whose status matters goes through `http_call` in `lib.sh`, which
+returns non-zero unless the status is 2xx, and every "ok" or "cleaned up" line
+depends on it. A cleanup that fails says the probe rows may remain and prints
+the table and filter to retry with.
+
+`scripts/sync/test/sync-scripts-test.sh` covers the refusals and that failure
+handling against stubs for `adb`, `supabase` and `curl`, with no device, network
+or Supabase. It needs `sqlite3` and `python3` on the path, and runs in
 `pr-guards.yml`.
 
 ## Two things worth knowing before reading any output

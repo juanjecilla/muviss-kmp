@@ -169,8 +169,9 @@ jobs:
         run: ruby scripts/ci/test/check_workflow_permissions_test.rb && ruby scripts/ci/check-workflow-permissions.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
-      # The sync scripts refuse the local stack where they would wipe a device (#940).
-      - name: Sync scripts refuse local mode
+      # The device scripts refuse the local stack before any call, and a failed
+      # session or cleanup fails closed; stubs stand in for adb, supabase and curl (#940, #936).
+      - name: Sync scripts test
         run: scripts/sync/test/sync-scripts-test.sh
       # The worktree setup script copies local.properties without overwriting it (#857).
       - name: Worktree setup script
