@@ -12,8 +12,10 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
-# Reads the device's own tables, which the local stack's stand-in does not have.
-refuse_local sync-status
+# Refused before anything else. Local mode's pull_database makes a throwaway
+# account, so the device columns would have no device behind them: the counts
+# would be zero and read as an answer when they are not one.
+refuse_local sync-status "Use verify-rls.sh, verify-server-seq.sh, verify-null-clearing.sh, verify-pagination.sh or verify-lww-trigger.sh there instead."
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT

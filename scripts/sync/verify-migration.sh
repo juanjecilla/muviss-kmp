@@ -18,7 +18,7 @@ cd "$(dirname "$0")/../.." || exit 1
 . scripts/sync/lib.sh
 # Before the --force check and before any adb_ call: the local stack has no
 # device, and pm clear on an attached phone would wipe its app data.
-refuse_local verify-migration
+refuse_local verify-migration "There is no local equivalent: a migration only proves something on a device's own upgrade path."
 
 [ "${1:-}" = "--force" ] || { echo "This wipes the app's data. Re-run with --force if that is fine."; exit 1; }
 FROM="${2:-7}"

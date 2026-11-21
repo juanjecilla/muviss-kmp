@@ -150,9 +150,12 @@ local_target() { [ "$MUVISS_PROJECT_REF" = local ]; }
 
 # For the scripts that need a device. verify-migration in particular runs
 # `pm clear` on whatever phone is attached, so this must run before any adb_.
+#
+# $2 is an optional hint naming what to run instead.
 refuse_local() {
   if local_target; then
     echo "$1 needs an Android device, and MUVISS_SUPABASE_TARGET=local has none. Run it with the default target and the device attached." >&2
+    [ -n "${2:-}" ] && echo "$2" >&2
     exit 1
   fi
 }
