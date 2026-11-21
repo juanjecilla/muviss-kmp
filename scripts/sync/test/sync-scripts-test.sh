@@ -26,34 +26,52 @@ CALLS="$WORK/calls.log"
 BIN="$WORK/bin"
 mkdir -p "$BIN"
 
-# adb: every call is a device call, and every device call is a failure here.
+# adb: device calls fail, except the two sync-status needs on a device: the device
+# list (one attached) and the app database, copied from FAKE_DEVICE_DB.
 cat > "$BIN/adb" <<'EOF'
 #!/bin/bash
 echo "adb $*" >> "$CALLS"
-exit 1
+case "$*" in
+  devices) printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *"exec-out run-as"*"databases/muviss.db")
+    [ -n "${FAKE_DEVICE_DB:-}" ] && cat "$FAKE_DEVICE_DB" || exit 1 ;;
+  *) exit 1 ;;
+esac
 EOF
 
-# supabase: only `status -o json` is used on the local target.
+# supabase: `status -o json` on the local target, `projects api-keys` on hosted ones.
 cat > "$BIN/supabase" <<'EOF'
 #!/bin/bash
 echo "supabase $*" >> "$CALLS"
 [ -n "${SUPA_DOWN:-}" ] && exit 1
-if [ "$*" = "status -o json" ]; then
-  echo '{"API_URL":"http://127.0.0.1:54321","SERVICE_ROLE_KEY":"svc-key","ANON_KEY":"anon-key"}'
-  exit 0
-fi
-exit 1
+case "$*" in
+  "status -o json")
+    echo '{"API_URL":"http://127.0.0.1:54321","SERVICE_ROLE_KEY":"svc-key","ANON_KEY":"anon-key"}' ;;
+  "projects api-keys"*)
+    echo '[{"name":"anon","api_key":"anon-key"}]' ;;
+  *) exit 1 ;;
+esac
 EOF
 
 # curl: routes on the URL and answers with the status the test sets. With -w it
-# prints the body and then the status, as the helper in lib.sh expects. Its
-# arguments carry keys, so only the route is logged.
+# prints the body and then the status, as the helper in lib.sh expects. A count
+# request writes its Content-Range into the -D file. Its arguments carry keys, so
+# only the route is logged.
 cat > "$BIN/curl" <<'EOF'
 #!/bin/bash
 args="$*"
+headers=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "-D" ] && headers="$a"
+  prev="$a"
+done
 case "$args" in
   *"/auth/v1/admin/users"*) route=auth-admin; code=${CURL_ADMIN:-200}; body='{"id":"x"}' ;;
   *"/auth/v1/token"*) route=auth-token; code=${CURL_TOKEN_CODE:-200}; body=${CURL_TOKEN_BODY-'{"access_token":"tok.ABC.def"}'} ;;
+  *"count=exact"*)
+    route=rest-count; code=${CURL_COUNT:-200}; body=''
+    [ -n "$headers" ] && printf 'Content-Range: 0-0/%s\r\n' "${CURL_COUNT_TOTAL:-7}" > "$headers" ;;
   *"-X DELETE"*) route=rest-delete; code=${CURL_DELETE:-204}; body='' ;;
   *"episode_progress?select"*) route=rest-page; code=${CURL_PAGE_CODE:-200}; body=${CURL_PAGE:-[]} ;;
   *"/rest/v1/"*) route=rest-write; code=${CURL_WRITE:-201}; body='' ;;
@@ -164,6 +182,86 @@ CURL_WRITE=503 run local verify-pagination.sh
 if [ "$RC" -ne 0 ] && grep -q "not every probe row was inserted" <<<"$OUT"; then
   pass "verify-pagination with refused inserts fails"
 else fail "pagination refused inserts: rc=$RC out=$OUT"; fi
+
+echo "sync-status lists every synced table, and never prints a blank cell"
+
+status="$SYNC/sync-status.sh"
+for t in collectionEntry episodeProgress episodePlay triageDecision mediaList listEntry triageSnooze tasteProfile; do
+  if grep -q "^paste_row $t " "$status"; then pass "sync-status has a row for $t"
+  else fail "sync-status has no row for $t"; fi
+done
+if grep -q "FROM syncCursor" "$status" && ! grep -q "SELECT.*syncCursorEpochMs" "$status"; then
+  pass "sync-status reads the per-table syncCursor, not the dead appSettings column"
+else fail "sync-status still reads appSettings.syncCursorEpochMs"; fi
+if ! grep -qE '^paste_row .*\$\(sqlite3' "$status"; then
+  pass "no device count bypasses db_count, so none can print blank"
+else fail "a device count in sync-status is not routed through db_count"; fi
+
+# A device with every table sync-status reads. Counts: 5 rows, 2 dirty, per table.
+DEVICE_DB="$WORK/device.db"
+{
+  echo "CREATE TABLE syncAccount(accessToken TEXT, email TEXT, backendId TEXT, expiresAtEpochMs INTEGER);"
+  echo "INSERT INTO syncAccount VALUES('tok.ABC.def','a@b.test','backend-1',1);"
+  echo "CREATE TABLE appSettings(id INTEGER PRIMARY KEY, lastSyncedAtEpochMs INTEGER);"
+  echo "INSERT INTO appSettings VALUES(0, 1234);"
+  echo "CREATE TABLE syncCursor(tableName TEXT PRIMARY KEY, seq INTEGER);"
+  echo "INSERT INTO syncCursor VALUES('collection_entry', 42);"
+  for t in collectionEntry episodeProgress episodePlay triageDecision mediaList listEntry triageSnooze tasteProfile; do
+    echo "CREATE TABLE $t(id TEXT, isDirty INTEGER);"
+    echo "INSERT INTO $t VALUES('a',1),('b',1),('c',0),('d',0),('e',0);"
+  done
+} | sqlite3 "$DEVICE_DB"
+
+# Rows of the device table: a name followed by three cells, each a count or "?".
+table_rows() { grep -E '^(collectionEntry|episodeProgress|episodePlay|triageDecision|mediaList|listEntry|triageSnooze|tasteProfile) ' <<<"$OUT"; }
+
+FAKE_DEVICE_DB="$DEVICE_DB" CURL_COUNT_TOTAL=7 run "" sync-status.sh
+if [ "$RC" -eq 0 ] && grep -q "last synced : 1234" <<<"$OUT" && grep -q "  collection_entry = 42" <<<"$OUT"; then
+  pass "the cursor and the last-sync time are printed"
+else fail "cursor and last sync: rc=$RC out=$OUT"; fi
+
+if [ "$(table_rows | wc -l | tr -d ' ')" -eq 8 ] && [ "$(table_rows | grep -cE ' +5 +2 +7$')" -eq 8 ]; then
+  pass "all eight synced tables are listed, with device, dirty and server counts"
+else fail "table listing: $(table_rows)"; fi
+
+FAKE_DEVICE_DB="$DEVICE_DB" CURL_COUNT=503 run "" sync-status.sh
+if [ "$(table_rows | grep -cE ' +5 +2 +\?$')" -eq 8 ]; then
+  pass "a refused server count prints ? in every row, not a blank"
+else fail "refused server counts: $(table_rows)"; fi
+
+# A table the device does not have: its cells say ?, and the rest still print.
+MISSING_TABLE_DB="$WORK/device-no-snooze.db"
+cp "$DEVICE_DB" "$MISSING_TABLE_DB"
+sqlite3 "$MISSING_TABLE_DB" "DROP TABLE triageSnooze;"
+FAKE_DEVICE_DB="$MISSING_TABLE_DB" run "" sync-status.sh
+if grep -qE '^triageSnooze +\? +\? +7$' <<<"$OUT" && grep -qE '^collectionEntry +5 +2 +7$' <<<"$OUT"; then
+  pass "an unreadable device count prints ?, and the other rows are unchanged"
+else fail "missing device table: $(table_rows)"; fi
+
+NO_CURSOR_DB="$WORK/device-no-cursor.db"
+cp "$DEVICE_DB" "$NO_CURSOR_DB"
+sqlite3 "$NO_CURSOR_DB" "DROP TABLE syncCursor;"
+FAKE_DEVICE_DB="$NO_CURSOR_DB" run "" sync-status.sh
+if grep -q "^  ?$" <<<"$OUT"; then pass "an unreadable cursor table prints ?, not never pulled"
+else fail "missing cursor table: out=$OUT"; fi
+
+# The reserved `_lastFullPullAt` row is not a cursor: it is left out of the list,
+# and a device with only that row has never pulled a table, so it says none.
+RESERVED_DB="$WORK/device-reserved-and-cursor.db"
+cp "$DEVICE_DB" "$RESERVED_DB"
+sqlite3 "$RESERVED_DB" "INSERT INTO syncCursor VALUES('_lastFullPullAt', 1700000000000);"
+FAKE_DEVICE_DB="$RESERVED_DB" run "" sync-status.sh
+if grep -q "  collection_entry = 42" <<<"$OUT" && ! grep -q "_lastFullPullAt" <<<"$OUT"; then
+  pass "a real cursor is listed and the reserved _lastFullPullAt row is not"
+else fail "reserved row beside a cursor: out=$OUT"; fi
+
+RESERVED_ONLY_DB="$WORK/device-reserved-only.db"
+cp "$DEVICE_DB" "$RESERVED_ONLY_DB"
+sqlite3 "$RESERVED_ONLY_DB" "DELETE FROM syncCursor; INSERT INTO syncCursor VALUES('_lastFullPullAt', 1700000000000);"
+FAKE_DEVICE_DB="$RESERVED_ONLY_DB" run "" sync-status.sh
+if [ "$RC" -eq 0 ] && grep -q "^  none$" <<<"$OUT" && ! grep -q "_lastFullPullAt" <<<"$OUT"; then
+  pass "only the reserved row present: the list says none, as for a device that never pulled"
+else fail "reserved row only: rc=$RC out=$OUT"; fi
 
 echo "every sync script parses"
 
