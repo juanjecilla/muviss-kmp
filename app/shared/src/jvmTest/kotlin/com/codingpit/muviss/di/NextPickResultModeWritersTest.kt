@@ -15,6 +15,7 @@ import com.codingpit.muviss.feature.onboarding.data.ApplySystemMotionDefault
 import com.codingpit.muviss.feature.onboarding.domain.OnboardingRepository
 import com.codingpit.muviss.feature.search.domain.SearchOnboarding
 import com.codingpit.muviss.feature.settings.domain.BackupRestorer
+import com.codingpit.muviss.feature.settings.domain.SettingsRepository
 import com.codingpit.muviss.feature.triage.domain.TriagePreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,10 +32,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * #927: every bare `ensureRow()` writer of `appSettings` creates the same unchosen row, so the served Next Pick default
- * still reaches it. Each test starts from a graph with no settings row, runs one writer through its own path on the real
- * graph and the real database, and reads `NextPickPreferences.resultMode` with a served default of TOP_PICKS. The second
- * half of each test makes a choice first and checks that the same write leaves it alone.
+ * #927: every bare `ensureRow()` writer of `appSettings` leaves the same unchosen row, so the served Next Pick default
+ * still reaches it. Each test starts from a fresh graph whose unchosen row is already in place, as it is after launch in
+ * production (see [startGraph]), runs one writer through its own path on the real graph and the real database, and reads
+ * `NextPickPreferences.resultMode` with a served default of TOP_PICKS. The second half of each test makes a choice first
+ * and checks that the same write leaves it alone.
  *
  * Run from `:app:shared`, the only module that sees every writer and the reader together. Not covered here: the profile
  * writers (their `ensureRow` is the profile singleton, not `appSettings`) and the sync push cycle (needs an authenticated
@@ -50,7 +52,14 @@ class NextPickResultModeWritersTest {
         koin = null
     }
 
-    private fun startGraph(served: String): Koin {
+    /**
+     * Builds the graph and waits for its startup work before returning. `SettingsLocaleSync` is `createdAtStart`, so
+     * `startKoin` launches its `observeSettings()` collection on `Dispatchers.Default`, and that flow's `onStart`
+     * runs `ensureRow()` on the database. The collection is never cancelled, so nothing else stops it. Awaiting one
+     * emission of the same flow runs that `ensureRow()` to completion first, which makes the starting state
+     * deterministic. Without the wait the row appeared or did not depending on which thread won, the flake in #1026.
+     */
+    private suspend fun startGraph(served: String): Koin {
         val directory = createTempDirectory("muviss-next-pick-writers").toFile()
         val app = startKoin {
             modules(
@@ -62,6 +71,7 @@ class NextPickResultModeWritersTest {
             )
         }
         koin = app.koin
+        app.koin.get<SettingsRepository>().observeSettings().first()
         return app.koin
     }
 
@@ -75,7 +85,7 @@ class NextPickResultModeWritersTest {
      */
     private suspend fun assertWriterLeavesServedDefault(write: suspend (Koin) -> Unit) {
         val fresh = startGraph(served = "TOP_PICKS")
-        assertNull(fresh.settingsRow(), "the graph starts with no appSettings row")
+        assertNull(fresh.settingsRow()?.nextPickResultMode, "the row the app starts with has no stored choice")
         write(fresh)
         assertEquals(ResultMode.TOP_PICKS, fresh.resultMode(), "a row this writer created takes the served default")
         assertNull(fresh.settingsRow()?.nextPickResultMode, "the default is served, not written into the row")
