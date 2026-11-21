@@ -99,6 +99,41 @@ resolve_project_ref() {
 resolve_project_ref || exit 1
 project_ref() { echo "$MUVISS_PROJECT_REF"; }
 
+# ------------------------------------------------------------------- http ---
+
+# Every curl whose status matters goes through here. curl exits 0 on a 503, so
+# a bare curl cannot say whether a write landed: a script that prints "cleaned
+# up" after one has lied when the server refused the DELETE.
+#
+# Runs curl with the arguments given and records HTTP_CODE and HTTP_BODY. Returns
+# 0 only for a 2xx status, or when curl itself failed, which counts as 000.
+# Never echo its arguments (they carry the keys) or the body (it can echo them).
+http_call() {
+  local out
+  if ! out=$(curl -s -w '\n%{http_code}' "$@"); then
+    HTTP_CODE=000; HTTP_BODY=""; return 1
+  fi
+  HTTP_CODE=${out##*$'\n'}
+  HTTP_BODY=${out%$'\n'*}
+  case "$HTTP_CODE" in 2??) return 0 ;; *) return 1 ;; esac
+}
+
+# Deletes probe rows and says so only on a verified 2xx. $1 is the table's REST
+# URL, $2 the PostgREST filter that selects exactly the probe rows. Needs ANON and
+# TOKEN in the caller. Prints the table and filter, never the host or the keys,
+# so the message is enough to run the DELETE by hand.
+probe_cleanup() {
+  local rest=$1 filter=$2 table
+  table=${rest##*/}
+  if http_call -X DELETE "$rest?$filter" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"; then
+    echo "  cleaned up: $table where $filter"
+  else
+    echo "  CLEANUP FAILED (HTTP $HTTP_CODE): probe rows may remain in $table." >&2
+    echo "  retry with: DELETE $table where $filter" >&2
+    return 1
+  fi
+}
+
 # ------------------------------------------------------------------ local ---
 
 # The local stack (`supabase start`, from this repo's config). There is no
@@ -137,20 +172,19 @@ local_status() {
 # a missing token would otherwise read as "signed out" and exit 0.
 # Nothing is printed: the password and token stay in the process.
 local_session_db() {
-  local out=$1 api svc anon email pw tok code
+  local out=$1 api svc anon email pw tok
   api=$(local_status API_URL) || return 1
   svc=$(local_status SERVICE_ROLE_KEY) || return 1
   anon=$(local_status ANON_KEY) || return 1
   email="sync-probe-$(python3 -c 'import secrets;print(secrets.token_hex(6))')@muviss.test"
   pw=$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')
-  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$api/auth/v1/admin/users" \
+  http_call -X POST "$api/auth/v1/admin/users" \
     -H "apikey: $svc" -H "Authorization: Bearer $svc" -H "Content-Type: application/json" \
-    -d "{\"email\":\"$email\",\"password\":\"$pw\",\"email_confirm\":true}")
-  case "$code" in 2??) ;; *) return 1 ;; esac
-  tok=$(curl -s -X POST "$api/auth/v1/token?grant_type=password" \
+    -d "{\"email\":\"$email\",\"password\":\"$pw\",\"email_confirm\":true}" || return 1
+  http_call -X POST "$api/auth/v1/token?grant_type=password" \
     -H "apikey: $anon" -H "Content-Type: application/json" \
-    -d "{\"email\":\"$email\",\"password\":\"$pw\"}" \
-    | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])" 2>/dev/null) || return 1
+    -d "{\"email\":\"$email\",\"password\":\"$pw\"}" || return 1
+  tok=$(printf '%s' "$HTTP_BODY" | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])" 2>/dev/null) || return 1
   [ -n "$tok" ] || return 1
   rm -f "$out/muviss.db"
   sqlite3 "$out/muviss.db" "CREATE TABLE syncAccount(accessToken TEXT); INSERT INTO syncAccount VALUES('$tok');" || return 1

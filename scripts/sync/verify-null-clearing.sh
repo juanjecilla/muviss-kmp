@@ -29,33 +29,46 @@ REST=$(rest_url) || { echo "could not work out the REST URL"; exit 1; }
 REST="$REST/collection_entry"
 MEDIA="tmdb:movie:000000-null-probe"
 
-upsert() { # $1 updated_at, $2 json members after updated_at
-  curl -s -o /dev/null -w '%{http_code}' -X POST "$REST" \
+upsert() { # $1 updated_at, $2 json members after updated_at. Prints the status; returns 0 only on 2xx.
+  local rc=0
+  http_call -X POST "$REST" \
     -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     -H "Prefer: resolution=merge-duplicates,return=minimal" \
-    -d "[{\"media_id\":\"$MEDIA\",\"media_type\":\"MOVIE\",\"title\":\"probe\",\"production_status\":\"RELEASED\",\"added_at_epoch_ms\":1,\"updated_at_epoch_ms\":$1$2}]"
+    -d "[{\"media_id\":\"$MEDIA\",\"media_type\":\"MOVIE\",\"title\":\"probe\",\"production_status\":\"RELEASED\",\"added_at_epoch_ms\":1,\"updated_at_epoch_ms\":$1$2}]" || rc=$?
+  echo "$HTTP_CODE"
+  return "$rc"
 }
-rating() {
-  curl -s "$REST?media_id=eq.$MEDIA&select=rating" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" \
-    | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['rating'] if d else '<none>')"
+rating() { # Prints the stored rating. A failed read prints a marker that matches no expected value.
+  if ! http_call "$REST?media_id=eq.$MEDIA&select=rating" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"; then
+    echo "<read failed: HTTP $HTTP_CODE>"; return
+  fi
+  printf '%s' "$HTTP_BODY" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['rating'] if d else '<none>')" 2>/dev/null \
+    || echo "<unreadable>"
 }
 
 fail=0
 NOW_MS=$(python3 -c "import time;print(int(time.time()*1000))")
 T1=$((NOW_MS - 30000)); T2=$((NOW_MS - 20000)); T3=$((NOW_MS - 10000))
 
-echo "1. seed rating 8           -> HTTP $(upsert $T1 ',"rating":8'), rating: $(rating)"
+code=$(upsert $T1 ',"rating":8'); rc=$?
+echo "1. seed rating 8           -> HTTP $code, rating: $(rating)"
+[ "$rc" -eq 0 ] || { echo "  <-- the seed write was refused"; fail=1; }
 
-upsert $T2 '' >/dev/null
+upsert $T2 '' >/dev/null; rc=$?
 got=$(rating)
 printf '2. newer write, no rating key  -> rating: %s' "$got"
-if [ "$got" = "8" ]; then echo "  (left alone: this is the bug the client used to have)"; else echo "  <-- an omitted key changed the column; the premise of the fix is wrong"; fail=1; fi
+if [ "$rc" -ne 0 ]; then echo "  <-- the write was refused"; fail=1
+elif [ "$got" = "8" ]; then echo "  (left alone: this is the bug the client used to have)"
+else echo "  <-- an omitted key changed the column; the premise of the fix is wrong"; fail=1; fi
 
-upsert $T3 ',"rating":null' >/dev/null
+upsert $T3 ',"rating":null' >/dev/null; rc=$?
 got=$(rating)
 printf '3. newer write, "rating":null  -> rating: %s' "$got"
-if [ "$got" = "None" ] || [ "$got" = "null" ]; then echo "  OK (cleared)"; else echo "  <-- an explicit null did not clear it"; fail=1; fi
+if [ "$rc" -ne 0 ]; then echo "  <-- the write was refused"; fail=1
+elif [ "$got" = "None" ] || [ "$got" = "null" ]; then echo "  OK (cleared)"
+else echo "  <-- an explicit null did not clear it"; fail=1; fi
 
-curl -s -o /dev/null -X DELETE "$REST?media_id=eq.$MEDIA" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"
+probe_cleanup "$REST" "media_id=eq.$MEDIA" || fail=1
 echo
+[ "$fail" -eq 0 ] && echo "Null clearing is working." || echo "NULL CLEARING FAILED — see above."
 exit "$fail"

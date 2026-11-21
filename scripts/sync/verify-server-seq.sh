@@ -33,16 +33,29 @@ REST="$REST/collection_entry"
 A="tmdb:movie:000000-seq-probe-a"
 B="tmdb:movie:000000-seq-probe-b"
 
-upsert() { # $1 media_id, $2 updated_at, $3 extra json members (optional, leading comma)
-  curl -s -o /dev/null -w '%{http_code}' -X POST "$REST" \
+upsert() { # $1 media_id, $2 updated_at, $3 extra json members (optional, leading comma). Prints the status; returns 0 only on 2xx.
+  local rc=0
+  http_call -X POST "$REST" \
     -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     -H "Prefer: resolution=merge-duplicates,return=minimal" \
-    -d "[{\"media_id\":\"$1\",\"media_type\":\"MOVIE\",\"title\":\"probe\",\"production_status\":\"RELEASED\",\"added_at_epoch_ms\":1,\"updated_at_epoch_ms\":$2${3:-}}]"
+    -d "[{\"media_id\":\"$1\",\"media_type\":\"MOVIE\",\"title\":\"probe\",\"production_status\":\"RELEASED\",\"added_at_epoch_ms\":1,\"updated_at_epoch_ms\":$2${3:-}}]" || rc=$?
+  echo "$HTTP_CODE"
+  return "$rc"
 }
-field() { # $1 media_id, $2 column
-  curl -s "$REST?media_id=eq.$1&select=$2" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" \
-    | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['$2'] if d else '<none>')"
+# A write the server refused is a failed probe, not a silent no-op.
+write() { # same arguments as upsert
+  local code rc=0
+  code=$(upsert "$@") || rc=$?
+  if [ "$rc" -ne 0 ]; then echo "  <-- write refused (HTTP $code)"; fail=1; fi
 }
+field() { # $1 media_id, $2 column. A failed read prints a marker that is not an integer.
+  if ! http_call "$REST?media_id=eq.$1&select=$2" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"; then
+    echo "<read failed: HTTP $HTTP_CODE>"; return
+  fi
+  printf '%s' "$HTTP_BODY" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['$2'] if d else '<none>')" 2>/dev/null \
+    || echo "<unreadable>"
+}
+is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
 
 fail=0
 check() { # $1 label, $2 condition result (0 = ok)
@@ -51,35 +64,35 @@ check() { # $1 label, $2 condition result (0 = ok)
 
 NOW_MS=$(python3 -c "import time;print(int(time.time()*1000))")
 
-upsert "$A" 1000 >/dev/null
-upsert "$B" 1000 >/dev/null
+write "$A" 1000
+write "$B" 1000
 SA=$(field "$A" server_seq); SB=$(field "$B" server_seq)
 echo "1. two inserts: a=$SA b=$SB"
-[ "$SB" -gt "$SA" ] 2>/dev/null; check "b was stamped after a" $?
+is_int "$SA" && is_int "$SB" && [ "$SB" -gt "$SA" ]; check "b was stamped after a" $?
 
-upsert "$A" 2000 >/dev/null
+write "$A" 2000
 SA2=$(field "$A" server_seq)
 echo "2. newer write to a: server_seq $SA -> $SA2"
-[ "$SA2" -gt "$SA" ] 2>/dev/null; check "a newer write takes a new server_seq" $?
+is_int "$SA" && is_int "$SA2" && [ "$SA2" -gt "$SA" ]; check "a newer write takes a new server_seq" $?
 
-upsert "$A" 1500 >/dev/null
+write "$A" 1500
 SA3=$(field "$A" server_seq)
 echo "3. stale write to a: server_seq $SA2 -> $SA3"
-[ "$SA3" = "$SA2" ]; check "a discarded write keeps its old server_seq" $?
+is_int "$SA2" && is_int "$SA3" && [ "$SA3" = "$SA2" ]; check "a discarded write keeps its old server_seq" $?
 
-upsert "$B" $((NOW_MS + 86400000)) >/dev/null
+write "$B" $((NOW_MS + 86400000))
 CLAMPED=$(field "$B" updated_at_epoch_ms)
 LIMIT=$((NOW_MS + 90000))
 echo "4. b stamped a day ahead: stored updated_at_epoch_ms=$CLAMPED (limit $LIMIT)"
-[ "$CLAMPED" -le "$LIMIT" ] 2>/dev/null; check "the future timestamp was clamped" $?
+is_int "$CLAMPED" && [ "$CLAMPED" -le "$LIMIT" ]; check "the future timestamp was clamped" $?
 
-upsert "$B" $((NOW_MS + 1)) ',"server_seq":1' >/dev/null
+write "$B" $((NOW_MS + 1)) ',"server_seq":1'
 SB2=$(field "$B" server_seq)
 echo "5. b sent with server_seq=1: stored server_seq=$SB2"
-[ "$SB2" -gt "$SA3" ] 2>/dev/null; check "a client-supplied server_seq is overwritten" $?
+is_int "$SB2" && is_int "$SA3" && [ "$SB2" -gt "$SA3" ]; check "a client-supplied server_seq is overwritten" $?
 
 for id in "$A" "$B"; do
-  curl -s -o /dev/null -X DELETE "$REST?media_id=eq.$id" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"
+  probe_cleanup "$REST" "media_id=eq.$id" || fail=1
 done
 echo
 if [ "$fail" -eq 0 ]; then echo "server_seq behaves as the client assumes"; else echo "server_seq does NOT behave as the client assumes — do not enable sync"; fi

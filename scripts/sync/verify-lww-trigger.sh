@@ -30,33 +30,41 @@ REST=$(rest_url) || { echo "could not work out the REST URL"; exit 1; }
 REST="$REST/collection_entry"
 MEDIA="tmdb:movie:000000-trigger-probe"
 
-upsert() { # $1 title, $2 updated_at
-  curl -s -o /dev/null -w '%{http_code}' -X POST "$REST" \
+upsert() { # $1 title, $2 updated_at. Prints the status; returns 0 only on 2xx.
+  local rc=0
+  http_call -X POST "$REST" \
     -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     -H "Prefer: resolution=merge-duplicates,return=minimal" \
-    -d "[{\"media_id\":\"$MEDIA\",\"media_type\":\"MOVIE\",\"title\":\"$1\",\"production_status\":\"RELEASED\",\"added_at_epoch_ms\":1,\"updated_at_epoch_ms\":$2}]"
+    -d "[{\"media_id\":\"$MEDIA\",\"media_type\":\"MOVIE\",\"title\":\"$1\",\"production_status\":\"RELEASED\",\"added_at_epoch_ms\":1,\"updated_at_epoch_ms\":$2}]" || rc=$?
+  echo "$HTTP_CODE"
+  return "$rc"
 }
-stored() {
-  curl -s "$REST?media_id=eq.$MEDIA&select=title" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" \
-    | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['title'] if d else '<none>')"
+stored() { # Prints the stored title. A failed read prints a marker that matches no expected title.
+  if ! http_call "$REST?media_id=eq.$MEDIA&select=title" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"; then
+    echo "<read failed: HTTP $HTTP_CODE>"; return
+  fi
+  printf '%s' "$HTTP_BODY" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d[0]['title'] if d else '<none>')" 2>/dev/null \
+    || echo "<unreadable>"
 }
 
 fail=0
 
-echo "1. seed at t=2000                -> HTTP $(upsert ORIGINAL 2000), stored: $(stored)"
+code=$(upsert ORIGINAL 2000); rc=$?
+echo "1. seed at t=2000                -> HTTP $code, stored: $(stored)"
+[ "$rc" -eq 0 ] || { echo "  <-- the seed write was refused"; fail=1; }
 
-code=$(upsert STALE 1000)
+code=$(upsert STALE 1000); rc=$?
 got=$(stored)
 printf '2. stale write at t=1000         -> HTTP %s, stored: %s' "$code" "$got"
-if [ "$got" = "ORIGINAL" ]; then echo "  OK (discarded)"; else echo "  <-- STALE WRITE APPLIED"; fail=1; fi
+if [ "$rc" -eq 0 ] && [ "$got" = "ORIGINAL" ]; then echo "  OK (discarded)"; else echo "  <-- STALE WRITE APPLIED, OR THE WRITE WAS REFUSED"; fail=1; fi
 
-code=$(upsert NEWER 3000)
+code=$(upsert NEWER 3000); rc=$?
 got=$(stored)
 printf '3. newer write at t=3000         -> HTTP %s, stored: %s' "$code" "$got"
-if [ "$got" = "NEWER" ]; then echo "  OK (applied)"; else echo "  <-- NEWER WRITE REJECTED"; fail=1; fi
+if [ "$rc" -eq 0 ] && [ "$got" = "NEWER" ]; then echo "  OK (applied)"; else echo "  <-- NEWER WRITE REJECTED, OR THE WRITE WAS REFUSED"; fail=1; fi
 
-curl -s -o /dev/null -X DELETE "$REST?media_id=eq.$MEDIA" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN"
-echo "4. cleanup                       -> stored: $(stored)"
+probe_cleanup "$REST" "media_id=eq.$MEDIA" || fail=1
+echo "4. after cleanup                 -> stored: $(stored)"
 
 echo
 [ "$fail" -eq 0 ] && echo "Last-write-wins trigger is working." || echo "TRIGGER FAILED — devices will diverge silently."

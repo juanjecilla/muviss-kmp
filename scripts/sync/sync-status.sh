@@ -43,10 +43,14 @@ fi
 ANON=$(anon_key) || { echo "could not read the anon key" >&2; exit 1; }
 REST=$(rest_url) || { echo "could not work out the REST URL" >&2; exit 1; }
 
+# "?" when the server did not answer 2xx, so a refused request never reads as zero.
 remote_count() {
-  curl -s "$REST/$1?select=*" -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" \
-       -H "Prefer: count=exact" -H "Range: 0-0" -D - -o /dev/null \
-    | grep -i '^content-range:' | sed -E 's|.*/||' | tr -d '\r'
+  if ! http_call "$REST/$1?select=*" -o /dev/null -D "$WORK/headers" \
+       -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" \
+       -H "Prefer: count=exact" -H "Range: 0-0"; then
+    echo "?"; return
+  fi
+  grep -i '^content-range:' "$WORK/headers" | sed -E 's|.*/||' | tr -d '\r' | head -1 | grep . || echo "?"
 }
 
 echo

@@ -29,10 +29,13 @@ echo "=== unauthenticated reads (expect: 200 with []) ==="
 TABLES="collection_entry episode_progress media_list list_entry triage_decision episode_play
 triage_snooze taste_profile cowatch_link cowatch_pool_entry"
 for t in $TABLES; do
-  code=$(curl -s -o /dev/null -w '%{http_code}' "$REST/$t?select=*" -H "apikey: $ANON")
-  body=$(curl -s "$REST/$t?select=*" -H "apikey: $ANON" | head -c 80)
-  printf '%-18s HTTP %s  %s' "$t" "$code" "$body"
-  if [ "$body" = "[]" ]; then echo "  OK"; else echo "  <-- LEAK"; fail=1; fi
+  if http_call "$REST/$t?select=*" -H "apikey: $ANON"; then
+    body=$(printf '%s' "$HTTP_BODY" | head -c 80)
+    printf '%-18s HTTP %s  %s' "$t" "$HTTP_CODE" "$body"
+    if [ "$body" = "[]" ]; then echo "  OK"; else echo "  <-- LEAK"; fail=1; fi
+  else
+    printf '%-18s HTTP %s  <-- READ FAILED, so this table is not verified\n' "$t" "$HTTP_CODE"; fail=1
+  fi
 done
 
 echo
@@ -43,17 +46,19 @@ echo "=== unauthenticated writes (expect: refused by RLS, SQLSTATE 42501) ==="
 # so a refusal for the right reason always carries 42501, whatever the ids in
 # the payload. An anonymous caller has no real account ids to send anyway.
 probe_write() {
-  local table=$1 json=$2 out code
-  out=$(curl -s -w '\n%{http_code}' -X POST "$REST/$table" \
-    -H "apikey: $ANON" -H "Content-Type: application/json" -d "$json")
-  code=${out##*$'\n'}
-  printf 'POST %-18s -> HTTP %s' "$table" "$code"
-  if [ "$code" -ge 400 ] && printf '%s' "$out" | grep -q '"42501"'; then
-    echo "  OK"
-  elif [ "$code" -ge 400 ]; then
-    echo "  <-- refused, but not by RLS: $(printf '%s' "${out%$'\n'*}" | head -c 120)"; fail=1
-  else
+  local table=$1 json=$2
+  if http_call -X POST "$REST/$table" -H "apikey: $ANON" -H "Content-Type: application/json" -d "$json"; then
+    printf 'POST %-18s -> HTTP %s' "$table" "$HTTP_CODE"
     echo "  <-- ACCEPTED, policy is wrong"; fail=1
+  elif [ "$HTTP_CODE" = 000 ]; then
+    printf 'POST %-18s -> no response' "$table"
+    echo "  <-- could not reach the server, so this table is not verified"; fail=1
+  elif printf '%s' "$HTTP_BODY" | grep -q '"42501"'; then
+    printf 'POST %-18s -> HTTP %s' "$table" "$HTTP_CODE"
+    echo "  OK"
+  else
+    printf 'POST %-18s -> HTTP %s' "$table" "$HTTP_CODE"
+    echo "  <-- refused, but not by RLS: $(printf '%s' "$HTTP_BODY" | head -c 120)"; fail=1
   fi
 }
 probe_write collection_entry \
