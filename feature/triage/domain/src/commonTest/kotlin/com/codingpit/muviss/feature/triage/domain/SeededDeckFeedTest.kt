@@ -4,8 +4,10 @@ import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.models.GenreKey
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
+import com.codingpit.muviss.models.MutedGenres
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,8 +49,11 @@ class SeededDeckFeedTest {
     @Test
     fun a_title_in_a_muted_genre_is_still_offered_because_the_engine_already_applied_the_mutes() = runTest {
         val scary = movie("1").copy(genreIds = listOf("27"))
+        // Genre 27 is muted for this deck. Without the mute configured, the assertion below would pass for any filter.
+        val filter = DeckFilter(muted = MutedGenres(setOf(GenreKey(MediaType.MOVIE, "27"))))
+        assertTrue(filter.muted.hides(scary), "the fixture must actually be muted")
 
-        val batch = feed(listOf(scary)).open(SnoozePlacement.DEFAULT).next(DeckFilter(), DeckCursor(), emptySet(), wanted = 10).getOrThrow()
+        val batch = feed(listOf(scary)).open(SnoozePlacement.DEFAULT).next(filter, DeckCursor(), emptySet(), wanted = 10).getOrThrow()
 
         assertEquals(listOf(scary.id), batch.cards.map { it.id })
     }
