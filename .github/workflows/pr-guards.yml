@@ -169,6 +169,13 @@ jobs:
         run: ruby scripts/ci/test/check_workflow_permissions_test.rb && ruby scripts/ci/check-workflow-permissions.rb
       - name: Release scripts
         run: scripts/release/test/release-scripts-test.sh
+      # The device scripts refuse the local stack before any call, and a failed
+      # session or cleanup fails closed; stubs stand in for adb, supabase and curl (#940, #936).
+      - name: Sync scripts test
+        run: scripts/sync/test/sync-scripts-test.sh
+      # The worktree setup script copies local.properties without overwriting it (#857).
+      - name: Worktree setup script
+        run: scripts/dev/test/worktree-setup-test.sh
       # The train day is judged from the scheduled time, not the run's start (#714).
       - name: Release train day (#714)
         run: ruby scripts/release/test/train_day_test.rb
@@ -192,6 +199,9 @@ jobs:
       # The App Store listing's field limits and locale parity (fastlane/metadata/ios).
       - name: iOS App Store metadata
         run: ruby fastlane/test/ios_metadata_test.rb
+      # The iOS release helpers (ADR 0033): the API-key and placeholder checks the lanes trust (#843).
+      - name: iOS release helpers (ADR 0033)
+        run: ruby fastlane/test/ios_release_test.rb
       # The iOS track of the staged train (ADR 0033): gates, supersede, ramp, the
       # merge requirement, and the App Store Connect client against a fake transport.
       - name: iOS staged train (ADR 0033)
