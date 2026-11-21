@@ -245,6 +245,24 @@ FAKE_DEVICE_DB="$NO_CURSOR_DB" run "" sync-status.sh
 if grep -q "^  ?$" <<<"$OUT"; then pass "an unreadable cursor table prints ?, not never pulled"
 else fail "missing cursor table: out=$OUT"; fi
 
+# The reserved `_lastFullPullAt` row is not a cursor: it is left out of the list,
+# and a device with only that row has never pulled a table, so it says none.
+RESERVED_DB="$WORK/device-reserved-and-cursor.db"
+cp "$DEVICE_DB" "$RESERVED_DB"
+sqlite3 "$RESERVED_DB" "INSERT INTO syncCursor VALUES('_lastFullPullAt', 1700000000000);"
+FAKE_DEVICE_DB="$RESERVED_DB" run "" sync-status.sh
+if grep -q "  collection_entry = 42" <<<"$OUT" && ! grep -q "_lastFullPullAt" <<<"$OUT"; then
+  pass "a real cursor is listed and the reserved _lastFullPullAt row is not"
+else fail "reserved row beside a cursor: out=$OUT"; fi
+
+RESERVED_ONLY_DB="$WORK/device-reserved-only.db"
+cp "$DEVICE_DB" "$RESERVED_ONLY_DB"
+sqlite3 "$RESERVED_ONLY_DB" "DELETE FROM syncCursor; INSERT INTO syncCursor VALUES('_lastFullPullAt', 1700000000000);"
+FAKE_DEVICE_DB="$RESERVED_ONLY_DB" run "" sync-status.sh
+if [ "$RC" -eq 0 ] && grep -q "^  none$" <<<"$OUT" && ! grep -q "_lastFullPullAt" <<<"$OUT"; then
+  pass "only the reserved row present: the list says none, as for a device that never pulled"
+else fail "reserved row only: rc=$RC out=$OUT"; fi
+
 echo "every sync script parses"
 
 for f in "$SYNC"/*.sh; do

@@ -34,12 +34,13 @@ echo "=== sync state ==="
 # Two different things on purpose (ADR 0018, ADR 0020): the pull cursors are server-assigned
 # sequences, one per table, in `syncCursor` (`appSettings.syncCursorEpochMs` has been dead since
 # 9.sqm); lastSynced is local and only says when a cycle ran. A table with no cursor row has
-# never been pulled. `_lastFullPullAt` is the weekly full pull's mark, not a table.
+# never been pulled. Names starting with `_` are reserved rows, not tables: `_lastFullPullAt` is
+# the weekly full pull's mark (CLAUDE.md), so they are left out of the list.
 # A read that fails prints "?", never a blank: a blank cursor list reads as "never pulled".
 LAST="$(sqlite3 "$DB" "SELECT COALESCE(CAST(lastSyncedAtEpochMs AS TEXT),'never') FROM appSettings WHERE id=0;")" \
   && echo "last synced : ${LAST:-never}" || echo "last synced : ?"
 echo "pull cursors (server_seq per table; none = never pulled):"
-if CURSORS="$(sqlite3 "$DB" "SELECT '  '||tableName||' = '||seq FROM syncCursor ORDER BY tableName;")"; then
+if CURSORS="$(sqlite3 "$DB" "SELECT '  '||tableName||' = '||seq FROM syncCursor WHERE substr(tableName,1,1) <> '_' ORDER BY tableName;")"; then
   if [ -n "$CURSORS" ]; then echo "$CURSORS"; else echo "  none"; fi
 else
   echo "  ?"
