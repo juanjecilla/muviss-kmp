@@ -1,0 +1,9 @@
+What's new in Muviss 1.5.0:
+- Ask for a store review after a user-made Completion
+- Report a ranker failure or timeout to the crash reporter
+- The anchor's recommendations and similar titles feed the pick
+- Name the ticked episode in the widget's Undo confirmation
+- What's next? from Discover, Progress, Library, Detail and the desktop menu
+- Top Picks and Deck presentations over one result
+- What's next? prompt, session length and result mode
+- Bug fixes and improvements.
