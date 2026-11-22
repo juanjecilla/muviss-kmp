@@ -127,7 +127,9 @@ class SupabaseSyncBackendLiveTest {
 
             val after = assertNotNull(rig.store.current, "the session was cleared, not refreshed")
             assertNotEquals("expired-token", after.accessToken)
-            assertNotEquals(rig.signedIn.refreshToken, after.refreshToken, "GoTrue rotates the refresh token")
+            // A null replacement would pass assertNotEquals and leave a session that cannot refresh again.
+            val rotated = assertNotNull(after.refreshToken, "the refreshed session has no refresh token")
+            assertNotEquals(rig.signedIn.refreshToken, rotated, "GoTrue rotates the refresh token")
         } finally {
             rig.close()
         }
@@ -237,36 +239,42 @@ private class Rig private constructor(
                     },
                 )
             }
-            val email = "sync-live-${UUID.randomUUID()}@muviss.test"
-            val password = "Live-${UUID.randomUUID()}-Aa1"
+            // Every failure after this point must close the client; the caller never receives a Rig to close.
+            var handedOver = false
+            try {
+                val email = "sync-live-${UUID.randomUUID()}@muviss.test"
+                val password = "Live-${UUID.randomUUID()}-Aa1"
 
-            val created = client.post("${live.url}/auth/v1/admin/users") {
-                header("apikey", live.service)
-                header(HttpHeaders.Authorization, "Bearer ${live.service}")
-                contentType(ContentType.Application.Json)
-                setBody("""{"email":"$email","password":"$password","email_confirm":true}""")
+                val created = client.post("${live.url}/auth/v1/admin/users") {
+                    header("apikey", live.service)
+                    header(HttpHeaders.Authorization, "Bearer ${live.service}")
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"email":"$email","password":"$password","email_confirm":true}""")
+                }
+                check(created.status.isSuccess()) { "admin user creation failed: ${created.status}" }
+
+                val token = client.post("${live.url}/auth/v1/token?grant_type=password") {
+                    header("apikey", live.anon)
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"email":"$email","password":"$password"}""")
+                }
+                check(token.status.isSuccess()) { "password sign-in failed: ${token.status}" }
+                val body = json.decodeFromString(TokenResponse.serializer(), token.bodyAsText())
+
+                val session = SyncSession(
+                    backendId = SyncBackendId.SUPABASE,
+                    userId = body.user.id,
+                    email = email,
+                    accessToken = body.accessToken,
+                    refreshToken = body.refreshToken,
+                    expiresAtEpochMs = System.currentTimeMillis() + body.expiresIn * 1000,
+                )
+                val store = InMemorySessionStore().also { it.save(session) }
+                val backend = SupabaseSyncBackend(client, live.url, live.anon, store, FakeClock(System.currentTimeMillis()))
+                return Rig(client, store, requests, session, backend).also { handedOver = true }
+            } finally {
+                if (!handedOver) client.close()
             }
-            check(created.status.isSuccess()) { "admin user creation failed: ${created.status}" }
-
-            val token = client.post("${live.url}/auth/v1/token?grant_type=password") {
-                header("apikey", live.anon)
-                contentType(ContentType.Application.Json)
-                setBody("""{"email":"$email","password":"$password"}""")
-            }
-            check(token.status.isSuccess()) { "password sign-in failed: ${token.status}" }
-            val body = json.decodeFromString(TokenResponse.serializer(), token.bodyAsText())
-
-            val session = SyncSession(
-                backendId = SyncBackendId.SUPABASE,
-                userId = body.user.id,
-                email = email,
-                accessToken = body.accessToken,
-                refreshToken = body.refreshToken,
-                expiresAtEpochMs = System.currentTimeMillis() + body.expiresIn * 1000,
-            )
-            val store = InMemorySessionStore().also { it.save(session) }
-            val backend = SupabaseSyncBackend(client, live.url, live.anon, store, FakeClock(System.currentTimeMillis()))
-            return Rig(client, store, requests, session, backend)
         }
     }
 }
