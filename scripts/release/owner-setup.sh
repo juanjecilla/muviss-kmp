@@ -220,19 +220,37 @@ do_rulesets() {
   say "release/*, hotfix/*: CI checks only, no approval or deletion rule"
   say "v* tags: only admins and the release App may create, move or delete them"
   say "Admins (you) can bypass all four."
-  confirm "Apply the four rulesets?" || return 1
+  # Each ruleset is created on its own, and only when its name is missing. A rerun
+  # on a repo that already has some of them must add the rest: GitHub rejects a
+  # second ruleset with the same name, so a single POST failure must not stop the
+  # others. A failed read is an error, never an empty list.
+  local existing missing="" name
+  existing="$(gh api "repos/$REPO/rulesets" --jq '.[].name')" || { say "could not read the existing rulesets"; return 1; }
+  for name in main develop release-and-hotfix release-tags; do
+    grep -qx "$name" <<<"$existing" || missing="$missing $name"
+  done
+  [ -n "$missing" ] || { say "all four rulesets already exist"; return 0; }
+  say "Missing:$missing (existing ones are left unchanged)"
+  confirm "Create the missing rulesets?" || return 1
   local c='{"context":"build"},{"context":"desktop"},{"context":"ios"},{"context":"Release tooling tests"}'
   # Stale-approval dismissal is off on develop on purpose until the owner decides
   # (#986): turning it on changes the review policy of every PR into develop.
-  ruleset_branch main refs/heads/main '["merge"]' \
-    "[$c,{\"context\":\"PRs into main come from release/* or hotfix/*\"},{\"context\":\"Release notes are final\"}]" false false \
-    | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
-  ruleset_branch develop refs/heads/develop '["squash","merge"]' \
-    "[$c,{\"context\":\"Features reach the landing\"}]" false false \
-    | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
-  ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' "[$c]" \
-    | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
-  cat <<JSON | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null
+  if ! grep -qx main <<<"$existing"; then
+    ruleset_branch main refs/heads/main '["merge"]' \
+      "[$c,{\"context\":\"PRs into main come from release/* or hotfix/*\"},{\"context\":\"Release notes are final\"}]" false false \
+      | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
+  fi
+  if ! grep -qx develop <<<"$existing"; then
+    ruleset_branch develop refs/heads/develop '["squash","merge"]' \
+      "[$c,{\"context\":\"Features reach the landing\"}]" false false \
+      | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
+  fi
+  if ! grep -qx release-and-hotfix <<<"$existing"; then
+    ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' "[$c]" \
+      | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
+  fi
+  if ! grep -qx release-tags <<<"$existing"; then
+    cat <<JSON | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
 {
   "name": "release-tags", "target": "tag", "enforcement": "active",
   "conditions": { "ref_name": { "include": ["refs/tags/v*"], "exclude": [] } },
@@ -243,6 +261,7 @@ do_rulesets() {
   "rules": [ { "type": "creation" }, { "type": "update" }, { "type": "deletion" } ]
 }
 JSON
+  fi
 }
 
 # --- 6. the production environment ----------------------------------------------

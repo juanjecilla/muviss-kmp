@@ -693,6 +693,37 @@ if command -v jq >/dev/null; then
     "$(jq -r '.bypass_actors[0].actor_type' <<<"$body")" "RepositoryRole"
   expect_eq "owner-setup creates the release-and-hotfix ruleset" \
     "$(grep -c 'ruleset_checks_only release-and-hotfix' "$SCRIPTS/owner-setup.sh")" "1"
+
+  # do_rulesets on a rerun: only the rulesets whose names are missing are POSTed (#985).
+  # gh is stubbed: GET prints the existing names, POST records the body's name.
+  # SC2034/SC2329: the gh/say/confirm stubs and REPO are read by the eval'd do_rulesets.
+  # shellcheck disable=SC2034,SC2329
+  rulesets_posted() { # existing-names (newline-separated) -> names POSTed, comma-joined
+    (
+      REPO=owner/repo
+      EXISTING="$1"
+      POSTED="$(mktemp)"
+      gh() {
+        if [ "$1 $2" = "variable get" ]; then echo 4242; return 0; fi
+        if [[ " $* " == *" -X POST "* ]]; then jq -r .name >>"$POSTED"; return 0; fi
+        printf '%s\n' "$EXISTING"
+      }
+      say() { :; }
+      confirm() { return 0; }
+      eval "$(sed -n '/^ruleset_branch()/,/^# --- 6\./p' "$SCRIPTS/owner-setup.sh")"
+      do_rulesets >/dev/null 2>&1
+      paste -sd, "$POSTED"
+      rm -f "$POSTED"
+    )
+  }
+  expect_eq "rerun with main, develop and release-tags present posts only release-and-hotfix" \
+    "$(rulesets_posted "$(printf 'main\ndevelop\nrelease-tags')")" "release-and-hotfix"
+  expect_eq "rerun with only main present posts the other three" \
+    "$(rulesets_posted "main")" "develop,release-and-hotfix,release-tags"
+  expect_eq "first run with no rulesets posts all four" \
+    "$(rulesets_posted "")" "main,develop,release-and-hotfix,release-tags"
+  expect_eq "rerun with all four present posts nothing" \
+    "$(rulesets_posted "$(printf 'main\ndevelop\nrelease-and-hotfix\nrelease-tags')")" ""
 fi
 
 echo
