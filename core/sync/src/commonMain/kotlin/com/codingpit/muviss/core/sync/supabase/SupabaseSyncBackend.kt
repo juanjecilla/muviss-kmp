@@ -18,6 +18,7 @@ import com.codingpit.muviss.core.sync.SyncSession
 import com.codingpit.muviss.core.sync.SyncSessionExpiredException
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.SyncTable
+import com.codingpit.muviss.core.sync.TasteProfileItemChange
 import com.codingpit.muviss.core.sync.TriageDecisionChange
 import com.codingpit.muviss.core.sync.TriageSnoozeChange
 import com.codingpit.muviss.core.sync.companion.CompanionBackend
@@ -107,7 +108,9 @@ internal class SupabaseSyncBackend(
         session
     }.onFailure { pendingVerifier = null }
 
-    override suspend fun signOut() {
+    // Under the refresh lock: a refresh already in flight would otherwise finish after this and
+    // persist() its new session, signing the device back in after the person chose to leave (#645).
+    override suspend fun signOut() = refreshMutex.withLock {
         ensureRestored()
         sessionState.value?.let { current -> runCatching { auth.signOut(current.accessToken) } }
         sessionState.value = null
@@ -128,6 +131,7 @@ internal class SupabaseSyncBackend(
         pushRows(TABLE_TRIAGE_DECISION, changes.triageDecisions, TriageDecisionChange.serializer())
         pushRows(TABLE_TRIAGE_SNOOZE, changes.triageSnoozes, TriageSnoozeChange.serializer())
         pushRows(TABLE_EPISODE_PLAY, changes.episodePlays, EpisodePlayChange.serializer())
+        pushRows(TABLE_TASTE_PROFILE, changes.tasteProfileItems, TasteProfileItemChange.serializer())
     }
 
     private suspend fun <T> pushRows(table: String, rows: List<T>, serializer: KSerializer<T>) {
@@ -147,6 +151,7 @@ internal class SupabaseSyncBackend(
                 SyncTable.TRIAGE_DECISION -> drain(RemoteTable(table, TABLE_TRIAGE_DECISION, TriageDecisionChange.serializer()) { SyncChangeSet(triageDecisions = it) }, start, onPage)
                 SyncTable.TRIAGE_SNOOZE -> drain(RemoteTable(table, TABLE_TRIAGE_SNOOZE, TriageSnoozeChange.serializer()) { SyncChangeSet(triageSnoozes = it) }, start, onPage)
                 SyncTable.EPISODE_PLAY -> drain(RemoteTable(table, TABLE_EPISODE_PLAY, EpisodePlayChange.serializer()) { SyncChangeSet(episodePlays = it) }, start, onPage)
+                SyncTable.TASTE_PROFILE -> drain(RemoteTable(table, TABLE_TASTE_PROFILE, TasteProfileItemChange.serializer()) { SyncChangeSet(tasteProfileItems = it) }, start, onPage)
             }
         }
     }
@@ -291,6 +296,7 @@ internal class SupabaseSyncBackend(
         const val TABLE_TRIAGE_DECISION = "triage_decision"
         const val TABLE_TRIAGE_SNOOZE = "triage_snooze"
         const val TABLE_EPISODE_PLAY = "episode_play"
+        const val TABLE_TASTE_PROFILE = "taste_profile"
         const val MILLIS_PER_SECOND = 1000L
 
         /** Refresh a minute early rather than at the stroke of expiry, so a request in flight cannot age out mid-round-trip. */

@@ -101,6 +101,78 @@ class OssLicensesListTest {
         assertFalse(message.contains("no entry for"))
     }
 
+    // --- #666: the same coordinates with a changed name, licence or licence URL ---
+
+    private val apacheUrl = "https://www.apache.org/licenses/LICENSE-2.0"
+
+    /** A one-artifact report for `g:a` with the given name, licence and URL (null means licensee has none). */
+    private fun reportOf(name: String?, licence: String?, url: String? = apacheUrl, identifier: String? = null): String {
+        val urlJson = url?.let { "\"$it\"" } ?: "null"
+        val nameJson = name?.let { "\"$it\"" } ?: "null"
+        val licenceJson = licence?.let { "\"$it\"" } ?: "null"
+        val identifierJson = identifier?.let { "\"$it\"" } ?: "null"
+        return """[{"groupId":"g","artifactId":"a","name":$nameJson,"spdxLicenses":[{"identifier":$identifierJson,"name":$licenceJson,"url":$urlJson}],"unknownLicenses":[]}]"""
+    }
+
+    /** The one entry for `g:a` the list holds, written with the given name, licence and URL. */
+    private fun listingOf(name: String, licence: String, url: String? = apacheUrl): String {
+        val urlLiteral = url?.let { "\"$it\"" } ?: "null"
+        return """    OssLicense("g", "a", "$name", "$licence", $urlLiteral),"""
+    }
+
+    @Test
+    fun a_licence_change_at_the_same_coordinates_is_changed_and_red() {
+        // The #666 case: the coordinates survive a bump, the licence does not, and the screen would keep the old one.
+        val drift = OssLicensesList.drift(reportOf("a", "MIT License", "https://opensource.org/licenses/MIT"), source(listingOf("a", "Apache License 2.0")))
+        assertEquals(listOf("g:a"), drift.changed)
+        assertEquals(emptyList(), drift.missing)
+        assertEquals(emptyList(), drift.stale)
+        assertFalse(drift.isEmpty)
+        assertContains(OssLicensesList.failureMessage(drift), "name, licence or licence URL differs from the licensee report: g:a")
+    }
+
+    @Test
+    fun a_name_change_at_the_same_coordinates_is_changed() {
+        val drift = OssLicensesList.drift(reportOf("Renamed", "Apache License 2.0"), source(listingOf("a", "Apache License 2.0")))
+        assertEquals(listOf("g:a"), drift.changed)
+        assertFalse(drift.isEmpty)
+    }
+
+    @Test
+    fun a_licence_url_change_at_the_same_coordinates_is_changed() {
+        val drift = OssLicensesList.drift(reportOf("a", "Apache License 2.0", "https://example.com/new"), source(listingOf("a", "Apache License 2.0")))
+        assertEquals(listOf("g:a"), drift.changed)
+    }
+
+    @Test
+    fun an_unchanged_report_with_the_same_coordinates_is_not_changed_and_green() {
+        val drift = OssLicensesList.drift(reportOf("a", "Apache License 2.0"), source(listingOf("a", "Apache License 2.0")))
+        assertTrue(drift.isEmpty)
+        assertEquals(emptyList(), drift.changed)
+    }
+
+    @Test
+    fun the_check_compares_against_the_generators_fallbacks_not_the_raw_report() {
+        // The report has no name, no licence name and no URL, so the generator writes the coordinates, the identifier and null.
+        val rep = reportOf(name = null, licence = null, url = null, identifier = "MIT")
+        val generated = OssLicensesList.regenerate(rep, source(entry("seed", "entry")))
+        assertContains(generated, """OssLicense("g", "a", "g:a", "MIT", null),""")
+        assertTrue(OssLicensesList.drift(rep, generated).isEmpty)
+
+        // A list written with the bare artifact name, not the generator's fallback, is a change.
+        val byHand = source("""    OssLicense("g", "a", "a", "MIT", null),""")
+        assertEquals(listOf("g:a"), OssLicensesList.drift(rep, byHand).changed)
+    }
+
+    @Test
+    fun regenerating_clears_a_changed_entry() {
+        val rep = reportOf("a", "MIT License", "https://opensource.org/licenses/MIT")
+        val stale = source(listingOf("a", "Apache License 2.0"))
+        val regenerated = OssLicensesList.regenerate(rep, stale)
+        assertTrue(OssLicensesList.drift(rep, regenerated).isEmpty)
+        assertContains(regenerated, """OssLicense("g", "a", "a", "MIT License", "https://opensource.org/licenses/MIT"),""")
+    }
+
     @Test
     fun regenerating_removes_stale_entries_and_adds_missing_ones_and_keeps_the_font() {
         val rep = report("a" to "x", "b" to "y")

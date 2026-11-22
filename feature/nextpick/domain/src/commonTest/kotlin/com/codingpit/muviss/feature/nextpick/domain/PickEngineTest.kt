@@ -44,6 +44,29 @@ class PickEngineTest {
         ranker = ranker,
     )
 
+    private fun reported(reporter: PickRankerReporter, ranker: PickRanker, vararg pool: PickCandidate) = PickEngine(
+        sources = listOf(PickCandidates { _, _ -> pool.toList() }),
+        exclusions = { emptySet() },
+        history = { PickHistory() },
+        muting = { MutedGenres.NONE },
+        ranker = ranker,
+        reporter = reporter,
+    )
+
+    /** Counts what [PickEngine] reports about a ranker that did not answer (#605). */
+    private class RecordingReporter : PickRankerReporter {
+        val failures = mutableListOf<String>()
+        var timeouts = 0
+
+        override fun failed(exceptionClass: String) {
+            failures += exceptionClass
+        }
+
+        override fun timedOut() {
+            timeouts++
+        }
+    }
+
     private val context = PickContext()
 
     private fun ids(result: PickResult) = result.picks.map { it.candidate.summary.id.toString() }
@@ -193,6 +216,61 @@ class PickEngineTest {
     private val rulesPool = arrayOf(fresh("1", rating = 9.0), fresh("2", rating = 7.0), fresh("3", rating = 5.0))
 
     /** A ranker that is the rules' order with [change] applied to it: what a misbehaving model would hand back. */
+    @Test
+    fun an_anchor_copy_from_tmdb_beats_a_discover_copy_so_the_anchor_credit_survives() = runTest {
+        val discover = fresh("1", source = CandidateSource.DISCOVER)
+        val recommended = fresh("1", source = CandidateSource.RECOMMENDED)
+        val result = PickEngine(
+            sources = listOf(PickCandidates { _, _ -> listOf(discover) }, PickCandidates { _, _ -> listOf(recommended) }),
+            exclusions = { emptySet() },
+            history = { PickHistory() },
+            muting = { MutedGenres.NONE },
+        ).pick(PickCriteria(anchor = PickAnchor(MediaId.tmdbTv("9"), like = true)), context)
+        assertEquals(CandidateSource.RECOMMENDED, result.picks.single().candidate.source)
+    }
+
+    @Test
+    fun the_title_just_finished_is_never_its_own_more_like_this() = runTest {
+        val anchor = MediaId.tmdbMovie("9")
+        val result = engine(fresh("1"), PickCandidate(summary("9"), CandidateSource.RECOMMENDED))
+            .pick(PickCriteria(anchor = PickAnchor(anchor, like = true)), context)
+        assertEquals(listOf("tmdb:movie:1"), ids(result))
+    }
+
+    @Test
+    fun every_source_mix_returns_picks_and_each_pick_names_its_reason() = runTest {
+        val pools = mapOf(
+            "backlog" to listOf(backlog("1", favorite = true)),
+            "discover" to listOf(fresh("2")),
+            "recommended" to listOf(PickCandidate(summary("3"), CandidateSource.RECOMMENDED)),
+            "similar" to listOf(PickCandidate(summary("4"), CandidateSource.SIMILAR)),
+            "all four" to listOf(backlog("1", favorite = true), fresh("2"), PickCandidate(summary("3"), CandidateSource.RECOMMENDED), PickCandidate(summary("4"), CandidateSource.SIMILAR)),
+        )
+        val criteria = PickCriteria(anchor = PickAnchor(MediaId.tmdbTv("9"), like = true))
+        for ((mix, pool) in pools) {
+            val result = engine(*pool.toTypedArray()).pick(criteria, context)
+            assertTrue(result.picks.isNotEmpty(), "the $mix mix returned no picks")
+            assertEquals(pool.size, result.picks.size, "the $mix mix dropped a candidate")
+        }
+    }
+
+    @Test
+    fun each_source_gives_its_pick_the_reason_the_rules_can_show() = runTest {
+        val criteria = PickCriteria(anchor = PickAnchor(MediaId.tmdbTv("9"), like = true))
+        val result = engine(
+            backlog("1", favorite = true),
+            fresh("2"),
+            PickCandidate(summary("3"), CandidateSource.RECOMMENDED),
+            PickCandidate(summary("4"), CandidateSource.SIMILAR),
+            history = PickHistory(anchorTitle = "Severance"),
+        ).pick(criteria, context)
+        val reasons = result.picks.associate { it.candidate.summary.id.toString() to it.reason }
+        assertEquals(PickReason.YourFavorite, reasons["tmdb:movie:1"])
+        assertEquals(PickReason.FitsWhatYouAsked, reasons["tmdb:movie:2"])
+        assertEquals(PickReason.LikeAnchor("Severance"), reasons["tmdb:movie:3"])
+        assertEquals(PickReason.LikeAnchor("Severance"), reasons["tmdb:movie:4"])
+    }
+
     private fun hostile(change: (List<RankedPick>) -> List<RankedPick>) = PickRanker { criteria, pool, history ->
         change(RuleBasedRanker().rank(criteria, pool, history))
     }
@@ -241,6 +319,52 @@ class PickEngineTest {
         val result = engine(*rulesPool, ranker = throwing).pick(PickCriteria(), context)
 
         assertEquals(rulesPicks(), result.picks)
+    }
+
+    @Test
+    fun a_ranker_that_throws_is_reported_once_by_class_name_and_never_by_message() = runTest {
+        val reporter = RecordingReporter()
+        val throwing = PickRanker { _, _, _ -> error("model crashed with the request text") }
+        val result = reported(reporter, throwing, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(listOf("IllegalStateException"), reporter.failures)
+        assertEquals(0, reporter.timeouts)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun a_ranker_that_times_out_is_reported_as_a_timeout_and_not_as_a_failure() = runTest {
+        val reporter = RecordingReporter()
+        val slow = PickRanker { _, _, _ ->
+            delay(1.hours)
+            emptyList()
+        }
+        val result = reported(reporter, slow, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(1, reporter.timeouts)
+        assertEquals(emptyList(), reporter.failures)
+    }
+
+    @Test
+    fun a_ranker_that_answers_reports_nothing() = runTest {
+        val reporter = RecordingReporter()
+        val result = reported(reporter, hostile { it }, *rulesPool).pick(PickCriteria(), context)
+
+        assertEquals(rulesPicks(), result.picks)
+        assertEquals(emptyList(), reporter.failures)
+        assertEquals(0, reporter.timeouts)
+    }
+
+    @Test
+    fun a_cancelled_pick_reports_nothing() = runTest {
+        val reporter = RecordingReporter()
+        val cancelled = PickRanker { _, _, _ -> throw CancellationException("the screen went away") }
+
+        assertFailsWith<CancellationException> { reported(reporter, cancelled, *rulesPool).pick(PickCriteria(), context) }
+        assertEquals(emptyList(), reporter.failures)
+        assertEquals(0, reporter.timeouts)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

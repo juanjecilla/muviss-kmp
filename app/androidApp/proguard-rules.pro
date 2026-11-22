@@ -157,3 +157,12 @@
 # them blocks the merge; allowobfuscation still renames them (the uploaded
 # mapping restores the name) and allowshrinking still drops the unused ones.
 -keep,allowobfuscation,allowshrinking class com.codingpit.muviss.** extends java.lang.Throwable
+
+# ---------------------------------------------------------------------------
+# Play In-App Review (#410)
+# ---------------------------------------------------------------------------
+# `review-ktx`'s coroutine wrapper's bytecode references `NoNullnessRewrite`, an annotation that
+# play-services-basement does not ship as a class. R8 only needs it to resolve that reference, and
+# the annotation carries no runtime behaviour, so the warning is about metadata. Added from the
+# R8 missing-classes report (`missing_rules.txt`).
+-dontwarn com.google.android.gms.common.annotation.NoNullnessRewrite

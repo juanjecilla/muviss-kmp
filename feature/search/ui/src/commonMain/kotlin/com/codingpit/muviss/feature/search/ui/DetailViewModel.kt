@@ -31,6 +31,7 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProviders
+import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +81,8 @@ data class DetailUiState(
     val snoozedUntilEpochDay: Long? = null,
     /** How many times each episode has been watched (ADR 0011); absent means never. */
     val playCounts: Map<EpisodeId, Int> = emptyMap(),
+    /** The title's derived [WatchStatus] (ADR 0005), or null when it is not in the library. Read from the library, never stored. */
+    val watchStatus: WatchStatus? = null,
     /** Set right after a bulk mark, so its snackbar can take back exactly those ticks. */
     val pendingUndo: BulkMarkUndo? = null,
     /** Whether a tick plays its motion: the master switch AND the tick switch (EPIC 52). Haptics ignore it. */
@@ -88,6 +91,12 @@ data class DetailUiState(
     val celebration: Celebration? = null,
 ) {
     fun isSeen(episodeId: EpisodeId): Boolean = episodeId in seenEpisodes
+
+    /**
+     * Watched or Finished: the two statuses a Completion leads to, and the only ones Detail offers
+     * "What's next?" on (EPIC 51, #545). Derived from [watchStatus], never stored.
+     */
+    val completed: Boolean get() = watchStatus == WatchStatus.WATCHED || watchStatus == WatchStatus.FINISHED
 
     /** Viewings recorded for [episodeId]; 0 for an episode never watched. */
     fun playCountOf(episodeId: EpisodeId): Int = playCounts[episodeId] ?: 0
@@ -170,6 +179,9 @@ class DetailViewModel(
                         rating = membership?.rating,
                         note = membership?.note,
                         revisitWillingness = membership?.revisitWillingness,
+                        // Derived by the library for this one title (ADR 0005), in the same read as membership.
+                        // Null for a title not in the library, so only a saved, completed title offers "What's next?".
+                        watchStatus = membership?.status,
                     )
                 }
             }

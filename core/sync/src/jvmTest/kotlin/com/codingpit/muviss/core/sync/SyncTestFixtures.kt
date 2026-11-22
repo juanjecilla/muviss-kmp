@@ -67,6 +67,7 @@ internal class FakeSyncBackend(
     private val triageDecisions = mutableMapOf<String, Stored<TriageDecisionChange>>()
     private val triageSnoozes = mutableMapOf<String, Stored<TriageSnoozeChange>>()
     private val episodePlays = mutableMapOf<String, Stored<EpisodePlayChange>>()
+    private val tasteProfileItems = mutableMapOf<String, Stored<TasteProfileItemChange>>()
 
     var pushFailure: Throwable? = null
 
@@ -124,6 +125,12 @@ internal class FakeSyncBackend(
 
     fun remoteEpisodePlay(id: String): EpisodePlayChange? = episodePlays[id]?.value
 
+    fun seedRemoteTasteProfileItem(change: TasteProfileItemChange) {
+        tasteProfileItems[change.id] = Stored(change, nextSeq++)
+    }
+
+    fun remoteTasteProfileItem(id: String): TasteProfileItemChange? = tasteProfileItems[id]?.value
+
     override suspend fun signInAnonymously(): Result<SyncSession> = Result.success(FAKE_SESSION).also { sessionState.value = FAKE_SESSION }
 
     override suspend fun beginOAuth(provider: OAuthProvider, redirectUri: String): Result<String> = Result.success("https://fake.test/auth/v1/authorize?provider=${provider.wireName}&redirect_to=$redirectUri")
@@ -150,6 +157,7 @@ internal class FakeSyncBackend(
         changes.triageDecisions.forEach { upsertIfNewer(triageDecisions, it.mediaId, it) { c -> c.updatedAtEpochMs } }
         changes.triageSnoozes.forEach { upsertIfNewer(triageSnoozes, it.mediaId, it) { c -> c.updatedAtEpochMs } }
         changes.episodePlays.forEach { upsertIfNewer(episodePlays, it.id, it) { c -> c.updatedAtEpochMs } }
+        changes.tasteProfileItems.forEach { upsertIfNewer(tasteProfileItems, it.id, it) { c -> c.updatedAtEpochMs } }
         return Result.success(Unit)
     }
 
@@ -167,6 +175,7 @@ internal class FakeSyncBackend(
                 SyncTable.TRIAGE_DECISION -> pagesOf(triageDecisions.values, start) { SyncChangeSet(triageDecisions = it) }
                 SyncTable.TRIAGE_SNOOZE -> pagesOf(triageSnoozes.values, start) { SyncChangeSet(triageSnoozes = it) }
                 SyncTable.EPISODE_PLAY -> pagesOf(episodePlays.values, start) { SyncChangeSet(episodePlays = it) }
+                SyncTable.TASTE_PROFILE -> pagesOf(tasteProfileItems.values, start) { SyncChangeSet(tasteProfileItems = it) }
             }
             for ((changes, cursor) in pages) {
                 if (failPullAfterPages != null && delivered >= failPullAfterPages!!) return Result.failure(IllegalStateException("connection lost mid-pull"))

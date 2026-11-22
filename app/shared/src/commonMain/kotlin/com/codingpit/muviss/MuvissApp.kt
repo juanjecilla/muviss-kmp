@@ -62,6 +62,10 @@ import com.codingpit.muviss.di.rememberDatabaseDriverFactory
 import com.codingpit.muviss.feature.collection.ui.collectionSection
 import com.codingpit.muviss.feature.cowatch.ui.CompanionsRoute
 import com.codingpit.muviss.feature.cowatch.ui.coWatchSection
+import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
+import com.codingpit.muviss.feature.nextpick.ui.CompletionSheetHost
+import com.codingpit.muviss.feature.nextpick.ui.NextPickRoute
+import com.codingpit.muviss.feature.nextpick.ui.nextPickSection
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.onboarding.data.ApplySystemMotionDefault
 import com.codingpit.muviss.feature.onboarding.ui.OnboardingRoute
@@ -79,12 +83,14 @@ import com.codingpit.muviss.feature.settings.ui.SettingsRoute
 import com.codingpit.muviss.feature.settings.ui.settingsSection
 import com.codingpit.muviss.feature.triage.ui.TriageRoute
 import com.codingpit.muviss.feature.triage.ui.triageSection
+import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import com.codingpit.muviss.sync.PlatformSyncTriggers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinApplication
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
@@ -142,6 +148,7 @@ fun MuvissApp(
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
         }
         AutoSyncOnForeground()
+        AskForReviewAfterCompletion()
         RefreshRemoteConfigOnForeground()
         CompleteOAuthOnRedirect(oauthCode, onOAuthCodeConsumed)
         MuvissTheme(darkTheme = darkTheme) {
@@ -185,6 +192,18 @@ private fun AutoSyncOnForeground() {
     PlatformSyncTriggers(coordinator)
     LifecycleEventEffect(Lifecycle.Event.ON_START) { coordinator.onForeground() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { coordinator.onForeground() }
+}
+
+/**
+ * Starts the store-review listener (#410) for as long as the app is composed. It is started here,
+ * rather than from a screen, for the same reason as [AutoSyncOnForeground]: a Completion can be
+ * made on any tab. Nothing in this composable decides anything; the policy lives in
+ * [ReviewPromptOnCompletion] and the use case under it.
+ */
+@Composable
+private fun AskForReviewAfterCompletion() {
+    val listener = koinInject<ReviewPromptOnCompletion>()
+    LaunchedEffect(listener) { listener.start(this) }
 }
 
 /**
@@ -332,6 +351,7 @@ private fun MuvissScaffold(
             controller.destinations.firstOrNull { dest ->
                 currentDestination?.hierarchy?.any { it.hasRoute(dest.route::class) } == true
             }
+        controller.showingOnboarding = currentDestination?.hasRoute(OnboardingRoute::class) == true
     }
 
     LaunchedEffect(deepLinkMediaId) {
@@ -404,6 +424,12 @@ private fun MuvissScaffold(
         ScreenInsets {
             Column {
                 PersistenceBanner(message = rememberPersistenceWarning())
+                // The "What's next?" sheet (EPIC 51, #400) is hosted here rather than on a screen: its
+                // trigger is a hot flow, so it must be collecting when a tick finishes a title.
+                CompletionSheetHost(
+                    viewModel = koinViewModel<CompletionPromptViewModel>(),
+                    onWhatsNext = { anchor -> navController.navigate(NextPickRoute(anchor?.toString())) },
+                )
                 NavHost(
                     navController = navController,
                     startDestination = startRoute,
@@ -426,15 +452,21 @@ private fun MuvissScaffold(
                             scaleOut(targetScale = 1.02f, animationSpec = tween(durationMillis = 90))
                     },
                 ) {
-                    searchSection(navController, onOpenTriage = { navController.navigate(TriageRoute) })
+                    searchSection(
+                        navController,
+                        onOpenTriage = { navController.navigate(TriageRoute) },
+                        onOpenNextPick = controller::openNextPick,
+                    )
                     collectionSection(
                         navController,
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenSearch = { controller.destinations.firstOrNull { it.key == "search" }?.let(controller::navigateTo) },
+                        onOpenNextPick = controller::openNextPick,
                     )
                     progressSection(
                         onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
                         onOpenCoWatch = openCoWatch,
+                        onOpenNextPick = controller::openNextPick,
                     )
                     profileSection(navController, onOpenCompanions = openCoWatch)
                     settingsSection(
@@ -457,6 +489,8 @@ private fun MuvissScaffold(
                     // Not a top-level destination — reached from Discover and Settings.
                     triageSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
                     coWatchSection(navController, onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) })
+                    // Not a bottom-bar destination: reached from the completion sheet and the entry points (EPIC 51).
+                    nextPickSection(navController)
                 }
             }
         }

@@ -57,7 +57,7 @@ val progressDataModule: Module = module {
     single<EpisodeCatalogStore> { SqlDelightEpisodeCatalogStore(get(), get(), get()) }
     // A single, so every tick shares the one hot Completion flow the shell will collect (#397).
     single<TitleStatusSource> { CollectionTitleStatusSource({ get() }) }
-    single { CompletionDetector(get()) }
+    single { CompletionDetector(get(), get()) }
     single<ProgressApi> { DefaultProgressApi(get(), get(), get(), get(), get(), get(), get(), get()) }
 
     factory { ObserveEpisodeProgressUseCase(get()) }

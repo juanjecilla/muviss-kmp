@@ -17,6 +17,7 @@ import com.codingpit.muviss.app.shared.generated.resources.nav_search
 import com.codingpit.muviss.app.shared.generated.resources.nav_settings
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.feature.collection.ui.CollectionRoute
+import com.codingpit.muviss.feature.nextpick.ui.NextPickRoute
 import com.codingpit.muviss.feature.profile.ui.ProfileRoute
 import com.codingpit.muviss.feature.progress.ui.ProgressRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
@@ -84,6 +85,32 @@ class MuvissAppController internal constructor(
         internal set
 
     /**
+     * Whether the first-run introduction is on screen (EPIC 47). Written by `MuvissScaffold`, like
+     * [currentDestination]. The menu's "What's next?" is disabled while it is: a session pushed over
+     * the introduction would leave the first run with no way back to it.
+     */
+    var showingOnboarding: Boolean by mutableStateOf(false)
+        internal set
+
+    /**
+     * Whether the `NavHost` has set its graph. The desktop menu bar is composed in the Window's composition and
+     * is live while `MuvissApp` still reads the start route, before any graph exists; navigating then throws.
+     * A click in that window does nothing, the same as a click on a disabled item.
+     */
+    private val graphReady: Boolean get() = navController.currentBackStackEntry != null
+
+    /**
+     * Opens the Pick Session (EPIC 51, #545) from any destination, as the entry points in each feature do.
+     *
+     * Not [navigateTo]: the session is not a tab, so it must not pop to Search or save and restore a
+     * tab's back stack. `launchSingleTop` stops a repeated chord from stacking sessions.
+     */
+    fun openNextPick() {
+        if (!graphReady) return
+        navController.navigate(NextPickRoute()) { launchSingleTop = true }
+    }
+
+    /**
      * Navigates to a top-level destination exactly as the navigation bar does.
      *
      * `popUpTo(startDestination) { saveState }` + `restoreState` is what makes
@@ -93,6 +120,7 @@ class MuvissAppController internal constructor(
      * duplicate.
      */
     fun navigateTo(destination: MuvissDestination) {
+        if (!graphReady) return
         navController.navigate(destination.route) {
             // Search by name, not the graph's start destination: on a first run that is the introduction,
             // which is gone from the back stack by the time any tab can be tapped (EPIC 47).

@@ -17,9 +17,32 @@ require "open3"
 require "stringio"
 require "tmpdir"
 require_relative "release_stages"
+require_relative "release_merge"
 require_relative "sentry_gate"
 
 module ReleaseGates
+  GREEN = %w[success skipped neutral].freeze
+
+  # Is the commit's CI green? `runs` are check runs as {"id","name","status",
+  # "conclusion"}. Judged per check name, because the same commit carries
+  # duplicates: the push run, and the runs the release PR starts when the
+  # Sunday step opens it. A run cancelled by concurrency says nothing (#699),
+  # and a duplicate still in progress does not unsay a completed one. A name is
+  # green when its newest completed, non-cancelled run is. A name with no such
+  # run (only running or cancelled ones) is not: it has not finished passing.
+  # Names are matched across workflows, so two jobs sharing a name would mask
+  # each other; release-rc's job is `build / build`, distinct from ci's `build`.
+  # No runs at all is not green: "we could not look" is not "nothing is wrong".
+  def self.checks_green?(runs)
+    return false if runs.empty?
+
+    runs.group_by { |r| r["name"] }.all? do |_, same|
+      done = same.select { |r| r["status"] == "completed" && r["conclusion"] != "cancelled" }
+      latest = done.max_by { |r| r["id"].to_i }
+      latest && GREEN.include?(latest["conclusion"])
+    end
+  end
+
   BRANCH_PREFIX = "release/".freeze
 
   module_function
@@ -144,13 +167,17 @@ class ReleasePromotion
 
       # The merge already passed every gate; what is left is Play alone.
       facts = step == :play_retry ? retry_facts(state) : gather(state, step)
-      reasons = step == :play_retry ? retry_holds(facts) : ReleaseGates.holds(facts: facts)
+      reasons = step == :play_retry ? retry_holds(facts) : ReleaseGates.holds(facts: facts) + merge_holds(facts)
       unless reasons.empty?
         hold!(issue, state, reasons)
         next Outcome.new(state["version"], step, :held, reasons)
       end
       unless @apply
-        @out.puts "would #{step} #{state['version']}"
+        if step == :production && facts[:conflicts]&.any?
+          @out.puts "would self-resolve #{state['version']}: #{facts[:conflicts].join(', ')} as a union of both sides"
+        else
+          @out.puts "would #{step} #{state['version']}"
+        end
         next Outcome.new(state["version"], step, :would_do, [])
       end
       problem, state = perform!(step, issue, state, facts)
@@ -281,8 +308,25 @@ class ReleasePromotion
     if step == :production
       facts[:expect_beta] = true
       facts[:beta_has_rc] = facts[:rc_code] ? safe("beta track") { @play.carries?("beta", facts[:rc_code]) } : nil
+      # Judged before the PR is opened, so a conflict git cannot resolve holds
+      # with its paths named, rather than after a refused merge (#712). The
+      # allow-listed ones are resolved at merge time, or named by a dry run.
+      facts[:main] = safe("main") { @git.main_sha }
+      facts[:conflicts] = facts[:main] && head ? safe("merge check") { @git.conflicts(facts[:main], head) } : nil
     end
     facts
+  end
+
+  # The merge into main has to be possible: no path outside the allow-list
+  # conflicts, and git could say so. Only production merges, so only it asks.
+  def merge_holds(facts)
+    return [] unless facts.key?(:conflicts)
+    return ["the merge into main could not be checked (git merge-tree)"] if facts[:conflicts].nil?
+
+    blocked = facts[:conflicts] - ReleaseMerge::ALLOWED_CONFLICTS
+    return [] if blocked.empty?
+
+    ["merging into main conflicts in #{blocked.join(', ')}; only #{ReleaseMerge::ALLOWED_CONFLICTS.join(', ')} can be resolved by the promotion, so resolve it on the release branch"]
   end
 
   def retry_facts(state)
@@ -327,7 +371,9 @@ class ReleasePromotion
       problem = act("promote #{rc} to open beta") { @play.promote_to_beta(facts[:rc_code]) }
       return [problem, state] if problem
 
-      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => @today.iso8601, "rc_tag" => rc, "holds" => [])
+      done = ReleaseStages.beta_done_day(@today)
+      state = state.merge("stage" => ReleaseStages::BETA, "beta_done_on" => done.iso8601,
+                          "production_on" => ReleaseStages.production_on(done).iso8601, "rc_tag" => rc, "holds" => [])
       persist(issue, state, "Promoted #{rc} (versionCode #{facts[:rc_code]}) from internal to open beta.")
       [nil, state]
     else
@@ -335,15 +381,64 @@ class ReleasePromotion
       problem = act("open the PR into main") { pr = @github.release_pr(version) || @github.open_release_pr(version) }
       return [problem, state] if problem
 
-      problem = act("merge release/#{version} into main") { @github.merge(pr, facts[:head]) }
+      problem, how = merge_into_main(version, pr, facts)
       return [problem, state] if problem
 
       # Recorded before Play is asked: if the promotion fails, the next run
       # retries only the promotion, and never merges again.
       state = state.merge("merged_on" => @today.iso8601, "release_pr" => pr, "rc_tag" => rc, "holds" => [])
-      persist(issue, state, "Merged release/#{version} into main (PR ##{pr}); release.yml tags v#{version}.")
+      merged = "Merged release/#{version} into main (PR ##{pr})"
+      merged += ", with CHANGELOG.md resolved as a union of both sides (#712)" if how == :union
+      persist(issue, state, "#{merged}; release.yml tags v#{version}.")
       promote_to_production!(issue, state, facts)
     end
+  end
+
+  # The merge into main. GitHub is asked first, as always. Its refusal as not
+  # mergeable is the one case with a known resolution: when every conflicting
+  # path is allow-listed, the union is built from git objects and pushed as the
+  # release App, with no force (#712). Returns [problem, how]: how is :gh or :union.
+  def merge_into_main(version, pr, facts)
+    @github.merge(pr, facts[:head])
+    [nil, :gh]
+  rescue StandardError => e
+    return [failure("merge release/#{version} into main", e), nil] unless not_mergeable?(e)
+
+    problem = self_resolve(version, pr, facts, e)
+    problem ? [problem, nil] : [nil, :union]
+  end
+
+  def not_mergeable?(error)
+    error.respond_to?(:reason) && error.reason.to_s.match?(/not mergeable/i)
+  end
+
+  # nil once the union is on main, otherwise the reason it is not (the version
+  # is held with it). Nothing is pushed unless main is still the sha the merge
+  # was built on.
+  def self_resolve(version, pr, facts, refusal)
+    refused = failure("merge release/#{version} into main", refusal)
+    main = facts[:main]
+    return refused unless main
+
+    built = nil
+    problem = act("build the merge commit for release/#{version}") do
+      built = @git.merge_commit(main, facts[:head], message: merge_message(version, pr))
+    end
+    return problem if problem
+    # git sees a clean merge: GitHub's refusal is then not explained, and stays the reason.
+    return refused if built[:conflicts].empty?
+    return "#{refused}; git also conflicts in #{built[:conflicts].join(', ')}, which is not allow-listed" unless built[:commit]
+
+    @git.push_main(built[:commit], expected: main)
+    nil
+  rescue ReleaseMerge::MainMoved
+    "main moved while release/#{version} was being merged; nothing was pushed, and the step is retried next Sunday"
+  rescue StandardError => e
+    failure("push the merged main", e)
+  end
+
+  def merge_message(version, pr)
+    "Merge pull request ##{pr} from release/#{version}\n\nCHANGELOG.md is the union of both sides' version sections (#712)."
   end
 
   # Beta → production here, not in release.yml: the run then reaches a newer
@@ -366,7 +461,12 @@ class ReleasePromotion
     yield
     nil
   rescue StandardError => e
-    "could not #{what} (#{e.class})"
+    failure(what, e)
+  end
+
+  def failure(what, error)
+    detail = error.respond_to?(:reason) && !error.reason.to_s.empty? ? ": #{error.reason}" : ""
+    "could not #{what} (#{error.class}#{detail})"
   end
 
   def hold!(issue, state, reasons)
@@ -391,9 +491,35 @@ end
 # The real adapters. Each shells out; none prints its arguments on failure.
 module ReleasePromotionAdapters
   class Shell
+    # A failed command. `reason` is the first line of its stderr with anything
+    # shaped like a credential removed: GitHub's refusals ("Pull request is not
+    # mergeable", "Required status check ...") are the one message worth
+    # showing, and they carry no URL or key. Other errors stay class-only (act).
+    class Failed < RuntimeError
+      TOKEN = /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|[A-Za-z0-9_\-]{32,}|https?:\/\/\S+/.freeze
+
+      attr_reader :reason # nil unless the command was gh
+
+      def initialize(message, reason)
+        super(message)
+        @reason = reason
+      end
+
+      def self.reason_of(err)
+        line = err.to_s.lines.map(&:strip).find { |l| !l.empty? }
+        line.to_s.gsub(TOKEN, "[removed]")[0, 200]
+      end
+    end
+
     def self.capture(*cmd, stdin: nil, env: {})
       out, err, status = Open3.capture3(env, *cmd, stdin_data: stdin.to_s)
-      raise "#{cmd.first} exited #{status.exitstatus}" unless status.success?
+      unless status.success?
+        # Only gh: its refusals are the message worth showing. A fastlane lane's
+        # stderr (Play, App Store Connect) can name accounts and keys, so those
+        # stay class-only.
+        reason = cmd.first == "gh" ? Failed.reason_of(err) : nil
+        raise Failed.new("#{cmd.first} exited #{status.exitstatus}", reason)
+      end
 
       out.strip
     end
@@ -433,11 +559,9 @@ module ReleasePromotionAdapters
     end
 
     def checks_green?(sha)
-      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?per_page=100", "--jq", ".check_runs[] | \"\\(.status) \\(.conclusion)\"")
-      lines = rows.lines.map(&:strip).reject(&:empty?)
-      return false if lines.empty?
-
-      lines.all? { |row| row.start_with?("completed ") && %w[success skipped neutral].include?(row.split.last) }
+      rows = gh("api", "--paginate", "repos/#{@repo}/commits/#{sha}/check-runs?filter=all&per_page=100", "--jq",
+                ".check_runs[] | {id, name, status, conclusion}")
+      ReleaseGates.checks_green?(rows.lines.map(&:strip).reject(&:empty?).map { |line| JSON.parse(line) })
     end
 
     def release_pr(version)
@@ -464,7 +588,12 @@ module ReleasePromotionAdapters
     end
 
     def merge(pr, head_sha)
-      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--match-head-commit", head_sha)
+      # --admin does not make this an admin merge: the token is the release
+      # App's, a bypass actor on the main ruleset (ADR 0030), and the server
+      # decides. Without it gh refuses client-side whenever the PR is BLOCKED
+      # for want of the approval the App is exempt from ("the base branch policy
+      # prohibits the merge"), before asking the server at all.
+      gh("pr", "merge", pr.to_s, "--repo", @repo, "--merge", "--admin", "--match-head-commit", head_sha)
     end
 
     def issue_body(number)
@@ -500,6 +629,24 @@ module ReleasePromotionAdapters
 
     def version_code(tag)
       Integer(Shell.capture("scripts/release/version-code.sh", tag))
+    end
+
+    # The merge check (#712). All of it reads or writes git objects, except
+    # push_main, the one call that moves main, and it is a plain push.
+    def main_sha
+      ReleaseMerge::Repo.new.main_sha
+    end
+
+    def conflicts(main, branch)
+      ReleaseMerge::Repo.new.conflicts(main, branch)
+    end
+
+    def merge_commit(main, branch, message:)
+      ReleaseMerge::Repo.new.merge_commit(main, branch, message: message)
+    end
+
+    def push_main(sha, expected:)
+      ReleaseMerge::Repo.new.push_main(sha, expected: expected)
     end
   end
 

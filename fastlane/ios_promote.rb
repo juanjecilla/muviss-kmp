@@ -323,7 +323,8 @@ class IosPromotion
     end
     return [problem, state] if problem
 
-    track = ReleaseStages.ios_of(state).merge("stage" => IosTrain::BETA, "beta_done_on" => @today.iso8601,
+    track = ReleaseStages.ios_of(state).merge("stage" => IosTrain::BETA,
+                                             "beta_done_on" => ReleaseStages.beta_done_day(@today).iso8601,
                                              "rc_tag" => facts[:rc_tag], "holds" => [])
     state = with_track(state, track)
     persist(issue, state, "Sent #{facts[:rc_tag]} (build #{facts[:rc_code]}) to the TestFlight external group and submitted it to Beta App Review. Review latency is not published: record the time it took here.")

@@ -20,8 +20,13 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -184,6 +189,38 @@ class SupabaseSyncBackendTest {
     }
 
     @Test
+    fun a_sign_out_during_a_refresh_is_not_undone_when_the_refresh_lands() = runTest {
+        // Delete all data signs out (#645): a refresh already in flight must not save its new
+        // session afterwards and leave the device signed in.
+        val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 1_000L))
+        val refreshing = CompletableDeferred<Unit>()
+        val answer = CompletableDeferred<Unit>()
+        val (backend, _) = backend(store, FakeClock(1_000L)) { request ->
+            when {
+                request.url.encodedPath.endsWith("/auth/v1/token") -> {
+                    refreshing.complete(Unit)
+                    answer.await()
+                    jsonOk(sessionBody)
+                }
+
+                else -> respond("", HttpStatusCode.NoContent)
+            }
+        }
+
+        val push = launch { backend.push(oneDirtyEntry) }
+        refreshing.await()
+        // On a real thread, given time to reach the refresh lock (or, without it, to finish).
+        val signOut = launch(Dispatchers.Default) { backend.signOut() }
+        withContext(Dispatchers.Default) { delay(SIGN_OUT_HEAD_START_MS) }
+        answer.complete(Unit)
+        push.join()
+        signOut.join()
+
+        assertNull(backend.session.first(), "the refreshed session landed before the sign-out, which then ended it")
+        assertNull(store.load(), "and nothing was saved after the sign-out cleared the store")
+    }
+
+    @Test
     fun a_token_with_time_left_is_used_as_is() = runTest {
         val store = InMemorySessionStore(sessionExpiringAt(expiresAtEpochMs = 10_000_000L))
         val (backend, requests) = backend(store, FakeClock(1_000L)) { respond("", HttpStatusCode.Created) }
@@ -338,6 +375,7 @@ class SupabaseSyncBackendTest {
 
     private companion object {
         const val BASE_URL = "https://project.supabase.co"
+        const val SIGN_OUT_HEAD_START_MS = 300L
         const val REDIRECT = "muviss://auth-callback"
     }
 }

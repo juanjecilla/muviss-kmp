@@ -107,6 +107,9 @@ class FakeGit
     @heads = {}
     @shas = {}
     @codes = {}
+    @conflict_paths = []
+    @merge_sha = "merge-sha"
+    @pushed = []
   end
 
   def latest_rc(version)
@@ -123,6 +126,33 @@ class FakeGit
 
   def version_code(tag)
     @codes.fetch(tag)
+  end
+
+  # #712: the merge check. Clean unless a path is set in conflict_paths; the
+  # merge commit is built (and so pushable) only when every path is allow-listed.
+  attr_accessor :conflict_paths, :merge_sha, :conflicts_error, :push_error
+  attr_reader :pushed
+
+  def main_sha
+    "main-sha"
+  end
+
+  def conflicts(_main, _branch)
+    raise @conflicts_error if @conflicts_error
+
+    @conflict_paths
+  end
+
+  def merge_commit(_main, _branch, message:)
+    @message = message
+    blocked = @conflict_paths - ReleaseMerge::ALLOWED_CONFLICTS
+    { conflicts: @conflict_paths, commit: blocked.empty? ? @merge_sha : nil }
+  end
+
+  def push_main(sha, expected:)
+    raise @push_error if @push_error
+
+    @pushed << [sha, expected]
   end
 end
 
@@ -235,6 +265,82 @@ class ReleasePromotionTest < Minitest::Test
     assert_equal "2026-10-18", state["beta_done_on"]
     assert_equal "v1.1.0-rc3", state["rc_tag"]
     assert_equal [], state["holds"]
+  end
+
+  def test_a_monday_beta_step_is_stamped_with_the_sunday_and_production_follows_a_week_later
+    outcomes = run_on(Date.new(2026, 10, 19))
+    assert_equal :done, outcome_for(outcomes, "1.1.0").status
+    state = state_of("1.1.0")
+    assert_equal "2026-10-18", state["beta_done_on"]
+    assert_equal "2026-10-25", state["production_on"]
+  end
+
+  def test_a_gh_refusal_shows_its_first_line_with_credentials_and_urls_removed
+    err = "X-Access-Token ghs_abcdefghijklmnop1234 see https://api.github.com/x?key=abc\nPull request is not mergeable"
+    failed = ReleasePromotionAdapters::Shell::Failed.new("gh exited 1", ReleasePromotionAdapters::Shell::Failed.reason_of(err))
+    assert_equal "X-Access-Token [removed] see [removed]", failed.reason
+  end
+
+  # The real adapters, with the process boundary replaced.
+  def with_shell(result)
+    calls = []
+    shell = ReleasePromotionAdapters::Shell
+    original = shell.method(:capture)
+    shell.define_singleton_method(:capture) do |*cmd, **opts|
+      calls << cmd
+      raise result if result.is_a?(Exception)
+
+      result
+    end
+    yield calls
+  ensure
+    shell.define_singleton_method(:capture, original)
+  end
+
+  def test_the_sunday_merge_asks_the_server_so_the_apps_bypass_can_apply
+    with_shell("") do |calls|
+      ReleasePromotionAdapters::GitHub.new(repo: "o/r", token: "t").merge(691, "abc123")
+      assert_equal [["gh", "pr", "merge", "691", "--repo", "o/r", "--merge", "--admin", "--match-head-commit", "abc123"]], calls
+    end
+  end
+
+  def test_a_failing_command_other_than_gh_exposes_none_of_its_stderr
+    shell = ReleasePromotionAdapters::Shell
+    failed = assert_raises(shell::Failed) { shell.capture("sh", "-c", "echo sa@proj.iam.gserviceaccount.com >&2; exit 1") }
+    assert_nil failed.reason
+    assert_equal "sh exited 1", failed.message
+    assert_equal "could not run it (ReleasePromotionAdapters::Shell::Failed)", ReleasePromotion.allocate.send(:act, "run it") { raise failed }
+  end
+
+  def run_row(id, name, status, conclusion) = { "id" => id, "name" => name, "status" => status, "conclusion" => conclusion }
+
+  def test_ci_is_green_when_every_name_passed
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "success"), run_row(2, "ios", "completed", "skipped")])
+  end
+
+  def test_ci_is_not_green_with_no_runs_at_all
+    refute ReleaseGates.checks_green?([])
+  end
+
+  def test_a_cancelled_duplicate_beside_a_pass_does_not_hold_the_version
+    runs = [run_row(1, "PR guards", "completed", "success"), run_row(2, "PR guards", "completed", "cancelled")]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_duplicate_still_running_does_not_unsay_a_completed_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "in_progress", nil)]
+    assert ReleaseGates.checks_green?(runs)
+  end
+
+  def test_a_name_that_only_ever_ran_cancelled_or_running_is_not_green
+    refute ReleaseGates.checks_green?([run_row(1, "build", "completed", "cancelled")])
+    refute ReleaseGates.checks_green?([run_row(1, "build", "queued", nil)])
+  end
+
+  def test_the_newest_finished_run_decides_when_a_rerun_fails_after_a_pass
+    runs = [run_row(1, "build", "completed", "success"), run_row(2, "build", "completed", "failure")]
+    refute ReleaseGates.checks_green?(runs)
+    assert ReleaseGates.checks_green?([run_row(1, "build", "completed", "failure"), run_row(2, "build", "completed", "success")])
   end
 
   def test_a_dry_run_evaluates_the_gates_and_changes_nothing
@@ -376,6 +482,101 @@ class ReleasePromotionTest < Minitest::Test
     @git.rc_by_version.clear
     outcome = outcome_for(run_on(SUNDAY_BETA), "1.1.0")
     assert_equal ["no release candidate has been built for this version"], outcome.reasons
+  end
+
+  # ---- merge conflicts git can resolve (#712) -----------------------------
+
+  NOT_MERGEABLE = "Pull request is not mergeable: the merge commit cannot be cleanly created".freeze
+
+  def refuse_as_not_mergeable!
+    @github.merge_error = ReleasePromotionAdapters::Shell::Failed.new("gh exited 1", NOT_MERGEABLE)
+  end
+
+  def beta_1_1_0_gated
+    @github.issues.clear
+    add_version("1.1.0", "beta", "beta_done_on" => "2026-10-18")
+    add_rc("1.1.0", rc: 3, code: 1_010_003)
+  end
+
+  def test_a_refusal_over_only_changelog_conflicts_is_resolved_and_promoted
+    beta_1_1_0_gated
+    refuse_as_not_mergeable!
+    @git.conflict_paths = ["CHANGELOG.md"]
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :done, outcome.status, outcome.reasons.join("; ")
+    assert_equal [["merge-sha", "main-sha"]], @git.pushed, "the union merge is pushed, expecting main where it was read"
+    assert_equal [[:production, 1_010_003]], @play.calls
+    state = state_of("1.1.0")
+    assert_equal "production", state["stage"]
+    assert_equal "2026-10-25", state["merged_on"]
+    assert state["release_pr"], "the release PR is recorded, as after a normal merge"
+    comments = @github.calls.select { |c| c.first == :comment }.map(&:last)
+    assert(comments.any? { |body| body.include?("CHANGELOG.md resolved as a union") }, "the merge says how it landed")
+  end
+
+  def test_a_conflict_outside_the_allow_list_holds_before_any_pr_is_opened
+    beta_1_1_0_gated
+    @git.conflict_paths = ["CHANGELOG.md", "app/build.gradle.kts"]
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons.join, "app/build.gradle.kts"
+    refute @github.calls.any? { |c| c.first == :open_release_pr }, "no PR is opened for a merge that cannot land"
+    assert_equal [], @play.calls
+    assert_equal [], @git.pushed
+  end
+
+  def test_a_dry_run_says_it_would_self_resolve_and_pushes_nothing
+    beta_1_1_0_gated
+    @git.conflict_paths = ["CHANGELOG.md"]
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25), apply: false), "1.1.0")
+    assert_equal :would_do, outcome.status
+    assert_includes @out.string, "would self-resolve 1.1.0"
+    assert_equal [], @git.pushed
+    assert_equal [], @play.calls
+    refute @github.calls.any? { |c| c.first == :open_release_pr || c.first == :merge }
+  end
+
+  def test_a_main_that_moved_holds_and_is_never_forced
+    beta_1_1_0_gated
+    refuse_as_not_mergeable!
+    @git.conflict_paths = ["CHANGELOG.md"]
+    @git.push_error = ReleaseMerge::MainMoved.new("main is at someone-else")
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons.join, "main moved"
+    refute_includes outcome.reasons.join, "someone-else", "the new main's sha is not printed"
+    assert_equal [], @play.calls
+    state = state_of("1.1.0")
+    assert_equal "beta", state["stage"]
+    assert_nil state["merged_on"], "nothing merged, so the next Sunday merges again from scratch"
+  end
+
+  def test_a_refusal_git_cannot_reproduce_holds_with_the_refusal
+    beta_1_1_0_gated
+    refuse_as_not_mergeable!
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons.join, NOT_MERGEABLE
+    assert_equal [], @git.pushed
+  end
+
+  def test_a_refusal_with_conflicts_git_cannot_resolve_says_which
+    beta_1_1_0_gated
+    refuse_as_not_mergeable!
+    @git.conflict_paths = ["app/build.gradle.kts"]
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons.join, "app/build.gradle.kts"
+    assert_equal [], @git.pushed
+  end
+
+  def test_a_merge_check_that_cannot_be_read_holds_for_production
+    beta_1_1_0_gated
+    @git.conflicts_error = RuntimeError.new("merge-tree broke")
+    outcome = outcome_for(run_on(Date.new(2026, 10, 25)), "1.1.0")
+    assert_equal :held, outcome.status
+    assert_includes outcome.reasons.join, "could not be checked"
+    assert_equal [], @play.calls
   end
 
   # ---- every gate holds, and says why -------------------------------------

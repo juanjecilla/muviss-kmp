@@ -75,9 +75,9 @@ listOf("search", "collection", "progress", "profile", "settings", "triage", "cow
     }
 }
 
-// Next Pick (EPIC 51, ADR 0032) arrives in layers: the contract and the Pick Session domain first
-// (#398), then the engine's :data (#399) and :ui (#400), which join this loop when they exist.
-listOf("api", "domain").forEach { layer ->
+// Next Pick (EPIC 51, ADR 0032): the contract and the Pick Session domain (#398), the engine and its
+// sources (#399), and the Pick Session UI with the completion sheet (#400).
+listOf("api", "domain", "data", "ui").forEach { layer ->
     include(":feature:nextpick:$layer")
 }
 

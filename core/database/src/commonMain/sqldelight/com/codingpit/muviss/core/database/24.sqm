@@ -1,0 +1,21 @@
+-- Taste Profile (EPIC 51, #402). The filename is the version this migrates FROM:
+-- 24.sqm takes a v24 database to v25, after the What's next? settings' `23.sqm` (#403).
+--
+-- NUMBERING: claimed at 24 on 2026-10-29, stacked on #543's `23.sqm` (which is on #400's
+-- `22.sqm`, on develop's `21.sqm`). This branch was first written against v21. #563 (review
+-- prompt) takes `25.sqm` after this lands.
+--
+-- A new table, so there is nothing to backfill: before this migration nobody
+-- could say what they like, and the table is correctly empty on every upgraded
+-- install. Nothing here touches `appSettings`.
+CREATE TABLE tasteProfile (
+    id TEXT NOT NULL PRIMARY KEY,
+    kind TEXT NOT NULL,
+    itemValue TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    updatedAtEpochMs INTEGER NOT NULL,
+    isDirty INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX tasteProfile_dirty ON tasteProfile(isDirty) WHERE isDirty = 1;

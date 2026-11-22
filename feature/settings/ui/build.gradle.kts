@@ -7,6 +7,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(projects.feature.settings.domain)
+            implementation(projects.feature.nextpick.api)
             implementation(projects.core.common)
             implementation(projects.core.designsystem)
             implementation(projects.models)

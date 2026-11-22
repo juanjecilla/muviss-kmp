@@ -13,9 +13,15 @@ import com.codingpit.muviss.core.common.AppClock
  * defaulted to `0L` and others to a suite's own `NOW_EPOCH_MS`, so a default
  * here would silently move one half of them. A test that needs a calendar day
  * rather than an instant passes `epochMsAtStartOfDay(day)` from `:core:common`.
+ *
+ * [utcOffsetMs] is the person's zone for the local-day accessors. It defaults to UTC, so
+ * a test that does not ask for a zone gets the same days it always did. A test that
+ * needs local midnight to differ from UTC midnight passes a fixed offset, never a named zone.
  */
-class FakeClock(var epochMs: Long) : AppClock {
+class FakeClock(var epochMs: Long, private val utcOffsetMs: Long = 0L) : AppClock {
     override fun nowEpochMs(): Long = epochMs
+
+    override fun utcOffsetMsAt(epochMs: Long): Long = utcOffsetMs
 
     /** Moves the clock to [epochMs], forwards or backwards. */
     fun advanceTo(epochMs: Long) {

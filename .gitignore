@@ -87,3 +87,6 @@ vendor/bundle/
 # artwork: keep it out of the repo. The docs point at a folder outside the tree;
 # this rule stops a copy placed here from being committed.
 /poster-fixtures/
+
+# Backups BSD `sed -i -e` leaves behind on macOS.
+*-e

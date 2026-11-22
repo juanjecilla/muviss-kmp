@@ -4,12 +4,15 @@ import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.api.SnoozedTitle
 import com.codingpit.muviss.feature.triage.api.TriageApi
 import com.codingpit.muviss.feature.triage.api.TriageDecisionSummary
+import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.ObserveDecidedIdsUseCase
 import com.codingpit.muviss.feature.triage.domain.ObserveDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.ObserveSkippedUseCase
 import com.codingpit.muviss.feature.triage.domain.RestoreDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.SnoozeQueries
+import com.codingpit.muviss.feature.triage.domain.TriageActions
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -20,6 +23,7 @@ internal class DefaultTriageApi(
     private val observeDecision: ObserveDecisionUseCase,
     private val restoreDecision: RestoreDecisionUseCase,
     private val snoozes: SnoozeQueries,
+    private val actions: TriageActions,
 ) : TriageApi {
 
     override fun observeDecidedIds(): Flow<Set<MediaId>> = observeDecidedIds.invoke()
@@ -43,4 +47,10 @@ internal class DefaultTriageApi(
         }
 
     override suspend fun unsnooze(mediaId: MediaId) = snoozes.unsnooze.invoke(mediaId)
+
+    override suspend fun skip(summary: MediaSummary) {
+        actions.record.invoke(summary, TriageVerdict.SKIP).getOrThrow()
+    }
+
+    override suspend fun snooze(summary: MediaSummary, dueAtEpochDay: Long) = actions.snooze.invoke(summary, dueAtEpochDay)
 }

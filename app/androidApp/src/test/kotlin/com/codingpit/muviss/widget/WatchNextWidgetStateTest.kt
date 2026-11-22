@@ -118,6 +118,36 @@ class WatchNextWidgetStateTest {
         assertNull(rows.last().undoable, "only the row that was ticked offers Undo")
     }
 
+    /**
+     * The confirmation names the episode the tick wrote, not the one the row
+     * now points at: after the tick the next episode has moved on to E2.
+     */
+    @Test
+    fun `the just-ticked row names the episode it marked, not the next one`() {
+        val ui = watchNextWidgetUi(
+            listOf(item(got, "Game of Thrones", next = episode(got, 1, 2, "The Kingsroad"))),
+            WidgetSize.SMALL,
+            justTicked = EpisodeId(got, 1, 1),
+        )
+
+        val row = (ui as WatchNextWidgetUi.Rows).rows.single()
+        assertEquals("S1 · E1", row.tickedLabel)
+        assertEquals("S1 · E2", row.episodeLabel, "the row still advances to the next episode")
+    }
+
+    @Test
+    fun `only the just-ticked row carries a ticked label`() {
+        val ui = watchNextWidgetUi(
+            listOf(item(got, "Game of Thrones"), item(firefly, "Firefly")),
+            WidgetSize.MEDIUM,
+            justTicked = EpisodeId(got, 1, 1),
+        )
+
+        val rows = (ui as WatchNextWidgetUi.Rows).rows
+        assertEquals("S1 · E1", rows.first().tickedLabel)
+        assertNull(rows.last().tickedLabel)
+    }
+
     @Test
     fun `a title with nothing aired has no progress bar`() {
         val ui = watchNextWidgetUi(listOf(item(got, "Game of Thrones", aired = 0, seen = 0)), WidgetSize.SMALL)

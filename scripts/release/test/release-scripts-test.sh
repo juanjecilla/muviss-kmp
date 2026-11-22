@@ -106,8 +106,10 @@ seeded="$(git -C "$r" show release/1.1.0:fastlane/release-notes/v1.1.0/en-US.txt
 if ! grep -q '^DRAFT:' <<<"$seeded"; then pass "notes are final, not drafts"; else fail "notes are final, not drafts: $seeded"; fi
 if grep -q -- '- Snooze a card' <<<"$seeded" && grep -q -- '- Offline copy' <<<"$seeded" && ! grep -q noise <<<"$seeded"; then
   pass "notes list feat/fix only"; else fail "notes list feat/fix only: $seeded"; fi
-log="$(git -C "$r" show release/1.1.0:CHANGELOG.md)"
+log="$(git -C "$r" show release/1.1.0:docs/changelog/1.1.0.md)"
 if grep -q '^## 1.1.0 — ' <<<"$log"; then pass "changelog gets a section for the version"; else fail "changelog section: $log"; fi
+if git -C "$r" diff --quiet develop release/1.1.0 -- CHANGELOG.md; then
+  pass "a cut leaves CHANGELOG.md alone (#711)"; else fail "a cut changed CHANGELOG.md"; fi
 if grep -q -- '^- \*\*triage\*\*: snooze a card$' <<<"$log" && grep -q -- '^- \*\*search\*\*: offline copy$' <<<"$log" \
   && ! grep -q noise <<<"$log"; then pass "changelog lists feat/fix with their scope"; else fail "changelog items: $log"; fi
 if [ "$(grep -n '### Features' <<<"$log" | cut -d: -f1)" -lt "$(grep -n '### Fixes' <<<"$log" | cut -d: -f1)" ]; then
@@ -130,9 +132,9 @@ commit "$r5" "feat(sync)!: accounts"; commit "$r5" "feat: great news!"; commit "
 o5="$(mktemp -d)"; git -C "$o5" init -q --bare -b develop
 git -C "$r5" remote add origin "$o5"; git -C "$r5" push -q origin develop --tags
 (cd "$r5" && scripts/release/start-release.sh 2.0.0 >/dev/null 2>&1); expect_eq "cuts release/2.0.0" "$?" "0"
-log5="$(git -C "$r5" show release/2.0.0:CHANGELOG.md)"
-if [ "$(grep -n '^## 2.0.0' <<<"$log5" | cut -d: -f1)" -lt "$(grep -n '^## 1.0.0' <<<"$log5" | cut -d: -f1)" ] \
-  && grep -q '^header$' <<<"$log5"; then pass "new section above the old, header kept"; else fail "section order: $log5"; fi
+log5="$(git -C "$r5" show release/2.0.0:docs/changelog/2.0.0.md)"
+if head -1 <<<"$log5" | grep -q '^## 2.0.0 — '; then pass "the version's file starts with its section"; else fail "section file: $log5"; fi
+if git -C "$r5" diff --quiet develop release/2.0.0 -- CHANGELOG.md; then pass "CHANGELOG.md is left as it was (#711)"; else fail "CHANGELOG.md changed"; fi
 if grep -q -- '^- \*\*sync\*\*: accounts (breaking)$' <<<"$log5"; then pass "breaking change is marked"; else fail "breaking: $log5"; fi
 if grep -q -- '^- great news!$' <<<"$log5"; then pass "a ! in the subject is not breaking"; else fail "subject bang: $log5"; fi
 r6="$(new_repo)"; mkdir -p "$r6/scripts/release"; cp "$SCRIPTS/start-release.sh" "$SCRIPTS/previous-release.sh" "$r6/scripts/release/"
@@ -140,8 +142,28 @@ git -C "$r6" add -A; commit "$r6" "chore: init"; git -C "$r6" tag -a v1.0.0 -m t
 o6="$(mktemp -d)"; git -C "$o6" init -q --bare -b develop
 git -C "$r6" remote add origin "$o6"; git -C "$r6" push -q origin develop --tags
 (cd "$r6" && scripts/release/start-release.sh 1.0.1 >/dev/null 2>&1)
-if grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:CHANGELOG.md)"; then
+if grep -q 'Maintenance only' <<<"$(git -C "$r6" show release/1.0.1:docs/changelog/1.0.1.md)"; then
   pass "a release with no feat/fix says so"; else fail "maintenance-only section"; fi
+
+# #711: two releases cut from develop with no back-merge between them, both
+# merged into main in order. Each used to insert its section at the top of
+# CHANGELOG.md, so the second merge conflicted on that one file.
+echo "overlapping releases (#711)"
+ov_origin="$(mktemp -d)"; git -C "$ov_origin" init -q --bare -b develop
+ov="$(new_repo)"; mkdir -p "$ov/scripts/release" "$ov/scripts/store" "$ov/fastlane/metadata/android/en-US" "$ov/fastlane/metadata/android/es-ES"
+cp "$SCRIPTS/start-release.sh" "$SCRIPTS/release-notes.sh" "$SCRIPTS/previous-release.sh" "$ov/scripts/release/"; cp "$REPO_ROOT/scripts/store/check-listing.sh" "$ov/scripts/store/"
+for l in en-US es-ES; do echo T >"$ov/fastlane/metadata/android/$l/title.txt"; echo S >"$ov/fastlane/metadata/android/$l/short_description.txt"; echo F >"$ov/fastlane/metadata/android/$l/full_description.txt"; done
+printf '# Changelog\n\nheader\n\n## 0.9.0 — 2026-10-01\n\nFirst.\n' >"$ov/CHANGELOG.md"
+git -C "$ov" add -A; commit "$ov" "chore: init"; ov_init="$(git -C "$ov" rev-parse HEAD)"
+git -C "$ov" remote add origin "$ov_origin"; git -C "$ov" push -q origin develop
+commit "$ov" "feat(triage): snooze a card"; git -C "$ov" push -q origin develop
+(cd "$ov" && scripts/release/start-release.sh 1.0.0 >/dev/null 2>&1); expect_eq "cuts release/1.0.0" "$?" "0"
+git -C "$ov" switch -q develop
+commit "$ov" "fix(search): offline copy"; git -C "$ov" push -q origin develop
+(cd "$ov" && scripts/release/start-release.sh 1.1.0 --stagger-checked >/dev/null 2>&1); expect_eq "cuts release/1.1.0 with no back-merge in between" "$?" "0"
+git -C "$ov" switch -q -c main "$ov_init"
+git -C "$ov" merge -q --no-ff --no-edit release/1.0.0 >/dev/null 2>&1; expect_eq "merges release/1.0.0 into main" "$?" "0"
+git -C "$ov" merge -q --no-ff --no-edit release/1.1.0 >/dev/null 2>&1; expect_eq "then release/1.1.0 merges into main with no conflict" "$?" "0"
 
 echo "release-issue.sh (ADR 0030)"
 # A fake gh: records every call, answers the reads the script makes.

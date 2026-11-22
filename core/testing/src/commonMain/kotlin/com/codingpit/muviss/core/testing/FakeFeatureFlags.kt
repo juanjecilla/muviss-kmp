@@ -22,6 +22,7 @@ class FakeFeatureFlags(byokEnabled: Boolean = false) : FeatureFlags {
     override val byokEnabled = MutableStateFlow(byokEnabled)
     override val triageSnoozePeriod = MutableStateFlow(SnoozePeriod.DEFAULT)
     override val triageSnoozePlacement = MutableStateFlow(SnoozePlacement.DEFAULT)
+    override val completionPromptEnabled = MutableStateFlow(true)
 
     override suspend fun setTriageControlScheme(scheme: TriageControlScheme) {
         triageControlScheme.value = scheme
@@ -49,5 +50,9 @@ class FakeFeatureFlags(byokEnabled: Boolean = false) : FeatureFlags {
 
     override suspend fun setTriageSnoozePlacement(placement: SnoozePlacement) {
         triageSnoozePlacement.value = placement
+    }
+
+    override suspend fun setCompletionPromptEnabled(enabled: Boolean) {
+        completionPromptEnabled.value = enabled
     }
 }

@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.triage.api
 
 import com.codingpit.muviss.models.MediaId
+import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.flow.Flow
 
@@ -113,4 +114,17 @@ interface TriageApi {
 
     /** Drops the Snooze so the title is deck-eligible again now. Idempotent. */
     suspend fun unsnooze(mediaId: MediaId)
+
+    /**
+     * Records a Skip for [summary], the same write as swiping it away in Triage. Next Pick's "Not for me"
+     * (EPIC 51) uses it so a refused pick also leaves the Discover deck. Carries the whole card because
+     * there may be no collection row to join (ADR 0023).
+     */
+    suspend fun skip(summary: MediaSummary)
+
+    /**
+     * Snoozes [summary] until [dueAtEpochDay] (an epoch day), the same write as the deck's Snooze
+     * (ADR 0023). Next Pick's "Snooze" uses it.
+     */
+    suspend fun snooze(summary: MediaSummary, dueAtEpochDay: Long)
 }

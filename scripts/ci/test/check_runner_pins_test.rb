@@ -39,6 +39,31 @@ class CheckRunnerPinsTest < Minitest::Test
     YAML
   end
 
+  def offenders_in(files)
+    Dir.mktmpdir do |root|
+      FileUtils.mkdir_p(File.join(root, ".github/workflows"))
+      files.each { |name, yaml| File.write(File.join(root, ".github/workflows", name), yaml) }
+      floating_runners(root).map(&:last)
+    end
+  end
+
+  LEG = "on:\n  workflow_call:\n    inputs:\n      os:\n        type: string\njobs:\n  leg:\n    runs-on: ${{ inputs.os }}\n".freeze
+
+  def test_an_input_is_followed_to_what_every_local_caller_passes
+    callers = "jobs:\n  a:\n    uses: ./.github/workflows/leg.yml\n    with:\n      os: macos-15\n  b:\n    uses: ./.github/workflows/leg.yml\n    with:\n      os: windows-2025\n"
+    assert_equal [], offenders_in("leg.yml" => LEG, "main.yml" => callers)
+  end
+
+  def test_a_caller_passing_a_floating_image_is_caught
+    callers = "jobs:\n  a:\n    uses: ./.github/workflows/leg.yml\n    with:\n      os: macos-15\n  b:\n    uses: ./.github/workflows/leg.yml\n    with:\n      os: ubuntu-latest\n"
+    assert_equal ["ubuntu-latest"], offenders_in("leg.yml" => LEG, "main.yml" => callers)
+  end
+
+  def test_a_caller_passing_an_expression_is_not_trusted
+    callers = "jobs:\n  a:\n    uses: ./.github/workflows/leg.yml\n    with:\n      os: ${{ github.event.inputs.os }}\n"
+    assert_equal ["${{ github.event.inputs.os }}"], offenders_in("leg.yml" => LEG, "main.yml" => callers)
+  end
+
   def test_an_expression_it_cannot_resolve_is_not_trusted
     assert_equal ["${{ inputs.runner }}"], offenders("jobs:\n  a:\n    runs-on: ${{ inputs.runner }}\n")
   end

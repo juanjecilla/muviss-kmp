@@ -217,8 +217,8 @@ interface ProgressApi {
 
     /**
      * What [tickEpisode] and [tickMovie] emit when the tick finished a title: one [Completion] per
-     * completing tick, nothing for anything else. Hot and shared, so collect it where the prompt is
-     * shown; a Completion nobody is collecting for is dropped, not queued.
+     * completing tick, nothing for anything else. Hot and shared; the app shell collects it for the
+     * store review prompt (#410). A Completion nobody is collecting for is dropped, not queued.
      */
     val completions: Flow<Completion> get() = emptyFlow()
 

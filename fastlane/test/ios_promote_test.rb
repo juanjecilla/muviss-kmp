@@ -161,6 +161,14 @@ class IosPromoteTest < Minitest::Test
     assert_equal "beta", ReleaseStages.ios_of(ReleaseStages.parse(gh.updates.last[1]))["stage"]
   end
 
+  def test_a_monday_ios_beta_step_is_stamped_with_the_sunday_before
+    issue = issue_for(internal_state)
+    promotion, gh, = build(issues: [issue], today: SUNDAY + 1)
+    assert_equal :done, promotion.run.first.status
+    ios = ReleaseStages.ios_of(ReleaseStages.parse(gh.updates.last[1]))
+    assert_equal SUNDAY.iso8601, ios["beta_done_on"]
+  end
+
   def test_the_beta_step_is_held_by_the_ios_crash_gate_only_for_ios
     sentry = FakeIosSentry.new
     sentry.hold_reason = "2 new crash issue(s) first seen in this release"

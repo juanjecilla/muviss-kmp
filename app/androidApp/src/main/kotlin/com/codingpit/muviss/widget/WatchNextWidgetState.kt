@@ -41,6 +41,8 @@ data class WidgetRow(
     val tickable: EpisodeId?,
     /** Set on the one row that was just ticked: it shows "Undo" instead of a tick button. */
     val undoable: EpisodeId?,
+    /** "S1 · E3" for the episode just ticked, so the confirmation names what was marked. Null unless [undoable]. */
+    val tickedLabel: String?,
 )
 
 /** Everything the widget can be showing. */
@@ -109,5 +111,9 @@ private fun WatchNextItem.toRow(justTicked: EpisodeId?): WidgetRow {
         progress = progress,
         tickable = nextEpisode?.id,
         undoable = undoable,
+        tickedLabel = undoable?.let(::seasonEpisodeLabel),
     )
 }
+
+/** "S2 · E5": the one spelling of an episode label the widget uses. */
+private fun seasonEpisodeLabel(episode: EpisodeId): String = "S${episode.seasonNumber} · E${episode.episodeNumber}"

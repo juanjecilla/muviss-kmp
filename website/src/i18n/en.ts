@@ -57,7 +57,8 @@ export const en = {
     lede: "Everything here is free — no paywall on the basics.",
     items: [
       { icon: "search", title: "Search & discover", body: "Any movie or show from TMDB, plus For you, Popular now and browsing by genre." },
-      { icon: "search", title: "Mute what you don't watch", body: "Talk shows, news and reality TV are left out of Discover and your triage deck by default. Pick any genres to mute in Settings, or show them again with one tap." },
+      { icon: "tv", title: "What's next?", body: "Finished something, or not sure what to watch? A short set of questions finds your next pick, from your list or from new titles, and says why it was chosen. Online, it can also look for more like what you just finished. Offline, it picks from your list. Choose how many questions it asks, or turn the prompt off, in Settings. You can also say what you like there: genres, formats, services and company." },
+      { icon: "search", title: "Mute what you don't watch", body: "Talk shows, news and reality TV are left out of Discover, your triage deck and What's next? picks by default. Pick any genres to mute in Settings, or show them again with one tap." },
       { icon: "tv", title: "Where to watch", body: "See which streaming, rental and purchase services carry a title in your region." },
       { icon: "grid", title: "Your library", body: "Filter by status or favourites, sort by date added, rating or title." },
       { icon: "heart", title: "Favourites", body: "Mark the ones you love, independently of how far you've watched." },
@@ -66,7 +67,7 @@ export const en = {
       { icon: "repeat", title: "Rewatch history", body: "Watched it three times? Muviss remembers every viewing and when it happened." },
       { icon: "star", title: "Ratings & notes", body: "Rate titles and keep a private note on each one." },
       { icon: "bell", title: "New-episode alerts", body: "Get notified when a new episode of a show you follow is out — only if you turn it on. Off until you do.", platforms: "Android · iOS" },
-      { icon: "widget", title: "Home-screen widgets", body: "Your next episode on the home screen, with a one-tap tick and undo.", platforms: "Android · iOS" },
+      { icon: "widget", title: "Home-screen widgets", body: "Your next episode on the home screen, with a one-tap tick that says which episode it marked, and undo.", platforms: "Android · iOS" },
       { icon: "import", title: "Import", body: "Bring your history from Trakt, TV Time or a CSV file." },
       { icon: "export", title: "Back up & restore", body: "Your data is yours: back everything up to a file, restore it on any device, or delete it all." },
       { icon: "export", title: "Device backup", body: "Optionally let iCloud or Google backup include your library, so a new phone picks up where you left off. Off until you turn it on.", platforms: "Android · iOS" },

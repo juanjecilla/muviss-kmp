@@ -3,6 +3,9 @@ package com.codingpit.muviss.di
 import com.codingpit.muviss.core.common.flags.FeatureFlags
 import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequester
 import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
+import com.codingpit.muviss.core.common.review.AskForReviewUseCase
+import com.codingpit.muviss.core.common.review.ReviewLedger
+import com.codingpit.muviss.core.common.review.ReviewPrompter
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
@@ -14,12 +17,21 @@ import com.codingpit.muviss.core.sync.SyncEngine
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.ListsApi
 import com.codingpit.muviss.feature.cowatch.api.CoWatchApi
+import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
+import com.codingpit.muviss.feature.nextpick.domain.CompletionPromptStore
+import com.codingpit.muviss.feature.nextpick.domain.NextPickActions
+import com.codingpit.muviss.feature.nextpick.domain.PickContextSource
+import com.codingpit.muviss.feature.nextpick.domain.PickEngine
+import com.codingpit.muviss.feature.nextpick.ui.CompletionPromptViewModel
 import com.codingpit.muviss.feature.onboarding.api.OnboardingApi
 import com.codingpit.muviss.feature.onboarding.ui.OnboardingViewModel
 import com.codingpit.muviss.feature.profile.api.ProfileApi
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.feature.settings.api.TasteProfileApi
+import com.codingpit.muviss.feature.settings.ui.NextPickSettingsViewModel
 import com.codingpit.muviss.feature.triage.api.TriageApi
+import com.codingpit.muviss.review.ReviewPromptOnCompletion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -91,6 +103,8 @@ class AppGraphTest {
         assertNotNull(koin.get<CollectionApi>())
         assertNotNull(koin.get<ProgressApi>())
         assertNotNull(koin.get<SettingsApi>())
+        // EPIC 51 (#402): the Taste Profile, read later by the Pick Session and For you through :api.
+        assertNotNull(koin.get<TasteProfileApi>())
         assertNotNull(koin.get<ProfileApi>())
         assertNotNull(koin.get<TriageApi>())
         assertNotNull(koin.get<ListsApi>())
@@ -113,6 +127,27 @@ class AppGraphTest {
         // contract must resolve in both orders with the rest of the graph.
         assertNotNull(koin.get<OnboardingApi>())
         assertNotNull(koin.get<NotificationPermissionRequester>())
+        // #410: the store-review listener is started from MuvissApp; its ledger (settings), its
+        // prompter (commonModule's None here; Android and iOS bind their own) and its use case resolve
+        // here, and the progress detector needs the ledger to count ticks, so it must too.
+        assertNotNull(koin.get<ReviewLedger>())
+        assertNotNull(koin.get<ReviewPrompter>())
+        assertNotNull(koin.get<AskForReviewUseCase>())
+        assertNotNull(koin.get<ReviewPromptOnCompletion>())
+        // EPIC 51 (#400): Next Pick's engine, its context source, actions and the sheet's memory resolve
+        // through the peers' :api, in this graph's order.
+        assertNotNull(koin.get<PickEngine>())
+        assertNotNull(koin.get<PickContextSource>())
+        assertNotNull(koin.get<NextPickActions>())
+        assertNotNull(koin.get<CompletionPromptStore>())
+        // EPIC 51 (#403): the Next Pick preferences are bound by settings:data and read by the Pick Session (#400).
+        assertNotNull(koin.get<NextPickPreferences>())
+    }
+
+    /** The Next Pick section of Settings (#403): its view model takes two contracts, so it resolves from the real graph. */
+    @Test
+    fun `the next pick settings view model resolves from the assembled graph`() {
+        assertNotNull(startGraph().get<NextPickSettingsViewModel>())
     }
 
     /**
@@ -123,6 +158,12 @@ class AppGraphTest {
     @Test
     fun `the onboarding view model resolves from the assembled graph`() {
         assertNotNull(startGraph().get<OnboardingViewModel>())
+    }
+
+    /** EPIC 51 (#400): the completion sheet's ViewModel is hosted at the app root, so it is built on every launch. */
+    @Test
+    fun `the completion prompt view model resolves from the assembled graph`() {
+        assertNotNull(startGraph().get<CompletionPromptViewModel>())
     }
 
     /**

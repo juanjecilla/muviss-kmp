@@ -120,4 +120,5 @@
     <string name="nudge_dismiss">Dismiss</string>
     <string name="nudge_blocked">Notifications are blocked for Muviss in the system settings.</string>
     <string name="nudge_open_settings">Open settings</string>
+    <string name="next_pick_entry">What's next?</string>
 </resources>

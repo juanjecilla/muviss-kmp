@@ -106,7 +106,8 @@ class SyncEngine(
     private val widgetRefresher: WidgetRefresher = AppWidgets,
     private val automatic: AutomaticSyncSettings = AutomaticSyncSettings(),
     private val titleRefresher: TitleRefresher = NoOpTitleRefresher,
-) : SyncRunner {
+) : SyncRunner,
+    SyncIdleLock {
     private val availability get() = automatic.availability
     private val syncAutomatically get() = automatic.switch
 
@@ -136,6 +137,9 @@ class SyncEngine(
     private val lastFinished = MutableStateFlow<Long?>(null)
 
     override val lastFinishedAtEpochMs: Long? get() = lastFinished.value
+
+    /** Waits for the cycle in flight, then holds [syncMutex] so no cycle starts until [block] returns. */
+    override suspend fun runIdle(block: suspend () -> Unit) = syncMutex.withLock { block() }
 
     /** A manual sync: what the "Sync now" button and the end of sign-in ask for. */
     suspend fun syncNow(): SyncOutcome = syncNow(SyncTrigger.Manual)

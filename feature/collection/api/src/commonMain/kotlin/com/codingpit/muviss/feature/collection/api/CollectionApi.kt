@@ -101,6 +101,12 @@ data class CollectionMembership(
      */
     val revisitWillingness: Boolean? = null,
     val coWatchPinned: Boolean = false,
+    /**
+     * The title's derived [WatchStatus] (ADR 0005), read in the same query as the membership, so a peer
+     * that needs one title's status (Detail's "What's next?") never has to read the whole library.
+     * Defaulted so fakes that only model membership keep compiling; it is not a stored field.
+     */
+    val status: WatchStatus = WatchStatus.NOT_STARTED,
 )
 
 /**

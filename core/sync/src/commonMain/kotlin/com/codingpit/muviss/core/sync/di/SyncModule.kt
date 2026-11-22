@@ -17,6 +17,7 @@ import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncCoordinator
 import com.codingpit.muviss.core.sync.SyncEngine
+import com.codingpit.muviss.core.sync.SyncIdleLock
 import com.codingpit.muviss.core.sync.SyncRunner
 import com.codingpit.muviss.core.sync.SyncSessionStore
 import com.codingpit.muviss.core.sync.TitleRefresher
@@ -98,6 +99,7 @@ val syncModule: Module = module {
         )
     }
     single<SyncRunner> { get<SyncEngine>() }
+    single<SyncIdleLock> { get<SyncEngine>() }
     single {
         val engine = get<SyncEngine>()
         SyncCoordinator(

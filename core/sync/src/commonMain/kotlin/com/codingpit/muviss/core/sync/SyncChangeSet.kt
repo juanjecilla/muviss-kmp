@@ -23,14 +23,16 @@ data class SyncChangeSet(
     val triageDecisions: List<TriageDecisionChange> = emptyList(),
     val triageSnoozes: List<TriageSnoozeChange> = emptyList(),
     val episodePlays: List<EpisodePlayChange> = emptyList(),
+    val tasteProfileItems: List<TasteProfileItemChange> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = collectionEntries.isEmpty() && episodeProgress.isEmpty() && mediaLists.isEmpty() &&
-            listEntries.isEmpty() && triageDecisions.isEmpty() && triageSnoozes.isEmpty() && episodePlays.isEmpty()
+            listEntries.isEmpty() && triageDecisions.isEmpty() && triageSnoozes.isEmpty() && episodePlays.isEmpty() &&
+            tasteProfileItems.isEmpty()
 
     val size: Int
         get() = collectionEntries.size + episodeProgress.size + mediaLists.size + listEntries.size +
-            triageDecisions.size + triageSnoozes.size + episodePlays.size
+            triageDecisions.size + triageSnoozes.size + episodePlays.size + tasteProfileItems.size
 }
 
 /**
@@ -174,6 +176,27 @@ data class TriageSnoozeChange(
     val overview: String?,
     @SerialName("snoozed_at_epoch_ms") val snoozedAtEpochMs: Long,
     @SerialName("due_at_epoch_day") val dueAtEpochDay: Long,
+    @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
+    val deleted: Boolean,
+)
+
+/**
+ * Mirrors `tasteProfile` (`TasteProfile.sq`, EPIC 51, #402). One row per item the
+ * person likes, keyed by the derived [id] (`kind:value`) so an item recorded on
+ * two devices is one row. Liked genres, formats, services, languages and company
+ * are user intent, so they replicate; a disliked genre is a Muted Genre and is
+ * never sent here.
+ *
+ * [label] rides along so another device can name the item offline, the way
+ * [TriageSnoozeChange] carries its card. Soft deletes ride as [deleted] for the
+ * same reason as every other table: a hard delete has no timestamp to win on.
+ */
+@Serializable
+data class TasteProfileItemChange(
+    val id: String,
+    val kind: String,
+    val value: String,
+    val label: String,
     @SerialName("updated_at_epoch_ms") val updatedAtEpochMs: Long,
     val deleted: Boolean,
 )

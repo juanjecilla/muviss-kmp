@@ -541,6 +541,20 @@ class FakeSupabaseServer(
                     "deleted" to booleanDefault(false),
                 ),
             ),
+            // EPIC 51 (#402). `kind`, `value` and `label` are NOT NULL and always sent, so
+            // the fake needs no nullable column. One row per item, keyed by the derived `id`.
+            TableSchema(
+                "taste_profile",
+                listOf("id"),
+                linkedMapOf(
+                    "id" to text,
+                    "kind" to text,
+                    "value" to text,
+                    "label" to text,
+                    UPDATED_AT to integer,
+                    "deleted" to booleanDefault(false),
+                ),
+            ),
             TableSchema(
                 "episode_play",
                 listOf("id"),

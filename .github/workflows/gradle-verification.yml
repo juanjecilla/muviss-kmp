@@ -1,0 +1,234 @@
+name: Gradle verification metadata
+
+# A Dependabot Gradle bump changes which artifacts resolve, so
+# gradle/verification-metadata.xml has to gain their sha256 (#480). Left alone the
+# PR is red until a person regenerates the file. This does it, on the PR branch, so
+# the new checksums arrive as a reviewable diff in the PR rather than as a manual
+# step: nothing is "re-trusted" without someone reading the lines that were added.
+#
+# Dependabot PRs run with Dependabot's own secret store, not the repository's. The
+# owner copies RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY there once
+# (docs/RELEASING.md "Dependency verification"). The release App pushes, because a
+# push with GITHUB_TOKEN would not start CI on the new commit.
+#
+# Split by secrets, as dependabot-worker-locks.yml is (#497's review): the three legs
+# (gradle-verification-leg.yml) run the branch's build and hold no secrets; the push job
+# holds the App's token, scoped to contents: write, and runs no repository code. A
+# Gradle plugin that planted a git hook in a leg's checkout never meets the token.
+#
+# One OS after another (macOS, Linux, Windows): some artifacts are picked by the host
+# (aapt2, Skiko's runtime, the Kotlin/Native toolchain) and the iOS lanes only run on
+# macOS, so each OS adds its own checksums and keeps the others'. This repository is
+# public, so the minutes are free. `workflow_dispatch` does the same for a feature
+# branch (never develop, main, release/* or hotfix/*), which is how the file is first
+# filled in and how it is repaired by hand.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ develop ]
+    paths:
+      - 'gradle/libs.versions.toml'
+      - 'gradle/wrapper/**'
+      - '**/*.gradle.kts'
+
+permissions:
+  contents: read
+
+# Never cancelled: the bot's own commit starts another (skipped) run in this group, and
+# cancelling would kill the OS legs that have not run yet.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    # A dispatch regenerates a feature branch only: never a tag (the push would create a
+    # branch named after it), and never a protected branch, whose rulesets the push job's
+    # App can bypass, so a checksum commit there would skip review. A Dependabot PR only
+    # from this repository: a fork has no access to the App's secrets. Both the author and
+    # the actor must be Dependabot, as in dependabot-worker-locks.yml: the actor check is what
+    # stops the App's own checksum push (a synchronize on Dependabot's PR) from starting
+    # another three-host run, and only a Dependabot-triggered run can read Dependabot secrets.
+    # A maintainer who reopens such a PR re-runs it with a dispatch on its branch.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && github.ref_name != 'develop' && github.ref_name != 'main' && !startsWith(github.ref_name, 'release/') && !startsWith(github.ref_name, 'hotfix/')) || (github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/gradle/') && github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/gradle-verification-leg.yml
+    permissions:
+      contents: read
+    with:
+      os: macos-15
+      ref: ${{ github.head_ref || github.ref_name }}
+
+  linux:
+    needs: macos
+    uses: ./.github/workflows/gradle-verification-leg.yml
+    permissions:
+      contents: read
+    with:
+      os: ubuntu-24.04
+      ref: ${{ github.head_ref || github.ref_name }}
+      sha: ${{ needs.macos.outputs.sha }}
+      previous: macos-15
+
+  windows:
+    needs: [ macos, linux ]
+    uses: ./.github/workflows/gradle-verification-leg.yml
+    permissions:
+      contents: read
+    with:
+      os: windows-2025
+      ref: ${{ github.head_ref || github.ref_name }}
+      sha: ${{ needs.macos.outputs.sha }}
+      previous: ubuntu-24.04
+
+  push:
+    name: Commit the checksums to the branch
+    needs: [ macos, windows ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # Declared for the reader; the write is made with the App's token below.
+      contents: read
+    steps:
+      - name: Mint a release App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          # Only what the push needs, not every permission the installation holds.
+          permission-contents: write
+
+      - name: Download the metadata
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verification-metadata-windows-2025
+          # Outside the workspace, so nothing from the artifact lands beside the checkout.
+          path: ${{ runner.temp }}/metadata
+
+      # The commit the legs built, so a branch that moved meanwhile rejects the push below.
+      - name: Check out the commit the legs built
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.macos.outputs.sha }}
+          fetch-depth: 1
+          token: ${{ steps.app.outputs.token }}
+
+      # Exactly one regular file of sane size that is Gradle's metadata; anything else
+      # fails before a byte is copied into the checkout.
+      - name: Accept only gradle/verification-metadata.xml
+        env:
+          SRC: ${{ runner.temp }}/metadata
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          if [ -n "$(find . -mindepth 1 ! -type f ! -type d -print)" ]; then
+            echo "::error::the artifact holds a link or special file; refusing it"
+            exit 1
+          fi
+          got=$(find . -type f | sed 's|^\./||' | sort)
+          if [ "$got" != "verification-metadata.xml" ]; then
+            echo "::error::the artifact must hold exactly verification-metadata.xml; it holds:"
+            echo "$got"
+            exit 1
+          fi
+          size=$(wc -c < verification-metadata.xml)
+          if [ "$size" -gt 20971520 ]; then
+            echo "::error::verification-metadata.xml is ${size} bytes, over the 20 MiB ceiling"
+            exit 1
+          fi
+          if ! head -c 4096 verification-metadata.xml | grep -q '<verification-metadata'; then
+            echo "::error::the file is not Gradle's verification metadata"
+            exit 1
+          fi
+
+      # Branch-controlled Gradle code ran in the legs with --write-verification-metadata, so it
+      # could have written a well-formed file that trusts everything (a match-all rule, verification
+      # off). Only checksum additions under the checked-out policy are accepted: the root and
+      # <configuration> unchanged, every existing checksum kept as it was, and new entries shaped
+      # exactly as Gradle writes them (component > artifact > sha256, no also-trust, no keys).
+      # Python's standard library is a runner tool, not repository code.
+      - name: Accept only checksum additions under the current policy
+        env:
+          SRC: ${{ runner.temp }}/metadata
+        run: |
+          python3 - "$SRC/verification-metadata.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          old_path, new_path = "gradle/verification-metadata.xml", sys.argv[1]
+          NS = "{https://schema.gradle.org/dependency-verification}"
+
+
+          def fail(msg):
+              print(f"::error::{msg}")
+              sys.exit(1)
+
+
+          def load(path):
+              try:
+                  return ET.parse(path).getroot()
+              except ET.ParseError as e:
+                  fail(f"{path} is not well-formed XML: {e}")
+
+
+          old, new = load(old_path), load(new_path)
+          if old.tag != new.tag or old.attrib != new.attrib:
+              fail("the root element changed")
+          kids = [c.tag for c in new]
+          if kids != [NS + "configuration", NS + "components"]:
+              fail(f"top-level elements must be configuration then components, got {kids}")
+          canon = lambda e: ET.canonicalize(ET.tostring(e), strip_text=True)
+          if canon(old.find(NS + "configuration")) != canon(new.find(NS + "configuration")):
+              fail("<configuration> changed: the verification policy is not the bot's to edit")
+
+
+          def entries(root, strict):
+              out = {}
+              for comp in root.find(NS + "components"):
+                  if comp.tag != NS + "component" or set(comp.attrib) != {"group", "name", "version"}:
+                      if strict:
+                          fail(f"unexpected component entry {comp.tag} {dict(comp.attrib)}")
+                      continue
+                  for art in comp:
+                      if strict and (art.tag != NS + "artifact" or set(art.attrib) != {"name"}):
+                          fail(f"unexpected entry under {dict(comp.attrib)}: {art.tag} {dict(art.attrib)}")
+                      for sum_ in art:
+                          if strict and (sum_.tag != NS + "sha256" or not set(sum_.attrib) <= {"value", "origin"} or "value" not in sum_.attrib or len(sum_)):
+                              fail(f"unexpected checksum entry under {dict(comp.attrib)} {art.get('name')}: {sum_.tag} {dict(sum_.attrib)}")
+                          key = (comp.get("group"), comp.get("name"), comp.get("version"), art.get("name"), sum_.tag)
+                          out.setdefault(key, set()).add(sum_.get("value"))
+              return out
+
+
+          before, after = entries(old, strict=False), entries(new, strict=True)
+          for key, values in before.items():
+              if after.get(key) != values:
+                  fail(f"an existing checksum was removed or changed: {key}")
+          added = sum(len(v) for k, v in after.items() if k not in before)
+          print(f"ok: configuration unchanged, every existing checksum kept, {added} added")
+          PY
+
+      - name: Commit and push
+        env:
+          SRC: ${{ runner.temp }}/metadata
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cp "$SRC/verification-metadata.xml" gradle/verification-metadata.xml
+          if git diff --quiet -- gradle/verification-metadata.xml; then
+            echo "Checksums already cover this branch." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          USER_ID="$(gh api "/users/${SLUG}[bot]" --jq .id)"
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${USER_ID}+${SLUG}[bot]@users.noreply.github.com"
+          git add gradle/verification-metadata.xml
+          git -c core.hooksPath=/dev/null commit -m "chore(deps): checksums for macOS, Linux and Windows (gradle/verification-metadata.xml)"
+          # Not forced: if the branch moved since the legs checked it out, the push is
+          # rejected and the run is repeated on the new head.
+          git -c core.hooksPath=/dev/null push origin "HEAD:refs/heads/${BRANCH}"
+          git diff --stat HEAD~1 -- gradle/verification-metadata.xml >> "$GITHUB_STEP_SUMMARY"
