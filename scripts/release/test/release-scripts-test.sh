@@ -694,17 +694,6 @@ if command -v jq >/dev/null; then
   expect_eq "owner-setup creates the release-and-hotfix ruleset" \
     "$(grep -c 'ruleset_checks_only release-and-hotfix' "$SCRIPTS/owner-setup.sh")" "1"
 
-  # ruleset_checks_only: the release App is a bypass actor only when its ID is given (#985).
-  eval "$(sed -n '/^ruleset_checks_only()/,/^JSON$/p' "$SCRIPTS/owner-setup.sh")
-}"
-  bypass_types() { jq -r '[.bypass_actors[].actor_type] | join(",")' <<<"$1"; }
-  expect_eq "release-and-hotfix bypass without an App ID is the admin role only" \
-    "$(bypass_types "$(ruleset_checks_only r '["refs/heads/release/*"]' '[]')")" "RepositoryRole"
-  expect_eq "release-and-hotfix bypass with an App ID adds the App as an Integration actor" \
-    "$(bypass_types "$(ruleset_checks_only r '["refs/heads/release/*"]' '[]' 4242)")" "RepositoryRole,Integration"
-  expect_eq "the App bypass carries its ID and always mode" \
-    "$(jq -r '.bypass_actors[1] | "\(.actor_id) \(.bypass_mode)"' <<<"$(ruleset_checks_only r '["refs/heads/release/*"]' '[]' 4242)")" "4242 always"
-
   # do_rulesets on a rerun: only the rulesets whose names are missing are POSTed (#985).
   # gh is stubbed: GET prints the existing names, POST records "name:bypass types".
   # SC2034/SC2329: the gh/say/confirm stubs and REPO are read by the eval'd do_rulesets.
@@ -735,17 +724,14 @@ if command -v jq >/dev/null; then
   out="$(rulesets_posted "$(printf 'main\ndevelop\nrelease-tags')" 4242)"
   expect_eq "rerun with main, develop and release-tags present posts only release-and-hotfix" \
     "$(posted_names "$out")" "release-and-hotfix"
-  expect_eq "rerun posts release-and-hotfix with the App as a bypass actor" \
-    "$out" "release-and-hotfix:RepositoryRole+Integration"
+  expect_eq "rerun posts release-and-hotfix with the admin role as its only bypass actor" \
+    "$out" "release-and-hotfix:RepositoryRole"
   expect_eq "rerun with only main present posts the other three" \
     "$(posted_names "$(rulesets_posted "main" 4242)")" "develop,release-and-hotfix,release-tags"
   expect_eq "first run with no rulesets posts all four" \
     "$(posted_names "$(rulesets_posted "" 4242)")" "main,develop,release-and-hotfix,release-tags"
   expect_eq "rerun with all four present posts nothing" \
     "$(rulesets_posted "$(printf 'main\ndevelop\nrelease-and-hotfix\nrelease-tags')" 4242)" ""
-  out="$(rulesets_posted "$(printf 'main\ndevelop')" "")"
-  expect_eq "unset App ID creates release-and-hotfix without the App bypass and skips release-tags" \
-    "$out" "release-and-hotfix:RepositoryRole"
 fi
 
 echo

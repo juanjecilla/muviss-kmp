@@ -197,19 +197,12 @@ JSON
 }
 # Status checks only: release/* and hotfix/* are pushed by the release App and by
 # people, so no approval, deletion or non-fast-forward rule belongs here (#576, #985).
-ruleset_checks_only() { # name refs_json checks_json [app_id]
-  # The release App is a bypass actor when its ID is given: its notes push to these
-  # branches goes out before checks run on the new commit (release-rc.yml, #985).
-  local app_actor=""
-  [ -n "${4:-}" ] && app_actor=",
-    { \"actor_id\": $4, \"actor_type\": \"Integration\", \"bypass_mode\": \"always\" }"
+ruleset_checks_only() { # name refs_json checks_json
   cat <<JSON
 {
   "name": "$1", "target": "branch", "enforcement": "active",
   "conditions": { "ref_name": { "include": $2, "exclude": [] } },
-  "bypass_actors": [
-    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }$app_actor
-  ],
+  "bypass_actors": [ { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" } ],
   "rules": [
     { "type": "required_status_checks", "parameters": {
         "strict_required_status_checks_policy": false,
@@ -221,13 +214,7 @@ JSON
 do_rulesets() {
   local app_id
   app_id="$(gh variable get RELEASE_APP_ID --repo "$REPO" 2>/dev/null)"
-  # Without the App ID, release-and-hotfix is still created (without the App bypass)
-  # and release-tags is skipped, since it names the App. Run the wizard again after
-  # the release App step to add the tag ruleset.
-  if [ -z "$app_id" ]; then
-    say "warning: RELEASE_APP_ID is unset. release-and-hotfix is created without the release App"
-    say "         as a bypass actor, and release-tags is skipped. Set the release App first, then rerun."
-  fi
+  [ -n "$app_id" ] || { say "Do the release App step first (its ID goes on the tag ruleset)."; return 1; }
   say "main:    PR + 1 approval (CodeRabbit), merge commits only, CI + main guards"
   say "develop: PR + 1 approval, squash (features) or merge (back-merges), CI + landing guard"
   say "release/*, hotfix/*: CI checks only, no approval or deletion rule"
@@ -239,9 +226,7 @@ do_rulesets() {
   # others. A failed read is an error, never an empty list.
   local existing missing="" name
   existing="$(gh api "repos/$REPO/rulesets" --jq '.[].name')" || { say "could not read the existing rulesets"; return 1; }
-  # release-tags names the App, so without its ID it is left out (warned above).
   for name in main develop release-and-hotfix release-tags; do
-    [ "$name" = release-tags ] && [ -z "$app_id" ] && continue
     grep -qx "$name" <<<"$existing" || missing="$missing $name"
   done
   [ -n "$missing" ] || { say "all four rulesets already exist"; return 0; }
@@ -261,10 +246,10 @@ do_rulesets() {
       | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
   fi
   if ! grep -qx release-and-hotfix <<<"$existing"; then
-    ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' "[$c]" "$app_id" \
+    ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' "[$c]" \
       | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
   fi
-  if [ -n "$app_id" ] && ! grep -qx release-tags <<<"$existing"; then
+  if ! grep -qx release-tags <<<"$existing"; then
     cat <<JSON | gh api -X POST "repos/$REPO/rulesets" --input - >/dev/null || return 1
 {
   "name": "release-tags", "target": "tag", "enforcement": "active",
