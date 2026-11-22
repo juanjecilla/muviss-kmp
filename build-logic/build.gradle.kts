@@ -7,6 +7,7 @@ dependencies {
     implementation(libs.kotlin.gradlePlugin)
     implementation(libs.android.kmpLibrary.gradlePlugin)
     implementation(libs.compose.gradlePlugin)
+    implementation(libs.licensee.gradlePlugin)
     implementation(libs.kotlin.composeCompiler.gradlePlugin)
 
     // MuvissVersion's versionCode formula (ADR 0030) is pure Kotlin; these run

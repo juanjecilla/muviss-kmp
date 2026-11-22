@@ -32,7 +32,7 @@ fun LicensesScreen() {
 }
 
 @Composable
-private fun LicenseRow(license: OssLicense) {
+internal fun LicenseRow(license: OssLicense) {
     Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(license.name, style = MaterialTheme.typography.titleSmall)
         Text(
@@ -45,5 +45,13 @@ private fun LicenseRow(license: OssLicense) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // A second record (#615) is shown under the first, not hidden: an artifact can be dual-licensed.
+        license.secondLicenseName?.let { second ->
+            Text(
+                second,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
