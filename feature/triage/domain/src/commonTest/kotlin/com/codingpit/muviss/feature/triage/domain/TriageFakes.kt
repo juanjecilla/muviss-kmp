@@ -98,7 +98,13 @@ internal class FakeProgressApi : ProgressApi {
     val moviesWatched = mutableListOf<MediaId>()
     val cleared = mutableListOf<MediaId>()
 
-    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = MutableStateFlow(emptySet())
+    /** Episodes (and movie ticks) currently seen, across every title. Per-title reads filter by id prefix. */
+    val seen = MutableStateFlow<Set<EpisodeId>>(emptySet())
+
+    /** Every id handed to [undoBulkMark], in call order. */
+    val undone = mutableListOf<EpisodeId>()
+
+    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = seen.map { all -> all.filter { it.show == mediaId }.toSet() }
 
     // Watch-next (EPIC 22) — this fake's subject never asks for it.
     override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
@@ -108,6 +114,7 @@ internal class FakeProgressApi : ProgressApi {
 
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) {
         ticked += episodeId
+        this.seen.value = if (seen) this.seen.value + episodeId else this.seen.value - episodeId
     }
 
     override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
@@ -123,32 +130,44 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
     override suspend fun unmarkSeason(season: Season) = Unit
     override suspend fun unmarkShow(seasons: List<Season>) = Unit
-    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) = Unit
+    override suspend fun undoBulkMark(episodeIds: List<EpisodeId>) {
+        undone += episodeIds
+        seen.value = seen.value - episodeIds.toSet()
+    }
 
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = error("triage uses markAllAiredSeen — see EpisodeOrdering.airedBy")
 
-    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) {
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> {
         markedAllAired += seasons to todayEpochDay
+        val newlyTicked = EpisodeOrdering.airedBy(seasons, todayEpochDay).filterNot { it in seen.value }
+        seen.value = seen.value + newlyTicked
+        return newlyTicked
     }
 
     override suspend fun clearProgress(mediaId: MediaId) {
         cleared += mediaId
+        seen.value = seen.value.filterNot { it.show == mediaId }.toSet()
     }
 
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) {
         moviesWatched += mediaId
+        val tick = EpisodeId.forMovie(mediaId)
+        seen.value = if (watched) seen.value + tick else seen.value - tick
     }
 }
 
 internal class FakeTriageDetailsSource(
     private val byId: Map<MediaId, MediaDetails> = emptyMap(),
     private val failure: Throwable? = null,
+    /** Runs while a fetch is "on the network": what the person does in the meantime (#791, #792). */
+    private val whileFetching: suspend () -> Unit = {},
 ) : TriageDetailsSource {
     var fetchCalls = 0
         private set
 
     override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> {
         fetchCalls++
+        whileFetching()
         failure?.let { return Result.failure(it) }
         return byId[mediaId]?.let { Result.success(it) }
             ?: Result.failure(IllegalStateException("no details for $mediaId"))

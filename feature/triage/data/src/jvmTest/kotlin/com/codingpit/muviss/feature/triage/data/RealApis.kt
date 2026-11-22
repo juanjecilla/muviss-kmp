@@ -97,7 +97,7 @@ internal class RealProgressApi(private val repository: SqlDelightProgressReposit
 
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) = repository.setSeenBulk(EpisodeOrdering.upToInclusive(seasons, target), seen = true)
 
-    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = repository.setSeenBulk(EpisodeOrdering.airedBy(seasons, todayEpochDay), seen = true)
+    override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
 
     override suspend fun clearProgress(mediaId: MediaId) = repository.clearForMedia(mediaId)
 

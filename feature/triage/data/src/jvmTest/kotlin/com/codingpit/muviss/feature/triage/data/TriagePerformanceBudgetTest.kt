@@ -18,6 +18,7 @@ import com.codingpit.muviss.feature.triage.domain.DeckSource
 import com.codingpit.muviss.feature.triage.domain.LoadDeckUseCase
 import com.codingpit.muviss.feature.triage.domain.RecordDecisionUseCase
 import com.codingpit.muviss.feature.triage.domain.TriageSnoozeRepository
+import com.codingpit.muviss.feature.triage.domain.TriageUndoLedger
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -81,7 +82,7 @@ class TriagePerformanceBudgetTest {
     @Test
     fun `caught up on a 750-episode show costs exactly one details fetch`() = runTest {
         val details = CountingDetailsSource(mapOf(hugeShow.id to hugeShow))
-        val record = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, details, FakeClock(NOW_EPOCH_MS))
+        val record = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, details, FakeClock(NOW_EPOCH_MS), TriageUndoLedger())
 
         record(hugeShow.summary, TriageVerdict.CAUGHT_UP).getOrThrow()
 
@@ -99,6 +100,7 @@ class TriagePerformanceBudgetTest {
             progressApi,
             CountingDetailsSource(mapOf(hugeShow.id to hugeShow)),
             FakeClock(NOW_EPOCH_MS),
+            TriageUndoLedger(),
         )
         driver.reset()
 
@@ -117,6 +119,7 @@ class TriagePerformanceBudgetTest {
             progressApi,
             CountingDetailsSource(mapOf(hugeShow.id to hugeShow)),
             FakeClock(NOW_EPOCH_MS),
+            TriageUndoLedger(),
         )
 
         // Deliberately loose: this is a canary for an accidentally quadratic

@@ -10,6 +10,7 @@ import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.api.SnoozedTitle
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -37,6 +38,7 @@ class RecordDecisionUseCase(
     private val progressApi: ProgressApi,
     private val detailsSource: TriageDetailsSource,
     private val clock: AppClock,
+    private val ledger: TriageUndoLedger,
 ) {
     suspend operator fun invoke(summary: MediaSummary, verdict: TriageVerdict): Result<Unit> {
         require(verdict in TriageVerdict.availableFor(summary.type)) {
@@ -65,8 +67,14 @@ class RecordDecisionUseCase(
      */
     suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision)
 
-    private suspend fun apply(decision: TriageDecision): Result<Unit> = runCatching {
+    private suspend fun apply(decision: TriageDecision): Result<Unit> = ledger.exclusive(decision.mediaId) { write(decision) }
+
+    private suspend fun write(decision: TriageDecision): Result<Unit> = runCatching {
         val details = detailsSource.fetch(decision.mediaId).getOrThrow()
+        // Undo may have run while the fetch was in flight (#792). It waits for this block, so it
+        // normally lands after the write and reverses it; but an Undo that got in before the lock
+        // was taken has already restored the row, and writing now would leave the title behind.
+        if (repository.observeDecision(decision.mediaId).first() == null) return@runCatching
         // Decided against the library just before the add. A title the person
         // added from Detail while the deck was open is theirs, not this verdict's.
         val claimed = decision.createdEntry || !isInLibrary(decision.mediaId)
@@ -82,17 +90,33 @@ class RecordDecisionUseCase(
             // One tick, so the show derives Watching and surfaces on the
             // Progress screen with a genuine next episode. A show with nothing
             // aired yet is simply saved unticked.
-            TriageVerdict.WATCHING -> details.firstAiredEpisode(today)?.let { progressApi.setEpisodeSeen(it.id, seen = true) }
+            TriageVerdict.WATCHING -> details.firstAiredEpisode(today)?.let { tickOne(decision.mediaId, it.id) }
 
             TriageVerdict.CAUGHT_UP -> when (details.type) {
-                MediaType.MOVIE -> progressApi.setMovieWatched(decision.mediaId, watched = true)
+                MediaType.MOVIE -> {
+                    val tick = EpisodeId.forMovie(decision.mediaId)
+                    val wasSeen = tick in progressApi.observeSeenEpisodes(decision.mediaId).first()
+                    progressApi.setMovieWatched(decision.mediaId, watched = true)
+                    if (!wasSeen) ledger.recordTicks(decision.mediaId, listOf(tick))
+                }
 
                 // Exactly the aired episodes — see ProgressApi.markAllAiredSeen
-                // for why this is not markPreviousSeen.
-                MediaType.TV -> progressApi.markAllAiredSeen(details.seasons, today)
+                // for why this is not markPreviousSeen. It reports what it ticked,
+                // and that is what Undo will take back (#919).
+                MediaType.TV -> ledger.recordTicks(decision.mediaId, progressApi.markAllAiredSeen(details.seasons, today))
             }
         }
         repository.markResolved(decision.mediaId, resolved = true)
+    }
+
+    /**
+     * Ticks one episode and notes it for Undo only when it was not already seen: an episode the person
+     * had ticked is theirs, and `setEpisodeSeen(true)` on it is a no-op that nothing should reverse.
+     */
+    private suspend fun tickOne(mediaId: MediaId, episodeId: EpisodeId) {
+        val wasSeen = episodeId in progressApi.observeSeenEpisodes(mediaId).first()
+        progressApi.setEpisodeSeen(episodeId, seen = true)
+        if (!wasSeen) ledger.recordTicks(mediaId, listOf(episodeId))
     }
 }
 
@@ -107,24 +131,38 @@ class RecordDecisionUseCase(
  * Only what the verdict created is reversed. When the entry was already in the
  * library before the card was ruled on (the person added it from Detail while
  * the deck was open, #767), the entry and its ticks are the person's, so they
- * are left alone. A verdict's own ticks on such an entry are not reversed
- * either: nothing records which episodes it ticked (issue #790).
+ * are left alone. What the verdict itself ticked on such an entry is reversed,
+ * and only that: [TriageUndoLedger] holds the episodes the write reported
+ * ticking (#790, #919), and they are taken back with
+ * [ProgressApi.undoBulkMark], which drops the latest viewing rather than
+ * clearing the episode's history.
+ *
+ * It runs under the title's lock, so an Undo pressed while the verdict's write
+ * is still in flight waits for it and then reverses it (#792).
  */
 class UndoDecisionUseCase(
     private val repository: TriageDecisionRepository,
     private val collectionApi: CollectionApi,
     private val progressApi: ProgressApi,
+    private val ledger: TriageUndoLedger,
 ) {
-    suspend operator fun invoke(mediaId: MediaId, verdict: TriageVerdict) {
+    suspend operator fun invoke(mediaId: MediaId, verdict: TriageVerdict) = ledger.exclusive(mediaId) {
         // Read before the restore soft-deletes the row. A missing row claims
         // nothing, so nothing is removed.
         val createdEntry = repository.observeDecision(mediaId).first()?.createdEntry ?: false
-        if (verdict.savesToCollection && createdEntry) {
+        if (verdict.savesToCollection) {
             // Cleanup first: a failure or cancellation here leaves the decision
             // readable, so a retried undo still sees createdEntry and finishes.
-            progressApi.clearProgress(mediaId)
-            collectionApi.remove(mediaId)
+            if (createdEntry) {
+                progressApi.clearProgress(mediaId)
+                collectionApi.remove(mediaId)
+            } else {
+                // An entry that was already there keeps the person's own ticks; only the verdict's go.
+                val ticked = ledger.ticksOf(mediaId)
+                if (ticked.isNotEmpty()) progressApi.undoBulkMark(ticked)
+            }
         }
+        ledger.forget(mediaId)
         // Tombstoning the decision last: once it is soft-deleted, observeDecision
         // reads null and the claim can no longer be read.
         repository.restore(mediaId)
