@@ -124,6 +124,8 @@ otherwise.
   `0.1.0-dev.<count>+<short-sha>` (and `0.1.0-dev.<count>` if git itself
   isn't available, e.g. a source-only archive).
 
+**An in-place install of a develop debug build over a released build needs `-d`.** A debug build that is not on an exact tag keeps the commit count (411 on develop), and that sorts below every released code (1.3.0 is 1030000). So `adb install -r <apk>` fails with `INSTALL_FAILED_VERSION_DOWNGRADE`. Use `adb install -r -d <apk>`. `-d` only works for a debuggable build, and the base install must be a debug build signed with the same debug keystore: a Play or release-signed install fails on the signature whatever flags you pass. This is not a user-facing downgrade, because Play builds always carry their tag. The debug versionCode is deliberately unchanged (#932): `versionCode` is set once in `defaultConfig`, shared by debug and release. A debug-only code would need a per-variant override, and it would have to sort above the release's own code, so `installRelease` over a debug build would then fail the same way in reverse.
+
 Release candidates are tagged `vX.Y.Z-rcN` and carry the **final** versionName
 `X.Y.Z` — the pattern drops `-rcN` — because production promotes the RC binary
 itself (ADR 0025). Nothing is bumped by hand; how versions are chosen and tagged

@@ -23,11 +23,14 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
 . scripts/sync/lib.sh
+# Steps 2, 3 and 4 read the device's logcat and database.
+refuse_local diagnose-signin
 
 echo "=== 1. is the provider enabled? (expect 302 to the provider) ==="
 PROVIDER="${1:-github}"
+BASE=$(rest_url) || { echo "could not work out the API URL" >&2; exit 1; }
 curl -s -o /dev/null -D - \
-  "$(rest_url | sed 's|/rest/v1||')/auth/v1/authorize?provider=$PROVIDER&redirect_to=muviss%3A%2F%2Fauth-callback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=s256" \
+  "${BASE%/rest/v1}/auth/v1/authorize?provider=$PROVIDER&redirect_to=muviss%3A%2F%2Fauth-callback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=s256" \
   | grep -iE '^HTTP/|^location:' | sed -E 's/(client_id=)[^&]*/\1<redacted>/'
 
 echo
@@ -42,7 +45,7 @@ adb_ logcat -d 2>&1 | grep -E "START .*muviss://auth-callback" | tail -5 || echo
 echo
 echo "=== 4. is there a session now? ==="
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
-DB=$(pull_database "$WORK")
+DB=$(pull_database "$WORK") || exit 1
 sqlite3 "$DB" "SELECT CASE WHEN accessToken IS NULL THEN '  no session stored'
   ELSE '  signed in as '||COALESCE(email,'(no email)') END FROM syncAccount;"
 

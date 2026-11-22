@@ -3,7 +3,9 @@ package com.codingpit.muviss.core.database
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.sql.SQLException
 
@@ -42,34 +44,55 @@ actual class DatabaseDriverFactory(private val directory: File = appDataDirector
  * tests can point it at a throwaway directory instead of the real
  * [appDataDirectory].
  */
-internal fun createFileDriver(directory: File): SqlDriver = synchronized(createLock) {
+internal fun createFileDriver(
+    directory: File,
+    // `.synchronous()` bridges `MuvissDatabase.Schema` (now `SqlSchema<QueryResult.AsyncValue<Unit>>`, see
+    // `core/database`'s `build.gradle.kts` on `generateAsync`) back to the synchronous shape this factory has always
+    // used. The parameter exists so a test can run a schema that fails part-way; production never passes one.
+    schema: SqlSchema<QueryResult.Value<Unit>> = MuvissDatabase.Schema.synchronous(),
+): SqlDriver = synchronized(createLock) {
     val databaseFile = File(directory, DATABASE_FILE_NAME)
     databaseFile.parentFile?.mkdirs()
     val isNewDatabase = !databaseFile.exists()
 
     val driver = ImmediateTransactionSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}")
-    // `.synchronous()` bridges `MuvissDatabase.Schema` (now
-    // `SqlSchema<QueryResult.AsyncValue<Unit>>`, see `core/database`'s
-    // `build.gradle.kts` on `generateAsync`) back to the synchronous shape
-    // this factory has always used — see `DatabaseFactory.android.kt`'s KDoc.
-    val schema = MuvissDatabase.Schema.synchronous()
     val targetVersion = schema.version
     if (isNewDatabase) {
-        schema.create(driver)
-        driver.setUserVersion(targetVersion)
+        inTransaction(driver) {
+            schema.create(driver)
+            driver.setUserVersion(targetVersion)
+        }
     } else {
         val currentVersion = driver.userVersion()
         if (currentVersion < targetVersion) {
             try {
-                schema.migrate(driver, currentVersion, targetVersion)
+                inTransaction(driver) {
+                    schema.migrate(driver, currentVersion, targetVersion)
+                    driver.setUserVersion(targetVersion)
+                }
             } catch (e: SQLException) {
                 driver.close()
                 throw IllegalStateException(unmigratable(databaseFile.name, currentVersion, targetVersion, e), e)
             }
-            driver.setUserVersion(targetVersion)
         }
     }
     driver
+}
+
+/**
+ * Runs [block] as one transaction, so a stop anywhere inside it leaves the file as it was.
+ *
+ * A plain driver runs each statement of a migration in its own auto-committed step, and `30.sqm` rebuilds
+ * `appSettings` in four of them (create, copy, drop, rename). A stop between them left `appSettings_rebuilt` behind,
+ * so the next launch failed with "already exists", or left `appSettings` dropped (#1026's review). Inside this
+ * transaction the create, copy, drop, rename and the `user_version` stamp commit or roll back together, and a stopped
+ * open is simply run again from the old version. `ImmediateTransactionSqliteDriver` starts it with `BEGIN IMMEDIATE`.
+ */
+private fun inTransaction(driver: SqlDriver, block: () -> Unit) {
+    // The generated database is the public way into a transaction, and its `transaction` is `suspend` because the
+    // schema is generated async. A JDBC driver never suspends, and `runBlocking` keeps the block on this thread, which
+    // is the thread whose connection the transaction holds. An exception from [block] rolls back and is rethrown.
+    runBlocking { MuvissDatabase(driver).transaction { block() } }
 }
 
 /**
