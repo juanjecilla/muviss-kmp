@@ -8,6 +8,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -70,7 +71,8 @@ class NextPickSettingsMigrationTest {
 
         assertTrue(row.completionPromptEnabled)
         assertEquals("STANDARD", row.nextPickSessionLength)
-        assertEquals("ONE_PICK", row.nextPickResultMode)
+        // NULL is "never chose" since 30.sqm (#853); the served default is resolved at read time, not stored.
+        assertNull(row.nextPickResultMode)
     }
 
     @Test
