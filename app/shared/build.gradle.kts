@@ -151,6 +151,11 @@ kotlin {
             implementation(libs.sqldelight.sqliteDriver)
             // AppGraphTest resolves the Next Pick preferences contract (EPIC 51, #403); the shell has no other use for it.
             implementation(projects.feature.nextpick.api)
+            // NextPickResultModeWritersTest (#927) calls each appSettings writer through the contract it is bound as.
+            implementation(projects.feature.triage.domain)
+            implementation(projects.feature.search.domain)
+            implementation(projects.feature.onboarding.domain)
+            implementation(projects.feature.cowatch.api)
             // The automatic-sync suites (EPIC 40) run the real Koin graph, the
             // real SyncEngine and the real Supabase backend over
             // `FakeSupabaseServer`'s MockEngine, and drive the real Profile screen.

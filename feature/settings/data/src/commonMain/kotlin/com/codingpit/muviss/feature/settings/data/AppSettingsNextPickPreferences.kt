@@ -20,21 +20,22 @@ import com.codingpit.muviss.core.database.AppSettings as AppSettingsRow
  *
  * Same `ensureRow` discipline as the flags: the row is created before every read and write. A read that loses that race
  * falls back to the defaults the column declares, so it never shows a value the person did not choose.
+ *
+ * The result mode has one resolver, [resultMode]: the stored choice when there is one, else the served Remote Config
+ * default (`nextPickDefaultResultMode`, #556), else [ResultMode.DEFAULT]. A row's `NULL` means "never chose" (#853), so
+ * every writer of the row can create it, in any order, and the served default still reaches it on the first read.
  */
 class AppSettingsNextPickPreferences(
     private val queries: AppSettingsQueries,
     private val dispatchers: AppDispatchers,
-    remoteConfig: RemoteConfig,
+    private val remoteConfig: RemoteConfig,
 ) : NextPickPreferences {
-
-    // A fresh row starts on the Remote Config default for the result mode (#556); an existing row keeps its choice.
-    private val rowSeeder = AppSettingsRowSeeder(queries, remoteConfig, dispatchers)
 
     override val sessionLength: Flow<SessionLength> = settings()
         .map { row -> SessionLength.fromStored(row?.nextPickSessionLength) }
 
     override val resultMode: Flow<ResultMode> = settings()
-        .map { row -> ResultMode.fromStored(row?.nextPickResultMode) }
+        .map { row -> resolveResultMode(row?.nextPickResultMode) }
 
     override suspend fun setSessionLength(length: SessionLength) = withContext(dispatchers.io) {
         ensureRow()
@@ -53,5 +54,18 @@ class AppSettingsNextPickPreferences(
         .mapToOneOrNull(dispatchers.io)
         .onStart { ensureRow() }
 
-    private suspend fun ensureRow() = rowSeeder.ensureRow()
+    private suspend fun ensureRow() = withContext(dispatchers.io) { queries.ensureRow() }
+
+    /**
+     * The one resolver for the result mode. The served value is read from the stored copy ([RemoteConfig.awaitStored]),
+     * never the network, and only when nothing was chosen, so a stored choice costs no read. Unknown served text reads
+     * as the enum default, the same tolerance [ResultMode.fromStored] gives storage.
+     *
+     * Deck is offered (#554 landed), so a served Deck resolves to Deck like any other mode.
+     */
+    private suspend fun resolveResultMode(stored: String?): ResultMode {
+        if (stored != null) return ResultMode.fromStored(stored)
+        val served = remoteConfig.awaitStored().nextPickDefaultResultMode
+        return ResultMode.fromStored(served.trim().uppercase())
+    }
 }
