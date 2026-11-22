@@ -9,7 +9,7 @@
 -- Everything runs inside one transaction that is rolled back.
 begin;
 
-select plan(25);
+select plan(37);
 
 -- ------------------------------------------------------------- structure ---
 
@@ -183,6 +183,108 @@ select throws_ok(
     values ('00000000-0000-0000-0000-0000000000a1', 'tmdb:movie:6', 'MOVIE', 'anon', 1, 1, 1000)$$,
   '42501', null,
   'anon cannot write a snooze'
+);
+reset role;
+
+-- ------------------------------------------------------ taste profile (#586) ---
+
+-- taste_profile (20261027000000_taste_profile.sql) is a single-owner table with
+-- the flat `auth.uid() = user_id` policy, unlike the cowatch tables above. The
+-- checks are the same claims, plus the LWW trigger, which the client relies on
+-- to keep a stale device from re-adding an item the other device removed.
+select ok(
+  (select relrowsecurity from pg_class where oid = 'public.taste_profile'::regclass),
+  'taste_profile has row level security enabled'
+);
+select ok(
+  exists (select 1 from pg_policies
+           where schemaname = 'public' and tablename = 'taste_profile' and policyname = 'own rows only'),
+  'and its own-rows policy'
+);
+select has_trigger('public', 'taste_profile', 'taste_profile_lww', 'taste_profile has the LWW / server_seq trigger');
+
+-- A owns one item. B owns two, one of them with the same id A used: the primary
+-- key is (user_id, id), so that must not collide across accounts. user_id is
+-- not sent; its default is auth.uid().
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+insert into public.taste_profile (id, kind, value, label, updated_at_epoch_ms)
+values ('genre:18', 'genre', '18', 'Drama', 1000);
+reset role;
+
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000b1');
+set local role authenticated;
+insert into public.taste_profile (id, kind, value, label, updated_at_epoch_ms)
+values ('genre:18', 'genre', '18', 'Drama', 1000),
+       ('genre:27', 'genre', '27', 'Horror', 1000);
+select is((select count(*)::int from public.taste_profile), 2, 'B reads its own two taste items, not A''s');
+reset role;
+
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+select is((select count(*)::int from public.taste_profile), 1, 'A reads its own taste item and not B''s');
+reset role;
+
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000c1');
+set local role authenticated;
+select is((select count(*)::int from public.taste_profile), 0, 'C, linked to nobody, reads no taste items');
+reset role;
+
+-- B edits and removes A's item. Both are refused the way the cowatch rows are:
+-- zero rows touched, no error. Read back as the owner afterwards.
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000b1');
+set local role authenticated;
+update public.taste_profile set label = 'edited by B', updated_at_epoch_ms = 2000
+ where user_id = '00000000-0000-0000-0000-0000000000a1';
+delete from public.taste_profile where user_id = '00000000-0000-0000-0000-0000000000a1';
+reset role;
+
+select is(
+  (select label from public.taste_profile where user_id = '00000000-0000-0000-0000-0000000000a1'),
+  'Drama',
+  'B cannot edit A''s taste item'
+);
+select is(
+  (select count(*)::int from public.taste_profile where user_id = '00000000-0000-0000-0000-0000000000a1'),
+  1,
+  'B cannot delete A''s taste item'
+);
+
+-- A stale write from A's own device is discarded by taste_profile_lww: the
+-- stored row (stamped 1000) keeps its label, and the response is still 2xx.
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000a1');
+set local role authenticated;
+update public.taste_profile set label = 'stale', updated_at_epoch_ms = 500
+ where id = 'genre:18';
+reset role;
+
+select is(
+  (select label from public.taste_profile where user_id = '00000000-0000-0000-0000-0000000000a1'),
+  'Drama',
+  'a strictly older write to the owner''s own taste item is discarded by the LWW trigger'
+);
+
+-- C cannot write an item posing as A.
+select pg_temp.act_as('00000000-0000-0000-0000-0000000000c1');
+set local role authenticated;
+select throws_ok(
+  $$insert into public.taste_profile (user_id, id, kind, value, label, updated_at_epoch_ms)
+    values ('00000000-0000-0000-0000-0000000000a1', 'genre:99', 'genre', '99', 'forged', 1000)$$,
+  '42501', null,
+  'C cannot write a taste item posing as A'
+);
+reset role;
+
+-- The anon key with no session reads and writes nothing in taste_profile.
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{"role":"anon"}', true);
+set local role anon;
+select is((select count(*)::int from public.taste_profile), 0, 'anon reads no taste items');
+select throws_ok(
+  $$insert into public.taste_profile (user_id, id, kind, value, label, updated_at_epoch_ms)
+    values ('00000000-0000-0000-0000-0000000000a1', 'genre:98', 'genre', '98', 'anon', 1000)$$,
+  '42501', null,
+  'anon cannot write a taste item'
 );
 reset role;
 

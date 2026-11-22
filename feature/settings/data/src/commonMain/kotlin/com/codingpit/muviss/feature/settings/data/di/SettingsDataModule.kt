@@ -90,12 +90,11 @@ val settingsDataModule: Module = module {
             get(),
             get(),
             get(),
-            get(),
         )
     }
     single { DeviceBackupWrites() }
     // The store-review counters (#410): per device, the same appSettings row as the switches above.
-    single<ReviewLedger> { SqlDelightReviewLedger(get(), get(), get()) }
+    single<ReviewLedger> { SqlDelightReviewLedger(get(), get()) }
     single { MutedGenresSession() }
     single<GenreCatalog> { TmdbGenreCatalog(get(), get()) }
     factory { LoadGenresUseCase(get()) }
