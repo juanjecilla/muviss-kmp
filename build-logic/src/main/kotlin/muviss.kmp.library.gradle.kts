@@ -117,7 +117,7 @@ kotlin.targets.configureEach {
 // MUVISS_POSTER_DIR, the OS keychain behind MUVISS_KSAFE_LIVE, the goldens
 // MUVISS_RECORD_GOLDENS writes), so an unchanged value proves nothing about it.
 // Add a new env-gated test's variable here.
-val envGatedTestVariables = listOf("MUVISS_POSTER_DIR", "MUVISS_KSAFE_LIVE", "MUVISS_RECORD_GOLDENS")
+val envGatedTestVariables = listOf("MUVISS_POSTER_DIR", "MUVISS_KSAFE_LIVE", "MUVISS_RECORD_GOLDENS", "MUVISS_SUPABASE_LIVE")
 tasks.withType<Test>().configureEach {
     val values = envGatedTestVariables.map { name -> name to providers.environmentVariable(name).orElse("") }
     values.forEach { (name, value) -> inputs.property("env.$name", value) }
