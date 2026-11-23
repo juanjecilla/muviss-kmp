@@ -39,7 +39,6 @@ class DisplayPreferencesStampTest {
         dispatchers,
         clock,
         AppVersion("test", 1L),
-        DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
     )
     private val flags = AppSettingsFeatureFlags(
         database.appSettingsQueries,

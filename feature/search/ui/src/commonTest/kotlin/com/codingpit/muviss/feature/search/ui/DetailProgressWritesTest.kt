@@ -102,6 +102,19 @@ class DetailProgressWritesTest {
     }
 
     @Test
+    fun mark_movie_watched_on_a_show_adds_nothing_and_ticks_nothing() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.markMovieWatched()
+
+        assertTrue(collection.added.isEmpty())
+        assertTrue(progress.seenIds.isEmpty())
+        assertNull(vm.state.value.pendingUndo)
+    }
+
+    @Test
     fun a_later_progress_write_releases_the_entry_so_undo_leaves_it_alone() = runTest {
         val collection = FakeCollectionApi()
         val progress = FakeProgressApi()

@@ -11,12 +11,18 @@ import kotlin.concurrent.Volatile
  * `versionCode`), or Sentry has no way to know which mapping deobfuscates which
  * trace — see `docs/RELEASING.md`. A blank [dsn] means "not configured": the
  * default for every local and CI build, which then never touches Sentry at all.
+ *
+ * [isRoutine] names the Routine Failures: handled failures the screen already explains and that say nothing about a
+ * defect (no connection, the source down), which [CrashReporter.recordException] drops instead of reporting. It only
+ * reaches handled reports; a crash the SDK catches itself is never filtered. `:core:common` cannot see the failure
+ * types (`MetadataError` lives in `:models`), so the app supplies the rule; the default reports everything.
  */
 data class CrashReportingConfig(
     val dsn: String,
     val environment: String,
     val release: String,
     val dist: String,
+    val isRoutine: (Throwable) -> Boolean = { false },
 )
 
 /**
@@ -59,7 +65,14 @@ object CrashReporter {
      */
     val isAvailable: Boolean get() = core.isAvailable
 
+    /** A failure the caller handled and chose to report: Routine Failures are dropped here ([CrashReportingConfig.isRoutine]). */
     fun recordException(throwable: Throwable) = core.recordException(throwable)
+
+    /**
+     * A failure nothing caught, from a coroutine that has no one to show it to: it is reported whatever [recordException]
+     * would drop, because the app never got to explain it. The consent gate still applies.
+     */
+    fun recordUncaught(throwable: Throwable) = core.recordUncaught(throwable)
 }
 
 /**
@@ -72,12 +85,16 @@ internal class CrashReporterCore(private val backend: CrashBackend) {
     @Volatile
     private var started = false
 
+    @Volatile
+    private var isRoutine: (Throwable) -> Boolean = { false }
+
     fun init(config: CrashReportingConfig, enabled: Boolean) {
         if (started || config.dsn.isBlank()) return
         gate.enabled = enabled
         // Marked before the SDK is asked, so a backend that itself calls back
         // in (or a second host thread) cannot start it twice.
         started = true
+        isRoutine = config.isRoutine
         runCatching { backend.start(config, gate) }
     }
 
@@ -88,6 +105,11 @@ internal class CrashReporterCore(private val backend: CrashBackend) {
     }
 
     fun recordException(throwable: Throwable) {
+        if (runCatching { isRoutine(throwable) }.getOrDefault(false)) return
+        recordUncaught(throwable)
+    }
+
+    fun recordUncaught(throwable: Throwable) {
         if (!started || !gate.enabled) return
         runCatching { backend.capture(throwable) }
     }
