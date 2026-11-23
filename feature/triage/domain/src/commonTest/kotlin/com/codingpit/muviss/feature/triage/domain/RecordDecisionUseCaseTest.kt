@@ -295,8 +295,12 @@ class RecordDecisionUseCaseTest {
         h.repository.record(
             TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
         )
+        // The entry the first attempt added is already in the library when the retry runs. A retry that recomputed
+        // ownership from the library would now read "already there", drop the claim, and undo would keep the entry.
+        h.collection.add(endedDetails)
 
         h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+        assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "the retry must keep the stored claim")
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)

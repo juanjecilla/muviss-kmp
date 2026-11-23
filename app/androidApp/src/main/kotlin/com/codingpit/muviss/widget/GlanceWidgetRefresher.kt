@@ -25,7 +25,10 @@ class GlanceWidgetRefresher(private val context: Context) : WidgetRefresher {
         runCatching {
             val widget = MuvissWidget()
             GlanceAppWidgetManager(context).getGlanceIds(MuvissWidget::class.java).forEach { id ->
-                updateAppWidgetState(context, id) { it.remove(JustTickedKey) }
+                updateAppWidgetState(context, id) {
+                    it.remove(JustTickedKey)
+                    it.remove(JustTickedTitleKey)
+                }
                 widget.update(context, id)
             }
         }

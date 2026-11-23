@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * The Next Pick settings (EPIC 51, #403) against real SQLite. The defaults are asserted on the raw row, not on
@@ -50,7 +51,8 @@ class NextPickPreferencesTest {
 
         assertEquals(true, row.completionPromptEnabled)
         assertEquals(SessionLength.DEFAULT.name, row.nextPickSessionLength)
-        assertEquals(ResultMode.DEFAULT.name, row.nextPickResultMode)
+        // NULL is "never chose" (#853): the served default and ONE_PICK are resolved on read, never stored.
+        assertNull(row.nextPickResultMode)
     }
 
     @Test

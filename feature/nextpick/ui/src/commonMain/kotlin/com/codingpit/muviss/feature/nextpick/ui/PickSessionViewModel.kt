@@ -220,7 +220,7 @@ class PickSessionViewModel(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) { // Any failure ends the session visibly; rethrown so the crash reporter still gets it.
+        } catch (@Suppress("TooGenericExceptionCaught") failure: Exception) { // Any failure ends the session visibly; rethrown so the crash reporter sees it (it drops a Routine Failure, MUVISS-B).
             _state.value = PickSessionUiState.Failed
             throw failure
         }
