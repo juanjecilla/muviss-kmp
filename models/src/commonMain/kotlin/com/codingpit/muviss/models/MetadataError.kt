@@ -46,9 +46,36 @@ sealed class MetadataError(message: String, val userMessage: String) : Exception
     /** No usable connection: no route, DNS failure, connection reset or a timeout. */
     class Offline : MetadataError("No connection to the metadata source", "You appear to be offline. Check your connection and try again.")
 
-    /** Anything else: a 5xx that survived retries, an unreadable or empty body. */
-    class Unknown : MetadataError("Metadata request failed", "Something went wrong. Please try again.")
+    /**
+     * Anything else: a 5xx that survived retries, a 4xx we caused, an unreadable or empty body.
+     *
+     * [status] is the HTTP status when the source answered with one, and null when it never did (a body that would
+     * not decode, a cache that lost its entry). It is the only detail kept: a bare integer cannot carry the URL or
+     * the key, and without it a report cannot tell a request we built wrong from an outage at the source (MUVISS-B).
+     */
+    class Unknown(val status: Int? = null) :
+        MetadataError(
+            if (status == null) "Metadata request failed" else "Metadata request failed (HTTP $status)",
+            "Something went wrong. Please try again.",
+        )
 }
+
+/**
+ * Whether this is a Routine Failure: one the screen already explains, that says nothing about a defect in Muviss,
+ * and so is never sent as a crash report. No connection, the source throttling us or down (a 5xx that outlived the
+ * retries), and the person's own key rejected are routine.
+ *
+ * Everything else is reported, on purpose: [MetadataError.Unauthorized] is our credential, [MetadataError.NotFound]
+ * on a list or discover call is a request we built wrong, an [MetadataError.Unknown] 4xx is one too, and an
+ * [MetadataError.Unknown] with no status is a body we could not read.
+ */
+fun Throwable.isRoutineFailure(): Boolean = when (this) {
+    is MetadataError.Offline, is MetadataError.RateLimited, is MetadataError.OwnKeyRejected -> true
+    is MetadataError.Unknown -> status != null && status in SERVER_ERRORS
+    else -> false
+}
+
+private val SERVER_ERRORS = 500..599
 
 /**
  * The text a screen may show for this failure. A [MetadataError] maps to its

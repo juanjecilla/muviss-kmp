@@ -13,8 +13,9 @@ import kotlin.coroutines.CoroutineContext
 /**
  * The one [CoroutineExceptionHandler] every `viewModelScope` uses.
  *
- * It reports the failure through [CrashReporter.recordException] and does not
- * rethrow. Without it an exception escaping a `launch` in a view model goes to
+ * It reports the failure through [CrashReporter.recordUncaught] and does not
+ * rethrow. That path has no Routine Failure filter: nothing caught the failure,
+ * so the app never explained it to the person, and dropping it would hide it. Without it an exception escaping a `launch` in a view model goes to
  * the platform's uncaught-exception handler and takes the app down on the way
  * to Sentry — or, where the failure was already handled somewhere, is lost. With
  * it, one failed action costs one report and the screen keeps working, which is
@@ -22,7 +23,7 @@ import kotlin.coroutines.CoroutineContext
  *
  * [CancellationException] is not a failure and is never reported.
  */
-val CrashReportingExceptionHandler: CoroutineExceptionHandler = reportingExceptionHandler(CrashReporter::recordException)
+val CrashReportingExceptionHandler: CoroutineExceptionHandler = reportingExceptionHandler(CrashReporter::recordUncaught)
 
 /** [CrashReportingExceptionHandler] with the reporter injected, so a test can see what it is handed. */
 internal fun reportingExceptionHandler(report: (Throwable) -> Unit): CoroutineExceptionHandler = CoroutineExceptionHandler { _: CoroutineContext, throwable: Throwable ->
@@ -61,6 +62,12 @@ fun <T> Result<T>.reportFailure(): Result<T> {
  * unfiltered stream of "the user was offline" — the failure this exists to
  * avoid — without also going silent on everything a `runCatching` was only
  * ever meant to turn into UI copy.
+ *
+ * It is the second of two layers. The first is app-wide and applies to every
+ * handled report, this one included: [CrashReportingConfig.isRoutine] drops a
+ * Routine Failure (no connection, the source down) wherever it is handled and
+ * reported from. Uncaught failures are never filtered. [isExpected] is for what
+ * is routine at one call site only.
  *
  * Rethrows cancellation exactly like [reportFailure]; a `CancellationException`
  * is never "expected" or "unexpected", it is not a failure at all.
