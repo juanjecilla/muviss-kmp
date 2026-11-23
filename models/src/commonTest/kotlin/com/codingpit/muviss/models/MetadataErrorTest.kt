@@ -3,6 +3,7 @@ package com.codingpit.muviss.models
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class MetadataErrorTest {
 
@@ -33,5 +34,29 @@ class MetadataErrorTest {
         ).map { it.userMessage }
 
         assertEquals(copy.size, copy.toSet().size)
+    }
+
+    @Test
+    fun an_unknown_with_a_status_names_it_in_the_message_but_not_in_the_copy() {
+        assertEquals("Metadata request failed (HTTP 422)", MetadataError.Unknown(422).message)
+        assertEquals("Metadata request failed", MetadataError.Unknown().message)
+        assertEquals(MetadataError.Unknown().userMessage, MetadataError.Unknown(422).userMessage)
+    }
+
+    @Test
+    fun routine_failures_are_the_ones_that_say_nothing_about_a_defect() {
+        assertTrue(MetadataError.Offline().isRoutineFailure())
+        assertTrue(MetadataError.RateLimited(5).isRoutineFailure())
+        assertTrue(MetadataError.OwnKeyRejected().isRoutineFailure())
+        assertTrue(MetadataError.Unknown(503).isRoutineFailure())
+    }
+
+    @Test
+    fun a_request_we_built_wrong_or_could_not_read_is_still_reported() {
+        assertFalse(MetadataError.Unknown(422).isRoutineFailure())
+        assertFalse(MetadataError.Unknown().isRoutineFailure())
+        assertFalse(MetadataError.Unauthorized().isRoutineFailure())
+        assertFalse(MetadataError.NotFound().isRoutineFailure())
+        assertFalse(IllegalStateException("bug").isRoutineFailure())
     }
 }
