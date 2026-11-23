@@ -290,8 +290,17 @@ internal class FakeProgressApi : ProgressApi {
         episodeIds.forEach { removeLatestPlay(it) }
     }
 
+    /**
+     * Runs once, at the start of the next [markPreviousSeen] call, as a progress write from another view model does
+     * between the caller's seen read and this write (#945). Lets a test tick what the caller still thought unseen.
+     */
+    var beforeNextMarkPreviousSeen: (suspend () -> Unit)? = null
+
     override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId): List<EpisodeId> {
         markedPrevious += target
+        val race = beforeNextMarkPreviousSeen
+        beforeNextMarkPreviousSeen = null
+        race?.invoke()
         return EpisodeOrdering.upToInclusive(seasons, target).filter { it !in seenIds }.onEach { addPlay(it) }
     }
 
