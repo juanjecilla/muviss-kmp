@@ -120,7 +120,10 @@ class PickSessionTest {
 
     @Test
     fun my_list_is_not_asked_the_era_question_offline() {
-        val asked = questionsAskedThroughMyList(PickContext(length = SessionLength.STANDARD, online = false, servicesKnown = true))
+        // Offline SOURCE is never offered, so MY_LIST can't be answered: record the skip-all questions instead,
+        // otherwise this assertion passes vacuously when nothing is recorded.
+        val asked = questionsAskedWhenSkippingAll(PickContext(length = SessionLength.STANDARD, online = false, servicesKnown = true))
+        assertTrue(PickQuestion.FORMAT_AND_TIME in asked)
         assertFalse(PickQuestion.ERA_AND_SERVICES in asked)
     }
 
