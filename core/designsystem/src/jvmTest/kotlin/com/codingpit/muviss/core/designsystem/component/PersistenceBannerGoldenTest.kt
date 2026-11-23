@@ -4,7 +4,9 @@ package com.codingpit.muviss.core.designsystem.component
 
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
@@ -14,6 +16,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.testing.GOLDEN_SURFACE_TAG
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.core.testing.assertMatchesGolden
 import kotlin.test.Test
@@ -57,12 +60,22 @@ class PersistenceBannerGoldenTest {
 
     /**
      * The out-of-date warning with its reload action (#62). The action is the only
-     * thing that changes the banner's shape, so it gets its own recording.
+     * thing that changes the banner's shape, so it gets its own recording. The
+     * action wraps onto a second line here, so the frame is 100 dp rather than the
+     * single-line default. Measured: at 96 dp `FlowRow` does not place the action
+     * at all, and it first places at 100 dp. A short frame would record a warning
+     * with no button, which is what the placement checks below catch.
      */
     @Test
     fun the_stale_tab_warning_offers_a_reload() = runComposeUiTest {
-        setContent { BannerSample(message = staleTab, actionLabel = reload, darkTheme = true) }
+        setContent {
+            BannerSample(message = staleTab, darkTheme = true, height = 100.dp, actionLabel = reload)
+        }
 
+        val message = onNodeWithText(staleTab).getBoundsInRoot()
+        val action = onNodeWithText(reload).getBoundsInRoot()
+        assertTrue(action.top >= message.bottom, "the action should wrap below the warning, not beside it")
+        assertActionInsideFrame(reload)
         assertMatchesGolden("persistence-banner-stale-reload", tolerance = BANNER_TOLERANCE)
     }
 
@@ -79,6 +92,7 @@ class PersistenceBannerGoldenTest {
         val message = onNodeWithText(readOnlyTab).getBoundsInRoot()
         val action = onNodeWithText(longReload).getBoundsInRoot()
         assertTrue(action.top >= message.bottom, "the action should wrap below the warning, not beside it")
+        assertActionInsideFrame(longReload)
         assertMatchesGolden("persistence-banner-long-action", tolerance = BANNER_TOLERANCE)
     }
 
@@ -90,6 +104,7 @@ class PersistenceBannerGoldenTest {
         val message = onNodeWithText(shortWarning).getBoundsInRoot()
         val action = onNodeWithText(shortReload).getBoundsInRoot()
         assertTrue(action.top < message.bottom, "a short action stays on the warning's line")
+        assertActionInsideFrame(shortReload)
         assertMatchesGolden("persistence-banner-short-action-light", tolerance = BANNER_TOLERANCE)
     }
 
@@ -113,6 +128,19 @@ class PersistenceBannerGoldenTest {
         onAllNodes(hasText(readOnlyTab, substring = true)).assertCountEquals(0)
         assertMatchesGolden("persistence-banner-absent-light")
     }
+}
+
+/**
+ * The golden crops to its frame, and a line that does not fit the frame's height
+ * is not placed at all. Either way the action would be missing from the recording
+ * while the test still passed, so this asserts it is displayed and inside the frame.
+ */
+private fun ComposeUiTest.assertActionInsideFrame(label: String) {
+    val frame = onNodeWithTag(GOLDEN_SURFACE_TAG).getBoundsInRoot()
+    onNodeWithText(label).assertIsDisplayed()
+    val action = onNodeWithText(label).getBoundsInRoot()
+    assertTrue(action.bottom <= frame.bottom, "the action must not be cropped by the golden frame")
+    assertTrue(action.right <= frame.right, "the action must not be cropped by the golden frame")
 }
 
 @Composable
