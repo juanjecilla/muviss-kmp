@@ -41,8 +41,20 @@ classify_failures() { # <log> -> prints "test <task>" or "build <task>" per fail
     done
 }
 
+# A named test failure explains a nonzero exit only when Gradle's "What went wrong" causes are all
+# failed test tasks (exit 0 then). A lost daemon, a configuration error or any other cause is not
+# explained by a test failure next to it, so it must still fail the leg (#880 review).
+explained_by_tests() { # <log> -> exit 0 when there is at least one such cause and no other
+  awk '
+    /What went wrong:/ { want = 1; next }
+    want && NF { want = 0
+      if ($0 ~ /^Execution failed for task .:[^ ]*[Tt]est.\.$/) tests++; else other++ }
+    END { exit !(tests > 0 && other == 0) }' "$1"
+}
+
 log="${UPDATE_VERIFICATION_CLASSIFY_ONLY:-$(mktemp)}"
-status=0
+# Classify-only runs (the release-scripts tests) take the exit status from here instead of Gradle.
+status="${UPDATE_VERIFICATION_CLASSIFY_STATUS:-0}"
 if [ -z "${UPDATE_VERIFICATION_CLASSIFY_ONLY:-}" ]; then
   set +e
   ./gradlew \
@@ -74,9 +86,13 @@ if [ -n "$build_failed" ]; then
   echo "::error::build tasks failed on this host: $build_failed"
   [ -z "${UPDATE_VERIFICATION_CLASSIFY_ONLY:-}" ] || exit 1
   failed_build=1
-elif [ "$status" -ne 0 ] && [ -z "$test_failed" ]; then
-  echo "::error::gradle exited $status and no failed task was named in its output (a configuration or validation error); see the log"
-  failed_build=1
+elif [ "$status" -ne 0 ]; then
+  if [ -n "$test_failed" ] && explained_by_tests "$log"; then
+    : # the test failures above are the whole cause; the warning already names them
+  else
+    echo "::error::gradle exited $status and no failed task explains it (a configuration, validation or infrastructure error, e.g. a lost daemon); see the log"
+    failed_build=1
+  fi
 fi
 
 echo "gradle/verification-metadata.xml updated: $(grep -c '<component ' gradle/verification-metadata.xml) components"
