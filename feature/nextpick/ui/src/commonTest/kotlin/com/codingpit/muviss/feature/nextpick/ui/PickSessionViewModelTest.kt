@@ -428,6 +428,53 @@ class PickSessionViewModelTest {
     }
 
     private fun PickSessionViewModel.onePick() = assertIs<PickSessionUiState.Result>(state.value).picks.first()
+
+    @Test
+    fun the_services_question_offers_only_my_services_when_services_are_known() {
+        // Standard length, services known: services come before mood, so the question is the third of four (#815).
+        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = SessionLength.STANDARD, servicesKnown = true))
+
+        viewModel.skipQuestion()
+        viewModel.skipQuestion()
+
+        val asking = assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+        assertEquals(PickQuestion.ERA_AND_SERVICES, asking.question)
+        assertTrue(asking.offersServices)
+    }
+
+    @Test
+    fun the_services_chip_is_absent_when_the_services_are_not_known() {
+        val viewModel = viewModel(listOf(candidate("1")), PickContext(length = SessionLength.STANDARD, servicesKnown = false))
+
+        // Without services the era question is the fourth, after mood.
+        viewModel.skipQuestion()
+        viewModel.skipQuestion()
+        viewModel.skipQuestion()
+
+        val asking = assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+        assertEquals(PickQuestion.ERA_AND_SERVICES, asking.question)
+        assertFalse(asking.offersServices)
+    }
+
+    @Test
+    fun an_empty_result_under_only_my_services_says_so() {
+        // Nothing in the pool is known to be on a service, so the flagged pick comes back empty.
+        val viewModel = viewModel(emptyList(), PickContext(length = SessionLength.STANDARD, servicesKnown = true))
+
+        viewModel.skipQuestion()
+        viewModel.skipQuestion()
+        viewModel.answer(PickAnswer.EraAndServices(null, null, onlyMyServices = true))
+        viewModel.skipQuestion()
+
+        assertEquals(PickSessionUiState.NoPick(onlyMyServices = true), viewModel.state.value)
+    }
+
+    @Test
+    fun an_empty_result_without_the_flag_does_not_mention_services() {
+        val viewModel = viewModel(emptyList(), noQuestions)
+
+        assertEquals(PickSessionUiState.NoPick(onlyMyServices = false), viewModel.state.value)
+    }
 }
 
 /** Preferences whose result mode read fails, as a database read can. The session must still end in Failed. */

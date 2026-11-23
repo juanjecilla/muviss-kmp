@@ -1,0 +1,77 @@
+-- Next Pick result mode becomes nullable (#853, #820). The filename is the version this migrates
+-- FROM: 30.sqm takes a v30 database to v31 (fixture 31.db).
+--
+-- NUMBERING: claimed when this branch opened; 29.sqm (#767) is the last migration on develop.
+-- `verifyMigrations` cannot see a collision, so re-check this number against develop before merging.
+--
+-- NULL means "never chose". The served Remote Config default and ONE_PICK are resolved at read time
+-- (`AppSettingsNextPickPreferences`), so a fresh row no longer carries a seeded value and every
+-- `ensureRow` caller can create the row in any order.
+--
+-- SQLite cannot drop a NOT NULL constraint with ALTER TABLE, so the table is rebuilt. Existing rows
+-- keep the value they store (ONE_PICK, TOP_PICKS or DECK): nothing is rewritten, and a row that was
+-- created under the old default is indistinguishable from a choice, which is the accepted outcome.
+-- The column order is unchanged, so `ensureRow`'s positional literals and generated code stay valid.
+CREATE TABLE appSettings_rebuilt (
+    id INTEGER NOT NULL PRIMARY KEY,
+    theme TEXT NOT NULL DEFAULT 'SYSTEM',
+    language TEXT NOT NULL DEFAULT 'en-US',
+    region TEXT NOT NULL DEFAULT 'US',
+    notificationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    lastSyncedAtEpochMs INTEGER,
+    triageControlScheme TEXT NOT NULL DEFAULT 'FOUR_WAY',
+    triageTutorialSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    animationsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    triageDeckAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    syncCursorEpochMs INTEGER,
+    syncAutomatically INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    crashReportsEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    coWatchPoolListId TEXT,
+    coWatchIncludeSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    triageSnoozePeriod TEXT NOT NULL DEFAULT 'ONE_WEEK',
+    triageSnoozePlacement TEXT NOT NULL DEFAULT 'MIXED_IN',
+    triageSnoozeHintSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    discoverIntroSeen INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    onboardingCompleted INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    notificationNudgeDismissed INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    mutedGenres TEXT NOT NULL DEFAULT 'tv:10767:Talk;tv:10763:News;tv:10764:Reality',
+    mutedGenresInSearch INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    tickAnimations INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    deviceBackupEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    motionDefaultApplied INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    completionPromptShownAtEpochMs INTEGER,
+    completionPromptEnabled INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
+    nextPickSessionLength TEXT NOT NULL DEFAULT 'STANDARD',
+    nextPickResultMode TEXT,
+    reviewInstalledAtEpochMs INTEGER,
+    reviewTickCount INTEGER NOT NULL DEFAULT 0,
+    reviewLastAskedAtEpochMs INTEGER,
+    reviewLastAskedVersion TEXT,
+    displayPreferencesUpdatedAtEpochMs INTEGER,
+    displayPreferencesDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+);
+
+INSERT INTO appSettings_rebuilt (
+    id, theme, language, region, notificationsEnabled, lastSyncedAtEpochMs, triageControlScheme,
+    triageTutorialSeen, animationsEnabled, triageDeckAnimations, syncCursorEpochMs, syncAutomatically,
+    crashReportsEnabled, coWatchPoolListId, coWatchIncludeSeen, triageSnoozePeriod, triageSnoozePlacement,
+    triageSnoozeHintSeen, discoverIntroSeen, onboardingCompleted, notificationNudgeDismissed, mutedGenres,
+    mutedGenresInSearch, tickAnimations, deviceBackupEnabled, motionDefaultApplied,
+    completionPromptShownAtEpochMs, completionPromptEnabled, nextPickSessionLength, nextPickResultMode,
+    reviewInstalledAtEpochMs, reviewTickCount, reviewLastAskedAtEpochMs, reviewLastAskedVersion,
+    displayPreferencesUpdatedAtEpochMs, displayPreferencesDirty
+)
+SELECT
+    id, theme, language, region, notificationsEnabled, lastSyncedAtEpochMs, triageControlScheme,
+    triageTutorialSeen, animationsEnabled, triageDeckAnimations, syncCursorEpochMs, syncAutomatically,
+    crashReportsEnabled, coWatchPoolListId, coWatchIncludeSeen, triageSnoozePeriod, triageSnoozePlacement,
+    triageSnoozeHintSeen, discoverIntroSeen, onboardingCompleted, notificationNudgeDismissed, mutedGenres,
+    mutedGenresInSearch, tickAnimations, deviceBackupEnabled, motionDefaultApplied,
+    completionPromptShownAtEpochMs, completionPromptEnabled, nextPickSessionLength, nextPickResultMode,
+    reviewInstalledAtEpochMs, reviewTickCount, reviewLastAskedAtEpochMs, reviewLastAskedVersion,
+    displayPreferencesUpdatedAtEpochMs, displayPreferencesDirty
+FROM appSettings;
+
+DROP TABLE appSettings;
+
+ALTER TABLE appSettings_rebuilt RENAME TO appSettings;

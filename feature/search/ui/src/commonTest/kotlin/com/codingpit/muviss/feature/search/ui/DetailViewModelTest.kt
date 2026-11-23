@@ -558,19 +558,6 @@ class DetailViewModelTest {
     }
 
     @Test
-    fun toggleMovieWatched_flips_the_synthetic_movie_episode() = runTest {
-        val progressApi = FakeProgressApi()
-        val vm = viewModel(progressApi = progressApi)
-        advanceUntilIdle()
-
-        assertFalse(vm.state.value.movieWatched)
-        vm.toggleMovieWatched()
-        advanceUntilIdle()
-
-        assertTrue(vm.state.value.movieWatched)
-    }
-
-    @Test
     fun the_primary_button_is_loading_until_progress_has_reported_and_then_follows_the_shared_next_episode() = runTest {
         val collection = FakeCollectionApi()
         collection.add(tvDetails)
