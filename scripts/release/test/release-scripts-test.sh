@@ -734,5 +734,59 @@ if command -v jq >/dev/null; then
     "$(rulesets_posted "$(printf 'main\ndevelop\nrelease-and-hotfix\nrelease-tags')" 4242)" ""
 fi
 
+
+# update-verification.sh names failed tasks: a test task only warns, anything else fails the leg (#880).
+log="$(mktemp)"
+printf '> Task :core:foo:jvmTest FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed test task only warns" "$status" "0"
+expect_eq "the warning names the test task" "$(grep -c '::warning::.*:core:foo:jvmTest' <<<"$out")" "1"
+printf '> Task :core:foo:jvmTest FAILED\n> Task :app:webApp:wasmJsProductionSync FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed non-test task fails the leg" "$status" "1"
+expect_eq "the error names the build task" "$(grep -c '::error::.*wasmJsProductionSync' <<<"$out")" "1"
+# A nonzero exit must be explained by a named failure (#880 review). The exit status comes from UPDATE_VERIFICATION_CLASSIFY_STATUS.
+cat >"$log" <<'LOG'
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:foo:jvmTest'.
+> There were failing tests.
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test-failure-only nonzero exit still only warns" "$status" "0"
+expect_eq "and names the test task in the warning" "$(grep -c '::warning::.*:core:foo:jvmTest' <<<"$out")" "1"
+cat >"$log" <<'LOG'
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Gradle build daemon disappeared unexpectedly (this is usually caused by exceeding available memory).
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test failure plus an unexplained nonzero exit fails the leg" "$status" "1"
+expect_eq "and says no failed task explains it" "$(grep -c '::error::gradle exited 1 and no failed task explains it' <<<"$out")" "1"
+cat >"$log" <<'LOG'
+> Task :app:webApp:wasmJsProductionSync FAILED
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:webApp:wasmJsProductionSync'.
+> Process 'command node' finished with non-zero exit value 1
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a non-test failure with a test failure fails the leg" "$status" "1"
+expect_eq "the build task is the one named as an error" "$(grep -c '::error::build tasks failed.*wasmJsProductionSync' <<<"$out")" "1"
+printf '> Task :core:foo:jvmTest FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test FAILED line with no explaining cause fails the leg" "$status" "1"
+# Both calls above are classify-only: they read a log and never write gradle/verification-metadata.xml,
+# so nothing needs restoring. A checkout of that path would discard a developer's unstaged edits.
+
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
