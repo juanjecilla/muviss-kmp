@@ -100,6 +100,8 @@ kotlin {
             // and HTTP-status handling are only observable against real
             // responses, and ADR 0009 rules out network calls in tests.
             implementation(libs.ktor.clientMock)
+            // A real engine for SupabaseSyncBackendLiveTest (opt-in, MUVISS_SUPABASE_LIVE=1). Never used by the default run.
+            implementation(libs.ktor.clientOkhttp)
             // `FakeSupabaseServer` (the wire-level Supabase stand-in the sync
             // suites run the real backend and engine against) and
             // `CountingDriver` (the operation-count budgets).
