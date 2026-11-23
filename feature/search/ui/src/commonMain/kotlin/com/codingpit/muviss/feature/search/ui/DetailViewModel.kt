@@ -24,6 +24,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.refresh_failed
 import com.codingpit.muviss.feature.search.ui.generated.resources.removed_from_library
 import com.codingpit.muviss.feature.search.ui.generated.resources.tick_caught_up
 import com.codingpit.muviss.feature.search.ui.generated.resources.tick_next_seen
+import com.codingpit.muviss.feature.search.ui.generated.resources.undo_caught_up_through
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_season_seen
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_show_seen
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -644,9 +645,13 @@ class DetailViewModel(
         return EpisodeOrdering.airedBy(seasons, clock.todayEpochDay()).filterNot { it in seen }
     }
 
-    /** A bulk mark that ticked nothing (already caught up) has nothing to undo, so it offers none. */
+    /**
+     * A bulk mark that ticked nothing has no Undo of its own, so it offers none. Nothing ticked after its seen read
+     * means another progress write landed in between, so the Undo already on screen no longer owns the library entry
+     * (#721): it keeps its own ticks, and taking the entry back would remove what that write depends on.
+     */
     private fun offerUndo(written: List<EpisodeId>, message: UiText, createdEntry: Boolean = false) {
-        if (written.isEmpty()) return
+        if (written.isEmpty()) return releaseEntry()
         _state.update { it.copy(pendingUndo = BulkMarkUndo(written, message, createdEntry = createdEntry)) }
     }
 
@@ -665,9 +670,10 @@ class DetailViewModel(
             // Already seen through here: nothing would be ticked, so the title is not saved for it (ADR 0037).
             val seen = progressApi.observeSeenEpisodes(mediaId).first()
             if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchWrite
-            addIfAbsent()
-            progressApi.markPreviousSeen(aired, episodeId)
-            releaseEntry()
+            val created = addIfAbsent()
+            val written = progressApi.markPreviousSeen(aired, episodeId)
+            // Nothing ticked here releases the Undo already on screen's library entry (see offerUndo).
+            offerUndo(written, UiText.Resource(Res.string.undo_caught_up_through, episodeId.seasonNumber, episodeId.episodeNumber), createdEntry = created)
         }
     }
 }

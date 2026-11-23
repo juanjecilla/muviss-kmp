@@ -27,6 +27,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -356,6 +357,80 @@ class DetailProgressWritesTest {
 
         assertTrue(progress.markedPrevious.isEmpty())
         assertTrue(collection.added.isEmpty())
+    }
+
+    @Test
+    fun a_catch_up_that_ticks_episodes_offers_an_undo_for_exactly_those_ticks() = runTest {
+        val progress = FakeProgressApi()
+        progress.setEpisodeSeen(episode1.id, seen = true)
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.markPreviousSeen(episode2.id)
+
+        // Only the tick it wrote is offered: episode1 was already seen, so it is not in the Undo.
+        assertEquals(listOf(episode2.id), vm.state.value.pendingUndo?.episodeIds)
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
+        assertEquals(setOf(episode1.id), progress.seenIds)
+        assertNull(vm.state.value.pendingUndo)
+    }
+
+    @Test
+    fun undoing_a_catch_up_on_an_unsaved_show_removes_the_entry_it_created() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.markPreviousSeen(episode2.id)
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
+
+        assertEquals(listOf(show), collection.removed)
+        assertTrue(progress.seenIds.isEmpty())
+    }
+
+    @Test
+    fun a_catch_up_that_ticks_nothing_offers_no_undo_and_keeps_the_one_already_on_screen() = runTest {
+        val progress = FakeProgressApi()
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+        vm.tickNext(episode1.id)
+        val earlier = checkNotNull(vm.state.value.pendingUndo)
+
+        vm.markPreviousSeen(episode1.id)
+
+        // Episode 1 is already seen, so the catch-up writes nothing and the earlier Undo is still the one on screen.
+        assertSame(earlier, vm.state.value.pendingUndo)
+    }
+
+    @Test
+    fun a_catch_up_that_another_write_beat_to_every_tick_releases_the_entry_and_keeps_the_earlier_ticks() = runTest {
+        val collection = FakeCollectionApi()
+        val progress = FakeProgressApi()
+        val vm = viewModel(collectionApi = collection, progressApi = progress, detailsToLoad = tvDetails, id = show)
+        vm.tickNext(episode1.id)
+        assertEquals(true, vm.state.value.pendingUndo?.createdEntry)
+        // Another view model ticks episode 2 after this catch-up's seen read and before its write (#945).
+        progress.beforeNextMarkPreviousSeen = { progress.setEpisodeSeen(episode2.id, seen = true) }
+
+        vm.markPreviousSeen(episode2.id)
+
+        // The catch-up ticked nothing, so the Undo keeps its own tick but no longer owns the library entry.
+        assertEquals(listOf(episode1.id), vm.state.value.pendingUndo?.episodeIds)
+        assertEquals(false, vm.state.value.pendingUndo?.createdEntry)
+        vm.undoBulkMark(checkNotNull(vm.state.value.pendingUndo))
+
+        // Undo takes back episode 1 only: the entry stays, and the other write's tick on episode 2 survives.
+        assertTrue(collection.removed.isEmpty())
+        assertEquals(setOf(episode2.id), progress.seenIds)
+    }
+
+    @Test
+    fun a_catch_up_through_an_already_seen_episode_offers_no_undo() = runTest {
+        val progress = FakeProgressApi()
+        progress.setEpisodeSeen(episode1.id, seen = true)
+        val vm = viewModel(progressApi = progress, detailsToLoad = tvDetails, id = show)
+
+        vm.markPreviousSeen(episode1.id)
+
+        assertNull(vm.state.value.pendingUndo)
     }
 
     @Test

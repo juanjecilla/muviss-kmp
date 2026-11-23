@@ -89,6 +89,7 @@
     <string name="tick_caught_up">Caught up on %1$s</string>
     <string name="undo_season_seen">%1$s marked seen</string>
     <string name="undo_show_seen">Marked every aired episode seen</string>
+    <string name="undo_caught_up_through">Caught up through S%1$d·E%2$d</string>
 
     <!-- Add to list -->
     <string name="new_list_name">New list name</string>
