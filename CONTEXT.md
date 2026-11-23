@@ -159,6 +159,10 @@ _Avoid_: feedback (too wide: it would take in bug reports and praise), suggestio
 What went wrong with the app, sent the same way as a Feature Request, from the row under it in Settings, with the same four values and the same one-way rules. Kept apart from a Feature Request because it is triaged as a defect, not a wish.
 _Avoid_: crash report (that is the automatic, opt-out Sentry kind), feedback.
 
+**Routine Failure**:
+A failure Muviss already explains to the person on screen and that says nothing about a defect in Muviss: no connection, the movie database throttling or down, or the person's own TMDB key being rejected. It is never sent as a crash report. A request the movie database refuses as malformed, or an answer Muviss cannot read, is not routine: that one is a defect, and it is reported.
+_Avoid_: expected error (every handled error is expected somewhere), noise.
+
 ### Co-watch
 
 **Companion**:

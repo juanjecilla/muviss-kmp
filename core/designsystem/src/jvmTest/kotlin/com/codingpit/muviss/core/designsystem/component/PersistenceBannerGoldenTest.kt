@@ -2,11 +2,8 @@
 
 package com.codingpit.muviss.core.designsystem.component
 
-import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasText
@@ -35,7 +32,14 @@ import kotlin.test.assertTrue
  */
 class PersistenceBannerGoldenTest {
 
-    private val readOnlyTab = "Muviss is open in another tab. Changes here won't be saved."
+    private val readOnlyTab = "Open in another tab. Changes made here won't be saved; reloading discards them."
+    private val staleTab = "Another tab saved newer changes, so this tab won't save. Reloading discards its changes."
+    private val reload = "Reload this tab"
+    private val shortReload = "Reload"
+
+    // Short enough that a short action fits beside it; the long warning above wraps the action by design.
+    private val shortWarning = "Not saving here."
+    private val longReload = "Reload this tab to start saving again and keep everything"
 
     @Test
     fun the_read_only_tab_warning_is_legible() = runComposeUiTest {
@@ -52,17 +56,28 @@ class PersistenceBannerGoldenTest {
     }
 
     /**
+     * The out-of-date warning with its reload action (#62). The action is the only
+     * thing that changes the banner's shape, so it gets its own recording.
+     */
+    @Test
+    fun the_stale_tab_warning_offers_a_reload() = runComposeUiTest {
+        setContent { BannerSample(message = staleTab, actionLabel = reload, darkTheme = true) }
+
+        assertMatchesGolden("persistence-banner-stale-reload", tolerance = BANNER_TOLERANCE)
+    }
+
+    /**
      * #881: a long action label must not squeeze the warning into a narrow column. The action wraps below the
      * text, so the text keeps the full width, and the golden shows it.
      */
     @Test
     fun the_warning_stays_readable_when_the_action_label_is_long() = runComposeUiTest {
         setContent {
-            BannerSample(message = readOnlyTab, darkTheme = true, height = 136.dp, action = longAction)
+            BannerSample(message = readOnlyTab, darkTheme = true, height = 136.dp, actionLabel = longReload)
         }
 
         val message = onNodeWithText(readOnlyTab).getBoundsInRoot()
-        val action = onNodeWithTag(ACTION_TAG).getBoundsInRoot()
+        val action = onNodeWithText(longReload).getBoundsInRoot()
         assertTrue(action.top >= message.bottom, "the action should wrap below the warning, not beside it")
         assertMatchesGolden("persistence-banner-long-action", tolerance = BANNER_TOLERANCE)
     }
@@ -70,10 +85,10 @@ class PersistenceBannerGoldenTest {
     /** #881: with a short action there is room beside the text, so the banner stays one row. */
     @Test
     fun a_short_action_sits_beside_the_warning() = runComposeUiTest {
-        setContent { BannerSample(message = readOnlyTab, darkTheme = false, action = shortAction) }
+        setContent { BannerSample(message = shortWarning, darkTheme = false, actionLabel = shortReload) }
 
-        val message = onNodeWithText(readOnlyTab).getBoundsInRoot()
-        val action = onNodeWithTag(ACTION_TAG).getBoundsInRoot()
+        val message = onNodeWithText(shortWarning).getBoundsInRoot()
+        val action = onNodeWithText(shortReload).getBoundsInRoot()
         assertTrue(action.top < message.bottom, "a short action stays on the warning's line")
         assertMatchesGolden("persistence-banner-short-action-light", tolerance = BANNER_TOLERANCE)
     }
@@ -105,32 +120,27 @@ private fun BannerSample(
     message: String?,
     darkTheme: Boolean,
     height: Dp = 72.dp,
-    action: (@Composable () -> Unit)? = null,
+    actionLabel: String? = null,
 ) {
     MuvissTheme(darkTheme = darkTheme) {
         GoldenSurface(width = 412.dp, height = height) {
-            PersistenceBanner(message = message?.let(UiText::Raw), action = action)
+            PersistenceBanner(
+                message = message?.let(UiText::Raw),
+                actionLabel = actionLabel?.let(UiText::Raw),
+            )
         }
     }
 }
 
-private const val ACTION_TAG = "banner-action"
-
-private val shortAction: @Composable () -> Unit = {
-    Button(onClick = {}, modifier = Modifier.testTag(ACTION_TAG)) { Text("Reload") }
-}
-
-private val longAction: @Composable () -> Unit = {
-    Button(onClick = {}, modifier = Modifier.testTag(ACTION_TAG)) {
-        Text("Reload this tab to start saving again and keep everything")
-    }
-}
-
 /**
- * The frame is 412x72dp and one line of text fills most of it, so the glyph
- * edges CoreText and FreeType draw differently are a large share of the image:
- * 3.17% on `ubuntu-latest` against a macOS recording with hinting pinned
- * (`GoldenSurface`, #171), every marked pixel a glyph edge. A colour change —
- * what this golden exists to catch — moves the whole banner, far above this.
+ * The frame is 412x72dp and the text fills most of it, so the glyph edges
+ * CoreText and FreeType draw differently are a large share of the image: every
+ * marked pixel is a glyph edge against a macOS recording with hinting pinned
+ * (`GoldenSurface`, #171). Measured on `ubuntu-latest` (run 43586953160, #840):
+ * read-only tab 4.25%, its light variant 4.12%, the stale-reload warning 6.14%
+ * (two lines of text plus the action). The tolerance sits above the worst of
+ * those. A colour change, what this golden exists to catch, is refused by the
+ * palette check before this is reached, and moves the whole banner far above
+ * this anyway.
  */
-private const val BANNER_TOLERANCE = 0.035
+private const val BANNER_TOLERANCE = 0.08
