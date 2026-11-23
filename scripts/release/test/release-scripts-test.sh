@@ -745,7 +745,8 @@ printf '> Task :core:foo:jvmTest FAILED\n> Task :app:webApp:wasmJsProductionSync
 out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
 expect_eq "a failed non-test task fails the leg" "$status" "1"
 expect_eq "the error names the build task" "$(grep -c '::error::.*wasmJsProductionSync' <<<"$out")" "1"
-git -C "$SCRIPTS/../.." checkout -q -- gradle/verification-metadata.xml 2>/dev/null || true
+# Both calls above are classify-only: they read a log and never write gradle/verification-metadata.xml,
+# so nothing needs restoring. A checkout of that path would discard a developer's unstaged edits.
 
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
