@@ -54,14 +54,37 @@ class TickAction :
         val episodeId = parseEpisodeId(parameters[EpisodeIdKey]) ?: return
         // Read before the write: the tick may take the title out of Watch Next, and then it is no longer listed.
         val title = progressApi.observeWatchNext().first().firstOrNull { it.mediaId == episodeId.show }?.title
+        // The previous marker is read before the write too: the write's refresh clears it (see GlanceWidgetRefresher).
+        var markedEpisode: String? = null
+        var markedTitle: String? = null
+        updateAppWidgetState(context, glanceId) {
+            markedEpisode = it[JustTickedKey]
+            markedTitle = it[JustTickedTitleKey]
+        }
         progressApi.setEpisodeSeen(episodeId, seen = true)
+        val keptTitle = rememberedTickTitle(episodeId.toString(), title, markedEpisode, markedTitle)
         updateAppWidgetState(context, glanceId) {
             it[JustTickedKey] = episodeId.toString()
-            if (title != null) it[JustTickedTitleKey] = title else it.remove(JustTickedTitleKey)
+            if (keptTitle != null) it[JustTickedTitleKey] = keptTitle else it.remove(JustTickedTitleKey)
         }
         MuvissWidget().update(context, glanceId)
     }
 }
+
+/**
+ * The title the Undo row keeps for a tick (#888).
+ *
+ * A repeated tick of the episode the marker already names finds no Watch Next item, because the first tick took
+ * its title out of the list. It then keeps the title the marker remembers rather than dropping it, which would
+ * remove the Undo row. A tick of a different episode keeps only the title it found, so a stale title never lands on
+ * another show's marker. iOS's `IosWidgetBridge.tick` applies the same rule.
+ */
+internal fun rememberedTickTitle(
+    episodeId: String,
+    title: String?,
+    markedEpisodeId: String?,
+    markedTitle: String?,
+): String? = title ?: markedTitle.takeIf { markedEpisodeId == episodeId }
 
 /**
  * Takes back a widget tick, both halves of it.

@@ -124,20 +124,28 @@ object IosWidgetBridge : KoinComponent {
         ensureStarted()
         return runBlocking {
             val items = progressApi.observeWatchNext().first()
-            val rows = items.map { item ->
-                IosWidgetRow(
-                    mediaId = item.mediaId.toString(),
-                    title = item.title,
-                    episodeLabel = item.nextEpisode?.let { "S${it.seasonNumber} · E${it.episodeNumber}" },
-                    episodeName = item.nextEpisode?.name,
-                    episodeId = item.nextEpisode?.id?.toString(),
-                    seenCount = item.seenCount,
-                    airedCount = item.airedCount,
-                    catalogLoaded = item.catalogLoaded,
-                )
-            }
-            (listOfNotNull(retainedTickRow(items, justTicked(), undoMarker.justTickedTitle())) + rows).take(limit)
+            watchNextRowsFor(items, justTicked(), undoMarker.justTickedTitle(), limit)
         }
+    }
+
+    /**
+     * [watchNextRows] over the given items and marker values. Split out so the rows can be tested without
+     * starting the graph: `ensureStarted` boots the whole app module set over the real database.
+     */
+    internal fun watchNextRowsFor(items: List<WatchNextItem>, ticked: String?, title: String?, limit: Int): List<IosWidgetRow> {
+        val rows = items.map { item ->
+            IosWidgetRow(
+                mediaId = item.mediaId.toString(),
+                title = item.title,
+                episodeLabel = item.nextEpisode?.let { "S${it.seasonNumber} · E${it.episodeNumber}" },
+                episodeName = item.nextEpisode?.name,
+                episodeId = item.nextEpisode?.id?.toString(),
+                seenCount = item.seenCount,
+                airedCount = item.airedCount,
+                catalogLoaded = item.catalogLoaded,
+            )
+        }
+        return (listOfNotNull(retainedTickRow(items, ticked, title)) + rows).take(limit)
     }
 
     /**
@@ -173,10 +181,12 @@ object IosWidgetBridge : KoinComponent {
         val parsed = runCatching { EpisodeId.parse(episodeId) }.getOrNull() ?: return
         runBlocking {
             // Read before the write: the tick can take the title out of Watch Next. The marker is set after the
-            // write, so the reload that follows finds it (#888).
+            // write, so the reload that follows finds it (#888). The previous marker is read before the write too.
             val title = progressApi.observeWatchNext().first().firstOrNull { it.mediaId == parsed.show }?.title
+            val markedEpisode = undoMarker.justTicked()
+            val markedTitle = undoMarker.justTickedTitle()
             progressApi.setEpisodeSeen(parsed, seen = true)
-            undoMarker.markJustTicked(episodeId, title)
+            undoMarker.markJustTicked(episodeId, rememberedTickTitle(episodeId, title, markedEpisode, markedTitle))
         }
     }
 
@@ -189,3 +199,15 @@ object IosWidgetBridge : KoinComponent {
         runBlocking { progressApi.setEpisodeSeen(parsed, seen) }
     }
 }
+
+/**
+ * The title the Undo row keeps for a tick (#888). A repeated tick of the episode the marker already names finds no
+ * Watch Next item, and keeps the remembered title rather than dropping it. A tick of a different episode keeps only
+ * the title it found. Android's `rememberedTickTitle` in `WidgetActions.kt` applies the same rule.
+ */
+internal fun rememberedTickTitle(
+    episodeId: String,
+    title: String?,
+    markedEpisodeId: String?,
+    markedTitle: String?,
+): String? = title ?: markedTitle.takeIf { markedEpisodeId == episodeId }
