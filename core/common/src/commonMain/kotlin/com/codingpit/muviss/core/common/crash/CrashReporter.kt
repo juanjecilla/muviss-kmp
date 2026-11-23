@@ -65,7 +65,14 @@ object CrashReporter {
      */
     val isAvailable: Boolean get() = core.isAvailable
 
+    /** A failure the caller handled and chose to report: Routine Failures are dropped here ([CrashReportingConfig.isRoutine]). */
     fun recordException(throwable: Throwable) = core.recordException(throwable)
+
+    /**
+     * A failure nothing caught, from a coroutine that has no one to show it to: it is reported whatever [recordException]
+     * would drop, because the app never got to explain it. The consent gate still applies.
+     */
+    fun recordUncaught(throwable: Throwable) = core.recordUncaught(throwable)
 }
 
 /**
@@ -98,8 +105,12 @@ internal class CrashReporterCore(private val backend: CrashBackend) {
     }
 
     fun recordException(throwable: Throwable) {
-        if (!started || !gate.enabled) return
         if (runCatching { isRoutine(throwable) }.getOrDefault(false)) return
+        recordUncaught(throwable)
+    }
+
+    fun recordUncaught(throwable: Throwable) {
+        if (!started || !gate.enabled) return
         runCatching { backend.capture(throwable) }
     }
 }
