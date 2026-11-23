@@ -679,5 +679,60 @@ else
   else fail "a branch that advanced after the merge: could not delete the ref, fallback not tested"; fi
 fi
 
+# owner-setup.sh: the release-and-hotfix ruleset body (#985). The script talks to gh
+# on load, so only the JSON producer is lifted out and run.
+if command -v jq >/dev/null; then
+  eval "$(sed -n '/^ruleset_checks_only()/,/^JSON$/p' "$SCRIPTS/owner-setup.sh")
+}"
+  body="$(ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' '[{"context":"build"}]')"
+  expect_eq "release-and-hotfix ruleset targets release/* and hotfix/*" \
+    "$(jq -r '.conditions.ref_name.include | join(",")' <<<"$body")" "refs/heads/release/*,refs/heads/hotfix/*"
+  expect_eq "release-and-hotfix ruleset has status checks only" \
+    "$(jq -r '[.rules[].type] | join(",")' <<<"$body")" "required_status_checks"
+  expect_eq "release-and-hotfix ruleset lets admins bypass" \
+    "$(jq -r '.bypass_actors[0].actor_type' <<<"$body")" "RepositoryRole"
+  expect_eq "owner-setup creates the release-and-hotfix ruleset" \
+    "$(grep -c 'ruleset_checks_only release-and-hotfix' "$SCRIPTS/owner-setup.sh")" "1"
+
+  # do_rulesets on a rerun: only the rulesets whose names are missing are POSTed (#985).
+  # gh is stubbed: GET prints the existing names, POST records "name:bypass types".
+  # SC2034/SC2329: the gh/say/confirm stubs and REPO are read by the eval'd do_rulesets.
+  # shellcheck disable=SC2034,SC2329
+  rulesets_posted() { # existing-names app-id (empty = unset) -> POSTs, comma-joined
+    (
+      REPO=owner/repo
+      EXISTING="$1"
+      APP_ID="$2"
+      POSTED="$(mktemp)"
+      gh() {
+        if [ "$1 $2" = "variable get" ]; then [ -n "$APP_ID" ] && echo "$APP_ID"; return 0; fi
+        if [[ " $* " == *" -X POST "* ]]; then
+          jq -r '.name + ":" + ([.bypass_actors[].actor_type] | join("+"))' >>"$POSTED"
+          return 0
+        fi
+        printf '%s\n' "$EXISTING"
+      }
+      say() { :; }
+      confirm() { return 0; }
+      eval "$(sed -n '/^ruleset_branch()/,/^# --- 6\./p' "$SCRIPTS/owner-setup.sh")"
+      do_rulesets >/dev/null 2>&1
+      paste -sd, "$POSTED"
+      rm -f "$POSTED"
+    )
+  }
+  posted_names() { local item; for item in ${1//,/ }; do echo "${item%%:*}"; done | paste -sd, -; }
+  out="$(rulesets_posted "$(printf 'main\ndevelop\nrelease-tags')" 4242)"
+  expect_eq "rerun with main, develop and release-tags present posts only release-and-hotfix" \
+    "$(posted_names "$out")" "release-and-hotfix"
+  expect_eq "rerun posts release-and-hotfix with the admin role as its only bypass actor" \
+    "$out" "release-and-hotfix:RepositoryRole"
+  expect_eq "rerun with only main present posts the other three" \
+    "$(posted_names "$(rulesets_posted "main" 4242)")" "develop,release-and-hotfix,release-tags"
+  expect_eq "first run with no rulesets posts all four" \
+    "$(posted_names "$(rulesets_posted "" 4242)")" "main,develop,release-and-hotfix,release-tags"
+  expect_eq "rerun with all four present posts nothing" \
+    "$(rulesets_posted "$(printf 'main\ndevelop\nrelease-and-hotfix\nrelease-tags')" 4242)" ""
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi

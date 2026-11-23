@@ -608,6 +608,9 @@ Rulesets (applied by `scripts/release/owner-setup.sh`), admins may bypass:
   (ADR 0030). Its gates, not the approval, are what stand in for it.
 - **develop**: PR, 1 approval, squash or merge, checks `build`, `desktop`, `ios`,
   `Release tooling tests`, `Features reach the landing`.
+- **release-and-hotfix** (`release/*`, `hotfix/*`): status checks only (`build`,
+  `desktop`, `ios`, `Release tooling tests`). No approval, deletion or
+  non-fast-forward rule, so the release App and people can push the branch.
 - **release-tags** (`refs/tags/v*`): only admins and the `muviss-release` App
   create, move or delete them.
 
