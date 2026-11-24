@@ -21,17 +21,32 @@ class WidgetUndoMarker(private val defaults: NSUserDefaults?) {
 
     fun justTicked(): String? = defaults?.stringForKey(KEY)
 
-    fun markJustTicked(episodeId: String) {
+    /**
+     * The title of the row that was just ticked (#888). A tick can take its title out of Watch Next, and the widget
+     * then keeps that title's row from here until the marker clears. Null when the marker has no title to show.
+     */
+    fun justTickedTitle(): String? = defaults?.stringForKey(TITLE_KEY)
+
+    fun markJustTicked(episodeId: String, title: String? = null) {
         defaults?.setObject(episodeId, forKey = KEY)
+        if (title != null) {
+            defaults?.setObject(title, forKey = TITLE_KEY)
+        } else {
+            defaults?.removeObjectForKey(TITLE_KEY)
+        }
     }
 
     fun clear() {
         defaults?.removeObjectForKey(KEY)
+        defaults?.removeObjectForKey(TITLE_KEY)
     }
 
     companion object {
         /** The same key `WidgetUndoStore` used before this moved to Kotlin, so an existing marker still reads. */
         internal const val KEY = "justTickedEpisodeId"
+
+        /** The ticked row's title, stored beside [KEY] so the widget can keep the row (#888). */
+        internal const val TITLE_KEY = "justTickedTitle"
 
         /** The marker in the App Group both processes share. */
         fun appGroup(): WidgetUndoMarker = WidgetUndoMarker(openSuite(MUVISS_APP_GROUP))

@@ -13,6 +13,7 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.SourceId
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.withContext
 
@@ -52,6 +53,10 @@ class TmdbSearchRepository(
             // show its error state rather than an empty one.
             ?: error("This source has no episode details")
     }
+
+    override suspend fun images(id: MediaId): Result<TitleImages> = runOnIo { registry.forId(id).images(id) }
+
+    override suspend fun episodeImages(episodeId: EpisodeId): Result<TitleImages> = runOnIo { registry.forId(episodeId.show).episodeImages(episodeId) }
 
     private suspend fun <T> runOnIo(block: suspend () -> T): Result<T> = withContext(dispatchers.io) { runCatching { block() } }
 }

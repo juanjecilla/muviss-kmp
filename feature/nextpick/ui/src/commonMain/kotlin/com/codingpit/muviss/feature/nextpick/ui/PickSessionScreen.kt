@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
@@ -59,6 +60,7 @@ import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_moo
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_mood_tense
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_mood_thoughtful
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_no_pick
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_no_pick_services
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_offline
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_q_anchor
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_q_commitment
@@ -71,6 +73,8 @@ import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_q_s
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_retry
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_rewatch_no
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_rewatch_yes
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_services_hint
+import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_services_only
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_skip
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_source_either
 import com.codingpit.muviss.feature.nextpick.ui.generated.resources.nextpick_source_mine
@@ -133,7 +137,12 @@ fun PickSessionScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
 
-                is PickSessionUiState.NoPick -> MessageBody(stringResource(Res.string.nextpick_no_pick), Res.string.nextpick_start_again, viewModel::start)
+                is PickSessionUiState.NoPick -> MessageBody(
+                    message = stringResource(Res.string.nextpick_no_pick),
+                    action = Res.string.nextpick_start_again,
+                    onAction = viewModel::start,
+                    detail = if (current.onlyMyServices) stringResource(Res.string.nextpick_no_pick_services) else null,
+                )
 
                 PickSessionUiState.Failed -> MessageBody(stringResource(Res.string.nextpick_failed), Res.string.nextpick_retry, viewModel::start)
             }
@@ -148,9 +157,13 @@ private fun AskingBody(state: PickSessionUiState.Asking, onAnswer: (PickAnswer) 
         Text(stringResource(Res.string.nextpick_step, state.step, state.total), style = MaterialTheme.typography.labelLarge)
         if (state.offline) Text(stringResource(Res.string.nextpick_offline), style = MaterialTheme.typography.bodyMedium)
         Text(stringResource(questionTitle(state.question)), style = MaterialTheme.typography.titleLarge)
+        // Only shown where the services chip is: it says what an empty result means under that flag (#815).
+        if (state.question == PickQuestion.ERA_AND_SERVICES && state.offersServices) {
+            Text(stringResource(Res.string.nextpick_services_hint), style = MaterialTheme.typography.bodyMedium)
+        }
         // Wraps: a question has up to five chips, which do not fit one line on a phone.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            optionsFor(state.question, state.anchor).forEach { option ->
+            optionsFor(state.question, state.anchor, state.offersServices).forEach { option ->
                 FilterChip(selected = false, onClick = { onAnswer(option.answer) }, label = { Text(stringResource(option.label)) })
             }
         }
@@ -160,13 +173,17 @@ private fun AskingBody(state: PickSessionUiState.Asking, onAnswer: (PickAnswer) 
 }
 
 @Composable
-private fun MessageBody(message: String, action: StringResource, onAction: () -> Unit) {
+private fun MessageBody(message: String, action: StringResource, onAction: () -> Unit, detail: String? = null) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(message, style = MaterialTheme.typography.bodyLarge)
+        if (detail != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(detail, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+        }
         TextButton(onClick = onAction) { Text(stringResource(action)) }
     }
 }
@@ -187,9 +204,10 @@ private fun questionTitle(question: PickQuestion): StringResource = when (questi
 /**
  * The chips each question offers, as complete answers. Each chip is one [PickAnswer], so a question's
  * answer is never split across two taps. ANCHOR is only asked when a Completion opened the session, so
- * [anchor] is set whenever it is shown (#548).
+ * [anchor] is set whenever it is shown (#548). "Only my services" is offered only when the person's
+ * services are known ([offersServices], #815): it is a separate answer, so it is never combined with an era.
  */
-private fun optionsFor(question: PickQuestion, anchor: MediaId?): List<Option> = when (question) {
+private fun optionsFor(question: PickQuestion, anchor: MediaId?, offersServices: Boolean): List<Option> = when (question) {
     PickQuestion.SOURCE -> listOf(
         Option(Res.string.nextpick_source_mine, PickAnswer.Source(PickSource.MY_LIST)),
         Option(Res.string.nextpick_source_new, PickAnswer.Source(PickSource.SOMETHING_NEW)),
@@ -212,10 +230,11 @@ private fun optionsFor(question: PickQuestion, anchor: MediaId?): List<Option> =
         Option(Res.string.nextpick_mood_romantic, PickAnswer.Mood(setOf(PickMood.ROMANTIC))),
     )
 
-    PickQuestion.ERA_AND_SERVICES -> listOf(
-        Option(Res.string.nextpick_era_new, PickAnswer.EraAndServices(PickEra.NEW, null, false)),
-        Option(Res.string.nextpick_era_classic, PickAnswer.EraAndServices(PickEra.CLASSIC, null, false)),
-    )
+    PickQuestion.ERA_AND_SERVICES -> buildList {
+        add(Option(Res.string.nextpick_era_new, PickAnswer.EraAndServices(PickEra.NEW, null, false)))
+        add(Option(Res.string.nextpick_era_classic, PickAnswer.EraAndServices(PickEra.CLASSIC, null, false)))
+        if (offersServices) add(Option(Res.string.nextpick_services_only, PickAnswer.EraAndServices(null, null, onlyMyServices = true)))
+    }
 
     PickQuestion.COMPANY -> listOf(
         Option(Res.string.nextpick_company_alone, PickAnswer.Company(PickCompany.ALONE)),

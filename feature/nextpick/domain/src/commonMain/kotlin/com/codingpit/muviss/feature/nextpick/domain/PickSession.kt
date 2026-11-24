@@ -75,18 +75,41 @@ class PickSession private constructor(
      * Otherwise a Quick session (two questions) never reaches it, and the title just finished would be the
      * one thing the person was never asked about (#548).
      */
-    private fun askOrder(): List<PickQuestion> = if (context.anchorCandidate == null) PickQuestion.entries else listOf(PickQuestion.ANCHOR) + PickQuestion.entries.filter { it != PickQuestion.ANCHOR }
+    private fun askOrder(): List<PickQuestion> {
+        val catalogue = if (context.servicesKnown) servicesBeforeMood else PickQuestion.entries
+        return if (context.anchorCandidate == null) catalogue else listOf(PickQuestion.ANCHOR) + catalogue.filter { it != PickQuestion.ANCHOR }
+    }
 
     private fun isWorthAsking(question: PickQuestion): Boolean = when (question) {
         PickQuestion.SOURCE -> context.online && context.hasBacklog
+
         PickQuestion.FORMAT_AND_TIME, PickQuestion.MOOD, PickQuestion.COMPANY -> true
+
         PickQuestion.ANCHOR -> context.online && context.anchorCandidate != null && criteria.source != PickSource.MY_LIST
-        PickQuestion.ERA_AND_SERVICES -> context.online && criteria.source != PickSource.MY_LIST
+
+        // Asked for a library-only pick too: era ranks the library, and "only my services" filters it by its cache (#815).
+        PickQuestion.ERA_AND_SERVICES -> context.online
+
         PickQuestion.COMMITMENT -> criteria.type != MediaType.MOVIE
+
         PickQuestion.REWATCH -> context.hasWatchedTitles && criteria.source != PickSource.SOMETHING_NEW
     }
 
     companion object {
+        /**
+         * The catalogue order with [PickQuestion.ERA_AND_SERVICES] moved ahead of [PickQuestion.MOOD], used when the
+         * person's services are known. A Standard session has four slots: an anchored one spent them on ANCHOR, SOURCE,
+         * FORMAT and MOOD, so the services question was never reached (#815). At Standard length mood is the question
+         * that gives way, because the Completion already says what the person liked.
+         */
+        private val servicesBeforeMood: List<PickQuestion> = PickQuestion.entries.flatMap { question ->
+            when (question) {
+                PickQuestion.MOOD -> listOf(PickQuestion.ERA_AND_SERVICES, PickQuestion.MOOD)
+                PickQuestion.ERA_AND_SERVICES -> emptyList()
+                else -> listOf(question)
+            }
+        }
+
         /**
          * Opens a session. The source is decided up front when no question can: offline there is only the
          * library, and with an empty library there is only the catalogue.

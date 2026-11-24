@@ -6,6 +6,7 @@ import com.codingpit.muviss.core.common.notifications.NotificationPermissionRequ
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.di.appModules
 import com.codingpit.muviss.feature.progress.api.ProgressApi
+import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.EpisodeId
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -101,9 +102,6 @@ object IosWidgetBridge : KoinComponent {
     /** The Undo marker's episode id, if the widget has just ticked one. */
     fun justTicked(): String? = undoMarker.justTicked()
 
-    /** Records a tick from the widget so its row offers Undo. Set after the write, see `TickEpisodeIntent`. */
-    fun markJustTicked(episodeId: String) = undoMarker.markJustTicked(episodeId)
-
     /**
      * "S2 · E5" for the episode the widget just ticked, so its confirmation can
      * name what was marked. Null when [episodeId] does not parse. The format
@@ -118,23 +116,55 @@ object IosWidgetBridge : KoinComponent {
     /** One colour of the widget's palette as ARGB, read from `MuvissPalette` (see [IosWidgetPalette]). */
     fun colorArgb(role: String, dark: Boolean): Int = IosWidgetPalette.argb(role, dark)
 
-    /** The watch-next rows, newest state, at most [limit] of them. */
+    /**
+     * The watch-next rows, newest state, at most [limit] of them. The just-ticked title's row is kept at the top
+     * while the marker holds it (#888), even when the tick has taken the title out of the shared list.
+     */
     fun watchNextRows(limit: Int): List<IosWidgetRow> {
         ensureStarted()
         return runBlocking {
-            progressApi.observeWatchNext().first().take(limit).map { item ->
-                IosWidgetRow(
-                    mediaId = item.mediaId.toString(),
-                    title = item.title,
-                    episodeLabel = item.nextEpisode?.let { "S${it.seasonNumber} · E${it.episodeNumber}" },
-                    episodeName = item.nextEpisode?.name,
-                    episodeId = item.nextEpisode?.id?.toString(),
-                    seenCount = item.seenCount,
-                    airedCount = item.airedCount,
-                    catalogLoaded = item.catalogLoaded,
-                )
-            }
+            val items = progressApi.observeWatchNext().first()
+            watchNextRowsFor(items, justTicked(), undoMarker.justTickedTitle(), limit)
         }
+    }
+
+    /**
+     * [watchNextRows] over the given items and marker values. Split out so the rows can be tested without
+     * starting the graph: `ensureStarted` boots the whole app module set over the real database.
+     */
+    internal fun watchNextRowsFor(items: List<WatchNextItem>, ticked: String?, title: String?, limit: Int): List<IosWidgetRow> {
+        val rows = items.map { item ->
+            IosWidgetRow(
+                mediaId = item.mediaId.toString(),
+                title = item.title,
+                episodeLabel = item.nextEpisode?.let { "S${it.seasonNumber} · E${it.episodeNumber}" },
+                episodeName = item.nextEpisode?.name,
+                episodeId = item.nextEpisode?.id?.toString(),
+                seenCount = item.seenCount,
+                airedCount = item.airedCount,
+                catalogLoaded = item.catalogLoaded,
+            )
+        }
+        return (listOfNotNull(retainedTickRow(items, ticked, title)) + rows).take(limit)
+    }
+
+    /**
+     * The just-ticked title's row, kept by the widget (#888). Null while the shared list still has the title, since
+     * its own row carries Undo, or when the marker has no title or no parsable episode.
+     */
+    private fun retainedTickRow(items: List<WatchNextItem>, ticked: String?, title: String?): IosWidgetRow? {
+        val episode = ticked?.let { runCatching { EpisodeId.parse(it) }.getOrNull() } ?: return null
+        if (title == null || items.any { it.mediaId == episode.show }) return null
+        return IosWidgetRow(
+            mediaId = episode.show.toString(),
+            title = title,
+            episodeLabel = null,
+            episodeName = null,
+            episodeId = null,
+            seenCount = 0,
+            airedCount = 0,
+            catalogLoaded = true,
+        )
     }
 
     /**
@@ -146,7 +176,19 @@ object IosWidgetBridge : KoinComponent {
      * the App Group container is the only place both processes can reach the
      * same file to do it (ADR 0016).
      */
-    fun tick(episodeId: String) = setSeen(episodeId, seen = true)
+    fun tick(episodeId: String) {
+        ensureStarted()
+        val parsed = runCatching { EpisodeId.parse(episodeId) }.getOrNull() ?: return
+        runBlocking {
+            // Read before the write: the tick can take the title out of Watch Next. The marker is set after the
+            // write, so the reload that follows finds it (#888). The previous marker is read before the write too.
+            val title = progressApi.observeWatchNext().first().firstOrNull { it.mediaId == parsed.show }?.title
+            val markedEpisode = undoMarker.justTicked()
+            val markedTitle = undoMarker.justTickedTitle()
+            progressApi.setEpisodeSeen(parsed, seen = true)
+            undoMarker.markJustTicked(episodeId, rememberedTickTitle(episodeId, title, markedEpisode, markedTitle))
+        }
+    }
 
     /** Takes a widget tick back, clearing the viewing it recorded — the app's own undo. */
     fun undoTick(episodeId: String) = setSeen(episodeId, seen = false)
@@ -157,3 +199,15 @@ object IosWidgetBridge : KoinComponent {
         runBlocking { progressApi.setEpisodeSeen(parsed, seen) }
     }
 }
+
+/**
+ * The title the Undo row keeps for a tick (#888). A repeated tick of the episode the marker already names finds no
+ * Watch Next item, and keeps the remembered title rather than dropping it. A tick of a different episode keeps only
+ * the title it found. Android's `rememberedTickTitle` in `WidgetActions.kt` applies the same rule.
+ */
+internal fun rememberedTickTitle(
+    episodeId: String,
+    title: String?,
+    markedEpisodeId: String?,
+    markedTitle: String?,
+): String? = title ?: markedTitle.takeIf { markedEpisodeId == episodeId }

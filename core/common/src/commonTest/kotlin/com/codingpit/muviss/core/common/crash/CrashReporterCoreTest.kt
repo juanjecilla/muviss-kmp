@@ -138,4 +138,58 @@ class CrashReporterCoreTest {
         core.init(config, enabled = true)
         core.recordException(IllegalStateException("x"))
     }
+
+    @Test
+    fun a_routine_failure_is_not_reported_and_anything_else_still_is() {
+        val backend = FakeBackend()
+        val core = CrashReporterCore(backend)
+        val routine = IllegalStateException("routine")
+        val bug = IllegalStateException("bug")
+        core.init(config.copy(isRoutine = { it === routine }), enabled = true)
+
+        core.recordException(routine)
+        core.recordException(bug)
+
+        assertEquals(listOf<Throwable>(bug), backend.captured)
+    }
+
+    @Test
+    fun an_uncaught_routine_failure_is_still_reported() {
+        val backend = FakeBackend()
+        val core = CrashReporterCore(backend)
+        val routine = IllegalStateException("routine")
+        core.init(config.copy(isRoutine = { it === routine }), enabled = true)
+
+        core.recordUncaught(routine)
+
+        assertEquals(listOf<Throwable>(routine), backend.captured)
+    }
+
+    @Test
+    fun the_consent_gate_stops_the_handled_and_the_uncaught_path_alike() {
+        val backend = FakeBackend()
+        val core = CrashReporterCore(backend)
+        val routine = IllegalStateException("routine")
+        val bug = IllegalStateException("bug")
+        core.init(config.copy(isRoutine = { it === routine }), enabled = true)
+        core.setEnabled(false)
+
+        core.recordException(bug)
+        core.recordUncaught(bug)
+        core.recordUncaught(routine)
+
+        assertTrue(backend.captured.isEmpty())
+    }
+
+    @Test
+    fun a_routine_rule_that_throws_reports_the_failure_rather_than_losing_it() {
+        val backend = FakeBackend()
+        val core = CrashReporterCore(backend)
+        val bug = IllegalStateException("bug")
+        core.init(config.copy(isRoutine = { error("rule failed") }), enabled = true)
+
+        core.recordException(bug)
+
+        assertEquals(listOf<Throwable>(bug), backend.captured)
+    }
 }

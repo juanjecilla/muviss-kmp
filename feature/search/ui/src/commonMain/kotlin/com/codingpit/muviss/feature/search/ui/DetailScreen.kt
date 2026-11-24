@@ -32,13 +32,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -65,14 +66,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -84,6 +89,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -108,11 +114,14 @@ import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
+import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.resolve
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.search.domain.JUSTWATCH_ATTRIBUTION_TEXT
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.a11y_collapsed
@@ -156,6 +165,8 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.primary_mark_n
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_next_up
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_not_aired
 import com.codingpit.muviss.feature.search.ui.generated.resources.primary_premieres
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_special_unseen
+import com.codingpit.muviss.feature.search.ui.generated.resources.primary_special_unseen_a11y
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_buy
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_rent
 import com.codingpit.muviss.feature.search.ui.generated.resources.providers_stream
@@ -175,6 +186,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.where_to_watch
 import com.codingpit.muviss.feature.search.ui.generated.resources.your_rating
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
+import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -182,6 +194,7 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -196,6 +209,8 @@ fun DetailScreen(
     onBack: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
     onOpenEpisode: (EpisodeId) -> Unit = {},
+    /** Opens the Image Viewer on a backdrop or poster; the url is the one tapped (see [ImageViewerRoute]). */
+    onOpenImage: (ImageKind, String) -> Unit = { _, _ -> },
     // Null where there is nothing to offer (most tests): Detail works without it.
     nudge: NotificationNudgeViewModel? = null,
     /** "What's next?" (EPIC 51, #545), offered only on a Watched or Finished title. Null draws nothing. */
@@ -217,58 +232,69 @@ fun DetailScreen(
         if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark(undo) else viewModel.dismissUndo(undo)
     }
 
-    Box(Modifier.fillMaxSize()) {
-        when {
-            state.loading -> CircularProgressIndicator(
-                Modifier.align(Alignment.Center).padding(MuvissSpacing.xl),
-            )
-
-            state.error != null -> ErrorState(
-                message = state.error!!,
-                onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center),
-            )
-
-            state.details != null -> BoxWithConstraints {
-                val callbacks = DetailCallbacks(
-                    onOpenDetail = onOpenDetail,
-                    onAddToList = { showAddToList = true },
-                    onEditNote = { editingNote = true },
-                    onOpenEpisode = onOpenEpisode,
-                    onTapSeenEpisode = { tickedEpisode = it },
-                    notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
+    // Raw, because ScreenInsets already consumed the inset for this subtree; see immersiveTopPadding.
+    val topInset = immersiveTopPadding()
+    // The screen extends up into the band ScreenInsets padded, in every state, so its placement never changes
+    // during a navigation transition. Only the details branch has artwork under the status bar, and its artwork
+    // reports itself (trackImmersiveArtwork); loading and error report nothing, so they keep the theme's icons.
+    val artwork = remember { ImmersiveArtwork() }
+    CompositionLocalProvider(LocalImmersiveArtwork provides artwork) {
+        Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
+            when {
+                state.loading -> CircularProgressIndicator(
+                    Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
                 )
-                // At least the usual allowance, so the end does not jump when a one-line
-                // snackbar appears; more when a long title or a large font wraps it.
-                val bottomPadding = snackbarClearance.bottomPadding
-                if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
-                } else {
-                    DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+
+                state.error != null -> ErrorState(
+                    message = state.error!!,
+                    onRetry = viewModel::load,
+                    modifier = Modifier.align(Alignment.Center).padding(top = topInset),
+                )
+
+                state.details != null -> BoxWithConstraints {
+                    val callbacks = DetailCallbacks(
+                        onOpenDetail = onOpenDetail,
+                        onAddToList = { showAddToList = true },
+                        onEditNote = { editingNote = true },
+                        openers = DetailOpeners(onOpenEpisode, onOpenImage),
+                        onTapSeenEpisode = { tickedEpisode = it },
+                        notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
+                    )
+                    // At least the usual allowance, so the end does not jump when a one-line
+                    // snackbar appears; more when a long title or a large font wraps it.
+                    val bottomPadding = snackbarClearance.bottomPadding
+                    if (maxWidth >= EXPANDED_BREAKPOINT) {
+                        DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                    } else {
+                        DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                    }
                 }
             }
-        }
 
-        // Floating back button over the hero, per the mockups.
-        BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
+            // Over the list, under the back button: the one dark band and the light icons while the hero covers the bar.
+            ImmersiveStatusBar(artwork, topInset, Modifier.align(Alignment.TopCenter))
 
-        // The tick that catches the user up on the whole show. A season only gets the
-        // checkbox pulse: ticks that finish one are visible in the list they are made in.
-        state.celebration?.let { celebration ->
-            key(celebration.token) {
-                CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
+            // Floating back button over the hero, per the mockups.
+            BackButton(onBack, topInset = topInset)
+
+            // The tick that catches the user up on the whole show. A season only gets the
+            // checkbox pulse: ticks that finish one are visible in the list they are made in.
+            state.celebration?.let { celebration ->
+                key(celebration.token) {
+                    CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
+                }
             }
-        }
 
-        // Detail is a scrolling Box rather than a Scaffold, so it hosts its
-        // own snackbar for the bulk-mark undo.
-        SnackbarHost(
-            snackbarHostState,
-            Modifier
-                .align(Alignment.BottomCenter)
-                .measureSnackbarHeight(snackbarClearance)
-                .testTag(DETAIL_SNACKBAR_TAG),
-        )
+            // Detail is a scrolling Box rather than a Scaffold, so it hosts its
+            // own snackbar for the bulk-mark undo.
+            SnackbarHost(
+                snackbarHostState,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .measureSnackbarHeight(snackbarClearance)
+                    .testTag(DETAIL_SNACKBAR_TAG),
+            )
+        }
     }
 
     tickedEpisode?.let { episodeId ->
@@ -304,28 +330,50 @@ fun DetailScreen(
     }
 }
 
+/**
+ * The round back control over the artwork. It pads itself by [topInset] (the raw status-bar band, not an inset
+ * modifier, because [ScreenInsets] already consumed the inset for its descendants) and clears the bar.
+ */
 @Composable
-internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.45f),
-        modifier = modifier.size(36.dp),
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+internal fun BackButton(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    topInset: Dp = immersiveTopPadding(),
+) {
+    Box(modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = topInset + 12.dp)) {
+        Surface(
+            shape = CircleShape,
+            color = Color.Black.copy(alpha = 0.45f),
+            modifier = Modifier.size(36.dp).testTag(BACK_BUTTON_TAG),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+            }
         }
     }
 }
+
+/** Test tag of the back control, so a layout test can read where it sits under the inset. */
+internal const val BACK_BUTTON_TAG = "backButton"
 
 /** The callbacks the screen's body raises, bundled so the two layouts share one shape. */
 private class DetailCallbacks(
     val onOpenDetail: (MediaId) -> Unit,
     val onAddToList: () -> Unit,
     val onEditNote: () -> Unit,
-    val onOpenEpisode: (EpisodeId) -> Unit,
+    private val openers: DetailOpeners,
     val onTapSeenEpisode: (EpisodeId) -> Unit,
     /** The Notification Nudge (EPIC 47), given the title; draws nothing unless it is due. */
     val notificationNudge: (@Composable (title: String) -> Unit)? = null,
+) {
+    val onOpenEpisode: (EpisodeId) -> Unit get() = openers.onOpenEpisode
+    val onOpenImage: (ImageKind, String) -> Unit get() = openers.onOpenImage
+}
+
+/** Where Detail's body sends the person: another episode's page, or an image full screen (the Image Viewer). */
+private class DetailOpeners(
+    val onOpenEpisode: (EpisodeId) -> Unit,
+    val onOpenImage: (ImageKind, String) -> Unit,
 )
 
 /** "What's next?" under the actions of a Watched or Finished title (EPIC 51, #545). Draws nothing otherwise. */
@@ -360,19 +408,25 @@ private fun DetailCompact(
     val details = state.details!!
     val seasons = rememberSeasonsController(details, state, viewModel.todayEpochDay)
     val inset = Modifier.padding(horizontal = MuvissSpacing.l)
+    val listState = rememberLazyListState()
+    val anchors = remember { DetailScrollAnchors() }
+    val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        state = listState,
         contentPadding = PaddingValues(bottom = bottomPadding),
     ) {
-        item(key = "hero", contentType = "hero") { DetailHero(details) }
-        item(key = "actions", contentType = "actions") {
-            Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
-                ActionRow(state, viewModel, callbacks)
-                CompletedNextPickEntry(state, onOpenNextPick)
+        indexed(anchors) {
+            item(key = "hero", contentType = "hero") { DetailHero(details, callbacks.onOpenImage) }
+            item(key = "actions", contentType = "actions") {
+                Column(inset.padding(top = MuvissSpacing.m), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
+                    ActionRow(state, viewModel, callbacks, scrollToSpecials)
+                    CompletedNextPickEntry(state, onOpenNextPick)
+                }
             }
+            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
+            item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
         }
-        detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), inset)
-        item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
     }
     SeasonsDialogs(seasons, viewModel)
 }
@@ -393,40 +447,47 @@ private fun DetailExpanded(
     val bodyColumn = Modifier
         .padding(start = MuvissSpacing.xxl + POSTER_COLUMN_WIDTH + MuvissSpacing.xl, end = MuvissSpacing.xxl)
         .widthIn(max = 640.dp)
+    val listState = rememberLazyListState()
+    val anchors = remember { DetailScrollAnchors() }
+    val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
+        state = listState,
         contentPadding = PaddingValues(bottom = bottomPadding),
     ) {
-        item(key = "hero", contentType = "hero") {
-            Column {
-                DetailBackdrop(details, height = 200.dp)
-                Row(
-                    Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
-                    horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
-                ) {
-                    Column(Modifier.width(POSTER_COLUMN_WIDTH), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-                        Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
-                            PosterImage(
-                                url = details.summary.posterUrl,
-                                title = details.summary.title,
-                                modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium),
-                            )
-                        }
-                        ActionRow(state, viewModel, callbacks)
-                    }
-                    Column(
-                        Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
-                        verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+        indexed(anchors) {
+            item(key = "hero", contentType = "hero") {
+                Column {
+                    DetailBackdrop(details, height = 200.dp, onOpenImage = callbacks.onOpenImage)
+                    Row(
+                        Modifier.padding(horizontal = MuvissSpacing.xxl).offset(y = (-56).dp),
+                        horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
                     ) {
-                        Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
-                        MetadataLine(details)
-                        CompletedNextPickEntry(state, onOpenNextPick)
+                        Column(Modifier.width(POSTER_COLUMN_WIDTH), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
+                            Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp, modifier = Modifier.trackImmersiveArtwork()) {
+                                PosterImage(
+                                    url = details.summary.posterUrl,
+                                    title = details.summary.title,
+                                    modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium)
+                                        .opensImageViewer(drawnImageUrl(details.summary.posterUrl, PosterSize.Detail), ImageKind.Poster, callbacks.onOpenImage),
+                                )
+                            }
+                            ActionRow(state, viewModel, callbacks, scrollToSpecials)
+                        }
+                        Column(
+                            Modifier.weight(1f).padding(top = 64.dp).widthIn(max = 640.dp),
+                            verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
+                        ) {
+                            Text(details.summary.title, style = MaterialTheme.typography.headlineMedium)
+                            MetadataLine(details)
+                            CompletedNextPickEntry(state, onOpenNextPick)
+                        }
                     }
                 }
             }
+            detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), bodyColumn)
+            item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
         }
-        detailBody(DetailListContext(state, viewModel, details, seasons, callbacks), bodyColumn)
-        item(key = "end", contentType = "spacer") { Spacer(Modifier.height(MuvissSpacing.xl)) }
     }
     SeasonsDialogs(seasons, viewModel)
 }
@@ -512,9 +573,23 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
 
 /** 16:9 backdrop with a gradient into the background color. */
 @Composable
-private fun DetailBackdrop(details: MediaDetails, height: androidx.compose.ui.unit.Dp) {
+private fun DetailBackdrop(
+    details: MediaDetails,
+    height: androidx.compose.ui.unit.Dp,
+    // The hero draws under the status bar (the route is immersive), so it grows by the inset.
+    // A parameter because Skiko reports zero insets: tests pass a synthetic value.
+    topInset: androidx.compose.ui.unit.Dp = immersiveTopPadding(),
+    onOpenImage: (ImageKind, String) -> Unit = { _, _ -> },
+) {
     val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(height)) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(height + topInset)
+            .trackImmersiveArtwork()
+            .testTag(DETAIL_BACKDROP_TAG)
+            .opensImageViewer(details.backdropUrl, ImageKind.Backdrop, onOpenImage),
+    ) {
         if (details.backdropUrl != null) {
             AsyncImage(
                 model = details.backdropUrl,
@@ -535,9 +610,9 @@ private fun DetailBackdrop(details: MediaDetails, height: androidx.compose.ui.un
 
 /** Compact hero: backdrop + poster overlapping down into the content. */
 @Composable
-private fun DetailHero(details: MediaDetails) {
+private fun DetailHero(details: MediaDetails, onOpenImage: (ImageKind, String) -> Unit) {
     Box(Modifier.fillMaxWidth()) {
-        DetailBackdrop(details, height = 200.dp)
+        DetailBackdrop(details, height = 200.dp, onOpenImage = onOpenImage)
         Row(
             Modifier
                 .align(Alignment.BottomStart)
@@ -546,11 +621,13 @@ private fun DetailHero(details: MediaDetails) {
             horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Surface(shape = MaterialTheme.shapes.small, shadowElevation = 8.dp) {
+            Surface(shape = MaterialTheme.shapes.small, shadowElevation = 8.dp, modifier = Modifier.trackImmersiveArtwork()) {
                 PosterImage(
                     url = details.summary.posterUrl,
                     title = details.summary.title,
-                    modifier = Modifier.width(72.dp).height(108.dp).clip(MaterialTheme.shapes.small),
+                    modifier = Modifier.width(72.dp).height(108.dp).clip(MaterialTheme.shapes.small)
+                        .testTag(DETAIL_POSTER_TAG)
+                        .opensImageViewer(drawnImageUrl(details.summary.posterUrl, PosterSize.Grid), ImageKind.Poster, onOpenImage),
                     size = PosterSize.Grid,
                 )
             }
@@ -592,6 +669,7 @@ private fun ActionRow(
     state: DetailUiState,
     viewModel: DetailViewModel,
     callbacks: DetailCallbacks,
+    onScrollToSpecials: () -> Unit,
 ) {
     val pill: @Composable () -> Unit = {
         PrimaryActionButton(
@@ -600,6 +678,7 @@ private fun ActionRow(
             onMarkMovieWatched = viewModel::markMovieWatched,
             onWatchedAgain = { state.details?.let { callbacks.onTapSeenEpisode(EpisodeId.forMovie(it.id)) } },
             onTickNext = { episode -> viewModel.tickNext(episode.id) },
+            onSpecialUnseen = onScrollToSpecials,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -659,6 +738,7 @@ internal fun PrimaryActionButton(
     onMarkMovieWatched: () -> Unit,
     onWatchedAgain: () -> Unit,
     onTickNext: (Episode) -> Unit,
+    onSpecialUnseen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val look = when (action) {
@@ -676,6 +756,13 @@ internal fun PrimaryActionButton(
             subtitle = action.episode.name.takeIf { it.isNotBlank() },
             description = stringResource(Res.string.primary_mark_next_a11y, action.episode.seasonNumber, action.episode.episodeNumber),
             onClick = { onTickNext(action.episode) },
+        )
+
+        is PrimaryAction.SpecialUnseen -> PrimaryLook(
+            label = stringResource(Res.string.primary_special_unseen),
+            subtitle = action.special.name.takeIf { it.isNotBlank() },
+            description = stringResource(Res.string.primary_special_unseen_a11y, action.special.episodeNumber),
+            onClick = onSpecialUnseen,
         )
 
         is PrimaryAction.Waiting -> waitingLook(action)
@@ -986,6 +1073,26 @@ private fun SeasonsDialogs(seasons: SeasonsController, viewModel: DetailViewMode
     }
 }
 
+/**
+ * The Special unseen button's scroll (#797): opens the Specials season, then brings its header into view. The
+ * index comes from [anchors], which the list fills as it is built, so a header that is not composed yet can be
+ * reached.
+ */
+@Composable
+private fun rememberScrollToSpecials(
+    listState: LazyListState,
+    anchors: DetailScrollAnchors,
+    seasons: SeasonsController,
+): () -> Unit {
+    val scope = rememberCoroutineScope()
+    return {
+        seasons.expanded.value = seasons.expanded.value + EpisodeOrdering.SPECIALS_SEASON
+        anchors.indexByKey["season-${EpisodeOrdering.SPECIALS_SEASON}"]?.let { index ->
+            scope.launch { listState.animateScrollToItem(index) }
+        }
+    }
+}
+
 /** Season numbers survive rotation; a `Set<Int>` needs a saver of its own. */
 private val expandedSeasonsSaver = listSaver<MutableState<Set<Int>>, Int>(
     save = { it.value.toList() },
@@ -1242,10 +1349,7 @@ private fun SeasonEpisodeRow(
     )
 }
 
-private fun Episode.hasAiredBy(todayEpochDay: Long): Boolean {
-    val airDate = airDateEpochDay
-    return airDate != null && airDate <= todayEpochDay
-}
+private fun Episode.hasAiredBy(todayEpochDay: Long): Boolean = EpisodeOrdering.hasAired(this, todayEpochDay)
 
 @Composable
 private fun SnoozedBanner(dueAtEpochDay: Long, onUndo: () -> Unit) {

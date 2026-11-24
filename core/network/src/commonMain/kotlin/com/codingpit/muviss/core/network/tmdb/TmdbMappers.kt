@@ -13,6 +13,8 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.ProductionStatus
 import com.codingpit.muviss.models.Season
+import com.codingpit.muviss.models.TitleImage
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
 
@@ -26,6 +28,26 @@ internal object TmdbMapper {
     // Backdrops render edge-to-edge behind the detail hero; w780 is the
     // smallest size that stays sharp at expanded widths.
     const val BACKDROP_BASE = "https://image.tmdb.org/t/p/w780"
+
+    // The Image Viewer pages through full-screen art. Each kind uses a size TMDB lists for it (see /configuration):
+    // w1280 for backdrops and w780 for posters. Stills list only w92, w185, w300 and `original`, and w300 is smaller than
+    // the w500 hero the person tapped, so a still is shown at `original`. It loads only when the viewer opens, and the
+    // hero keeps the smaller copy meanwhile.
+    const val GALLERY_BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280"
+    const val GALLERY_POSTER_BASE = "https://image.tmdb.org/t/p/w780"
+    const val GALLERY_STILL_BASE = "https://image.tmdb.org/t/p/original"
+
+    /** Best-voted first (the sort is stable, so TMDB's own order breaks ties), one entry per file. */
+    fun imagesToModel(dto: TmdbImagesDto): TitleImages = TitleImages(
+        backdrops = galleryOf(dto.backdrops, GALLERY_BACKDROP_BASE),
+        posters = galleryOf(dto.posters, GALLERY_POSTER_BASE),
+        stills = galleryOf(dto.stills, GALLERY_STILL_BASE),
+    )
+
+    private fun galleryOf(images: List<TmdbImageDto>, base: String): List<TitleImage> = images
+        .distinctBy { it.filePath }
+        .sortedByDescending { it.voteAverage }
+        .map { TitleImage(url = base + it.filePath, aspectRatio = it.aspectRatio.toFloat()) }
 
     fun imageUrl(path: String?): String? = path?.let { IMAGE_BASE + it }
 

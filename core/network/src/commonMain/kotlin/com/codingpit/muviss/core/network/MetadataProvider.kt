@@ -9,6 +9,7 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.SourceId
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
 
 /**
@@ -85,6 +86,16 @@ interface MetadataProvider {
      * implement it.
      */
     suspend fun episodeDetails(episodeId: EpisodeId): EpisodeDetails? = null
+
+    /**
+     * Every backdrop and poster the source has for [id], best first, for the Image Viewer's Gallery.
+     * A dedicated call, not part of [details]: most visits never open the viewer, and the list can
+     * run to a hundred entries. Defaults to empty, so the fakes that predate it keep compiling.
+     */
+    suspend fun images(id: MediaId): TitleImages = TitleImages()
+
+    /** The stills the source has for one episode, best first. Defaults to empty, as [images] does. */
+    suspend fun episodeImages(episodeId: EpisodeId): TitleImages = TitleImages()
 }
 
 /**
