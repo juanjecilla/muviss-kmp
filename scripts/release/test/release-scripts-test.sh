@@ -626,7 +626,7 @@ echo "rc-is-branch-head.sh"
 # Every setup step runs under set -e in a subshell: a failure prints nothing, so
 # the caller sees an empty path and records a setup failure instead of testing
 # a half-built repo. The guard matters: `git -C ""` runs in the current directory.
-rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on the branch after the RC
+rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on the branch after the RC, before the merge; $2 = 1: the branch gets a commit after the merge
   (
     set -e
     o="$(new_repo)"; [ -n "$o" ]
@@ -635,6 +635,8 @@ rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on 
     git -C "$o" tag -a v1.4.0-rc1 -m rc
     if [ "${1:-0}" -ne 0 ]; then commit "$o" "fix: after the rc"; fi
     git -C "$o" switch -q main; git -C "$o" merge -q --no-ff release/1.4.0 -m "Merge release/1.4.0"
+    # The branch moves on after the merge, so the merge's second parent stays the RC while the ref does not.
+    if [ "${2:-0}" -ne 0 ]; then git -C "$o" switch -q release/1.4.0; commit "$o" "fix: after the merge"; git -C "$o" switch -q main; fi
     c="$(mktemp -d)"; [ -n "$c" ]
     git clone -q --origin origin "$o" "$c"
     echo "$c"
@@ -664,6 +666,127 @@ if [ -z "$c" ]; then fail "a deleted branch whose merge carries a commit after t
 elif git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
   expect_rc "a deleted branch whose merge carries a commit after the RC moved" "$c" 1
 else fail "a deleted branch whose merge carries a commit after the RC moved: could not delete the ref, fallback not tested"; fi
+# The merge's second parent is the RC, but the branch ref advanced after the merge: the helper must read the ref
+# while it exists (moved), and fall back to the second parent once the ref is deleted (did not move). A helper
+# that always used the second parent would answer 0 in the first case.
+c="$(rc_repo 0 1)"
+if [ -z "$c" ]; then fail "a branch that advanced after the merge: RC fixture setup failed"
+elif [ "$(git -C "$c" rev-parse origin/release/1.4.0)" = "$(git -C "$c" rev-parse 'v1.4.0-rc1^{commit}')" ]; then fail "a branch that advanced after the merge: the fixture ref did not advance"
+else
+  expect_rc "a branch that advanced after the merge, ref present, moved" "$c" 1
+  if git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
+    expect_rc "the same branch once its ref is deleted falls back to the second parent, did not move" "$c" 0
+  else fail "a branch that advanced after the merge: could not delete the ref, fallback not tested"; fi
+fi
+
+# owner-setup.sh: the release-and-hotfix ruleset body (#985). The script talks to gh
+# on load, so only the JSON producer is lifted out and run.
+if command -v jq >/dev/null; then
+  eval "$(sed -n '/^ruleset_checks_only()/,/^JSON$/p' "$SCRIPTS/owner-setup.sh")
+}"
+  body="$(ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' '[{"context":"build"}]')"
+  expect_eq "release-and-hotfix ruleset targets release/* and hotfix/*" \
+    "$(jq -r '.conditions.ref_name.include | join(",")' <<<"$body")" "refs/heads/release/*,refs/heads/hotfix/*"
+  expect_eq "release-and-hotfix ruleset has status checks only" \
+    "$(jq -r '[.rules[].type] | join(",")' <<<"$body")" "required_status_checks"
+  expect_eq "release-and-hotfix ruleset lets admins bypass" \
+    "$(jq -r '.bypass_actors[0].actor_type' <<<"$body")" "RepositoryRole"
+  expect_eq "owner-setup creates the release-and-hotfix ruleset" \
+    "$(grep -c 'ruleset_checks_only release-and-hotfix' "$SCRIPTS/owner-setup.sh")" "1"
+
+  # do_rulesets on a rerun: only the rulesets whose names are missing are POSTed (#985).
+  # gh is stubbed: GET prints the existing names, POST records "name:bypass types".
+  # SC2034/SC2329: the gh/say/confirm stubs and REPO are read by the eval'd do_rulesets.
+  # shellcheck disable=SC2034,SC2329
+  rulesets_posted() { # existing-names app-id (empty = unset) -> POSTs, comma-joined
+    (
+      REPO=owner/repo
+      EXISTING="$1"
+      APP_ID="$2"
+      POSTED="$(mktemp)"
+      gh() {
+        if [ "$1 $2" = "variable get" ]; then [ -n "$APP_ID" ] && echo "$APP_ID"; return 0; fi
+        if [[ " $* " == *" -X POST "* ]]; then
+          jq -r '.name + ":" + ([.bypass_actors[].actor_type] | join("+"))' >>"$POSTED"
+          return 0
+        fi
+        printf '%s\n' "$EXISTING"
+      }
+      say() { :; }
+      confirm() { return 0; }
+      eval "$(sed -n '/^ruleset_branch()/,/^# --- 6\./p' "$SCRIPTS/owner-setup.sh")"
+      do_rulesets >/dev/null 2>&1
+      paste -sd, "$POSTED"
+      rm -f "$POSTED"
+    )
+  }
+  posted_names() { local item; for item in ${1//,/ }; do echo "${item%%:*}"; done | paste -sd, -; }
+  out="$(rulesets_posted "$(printf 'main\ndevelop\nrelease-tags')" 4242)"
+  expect_eq "rerun with main, develop and release-tags present posts only release-and-hotfix" \
+    "$(posted_names "$out")" "release-and-hotfix"
+  expect_eq "rerun posts release-and-hotfix with the admin role as its only bypass actor" \
+    "$out" "release-and-hotfix:RepositoryRole"
+  expect_eq "rerun with only main present posts the other three" \
+    "$(posted_names "$(rulesets_posted "main" 4242)")" "develop,release-and-hotfix,release-tags"
+  expect_eq "first run with no rulesets posts all four" \
+    "$(posted_names "$(rulesets_posted "" 4242)")" "main,develop,release-and-hotfix,release-tags"
+  expect_eq "rerun with all four present posts nothing" \
+    "$(rulesets_posted "$(printf 'main\ndevelop\nrelease-and-hotfix\nrelease-tags')" 4242)" ""
+fi
+
+
+# update-verification.sh names failed tasks: a test task only warns, anything else fails the leg (#880).
+log="$(mktemp)"
+printf '> Task :core:foo:jvmTest FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed test task only warns" "$status" "0"
+expect_eq "the warning names the test task" "$(grep -c '::warning::.*:core:foo:jvmTest' <<<"$out")" "1"
+printf '> Task :core:foo:jvmTest FAILED\n> Task :app:webApp:wasmJsProductionSync FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed non-test task fails the leg" "$status" "1"
+expect_eq "the error names the build task" "$(grep -c '::error::.*wasmJsProductionSync' <<<"$out")" "1"
+# A nonzero exit must be explained by a named failure (#880 review). The exit status comes from UPDATE_VERIFICATION_CLASSIFY_STATUS.
+cat >"$log" <<'LOG'
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:foo:jvmTest'.
+> There were failing tests.
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test-failure-only nonzero exit still only warns" "$status" "0"
+expect_eq "and names the test task in the warning" "$(grep -c '::warning::.*:core:foo:jvmTest' <<<"$out")" "1"
+cat >"$log" <<'LOG'
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Gradle build daemon disappeared unexpectedly (this is usually caused by exceeding available memory).
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test failure plus an unexplained nonzero exit fails the leg" "$status" "1"
+expect_eq "and says no failed task explains it" "$(grep -c '::error::gradle exited 1 and no failed task explains it' <<<"$out")" "1"
+cat >"$log" <<'LOG'
+> Task :app:webApp:wasmJsProductionSync FAILED
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:webApp:wasmJsProductionSync'.
+> Process 'command node' finished with non-zero exit value 1
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a non-test failure with a test failure fails the leg" "$status" "1"
+expect_eq "the build task is the one named as an error" "$(grep -c '::error::build tasks failed.*wasmJsProductionSync' <<<"$out")" "1"
+printf '> Task :core:foo:jvmTest FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test FAILED line with no explaining cause fails the leg" "$status" "1"
+# Both calls above are classify-only: they read a log and never write gradle/verification-metadata.xml,
+# so nothing needs restoring. A checkout of that path would discard a developer's unstaged edits.
 
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi
