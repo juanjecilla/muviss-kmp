@@ -119,4 +119,15 @@
     <string name="movie_marked_watched">Marcada como vista</string>
     <string name="tick_next_seen">T%1$d·E%2$d marcado como visto</string>
     <string name="removed_from_library">Quitada de la biblioteca</string>
+    <string name="action_close">Cerrar</string>
+    <string name="image_viewer_position">%1$d / %2$d</string>
+    <string name="image_viewer_backdrop">Fondo %1$d de %2$d</string>
+    <string name="image_viewer_poster">Póster %1$d de %2$d</string>
+    <string name="image_viewer_still">Fotograma %1$d de %2$d</string>
+    <string name="image_open_backdrop">Ver el fondo a pantalla completa</string>
+    <string name="image_open_poster">Ver el póster a pantalla completa</string>
+    <string name="image_open_still">Ver el fotograma a pantalla completa</string>
+    <string name="image_name_backdrop">Fondo</string>
+    <string name="image_name_poster">Póster</string>
+    <string name="image_name_still">Fotograma</string>
 </resources>

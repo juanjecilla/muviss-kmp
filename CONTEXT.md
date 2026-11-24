@@ -23,6 +23,18 @@ _Avoid_: client, api, service.
 **MediaSummary / MediaDetails**:
 Summary is the lightweight form used in search results and lists; Details is the full form (genres, runtime, seasons/episodes, production status).
 
+**Backdrop / Poster / Still**:
+The three kinds of artwork a source holds. A Backdrop is wide art for a title, a Poster is tall art for a title, and a Still is a frame from one episode. A title's artwork is never mixed across kinds.
+_Avoid_: image (too wide), thumbnail, banner, cover.
+
+**Gallery**:
+Every piece of artwork of one kind that a source offers for one title (or, for Stills, one episode). It begins as the single image the person tapped and fills in when the source answers, so it can be as small as one.
+_Avoid_: album, carousel, slideshow.
+
+**Image Viewer**:
+The full-screen page that shows a Gallery, one image at a time, starting on the image the person tapped. The person pages through it, zooms into an image, and leaves it.
+_Avoid_: lightbox, preview, fullscreen mode.
+
 **ProductionStatus**:
 Whether a title is still in production. For TV it distinguishes an ongoing show (Returning) from a completed one (Ended/Canceled) — the basis for Watched vs Finished.
 

@@ -76,6 +76,7 @@ import com.codingpit.muviss.feature.onboarding.ui.onboardingSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
+import com.codingpit.muviss.feature.search.ui.ImageViewerRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -395,6 +396,9 @@ private fun MuvissScaffold(
     val layoutType = when {
         // The introduction is full-screen: nothing in the bar is reachable until it ends.
         showingOnboarding -> NavigationSuiteType.None
+
+        // So is the Image Viewer: artwork edge to edge, nothing but its own controls on top.
+        currentDestination?.hasRoute(ImageViewerRoute::class) == true -> NavigationSuiteType.None
 
         windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) -> NavigationSuiteType.NavigationRail
 

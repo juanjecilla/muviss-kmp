@@ -73,6 +73,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.tmdb_score
 import com.codingpit.muviss.feature.search.ui.generated.resources.undo_last
 import com.codingpit.muviss.models.EpisodeCredit
 import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.ImageKind
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -88,6 +89,8 @@ import org.jetbrains.compose.resources.stringResource
 fun EpisodeDetailScreen(
     viewModel: EpisodeDetailViewModel,
     onBack: () -> Unit,
+    /** Opens the Image Viewer on the episode's stills; the url is the one tapped (see [ImageViewerRoute]). */
+    onOpenImage: (ImageKind, String) -> Unit = { _, _ -> },
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
@@ -116,6 +119,7 @@ fun EpisodeDetailScreen(
                     onWatchedAgain = viewModel::recordRewatch,
                     onUndoLatest = viewModel::undoLatestPlay,
                     onClearHistory = { confirmClear = true },
+                    onOpenImage = onOpenImage,
                 )
             }
 
@@ -148,12 +152,13 @@ private fun EpisodeBody(
     onWatchedAgain: () -> Unit,
     onUndoLatest: () -> Unit,
     onClearHistory: () -> Unit,
+    onOpenImage: (ImageKind, String) -> Unit,
 ) {
     val scroll = rememberScrollState()
     Column(
         Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = MuvissSpacing.bottomContent),
     ) {
-        EpisodeStill(details)
+        EpisodeStill(details, onOpenImage)
         Column(
             Modifier.padding(horizontal = MuvissSpacing.l).padding(top = MuvissSpacing.m),
             verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
@@ -181,6 +186,7 @@ private fun EpisodeBody(
 @Composable
 private fun EpisodeStill(
     details: EpisodeDetails,
+    onOpenImage: (ImageKind, String) -> Unit,
     // The still draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
     topInset: Dp = immersiveTopPadding(),
@@ -191,6 +197,7 @@ private fun EpisodeStill(
                 .fillMaxWidth()
                 .height(maxWidth * 9f / 16f + topInset)
                 .trackImmersiveArtwork()
+                .opensImageViewer(drawnImageUrl(details.stillUrl, PosterSize.Detail), ImageKind.Still, onOpenImage)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
             PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize())
