@@ -6,8 +6,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.LayoutDirection
 import me.saket.telephoto.zoomable.ZoomableContentLocation
-import kotlin.math.abs
-import kotlin.math.min
 
 /**
  * Where the Image Viewer draws an image of [intrinsic] size inside its viewport: [ContentScale.Fit], scaled up or down
@@ -37,19 +35,3 @@ internal class FitContentLocation(private val intrinsic: Size) : ZoomableContent
  */
 internal fun fitLocation(intrinsic: Size?): ZoomableContentLocation = intrinsic?.takeIf { it.width > 0f && it.height > 0f }?.let { FitContentLocation(it) }
     ?: ZoomableContentLocation.scaledInsideAndCenterAligned(null)
-
-/**
- * The zoom factor one unmodified mouse-wheel scroll asks for, or null when the wheel did not move.
- *
- * Scrolling up zooms in and down zooms out, by 10% of the scroll distance per event. Zooming out divides rather than
- * subtracts, so a large trackpad delta can never reach zero or a negative factor, and the step is capped so one fling
- * cannot jump across the whole zoom range.
- */
-internal fun wheelZoomFactor(scrollDeltaY: Float): Float? {
-    if (scrollDeltaY == 0f) return null
-    val step = min(abs(scrollDeltaY) * WHEEL_ZOOM_STEP, MAX_WHEEL_ZOOM_STEP)
-    return if (scrollDeltaY < 0f) 1f + step else 1f / (1f + step)
-}
-
-private const val WHEEL_ZOOM_STEP = 0.1f
-private const val MAX_WHEEL_ZOOM_STEP = 0.5f

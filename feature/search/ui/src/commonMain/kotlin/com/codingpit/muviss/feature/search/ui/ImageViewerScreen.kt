@@ -36,7 +36,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -61,6 +60,8 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.image_viewer_s
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.TitleImage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import me.saket.telephoto.ExperimentalTelephotoApi
 import me.saket.telephoto.flick.FlickToDismiss
@@ -200,7 +201,6 @@ private fun GalleryPage(
     onTap: () -> Unit,
 ) {
     val zoom = rememberZoomableState(ZoomSpec(maxZoomFactor = MAX_ZOOM))
-    val scope = rememberCoroutineScope()
     DisposableEffect(image.fileKey) {
         zooms[image.fileKey] = zoom
         onDispose { zooms.remove(image.fileKey) }
@@ -214,36 +214,49 @@ private fun GalleryPage(
         modifier = Modifier
             .fillMaxSize()
             .semantics { contentDescription = description }
-            .zoomable(zoom, onClick = { onTap() })
-            .wheelZooms(zoom, scope),
+            // Before zoomable: the wheel's focal point must be in viewport coordinates, which only the untransformed
+            // node has. Zoomable's own shortcut (Alt + wheel) runs in the Main pass and consumes its scrolls, so the
+            // Final pass here sees only the scrolls nobody else took.
+            .wheelZooms(zoom)
+            .zoomable(zoom, onClick = { onTap() }),
     )
 }
 
 /**
- * Zooms on an unmodified mouse wheel. Telephoto's own hardware shortcut zooms on the wheel only with Alt held, and its
- * detector cannot be given a different one, so this takes the scroll the shortcut leaves alone. Telephoto's node comes
- * first in the chain and consumes the scroll it does handle (Alt + wheel), so anything still unconsumed here is ours.
- * `Modifier.zoomable` is applied before this one on every page; keep that order.
+ * Zooms on an unmodified mouse wheel, through [WheelZoomQueue], so quick scrolls compound.
+ *
+ * Telephoto's own shortcut zooms on the wheel only with Alt held, and its detector cannot be given a different one, so
+ * this takes the scroll that shortcut leaves alone. Consumed scrolls are skipped, so Alt + wheel is never zoomed twice.
+ * Ctrl + wheel is not a Telephoto shortcut and zooms here like a plain wheel.
  */
-internal fun Modifier.wheelZooms(zoom: ZoomableState, scope: CoroutineScope): Modifier = pointerInput(zoom) {
-    awaitPointerEventScope {
-        while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Main)
-            val factor = unconsumedWheelZoom(event)
-            if (factor != null) {
-                val centroid = event.changes.fold(Offset.Zero) { sum, change -> sum + change.position } / event.changes.size.toFloat()
-                scope.launch { zoom.zoomBy(factor, centroid) }
-                event.changes.forEach { it.consume() }
+internal fun Modifier.wheelZooms(zoom: ZoomableState): Modifier = pointerInput(zoom) {
+    val queue = WheelZoomQueue()
+    val requests = Channel<Unit>(Channel.CONFLATED)
+    coroutineScope {
+        launch {
+            for (ignored in requests) {
+                while (true) {
+                    val step = queue.nextStep(zoom.userZoom()) ?: break
+                    zoom.zoomBy(step.factor, step.focalPoint)
+                    queue.settled()
+                }
+            }
+        }
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Final)
+                if (event.type != PointerEventType.Scroll || event.changes.any { it.isConsumed }) continue
+                val delta = event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat()
+                val focalPoint = event.changes.fold(Offset.Zero) { sum, change -> sum + change.position } / event.changes.size.toFloat()
+                queue.request(zoom.userZoom(), delta, focalPoint)
+                requests.trySend(Unit)
             }
         }
     }
 }
 
-/** The zoom factor for a scroll nobody has consumed yet, or null for anything else. */
-private fun unconsumedWheelZoom(event: PointerEvent): Float? {
-    if (event.type != PointerEventType.Scroll || event.changes.any { it.isConsumed }) return null
-    return wheelZoomFactor(event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat())
-}
+/** The picture's current user zoom, or 1 before Telephoto has measured it. */
+private fun ZoomableState.userZoom(): Float = contentTransformation.takeIf { it.isSpecified }?.scaleMetadata?.userZoom ?: MIN_USER_ZOOM
 
 /** Pans a zoomed picture by [delta]; always consumes the key, so the arrow does not also turn the page. */
 private fun pan(scope: CoroutineScope, zoom: ZoomableState?, delta: Offset): Boolean {
@@ -258,7 +271,7 @@ private fun pageDescription(kind: ImageKind, position: Int, total: Int): String 
     ImageKind.Still -> stringResource(Res.string.image_viewer_still, position, total)
 }
 
-private const val MAX_ZOOM = 4f
+private const val MAX_ZOOM = MAX_USER_ZOOM
 
 /** How far an arrow key moves a zoomed picture. */
 private val KEY_PAN_STEP = 48.dp
