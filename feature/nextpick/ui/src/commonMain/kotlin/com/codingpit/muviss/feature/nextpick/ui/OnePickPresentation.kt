@@ -3,9 +3,12 @@ package com.codingpit.muviss.feature.nextpick.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,16 +30,28 @@ import org.jetbrains.compose.resources.stringResource
  */
 object OnePickPresentation : PickPresentation {
 
+    private const val POSTER_WIDTH_FRACTION = 0.7f
+    private const val POSTER_ASPECT = 2f / 3f
+
     override val mode: NextPickResultMode = NextPickResultMode.ONE_PICK
 
     @Composable
     override fun Content(state: PickSessionUiState.Result, callbacks: PickResultCallbacks, modifier: Modifier) {
         val pick = state.picks.first()
         val outcome = state.outcomes[pick.candidate.id]
-        Column(modifier = modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        // Scrolls: on a tall, narrow phone the poster, the reason and both actions together are taller than the
+        // screen, and without it the Add and Another buttons could not be reached (#983).
+        Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(stringResource(Res.string.nextpick_one_pick_label), style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(12.dp))
-            PosterImage(url = pick.candidate.summary.posterUrl, title = pick.candidate.summary.title, size = PosterSize.Detail)
+            // PosterImage fills whatever it is given, so it needs a size of its own: left alone it takes the whole
+            // height under the label. A poster ratio at 70% of the width keeps the actions near the fold.
+            PosterImage(
+                url = pick.candidate.summary.posterUrl,
+                title = pick.candidate.summary.title,
+                modifier = Modifier.fillMaxWidth(POSTER_WIDTH_FRACTION).aspectRatio(POSTER_ASPECT),
+                size = PosterSize.Detail,
+            )
             Spacer(Modifier.height(12.dp))
             Text(pick.candidate.summary.title, style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(4.dp))
