@@ -529,6 +529,8 @@ class DetailViewModel(
     /** The primary action's tick for a movie that is not watched yet (#721). Offers an Undo unless it was already watched. */
     fun markMovieWatched() {
         launchWrite {
+            // Before any write: a TV id would be rejected by the tick (#777), but only after the entry was added (#787).
+            if (mediaId.type != MediaType.MOVIE) return@launchWrite
             val id = EpisodeId.forMovie(mediaId)
             if (id in progressApi.observeSeenEpisodes(mediaId).first()) return@launchWrite
             val created = addIfAbsent()
@@ -643,9 +645,13 @@ class DetailViewModel(
         return EpisodeOrdering.airedBy(seasons, clock.todayEpochDay()).filterNot { it in seen }
     }
 
-    /** A bulk mark that ticked nothing (already caught up) has nothing to undo, so it offers none. */
+    /**
+     * A bulk mark that ticked nothing has no Undo of its own, so it offers none. Nothing ticked after its seen read
+     * means another progress write landed in between, so the Undo already on screen no longer owns the library entry
+     * (#721): it keeps its own ticks, and taking the entry back would remove what that write depends on.
+     */
     private fun offerUndo(written: List<EpisodeId>, message: UiText, createdEntry: Boolean = false) {
-        if (written.isEmpty()) return
+        if (written.isEmpty()) return releaseEntry()
         _state.update { it.copy(pendingUndo = BulkMarkUndo(written, message, createdEntry = createdEntry)) }
     }
 
@@ -666,18 +672,8 @@ class DetailViewModel(
             if (EpisodeOrdering.upToInclusive(aired, episodeId).all { it in seen }) return@launchWrite
             val created = addIfAbsent()
             val written = progressApi.markPreviousSeen(aired, episodeId)
-            // Nothing ticked means nothing to take back, so an Undo already on screen stays as it was.
+            // Nothing ticked here releases the Undo already on screen's library entry (see offerUndo).
             offerUndo(written, UiText.Resource(Res.string.undo_caught_up_through, episodeId.seasonNumber, episodeId.episodeNumber), createdEntry = created)
-        }
-    }
-
-    /** Toggles a movie's watched flag. */
-    fun toggleMovieWatched() {
-        launchWrite {
-            val watched = _state.value.movieWatched
-            if (!watched) addIfAbsent()
-            progressApi.tickMovie(mediaId, !watched)
-            releaseEntry()
         }
     }
 }
