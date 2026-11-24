@@ -10,7 +10,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRailItemDefaults
@@ -54,7 +53,6 @@ import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.designsystem.component.LocalOpenTmdbKeySettings
 import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
-import com.codingpit.muviss.core.designsystem.layout.immersiveTopInsets
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
@@ -78,7 +76,6 @@ import com.codingpit.muviss.feature.onboarding.ui.onboardingSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
-import com.codingpit.muviss.feature.search.ui.EpisodeDetailRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -448,16 +445,13 @@ private fun MuvissScaffold(
         // without this every screen not built on an M3 Scaffold draws its first
         // pixel under the status bar and camera cutout. One wrap fixes all of
         // them, on every platform.
-        val immersive = currentDestination?.let {
-            it.hasRoute(DetailRoute::class) || it.hasRoute(EpisodeDetailRoute::class)
-        } == true
-        ScreenInsets(immersive = immersive) {
+        // Every route keeps this top padding, immersive ones included (they extend up into it themselves), so no
+        // navigation state moves a screen. See ScreenInsets.
+        ScreenInsets {
             Column {
                 val persistence = koinInject<PersistenceStatus>()
                 val warning = rememberPersistenceWarning(persistence)
                 PersistenceBanner(
-                    // Immersive screens leave the top to their own controls, so a banner here clears it itself.
-                    modifier = if (immersive) Modifier.windowInsetsPadding(immersiveTopInsets()) else Modifier,
                     message = warning?.message,
                     actionLabel = warning?.actionLabel,
                     onAction = persistence::reloadPage,

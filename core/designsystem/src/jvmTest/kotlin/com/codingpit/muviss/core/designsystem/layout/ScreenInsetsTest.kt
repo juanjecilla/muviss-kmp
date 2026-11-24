@@ -3,8 +3,10 @@
 package com.codingpit.muviss.core.designsystem.layout
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -15,6 +17,7 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.testing.TestSafeAreaInsets
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * The regression these guard is the one from the bug report: content drawn
@@ -38,10 +41,10 @@ class ScreenInsetsTest {
     }
 
     @Test
-    fun an_immersive_screen_keeps_the_top_for_itself() = runComposeUiTest {
+    fun an_extended_screen_moves_up_into_the_band_the_wrapper_padded() = runComposeUiTest {
         setContent {
-            ScreenInsets(immersive = true, insets = TestSafeAreaInsets) {
-                Box(Modifier.testTag(CONTENT).fillMaxSize())
+            ScreenInsets(insets = TestSafeAreaInsets) {
+                Box(Modifier.extendIntoTopInset(48.dp).testTag(CONTENT).fillMaxSize())
             }
         }
 
@@ -49,15 +52,35 @@ class ScreenInsetsTest {
     }
 
     @Test
-    fun an_immersive_screen_still_clears_the_sides() = runComposeUiTest {
+    fun an_extended_screen_still_clears_the_sides() = runComposeUiTest {
         setContent {
-            ScreenInsets(immersive = true, insets = WindowInsets(left = 20.dp, top = 48.dp, right = 20.dp, bottom = 0.dp)) {
-                Box(Modifier.testTag(CONTENT).fillMaxSize())
+            ScreenInsets(insets = WindowInsets(left = 20.dp, top = 48.dp, right = 20.dp, bottom = 0.dp)) {
+                Box(Modifier.extendIntoTopInset(48.dp).testTag(CONTENT).fillMaxSize())
             }
         }
 
         onNodeWithTag(CONTENT).assertLeftPositionInRootIsEqualTo(20.dp)
         onNodeWithTag(CONTENT).assertTopPositionInRootIsEqualTo(0.dp)
+    }
+
+    /**
+     * The extension keeps the screen's own height, so what follows it does not move: a weighted extended screen takes
+     * exactly the space left, and the box after it still ends at the bottom of the column.
+     */
+    @Test
+    fun an_extended_screen_keeps_its_height_so_what_follows_it_does_not_move() = runComposeUiTest {
+        setContent {
+            ScreenInsets(insets = TestSafeAreaInsets) {
+                Column(Modifier.testTag(ROOT).fillMaxSize()) {
+                    Box(Modifier.weight(1f).extendIntoTopInset(48.dp).fillMaxWidth())
+                    Box(Modifier.testTag(CONTENT).size(10.dp))
+                }
+            }
+        }
+
+        val root = onNodeWithTag(ROOT).fetchSemanticsNode().boundsInRoot
+        val content = onNodeWithTag(CONTENT).fetchSemanticsNode().boundsInRoot
+        assertEquals(root.bottom, content.bottom, 0.5f)
     }
 
     @Test
@@ -103,5 +126,6 @@ class ScreenInsetsTest {
 
     private companion object {
         const val CONTENT = "content"
+        const val ROOT = "root"
     }
 }

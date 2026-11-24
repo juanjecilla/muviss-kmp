@@ -25,8 +25,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,7 +34,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -117,7 +114,8 @@ import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
-import com.codingpit.muviss.core.designsystem.layout.immersiveTopInsets
+import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
+import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.resolve
@@ -231,18 +229,21 @@ fun DetailScreen(
         if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark(undo) else viewModel.dismissUndo(undo)
     }
 
-    Box(Modifier.fillMaxSize()) {
-        // Only the details branch has artwork under the status bar; the light icons are requested there
-        // (see DetailCompact and DetailExpanded), so loading and error keep the theme's icons.
+    // Raw, because ScreenInsets already consumed the inset for this subtree; see immersiveTopPadding.
+    val topInset = immersiveTopPadding()
+    // The screen extends up into the band ScreenInsets padded, in every state, so its placement never changes
+    // during a navigation transition. Only the details branch has artwork under the status bar; the light icons are
+    // requested there (see DetailCompact and DetailExpanded), so loading and error keep the theme's icons.
+    Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
         when {
             state.loading -> CircularProgressIndicator(
-                Modifier.align(Alignment.Center).windowInsetsPadding(immersiveTopInsets()).padding(MuvissSpacing.xl),
+                Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
             )
 
             state.error != null -> ErrorState(
                 message = state.error!!,
                 onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center).windowInsetsPadding(immersiveTopInsets()),
+                modifier = Modifier.align(Alignment.Center).padding(top = topInset),
             )
 
             state.details != null -> BoxWithConstraints {
@@ -266,7 +267,7 @@ fun DetailScreen(
         }
 
         // Floating back button over the hero, per the mockups.
-        BackButton(onBack)
+        BackButton(onBack, topInset = topInset)
 
         // The tick that catches the user up on the whole show. A season only gets the
         // checkbox pulse: ticks that finish one are visible in the list they are made in.
@@ -321,22 +322,48 @@ fun DetailScreen(
 }
 
 /**
- * How far the artwork's scrim reaches below the status bar. The hero's scrim is drawn in the hero, so it scrolls
- * away; a screen requests light icons only while that scrim still covers the bar.
+ * How far below the status bar the artwork's dark scrim is guaranteed to reach. The single threshold of the immersive
+ * screens: the light-icon request ([rememberHeroUnderBar], [rememberStillUnderBar]) holds while the bar is still
+ * inside it, and [ImmersiveTopScrim] draws its dark plateau through exactly this band. Changing it moves both.
  */
 internal val ImmersiveScrimExtent = 56.dp
 
+/** How far the scrim fades out past its plateau. */
+internal val ImmersiveScrimFade = 56.dp
+
+/** Where the scrim's dark plateau ends, measured from the top of the artwork: through the bar and the extent. */
+internal fun immersiveScrimPlateau(topInset: Dp): Dp = topInset + ImmersiveScrimExtent
+
 /**
- * The round back control over the artwork. It clears [insets] itself, because its screen leaves the top to its
- * immersive controls: the status bar, a caption bar and a display cutout ([immersiveTopInsets] in production).
+ * The dark scrim over artwork that draws under the status bar. It is a plateau, not a gradient, through the whole
+ * status-bar band and [ImmersiveScrimExtent] below it, then fades out. A gradient that starts dark and fades across its
+ * full height leaves the bar nearly clear at the scroll offsets where light icons are still requested, so light icons
+ * land on bright artwork.
+ */
+@Composable
+internal fun ImmersiveTopScrim(topInset: Dp, modifier: Modifier = Modifier) {
+    val plateau = immersiveScrimPlateau(topInset)
+    val total = plateau + ImmersiveScrimFade
+    val dark = Color.Black.copy(alpha = 0.45f)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(total)
+            .background(Brush.verticalGradient(0f to dark, plateau / total to dark, 1f to Color.Transparent)),
+    )
+}
+
+/**
+ * The round back control over the artwork. It pads itself by [topInset] (the raw status-bar band, not an inset
+ * modifier, because [ScreenInsets] already consumed the inset for its descendants) and clears the bar.
  */
 @Composable
 internal fun BackButton(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    insets: WindowInsets = immersiveTopInsets(),
+    topInset: Dp = immersiveTopPadding(),
 ) {
-    Box(modifier.windowInsetsPadding(insets).padding(12.dp)) {
+    Box(modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = topInset + 12.dp)) {
         Surface(
             shape = CircleShape,
             color = Color.Black.copy(alpha = 0.45f),
@@ -582,7 +609,7 @@ private fun DetailBackdrop(
     height: androidx.compose.ui.unit.Dp,
     // The hero draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
-    topInset: androidx.compose.ui.unit.Dp = immersiveTopInsets().asPaddingValues().calculateTopPadding(),
+    topInset: androidx.compose.ui.unit.Dp = immersiveTopPadding(),
 ) {
     val background = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxWidth().height(height + topInset)) {
@@ -602,12 +629,7 @@ private fun DetailBackdrop(
                 .background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to background)),
         )
         // Keeps the status icons legible over any artwork, light or dark.
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(topInset + ImmersiveScrimExtent)
-                .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 1f to Color.Transparent)),
-        )
+        ImmersiveTopScrim(topInset)
     }
 }
 

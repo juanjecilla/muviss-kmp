@@ -3,11 +3,16 @@ package com.codingpit.muviss.core.designsystem.layout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * The top band that artwork drawn under the status bar must grow by, and that controls over it must clear.
@@ -20,6 +25,15 @@ import androidx.compose.ui.Modifier
 fun immersiveTopInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
 
 /**
+ * The raw height of [immersiveTopInsets], read as a number.
+ *
+ * Read this, not `immersiveTopInsets().windowInsetsPadding`, inside a screen that [ScreenInsets] already wraps: that
+ * padding consumes the top for its descendants, so an inset modifier there would apply nothing.
+ */
+@Composable
+fun immersiveTopPadding(): Dp = immersiveTopInsets().asPaddingValues().calculateTopPadding()
+
+/**
  * Holds app content clear of the system's unsafe area.
  *
  * The app runs edge-to-edge (`enableEdgeToEdge()`, and `targetSdk = 36` forces
@@ -30,6 +44,14 @@ fun immersiveTopInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowIns
  * status bar and camera cutout. This is the one place that fixes that, for
  * every screen and every platform at once.
  *
+ * It pads the top on **every** route, all the time. That is deliberate: an
+ * immersive screen (Detail, Episode Detail) does not drop the padding for itself
+ * when it is the current destination, because the padding belongs to the
+ * `NavHost` as a whole and would then vanish from the outgoing screen during its
+ * exit animation and reappear on pop, which is a visible jump. Instead it
+ * extends itself up into the band with [Modifier.extendIntoTopInset], in every
+ * state, so its placement never changes.
+ *
  * [safeDrawing] rather than `systemBars`: it includes `displayCutout`, and a
  * cutout is exactly what a modern phone puts over the top of the screen. The
  * bottom is deliberately left out — the navigation bar and rail inset
@@ -39,11 +61,6 @@ fun immersiveTopInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowIns
  * `Scaffold` sees what is left rather than padding the same band a second time.
  * No explicit `consumeWindowInsets` is needed.
  *
- * [immersive] leaves the top alone for a screen whose hero artwork draws under the status bar
- * (Detail, Episode Detail). Such a screen owns its top inset: it grows the image by it and pads
- * its own controls. Without this the band above the image shows the theme background, which
- * reads as a black bar in dark theme.
- *
  * [insets] is a parameter rather than a hard-coded read because Skiko — the
  * renderer behind `runComposeUiTest` — reports zero insets, so this would be
  * untestable off-device otherwise. Tests pass a synthetic value; production
@@ -51,12 +68,38 @@ fun immersiveTopInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowIns
  */
 @Composable
 fun ScreenInsets(
-    immersive: Boolean = false,
     insets: WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
     content: @Composable () -> Unit,
 ) {
-    val applied = if (immersive) insets.only(WindowInsetsSides.Horizontal) else insets
-    Box(Modifier.windowInsetsPadding(applied)) {
+    Box(Modifier.windowInsetsPadding(insets)) {
         content()
     }
+}
+
+/**
+ * Lets a screen draw up into the top band that [ScreenInsets] padded, by [top], so its artwork runs under the status
+ * bar.
+ *
+ * The child is measured to fill the band, [top] taller than this node's bounds, and placed [top] above this node's
+ * origin. This node keeps the height it was given, so whatever sits beside or below it does not move. The child is
+ * forced to the full height, so it must not ask for less (use `fillMaxSize`, or a weight, not a fixed `height`). Nothing
+ * clips it: navigation-compose's `NavHost` sets no `SizeTransform`, so `AnimatedContent` does not `clipToBounds` during
+ * a transition. Unbounded height, or a [top] of zero, places the child as it is.
+ */
+fun Modifier.extendIntoTopInset(top: Dp): Modifier = layout { measurable, constraints ->
+    val extra = if (top > 0.dp && constraints.hasBoundedHeight) top.roundToPx() else 0
+    if (extra == 0) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    val height = constraints.maxHeight
+    val placeable = measurable.measure(
+        Constraints(
+            minWidth = constraints.minWidth,
+            maxWidth = constraints.maxWidth,
+            minHeight = height + extra,
+            maxHeight = height + extra,
+        ),
+    )
+    layout(placeable.width, height) { placeable.place(0, -extra) }
 }
