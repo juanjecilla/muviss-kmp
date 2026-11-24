@@ -1,0 +1,9 @@
+What's new in Muviss 1.7.0:
+- Optional sweep angle, default unchanged
+- Draw the hero under the status bar
+- The snooze hint clears the button on dense screens; the header title may wrap
+- One Pick result scrolls and its poster has a size
+- A refusal the OS will ask again keeps Turn on (#933,)
+- Offer Undo for a catch-up through an episode
+- A restored empty seeded deck offers the way back to Next Pick
+- Bug fixes and improvements.
