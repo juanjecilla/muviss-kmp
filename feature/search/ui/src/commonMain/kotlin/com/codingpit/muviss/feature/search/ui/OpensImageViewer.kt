@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import com.codingpit.muviss.core.designsystem.component.PosterSize
+import com.codingpit.muviss.core.designsystem.component.sizedImageUrl
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.image_open_backdrop
 import com.codingpit.muviss.feature.search.ui.generated.resources.image_open_poster
@@ -13,6 +15,13 @@ import org.jetbrains.compose.resources.stringResource
 
 internal const val DETAIL_BACKDROP_TAG = "detailBackdrop"
 internal const val DETAIL_POSTER_TAG = "detailPoster"
+
+/**
+ * The URL that [com.codingpit.muviss.core.designsystem.component.PosterImage] requests for [url] at [size], or null
+ * when there is no artwork. The viewer must open on exactly this URL: Coil caches by URL, so only then is the picture
+ * already on the device when the viewer opens offline (the stored `w500` is a different entry from the grid's `w342`).
+ */
+internal fun drawnImageUrl(url: String?, size: PosterSize): String? = url?.takeIf { it.isNotBlank() }?.let { sizedImageUrl(it, size) }
 
 /**
  * Makes artwork open the Image Viewer on [kind]'s Gallery, seeded with [url]. Artwork the source

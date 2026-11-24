@@ -469,7 +469,7 @@ private fun DetailExpanded(
                                     url = details.summary.posterUrl,
                                     title = details.summary.title,
                                     modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium)
-                                        .opensImageViewer(details.summary.posterUrl, ImageKind.Poster, callbacks.onOpenImage),
+                                        .opensImageViewer(drawnImageUrl(details.summary.posterUrl, PosterSize.Detail), ImageKind.Poster, callbacks.onOpenImage),
                                 )
                             }
                             ActionRow(state, viewModel, callbacks, scrollToSpecials)
@@ -627,7 +627,7 @@ private fun DetailHero(details: MediaDetails, onOpenImage: (ImageKind, String) -
                     title = details.summary.title,
                     modifier = Modifier.width(72.dp).height(108.dp).clip(MaterialTheme.shapes.small)
                         .testTag(DETAIL_POSTER_TAG)
-                        .opensImageViewer(details.summary.posterUrl, ImageKind.Poster, onOpenImage),
+                        .opensImageViewer(drawnImageUrl(details.summary.posterUrl, PosterSize.Grid), ImageKind.Poster, onOpenImage),
                     size = PosterSize.Grid,
                 )
             }

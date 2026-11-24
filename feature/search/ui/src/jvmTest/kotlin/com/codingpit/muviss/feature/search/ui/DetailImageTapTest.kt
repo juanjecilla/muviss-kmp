@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.testing.GoldenSurface
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
@@ -62,7 +63,9 @@ class DetailImageTapTest {
 
         onNodeWithTag(DETAIL_POSTER_TAG).performClick()
 
-        assertEquals(listOf(ImageKind.Poster to POSTER), opened)
+        // The compact poster draws the w342 grid request, so the viewer opens on that same URL: it is cached, and
+        // the picture is on screen offline. The stored w500 is a different cache entry.
+        assertEquals(listOf(ImageKind.Poster to drawnImageUrl(POSTER, PosterSize.Grid)), opened)
     }
 
     @Test

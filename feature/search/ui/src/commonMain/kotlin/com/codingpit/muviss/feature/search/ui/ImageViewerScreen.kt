@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,13 +29,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -53,13 +60,14 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.image_viewer_p
 import com.codingpit.muviss.feature.search.ui.generated.resources.image_viewer_still
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.TitleImage
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.saket.telephoto.ExperimentalTelephotoApi
 import me.saket.telephoto.flick.FlickToDismiss
 import me.saket.telephoto.flick.FlickToDismissState
 import me.saket.telephoto.flick.rememberFlickToDismissState
 import me.saket.telephoto.zoomable.ZoomSpec
-import me.saket.telephoto.zoomable.ZoomableContentLocation
+import me.saket.telephoto.zoomable.ZoomableState
 import me.saket.telephoto.zoomable.rememberZoomableState
 import me.saket.telephoto.zoomable.zoomable
 import org.jetbrains.compose.resources.stringResource
@@ -93,6 +101,10 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
     val focus = remember { FocusRequester() }
     var controlsVisible by remember { mutableStateOf(true) }
     val flick = rememberFlickToDismissState()
+    // The zoom state of each page on screen, by file: the arrow keys pan the picture in front of the person when it
+    // is zoomed in, and turn the page only when it is not.
+    val zooms = remember { mutableMapOf<String, ZoomableState>() }
+    val panStep = with(LocalDensity.current) { KEY_PAN_STEP.toPx() }
 
     LaunchedEffect(Unit) { focus.requestFocus() }
 
@@ -104,10 +116,27 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
             .testTag(IMAGE_VIEWER_TAG)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val zoom = zooms[images.getOrNull(pager.currentPage)?.fileKey]
+                val zoomed = zoom != null && (zoom.zoomFraction ?: 0f) > 0f
                 when (event.key) {
                     Key.Escape -> onClose().let { true }
-                    Key.DirectionRight -> scope.launch { pager.animateScrollToPage((pager.currentPage + 1).coerceAtMost(images.lastIndex)) }.let { true }
-                    Key.DirectionLeft -> scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) }.let { true }
+
+                    Key.DirectionRight -> if (zoomed) {
+                        pan(scope, zoom, Offset(-panStep, 0f))
+                    } else {
+                        scope.launch { pager.animateScrollToPage((pager.currentPage + 1).coerceAtMost(images.lastIndex)) }.let { true }
+                    }
+
+                    Key.DirectionLeft -> if (zoomed) {
+                        pan(scope, zoom, Offset(panStep, 0f))
+                    } else {
+                        scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) }.let { true }
+                    }
+
+                    Key.DirectionDown -> zoomed && pan(scope, zoom, Offset(0f, -panStep))
+
+                    Key.DirectionUp -> zoomed && pan(scope, zoom, Offset(0f, panStep))
+
                     else -> false
                 }
             }
@@ -119,6 +148,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
                 GalleryPage(
                     image = images[page],
                     description = pageDescription(kind, page + 1, images.size),
+                    zooms = zooms,
                     onTap = { controlsVisible = !controlsVisible },
                 )
             }
@@ -163,19 +193,62 @@ private fun DismissOnFlick(state: FlickToDismissState, onDismiss: () -> Unit, co
 }
 
 @Composable
-private fun GalleryPage(image: TitleImage, description: String, onTap: () -> Unit) {
+private fun GalleryPage(
+    image: TitleImage,
+    description: String,
+    zooms: MutableMap<String, ZoomableState>,
+    onTap: () -> Unit,
+) {
     val zoom = rememberZoomableState(ZoomSpec(maxZoomFactor = MAX_ZOOM))
+    val scope = rememberCoroutineScope()
+    DisposableEffect(image.fileKey) {
+        zooms[image.fileKey] = zoom
+        onDispose { zooms.remove(image.fileKey) }
+    }
     AsyncImage(
         model = image.url,
         contentDescription = description,
         contentScale = ContentScale.Fit,
-        // Telephoto needs the picture's own size to know where its edges are.
-        onState = { state -> zoom.setContentLocation(ZoomableContentLocation.scaledInsideAndCenterAligned(state.painter?.intrinsicSize)) },
+        // Telephoto needs the picture's own size, and the bounds of what Fit draws, to know where its edges are.
+        onState = { state -> zoom.setContentLocation(fitLocation(state.painter?.intrinsicSize)) },
         modifier = Modifier
             .fillMaxSize()
             .semantics { contentDescription = description }
-            .zoomable(zoom, onClick = { onTap() }),
+            .zoomable(zoom, onClick = { onTap() })
+            .wheelZooms(zoom, scope),
     )
+}
+
+/**
+ * Zooms on an unmodified mouse wheel. Telephoto's own hardware shortcut zooms on the wheel only with Alt held, and its
+ * detector cannot be given a different one, so this takes the scroll the shortcut leaves alone. Telephoto's node comes
+ * first in the chain and consumes the scroll it does handle (Alt + wheel), so anything still unconsumed here is ours.
+ * `Modifier.zoomable` is applied before this one on every page; keep that order.
+ */
+internal fun Modifier.wheelZooms(zoom: ZoomableState, scope: CoroutineScope): Modifier = pointerInput(zoom) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            val factor = unconsumedWheelZoom(event)
+            if (factor != null) {
+                val centroid = event.changes.fold(Offset.Zero) { sum, change -> sum + change.position } / event.changes.size.toFloat()
+                scope.launch { zoom.zoomBy(factor, centroid) }
+                event.changes.forEach { it.consume() }
+            }
+        }
+    }
+}
+
+/** The zoom factor for a scroll nobody has consumed yet, or null for anything else. */
+private fun unconsumedWheelZoom(event: PointerEvent): Float? {
+    if (event.type != PointerEventType.Scroll || event.changes.any { it.isConsumed }) return null
+    return wheelZoomFactor(event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat())
+}
+
+/** Pans a zoomed picture by [delta]; always consumes the key, so the arrow does not also turn the page. */
+private fun pan(scope: CoroutineScope, zoom: ZoomableState?, delta: Offset): Boolean {
+    scope.launch { zoom?.panBy(delta) }
+    return true
 }
 
 @Composable
@@ -186,3 +259,6 @@ private fun pageDescription(kind: ImageKind, position: Int, total: Int): String 
 }
 
 private const val MAX_ZOOM = 4f
+
+/** How far an arrow key moves a zoomed picture. */
+private val KEY_PAN_STEP = 48.dp
