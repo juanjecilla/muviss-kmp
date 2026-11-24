@@ -96,6 +96,9 @@ class NotificationNudgeViewModel(
     /** Numbers each settlement, so the latest one wins even when an older OS read answers last. */
     private var settleSeq = 0
 
+    /** Numbers each turn-on that shows [NotificationNudgeState.answering], so only the latest one clears it. */
+    private var answerSeq = 0
+
     /** The settlement in flight. Replaced, never queued. Cancelling it is an optimisation: the guards decide. */
     private var settlement: Job? = null
 
@@ -120,22 +123,30 @@ class NotificationNudgeViewModel(
         val decision = ++decisionEpoch
         settlement?.cancel()
         viewModelScope.launchReporting {
-            if (refusedForGoodNow(system.blockedNow())) {
+            val refusedForGood = refusedForGoodNow(system.blockedNow())
+            // The preflight reads suspended: a dismissal or a newer turn-on may have begun meanwhile, and then this
+            // tap no longer owns the decision. Checked before any write, so a stale tap neither asks nor shows answering.
+            if (decisionEpoch != decision) return@launchReporting
+            if (refusedForGood) {
                 commitDecision(decision, blocked = true, retryable = false)
                 return@launchReporting
             }
+            val answer = ++answerSeq
             _state.update { it.copy(answering = true) }
             try {
                 when (onboarding.acceptNotificationNudge()) {
                     NotificationNudgeResult.DENIED -> {
-                        val forGood = refusedForGoodNow(system.blockedNow())
-                        commitDecision(decision, blocked = forGood, retryable = !forGood)
+                        val off = system.blockedNow()
+                        val forGood = refusedForGoodNow(off)
+                        // A read that now says allowed (the person enabled it meanwhile) must not leave a Turn on line.
+                        commitDecision(decision, blocked = forGood, retryable = off && !forGood)
                     }
 
                     NotificationNudgeResult.ENABLED -> commitDecision(decision, blocked = false, retryable = false)
                 }
             } finally {
-                _state.update { it.copy(answering = false) }
+                // Only the latest turn-on clears it: an older one finishing must not hide a newer one still answering.
+                if (answerSeq == answer) _state.update { it.copy(answering = false) }
             }
         }
     }
@@ -160,8 +171,12 @@ class NotificationNudgeViewModel(
     }
 
     /**
-     * Sets [NotificationNudgeState.blocked] from the OS as it is now and what the nudge already knows. Writes only
-     * if this is still the latest settlement and no decision or dismissal began during its read.
+     * Reconciles [NotificationNudgeState.blocked] and [NotificationNudgeState.retryable] with the OS as it is now.
+     * Writes only if this is still the latest settlement and no decision or dismissal began during its read.
+     *  - Allowed now: neither line applies any more (the person enabled it in system settings).
+     *  - Off and the OS will not ask again: the explanation replaces the retry, and the nudge's offer, if still
+     *    unspent, becomes the explanation too.
+     *  - Off and still askable: nothing changes, so a retry stays up and an existing explanation stays.
      */
     private fun settle() {
         settlement?.cancel()
@@ -171,7 +186,13 @@ class NotificationNudgeViewModel(
             val off = system.blockedNow()
             val refusedForGood = refusedForGoodNow(off)
             if (seq != settleSeq || epoch != decisionEpoch) return@launchReporting
-            _state.update { it.copy(blocked = (it.blocked && off) || (it.offered && refusedForGood)) }
+            _state.update { s ->
+                when {
+                    !off -> s.copy(blocked = false, retryable = false)
+                    refusedForGood -> s.copy(blocked = s.blocked || s.offered || s.retryable, retryable = false)
+                    else -> s
+                }
+            }
         }
     }
 

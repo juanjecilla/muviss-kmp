@@ -461,4 +461,98 @@ class NotificationNudgeViewModelTest {
         assertEquals(false, vm.state.value.visible)
         assertEquals(false, vm.state.value.retryable)
     }
+
+    @Test
+    fun a_dismissal_during_the_preflight_read_stops_the_turn_on_before_it_asks_or_shows_answering() = runTest {
+        val vm = viewModel()
+        val held = CompletableDeferred<Unit>()
+        system.heldRead = held
+
+        vm.turnOn()
+        vm.dismiss()
+        held.complete(Unit)
+
+        assertEquals(0, onboarding.accepted, "the person dismissed before the OS was asked")
+        assertEquals(false, vm.state.value.visible, "a stale turn-on must not show answering over the dismissed banner")
+    }
+
+    @Test
+    fun a_newer_turn_on_is_not_hidden_when_an_older_one_finishes_answering() = runTest {
+        val firstAnswer = CompletableDeferred<Unit>()
+        onboarding.heldAccept = firstAnswer
+        val vm = viewModel()
+        vm.turnOn()
+
+        val secondAnswer = CompletableDeferred<Unit>()
+        onboarding.heldAccept = secondAnswer
+        vm.turnOn()
+        assertEquals(2, onboarding.accepted)
+
+        firstAnswer.complete(Unit)
+        assertEquals(true, vm.state.value.visible, "the second turn-on is still answering the OS")
+
+        secondAnswer.complete(Unit)
+        assertEquals(false, vm.state.value.visible, "the last answer settles the banner")
+    }
+
+    @Test
+    fun a_denial_read_after_notifications_were_enabled_meanwhile_keeps_no_turn_on_line() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        system.askable = true
+        onboarding.onAnswer = { system.off = false }
+        val vm = viewModel()
+
+        vm.turnOn()
+
+        assertEquals(false, vm.state.value.retryable, "the OS now allows notifications, so there is nothing to retry")
+        assertEquals(false, vm.state.value.visible)
+    }
+
+    @Test
+    fun a_resume_after_notifications_were_enabled_in_system_settings_clears_the_retry_line() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        system.askable = true
+        val vm = viewModel()
+        vm.turnOn()
+        assertEquals(true, vm.state.value.retryable)
+
+        system.off = false
+        vm.recheckPermission()
+
+        assertEquals(false, vm.state.value.retryable, "the person enabled it; Turn on would only be a stale offer")
+        assertEquals(false, vm.state.value.visible)
+    }
+
+    @Test
+    fun a_resume_that_finds_the_os_can_no_longer_prompt_turns_the_retry_line_into_the_blocked_line() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        system.askable = true
+        val vm = viewModel()
+        vm.turnOn()
+
+        system.askable = false
+        vm.recheckPermission()
+
+        assertEquals(false, vm.state.value.retryable)
+        assertEquals(true, vm.state.value.blocked, "a tap would only answer no, so explain instead")
+        assertEquals(true, vm.state.value.visible)
+    }
+
+    @Test
+    fun a_resume_with_notifications_still_off_and_askable_keeps_the_retry_line() = runTest {
+        onboarding.answer = NotificationNudgeResult.DENIED
+        system.off = true
+        system.askable = true
+        val vm = viewModel()
+        vm.turnOn()
+
+        vm.recheckPermission()
+
+        assertEquals(true, vm.state.value.retryable)
+        assertEquals(false, vm.state.value.blocked)
+        assertEquals(true, vm.state.value.visible)
+    }
 }
