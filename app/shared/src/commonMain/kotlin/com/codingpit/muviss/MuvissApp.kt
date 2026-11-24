@@ -445,6 +445,8 @@ private fun MuvissScaffold(
         // without this every screen not built on an M3 Scaffold draws its first
         // pixel under the status bar and camera cutout. One wrap fixes all of
         // them, on every platform.
+        // Every route keeps this top padding, immersive ones included (they extend up into it themselves), so no
+        // navigation state moves a screen. See ScreenInsets.
         ScreenInsets {
             Column {
                 val persistence = koinInject<PersistenceStatus>()

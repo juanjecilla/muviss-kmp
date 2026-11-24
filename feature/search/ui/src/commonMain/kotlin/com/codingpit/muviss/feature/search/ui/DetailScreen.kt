@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -67,10 +66,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -87,6 +89,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -111,6 +114,8 @@ import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
+import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
+import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.resolve
@@ -224,58 +229,69 @@ fun DetailScreen(
         if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark(undo) else viewModel.dismissUndo(undo)
     }
 
-    Box(Modifier.fillMaxSize()) {
-        when {
-            state.loading -> CircularProgressIndicator(
-                Modifier.align(Alignment.Center).padding(MuvissSpacing.xl),
-            )
-
-            state.error != null -> ErrorState(
-                message = state.error!!,
-                onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center),
-            )
-
-            state.details != null -> BoxWithConstraints {
-                val callbacks = DetailCallbacks(
-                    onOpenDetail = onOpenDetail,
-                    onAddToList = { showAddToList = true },
-                    onEditNote = { editingNote = true },
-                    onOpenEpisode = onOpenEpisode,
-                    onTapSeenEpisode = { tickedEpisode = it },
-                    notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
+    // Raw, because ScreenInsets already consumed the inset for this subtree; see immersiveTopPadding.
+    val topInset = immersiveTopPadding()
+    // The screen extends up into the band ScreenInsets padded, in every state, so its placement never changes
+    // during a navigation transition. Only the details branch has artwork under the status bar, and its artwork
+    // reports itself (trackImmersiveArtwork); loading and error report nothing, so they keep the theme's icons.
+    val artwork = remember { ImmersiveArtwork() }
+    CompositionLocalProvider(LocalImmersiveArtwork provides artwork) {
+        Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
+            when {
+                state.loading -> CircularProgressIndicator(
+                    Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
                 )
-                // At least the usual allowance, so the end does not jump when a one-line
-                // snackbar appears; more when a long title or a large font wraps it.
-                val bottomPadding = snackbarClearance.bottomPadding
-                if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
-                } else {
-                    DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+
+                state.error != null -> ErrorState(
+                    message = state.error!!,
+                    onRetry = viewModel::load,
+                    modifier = Modifier.align(Alignment.Center).padding(top = topInset),
+                )
+
+                state.details != null -> BoxWithConstraints {
+                    val callbacks = DetailCallbacks(
+                        onOpenDetail = onOpenDetail,
+                        onAddToList = { showAddToList = true },
+                        onEditNote = { editingNote = true },
+                        onOpenEpisode = onOpenEpisode,
+                        onTapSeenEpisode = { tickedEpisode = it },
+                        notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
+                    )
+                    // At least the usual allowance, so the end does not jump when a one-line
+                    // snackbar appears; more when a long title or a large font wraps it.
+                    val bottomPadding = snackbarClearance.bottomPadding
+                    if (maxWidth >= EXPANDED_BREAKPOINT) {
+                        DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                    } else {
+                        DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                    }
                 }
             }
-        }
 
-        // Floating back button over the hero, per the mockups.
-        BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
+            // Over the list, under the back button: the one dark band and the light icons while the hero covers the bar.
+            ImmersiveStatusBar(artwork, topInset, Modifier.align(Alignment.TopCenter))
 
-        // The tick that catches the user up on the whole show. A season only gets the
-        // checkbox pulse: ticks that finish one are visible in the list they are made in.
-        state.celebration?.let { celebration ->
-            key(celebration.token) {
-                CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
+            // Floating back button over the hero, per the mockups.
+            BackButton(onBack, topInset = topInset)
+
+            // The tick that catches the user up on the whole show. A season only gets the
+            // checkbox pulse: ticks that finish one are visible in the list they are made in.
+            state.celebration?.let { celebration ->
+                key(celebration.token) {
+                    CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
+                }
             }
-        }
 
-        // Detail is a scrolling Box rather than a Scaffold, so it hosts its
-        // own snackbar for the bulk-mark undo.
-        SnackbarHost(
-            snackbarHostState,
-            Modifier
-                .align(Alignment.BottomCenter)
-                .measureSnackbarHeight(snackbarClearance)
-                .testTag(DETAIL_SNACKBAR_TAG),
-        )
+            // Detail is a scrolling Box rather than a Scaffold, so it hosts its
+            // own snackbar for the bulk-mark undo.
+            SnackbarHost(
+                snackbarHostState,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .measureSnackbarHeight(snackbarClearance)
+                    .testTag(DETAIL_SNACKBAR_TAG),
+            )
+        }
     }
 
     tickedEpisode?.let { episodeId ->
@@ -311,18 +327,31 @@ fun DetailScreen(
     }
 }
 
+/**
+ * The round back control over the artwork. It pads itself by [topInset] (the raw status-bar band, not an inset
+ * modifier, because [ScreenInsets] already consumed the inset for its descendants) and clears the bar.
+ */
 @Composable
-internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.45f),
-        modifier = modifier.size(36.dp),
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+internal fun BackButton(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    topInset: Dp = immersiveTopPadding(),
+) {
+    Box(modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = topInset + 12.dp)) {
+        Surface(
+            shape = CircleShape,
+            color = Color.Black.copy(alpha = 0.45f),
+            modifier = Modifier.size(36.dp).testTag(BACK_BUTTON_TAG),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+            }
         }
     }
 }
+
+/** Test tag of the back control, so a layout test can read where it sits under the inset. */
+internal const val BACK_BUTTON_TAG = "backButton"
 
 /** The callbacks the screen's body raises, bundled so the two layouts share one shape. */
 private class DetailCallbacks(
@@ -423,7 +452,7 @@ private fun DetailExpanded(
                         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
                     ) {
                         Column(Modifier.width(POSTER_COLUMN_WIDTH), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-                            Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
+                            Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp, modifier = Modifier.trackImmersiveArtwork()) {
                                 PosterImage(
                                     url = details.summary.posterUrl,
                                     title = details.summary.title,
@@ -531,9 +560,15 @@ private fun LazyListScope.detailBody(context: DetailListContext, inset: Modifier
 
 /** 16:9 backdrop with a gradient into the background color. */
 @Composable
-private fun DetailBackdrop(details: MediaDetails, height: androidx.compose.ui.unit.Dp) {
+private fun DetailBackdrop(
+    details: MediaDetails,
+    height: androidx.compose.ui.unit.Dp,
+    // The hero draws under the status bar (the route is immersive), so it grows by the inset.
+    // A parameter because Skiko reports zero insets: tests pass a synthetic value.
+    topInset: androidx.compose.ui.unit.Dp = immersiveTopPadding(),
+) {
     val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(height)) {
+    Box(Modifier.fillMaxWidth().height(height + topInset).trackImmersiveArtwork()) {
         if (details.backdropUrl != null) {
             AsyncImage(
                 model = details.backdropUrl,
@@ -565,7 +600,7 @@ private fun DetailHero(details: MediaDetails) {
             horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Surface(shape = MaterialTheme.shapes.small, shadowElevation = 8.dp) {
+            Surface(shape = MaterialTheme.shapes.small, shadowElevation = 8.dp, modifier = Modifier.trackImmersiveArtwork()) {
                 PosterImage(
                     url = details.summary.posterUrl,
                     title = details.summary.title,
