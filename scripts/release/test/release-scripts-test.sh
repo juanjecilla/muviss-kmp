@@ -542,6 +542,83 @@ if grep -q -- 'invisible fix' <<<"$out"; then fail "a Notes: none fix is listed:
 if grep -q '^Muviss 1.1.0 trae 3 novedades y mejoras.$' <<<"$out"; then
   pass "Spanish count matches the English list (opted-out commits not counted)"; else fail "Spanish count: $out"; fi
 
+echo "back-merge.sh"
+# The automatic back-merge (#890): only release.yml's own PR, untouched.
+bm="$(new_repo)"; commit "$bm" "chore: init"; commit "$bm" "Merge release/1.4.0"
+git -C "$bm" tag -a v1.4.0 -m v1.4.0; bm_tag="$(git -C "$bm" rev-parse HEAD)"
+commit "$bm" "fix: a hand resolution"; bm_moved="$(git -C "$bm" rev-parse HEAD)"
+decide() { # head-ref base author same-repo head-sha tested-sha
+  (cd "$bm" && HEAD_REF="$1" BASE_REF="$2" AUTHOR="$3" SAME_REPO="$4" HEAD_SHA="$5" TESTED_SHA="$6" \
+    APP_LOGIN=app/muviss-release "$SCRIPTS/back-merge.sh" decide 2>/dev/null)
+}
+expect_eq "an untouched back-merge merges" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_tag")" "merge"
+expect_eq "a branch a person pushed to waits for them" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_moved" "$bm_moved" | cut -d: -f1)" "hold"
+expect_eq "a green run on an older commit does not count" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_moved" | cut -d: -f1)" "hold"
+expect_eq "a back-merge with no tag behind it waits" \
+  "$(decide back-merge/v9.9.9 develop app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "hold"
+expect_eq "a PR someone else opened is not ours" \
+  "$(decide back-merge/v1.4.0 develop someone true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "a fork's branch is not ours" \
+  "$(decide back-merge/v1.4.0 develop app/muviss-release false "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "a PR into main is not a back-merge" \
+  "$(decide back-merge/v1.4.0 main app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "another branch is not a back-merge" \
+  "$(decide feat/back-merge/v1.4.0 develop app/muviss-release true "$bm_tag" "$bm_tag" | cut -d: -f1)" "ignore"
+expect_eq "an unset App login approves nothing" \
+  "$(cd "$bm" && HEAD_REF=back-merge/v1.4.0 BASE_REF=develop AUTHOR= SAME_REPO=true HEAD_SHA="$bm_tag" TESTED_SHA="$bm_tag" APP_LOGIN= "$SCRIPTS/back-merge.sh" decide | cut -d: -f1)" "ignore"
+# notify and stale, against a fake gh.
+bmbin="$(mktemp -d)"
+# The fake gh logs every call. BM_FAIL=<text> makes any call whose arguments
+# contain that text exit 1 (a failed read or write), so each path is reachable.
+cat >"$bmbin/gh" <<'FAKEGH'
+#!/bin/bash
+echo "gh $*" >>"$BM_GH_LOG"
+if [ -n "${BM_FAIL:-}" ] && [[ "$*" == *"$BM_FAIL"* ]]; then exit 1; fi
+case "$*" in
+  "issue list"*) printf '%s' "${BM_ISSUE:-}" ;;
+  "issue view"*) printf '%s' "${BM_COMMENTS:-}" ;;
+  "api "*) printf '%s' "${BM_PRS:-}" ;;
+esac
+exit 0
+FAKEGH
+chmod +x "$bmbin/gh"; BM_GH_LOG="$(mktemp)"; export BM_GH_LOG
+bmrun() { PATH="$bmbin:$PATH" "$SCRIPTS/back-merge.sh" "$@"; }
+commented() { grep -c '^gh issue comment' "$BM_GH_LOG"; }
+: >"$BM_GH_LOG"; BM_ISSUE=698 bmrun notify 1.4.0 held-887 "needs a person"; st=$?
+expect_eq "a hold is commented on the release issue" "$(grep -c '^gh issue comment 698 ' "$BM_GH_LOG")" "1"
+expect_eq "and that notify exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_COMMENTS='<!-- back-merge:held-887 -->' bmrun notify 1.4.0 held-887 "needs a person"; st=$?
+expect_eq "the same hold is not commented twice" "$(commented)" "0"
+expect_eq "a notice already posted exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE= bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "no release issue, no comment" "$(commented)" "0"
+expect_eq "no release issue exits 0" "$st" "0"
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_FAIL="issue view" bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "a comment that cannot be read posts nothing" "$(commented)" "0"
+expect_eq "and exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+: >"$BM_GH_LOG"; BM_FAIL="issue list" bmrun notify 1.4.0 held-887 "needs a person" 2>/dev/null; st=$?
+expect_eq "a release issue that cannot be looked up posts nothing" "$(commented)" "0"
+expect_eq "and exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+# stale: one object per line, as the gh api --jq in stale() prints them.
+bm_prs='{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false}
+{"number":900,"headRefName":"back-merge/v1.5.0","createdAt":"2026-11-16T20:00:00Z","isCrossRepository":false}
+{"number":901,"headRefName":"back-merge/v1.3.0","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":true}
+{"number":902,"headRefName":"feat/x","createdAt":"2026-11-01T00:00:00Z","isCrossRepository":false}'
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_prs" NOW=2026-11-16T23:00:00Z bmrun stale; st=$?
+expect_eq "only a back-merge open for over a day is flagged" "$(commented)" "1"
+expect_eq "and it is the old one" "$(grep -c 'Back-merge #887' "$BM_GH_LOG")" "1"
+expect_eq "and a clean stale run exits 0" "$st" "0"
+expect_eq "stale lists PRs through gh api, paginated" "$(grep -c '^gh api --paginate repos/{owner}/{repo}/pulls' "$BM_GH_LOG")" "1"
+# A notice that fails must not stop the next stale PR, and the run fails.
+bm_two='{"number":887,"headRefName":"back-merge/v1.4.0","createdAt":"2026-11-15T16:51:00Z","isCrossRepository":false}
+{"number":888,"headRefName":"back-merge/v1.4.1","createdAt":"2026-11-15T17:00:00Z","isCrossRepository":false}'
+: >"$BM_GH_LOG"; BM_ISSUE=698 BM_PRS="$bm_two" BM_FAIL="Back-merge #887" NOW=2026-11-16T23:00:00Z bmrun stale 2>/dev/null; st=$?
+expect_eq "a failed notice does not stop the next stale PR" "$(grep -c 'Back-merge #888' "$BM_GH_LOG")" "1"
+expect_eq "and the stale run exits nonzero" "$([ "$st" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+
 echo "rc-is-branch-head.sh"
 # release.yml's tag job: did the release branch move after its last RC? (#891)
 # An origin with main and release/1.4.0, the RC on the branch head, and a clone
@@ -549,7 +626,7 @@ echo "rc-is-branch-head.sh"
 # Every setup step runs under set -e in a subshell: a failure prints nothing, so
 # the caller sees an empty path and records a setup failure instead of testing
 # a half-built repo. The guard matters: `git -C ""` runs in the current directory.
-rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on the branch after the RC
+rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on the branch after the RC, before the merge; $2 = 1: the branch gets a commit after the merge
   (
     set -e
     o="$(new_repo)"; [ -n "$o" ]
@@ -558,6 +635,8 @@ rc_repo() { # prints the clone's path (empty on setup failure); $1 = commits on 
     git -C "$o" tag -a v1.4.0-rc1 -m rc
     if [ "${1:-0}" -ne 0 ]; then commit "$o" "fix: after the rc"; fi
     git -C "$o" switch -q main; git -C "$o" merge -q --no-ff release/1.4.0 -m "Merge release/1.4.0"
+    # The branch moves on after the merge, so the merge's second parent stays the RC while the ref does not.
+    if [ "${2:-0}" -ne 0 ]; then git -C "$o" switch -q release/1.4.0; commit "$o" "fix: after the merge"; git -C "$o" switch -q main; fi
     c="$(mktemp -d)"; [ -n "$c" ]
     git clone -q --origin origin "$o" "$c"
     echo "$c"
@@ -587,6 +666,127 @@ if [ -z "$c" ]; then fail "a deleted branch whose merge carries a commit after t
 elif git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
   expect_rc "a deleted branch whose merge carries a commit after the RC moved" "$c" 1
 else fail "a deleted branch whose merge carries a commit after the RC moved: could not delete the ref, fallback not tested"; fi
+# The merge's second parent is the RC, but the branch ref advanced after the merge: the helper must read the ref
+# while it exists (moved), and fall back to the second parent once the ref is deleted (did not move). A helper
+# that always used the second parent would answer 0 in the first case.
+c="$(rc_repo 0 1)"
+if [ -z "$c" ]; then fail "a branch that advanced after the merge: RC fixture setup failed"
+elif [ "$(git -C "$c" rev-parse origin/release/1.4.0)" = "$(git -C "$c" rev-parse 'v1.4.0-rc1^{commit}')" ]; then fail "a branch that advanced after the merge: the fixture ref did not advance"
+else
+  expect_rc "a branch that advanced after the merge, ref present, moved" "$c" 1
+  if git -C "$c" update-ref -d refs/remotes/origin/release/1.4.0; then
+    expect_rc "the same branch once its ref is deleted falls back to the second parent, did not move" "$c" 0
+  else fail "a branch that advanced after the merge: could not delete the ref, fallback not tested"; fi
+fi
+
+# owner-setup.sh: the release-and-hotfix ruleset body (#985). The script talks to gh
+# on load, so only the JSON producer is lifted out and run.
+if command -v jq >/dev/null; then
+  eval "$(sed -n '/^ruleset_checks_only()/,/^JSON$/p' "$SCRIPTS/owner-setup.sh")
+}"
+  body="$(ruleset_checks_only release-and-hotfix '["refs/heads/release/*","refs/heads/hotfix/*"]' '[{"context":"build"}]')"
+  expect_eq "release-and-hotfix ruleset targets release/* and hotfix/*" \
+    "$(jq -r '.conditions.ref_name.include | join(",")' <<<"$body")" "refs/heads/release/*,refs/heads/hotfix/*"
+  expect_eq "release-and-hotfix ruleset has status checks only" \
+    "$(jq -r '[.rules[].type] | join(",")' <<<"$body")" "required_status_checks"
+  expect_eq "release-and-hotfix ruleset lets admins bypass" \
+    "$(jq -r '.bypass_actors[0].actor_type' <<<"$body")" "RepositoryRole"
+  expect_eq "owner-setup creates the release-and-hotfix ruleset" \
+    "$(grep -c 'ruleset_checks_only release-and-hotfix' "$SCRIPTS/owner-setup.sh")" "1"
+
+  # do_rulesets on a rerun: only the rulesets whose names are missing are POSTed (#985).
+  # gh is stubbed: GET prints the existing names, POST records "name:bypass types".
+  # SC2034/SC2329: the gh/say/confirm stubs and REPO are read by the eval'd do_rulesets.
+  # shellcheck disable=SC2034,SC2329
+  rulesets_posted() { # existing-names app-id (empty = unset) -> POSTs, comma-joined
+    (
+      REPO=owner/repo
+      EXISTING="$1"
+      APP_ID="$2"
+      POSTED="$(mktemp)"
+      gh() {
+        if [ "$1 $2" = "variable get" ]; then [ -n "$APP_ID" ] && echo "$APP_ID"; return 0; fi
+        if [[ " $* " == *" -X POST "* ]]; then
+          jq -r '.name + ":" + ([.bypass_actors[].actor_type] | join("+"))' >>"$POSTED"
+          return 0
+        fi
+        printf '%s\n' "$EXISTING"
+      }
+      say() { :; }
+      confirm() { return 0; }
+      eval "$(sed -n '/^ruleset_branch()/,/^# --- 6\./p' "$SCRIPTS/owner-setup.sh")"
+      do_rulesets >/dev/null 2>&1
+      paste -sd, "$POSTED"
+      rm -f "$POSTED"
+    )
+  }
+  posted_names() { local item; for item in ${1//,/ }; do echo "${item%%:*}"; done | paste -sd, -; }
+  out="$(rulesets_posted "$(printf 'main\ndevelop\nrelease-tags')" 4242)"
+  expect_eq "rerun with main, develop and release-tags present posts only release-and-hotfix" \
+    "$(posted_names "$out")" "release-and-hotfix"
+  expect_eq "rerun posts release-and-hotfix with the admin role as its only bypass actor" \
+    "$out" "release-and-hotfix:RepositoryRole"
+  expect_eq "rerun with only main present posts the other three" \
+    "$(posted_names "$(rulesets_posted "main" 4242)")" "develop,release-and-hotfix,release-tags"
+  expect_eq "first run with no rulesets posts all four" \
+    "$(posted_names "$(rulesets_posted "" 4242)")" "main,develop,release-and-hotfix,release-tags"
+  expect_eq "rerun with all four present posts nothing" \
+    "$(rulesets_posted "$(printf 'main\ndevelop\nrelease-and-hotfix\nrelease-tags')" 4242)" ""
+fi
+
+
+# update-verification.sh names failed tasks: a test task only warns, anything else fails the leg (#880).
+log="$(mktemp)"
+printf '> Task :core:foo:jvmTest FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed test task only warns" "$status" "0"
+expect_eq "the warning names the test task" "$(grep -c '::warning::.*:core:foo:jvmTest' <<<"$out")" "1"
+printf '> Task :core:foo:jvmTest FAILED\n> Task :app:webApp:wasmJsProductionSync FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a failed non-test task fails the leg" "$status" "1"
+expect_eq "the error names the build task" "$(grep -c '::error::.*wasmJsProductionSync' <<<"$out")" "1"
+# A nonzero exit must be explained by a named failure (#880 review). The exit status comes from UPDATE_VERIFICATION_CLASSIFY_STATUS.
+cat >"$log" <<'LOG'
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:foo:jvmTest'.
+> There were failing tests.
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test-failure-only nonzero exit still only warns" "$status" "0"
+expect_eq "and names the test task in the warning" "$(grep -c '::warning::.*:core:foo:jvmTest' <<<"$out")" "1"
+cat >"$log" <<'LOG'
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Gradle build daemon disappeared unexpectedly (this is usually caused by exceeding available memory).
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test failure plus an unexplained nonzero exit fails the leg" "$status" "1"
+expect_eq "and says no failed task explains it" "$(grep -c '::error::gradle exited 1 and no failed task explains it' <<<"$out")" "1"
+cat >"$log" <<'LOG'
+> Task :app:webApp:wasmJsProductionSync FAILED
+> Task :core:foo:jvmTest FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:webApp:wasmJsProductionSync'.
+> Process 'command node' finished with non-zero exit value 1
+LOG
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a non-test failure with a test failure fails the leg" "$status" "1"
+expect_eq "the build task is the one named as an error" "$(grep -c '::error::build tasks failed.*wasmJsProductionSync' <<<"$out")" "1"
+printf '> Task :core:foo:jvmTest FAILED\n' >"$log"
+out="$(UPDATE_VERIFICATION_CLASSIFY_ONLY="$log" UPDATE_VERIFICATION_CLASSIFY_STATUS=1 "$SCRIPTS/../gradle/update-verification.sh" 2>&1)"; status=$?
+expect_eq "a test FAILED line with no explaining cause fails the leg" "$status" "1"
+# Both calls above are classify-only: they read a log and never write gradle/verification-metadata.xml,
+# so nothing needs restoring. A checkout of that path would discard a developer's unstaged edits.
 
 echo
 if [ "$failures" -eq 0 ]; then echo "all passed"; else echo "$failures failed"; exit 1; fi

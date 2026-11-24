@@ -1,23 +1,18 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -34,6 +29,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,8 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -53,7 +50,8 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
+import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
+import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
@@ -97,29 +95,38 @@ fun EpisodeDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
 
-    LightStatusBarIcons()
+    // Raw, because ScreenInsets already consumed the inset for this subtree; see immersiveTopPadding.
+    val topInset = immersiveTopPadding()
+    // Extends up into the band ScreenInsets padded, in every state, so its placement never changes during a transition.
+    // Only the loaded body has artwork under the status bar, and the still reports itself (trackImmersiveArtwork).
+    val artwork = remember { ImmersiveArtwork() }
+    CompositionLocalProvider(LocalImmersiveArtwork provides artwork) {
+        Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
+            when {
+                state.loading -> CircularProgressIndicator(
+                    Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
+                )
 
-    Box(Modifier.fillMaxSize()) {
-        when {
-            state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).statusBarsPadding().padding(MuvissSpacing.xl))
+                state.error != null -> ErrorState(
+                    message = state.error!!,
+                    onRetry = viewModel::load,
+                    modifier = Modifier.align(Alignment.Center).padding(top = topInset),
+                )
 
-            state.error != null -> ErrorState(
-                message = state.error!!,
-                onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center).statusBarsPadding(),
-            )
+                state.details != null -> EpisodeBody(
+                    details = state.details!!,
+                    state = state,
+                    onWatchedAgain = viewModel::recordRewatch,
+                    onUndoLatest = viewModel::undoLatestPlay,
+                    onClearHistory = { confirmClear = true },
+                    onOpenImage = onOpenImage,
+                )
+            }
 
-            state.details != null -> EpisodeBody(
-                details = state.details!!,
-                state = state,
-                onWatchedAgain = viewModel::recordRewatch,
-                onUndoLatest = viewModel::undoLatestPlay,
-                onClearHistory = { confirmClear = true },
-                onOpenImage = onOpenImage,
-            )
+            ImmersiveStatusBar(artwork, topInset, Modifier.align(Alignment.TopCenter))
+
+            BackButton(onBack, topInset = topInset)
         }
-
-        BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
     }
 
     if (confirmClear) {
@@ -147,8 +154,9 @@ private fun EpisodeBody(
     onClearHistory: () -> Unit,
     onOpenImage: (ImageKind, String) -> Unit,
 ) {
+    val scroll = rememberScrollState()
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = MuvissSpacing.bottomContent),
+        Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = MuvissSpacing.bottomContent),
     ) {
         EpisodeStill(details, onOpenImage)
         Column(
@@ -181,24 +189,18 @@ private fun EpisodeStill(
     onOpenImage: (ImageKind, String) -> Unit,
     // The still draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
-    topInset: Dp = WindowInsets.safeDrawing.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding(),
+    topInset: Dp = immersiveTopPadding(),
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(maxWidth * 9f / 16f + topInset)
+                .trackImmersiveArtwork()
                 .opensImageViewer(details.stillUrl, ImageKind.Still, onOpenImage)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
             PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize())
-            // Keeps the status icons legible over any artwork, light or dark.
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(topInset + 56.dp)
-                    .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 1f to Color.Transparent)),
-            )
         }
     }
 }

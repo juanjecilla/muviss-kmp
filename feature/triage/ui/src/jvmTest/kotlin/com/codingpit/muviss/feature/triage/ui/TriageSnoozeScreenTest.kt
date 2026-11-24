@@ -2,8 +2,10 @@
 
 package com.codingpit.muviss.feature.triage.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
@@ -14,6 +16,8 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
@@ -195,5 +199,29 @@ class TriageSnoozeScreenTest {
 
         // Using the gesture is the clearest possible proof the hint worked.
         assertTrue(harness.preferences.snoozeHint.value)
+    }
+
+    @Test
+    fun the_hint_sits_below_the_snooze_button_on_a_dense_screen() = runComposeUiTest {
+        val harness = TriageHarness(movies = listOf(filmA, filmB))
+        harness.preferences.snoozeHint.value = false
+        val viewModel = harness.viewModel()
+        val density = Density(3f)
+        setContent {
+            // A 1080px-wide phone is about 3x: the old pixel offset was smaller than the 48dp button there (#984).
+            CompositionLocalProvider(LocalDensity provides density) {
+                MuvissTheme {
+                    TriageScreen(viewModel = viewModel, onBack = {}, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {})
+                }
+            }
+        }
+        waitForIdle()
+
+        // The button is 48dp tall; its measured box is clipped by the card here, so the expected bottom is computed.
+        val buttonTop = onNodeWithTag(TRIAGE_SNOOZE_TAG).fetchSemanticsNode().positionInRoot.y
+        val buttonBottom = buttonTop + with(density) { 48.dp.toPx() }
+        val hintTop = onNodeWithText("Not sure? Snooze it and we'll ask again later.").fetchSemanticsNode().positionInRoot.y
+
+        assertTrue(hintTop >= buttonBottom, "the hint (top $hintTop) covers the button (bottom $buttonBottom)")
     }
 }

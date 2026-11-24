@@ -202,6 +202,40 @@ class NextPickRequestBudgetTest {
     }
 
     @Test
+    fun `my_list_with_only_my_services_reached_at_standard_length_fills_the_cap_and_no_more`() = runTest {
+        // #815: a library-only pick now asks the services question. Its answer must reach the engine, and the cap still holds.
+        val metadata = CountingMetadata(flatrateOf = { setOf("8") })
+        val cache = MutableWatchCache()
+        val fill = MetadataWatchFill(metadata, cache)
+        val library = FakeLibrary((1..25).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
+        val context = standard(servicesKnown = true, anchored = false)
+        val criteria = criteriaFor(context, PickAnswer.Source(PickSource.MY_LIST), PickAnswer.EraAndServices(null, null, onlyMyServices = true))
+
+        pick(metadata, context, library = library, services = OwnServices(FakeTasteProfile(listOf(netflix)), cache, fill), criteria = criteria)
+
+        assertTrue(criteria.onlyMyServices, "the services question must be reached at Standard length for a library-only pick")
+        // One genre list, because this library holds movies only: the genre lists are per format the library holds.
+        assertEquals(mapOf("genres" to 1, "watch" to MAX_PROVIDER_FILLS_PER_PICK), metadata.requests)
+        assertEquals((1..10).map { MediaId.tmdbMovie("$it") }, fill.filled)
+    }
+
+    @Test
+    fun `an_anchored_standard_session_reaches_only_my_services_and_still_holds_the_cap`() = runTest {
+        // The anchor, then the services question in the fourth slot (#815). Without the reorder mood would take that slot.
+        val metadata = CountingMetadata(recommended = (20..27).map { movie("$it") }, flatrateOf = { setOf("8") })
+        val cache = MutableWatchCache()
+        val fill = MetadataWatchFill(metadata, cache)
+        val library = FakeLibrary((1..6).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
+        val context = standard(servicesKnown = true)
+        val criteria = criteriaFor(context, PickAnswer.Anchor(PickAnchor(finished, like = true)), PickAnswer.EraAndServices(null, null, onlyMyServices = true))
+
+        pick(metadata, context, library = library, services = OwnServices(FakeTasteProfile(listOf(netflix)), cache, fill), criteria = criteria)
+
+        assertTrue(criteria.onlyMyServices)
+        assertEquals(MAX_PROVIDER_FILLS_PER_PICK, metadata.requests["watch"], "one budget across the sources, as before")
+    }
+
+    @Test
     fun `only_my_services_fills_no_more_than_the_cap_of_uncached_titles_in_one_pick`() = runTest {
         // #762: 25 backlog titles and none cached. The pick asks TMDB about the cap, and about nothing beyond it.
         assertEquals(10, MAX_PROVIDER_FILLS_PER_PICK, "the cap is pinned here on purpose: change it deliberately")
@@ -232,8 +266,8 @@ class NextPickRequestBudgetTest {
         val fill = MetadataWatchFill(metadata, cache)
         val library = FakeLibrary((1..6).map { libraryTitle(movie("$it"), WatchStatus.NOT_STARTED) })
 
-        // The anchor question takes one of the standard session's four questions, which leaves no room for the services
-        // question. The criteria are handed in so this test is about the budget alone (the session's order is pinned elsewhere).
+        // The criteria are handed in so this test is about the budget alone. The order that reaches the services question
+        // at Standard length is pinned in PickSessionTest.
         pick(
             metadata,
             standard(servicesKnown = true),

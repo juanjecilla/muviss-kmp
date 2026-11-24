@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +43,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
+import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
+import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.action_close
 import com.codingpit.muviss.feature.search.ui.generated.resources.image_viewer_backdrop
@@ -82,7 +83,11 @@ fun ImageViewerScreen(viewModel: ImageViewerViewModel, onClose: () -> Unit) {
 
 @Composable
 internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClose: () -> Unit) {
+    // The viewer is black edge to edge, so the status bar is drawn over black: light icons, whatever the theme.
     LightStatusBarIcons()
+    // Raw, because ScreenInsets already consumed the top for this subtree; see immersiveTopPadding. The viewer
+    // extends up into that band so its black runs under the status bar, and its controls clear it by hand.
+    val topInset = immersiveTopPadding()
     val pager = rememberPagerState { images.size }
     val scope = rememberCoroutineScope()
     val focus = remember { FocusRequester() }
@@ -94,6 +99,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
     Box(
         Modifier
             .fillMaxSize()
+            .extendIntoTopInset(topInset)
             .background(Color.Black)
             .testTag(IMAGE_VIEWER_TAG)
             .onPreviewKeyEvent { event ->
@@ -122,7 +128,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
             Surface(
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = 0.45f),
-                modifier = Modifier.statusBarsPadding().padding(12.dp).size(36.dp).testTag(IMAGE_VIEWER_CLOSE_TAG),
+                modifier = Modifier.padding(top = topInset).padding(12.dp).size(36.dp).testTag(IMAGE_VIEWER_CLOSE_TAG),
             ) {
                 IconButton(onClick = onClose) {
                     Icon(MuvissIcons.Close, contentDescription = stringResource(Res.string.action_close), tint = Color.White)
@@ -135,7 +141,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
                     stringResource(Res.string.image_viewer_position, pager.currentPage + 1, images.size),
                     style = MaterialTheme.typography.labelLarge,
                     color = Color.White,
-                    modifier = Modifier.statusBarsPadding().padding(top = 20.dp).testTag(IMAGE_VIEWER_POSITION_TAG),
+                    modifier = Modifier.padding(top = topInset + 20.dp).testTag(IMAGE_VIEWER_POSITION_TAG),
                 )
             }
         }
