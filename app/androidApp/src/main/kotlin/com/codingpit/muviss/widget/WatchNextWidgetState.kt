@@ -91,27 +91,56 @@ enum class EmptyAction {
  * decision worth asserting — how many rows, which empty state, which row
  * offers Undo, what a row with no catalog does — lives in this function
  * instead, where a plain unit test reaches it.
+ *
+ * [justTicked] and [justTickedTitle] are the widget's own Undo marker (#888).
+ * A tick can remove its title from Watch Next (it completes the title, or it
+ * was the last regular episode and only an aired special is left), so the
+ * shared list no longer has a row to hang Undo on. The widget keeps that
+ * title's row for itself until the marker clears: it is put back at the top,
+ * labelled with the episode it marked. [WatchNextUseCase] is unchanged.
  */
 fun watchNextWidgetUi(
     items: List<WatchNextItem>,
     size: WidgetSize,
     justTicked: EpisodeId? = null,
+    justTickedTitle: String? = null,
 ): WatchNextWidgetUi {
-    if (items.isEmpty()) return WatchNextWidgetUi.Empty.NOTHING_IN_PROGRESS
+    val retained = retainedTickRow(items, justTicked, justTickedTitle)
+    if (items.isEmpty() && retained == null) return WatchNextWidgetUi.Empty.NOTHING_IN_PROGRESS
 
-    val shown = items.take(size.rows)
-    val rows = shown.map { item -> item.toRow(justTicked) }
+    val shownItems = items.take(size.rows - (if (retained != null) 1 else 0))
+    val itemRows = shownItems.map { item -> item.toRow(justTicked) }
 
     // Every shown title unnamed AND without a loaded catalog means the catalog has not arrived. A loaded catalog
     // with no next episode is a title whose only unseen episodes are specials; WatchNextUseCase drops that one,
     // so it never reaches here as a row that would read as "open the app".
-    val catalogMissing = shown.zip(rows).all { (item, row) ->
+    val catalogMissing = retained == null && shownItems.zip(itemRows).all { (item, row) ->
         row.episodeLabel == null && row.undoable == null && !item.catalogLoaded
     }
     if (catalogMissing) {
         return WatchNextWidgetUi.Empty.NO_CATALOG_YET
     }
-    return WatchNextWidgetUi.Rows(rows)
+    return WatchNextWidgetUi.Rows(listOfNotNull(retained) + itemRows)
+}
+
+/**
+ * The just-ticked title's row, kept by the widget once the tick has taken it out of the shared list. Null while
+ * the list still has the title (its own row carries the Undo) or when the marker has no title to show.
+ */
+private fun retainedTickRow(items: List<WatchNextItem>, justTicked: EpisodeId?, justTickedTitle: String?): WidgetRow? {
+    if (justTicked == null || justTickedTitle == null) return null
+    if (items.any { it.mediaId == justTicked.show }) return null
+    return WidgetRow(
+        mediaId = justTicked.show.toString(),
+        title = justTickedTitle,
+        posterUrl = null,
+        episodeLabel = null,
+        episodeName = null,
+        progress = null,
+        tickable = null,
+        undoable = justTicked,
+        tickedLabel = seasonEpisodeLabel(justTicked),
+    )
 }
 
 private fun WatchNextItem.toRow(justTicked: EpisodeId?): WidgetRow {

@@ -219,7 +219,10 @@ test("a snapshot due inside a rolled-back transaction is still taken", async () 
 // a transaction holds its writes until END, a failed END may leave the transaction
 // open (a deferred constraint) or undo it (a full disk, or an I/O error), and
 // export() cannot run inside an open transaction. `fail` names the next boundary to
-// throw, once; `undone` makes the throw also undo the transaction.
+// throw, once; `undone` makes the throw also undo the transaction. A write counts one
+// changed row, cumulatively, so total_changes() moves as SQLite's does: without that
+// a row-only write never marks the tab dirty, and a test of "nothing is saved" has no
+// pending save for the transactionBroken guard to refuse (#909).
 function fakeSqlite({ begin = false, end = false, rollback = false, undone = false } = {}) {
   const faults = { begin, end, rollback };
   const undo = (sqlite) => {
@@ -230,6 +233,7 @@ function fakeSqlite({ begin = false, end = false, rollback = false, undone = fal
     open: false,
     pending: [],
     committed: [],
+    changes: 0,
     exec(sql) {
       const verb = sql.trim().split(/\s+/)[0].toUpperCase();
       if (verb === "BEGIN") {
@@ -259,7 +263,8 @@ function fakeSqlite({ begin = false, end = false, rollback = false, undone = fal
         undo(sqlite);
         return [];
       }
-      if (/total_changes/i.test(sql)) return [{ values: [[0]] }];
+      if (/total_changes/i.test(sql)) return [{ values: [[sqlite.changes]] }];
+      sqlite.changes += 1;
       if (sqlite.open) sqlite.pending.push(sql);
       else sqlite.committed.push(sql);
       return [];
@@ -299,11 +304,38 @@ function kotlinDriver(run) {
   };
 }
 
+// After a failed boundary the later write is pending (the fake counts its row), and the
+// worker still believes it is inside the failed transaction, which alone would defer the
+// save. Clearing that belief leaves the transactionBroken guard as the only thing between
+// the pending write and the store.
+function pendingWriteIsRefused(run) {
+  assert.equal(run("dirty"), true, "the later write should be pending");
+  run("inTransaction = false");
+}
+
+// The control for the three tests below: the same two transactions with every boundary
+// succeeding are saved, so their "nothing is saved" is the guard's doing, not an
+// idle tab's.
+test("the same transactions with every boundary succeeding are saved", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite());
+  const driver = kotlinDriver(run);
+  const t1 = driver.begin();
+  driver.exec("UPDATE t SET x = 1");
+  driver.end(t1, true);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, true);
+  await run("flush()");
+  // One snapshot per committed transaction; the last holds both.
+  assert.match(indexedDB.puts.at(-1), /UPDATE t SET x = 1.*INSERT B/);
+  assert.deepEqual(announced, []);
+});
+
 // A COMMIT that throws leaves the driver's pointer on a transaction that is over.
 // Its next transaction is nested: no BEGIN, and its writes run outside any
 // transaction. Those must not reach the store, and the failure must be announced.
 test("a COMMIT that throws keeps the tab from saving anything after it", async () => {
-  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ end: true }));
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ end: true, undone: true }));
   const driver = kotlinDriver(run);
   const t1 = driver.begin();
   driver.exec("UPDATE t SET x = 1");
@@ -311,6 +343,7 @@ test("a COMMIT that throws keeps the tab from saving anything after it", async (
   const t2 = driver.begin();
   driver.exec("INSERT B");
   driver.end(t2, false);
+  pendingWriteIsRefused(run);
   await run("flush()");
   assert.deepEqual(indexedDB.puts, []);
   assert.equal(announced.at(-1).lastWriteFailed, true);
@@ -327,6 +360,7 @@ test("a ROLLBACK that throws keeps the tab from saving the writes that follow it
   const t2 = driver.begin();
   driver.exec("INSERT B");
   driver.end(t2, true);
+  pendingWriteIsRefused(run);
   await run("flush()");
   assert.deepEqual(indexedDB.puts, []);
   assert.equal(announced.at(-1).lastWriteFailed, true);
@@ -341,6 +375,7 @@ test("a BEGIN that throws keeps the tab from saving the writes that follow it", 
   const t2 = driver.begin();
   driver.exec("INSERT B");
   driver.end(t2, true);
+  pendingWriteIsRefused(run);
   await run("flush()");
   assert.deepEqual(indexedDB.puts, []);
   assert.equal(announced.at(-1).lastWriteFailed, true);
