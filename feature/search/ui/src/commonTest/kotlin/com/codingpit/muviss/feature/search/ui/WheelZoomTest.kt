@@ -140,9 +140,33 @@ class WheelZoomTest {
         assertNotNull(queue.nextStep(1f))
 
         // A pan stopped the zoom at 1.04: the next scroll aims from there, not at the 1.1 the animation was heading to.
-        queue.interrupted()
+        queue.interrupted(1.04f)
         queue.request(1.04f, -1f, at)
 
         assertEquals(1.1f, assertNotNull(queue.nextStep(1.04f)).factor, 0.0001f)
+    }
+
+    @Test
+    fun a_pending_scroll_rebases_onto_the_zoom_on_screen_when_its_step_is_interrupted() {
+        val queue = WheelZoomQueue()
+        queue.request(1f, -5f, at)
+        assertEquals(1.5f, assertNotNull(queue.nextStep(1f)).factor, 0.0001f)
+        queue.request(1f, -5f, at)
+
+        // The pan stopped the first step at 1.25x. The pending scroll is one 1.5x step on that, not on the old 2.25x aim.
+        queue.interrupted(1.25f)
+
+        assertEquals(1.5f, assertNotNull(queue.nextStep(1.25f)).factor, 0.0001f)
+    }
+
+    @Test
+    fun an_interruption_with_nothing_pending_leaves_no_target_behind() {
+        val queue = WheelZoomQueue()
+        queue.request(1f, -5f, at)
+        assertNotNull(queue.nextStep(1f))
+
+        queue.interrupted(1.25f)
+
+        assertNull(queue.nextStep(1.25f))
     }
 }

@@ -49,6 +49,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
 import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
@@ -89,11 +91,17 @@ internal const val IMAGE_VIEWER_CLOSE_TAG = "imageViewerClose"
 @Composable
 fun ImageViewerScreen(viewModel: ImageViewerViewModel, onClose: () -> Unit) {
     val images by viewModel.images.collectAsStateWithLifecycle()
-    ImageViewerContent(images, viewModel.kind, onClose)
+    ImageViewerContent(images, viewModel.kind, onClose, seed = viewModel.seed)
 }
 
 @Composable
-internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClose: () -> Unit) {
+internal fun ImageViewerContent(
+    images: List<TitleImage>,
+    kind: ImageKind,
+    onClose: () -> Unit,
+    /** The image the person tapped; the first page is swapped for the source's larger copy of it, and falls back to it. */
+    seed: TitleImage? = null,
+) {
     // The viewer is black edge to edge, so the status bar is drawn over black: light icons, whatever the theme.
     LightStatusBarIcons()
     // Escape auto-repeats, and the close button or a flick can land in the same frame; the owner pops the back stack on
@@ -158,6 +166,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
         DismissOnFlick(flick, leave) {
             HorizontalPager(pager, Modifier.fillMaxSize(), key = { images[it].fileKey }) { page ->
                 GalleryPage(
+                    seed = seed,
                     image = images[page],
                     description = pageDescription(kind, page + 1, images.size),
                     zooms = zooms,
@@ -212,6 +221,7 @@ private fun DismissOnFlick(state: FlickToDismissState, onDismiss: () -> Unit, co
 private fun GalleryPage(
     image: TitleImage,
     description: String,
+    seed: TitleImage?,
     zooms: MutableMap<String, ZoomableState>,
     onTap: () -> Unit,
 ) {
@@ -220,12 +230,23 @@ private fun GalleryPage(
         zooms[image.fileKey] = zoom
         onDispose { zooms.remove(image.fileKey) }
     }
+    // A replaced first page keeps the tapped image on screen: it is the placeholder while the source's larger copy
+    // loads, and it is what is left if that copy fails. The tapped image is in the image cache already, so it is
+    // drawn at once. Nothing else falls back, so a failed copy is not retried under some other address.
+    val tappedUrl = seed?.url?.takeIf { image.replacesSeed(seed) }
+    val tapped = rememberAsyncImagePainter(model = tappedUrl)
+    val locate: (AsyncImagePainter.State) -> Unit = { state -> zoom.setContentLocation(fitLocation(state.painter?.intrinsicSize)) }
     AsyncImage(
         model = image.url,
         contentDescription = description,
         contentScale = ContentScale.Fit,
-        // Telephoto needs the picture's own size, and the bounds of what Fit draws, to know where its edges are.
-        onState = { state -> zoom.setContentLocation(fitLocation(state.painter?.intrinsicSize)) },
+        placeholder = tapped.takeIf { tappedUrl != null },
+        error = tapped.takeIf { tappedUrl != null },
+        // Telephoto needs the picture's own size, and the bounds of what Fit draws, to know where its edges are. That is
+        // whatever is drawn at the time, so every state reports it, the tapped image's while it stands in.
+        onLoading = locate,
+        onSuccess = locate,
+        onError = locate,
         modifier = Modifier
             .fillMaxSize()
             .semantics { contentDescription = description }
@@ -279,6 +300,9 @@ private fun pageDescription(kind: ImageKind, position: Int, total: Int): String 
     ImageKind.Poster -> stringResource(Res.string.image_viewer_poster, position, total)
     ImageKind.Still -> stringResource(Res.string.image_viewer_still, position, total)
 }
+
+/** True for the first page when the source's copy of the tapped [seed] replaces it: the same file at another address. */
+internal fun TitleImage.replacesSeed(seed: TitleImage?): Boolean = seed != null && fileKey == seed.fileKey && url != seed.url
 
 private const val MAX_ZOOM = MAX_USER_ZOOM
 

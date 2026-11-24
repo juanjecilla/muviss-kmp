@@ -32,16 +32,22 @@ internal fun wheelZoomFactor(scrollDeltaY: Float): Float? {
  * Turns a stream of wheel scrolls into zoom animations that compound.
  *
  * Telephoto's `zoomBy` reads the zoom when it starts and its animation replaces any one already running, so two scrolls
- * launched on their own would both aim from the same zoom and one would be lost. This keeps the zoom the wheel is
- * heading to, so each scroll multiplies the previous target rather than the zoom currently on screen. Only one
- * animation is in flight at a time: the caller asks for [nextStep], animates it, then calls [settled].
+ * launched on their own would both aim from the same zoom and one would be lost. So the queue keeps the zoom the wheel is
+ * heading to ([target]), and each scroll multiplies that rather than the zoom currently on screen. Only one animation is
+ * in flight at a time: the caller asks for [nextStep] and animates it, then reports the outcome with [settled] when it
+ * finished or [interrupted] when another gesture cut it short.
+ *
+ * It also keeps the product of the scroll factors that arrived since the last step was handed out ([pendingFactor]). That
+ * is what an interruption rebases: the step that was cut short is gone, but a scroll that came after it still means the
+ * same multiple of whatever zoom is on screen when the interruption lands.
  *
  * The target is clamped to [MIN_USER_ZOOM]..[MAX_USER_ZOOM], and the focal point is the latest scroll's position, which
- * the caller must have taken in viewport coordinates. A pan does not change the target, so the next scroll aims from
- * the zoom the picture is at with the pan kept. Reversing direction takes back the step it undoes.
+ * the caller must have taken in viewport coordinates. A pan that does not interrupt leaves the target alone, so the next
+ * scroll aims from the zoom the picture is at with the pan kept. Reversing direction takes back the step it undoes.
  */
 internal class WheelZoomQueue {
     private var target: Float? = null
+    private var pendingFactor = 1f
     private var focalPoint: Offset = Offset.Zero
     private var requested = false
 
@@ -49,6 +55,7 @@ internal class WheelZoomQueue {
     fun request(currentZoom: Float, scrollDeltaY: Float, at: Offset) {
         val factor = wheelZoomFactor(scrollDeltaY) ?: return
         target = ((target ?: currentZoom) * factor).coerceIn(MIN_USER_ZOOM, MAX_USER_ZOOM)
+        pendingFactor *= factor
         focalPoint = at
         requested = true
     }
@@ -60,6 +67,7 @@ internal class WheelZoomQueue {
     fun nextStep(currentZoom: Float): WheelZoomStep? {
         if (!requested) return null
         requested = false
+        pendingFactor = 1f
         val goal = target ?: return null
         val factor = goal / currentZoom
         if (abs(factor - 1f) < SAME_ZOOM) {
@@ -69,18 +77,21 @@ internal class WheelZoomQueue {
         return WheelZoomStep(factor, focalPoint)
     }
 
-    /** The animation from [nextStep] has finished. Once nothing new has arrived, the zoom is at rest and the target goes. */
+    /** The animation from [nextStep] reached its target. Once nothing new has arrived, the zoom is at rest and the target goes. */
     fun settled() {
         if (!requested) target = null
     }
 
     /**
-     * The animation from [nextStep] was cancelled before it reached its target, because another gesture (a pan from the
-     * keyboard) took over. The zoom now is wherever it stopped, so the target it was heading to is no longer a place to
-     * aim from. A scroll that arrived meanwhile keeps its place and is applied from the zoom on screen; otherwise the
-     * wheel is idle again and the next scroll aims from the picture as it stands.
+     * The animation from [nextStep] was cut short by another gesture (a pan from the keyboard), and the zoom on screen is
+     * now [currentZoom], wherever it stopped. The step that was cut short is abandoned: the target it was heading to is
+     * not a place to aim from any more. Scrolls that arrived since the step started still count, so a pending scroll is
+     * applied as its own factor on [currentZoom]. With none pending, the wheel is idle and the next scroll aims from the
+     * picture as it stands.
      */
-    fun interrupted() = settled()
+    fun interrupted(currentZoom: Float) {
+        target = if (requested) (currentZoom * pendingFactor).coerceIn(MIN_USER_ZOOM, MAX_USER_ZOOM) else null
+    }
 
     private companion object {
         const val SAME_ZOOM = 1e-4f
@@ -91,9 +102,10 @@ internal class WheelZoomQueue {
  * Applies the zoom animations [queue] asks for, one at a time, for as long as the caller is collecting [requests].
  *
  * [animate] is Telephoto's `zoomBy`, and another gesture can cancel it part way: a pan at the same priority replaces it,
- * and the cancellation surfaces here as a [CancellationException]. That ends the animation, not this loop, so the zoom
- * is left where it stopped ([WheelZoomQueue.interrupted]) and the loop keeps taking requests. Cancelling the loop itself
- * (the pointer input leaving composition) still ends it: the cancellation is rethrown, and the loop never reads on.
+ * and the cancellation surfaces here as a [CancellationException]. That ends the animation, not this loop: the zoom is
+ * left where it stopped and the queue is told about it ([WheelZoomQueue.interrupted]), and the loop keeps taking
+ * requests. Cancelling the loop itself (the pointer input leaving composition) still ends it: the cancellation is
+ * rethrown, and the loop never reads on.
  */
 internal suspend fun applyWheelZooms(
     queue: WheelZoomQueue,
@@ -117,7 +129,7 @@ private suspend fun WheelZoomQueue.applyPendingSteps(currentZoom: () -> Float, a
             // Only the animation was cancelled while the loop is still wanted: carry on. Once the loop itself is
             // cancelled, its cancellation is what we must propagate.
             if (!currentCoroutineContext().isActive) throw cancelled
-            interrupted()
+            interrupted(currentZoom())
         }
     }
 }

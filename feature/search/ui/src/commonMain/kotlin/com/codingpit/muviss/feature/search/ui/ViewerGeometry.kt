@@ -10,8 +10,9 @@ import me.saket.telephoto.zoomable.ZoomableContentLocation
 /**
  * Where the Image Viewer draws an image of [intrinsic] size inside its viewport: [ContentScale.Fit], scaled up or down
  * to fill the viewport and centred. Telephoto needs this to match the pixels on screen, because its pan and zoom
- * limits come from the content's bounds. Telephoto's own `scaledInsideAndCenterAligned` is `ContentScale.Inside`, which
- * never upscales, so a small still would report bounds smaller than the picture drawn over them.
+ * limits come from the content's bounds. Telephoto's own `scaledInsideAndCenterAligned` is not used because it may not
+ * scale a small picture up the way `ContentScale.Fit` does; if it did not, the bounds would be smaller than the picture
+ * drawn over them, and zoom and pan would stop short of the edges.
  */
 internal class FitContentLocation(private val intrinsic: Size) : ZoomableContentLocation {
 

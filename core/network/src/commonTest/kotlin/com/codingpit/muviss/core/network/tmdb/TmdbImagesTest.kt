@@ -68,6 +68,6 @@ class TmdbImagesTest {
         val images = fixture.provider.episodeImages(EpisodeId(MediaId.tmdbTv("1399"), 2, 5))
 
         assertTrue(fixture.requests.single().url.encodedPath.endsWith("/tv/1399/season/2/episode/5/images"))
-        assertEquals(listOf("https://image.tmdb.org/t/p/w1280/still.jpg"), images.stills.map { it.url })
+        assertEquals(listOf("https://image.tmdb.org/t/p/original/still.jpg"), images.stills.map { it.url })
     }
 }

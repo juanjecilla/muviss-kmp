@@ -29,7 +29,7 @@ class ImageViewerViewModel(
     mediaId: MediaId,
     episodeId: EpisodeId?,
     val kind: ImageKind,
-    seed: TitleImage,
+    val seed: TitleImage,
     loadGallery: LoadGalleryUseCase,
 ) : ViewModel() {
 

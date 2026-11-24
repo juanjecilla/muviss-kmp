@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 
 /**
  * [applyWheelZooms] against a scripted Telephoto: each animation the loop starts waits on the test, which then says
- * whether it finishes or a pan interrupts it part way (leaving the zoom where it stopped).
+ * whether it finishes or a pan cuts it short part way (leaving the zoom where it stopped).
  */
 class WheelZoomConsumerTest {
 
@@ -37,13 +37,9 @@ class WheelZoomConsumerTest {
         val consumer = test.backgroundScope.launch {
             applyWheelZooms(queue, requests, { zoom }) { step ->
                 started.send(step)
-                when (val outcome = outcomes.receive()) {
+                when (outcomes.receive()) {
                     Outcome.Finish -> zoom *= step.factor
-
-                    is Outcome.Interrupt -> {
-                        zoom = outcome.stoppedAt
-                        throw CancellationException("a pan took over the zoom")
-                    }
+                    is Outcome.Interrupt -> throw CancellationException("a pan took over the zoom")
                 }
             }
         }
@@ -56,16 +52,22 @@ class WheelZoomConsumerTest {
 
         suspend fun nextStarted(): WheelZoomStep = started.receive()
 
-        // The consumer's resumptions are background work, which advanceUntilIdle does not run, so each outcome is let
-        // through with runCurrent before the test reads the zoom or scrolls again. Otherwise a scroll would be read
-        // against a zoom the animation has not written yet.
         suspend fun finish() {
             outcomes.send(Outcome.Finish)
             test.runCurrent()
         }
 
-        suspend fun interruptAt(stoppedAt: Float) {
+        /**
+         * A pan cuts the zoom short at [stoppedAt]. The picture is at [stoppedAt] the moment the pan lands, so the zoom is
+         * set here, and the consumer only learns of it when it next runs. The test lets it run before going on, unless a
+         * scroll is wanted in between ([scrollBeforeConsumerRuns]), which is the main-thread ordering that matters.
+         */
+        suspend fun interruptAt(stoppedAt: Float, scrollBeforeConsumerRuns: Float? = null) {
+            zoom = stoppedAt
             outcomes.send(Outcome.Interrupt(stoppedAt))
+            if (scrollBeforeConsumerRuns != null) {
+                scroll(scrollBeforeConsumerRuns)
+            }
             test.runCurrent()
         }
     }
@@ -89,7 +91,7 @@ class WheelZoomConsumerTest {
     }
 
     @Test
-    fun a_scroll_that_arrives_during_an_interrupted_zoom_still_compounds_on_its_target() = runTest {
+    fun a_scroll_that_arrives_during_an_interrupted_zoom_applies_from_the_zoom_on_screen() = runTest {
         val wheel = Harness(this)
 
         wheel.scroll(-1f)
@@ -97,13 +99,46 @@ class WheelZoomConsumerTest {
         wheel.scroll(-1f)
         wheel.interruptAt(stoppedAt = 1.04f)
 
-        // The target the queued scroll reached, 1.21, is kept, and the step is taken from the zoom where it stopped.
+        // The scroll that came during the cut-short zoom is one 10% step, so it applies as 10% on the zoom on screen.
         val resumed = wheel.nextStarted()
-        assertEquals(1.21f / 1.04f, resumed.factor, 0.0001f)
+        assertEquals(1.1f, resumed.factor, 0.0001f)
         wheel.finish()
         advanceUntilIdle()
 
-        assertEquals(1.21f, wheel.zoom, 0.0001f)
+        assertEquals(1.144f, wheel.zoom, 0.0001f)
+    }
+
+    @Test
+    fun two_scrolls_during_a_zoom_that_a_pan_cuts_at_1_25_times_apply_from_1_25() = runTest {
+        val wheel = Harness(this)
+
+        // Two -5 scrolls are 1.5x each. The first starts a 1.5x zoom, the second arrives during it.
+        wheel.scroll(-5f)
+        assertEquals(1.5f, wheel.nextStarted().factor, 0.0001f)
+        wheel.scroll(-5f)
+        wheel.interruptAt(stoppedAt = 1.25f)
+
+        assertEquals(1.5f, wheel.nextStarted().factor, 0.0001f, "the pending scroll is 1.5x of the zoom on screen, 1.25x")
+        wheel.finish()
+        advanceUntilIdle()
+
+        assertEquals(1.875f, wheel.zoom, 0.0001f)
+    }
+
+    @Test
+    fun a_scroll_that_lands_between_the_pan_and_the_consumer_noticing_is_applied_from_the_zoom_on_screen() = runTest {
+        val wheel = Harness(this)
+
+        wheel.scroll(-1f)
+        wheel.nextStarted()
+        // No runCurrent between the pan and the scroll: the consumer has not yet seen the interruption when it arrives.
+        wheel.interruptAt(stoppedAt = 1.04f, scrollBeforeConsumerRuns = -1f)
+
+        assertEquals(1.1f, wheel.nextStarted().factor, 0.0001f)
+        wheel.finish()
+        advanceUntilIdle()
+
+        assertEquals(1.144f, wheel.zoom, 0.0001f)
     }
 
     @Test
@@ -129,7 +164,7 @@ class WheelZoomConsumerTest {
         wheel.nextStarted()
         // The pointer input leaves composition while the zoom runs: the loop is cancelled, not the zoom.
         wheel.consumer.cancel()
-        runCurrent()
+        advanceUntilIdle()
 
         assertTrue(wheel.consumer.isCancelled)
         wheel.scroll(-1f)
