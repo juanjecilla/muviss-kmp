@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -32,7 +33,14 @@ fun NavGraphBuilder.searchSection(navController: NavController, onOpenTriage: ()
     }
     composable<DetailRoute> { entry ->
         val route = entry.toRoute<DetailRoute>()
-        val id = MediaId.parse(route.mediaId)
+        // A malformed id can arrive from outside the app (a hand-written `muviss://title/…` link, a stale
+        // notification). Parsing it here used to throw inside composition, which aborts the whole app on
+        // iOS (#863). Pop back instead, the same as any other dead end.
+        val id = runCatching { MediaId.parse(route.mediaId) }.getOrNull()
+        if (id == null) {
+            LaunchedEffect(route.mediaId) { navController.popBackStack() }
+            return@composable
+        }
         val viewModel = koinViewModel<DetailViewModel> { parametersOf(id) }
         DetailScreen(
             viewModel,

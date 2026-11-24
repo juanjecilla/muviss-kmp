@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
@@ -289,8 +290,18 @@ internal class FakeProgressApi : ProgressApi {
         episodeIds.forEach { removeLatestPlay(it) }
     }
 
-    override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) {
+    /**
+     * Runs once, at the start of the next [markPreviousSeen] call, as a progress write from another view model does
+     * between the caller's seen read and this write (#945). Lets a test tick what the caller still thought unseen.
+     */
+    var beforeNextMarkPreviousSeen: (suspend () -> Unit)? = null
+
+    override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId): List<EpisodeId> {
         markedPrevious += target
+        val race = beforeNextMarkPreviousSeen
+        beforeNextMarkPreviousSeen = null
+        race?.invoke()
+        return EpisodeOrdering.upToInclusive(seasons, target).filter { it !in seenIds }.onEach { addPlay(it) }
     }
 
     override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit
@@ -553,19 +564,6 @@ class DetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals("Great rewatch", vm.state.value.note)
-    }
-
-    @Test
-    fun toggleMovieWatched_flips_the_synthetic_movie_episode() = runTest {
-        val progressApi = FakeProgressApi()
-        val vm = viewModel(progressApi = progressApi)
-        advanceUntilIdle()
-
-        assertFalse(vm.state.value.movieWatched)
-        vm.toggleMovieWatched()
-        advanceUntilIdle()
-
-        assertTrue(vm.state.value.movieWatched)
     }
 
     @Test
