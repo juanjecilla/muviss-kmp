@@ -44,6 +44,9 @@ private sealed interface Answer {
 
     /** Holds the request until [gate] is completed, then loads, so a test can look at the screen while it is pending. */
     class Waits(val gate: CompletableDeferred<Unit>, val size: Size) : Answer
+
+    /** Holds the request until [gate] is completed, then fails. */
+    class FailsAfter(val gate: CompletableDeferred<Unit>) : Answer
 }
 
 /**
@@ -68,6 +71,11 @@ private class ScriptedFetcherFactory(
                 }
 
                 Answer.Fails -> throw IOException("simulated failure")
+
+                is Answer.FailsAfter -> {
+                    answer.gate.await()
+                    throw IOException("simulated failure")
+                }
             }
         } finally {
             finished += url
@@ -130,10 +138,14 @@ class ImageViewerFallbackTest {
 
     @Test
     fun a_replacement_that_fails_after_the_tapped_image_loaded_leaves_the_tapped_image_on_screen() = runComposeUiTest {
-        val loader = installLoader(mapOf(tapped.url to Answer.Loads(tappedSize), replacement.url to Answer.Fails))
+        // The failure is held, so it can only happen once the tapped image is on screen; without the gate the two loads
+        // race, and the failure may land first, which is the fails-before case, not this one.
+        val failure = CompletableDeferred<Unit>()
+        val loader = installLoader(mapOf(tapped.url to Answer.Loads(tappedSize), replacement.url to Answer.FailsAfter(failure)))
         viewer(listOf(replacement))
 
         waitUntil(timeoutMillis = 10_000) { showing(ShownImage.Tapped) }
+        failure.complete(Unit)
         waitUntil(timeoutMillis = 10_000) { replacement.url in loader.finished }
         waitForIdle()
 
