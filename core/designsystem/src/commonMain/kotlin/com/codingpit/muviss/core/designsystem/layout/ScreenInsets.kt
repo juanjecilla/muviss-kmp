@@ -10,6 +10,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 /**
+ * The top band that artwork drawn under the status bar must grow by, and that controls over it must clear.
+ *
+ * `safeDrawing` rather than `statusBars`: a caption bar on a freeform Android window occupies the top band without
+ * a status-bar inset, and `statusBars` does not cover it. Display cutouts are included for the same reason as
+ * [ScreenInsets].
+ */
+@Composable
+fun immersiveTopInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
+
+/**
  * Holds app content clear of the system's unsafe area.
  *
  * The app runs edge-to-edge (`enableEdgeToEdge()`, and `targetSdk = 36` forces

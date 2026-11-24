@@ -10,7 +10,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRailItemDefaults
@@ -54,6 +54,7 @@ import com.codingpit.muviss.core.database.PersistenceStatus
 import com.codingpit.muviss.core.designsystem.component.LocalOpenTmdbKeySettings
 import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
+import com.codingpit.muviss.core.designsystem.layout.immersiveTopInsets
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.core.sync.SignInFeedback
@@ -455,7 +456,8 @@ private fun MuvissScaffold(
                 val persistence = koinInject<PersistenceStatus>()
                 val warning = rememberPersistenceWarning(persistence)
                 PersistenceBanner(
-                    modifier = if (immersive) Modifier.statusBarsPadding() else Modifier,
+                    // Immersive screens leave the top to their own controls, so a banner here clears it itself.
+                    modifier = if (immersive) Modifier.windowInsetsPadding(immersiveTopInsets()) else Modifier,
                     message = warning?.message,
                     actionLabel = warning?.actionLabel,
                     onAction = persistence::reloadPage,

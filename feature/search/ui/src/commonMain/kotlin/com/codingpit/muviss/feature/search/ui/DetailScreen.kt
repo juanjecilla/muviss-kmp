@@ -26,20 +26,17 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -76,6 +73,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +91,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -117,6 +117,7 @@ import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
 import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
+import com.codingpit.muviss.core.designsystem.layout.immersiveTopInsets
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.dateText
 import com.codingpit.muviss.core.designsystem.text.resolve
@@ -230,18 +231,18 @@ fun DetailScreen(
         if (result == SnackbarResult.ActionPerformed) viewModel.undoBulkMark(undo) else viewModel.dismissUndo(undo)
     }
 
-    LightStatusBarIcons()
-
     Box(Modifier.fillMaxSize()) {
+        // Only the details branch has artwork under the status bar; the light icons are requested there
+        // (see DetailCompact and DetailExpanded), so loading and error keep the theme's icons.
         when {
             state.loading -> CircularProgressIndicator(
-                Modifier.align(Alignment.Center).statusBarsPadding().padding(MuvissSpacing.xl),
+                Modifier.align(Alignment.Center).windowInsetsPadding(immersiveTopInsets()).padding(MuvissSpacing.xl),
             )
 
             state.error != null -> ErrorState(
                 message = state.error!!,
                 onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center).statusBarsPadding(),
+                modifier = Modifier.align(Alignment.Center).windowInsetsPadding(immersiveTopInsets()),
             )
 
             state.details != null -> BoxWithConstraints {
@@ -265,7 +266,7 @@ fun DetailScreen(
         }
 
         // Floating back button over the hero, per the mockups.
-        BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
+        BackButton(onBack)
 
         // The tick that catches the user up on the whole show. A season only gets the
         // checkbox pulse: ticks that finish one are visible in the list they are made in.
@@ -319,16 +320,47 @@ fun DetailScreen(
     }
 }
 
+/**
+ * How far the artwork's scrim reaches below the status bar. The hero's scrim is drawn in the hero, so it scrolls
+ * away; a screen requests light icons only while that scrim still covers the bar.
+ */
+internal val ImmersiveScrimExtent = 56.dp
+
+/**
+ * The round back control over the artwork. It clears [insets] itself, because its screen leaves the top to its
+ * immersive controls: the status bar, a caption bar and a display cutout ([immersiveTopInsets] in production).
+ */
 @Composable
-internal fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.45f),
-        modifier = modifier.size(36.dp),
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+internal fun BackButton(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    insets: WindowInsets = immersiveTopInsets(),
+) {
+    Box(modifier.windowInsetsPadding(insets).padding(12.dp)) {
+        Surface(
+            shape = CircleShape,
+            color = Color.Black.copy(alpha = 0.45f),
+            modifier = Modifier.size(36.dp).testTag(BACK_BUTTON_TAG),
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(MuvissIcons.Back, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+            }
         }
+    }
+}
+
+/** Test tag of the back control, so a layout test can read where it sits under the inset. */
+internal const val BACK_BUTTON_TAG = "backButton"
+
+/**
+ * True while the hero is at the top and its scrim still covers the status bar. Derived, so a scroll recomposes only
+ * when this flips, not on every frame.
+ */
+@Composable
+internal fun rememberHeroUnderBar(listState: LazyListState): State<Boolean> {
+    val scrimPx = with(LocalDensity.current) { ImmersiveScrimExtent.toPx() }
+    return remember(listState, scrimPx) {
+        derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < scrimPx }
     }
 }
 
@@ -378,6 +410,9 @@ private fun DetailCompact(
     val listState = rememberLazyListState()
     val anchors = remember { DetailScrollAnchors() }
     val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
+    // The hero (item 0) is the only artwork under the status bar; light icons follow it, not the screen.
+    val heroUnderBar by rememberHeroUnderBar(listState)
+    if (heroUnderBar) LightStatusBarIcons()
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
         state = listState,
@@ -417,6 +452,9 @@ private fun DetailExpanded(
     val listState = rememberLazyListState()
     val anchors = remember { DetailScrollAnchors() }
     val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
+    // The hero (item 0) is the only artwork under the status bar; light icons follow it, not the screen.
+    val heroUnderBar by rememberHeroUnderBar(listState)
+    if (heroUnderBar) LightStatusBarIcons()
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
         state = listState,
@@ -544,7 +582,7 @@ private fun DetailBackdrop(
     height: androidx.compose.ui.unit.Dp,
     // The hero draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
-    topInset: androidx.compose.ui.unit.Dp = WindowInsets.safeDrawing.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding(),
+    topInset: androidx.compose.ui.unit.Dp = immersiveTopInsets().asPaddingValues().calculateTopPadding(),
 ) {
     val background = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxWidth().height(height + topInset)) {
@@ -567,7 +605,7 @@ private fun DetailBackdrop(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(topInset + 56.dp)
+                .height(topInset + ImmersiveScrimExtent)
                 .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 1f to Color.Transparent)),
         )
     }
