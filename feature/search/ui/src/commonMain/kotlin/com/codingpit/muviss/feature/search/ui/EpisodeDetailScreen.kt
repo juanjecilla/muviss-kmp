@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -49,7 +50,6 @@ import com.codingpit.muviss.core.designsystem.component.ErrorState
 import com.codingpit.muviss.core.designsystem.component.PosterImage
 import com.codingpit.muviss.core.designsystem.component.PosterSize
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
 import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
 import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.dateText
@@ -95,29 +95,34 @@ fun EpisodeDetailScreen(
     // Raw, because ScreenInsets already consumed the inset for this subtree; see immersiveTopPadding.
     val topInset = immersiveTopPadding()
     // Extends up into the band ScreenInsets padded, in every state, so its placement never changes during a transition.
-    // Only the loaded body has artwork under the status bar; its light icons are requested in EpisodeBody.
-    Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
-        when {
-            state.loading -> CircularProgressIndicator(
-                Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
-            )
+    // Only the loaded body has artwork under the status bar, and the still reports itself (trackImmersiveArtwork).
+    val artwork = remember { ImmersiveArtwork() }
+    CompositionLocalProvider(LocalImmersiveArtwork provides artwork) {
+        Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
+            when {
+                state.loading -> CircularProgressIndicator(
+                    Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
+                )
 
-            state.error != null -> ErrorState(
-                message = state.error!!,
-                onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center).padding(top = topInset),
-            )
+                state.error != null -> ErrorState(
+                    message = state.error!!,
+                    onRetry = viewModel::load,
+                    modifier = Modifier.align(Alignment.Center).padding(top = topInset),
+                )
 
-            state.details != null -> EpisodeBody(
-                details = state.details!!,
-                state = state,
-                onWatchedAgain = viewModel::recordRewatch,
-                onUndoLatest = viewModel::undoLatestPlay,
-                onClearHistory = { confirmClear = true },
-            )
+                state.details != null -> EpisodeBody(
+                    details = state.details!!,
+                    state = state,
+                    onWatchedAgain = viewModel::recordRewatch,
+                    onUndoLatest = viewModel::undoLatestPlay,
+                    onClearHistory = { confirmClear = true },
+                )
+            }
+
+            ImmersiveStatusBar(artwork, topInset, Modifier.align(Alignment.TopCenter))
+
+            BackButton(onBack, topInset = topInset)
         }
-
-        BackButton(onBack, topInset = topInset)
     }
 
     if (confirmClear) {
@@ -145,9 +150,6 @@ private fun EpisodeBody(
     onClearHistory: () -> Unit,
 ) {
     val scroll = rememberScrollState()
-    // The still is the only artwork under the status bar and it scrolls away, so the light icons follow its scrim.
-    val stillUnderBar by rememberStillUnderBar(scroll)
-    if (stillUnderBar) LightStatusBarIcons()
     Column(
         Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = MuvissSpacing.bottomContent),
     ) {
@@ -176,16 +178,6 @@ private fun EpisodeBody(
     }
 }
 
-/**
- * True while the still's scrim still covers the status bar: the still is at the top and has not scrolled past the
- * scrim. The same rule as Detail's [rememberHeroUnderBar], for the screen whose artwork is a single still.
- */
-@Composable
-internal fun rememberStillUnderBar(scroll: ScrollState): State<Boolean> {
-    val scrimPx = with(LocalDensity.current) { ImmersiveScrimExtent.toPx() }
-    return remember(scroll, scrimPx) { derivedStateOf { scroll.value < scrimPx } }
-}
-
 @Composable
 private fun EpisodeStill(
     details: EpisodeDetails,
@@ -198,11 +190,10 @@ private fun EpisodeStill(
             Modifier
                 .fillMaxWidth()
                 .height(maxWidth * 9f / 16f + topInset)
+                .trackImmersiveArtwork()
                 .background(MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
             PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize())
-            // Keeps the status icons legible over any artwork, light or dark.
-            ImmersiveTopScrim(topInset)
         }
     }
 }

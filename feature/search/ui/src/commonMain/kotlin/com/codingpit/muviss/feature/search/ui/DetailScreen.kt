@@ -66,6 +66,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -113,7 +114,6 @@ import com.codingpit.muviss.core.designsystem.component.WhatsNextButton
 import com.codingpit.muviss.core.designsystem.component.measureSnackbarHeight
 import com.codingpit.muviss.core.designsystem.component.rememberSnackbarClearance
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
-import com.codingpit.muviss.core.designsystem.layout.LightStatusBarIcons
 import com.codingpit.muviss.core.designsystem.layout.extendIntoTopInset
 import com.codingpit.muviss.core.designsystem.layout.immersiveTopPadding
 import com.codingpit.muviss.core.designsystem.text.UiText
@@ -232,60 +232,66 @@ fun DetailScreen(
     // Raw, because ScreenInsets already consumed the inset for this subtree; see immersiveTopPadding.
     val topInset = immersiveTopPadding()
     // The screen extends up into the band ScreenInsets padded, in every state, so its placement never changes
-    // during a navigation transition. Only the details branch has artwork under the status bar; the light icons are
-    // requested there (see DetailCompact and DetailExpanded), so loading and error keep the theme's icons.
-    Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
-        when {
-            state.loading -> CircularProgressIndicator(
-                Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
-            )
-
-            state.error != null -> ErrorState(
-                message = state.error!!,
-                onRetry = viewModel::load,
-                modifier = Modifier.align(Alignment.Center).padding(top = topInset),
-            )
-
-            state.details != null -> BoxWithConstraints {
-                val callbacks = DetailCallbacks(
-                    onOpenDetail = onOpenDetail,
-                    onAddToList = { showAddToList = true },
-                    onEditNote = { editingNote = true },
-                    onOpenEpisode = onOpenEpisode,
-                    onTapSeenEpisode = { tickedEpisode = it },
-                    notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
+    // during a navigation transition. Only the details branch has artwork under the status bar, and its artwork
+    // reports itself (trackImmersiveArtwork); loading and error report nothing, so they keep the theme's icons.
+    val artwork = remember { ImmersiveArtwork() }
+    CompositionLocalProvider(LocalImmersiveArtwork provides artwork) {
+        Box(Modifier.fillMaxSize().extendIntoTopInset(topInset)) {
+            when {
+                state.loading -> CircularProgressIndicator(
+                    Modifier.align(Alignment.Center).padding(top = topInset).padding(MuvissSpacing.xl),
                 )
-                // At least the usual allowance, so the end does not jump when a one-line
-                // snackbar appears; more when a long title or a large font wraps it.
-                val bottomPadding = snackbarClearance.bottomPadding
-                if (maxWidth >= EXPANDED_BREAKPOINT) {
-                    DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
-                } else {
-                    DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+
+                state.error != null -> ErrorState(
+                    message = state.error!!,
+                    onRetry = viewModel::load,
+                    modifier = Modifier.align(Alignment.Center).padding(top = topInset),
+                )
+
+                state.details != null -> BoxWithConstraints {
+                    val callbacks = DetailCallbacks(
+                        onOpenDetail = onOpenDetail,
+                        onAddToList = { showAddToList = true },
+                        onEditNote = { editingNote = true },
+                        onOpenEpisode = onOpenEpisode,
+                        onTapSeenEpisode = { tickedEpisode = it },
+                        notificationNudge = nudge?.let { vm -> { title -> NotificationNudge(vm, title) } },
+                    )
+                    // At least the usual allowance, so the end does not jump when a one-line
+                    // snackbar appears; more when a long title or a large font wraps it.
+                    val bottomPadding = snackbarClearance.bottomPadding
+                    if (maxWidth >= EXPANDED_BREAKPOINT) {
+                        DetailExpanded(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                    } else {
+                        DetailCompact(state, viewModel, callbacks, bottomPadding, onOpenNextPick)
+                    }
                 }
             }
-        }
 
-        // Floating back button over the hero, per the mockups.
-        BackButton(onBack, topInset = topInset)
+            // Over the list, under the back button: the one dark band and the light icons while the hero covers the bar.
+            ImmersiveStatusBar(artwork, topInset, Modifier.align(Alignment.TopCenter))
 
-        // The tick that catches the user up on the whole show. A season only gets the
-        // checkbox pulse: ticks that finish one are visible in the list they are made in.
-        state.celebration?.let { celebration ->
-            key(celebration.token) {
-                CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
+            // Floating back button over the hero, per the mockups.
+            BackButton(onBack, topInset = topInset)
+
+            // The tick that catches the user up on the whole show. A season only gets the
+            // checkbox pulse: ticks that finish one are visible in the list they are made in.
+            state.celebration?.let { celebration ->
+                key(celebration.token) {
+                    CelebrationBurst(label = celebration.label.resolve(), onFinished = viewModel::consumeCelebration)
+                }
             }
-        }
 
-        // Detail is a scrolling Box rather than a Scaffold, so it hosts its
-        // own snackbar for the bulk-mark undo.
-        SnackbarHost(
-            snackbarHostState,
-            Modifier
-                .align(Alignment.BottomCenter)
-                .measureSnackbarHeight(snackbarClearance)
-                .testTag(DETAIL_SNACKBAR_TAG),
-        )
+            // Detail is a scrolling Box rather than a Scaffold, so it hosts its
+            // own snackbar for the bulk-mark undo.
+            SnackbarHost(
+                snackbarHostState,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .measureSnackbarHeight(snackbarClearance)
+                    .testTag(DETAIL_SNACKBAR_TAG),
+            )
+        }
     }
 
     tickedEpisode?.let { episodeId ->
@@ -322,38 +328,6 @@ fun DetailScreen(
 }
 
 /**
- * How far below the status bar the artwork's dark scrim is guaranteed to reach. The single threshold of the immersive
- * screens: the light-icon request ([rememberHeroUnderBar], [rememberStillUnderBar]) holds while the bar is still
- * inside it, and [ImmersiveTopScrim] draws its dark plateau through exactly this band. Changing it moves both.
- */
-internal val ImmersiveScrimExtent = 56.dp
-
-/** How far the scrim fades out past its plateau. */
-internal val ImmersiveScrimFade = 56.dp
-
-/** Where the scrim's dark plateau ends, measured from the top of the artwork: through the bar and the extent. */
-internal fun immersiveScrimPlateau(topInset: Dp): Dp = topInset + ImmersiveScrimExtent
-
-/**
- * The dark scrim over artwork that draws under the status bar. It is a plateau, not a gradient, through the whole
- * status-bar band and [ImmersiveScrimExtent] below it, then fades out. A gradient that starts dark and fades across its
- * full height leaves the bar nearly clear at the scroll offsets where light icons are still requested, so light icons
- * land on bright artwork.
- */
-@Composable
-internal fun ImmersiveTopScrim(topInset: Dp, modifier: Modifier = Modifier) {
-    val plateau = immersiveScrimPlateau(topInset)
-    val total = plateau + ImmersiveScrimFade
-    val dark = Color.Black.copy(alpha = 0.45f)
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(total)
-            .background(Brush.verticalGradient(0f to dark, plateau / total to dark, 1f to Color.Transparent)),
-    )
-}
-
-/**
  * The round back control over the artwork. It pads itself by [topInset] (the raw status-bar band, not an inset
  * modifier, because [ScreenInsets] already consumed the inset for its descendants) and clears the bar.
  */
@@ -378,18 +352,6 @@ internal fun BackButton(
 
 /** Test tag of the back control, so a layout test can read where it sits under the inset. */
 internal const val BACK_BUTTON_TAG = "backButton"
-
-/**
- * True while the hero is at the top and its scrim still covers the status bar. Derived, so a scroll recomposes only
- * when this flips, not on every frame.
- */
-@Composable
-internal fun rememberHeroUnderBar(listState: LazyListState): State<Boolean> {
-    val scrimPx = with(LocalDensity.current) { ImmersiveScrimExtent.toPx() }
-    return remember(listState, scrimPx) {
-        derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < scrimPx }
-    }
-}
 
 /** The callbacks the screen's body raises, bundled so the two layouts share one shape. */
 private class DetailCallbacks(
@@ -437,9 +399,6 @@ private fun DetailCompact(
     val listState = rememberLazyListState()
     val anchors = remember { DetailScrollAnchors() }
     val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
-    // The hero (item 0) is the only artwork under the status bar; light icons follow it, not the screen.
-    val heroUnderBar by rememberHeroUnderBar(listState)
-    if (heroUnderBar) LightStatusBarIcons()
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
         state = listState,
@@ -479,9 +438,6 @@ private fun DetailExpanded(
     val listState = rememberLazyListState()
     val anchors = remember { DetailScrollAnchors() }
     val scrollToSpecials = rememberScrollToSpecials(listState, anchors, seasons)
-    // The hero (item 0) is the only artwork under the status bar; light icons follow it, not the screen.
-    val heroUnderBar by rememberHeroUnderBar(listState)
-    if (heroUnderBar) LightStatusBarIcons()
     LazyColumn(
         Modifier.fillMaxSize().testTag(DETAIL_LIST_TAG),
         state = listState,
@@ -496,7 +452,7 @@ private fun DetailExpanded(
                         horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.xl),
                     ) {
                         Column(Modifier.width(POSTER_COLUMN_WIDTH), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
-                            Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
+                            Surface(shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp, modifier = Modifier.trackImmersiveArtwork()) {
                                 PosterImage(
                                     url = details.summary.posterUrl,
                                     title = details.summary.title,
@@ -612,7 +568,7 @@ private fun DetailBackdrop(
     topInset: androidx.compose.ui.unit.Dp = immersiveTopPadding(),
 ) {
     val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(height + topInset)) {
+    Box(Modifier.fillMaxWidth().height(height + topInset).trackImmersiveArtwork()) {
         if (details.backdropUrl != null) {
             AsyncImage(
                 model = details.backdropUrl,
@@ -628,8 +584,6 @@ private fun DetailBackdrop(
                 .fillMaxSize()
                 .background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to background)),
         )
-        // Keeps the status icons legible over any artwork, light or dark.
-        ImmersiveTopScrim(topInset)
     }
 }
 
@@ -646,7 +600,7 @@ private fun DetailHero(details: MediaDetails) {
             horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m),
             verticalAlignment = Alignment.Bottom,
         ) {
-            Surface(shape = MaterialTheme.shapes.small, shadowElevation = 8.dp) {
+            Surface(shape = MaterialTheme.shapes.small, shadowElevation = 8.dp, modifier = Modifier.trackImmersiveArtwork()) {
                 PosterImage(
                     url = details.summary.posterUrl,
                     title = details.summary.title,
