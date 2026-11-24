@@ -132,4 +132,17 @@ class WheelZoomTest {
 
         assertEquals(1.21f, assertNotNull(queue.nextStep(1.1f)).factor * 1.1f, 0.0001f)
     }
+
+    @Test
+    fun an_interrupted_zoom_is_not_aimed_at_again_from_its_old_target() {
+        val queue = WheelZoomQueue()
+        queue.request(1f, -1f, at)
+        assertNotNull(queue.nextStep(1f))
+
+        // A pan stopped the zoom at 1.04: the next scroll aims from there, not at the 1.1 the animation was heading to.
+        queue.interrupted()
+        queue.request(1.04f, -1f, at)
+
+        assertEquals(1.1f, assertNotNull(queue.nextStep(1.04f)).factor, 0.0001f)
+    }
 }

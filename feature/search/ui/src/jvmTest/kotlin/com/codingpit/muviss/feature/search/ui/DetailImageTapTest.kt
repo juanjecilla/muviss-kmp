@@ -3,8 +3,12 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
@@ -66,6 +70,32 @@ class DetailImageTapTest {
         // The compact poster draws the w342 grid request, so the viewer opens on that same URL: it is cached, and
         // the picture is on screen offline. The stored w500 is a different cache entry.
         assertEquals(listOf(ImageKind.Poster to drawnImageUrl(POSTER, PosterSize.Grid)), opened)
+    }
+
+    @Test
+    fun the_backdrop_button_has_a_name_a_role_and_says_what_a_tap_does() = runComposeUiTest {
+        setContent { Detail(withArt = true) { _, _ -> } }
+        waitForIdle()
+
+        val backdrop = onNodeWithTag(DETAIL_BACKDROP_TAG)
+        backdrop.assertContentDescriptionEquals("Backdrop")
+        backdrop.assertHasClickAction()
+        assertEquals(Role.Button, backdrop.fetchSemanticsNode().config[SemanticsProperties.Role])
+        // The picture under the button has no name of its own, so the action label is what TalkBack reads after the name.
+        assertEquals("View backdrop full screen", backdrop.fetchSemanticsNode().config[SemanticsActions.OnClick].label)
+    }
+
+    @Test
+    fun the_poster_button_has_a_name_and_keeps_its_action_label() = runComposeUiTest {
+        setContent { Detail(withArt = true) { _, _ -> } }
+        waitForIdle()
+        waitUntil(timeoutMillis = 5_000) {
+            onNodeWithTag(DETAIL_POSTER_TAG).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text) != null
+        }
+
+        val poster = onNodeWithTag(DETAIL_POSTER_TAG)
+        poster.assertContentDescriptionEquals("Poster")
+        assertEquals("View poster full screen", poster.fetchSemanticsNode().config[SemanticsActions.OnClick].label)
     }
 
     @Test

@@ -1,6 +1,10 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.ui.geometry.Offset
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -70,8 +74,51 @@ internal class WheelZoomQueue {
         if (!requested) target = null
     }
 
+    /**
+     * The animation from [nextStep] was cancelled before it reached its target, because another gesture (a pan from the
+     * keyboard) took over. The zoom now is wherever it stopped, so the target it was heading to is no longer a place to
+     * aim from. A scroll that arrived meanwhile keeps its place and is applied from the zoom on screen; otherwise the
+     * wheel is idle again and the next scroll aims from the picture as it stands.
+     */
+    fun interrupted() = settled()
+
     private companion object {
         const val SAME_ZOOM = 1e-4f
+    }
+}
+
+/**
+ * Applies the zoom animations [queue] asks for, one at a time, for as long as the caller is collecting [requests].
+ *
+ * [animate] is Telephoto's `zoomBy`, and another gesture can cancel it part way: a pan at the same priority replaces it,
+ * and the cancellation surfaces here as a [CancellationException]. That ends the animation, not this loop, so the zoom
+ * is left where it stopped ([WheelZoomQueue.interrupted]) and the loop keeps taking requests. Cancelling the loop itself
+ * (the pointer input leaving composition) still ends it: the cancellation is rethrown, and the loop never reads on.
+ */
+internal suspend fun applyWheelZooms(
+    queue: WheelZoomQueue,
+    requests: ReceiveChannel<Unit>,
+    currentZoom: () -> Float,
+    animate: suspend (WheelZoomStep) -> Unit,
+) {
+    for (ignored in requests) {
+        queue.applyPendingSteps(currentZoom, animate)
+    }
+}
+
+/** Runs the animations [WheelZoomQueue.nextStep] asks for until nothing is pending. */
+private suspend fun WheelZoomQueue.applyPendingSteps(currentZoom: () -> Float, animate: suspend (WheelZoomStep) -> Unit) {
+    while (true) {
+        val step = nextStep(currentZoom()) ?: return
+        try {
+            animate(step)
+            settled()
+        } catch (cancelled: CancellationException) {
+            // Only the animation was cancelled while the loop is still wanted: carry on. Once the loop itself is
+            // cancelled, its cancellation is what we must propagate.
+            if (!currentCoroutineContext().isActive) throw cancelled
+            interrupted()
+        }
     }
 }
 

@@ -11,8 +11,10 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -23,6 +25,8 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.ZoomableState
 import me.saket.telephoto.zoomable.rememberZoomableState
@@ -38,10 +42,11 @@ import kotlin.test.assertTrue
 private fun ZoomableState.userZoomValue(): Float = contentTransformation.takeIf { it.isSpecified }?.scaleMetadata?.userZoom ?: 1f
 
 @Composable
-private fun Viewport(onState: (ZoomableState) -> Unit) {
+private fun Viewport(onState: (ZoomableState, CoroutineScope) -> Unit) {
     val state = rememberZoomableState(ZoomSpec(maxZoomFactor = MAX_USER_ZOOM))
+    val scope = rememberCoroutineScope()
     LaunchedEffect(state) { state.setContentLocation(FitContentLocation(Size(300f, 300f))) }
-    SideEffect { onState(state) }
+    SideEffect { onState(state, scope) }
     Box(
         Modifier
             .size(300.dp)
@@ -53,6 +58,9 @@ private fun Viewport(onState: (ZoomableState) -> Unit) {
 }
 
 private const val VIEWPORT = "viewport"
+
+/** How far one wheel notch zooms: 1.1 of the zoom it starts from (see [wheelZoomFactor]). */
+private const val MAX_WHEEL_STEP_ZOOM = 1.1f
 
 class ViewerWheelZoomTest {
 
@@ -110,14 +118,53 @@ class ViewerWheelZoomTest {
         )
     }
 
+    /**
+     * A pan from the keyboard, while the wheel's zoom is still animating, takes over that zoom. The wheel must go on
+     * zooming afterwards: before the fix the interrupted zoom ended the only consumer, so later scrolls did nothing.
+     */
+    @Test
+    fun a_pan_that_interrupts_a_zoom_leaves_later_scrolls_zooming() = runComposeUiTest {
+        val viewer = Viewers(this)
+
+        val zoom = viewer.fresh()
+        onNodeWithTag(VIEWPORT).performMouseInput { scroll(-1f) }
+        waitUntil(timeoutMillis = 5_000) { zoom.isAnimationRunning }
+        // Freeze the clock while the zoom is in flight, so the pan lands in the middle of it and takes it over.
+        mainClock.autoAdvance = false
+        runOnIdle { checkNotNull(viewer.scope).launch { zoom.panBy(Offset(20f, 0f)) } }
+        mainClock.autoAdvance = true
+        waitUntil(timeoutMillis = 5_000) { !zoom.isAnimationRunning }
+        val afterPan = zoom.userZoomValue()
+        assertTrue(
+            afterPan < MAX_WHEEL_STEP_ZOOM - 0.01f,
+            "the pan should have stopped the zoom short of one wheel step (${MAX_WHEEL_STEP_ZOOM}), but it reached $afterPan",
+        )
+
+        onNodeWithTag(VIEWPORT).performMouseInput { scroll(-1f) }
+        waitUntil(timeoutMillis = 5_000) { zoom.userZoomValue() > afterPan + 0.01f }
+        waitUntil(timeoutMillis = 5_000) { !zoom.isAnimationRunning }
+
+        assertTrue(
+            zoom.userZoomValue() > afterPan,
+            "a scroll after the pan should still zoom; it stayed at ${zoom.userZoomValue()} after the pan left it at $afterPan",
+        )
+    }
+
     /** Switches the test to a new viewer, so each scenario starts at the fitted zoom. */
     private class Viewers(private val test: ComposeUiTest) {
         private var generation by mutableStateOf(0)
         private var current: ZoomableState? = null
+        var scope: CoroutineScope? = null
+            private set
 
         init {
             test.setContent {
-                key(generation) { Viewport { current = it } }
+                key(generation) {
+                    Viewport { state, viewportScope ->
+                        current = state
+                        scope = viewportScope
+                    }
+                }
             }
         }
 

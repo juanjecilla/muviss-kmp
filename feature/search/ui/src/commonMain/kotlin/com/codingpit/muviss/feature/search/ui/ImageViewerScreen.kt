@@ -42,7 +42,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -94,6 +96,15 @@ fun ImageViewerScreen(viewModel: ImageViewerViewModel, onClose: () -> Unit) {
 internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClose: () -> Unit) {
     // The viewer is black edge to edge, so the status bar is drawn over black: light icons, whatever the theme.
     LightStatusBarIcons()
+    // Escape auto-repeats, and the close button or a flick can land in the same frame; the owner pops the back stack on
+    // each call, so the second one would pop the screen underneath too. Leaving is requested once.
+    var leaving by remember { mutableStateOf(false) }
+    val leave: () -> Unit = {
+        if (!leaving) {
+            leaving = true
+            onClose()
+        }
+    }
     // Raw, because ScreenInsets already consumed the top for this subtree; see immersiveTopPadding. The viewer
     // extends up into that band so its black runs under the status bar, and its controls clear it by hand.
     val topInset = immersiveTopPadding()
@@ -120,7 +131,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
                 val zoom = zooms[images.getOrNull(pager.currentPage)?.fileKey]
                 val zoomed = zoom != null && (zoom.zoomFraction ?: 0f) > 0f
                 when (event.key) {
-                    Key.Escape -> onClose().let { true }
+                    Key.Escape -> leave().let { true }
 
                     Key.DirectionRight -> if (zoomed) {
                         pan(scope, zoom, Offset(-panStep, 0f))
@@ -144,7 +155,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
             .focusRequester(focus)
             .focusable(),
     ) {
-        DismissOnFlick(flick, onClose) {
+        DismissOnFlick(flick, leave) {
             HorizontalPager(pager, Modifier.fillMaxSize(), key = { images[it].fileKey }) { page ->
                 GalleryPage(
                     image = images[page],
@@ -161,7 +172,7 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
                 color = Color.Black.copy(alpha = 0.45f),
                 modifier = Modifier.padding(top = topInset).padding(12.dp).size(36.dp).testTag(IMAGE_VIEWER_CLOSE_TAG),
             ) {
-                IconButton(onClick = onClose) {
+                IconButton(onClick = leave) {
                     Icon(MuvissIcons.Close, contentDescription = stringResource(Res.string.action_close), tint = Color.White)
                 }
             }
@@ -172,7 +183,11 @@ internal fun ImageViewerContent(images: List<TitleImage>, kind: ImageKind, onClo
                     stringResource(Res.string.image_viewer_position, pager.currentPage + 1, images.size),
                     style = MaterialTheme.typography.labelLarge,
                     color = Color.White,
-                    modifier = Modifier.padding(top = topInset + 20.dp).testTag(IMAGE_VIEWER_POSITION_TAG),
+                    // Polite, so a screen reader says the new position when the person pages, without interrupting them.
+                    modifier = Modifier
+                        .padding(top = topInset + 20.dp)
+                        .testTag(IMAGE_VIEWER_POSITION_TAG)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
         }
@@ -234,13 +249,7 @@ internal fun Modifier.wheelZooms(zoom: ZoomableState): Modifier = pointerInput(z
     val requests = Channel<Unit>(Channel.CONFLATED)
     coroutineScope {
         launch {
-            for (ignored in requests) {
-                while (true) {
-                    val step = queue.nextStep(zoom.userZoom()) ?: break
-                    zoom.zoomBy(step.factor, step.focalPoint)
-                    queue.settled()
-                }
-            }
+            applyWheelZooms(queue, requests, { zoom.userZoom() }) { step -> zoom.zoomBy(step.factor, step.focalPoint) }
         }
         awaitPointerEventScope {
             while (true) {

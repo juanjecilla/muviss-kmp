@@ -127,4 +127,7 @@
     <string name="image_open_backdrop">Ver el fondo a pantalla completa</string>
     <string name="image_open_poster">Ver el póster a pantalla completa</string>
     <string name="image_open_still">Ver el fotograma a pantalla completa</string>
+    <string name="image_name_backdrop">Fondo</string>
+    <string name="image_name_poster">Póster</string>
+    <string name="image_name_still">Fotograma</string>
 </resources>

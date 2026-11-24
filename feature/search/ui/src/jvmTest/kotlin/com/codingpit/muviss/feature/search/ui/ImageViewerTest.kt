@@ -3,8 +3,12 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -72,6 +76,42 @@ class ImageViewerTest {
         onNodeWithTag(IMAGE_VIEWER_CLOSE_TAG).performClick()
 
         assertEquals(1, closed)
+    }
+
+    @Test
+    fun escape_held_down_or_followed_by_close_leaves_only_once() = runComposeUiTest {
+        var closed = 0
+        setContent { MuvissTheme(darkTheme = true) { ImageViewerContent(three, ImageKind.Still, onClose = { closed++ }) } }
+
+        // Escape auto-repeats while held, and the close button can be hit in the same moment. The owner pops the back
+        // stack on every call, so a second call would pop the screen underneath as well.
+        onNodeWithTag(IMAGE_VIEWER_TAG).performKeyInput { pressKey(Key.Escape) }
+        onNodeWithTag(IMAGE_VIEWER_TAG).performKeyInput { pressKey(Key.Escape) }
+        onNodeWithTag(IMAGE_VIEWER_CLOSE_TAG).performClick()
+
+        assertEquals(1, closed)
+    }
+
+    @Test
+    fun the_close_button_is_named_by_its_action() = runComposeUiTest {
+        setContent { MuvissTheme(darkTheme = true) { ImageViewerContent(three, ImageKind.Backdrop, onClose = {}) } }
+
+        onNodeWithContentDescription("Close").assertHasClickAction()
+    }
+
+    @Test
+    fun the_position_is_announced_politely_as_the_gallery_pages() = runComposeUiTest {
+        setContent { MuvissTheme(darkTheme = true) { ImageViewerContent(three, ImageKind.Backdrop, onClose = {}) } }
+
+        val node = onNodeWithTag(IMAGE_VIEWER_POSITION_TAG).fetchSemanticsNode()
+        assertEquals(LiveRegionMode.Polite, node.config[SemanticsProperties.LiveRegion])
+    }
+
+    @Test
+    fun each_page_is_named_by_its_kind_and_place() = runComposeUiTest {
+        setContent { MuvissTheme(darkTheme = true) { ImageViewerContent(three, ImageKind.Backdrop, onClose = {}) } }
+
+        onNodeWithContentDescription("Backdrop 1 of 3").fetchSemanticsNode()
     }
 
     @Test

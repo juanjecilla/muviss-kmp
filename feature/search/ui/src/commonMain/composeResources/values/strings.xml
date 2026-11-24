@@ -145,4 +145,7 @@
     <string name="image_open_backdrop">View backdrop full screen</string>
     <string name="image_open_poster">View poster full screen</string>
     <string name="image_open_still">View still full screen</string>
+    <string name="image_name_backdrop">Backdrop</string>
+    <string name="image_name_poster">Poster</string>
+    <string name="image_name_still">Still</string>
 </resources>
