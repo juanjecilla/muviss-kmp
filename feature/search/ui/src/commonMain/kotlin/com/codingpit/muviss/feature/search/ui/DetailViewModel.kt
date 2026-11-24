@@ -197,7 +197,7 @@ class DetailViewModel(
     internal fun primaryAction(state: DetailUiState): PrimaryAction {
         val seasons = state.details?.seasons.orEmpty()
         val next = if (seasons.isEmpty()) NextEpisodes.NONE else progressApi.nextEpisodes(seasons, state.seenEpisodes, todayEpochDay)
-        return primaryActionFor(state, todayEpochDay, next)
+        return primaryActionFor(state, next)
     }
 
     init {
@@ -665,7 +665,7 @@ class DetailViewModel(
         val seasons = _state.value.details?.seasons ?: return
         launchWrite {
             val today = clock.todayEpochDay()
-            val aired = seasons.map { season -> season.copy(episodes = season.episodes.filter { it.hasAired(today) }) }
+            val aired = seasons.map { season -> season.copy(episodes = season.episodes.filter { EpisodeOrdering.hasAired(it, today) }) }
             if (aired.none { season -> season.episodes.any { it.id == episodeId } }) return@launchWrite
             // Already seen through here: nothing would be ticked, so the title is not saved for it (ADR 0037).
             val seen = progressApi.observeSeenEpisodes(mediaId).first()
