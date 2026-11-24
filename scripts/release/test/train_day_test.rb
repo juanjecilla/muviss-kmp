@@ -6,7 +6,7 @@ require_relative "../train_day"
 # The nightly train (release-train.yml) is a cron at 23:00 UTC on the train
 # day. GitHub starts scheduled runs late (#714: a Sunday 23:00 run started at
 # 02:24 UTC on Monday), so the day is judged from the time the run was
-# scheduled for: the UTC day of now minus six hours, which is the schedule's
+# scheduled for: the UTC day of now minus 23 hours, which is the schedule's
 # hour, not the run's. A dispatch always runs.
 class TrainDayTest < Minitest::Test
   def utc(text) = Time.iso8601(text)
@@ -23,12 +23,16 @@ class TrainDayTest < Minitest::Test
     assert judged("2026-11-10T02:24:00Z"), "the Monday 23:00 run, started at 02:24 on Tuesday (#714)"
   end
 
-  def test_one_minute_before_the_six_hour_mark_is_still_monday
-    assert judged("2026-11-10T05:59:00Z"), "05:59 Tuesday is 23:59 Monday once the six hours are taken off"
+  def test_a_run_started_eight_hours_late_still_counts_as_the_monday_it_was_scheduled_for
+    assert judged("2026-11-24T06:47:00Z"), "the Monday 23:00 run, started at 06:47 on Tuesday (#1050)"
   end
 
-  def test_the_six_hour_mark_is_tuesday
-    refute judged("2026-11-10T06:00:00Z"), "06:00 Tuesday is 00:00 Tuesday, not the train day"
+  def test_one_minute_before_the_next_slot_is_still_monday
+    assert judged("2026-11-24T22:59:00Z"), "22:59 Tuesday is 23:59 less 24h: still the Monday slot"
+  end
+
+  def test_the_next_slot_is_tuesday
+    refute judged("2026-11-24T23:00:00Z"), "Tuesday's own 23:00 slot"
   end
 
   def test_a_scheduled_run_on_a_non_train_day_does_not_run

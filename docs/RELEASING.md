@@ -423,7 +423,11 @@ the schedule, the gates and where a fix goes.
   dispatch bypasses the day gate, so the cut runs too.
 - **A scheduled run is judged by the time it was due.** GitHub can start a cron
   hours late, past midnight. `release-train.yml` judges its train day from the
-  scheduled time, not the start (`scripts/release/train_day.rb`, #714).
+  scheduled time, not the start (`scripts/release/train_day.rb`, #714): the UTC
+  day of the start less 23 hours, so any start up to a day late counts (a fixed
+  6-hour bound skipped 1.7.0 on a start 7h47m late, #1050). The nightly check
+  also raises a "Release train blocked" issue the day after a train day that cut
+  nothing although develop had changes at the slot.
   `release-promote.yml` needs no such judgement: its due checks compare with `>=`,
   and a beta step run on a Sunday, Monday or Tuesday counts as that Sunday
   (`beta_done_day`), so a late run keeps the cadence (audited under #714).
