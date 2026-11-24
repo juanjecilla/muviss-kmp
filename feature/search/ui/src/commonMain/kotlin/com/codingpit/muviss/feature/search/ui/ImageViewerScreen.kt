@@ -3,6 +3,7 @@ package com.codingpit.muviss.feature.search.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -20,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -43,12 +46,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import com.codingpit.muviss.core.designsystem.icon.MuvissIcons
@@ -101,6 +102,8 @@ internal fun ImageViewerContent(
     onClose: () -> Unit,
     /** The image the person tapped; the first page is swapped for the source's larger copy of it, and falls back to it. */
     seed: TitleImage? = null,
+    /** Reports the size of the picture each page draws, whenever it changes. Tests read it; the viewer does not. */
+    onPageSize: (TitleImage, Size?) -> Unit = { _, _ -> },
 ) {
     // The viewer is black edge to edge, so the status bar is drawn over black: light icons, whatever the theme.
     LightStatusBarIcons()
@@ -171,6 +174,7 @@ internal fun ImageViewerContent(
                     description = pageDescription(kind, page + 1, images.size),
                     zooms = zooms,
                     onTap = { controlsVisible = !controlsVisible },
+                    onPageSize = onPageSize,
                 )
             }
         }
@@ -224,32 +228,43 @@ private fun GalleryPage(
     seed: TitleImage?,
     zooms: MutableMap<String, ZoomableState>,
     onTap: () -> Unit,
+    onPageSize: (TitleImage, Size?) -> Unit,
 ) {
     val zoom = rememberZoomableState(ZoomSpec(maxZoomFactor = MAX_ZOOM))
     DisposableEffect(image.fileKey) {
         zooms[image.fileKey] = zoom
         onDispose { zooms.remove(image.fileKey) }
     }
-    // A replaced first page keeps the tapped image on screen: it is the placeholder while the source's larger copy
-    // loads, and it is what is left if that copy fails. The tapped image is in the image cache already, so it is
-    // drawn at once. Nothing else falls back, so a failed copy is not retried under some other address.
+    // A replaced first page draws the tapped image while the source's larger copy is not on screen: before it loads,
+    // and if it fails. The tapped image is in the image cache already, so it is drawn at once. The choice itself is
+    // [shownImage]; this only loads both and draws what it picks. Nothing else falls back.
     val tappedUrl = seed?.url?.takeIf { image.replacesSeed(seed) }
-    val tapped = rememberAsyncImagePainter(model = tappedUrl)
-    val locate: (AsyncImagePainter.State) -> Unit = { state -> zoom.setContentLocation(fitLocation(state.painter?.intrinsicSize)) }
-    AsyncImage(
-        model = image.url,
+    val replacement = rememberAsyncImagePainter(model = image.url, contentScale = ContentScale.Fit)
+    val tapped = rememberAsyncImagePainter(model = tappedUrl, contentScale = ContentScale.Fit)
+    // Collecting the states is what recomposes this page when a load finishes; the sizes are read from the same loads.
+    val replacementLoaded = replacement.state.collectAsState().value is AsyncImagePainter.State.Success
+    val tappedLoaded = tapped.state.collectAsState().value is AsyncImagePainter.State.Success
+    val shown = shownImage(replacesSeed = tappedUrl != null, replacementLoaded = replacementLoaded, tappedLoaded = tappedLoaded)
+    val painter = if (shown == ShownImage.Tapped) tapped else replacement
+    // Telephoto needs the size of what is drawn, and the bounds of what Fit draws, to know where its edges are. It
+    // changes with the picture on screen, so it is reported every time it does, including once the tapped image loads
+    // after a replacement has already failed.
+    val size = shownSize(
+        shown,
+        replacementSize = replacement.intrinsicSize.takeIf { replacementLoaded },
+        tappedSize = tapped.intrinsicSize.takeIf { tappedLoaded },
+    )
+    LaunchedEffect(size) {
+        zoom.setContentLocation(fitLocation(size))
+        onPageSize(image, size)
+    }
+    Image(
+        painter = painter,
         contentDescription = description,
         contentScale = ContentScale.Fit,
-        placeholder = tapped.takeIf { tappedUrl != null },
-        error = tapped.takeIf { tappedUrl != null },
-        // Telephoto needs the picture's own size, and the bounds of what Fit draws, to know where its edges are. That is
-        // whatever is drawn at the time, so every state reports it, the tapped image's while it stands in.
-        onLoading = locate,
-        onSuccess = locate,
-        onError = locate,
         modifier = Modifier
             .fillMaxSize()
-            .semantics { contentDescription = description }
+            .testTag(imageViewerImageTag(shown))
             // Before zoomable: the wheel's focal point must be in viewport coordinates, which only the untransformed
             // node has. Zoomable's own shortcut (Alt + wheel) runs in the Main pass and consumes its scrolls, so the
             // Final pass here sees only the scrolls nobody else took.
