@@ -63,8 +63,9 @@ object FilmographyOrganizer {
         return upcoming.sortedBy { it.releaseEpochDay } + released.sortedByDescending { it.releaseEpochDay } + undated
     }
 
+    /** Released titles only: an undated one is not known to be out, so it cannot be "known for" yet. */
     private fun knownFor(tab: List<FilmographyEntry>): List<FilmographyEntry> = tab
-        .filter { !it.upcoming && it.voteCount > 0 }
+        .filter { it.releaseEpochDay != null && !it.upcoming && it.voteCount > 0 }
         .sortedWith(compareByDescending<FilmographyEntry> { it.voteCount }.thenByDescending { it.releaseEpochDay ?: Long.MIN_VALUE })
         .take(KNOWN_FOR_SIZE)
 }

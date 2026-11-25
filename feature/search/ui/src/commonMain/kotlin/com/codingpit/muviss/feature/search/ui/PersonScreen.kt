@@ -111,7 +111,7 @@ internal fun PersonBody(
         person.biography?.let { bio -> item(key = "bio", contentType = "bio") { Biography(bio, inset) } }
 
         if (filmography.knownFor.isNotEmpty()) {
-            item(key = "knownFor", contentType = "knownFor") { KnownFor(filmography.knownFor, onOpenDetail, inset) }
+            item(key = "knownFor", contentType = "knownFor") { KnownFor(filmography.knownFor, libraryIds, onOpenDetail, inset) }
         }
 
         if (filmography.acting.isEmpty() && filmography.crew.isEmpty()) {
@@ -178,12 +178,18 @@ private fun Biography(text: String, modifier: Modifier) {
 }
 
 @Composable
-private fun KnownFor(entries: List<FilmographyEntry>, onOpenDetail: (MediaId) -> Unit, modifier: Modifier) {
+private fun KnownFor(entries: List<FilmographyEntry>, libraryIds: Set<MediaId>, onOpenDetail: (MediaId) -> Unit, modifier: Modifier) {
     Column(modifier.testTag(PERSON_KNOWN_FOR_TAG), verticalArrangement = Arrangement.spacedBy(MuvissSpacing.s)) {
         CarouselHeader(stringResource(Res.string.person_known_for))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             items(entries, key = { it.title.id.toString() }) { entry ->
-                PosterCard(title = entry.title.title, posterUrl = entry.title.posterUrl, onClick = { onOpenDetail(entry.title.id) }, modifier = Modifier.width(110.dp))
+                // Same badge as a credit row: the card has no slot for it, so it sits under the card, like the row's line.
+                Column(Modifier.width(110.dp)) {
+                    PosterCard(title = entry.title.title, posterUrl = entry.title.posterUrl, onClick = { onOpenDetail(entry.title.id) }, modifier = Modifier.fillMaxWidth())
+                    if (entry.title.id in libraryIds) {
+                        Text(stringResource(Res.string.person_in_library), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
         }
     }

@@ -96,6 +96,20 @@ class FilmographyOrganizerTest {
     }
 
     @Test
+    fun known_for_leaves_out_undated_titles_however_voted() {
+        val result = FilmographyOrganizer.organize(person("Acting", acted("undated", votes = 9_999), acted("dated", day = 100, votes = 3)), today)
+
+        assertEquals(listOf("dated"), ids(result.knownFor))
+    }
+
+    @Test
+    fun known_for_keeps_a_title_released_today() {
+        val result = FilmographyOrganizer.organize(person("Acting", acted("today", day = today, votes = 7)), today)
+
+        assertEquals(listOf("today"), ids(result.knownFor))
+    }
+
+    @Test
     fun a_director_opens_on_the_crew_tab_and_known_for_reads_from_it() {
         val result = FilmographyOrganizer.organize(person("Directing", acted("1", day = 100, votes = 50), made("2", "Director", 100, votes = 5)), today)
 

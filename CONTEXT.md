@@ -44,7 +44,7 @@ One Person's part in one title: the character they played or the job they did. A
 _Avoid_: role (ambiguous between the part played and the job done), appearance.
 
 **Filmography**:
-Every title a Person has a Credit on, arranged for reading: one row per title with that Person's roles, newest first, with unreleased titles on top. It is a record of their work, so Muted Genres do not hide anything in it.
+Every title a Person has a Credit on, arranged for reading: one row per title with that Person's roles, newest first, with unreleased titles on top and undated ones last. The one exception is an acting Credit on a TV title in TMDB's Talk or News genres (a talk-show or news appearance), which is not a Credit and is left out; crew Credits on those titles stay. It is a record of their work, so Muted Genres do not hide anything in it; the Talk and News exclusion is fixed, not a Muted Genre, and unmuting Talk does not bring those appearances back. "Known for" only ever picks released titles.
 _Avoid_: portfolio, known for (that is only the best-known handful at the top of it).
 
 >**ProductionStatus**:

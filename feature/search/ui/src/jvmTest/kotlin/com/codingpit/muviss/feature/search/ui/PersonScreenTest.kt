@@ -6,6 +6,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -80,11 +82,31 @@ class PersonScreenTest {
     }
 
     @Test
-    fun an_unreleased_title_is_flagged_and_one_in_the_library_says_so() = runComposeUiTest {
-        show(libraryIds = setOf(inception.id))
+    fun an_unreleased_title_is_flagged() = runComposeUiTest {
+        show()
 
         onNodeWithText("Upcoming").assertIsDisplayed()
-        onNodeWithText("In your library").assertIsDisplayed()
+    }
+
+    @Test
+    fun a_credit_row_in_the_library_is_badged() = runComposeUiTest {
+        show(libraryIds = setOf(inception.id))
+
+        onNode(hasText("In your library") and hasAnyAncestor(hasTestTag(PERSON_LIST_TAG)) and !hasAnyAncestor(hasTestTag(PERSON_KNOWN_FOR_TAG))).assertIsDisplayed()
+    }
+
+    @Test
+    fun a_known_for_card_in_the_library_is_badged_like_a_credit_row() = runComposeUiTest {
+        show(libraryIds = setOf(inception.id))
+
+        onNode(hasText("In your library") and hasAnyAncestor(hasTestTag(PERSON_KNOWN_FOR_TAG))).assertIsDisplayed()
+    }
+
+    @Test
+    fun a_known_for_card_outside_the_library_has_no_badge() = runComposeUiTest {
+        show(libraryIds = emptySet())
+
+        onAllNodes(hasText("In your library") and hasAnyAncestor(hasTestTag(PERSON_KNOWN_FOR_TAG))).assertCountEquals(0)
     }
 
     @Test
