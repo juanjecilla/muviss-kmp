@@ -170,6 +170,52 @@ class DiscoverFeedTest {
         assertEquals(listOf(movie("1"), movie("2")), feed.visible(repeated, MutedGenres.NONE))
     }
 
+    /** #922: a TTL-driven refresh asks TMDB fresh for both genre lists, both media types, and a supplemental page. */
+    @Test
+    fun every_request_is_fresh_once_the_stored_copy_is_past_the_ttl() = runTest {
+        storeShelvesWithASupplementalPage()
+        clock.now += DiscoverFeed.TTL_MS + 1
+        val run = feed.startRun()
+        assertTrue(feed.needsRefresh(feed.snapshot(run), run), "the copy is past its TTL, so the feed refreshes")
+        repository.freshness.clear()
+
+        feed.refresh(feed.startRun(), MutedGenres.NONE, mutedTv)
+
+        assertFreshEverywhere(repository.freshness)
+    }
+
+    /** #922: a direct refresh over a young copy is still a refresh the person asked for, so it is fresh too. */
+    @Test
+    fun every_request_is_fresh_for_a_direct_refresh_over_a_young_copy() = runTest {
+        storeShelvesWithASupplementalPage()
+        clock.now += 60_000L
+        repository.freshness.clear()
+
+        feed.refresh(feed.startRun(), MutedGenres.NONE, mutedTv)
+
+        assertFreshEverywhere(repository.freshness)
+    }
+
+    private val mutedTv = MutedGenres(setOf(GenreKey(MediaType.TV, "10767")))
+
+    /** Stores both genre lists and both shelves, with the TV shelf reading two pages (page 1 is mostly muted). */
+    private suspend fun storeShelvesWithASupplementalPage() {
+        repository.movies = listOf(page(1, 1, movie("m1")))
+        repository.tvs = listOf(page(1, 2, *tvTitles("mute", 15, "10767"), *tvTitles("keep", 5)), page(2, 2, *tvTitles("keep-b", 12)))
+        repository.movieGenres = listOf(Genre("28", "Action"))
+        repository.tvGenres = listOf(Genre("10759", "Action & Adventure"))
+        feed.refresh(feed.startRun(), MutedGenres.NONE, mutedTv)
+    }
+
+    private fun assertFreshEverywhere(requests: List<Triple<String, MediaType, Boolean>>) {
+        assertTrue(requests.any { it.first == "genres" && it.second == MediaType.MOVIE }, "the movie genre list is requested")
+        assertTrue(requests.any { it.first == "genres" && it.second == MediaType.TV }, "the TV genre list is requested")
+        assertTrue(requests.any { it.first == "discover:1" && it.second == MediaType.TV }, "the TV first page is requested")
+        assertTrue(requests.any { it.first == "discover:2" && it.second == MediaType.TV }, "the TV supplemental page is requested")
+        assertTrue(requests.any { it.first == "discover:1" && it.second == MediaType.MOVIE }, "the movie shelf is requested")
+        assertEquals(emptyList(), requests.filterNot { it.third }, "no request is made without fresh = true")
+    }
+
     private fun movie(id: String, vararg genres: String) = MediaSummary(MediaId.tmdbMovie(id), id, genreIds = genres.toList())
 
     private fun show(id: String, vararg genres: String) = MediaSummary(MediaId.tmdbTv(id), id, genreIds = genres.toList())
@@ -257,10 +303,14 @@ class DiscoverFeedTest {
         var failEverything = false
         private val requests = mutableListOf<Pair<MediaType, Int>>()
 
+        /** Every genre and discover request, with the `fresh` flag it was made with (#922). */
+        val freshness = mutableListOf<Triple<String, MediaType, Boolean>>()
+
         fun discoverPages(type: MediaType): List<Int> = requests.filter { it.first == type }.map { it.second }
 
         override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> {
             requests += type to page
+            freshness += Triple("discover:$page", type, fresh)
             if (failEverything) return Result.failure(MetadataError.Offline())
             val source = if (type == MediaType.MOVIE) movies else tvs
             val answer = source.firstOrNull { it.page == page } ?: return Result.failure(MetadataError.NotFound())
@@ -268,6 +318,7 @@ class DiscoverFeedTest {
         }
 
         override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> {
+            freshness += Triple("genres", type, fresh)
             if (failEverything) return Result.failure(MetadataError.Offline())
             val answer = if (type == MediaType.MOVIE) movieGenres else tvGenres
             return answer?.let { Result.success(it) } ?: Result.failure(MetadataError.Offline())

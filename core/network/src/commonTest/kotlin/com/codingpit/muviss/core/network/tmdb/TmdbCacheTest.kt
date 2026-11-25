@@ -203,6 +203,22 @@ class TmdbCacheTest {
         assertEquals(2, fixture.requests.size)
     }
 
+    // #922, against the six-hour database TTL. An in-memory entry whose max-age outlives that TTL (here seven hours)
+    // is warm for an ordinary call, and a fresh one must still reach TMDB. The Discover refresh that runs when the
+    // stored copy is past its TTL asks for fresh by itself (DiscoverFeed; its test checks every request), so this
+    // pins the provider side of that path against an entry the old one-hour fixture never exercised.
+    @Test
+    fun a_fresh_discover_reaches_tmdb_past_an_in_memory_entry_that_outlives_the_six_hour_database_ttl() = runTest {
+        val fixture = ProviderFixture { respondJson(ONE_RESULT_PAGE) { append(HttpHeaders.CacheControl, "public, max-age=25200") } }
+
+        fixture.provider.discover(MediaType.TV, 1, null, emptySet())
+        fixture.provider.discover(MediaType.TV, 1, null, emptySet())
+        assertEquals(1, fixture.requests.size, "the seven-hour entry is still warm for an ordinary call")
+
+        fixture.provider.discover(MediaType.TV, 1, null, emptySet(), fresh = true)
+        assertEquals(2, fixture.requests.size, "the refresh past the six-hour TTL reaches TMDB, whatever the entry's max-age")
+    }
+
     private fun warmFixture(body: String) = ProviderFixture { respondJson(body) { append(HttpHeaders.CacheControl, "public, max-age=3600") } }
 }
 
