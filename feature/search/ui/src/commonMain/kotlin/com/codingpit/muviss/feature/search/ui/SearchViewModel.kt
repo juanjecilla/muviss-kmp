@@ -16,6 +16,7 @@ import com.codingpit.muviss.feature.collection.api.ForYouSeeding
 import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.DiscoverSnapshot
+import com.codingpit.muviss.feature.search.domain.ForYouAnswer
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
@@ -142,6 +143,9 @@ class SearchViewModel(
     /** A reconnection came while nothing was failing yet; see the init block. */
     private var reconnectedBeforeFailure = false
 
+    /** The seed set the row on screen was built for; a change clears the row (see the combine's onEach). */
+    private var lastForYouSeeds: List<MediaId> = emptyList()
+
     /** What Settings and the session chip say right now. Read by every load below. */
     private var muting = GenreMuting()
 
@@ -189,8 +193,13 @@ class SearchViewModel(
             // The flag is set here, before flatMapLatest starts the request, and cleared only by its emission. A
             // cancelled request (a newer library) never clears it, so the skeleton stays up until the live one answers.
             .onEach { (library, _, _) ->
-                val seeded = ForYouSeeding.selectSeeds(library).isNotEmpty()
-                _state.update { it.copy(hasForYouSeeds = seeded, forYouLoading = seeded) }
+                val seeds = ForYouSeeding.selectSeeds(library)
+                val seeded = seeds.isNotEmpty()
+                // A different seed set must not keep the previous set's titles on screen while its own copy or
+                // request is pending (#785). The same set (a mute or an unrelated library change) keeps them.
+                val changed = seeds != lastForYouSeeds
+                lastForYouSeeds = seeds
+                _state.update { it.copy(hasForYouSeeds = seeded, forYouLoading = seeded, forYou = if (changed) emptyList() else it.forYou) }
             }
             .flatMapLatest { (library, decided, muted) -> forYouFlow(library, decided, muted) }
             .onEach { forYou -> _state.update { it.copy(forYou = forYou, forYouLoading = false) } }
@@ -352,9 +361,11 @@ class SearchViewModel(
         loadJob?.cancel()
         val marks = staleMarks
         loadJob = viewModelScope.launchReporting {
+            // Everything the load reads or writes by its language, erase count and start time is captured first (#965).
+            val run = discoverFeed.startRun()
             val mutedMovies = mutedFor(MediaType.MOVIE, null)
             val mutedTv = mutedFor(MediaType.TV, null)
-            val snapshot = discoverFeed.snapshot(mutedMovies, mutedTv)
+            val snapshot = discoverFeed.snapshot(run, mutedMovies, mutedTv)
             // A stored copy is on screen at once, so the skeleton never shows over it (#723, #724).
             if (snapshot.isEmpty) {
                 _state.update { it.copy(loading = true, error = null) }
@@ -362,9 +373,9 @@ class SearchViewModel(
                 _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = false) }
             }
             // A fresh copy answers without the network, so it does not pay off a muting mark: that needs a refresh.
-            if (!forced && !discoverFeed.needsRefresh(snapshot)) return@launchReporting
+            if (!forced && !discoverFeed.needsRefresh(snapshot, run)) return@launchReporting
 
-            val refresh = discoverFeed.refresh(mutedMovies, mutedTv)
+            val refresh = discoverFeed.refresh(run, mutedMovies, mutedTv)
             // Nothing stored and a section failed: the error state, as Discover always showed. With a copy on
             // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL.
             if (snapshot.isEmpty) refresh.firstFailure?.let { return@launchReporting fail(it) }
@@ -373,7 +384,7 @@ class SearchViewModel(
                 showing(it, merged, mutedMovies, mutedTv).copy(
                     loading = false,
                     error = null,
-                    discoverSaved = refresh.anyFailed && discoverFeed.isPastTtl(merged),
+                    discoverSaved = refresh.anyFailed && discoverFeed.isPastTtl(merged, run),
                 )
             }
             if (!refresh.anyFailed) settleStale(marks)
@@ -464,11 +475,17 @@ class SearchViewModel(
 
     /**
      * Seeds recommendations from [library]'s favorites/top-rated titles via
-     * [ForYouSeeding.selectSeeds], fetches each seed's recommendations, and
-     * merges them with [ForYouSeeding.mergeAndExclude]. Emits an empty list —
-     * which hides the section — when the library carries no signal yet, same
-     * "no error, just hidden" treatment as [DetailViewModel]'s watch-providers
-     * and more-like-this rows.
+     * [ForYouSeeding.selectSeeds], and merges each seed's answer with
+     * [ForYouSeeding.mergeAndExclude]. Emits an empty list — which hides the
+     * section — when the library carries no signal yet, same "no error, just
+     * hidden" treatment as [DetailViewModel]'s watch-providers and more-like-this
+     * rows.
+     *
+     * The answers are stored for the seed set (#785): the stored copy is shown
+     * first, then the refresh, which asks TMDB only for the seeds whose answer is
+     * missing or past its TTL. The library and the decided titles are applied at
+     * every emission, so a title saved, skipped or snoozed meanwhile never returns
+     * from the copy, and a mute change re-filters the same stored answers.
      */
     private fun forYouFlow(library: List<CollectionSummary>, decidedIds: Set<MediaId>, muted: MutedGenres): Flow<List<MediaSummary>> = flow {
         val seeds = ForYouSeeding.selectSeeds(library)
@@ -477,8 +494,13 @@ class SearchViewModel(
             return@flow
         }
         val excluded = library.mapTo(mutableSetOf()) { it.mediaId } + decidedIds
-        val recommendationsBySeed = seeds.map { seed -> recommendationsUseCase(seed).getOrNull()?.items.orEmpty() }
-        emit(ForYouSeeding.mergeAndExclude(recommendationsBySeed, excluded).filterNot(muted::hides))
+        fun shown(answers: List<ForYouAnswer>): List<MediaSummary> = ForYouSeeding.mergeAndExclude(answers.map { it.items }, excluded).filterNot(muted::hides)
+
+        // Captured before the stored read suspends (#965): the language and the erase count the copy is read and written under.
+        val run = discoverFeed.startForYou(seeds)
+        val stored = discoverFeed.forYouStored(run)
+        if (stored != null) emit(shown(stored))
+        emit(shown(discoverFeed.refreshForYou(run, stored) { seed -> recommendationsUseCase(seed) }))
     }
 
     private companion object {

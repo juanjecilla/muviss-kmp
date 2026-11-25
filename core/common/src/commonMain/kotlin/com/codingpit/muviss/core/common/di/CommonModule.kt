@@ -9,6 +9,7 @@ import com.codingpit.muviss.core.common.analytics.AnalyticsTracker
 import com.codingpit.muviss.core.common.analytics.NoOpAnalyticsTracker
 import com.codingpit.muviss.core.common.connectivity.ConnectivityMonitor
 import com.codingpit.muviss.core.common.connectivity.DefaultConnectivityMonitor
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.locale.DefaultSystemLocale
 import com.codingpit.muviss.core.common.locale.SystemLocale
 import com.codingpit.muviss.core.common.motion.SystemMotionPreference
@@ -31,6 +32,8 @@ val commonModule: Module = module {
     // The store review sheet (#410): Android and iOS bind the real prompter from their host; desktop and web never ask.
     single<ReviewPrompter> { ReviewPrompter.None }
     single<AppDispatchers> { DefaultAppDispatchers() }
+    // Delete all data's fence (#965): shared by the eraser and every writer of local data a request fetched.
+    single { DataEraseFence() }
     single<AppClock> { SystemClock() }
     single { AppVersion.current }
     single<SystemLocale> { DefaultSystemLocale() }
