@@ -320,6 +320,61 @@ class ForYouOfflineViewModelTest {
         assertEquals(listOf(recommended), vm.state.value.forYou)
     }
 
+    /** #965: a Retry with no seeds has nothing to ask, and must not ask for the first seeds that appear later. */
+    @Test
+    fun a_retry_with_no_seeds_does_not_force_the_first_seeds_that_appear_later() = runTest {
+        val cache = ForYouMemoryCache()
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 1_000L)), "en-US")
+        val asks = Asks()
+        val library = FakeSearchCollectionApi(emptyList())
+        val vm = viewModel(offlineRepo(asks, mapOf(seed to listOf(talkShow))), cache, library)
+        advanceUntilIdle()
+
+        vm.retry()
+        advanceUntilIdle()
+        assertEquals(emptyList(), asks.seeds)
+
+        library.library.value = listOf(favorite(seed))
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), asks.seeds, "the fresh copy is read; the Retry was spent on the empty set")
+        assertEquals(listOf(recommended), vm.state.value.forYou)
+    }
+
+    /**
+     * #965, round 2: a Refresh is refused while For you is still loading, even when Discover shows an error. Otherwise
+     * the error's retry reloads the shelves and leaves For you unforced, so the tap would do half of what it promises.
+     */
+    @Test
+    fun a_refresh_is_refused_while_for_you_is_loading_even_with_a_discover_error() = runTest {
+        val hold = CompletableDeferred<Unit>()
+        val asks = Asks()
+        val repo = FakeRepo(
+            movieGenresResult = Result.failure(MetadataError.Offline()),
+            tvGenresResult = Result.failure(MetadataError.Offline()),
+            discoverResult = { _, _, _ -> Result.failure(MetadataError.Offline()) },
+            recommendationsResult = { id ->
+                asks.seeds += id
+                hold.await()
+                Result.success(PagedResult(listOf(talkShow), 1, 1))
+            },
+        )
+        val vm = viewModel(repo, ForYouMemoryCache(), FakeSearchCollectionApi(listOf(favorite(seed))))
+        advanceUntilIdle()
+        assertNotNull(vm.state.value.error, "Discover shows its error")
+        assertEquals(false, vm.state.value.loading, "Discover's shelf loading has finished")
+        assertEquals(listOf(seed), asks.seeds, "For you is loading, held by the request")
+        val genreRequests = repo.genreRequests.size
+        val shelfRequests = repo.discoverExcluded.size
+
+        vm.refresh()
+        advanceUntilIdle()
+
+        assertEquals(genreRequests, repo.genreRequests.size, "a refused Refresh reloads no genre list")
+        assertEquals(shelfRequests, repo.discoverExcluded.size, "a refused Refresh reloads no shelf")
+        assertEquals(listOf(seed), asks.seeds, "a Refresh while For you is in flight starts no second request")
+    }
+
     private fun monitorOf(online: Flow<Boolean>) = object : ConnectivityMonitor {
         override val isOnline: Flow<Boolean> = online
     }
