@@ -1,24 +1,33 @@
 package com.codingpit.muviss.feature.search.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.DefaultMetadataLocale
 import com.codingpit.muviss.core.network.MutableMetadataLocale
+import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.core.testing.inMemoryDriver
+import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.ForYouAnswer
+import com.codingpit.muviss.feature.search.domain.SearchRepository
+import com.codingpit.muviss.models.EpisodeDetails
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.WatchProviders
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-
 /** #724: what Discover stores round-trips, is keyed by language, and a row that no longer decodes is a miss. */
 class SqlDelightDiscoverCacheTest {
 
@@ -35,57 +44,75 @@ class SqlDelightDiscoverCacheTest {
     @Test
     fun genres_and_a_popular_page_read_back_as_they_were_stored() = runTest {
         val talk = MediaSummary(MediaId.tmdbTv("1"), "Talk", genreIds = listOf("10767"))
-        cache.saveGenres(MediaType.TV, listOf(Genre("10767", "Talk")), fetchedAtEpochMs = 5L)
-        cache.savePopular(MediaType.TV, 2, PagedResult(listOf(talk), page = 2, totalPages = 9), fetchedAtEpochMs = 6L)
+        cache.saveGenres(MediaType.TV, listOf(Genre("10767", "Talk")), fetchedAtEpochMs = 5L, "en-US")
+        cache.savePopular(MediaType.TV, 2, PagedResult(listOf(talk), page = 2, totalPages = 9), fetchedAtEpochMs = 6L, "en-US")
 
-        assertEquals(listOf(Genre("10767", "Talk")), cache.genres(MediaType.TV)?.value)
-        assertEquals(5L, cache.genres(MediaType.TV)?.fetchedAtEpochMs)
-        assertEquals(listOf(talk), cache.popular(MediaType.TV, 2)?.value?.items)
-        assertEquals(9, cache.popular(MediaType.TV, 2)?.value?.totalPages)
+        assertEquals(listOf(Genre("10767", "Talk")), cache.genres(MediaType.TV, "en-US")?.value)
+        assertEquals(5L, cache.genres(MediaType.TV, "en-US")?.fetchedAtEpochMs)
+        assertEquals(listOf(talk), cache.popular(MediaType.TV, 2, "en-US")?.value?.items)
+        assertEquals(9, cache.popular(MediaType.TV, 2, "en-US")?.value?.totalPages)
     }
 
     @Test
     fun a_language_change_is_a_miss_not_stale_content() = runTest {
-        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 1L)
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 1L, "en-US")
 
         locale.language = "es-ES"
 
-        assertNull(cache.genres(MediaType.MOVIE), "the stored copy is English, so Spanish must fetch")
+        assertNull(cache.genres(MediaType.MOVIE, "es-ES"), "the stored copy is English, so Spanish must fetch")
+        assertEquals(listOf(Genre("28", "Action")), cache.genres(MediaType.MOVIE, "en-US")?.value, "the English copy is still filed under English")
+    }
+
+    /**
+     * #965, round 2: a write is filed under the language its request was made in, and dropped once the device has left
+     * that language. Without the drop, a refresh that began in English and finished after a switch would sit under the
+     * English key while the device reads Spanish, and under the Spanish key too if it were filed by the current one.
+     */
+    @Test
+    fun a_write_for_a_language_the_device_has_left_is_dropped() = runTest {
+        locale.language = "es-ES"
+
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Acción")), fetchedAtEpochMs = 1L, "en-US")
+        cache.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")), "en-US")
+
+        assertNull(cache.genres(MediaType.MOVIE, "en-US"), "an English answer is not stored once the device is in Spanish")
+        assertNull(cache.forYou(listOf(seedA), "en-US"))
+        assertNull(cache.forYou(listOf(seedA), "es-ES"), "and nothing is filed under the Spanish key either")
     }
 
     @Test
     fun a_row_that_no_longer_decodes_is_a_miss_and_never_a_crash() = runTest {
         database.discoverCacheQueries.upsert(cacheKey = "popular:tv:1|en-US", json = """{"not":"a page"}""", fetchedAtEpochMs = 1L)
 
-        assertNull(cache.popular(MediaType.TV, 1))
+        assertNull(cache.popular(MediaType.TV, 1, "en-US"))
     }
 
     @Test
     fun a_page_is_replaced_by_the_next_refresh_so_the_cache_does_not_grow() = runTest {
-        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), fetchedAtEpochMs = 1L)
-        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 4), fetchedAtEpochMs = 2L)
+        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), fetchedAtEpochMs = 1L, "en-US")
+        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 4), fetchedAtEpochMs = 2L, "en-US")
 
-        assertEquals(4, cache.popular(MediaType.MOVIE, 1)?.value?.totalPages)
-        assertEquals(2L, cache.popular(MediaType.MOVIE, 1)?.fetchedAtEpochMs)
+        assertEquals(4, cache.popular(MediaType.MOVIE, 1, "en-US")?.value?.totalPages)
+        assertEquals(2L, cache.popular(MediaType.MOVIE, 1, "en-US")?.fetchedAtEpochMs)
     }
 
     @Test
     fun the_default_locale_is_what_a_fresh_install_reads_in() = runTest {
         val fresh = SqlDelightDiscoverCache(database.discoverCacheQueries, database.forYouCacheQueries, DefaultMetadataLocale(), dispatchers)
 
-        fresh.saveGenres(MediaType.TV, emptyList(), fetchedAtEpochMs = 1L)
+        fresh.saveGenres(MediaType.TV, emptyList(), fetchedAtEpochMs = 1L, "en-US")
 
-        assertEquals(emptyList(), cache.genres(MediaType.TV)?.value, "the same key under en-US")
+        assertEquals(emptyList(), cache.genres(MediaType.TV, "en-US")?.value, "the same key under en-US")
     }
 
     @Test
     fun a_superseded_write_never_replaces_a_newer_answer() = runTest {
         // A refresh overtaken by a later one can still land its last write: the newer stored copy must win.
-        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 10L)
-        cache.saveGenres(MediaType.MOVIE, listOf(Genre("99", "Old")), fetchedAtEpochMs = 5L)
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 10L, "en-US")
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("99", "Old")), fetchedAtEpochMs = 5L, "en-US")
 
-        assertEquals(listOf(Genre("28", "Action")), cache.genres(MediaType.MOVIE)?.value)
-        assertEquals(10L, cache.genres(MediaType.MOVIE)?.fetchedAtEpochMs)
+        assertEquals(listOf(Genre("28", "Action")), cache.genres(MediaType.MOVIE, "en-US")?.value)
+        assertEquals(10L, cache.genres(MediaType.MOVIE, "en-US")?.fetchedAtEpochMs)
     }
 
     @Test
@@ -95,8 +122,8 @@ class SqlDelightDiscoverCacheTest {
         driver.execute(null, "DROP TABLE discoverCache", 0)
         val broken = SqlDelightDiscoverCache(MuvissDatabase(driver).discoverCacheQueries, MuvissDatabase(driver).forYouCacheQueries, locale, dispatchers)
 
-        broken.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 1L)
-        broken.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), fetchedAtEpochMs = 1L)
+        broken.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), fetchedAtEpochMs = 1L, "en-US")
+        broken.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), fetchedAtEpochMs = 1L, "en-US")
         // Reaching this line without an exception is the assertion: a write that threw would have failed the test.
     }
 
@@ -108,9 +135,9 @@ class SqlDelightDiscoverCacheTest {
 
     @Test
     fun a_for_you_copy_reads_back_in_seed_order_with_each_seeds_fetch_time() = runTest {
-        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 5L, "10"), answer(seedB, 7L, "20")))
+        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 5L, "10"), answer(seedB, 7L, "20")), "en-US")
 
-        val read = cache.forYou(listOf(seedB, seedA))
+        val read = cache.forYou(listOf(seedB, seedA), "en-US")
 
         assertEquals(listOf(seedA, seedB), read?.map { it.seed }, "the seeds are a set; the answers come back in the order they were stored")
         assertEquals(listOf(5L, 7L), read?.map { it.fetchedAtEpochMs })
@@ -119,36 +146,36 @@ class SqlDelightDiscoverCacheTest {
 
     @Test
     fun a_different_seed_set_or_language_is_a_miss() = runTest {
-        cache.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")))
+        cache.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")), "en-US")
 
-        assertNull(cache.forYou(listOf(seedA, seedC)), "a new seed changes the key")
+        assertNull(cache.forYou(listOf(seedA, seedC), "en-US"), "a new seed changes the key")
         locale.language = "es-ES"
-        assertNull(cache.forYou(listOf(seedA)), "a language change is a miss")
+        assertNull(cache.forYou(listOf(seedA), "es-ES"), "a language change is a miss")
     }
 
     @Test
     fun a_newer_answer_for_a_seed_survives_a_superseded_write_and_a_superseded_set_is_dropped() = runTest {
-        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 10L, "10"), answer(seedB, 10L, "20")))
+        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 10L, "10"), answer(seedB, 10L, "20")), "en-US")
         // A late write of an older answer for A, and a refresh of B alone that is newer.
-        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 5L, "99"), answer(seedB, 12L, "21")))
+        cache.saveForYou(listOf(seedA, seedB), listOf(answer(seedA, 5L, "99"), answer(seedB, 12L, "21")), "en-US")
 
-        val read = cache.forYou(listOf(seedA, seedB))
+        val read = cache.forYou(listOf(seedA, seedB), "en-US")
         assertEquals(listOf(MediaId.tmdbMovie("10")), read?.first { it.seed == seedA }?.items?.map { it.id })
         assertEquals(listOf(MediaId.tmdbMovie("21")), read?.first { it.seed == seedB }?.items?.map { it.id })
 
         // A new seed set replaces the one row: the old set is no longer stored at all.
-        cache.saveForYou(listOf(seedC), listOf(answer(seedC, 20L, "30")))
-        assertNull(cache.forYou(listOf(seedA, seedB)))
+        cache.saveForYou(listOf(seedC), listOf(answer(seedC, 20L, "30")), "en-US")
+        assertNull(cache.forYou(listOf(seedA, seedB), "en-US"))
         assertNull(database.forYouCacheQueries.selectByKey(keyOf(listOf(seedA, seedB))).executeAsOneOrNull(), "the superseded set's row is deleted, not kept beside the new one")
         assertNotNull(database.forYouCacheQueries.selectByKey(keyOf(listOf(seedC))).executeAsOneOrNull())
     }
 
     @Test
     fun a_for_you_row_that_no_longer_decodes_is_a_miss_and_never_a_crash() = runTest {
-        cache.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")))
+        cache.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")), "en-US")
         database.forYouCacheQueries.upsert(cacheKey = keyOf(listOf(seedA)), json = """{"not":"a copy"}""")
 
-        assertNull(cache.forYou(listOf(seedA)))
+        assertNull(cache.forYou(listOf(seedA), "en-US"))
     }
 
     @Test
@@ -157,7 +184,7 @@ class SqlDelightDiscoverCacheTest {
         driver.execute(null, "DROP TABLE forYouCache", 0)
         val broken = SqlDelightDiscoverCache(MuvissDatabase(driver).discoverCacheQueries, MuvissDatabase(driver).forYouCacheQueries, locale, dispatchers)
 
-        broken.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")))
+        broken.saveForYou(listOf(seedA), listOf(answer(seedA, 1L, "10")), "en-US")
         // Reaching this line without an exception is the assertion.
     }
 
@@ -167,5 +194,44 @@ class SqlDelightDiscoverCacheTest {
         var hash = -3750763034362895579L
         for (byte in identity.encodeToByteArray()) hash = (hash xor (byte.toLong() and 0xff)) * 0x100000001B3L
         return "foryou:" + hash.toULong().toString(16).padStart(16, '0')
+    }
+
+    /**
+     * #965: a For you refresh still waiting on TMDB when Delete all data runs must not store its seeds afterwards.
+     * The erase is the one the eraser runs: its clear of `forYouCache` under the same fence.
+     */
+    @Test
+    fun a_for_you_answer_requested_before_delete_all_data_is_not_stored_after_it() = runTest {
+        val fence = DataEraseFence()
+        val feed = DiscoverFeed(NoSearchRepository, cache, FakeClock(epochMs = 1_000L), fence)
+        val seed = MediaId.tmdbMovie("1")
+        val requested = CompletableDeferred<Unit>()
+        val answer = CompletableDeferred<Result<PagedResult<MediaSummary>>>()
+
+        val refresh = async {
+            feed.refreshForYou(feed.startForYou(listOf(seed)), stored = null) {
+                requested.complete(Unit)
+                answer.await()
+            }
+        }
+        requested.await()
+        fence.erase { database.forYouCacheQueries.deleteAll() }
+        answer.complete(Result.success(PagedResult(listOf(MediaSummary(MediaId.tmdbMovie("9"), "Late")), 1, 1)))
+        refresh.await()
+
+        assertNull(cache.forYou(listOf(seed), "en-US"), "the answer for the erased library never reaches the table")
+    }
+
+    /** The shelves and the seeds are not under test here: a For you refresh asks only [SearchRepository.recommendations]. */
+    private object NoSearchRepository : SearchRepository {
+        override suspend fun search(query: String, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun trending(): Result<List<MediaSummary>> = error("not used")
+        override suspend fun details(id: MediaId): Result<MediaDetails> = error("not used")
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun genres(type: MediaType): Result<List<Genre>> = error("not used")
+        override suspend fun watchProviders(id: MediaId): Result<WatchProviders> = error("not used")
+        override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails> = error("not used")
     }
 }

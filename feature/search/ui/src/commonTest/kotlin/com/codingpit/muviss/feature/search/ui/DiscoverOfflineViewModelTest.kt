@@ -76,10 +76,10 @@ class DiscoverOfflineViewModelTest {
 
     /** What Discover stored on this device at [now]: the movie and TV shelves and their genre lists. */
     private suspend fun storedDiscover(cache: MemoryDiscoverCache, now: Long) {
-        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), now)
-        cache.saveGenres(MediaType.TV, listOf(talkGenre, Genre("18", "Drama")), now)
-        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), now)
-        cache.savePopular(MediaType.TV, 1, PagedResult(listOf(talkShow, drama), page = 1, totalPages = 1), now)
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), now, "en-US")
+        cache.saveGenres(MediaType.TV, listOf(talkGenre, Genre("18", "Drama")), now, "en-US")
+        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), now, "en-US")
+        cache.savePopular(MediaType.TV, 1, PagedResult(listOf(talkShow, drama), page = 1, totalPages = 1), now, "en-US")
     }
 
     @Test
@@ -249,15 +249,18 @@ class DiscoverOfflineViewModelTest {
 
 /** An in-memory [DiscoverCache]: what a device keeps between visits, for the Discover tests (#724). */
 private class MemoryDiscoverCache : DiscoverCache {
-    private val genres = mutableMapOf<MediaType, Saved<List<Genre>>>()
-    private val pages = mutableMapOf<Pair<MediaType, Int>, Saved<PagedResult<MediaSummary>>>()
+    var language = "en-US"
+    private val genres = mutableMapOf<Pair<MediaType, String>, Saved<List<Genre>>>()
+    private val pages = mutableMapOf<Triple<MediaType, Int, String>, Saved<PagedResult<MediaSummary>>>()
 
-    override suspend fun genres(type: MediaType): Saved<List<Genre>>? = genres[type]
-    override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long) {
-        this.genres[type] = Saved(genres, fetchedAtEpochMs)
+    override fun language(): String = language
+
+    override suspend fun genres(type: MediaType, language: String): Saved<List<Genre>>? = genres[type to language]
+    override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long, language: String) {
+        this.genres[type to language] = Saved(genres, fetchedAtEpochMs)
     }
-    override suspend fun popular(type: MediaType, page: Int): Saved<PagedResult<MediaSummary>>? = pages[type to page]
-    override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long) {
-        pages[type to page] = Saved(result, fetchedAtEpochMs)
+    override suspend fun popular(type: MediaType, page: Int, language: String): Saved<PagedResult<MediaSummary>>? = pages[Triple(type, page, language)]
+    override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long, language: String) {
+        pages[Triple(type, page, language)] = Saved(result, fetchedAtEpochMs)
     }
 }

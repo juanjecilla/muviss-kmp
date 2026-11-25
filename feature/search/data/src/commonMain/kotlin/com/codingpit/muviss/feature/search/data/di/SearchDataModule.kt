@@ -42,5 +42,5 @@ val searchDataModule: Module = module {
     // "For you"'s copy (#785) lives in the same cache, in its own table.
     single { get<MuvissDatabase>().forYouCacheQueries }
     single<DiscoverCache> { SqlDelightDiscoverCache(get(), get(), get(), get()) }
-    factory { DiscoverFeed(get(), get(), get()) }
+    factory { DiscoverFeed(get(), get(), get(), get()) }
 }

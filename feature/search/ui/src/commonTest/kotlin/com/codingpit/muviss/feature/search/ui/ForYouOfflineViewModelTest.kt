@@ -20,6 +20,7 @@ import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.MutedGenres
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -30,6 +31,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 /** #785: "For you" opens from its stored copy, and muting and the library are applied to that copy at read. */
 class ForYouOfflineViewModelTest {
@@ -91,7 +93,7 @@ class ForYouOfflineViewModelTest {
     @Test
     fun a_stored_copy_shows_offline_with_no_request() = runTest {
         val cache = ForYouMemoryCache()
-        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 0L)))
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 0L)), "en-US")
         val asks = Asks()
 
         val vm = viewModel(offlineRepo(asks), cache, FakeSearchCollectionApi(listOf(favorite(seed))))
@@ -104,7 +106,7 @@ class ForYouOfflineViewModelTest {
     @Test
     fun a_mute_change_and_a_saved_title_re_filter_the_stored_copy_without_a_request() = runTest {
         val cache = ForYouMemoryCache()
-        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended, talkShow), fetchedAtEpochMs = 0L)))
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended, talkShow), fetchedAtEpochMs = 0L)), "en-US")
         val library = FakeSearchCollectionApi(listOf(favorite(seed)))
         val settings = FakeMutingApi()
         val asks = Asks()
@@ -127,7 +129,7 @@ class ForYouOfflineViewModelTest {
     @Test
     fun a_seed_change_is_a_miss_and_never_shows_the_previous_sets_titles_offline() = runTest {
         val cache = ForYouMemoryCache()
-        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 0L)))
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 0L)), "en-US")
         val library = FakeSearchCollectionApi(listOf(favorite(seed)))
         val vm = viewModel(offlineRepo(Asks()), cache, library)
         advanceUntilIdle()
@@ -149,7 +151,36 @@ class ForYouOfflineViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf(recommended), vm.state.value.forYou)
-        assertEquals(listOf(recommended.id), cache.forYou(listOf(seed))?.single()?.items?.map { it.id }, "what TMDB answered is stored for the next offline open")
+        assertEquals(listOf(recommended.id), cache.forYou(listOf(seed), "en-US")?.single()?.items?.map { it.id }, "what TMDB answered is stored for the next offline open")
+    }
+
+    /**
+     * #785 (review of #926): when the seed set changes, the previous set's titles leave the row at once and the
+     * skeleton stays up until the new set's own copy or answer lands. Its request is held here, so the middle of the
+     * change is visible.
+     */
+    @Test
+    fun a_new_seed_set_clears_the_previous_row_while_its_own_answer_is_pending() = runTest {
+        val cache = ForYouMemoryCache()
+        cache.saveForYou(listOf(seed), listOf(ForYouAnswer(seed, listOf(recommended), fetchedAtEpochMs = 1_000L)), "en-US")
+        val hold = CompletableDeferred<Unit>()
+        val repo = FakeRepo(recommendationsResult = { id ->
+            if (id == newSeed) hold.await()
+            Result.success(PagedResult(listOf(talkShow), 1, 1))
+        })
+        val library = FakeSearchCollectionApi(listOf(favorite(seed)))
+        val vm = viewModel(repo, cache, library)
+        advanceUntilIdle()
+        assertEquals(listOf(recommended), vm.state.value.forYou, "the previous set's copy is on screen")
+
+        library.library.value = listOf(favorite(seed), favorite(newSeed, addedAt = 10L))
+        advanceUntilIdle()
+
+        assertEquals(emptyList(), vm.state.value.forYou, "the previous set's titles do not stay on screen for the new set")
+        assertEquals(true, vm.state.value.forYouLoading, "the row keeps loading until the new set's answer lands")
+        hold.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(talkShow), vm.state.value.forYou, "the new set's answer is shown once it lands")
     }
 
     /**
@@ -157,21 +188,25 @@ class ForYouOfflineViewModelTest {
      * The copy is stored raw, so the tests can see that muting and the library are applied only at read.
      */
     private class ForYouMemoryCache : DiscoverCache {
-        private var copy: Pair<List<String>, List<ForYouAnswer>>? = null
+        /** The language the device is in; a run reads it once, when it starts. Every copy is filed under the run's language. */
+        var language = "en-US"
+        private var copy: Triple<List<String>, String, List<ForYouAnswer>>? = null
 
-        override suspend fun forYou(seeds: List<MediaId>): List<ForYouAnswer>? {
-            val (keys, answers) = copy ?: return null
-            if (keys != seeds.map { it.toString() }.sorted()) return null
+        override fun language(): String = language
+
+        override suspend fun forYou(seeds: List<MediaId>, language: String): List<ForYouAnswer>? {
+            val (keys, copyLanguage, answers) = copy ?: return null
+            if (keys != seeds.map { it.toString() }.sorted() || copyLanguage != language) return null
             return seeds.mapNotNull { seed -> answers.firstOrNull { it.seed == seed } }
         }
 
-        override suspend fun saveForYou(seeds: List<MediaId>, answers: List<ForYouAnswer>) {
-            copy = seeds.map { it.toString() }.sorted() to answers
+        override suspend fun saveForYou(seeds: List<MediaId>, answers: List<ForYouAnswer>, language: String) {
+            copy = Triple(seeds.map { it.toString() }.sorted(), language, answers)
         }
 
-        override suspend fun genres(type: MediaType): Saved<List<Genre>>? = null
-        override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long) = Unit
-        override suspend fun popular(type: MediaType, page: Int): Saved<PagedResult<MediaSummary>>? = null
-        override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long) = Unit
+        override suspend fun genres(type: MediaType, language: String): Saved<List<Genre>>? = null
+        override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long, language: String) = Unit
+        override suspend fun popular(type: MediaType, page: Int, language: String): Saved<PagedResult<MediaSummary>>? = null
+        override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long, language: String) = Unit
     }
 }

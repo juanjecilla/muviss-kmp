@@ -5,6 +5,7 @@ import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
@@ -85,6 +86,7 @@ class LocalDataEraserTest {
             secrets,
             widgetRefresher = WidgetRefresher { widgetRefreshes++ },
             syncBackend = NoOpSyncBackend(),
+            erasures = DataEraseFence(),
         ).deleteAllData()
 
         val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
@@ -133,6 +135,7 @@ class LocalDataEraserTest {
             writes,
             widgetRefresher = WidgetRefresher {},
             syncBackend = NoOpSyncBackend(),
+            erasures = DataEraseFence(),
         ).deleteAllData()
         advanceUntilIdle()
 
@@ -205,7 +208,24 @@ class LocalDataEraserTest {
         assertEquals(null, database.syncAccountQueries.selectAccount().awaitAsOne().userId)
     }
 
-    private fun eraser(database: MuvissDatabase, backend: SyncBackend, idle: SyncIdleLock = SyncIdleLock.None) = SqlDelightLocalDataEraser(
+    @Test
+    fun `a write requested before deleting everything is dropped by it, and one requested after is kept`() = runTest {
+        val database = inMemoryDatabase()
+        val erasures = DataEraseFence()
+        val requestedBefore = erasures.request()
+
+        eraser(database, NoOpSyncBackend(), erasures = erasures).deleteAllData()
+
+        assertEquals(false, erasures.write(requestedBefore) { error("a write from before the erase must not run") })
+        assertEquals(true, erasures.write(erasures.request()) {}, "a request begun after the erase is not fenced off")
+    }
+
+    private fun eraser(
+        database: MuvissDatabase,
+        backend: SyncBackend,
+        idle: SyncIdleLock = SyncIdleLock.None,
+        erasures: DataEraseFence = DataEraseFence(),
+    ) = SqlDelightLocalDataEraser(
         database,
         dispatchers,
         OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) })),
@@ -213,6 +233,7 @@ class LocalDataEraserTest {
         widgetRefresher = WidgetRefresher {},
         syncBackend = backend,
         syncIdle = idle,
+        erasures = erasures,
     )
 
     private suspend fun signedIn(database: MuvissDatabase) {

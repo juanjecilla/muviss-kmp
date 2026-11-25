@@ -49,24 +49,26 @@ class SqlDelightDiscoverCache(
     private val forYouSerializer = ForYouCopy.serializer()
     private val writes = Mutex()
 
-    override suspend fun genres(type: MediaType): Saved<List<Genre>>? = read(genresKey(type)) { raw, at ->
+    override fun language(): String = locale.language
+
+    override suspend fun genres(type: MediaType, language: String): Saved<List<Genre>>? = read(genresKey(type), language) { raw, at ->
         Saved(json.decodeFromString(genresSerializer, raw), at)
     }
 
-    override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long) {
-        write(genresKey(type), json.encodeToString(genresSerializer, genres), fetchedAtEpochMs)
+    override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long, language: String) {
+        write(genresKey(type), json.encodeToString(genresSerializer, genres), fetchedAtEpochMs, language)
     }
 
-    override suspend fun popular(type: MediaType, page: Int): Saved<PagedResult<MediaSummary>>? = read(popularKey(type, page)) { raw, at ->
+    override suspend fun popular(type: MediaType, page: Int, language: String): Saved<PagedResult<MediaSummary>>? = read(popularKey(type, page), language) { raw, at ->
         Saved(json.decodeFromString(pageSerializer, raw), at)
     }
 
-    override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long) {
-        write(popularKey(type, page), json.encodeToString(pageSerializer, result), fetchedAtEpochMs)
+    override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long, language: String) {
+        write(popularKey(type, page), json.encodeToString(pageSerializer, result), fetchedAtEpochMs, language)
     }
 
-    override suspend fun forYou(seeds: List<MediaId>): List<ForYouAnswer>? = withContext(dispatchers.io) {
-        val row = forYouQueries.selectByKey(forYouKey(seeds)).awaitAsOneOrNull() ?: return@withContext null
+    override suspend fun forYou(seeds: List<MediaId>, language: String): List<ForYouAnswer>? = withContext(dispatchers.io) {
+        val row = forYouQueries.selectByKey(forYouKey(seeds, language)).awaitAsOneOrNull() ?: return@withContext null
         try {
             val copy = json.decodeFromString(forYouSerializer, row.json)
             // The key is a 64-bit hash: the seeds stored with the copy must be the ones asked for, or it is a miss.
@@ -80,19 +82,21 @@ class SqlDelightDiscoverCache(
 
     /**
      * Best-effort, like [write]. Each seed keeps whichever of its stored and new answers was fetched later, so a
-     * superseded refresh landing last cannot replace a newer answer. Only this seed set's row is kept.
+     * superseded refresh landing last cannot replace a newer answer. Only this seed set's row is kept. A copy written
+     * in a language the device has since left is dropped: it would sit under the key of the language it was not in.
      */
-    override suspend fun saveForYou(seeds: List<MediaId>, answers: List<ForYouAnswer>) {
+    override suspend fun saveForYou(seeds: List<MediaId>, answers: List<ForYouAnswer>, language: String) {
         runCatching {
             withContext(dispatchers.io) {
                 writes.withLock {
-                    val stored = forYou(seeds).orEmpty()
+                    if (language != locale.language) return@withLock
+                    val stored = forYou(seeds, language).orEmpty()
                     val newest = (answers + stored).groupBy { it.seed }.mapValues { (_, same) -> same.maxBy { it.fetchedAtEpochMs } }
                     val copy = ForYouCopy(
                         seeds = seedIdentities(seeds),
                         answers = seeds.mapNotNull { newest[it] }.map { ForYouAnswerCopy(it.seed.toString(), it.items, it.fetchedAtEpochMs) },
                     )
-                    val key = forYouKey(seeds)
+                    val key = forYouKey(seeds, language)
                     forYouQueries.upsert(cacheKey = key, json = json.encodeToString(forYouSerializer, copy))
                     forYouQueries.deleteOthers(keep = key)
                 }
@@ -103,8 +107,8 @@ class SqlDelightDiscoverCache(
         }
     }
 
-    private suspend fun <T> read(section: String, decode: (String, Long) -> Saved<T>): Saved<T>? = withContext(dispatchers.io) {
-        val row = queries.selectByKey(cacheKey(section)).awaitAsOneOrNull() ?: return@withContext null
+    private suspend fun <T> read(section: String, language: String, decode: (String, Long) -> Saved<T>): Saved<T>? = withContext(dispatchers.io) {
+        val row = queries.selectByKey(cacheKey(section, language)).awaitAsOneOrNull() ?: return@withContext null
         try {
             decode(row.json, row.fetchedAtEpochMs)
         } catch (@Suppress("SwallowedException") e: IllegalArgumentException) {
@@ -118,13 +122,14 @@ class SqlDelightDiscoverCache(
      * Best-effort: a storage failure (a full disk, say) costs this copy, never the TMDB answer it was stored from,
      * so the refresh that produced it still completes. Cancellation is not a failure and is rethrown.
      */
-    private suspend fun write(section: String, body: String, fetchedAtEpochMs: Long) {
+    private suspend fun write(section: String, body: String, fetchedAtEpochMs: Long, language: String) {
         runCatching {
             withContext(dispatchers.io) {
                 // Read, compare and write one at a time: a superseded refresh can still land its last write, and it
-                // must not replace a newer copy stored meanwhile.
+                // must not replace a newer copy stored meanwhile. A copy for a language the device has left is dropped.
                 writes.withLock {
-                    val key = cacheKey(section)
+                    if (language != locale.language) return@withLock
+                    val key = cacheKey(section, language)
                     val current = queries.selectByKey(key).awaitAsOneOrNull()
                     if (current == null || fetchedAtEpochMs >= current.fetchedAtEpochMs) {
                         queries.upsert(cacheKey = key, json = body, fetchedAtEpochMs = fetchedAtEpochMs)
@@ -141,14 +146,14 @@ class SqlDelightDiscoverCache(
 
     private fun popularKey(type: MediaType, page: Int) = "popular:${type.wireName}:$page"
 
-    /** The language is read per call, so a language change finds nothing under the old key. */
-    private fun cacheKey(section: String) = "$section|${locale.language}"
+    /** The language is the one the run was made in, never the current one, so a copy is filed under what produced it. */
+    private fun cacheKey(section: String, language: String) = "$section|$language"
 
     /** Sorted, so the same set in any order is the same copy: the seeds are a set, not a sequence. */
     private fun seedIdentities(seeds: List<MediaId>): List<String> = seeds.map { it.toString() }.sorted()
 
-    private fun forYouKey(seeds: List<MediaId>): String {
-        val identity = seedIdentities(seeds).joinToString(",") + "|" + locale.language
+    private fun forYouKey(seeds: List<MediaId>, language: String): String {
+        val identity = seedIdentities(seeds).joinToString(",") + "|" + language
         return "foryou:" + fnv1a64(identity).toULong().toString(16).padStart(16, '0')
     }
 
