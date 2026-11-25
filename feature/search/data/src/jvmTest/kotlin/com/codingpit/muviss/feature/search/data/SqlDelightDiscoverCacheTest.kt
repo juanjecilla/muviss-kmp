@@ -21,7 +21,9 @@ import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -151,6 +153,27 @@ class SqlDelightDiscoverCacheTest {
         assertNull(cache.forYou(listOf(seedA, seedC), "en-US"), "a new seed changes the key")
         locale.language = "es-ES"
         assertNull(cache.forYou(listOf(seedA), "es-ES"), "a language change is a miss")
+    }
+
+    /**
+     * #785 (review of #926): a superseded For you run that is cancelled (a new seed set cancelled it) must never write
+     * over the newer run's row, even when it reaches the writer after the newer run has saved. The newer run saves
+     * first; the older run is cancelled before it can write, and the newer row survives its `deleteOthers`.
+     */
+    @Test
+    fun a_superseded_for_you_save_cancelled_after_a_newer_save_does_not_remove_the_newer_row() = runTest {
+        val newer = listOf(seedB)
+        val older = listOf(seedA)
+        cache.saveForYou(newer, listOf(answer(seedB, 10L, "20")), "en-US")
+
+        val superseded = launch(start = CoroutineStart.LAZY) {
+            cache.saveForYou(older, listOf(answer(seedA, 20L, "10")), "en-US")
+        }
+        superseded.cancel()
+        superseded.join()
+
+        assertNotNull(cache.forYou(newer, "en-US"), "the newer seed set keeps its row")
+        assertNull(cache.forYou(older, "en-US"), "the superseded run wrote nothing")
     }
 
     @Test

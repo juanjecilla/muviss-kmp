@@ -15,6 +15,8 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -89,6 +91,7 @@ class SqlDelightDiscoverCache(
         runCatching {
             withContext(dispatchers.io) {
                 writes.withLock {
+                    currentCoroutineContext().ensureActive()
                     if (language != locale.language) return@withLock
                     val stored = forYou(seeds, language).orEmpty()
                     val newest = (answers + stored).groupBy { it.seed }.mapValues { (_, same) -> same.maxBy { it.fetchedAtEpochMs } }
@@ -128,6 +131,7 @@ class SqlDelightDiscoverCache(
                 // Read, compare and write one at a time: a superseded refresh can still land its last write, and it
                 // must not replace a newer copy stored meanwhile. A copy for a language the device has left is dropped.
                 writes.withLock {
+                    currentCoroutineContext().ensureActive()
                     if (language != locale.language) return@withLock
                     val key = cacheKey(section, language)
                     val current = queries.selectByKey(key).awaitAsOneOrNull()
