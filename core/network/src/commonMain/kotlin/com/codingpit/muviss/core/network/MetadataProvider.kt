@@ -36,8 +36,11 @@ interface MetadataProvider {
      * Popularity-sorted browse for [type], optionally narrowed to one of [genres]' ids. [excludedGenreIds]
      * (this [type]'s ids only) are left out server-side, so a page is not thinned after the fact; an id
      * equal to [genreId] is ignored, because choosing a genre explicitly wins over muting it.
+     *
+     * [fresh] asks the source for a current answer, past any cache it keeps in memory: a TTL refresh and a
+     * pull-to-refresh pass it, so a stale in-memory copy cannot answer them (#922). Ignored by a source with no cache.
      */
-    suspend fun discover(type: MediaType, page: Int = 1, genreId: String? = null, excludedGenreIds: Set<String> = emptySet()): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
+    suspend fun discover(type: MediaType, page: Int = 1, genreId: String? = null, excludedGenreIds: Set<String> = emptySet(), fresh: Boolean = false): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
 
     /**
      * [discover] with the full set of filters a Pick Session can ask for. A separate method with a
@@ -51,16 +54,16 @@ interface MetadataProvider {
     suspend fun discoverFiltered(type: MediaType, page: Int = 1, filters: DiscoverFilters): PagedResult<MediaSummary> = discover(type, page, filters.genreIds.firstOrNull(), filters.excludedGenreIds)
 
     /** Localized genre list for [type], used to populate discover's filter chips. */
-    suspend fun genres(type: MediaType): List<Genre> = emptyList()
+    suspend fun genres(type: MediaType, fresh: Boolean = false): List<Genre> = emptyList()
 
     /** Streaming/rent/buy availability for [id] in [region] (ISO 3166-1 alpha-2). */
     suspend fun watchProviders(id: MediaId, region: String): WatchProviders = WatchProviders()
 
     /** Titles the source recommends alongside [id] (EPIC 16's "More like this"), paged. */
-    suspend fun recommendations(id: MediaId, page: Int = 1): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
+    suspend fun recommendations(id: MediaId, page: Int = 1, fresh: Boolean = false): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
 
     /** Titles similar to [id] by genre/keyword overlap, paged — the Detail screen's fallback when [recommendations] is thin. */
-    suspend fun similar(id: MediaId, page: Int = 1): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
+    suspend fun similar(id: MediaId, page: Int = 1, fresh: Boolean = false): PagedResult<MediaSummary> = PagedResult(emptyList(), page = page, totalPages = page)
 
     /**
      * Resolves an external id from another source (currently only IMDb ids,

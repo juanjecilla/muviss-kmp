@@ -184,12 +184,12 @@ class ForYouRunInterleavingTest {
 
     /** TMDB stand-in for the shelves: [afterRequest] runs between each request and its answer. */
     private class ScriptedShelves(private val afterRequest: suspend () -> Unit) : SearchRepository by NoShelves {
-        override suspend fun genres(type: MediaType): Result<List<Genre>> {
+        override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> {
             afterRequest()
             return Result.success(listOf(Genre("28", "Action")))
         }
 
-        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> {
             afterRequest()
             return Result.success(PagedResult(listOf(MediaSummary(MediaId.tmdbMovie("m-$page"), "m")), page, 1))
         }
@@ -208,11 +208,11 @@ class ForYouRunInterleavingTest {
         override suspend fun search(query: String, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
         override suspend fun trending(): Result<List<MediaSummary>> = error("not used")
         override suspend fun details(id: MediaId): Result<MediaDetails> = error("not used")
-        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = error("not used")
-        override suspend fun genres(type: MediaType): Result<List<Genre>> = error("not used")
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> = error("not used")
         override suspend fun watchProviders(id: MediaId): Result<WatchProviders> = error("not used")
-        override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
-        override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = error("not used")
         override suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails> = error("not used")
     }
 }

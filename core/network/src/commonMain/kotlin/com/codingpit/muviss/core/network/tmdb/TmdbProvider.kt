@@ -117,10 +117,12 @@ class TmdbProvider internal constructor(
         MediaType.TV -> tvDetails(id.external)
     }
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> = discoverFiltered(type, page, DiscoverFilters(genreIds = setOfNotNull(genreId), excludedGenreIds = excludedGenreIds))
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): PagedResult<MediaSummary> = discoverPage(type, page, DiscoverFilters(genreIds = setOfNotNull(genreId), excludedGenreIds = excludedGenreIds), fresh)
 
-    override suspend fun discoverFiltered(type: MediaType, page: Int, filters: DiscoverFilters): PagedResult<MediaSummary> {
-        val dto: TmdbPageDto = get("discover/${type.tmdbPath}") {
+    override suspend fun discoverFiltered(type: MediaType, page: Int, filters: DiscoverFilters): PagedResult<MediaSummary> = discoverPage(type, page, filters, fresh = false)
+
+    private suspend fun discoverPage(type: MediaType, page: Int, filters: DiscoverFilters, fresh: Boolean): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = get("discover/${type.tmdbPath}", fresh = fresh) {
             parameter("language", locale.language)
             parameter("sort_by", filters.sort.tmdbValue(type))
             parameter("page", page)
@@ -129,8 +131,8 @@ class TmdbProvider internal constructor(
         return TmdbMapper.discoverPageToPagedResult(type, dto)
     }
 
-    override suspend fun genres(type: MediaType): List<Genre> {
-        val dto: TmdbGenreListDto = get("genre/${type.tmdbPath}/list") { parameter("language", locale.language) }
+    override suspend fun genres(type: MediaType, fresh: Boolean): List<Genre> {
+        val dto: TmdbGenreListDto = get("genre/${type.tmdbPath}/list", fresh = fresh) { parameter("language", locale.language) }
         return TmdbMapper.genreListToModels(dto)
     }
 
@@ -139,16 +141,16 @@ class TmdbProvider internal constructor(
         return TmdbMapper.watchProvidersToModel(dto.results[region])
     }
 
-    override suspend fun recommendations(id: MediaId, page: Int): PagedResult<MediaSummary> {
-        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/recommendations") {
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/recommendations", fresh = fresh) {
             parameter("language", locale.language)
             parameter("page", page)
         }
         return TmdbMapper.discoverPageToPagedResult(id.type, dto)
     }
 
-    override suspend fun similar(id: MediaId, page: Int): PagedResult<MediaSummary> {
-        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/similar") {
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/similar", fresh = fresh) {
             parameter("language", locale.language)
             parameter("page", page)
         }

@@ -85,7 +85,7 @@ class WatchProvidersUseCase(private val repository: SearchRepository) {
  * fetch each seed's recommendations for Discover's "For you" section.
  */
 class RecommendationsUseCase(private val repository: SearchRepository) {
-    suspend operator fun invoke(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>> = repository.recommendations(id, page)
+    suspend operator fun invoke(id: MediaId, page: Int = 1, fresh: Boolean = false): Result<PagedResult<MediaSummary>> = repository.recommendations(id, page, fresh)
 }
 
 /** Loads titles similar to [id] (EPIC 16); the Detail screen's recommendations fallback (see [MoreLikeThisUseCase]). */

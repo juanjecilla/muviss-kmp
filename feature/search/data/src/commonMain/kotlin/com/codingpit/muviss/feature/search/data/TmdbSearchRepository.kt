@@ -36,15 +36,15 @@ class TmdbSearchRepository(
 
     override suspend fun details(id: MediaId): Result<MediaDetails> = runOnIo { registry.forId(id).details(id) }
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = runOnIo { registry.require(SourceId.TMDB).discover(type, page, genreId, excludedGenreIds) }
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> = runOnIo { registry.require(SourceId.TMDB).discover(type, page, genreId, excludedGenreIds, fresh) }
 
-    override suspend fun genres(type: MediaType): Result<List<Genre>> = runOnIo { registry.require(SourceId.TMDB).genres(type) }
+    override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> = runOnIo { registry.require(SourceId.TMDB).genres(type, fresh) }
 
     override suspend fun watchProviders(id: MediaId): Result<WatchProviders> = runOnIo { registry.forId(id).watchProviders(id, locale.region) }
 
-    override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).recommendations(id, page) }
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).recommendations(id, page, fresh) }
 
-    override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).similar(id, page) }
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).similar(id, page, fresh) }
 
     override suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails> = runOnIo {
         registry.forId(episodeId.show).episodeDetails(episodeId)

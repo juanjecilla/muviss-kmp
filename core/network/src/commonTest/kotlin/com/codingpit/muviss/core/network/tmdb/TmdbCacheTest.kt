@@ -149,6 +149,77 @@ class TmdbCacheTest {
 
         assertEquals(2, fixture.requests.size)
     }
+
+    // #922. Discover's TTL refresh, For you's and pull-to-refresh ask for a fresh answer. TMDB's max-age (one hour
+    // here) is still running when the six-hour copy in the database is due, so without the bypass the in-memory
+    // entry answers the refresh and the stored copy's timestamp is renewed with a stale answer.
+    @Test
+    fun a_fresh_discover_reaches_tmdb_past_a_warm_in_memory_entry() = runTest {
+        val fixture = warmFixture(ONE_RESULT_PAGE)
+
+        fixture.provider.discover(MediaType.MOVIE, 1, null, emptySet())
+        fixture.provider.discover(MediaType.MOVIE, 1, null, emptySet())
+        assertEquals(1, fixture.requests.size)
+
+        fixture.provider.discover(MediaType.MOVIE, 1, null, emptySet(), fresh = true)
+        assertEquals(2, fixture.requests.size)
+    }
+
+    @Test
+    fun a_fresh_genres_reaches_tmdb_past_a_warm_in_memory_entry() = runTest {
+        val fixture = warmFixture(GENRES)
+
+        fixture.provider.genres(MediaType.MOVIE)
+        fixture.provider.genres(MediaType.MOVIE)
+        assertEquals(1, fixture.requests.size)
+
+        fixture.provider.genres(MediaType.MOVIE, fresh = true)
+        assertEquals(2, fixture.requests.size)
+    }
+
+    @Test
+    fun a_fresh_recommendations_reaches_tmdb_past_a_warm_in_memory_entry() = runTest {
+        val fixture = warmFixture(ONE_RESULT_PAGE)
+        val movie = com.codingpit.muviss.models.MediaId.tmdbMovie("603")
+
+        fixture.provider.recommendations(movie, 1)
+        fixture.provider.recommendations(movie, 1)
+        assertEquals(1, fixture.requests.size)
+
+        fixture.provider.recommendations(movie, 1, fresh = true)
+        assertEquals(2, fixture.requests.size)
+    }
+
+    @Test
+    fun a_fresh_similar_reaches_tmdb_past_a_warm_in_memory_entry() = runTest {
+        val fixture = warmFixture(ONE_RESULT_PAGE)
+        val movie = com.codingpit.muviss.models.MediaId.tmdbMovie("603")
+
+        fixture.provider.similar(movie, 1)
+        fixture.provider.similar(movie, 1)
+        assertEquals(1, fixture.requests.size)
+
+        fixture.provider.similar(movie, 1, fresh = true)
+        assertEquals(2, fixture.requests.size)
+    }
+
+    // #922, against the six-hour database TTL. An in-memory entry whose max-age outlives that TTL (here seven hours)
+    // is warm for an ordinary call, and a fresh one must still reach TMDB. The Discover refresh that runs when the
+    // stored copy is past its TTL asks for fresh by itself (DiscoverFeed; its test checks every request), so this
+    // pins the provider side of that path against an entry the old one-hour fixture never exercised.
+    @Test
+    fun a_fresh_discover_reaches_tmdb_past_an_in_memory_entry_that_outlives_the_six_hour_database_ttl() = runTest {
+        val fixture = ProviderFixture { respondJson(ONE_RESULT_PAGE) { append(HttpHeaders.CacheControl, "public, max-age=25200") } }
+
+        fixture.provider.discover(MediaType.TV, 1, null, emptySet())
+        fixture.provider.discover(MediaType.TV, 1, null, emptySet())
+        assertEquals(1, fixture.requests.size, "the seven-hour entry is still warm for an ordinary call")
+
+        fixture.provider.discover(MediaType.TV, 1, null, emptySet(), fresh = true)
+        assertEquals(2, fixture.requests.size, "the refresh past the six-hour TTL reaches TMDB, whatever the entry's max-age")
+    }
+
+    private fun warmFixture(body: String) = ProviderFixture { respondJson(body) { append(HttpHeaders.CacheControl, "public, max-age=3600") } }
 }
 
 private const val GENRES = """{"genres":[{"id":28,"name":"Action"}]}"""

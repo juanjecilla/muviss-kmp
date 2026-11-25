@@ -21,11 +21,11 @@ private class PageRepository(
     override suspend fun search(query: String, page: Int) = Result.success(canned)
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = Result.success(MediaDetails(MediaSummary(id, "t")))
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = Result.success(canned)
-    override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean) = Result.success(canned)
+    override suspend fun genres(type: MediaType, fresh: Boolean) = Result.success(emptyList<Genre>())
     override suspend fun watchProviders(id: MediaId) = Result.success(WatchProviders())
-    override suspend fun recommendations(id: MediaId, page: Int) = Result.success(recommended)
-    override suspend fun similar(id: MediaId, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean) = Result.success(recommended)
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun episodeDetails(episodeId: EpisodeId) = Result.success(EpisodeDetails(episodeId, "Episode", 1, 1))
 }
 
@@ -112,5 +112,5 @@ class SearchUseCasesTest {
 }
 
 private class SimilarRepository(private val similar: PagedResult<MediaSummary>) : SearchRepository by PageRepository(similar) {
-    override suspend fun similar(id: MediaId, page: Int) = Result.success(similar)
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = Result.success(similar)
 }
