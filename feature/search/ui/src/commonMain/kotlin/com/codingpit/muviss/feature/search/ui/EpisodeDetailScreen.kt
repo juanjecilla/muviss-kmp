@@ -275,40 +275,7 @@ private fun CreditRow(title: String, credits: List<EpisodeCredit>, subtitleOf: (
         CarouselHeader(title, modifier = Modifier.padding(top = MuvissSpacing.s))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(MuvissSpacing.m)) {
             items(credits, key = { it.name + it.character + it.job }) { credit ->
-                Column(Modifier.width(80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                        if (credit.profileUrl != null) {
-                            PosterImage(
-                                url = credit.profileUrl,
-                                title = credit.name,
-                                modifier = Modifier.size(64.dp).clip(CircleShape),
-                                size = PosterSize.Thumbnail,
-                            )
-                        } else {
-                            Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                                Icon(MuvissIcons.Profile, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                    Text(
-                        credit.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = MuvissSpacing.xs),
-                    )
-                    subtitleOf(credit)?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                PersonCard(credit.name, credit.profileUrl, subtitleOf(credit), onClick = null)
             }
         }
     }

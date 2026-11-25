@@ -45,6 +45,10 @@ data class MediaDetails(
     val seasons: List<Season> = emptyList(),
     /** Wide (16:9) backdrop art for the detail hero; null when TMDB has none. */
     val backdropUrl: String? = null,
+    /** Who is in it, in the source's billing order. Empty when the source lists nobody. */
+    val cast: List<Credit> = emptyList(),
+    /** The whole crew (directors, creators, writers...), see [Credit.job]. Empty when the source lists nobody. */
+    val crew: List<Credit> = emptyList(),
 ) {
     val id: MediaId get() = summary.id
     val type: MediaType get() = summary.type
@@ -98,6 +102,8 @@ data class EpisodeDetails(
 @Serializable
 data class EpisodeCredit(
     val name: String,
+    /** Null when the source did not say who this is, so the credit cannot open a Person. */
+    val personId: PersonId? = null,
     /** Character played, for a guest star. */
     val character: String? = null,
     /** Job done, for a crew member (e.g. "Director"). */
@@ -141,5 +147,31 @@ data class EpisodeId(
             require(season != null && episode != null) { "Malformed EpisodeId: $raw" }
             return EpisodeId(MediaId.parse(parts[0]), season, episode)
         }
+    }
+}
+
+/**
+ * One [Person]'s part in one title: the character they played or the job they
+ * did. A person with several roles in the same title has one Credit per role
+ * group the source returns, never merged here.
+ */
+@Serializable
+data class Credit(
+    val personId: PersonId,
+    val name: String,
+    val profileUrl: String? = null,
+    /** Character played, for cast. */
+    val character: String? = null,
+    /** Job done, for crew (e.g. "Director"). */
+    val job: String? = null,
+    /** The crew department (e.g. "Directing"); null for cast. */
+    val department: String? = null,
+    /** Episodes this credit covers, for a show's whole-run credits; null for a movie. */
+    val episodeCount: Int? = null,
+) {
+    companion object {
+        /** The job and department a show's creators are given: the source lists them outside its crew. */
+        const val CREATOR_JOB = "Creator"
+        const val CREATOR_DEPARTMENT = "Creator"
     }
 }

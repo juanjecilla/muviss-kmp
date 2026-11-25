@@ -200,7 +200,7 @@ class TmdbProvider internal constructor(
     private suspend fun movieDetails(externalId: String): MediaDetails {
         val dto: TmdbMovieDetailDto = get("movie/$externalId", fresh = true) {
             parameter("language", locale.language)
-            parameter("append_to_response", "external_ids")
+            parameter("append_to_response", "external_ids,credits")
         }
         return TmdbMapper.movieToDetails(dto)
     }
@@ -208,7 +208,7 @@ class TmdbProvider internal constructor(
     private suspend fun tvDetails(externalId: String): MediaDetails {
         val show: TmdbTvDetailDto = get("tv/$externalId", fresh = true) {
             parameter("language", locale.language)
-            parameter("append_to_response", "external_ids")
+            parameter("append_to_response", "external_ids,aggregate_credits")
         }
         val showId = MediaId.tmdbTv(externalId)
         val seasons = show.seasons
