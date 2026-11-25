@@ -15,10 +15,6 @@ enum WidgetUndoStore {
         IosWidgetBridge.shared.justTicked()
     }
 
-    static func set(_ episodeId: String) {
-        IosWidgetBridge.shared.markJustTicked(episodeId: episodeId)
-    }
-
     static func clear() {
         IosWidgetBridge.shared.clearJustTicked()
     }
@@ -31,10 +27,9 @@ enum WidgetUndoStore {
 /// goes through the same `ProgressApi` the app uses, so the tick and its
 /// `episodePlay` row land in one transaction (ADR 0011).
 ///
-/// The Undo marker is set after the write, mirroring the Android `TickAction`.
-/// The write runs in this extension, where no `WidgetRefresher` is installed,
-/// so nothing here clears the marker; it has to be in place before the reload
-/// below redraws the row, which is why it is set before `reloadAllTimelines()`.
+/// The Undo marker, and the ticked title it keeps (#888), is written by
+/// `IosWidgetBridge.tick` after the write and before the reload below redraws
+/// the row. Nothing here clears it: this extension has no `WidgetRefresher`.
 struct TickEpisodeIntent: AppIntent {
 
     static var title: LocalizedStringResource = "Mark episode seen"
@@ -50,7 +45,6 @@ struct TickEpisodeIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         IosWidgetBridge.shared.tick(episodeId: episodeId)
-        WidgetUndoStore.set(episodeId)
         WidgetCenter.shared.reloadAllTimelines()
         return .result()
     }

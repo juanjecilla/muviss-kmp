@@ -52,6 +52,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -100,6 +101,7 @@ import com.codingpit.muviss.feature.triage.ui.generated.resources.pick_date
 import com.codingpit.muviss.feature.triage.ui.generated.resources.release_to
 import com.codingpit.muviss.feature.triage.ui.generated.resources.review_skipped
 import com.codingpit.muviss.feature.triage.ui.generated.resources.searching_deeper
+import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_back
 import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_body
 import com.codingpit.muviss.feature.triage.ui.generated.resources.seeded_done_title
 import com.codingpit.muviss.feature.triage.ui.generated.resources.skipped
@@ -431,7 +433,9 @@ private fun TriageHeader(
         Text(
             text = stringResource(Res.string.fill_library),
             style = MaterialTheme.typography.titleMedium,
-            maxLines = 1,
+            // Two lines, not one: beside "How it works" and two icons the Spanish title is cut to "Llena tu b…" on a
+            // 1080px phone (#984). English still fits on one line.
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(start = MuvissSpacing.xs),
         )
@@ -761,9 +765,12 @@ private fun SnoozeButton(
             // dialog is gated on `triageTutorialSeen`, which is already true on
             // every install that exists, so nobody who has the app today would
             // ever have seen it there.
+            // In dp, converted here: a raw pixel offset is smaller than the 48dp button on any dense phone and the
+            // callout then sits on top of it (#984).
+            val hintOffsetPx = with(LocalDensity.current) { SNOOZE_HINT_OFFSET.roundToPx() }
             Popup(
                 alignment = Alignment.TopEnd,
-                offset = IntOffset(0, SNOOZE_HINT_OFFSET_PX),
+                offset = IntOffset(0, hintOffsetPx),
                 onDismissRequest = onHintDismissed,
             ) {
                 Surface(
@@ -863,13 +870,14 @@ private fun EmptyDeck(
     onBack: () -> Unit,
 ) {
     // A seeded deck was never the whole catalogue, so "All caught up" would claim something untrue. It says the
-    // picks are done, which is all that is known.
+    // picks are done, which is all that is known. Its way out is back to Next Pick, which is where the picks came
+    // from; a restored deck (#768) has no picks to show, so this copy is what it offers.
     if (seeded) {
         EmptyState(
             icon = MuvissIcons.CaughtUp,
             title = stringResource(Res.string.seeded_done_title),
             body = stringResource(Res.string.seeded_done_body),
-            actionLabel = stringResource(Res.string.action_back),
+            actionLabel = stringResource(Res.string.seeded_done_back),
             onAction = onBack,
         )
     } else if (filtered) {
@@ -923,8 +931,8 @@ const val TRIAGE_DATE_PICKER_DAY_TAG = "triage-snooze-date-picker-day"
 /** Android's minimum touch target; M3's icon button default is 40dp. */
 private val SNOOZE_BUTTON_SIZE = 48.dp
 
-/** Clear of the button so the callout points at it rather than covering it. */
-private const val SNOOZE_HINT_OFFSET_PX = 56
+/** Clear of the button so the callout points at it rather than covering it: the button's height plus a gap. */
+private val SNOOZE_HINT_OFFSET = SNOOZE_BUTTON_SIZE + 8.dp
 
 private val SNOOZE_HINT_MAX_WIDTH = 200.dp
 

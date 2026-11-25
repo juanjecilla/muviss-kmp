@@ -8,6 +8,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
 
 /**
@@ -44,4 +45,13 @@ interface SearchRepository {
 
     /** One episode's full detail — overview, guest cast, crew, public average. */
     suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails>
+
+    /**
+     * Every backdrop and poster the source has for [id]. Defaults to none, so the fakes that
+     * predate the Image Viewer keep compiling.
+     */
+    suspend fun images(id: MediaId): Result<TitleImages> = Result.success(TitleImages())
+
+    /** The stills the source has for one episode. Defaults to none, as [images] does. */
+    suspend fun episodeImages(episodeId: EpisodeId): Result<TitleImages> = Result.success(TitleImages())
 }

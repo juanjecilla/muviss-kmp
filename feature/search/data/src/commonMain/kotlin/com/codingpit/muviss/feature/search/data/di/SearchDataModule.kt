@@ -9,6 +9,7 @@ import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.LoadGalleryUseCase
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
@@ -29,6 +30,7 @@ val searchDataModule: Module = module {
     factory { TrendingUseCase(get()) }
     factory { MediaDetailUseCase(get()) }
     factory { EpisodeDetailUseCase(get()) }
+    factory { LoadGalleryUseCase(get()) }
     factory { DiscoverMediaUseCase(get()) }
     factory { GenresUseCase(get()) }
     factory { WatchProvidersUseCase(get()) }

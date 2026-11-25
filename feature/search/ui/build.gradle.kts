@@ -20,6 +20,9 @@ kotlin {
             implementation(libs.navigation.compose)
             implementation(libs.kotlinx.serializationJson)
             implementation(libs.kotlinx.coroutinesCore)
+            // The Image Viewer: zoom and swipe-down-to-dismiss.
+            implementation(libs.telephoto.zoomable)
+            implementation(libs.telephoto.flick)
             implementation(libs.koin.compose)
             implementation(libs.koin.composeViewmodel)
             implementation(libs.androidx.lifecycle.viewmodel)

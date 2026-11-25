@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.settings.api
 
 import com.codingpit.muviss.feature.nextpick.api.PickCompany
+import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -45,6 +46,49 @@ object TasteChoices {
         "15" to "Hulu",
         "531" to "Paramount+",
     ).map { (id, name) -> TasteItem(TasteKind.SERVICE, id, name) }
+
+    /**
+     * The movie genres the first-run page offers offline (#807): twelve of TMDB's movie genre ids,
+     * labelled with TMDB's English name, which is what a stored genre item carries. The key is built as
+     * `TasteRules.genreItem` builds it, so a like from here and a like from Settings are the same row;
+     * `TasteProfileDomainTest` pins that round trip.
+     */
+    val movieGenres: List<TasteItem> = listOf(
+        "28" to "Action",
+        "35" to "Comedy",
+        "18" to "Drama",
+        "27" to "Horror",
+        "878" to "Science Fiction",
+        "10749" to "Romance",
+        "53" to "Thriller",
+        "16" to "Animation",
+        "99" to "Documentary",
+        "9648" to "Mystery",
+        "80" to "Crime",
+        "10751" to "Family",
+    ).map { (id, name) -> genreItem(MediaType.MOVIE, id, name) }
+
+    /**
+     * The TV genres the first-run page offers offline (#807), twelve of TMDB's TV genre ids. The four
+     * the Muted Genres page can mute (Talk, News, Reality, Soap; ADR 0031) are left out, so a muted genre
+     * is never a chip the person could not like.
+     */
+    val tvGenres: List<TasteItem> = listOf(
+        "10759" to "Action & Adventure",
+        "35" to "Comedy",
+        "18" to "Drama",
+        "80" to "Crime",
+        "9648" to "Mystery",
+        "10765" to "Sci-Fi & Fantasy",
+        "16" to "Animation",
+        "99" to "Documentary",
+        "10751" to "Family",
+        "10762" to "Kids",
+        "37" to "Western",
+        "10768" to "War & Politics",
+    ).map { (id, name) -> genreItem(MediaType.TV, id, name) }
+
+    private fun genreItem(type: MediaType, id: String, name: String): TasteItem = TasteItem(TasteKind.GENRE, "${type.wireName}:$id", name)
 
     /** Names are in each language's own script, so they need no translation. */
     val languages: List<TasteItem> = listOf(

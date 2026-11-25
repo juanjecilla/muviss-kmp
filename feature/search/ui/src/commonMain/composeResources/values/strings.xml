@@ -89,6 +89,7 @@
     <string name="tick_caught_up">Caught up on %1$s</string>
     <string name="undo_season_seen">%1$s marked seen</string>
     <string name="undo_show_seen">Marked every aired episode seen</string>
+    <string name="undo_caught_up_through">Caught up through S%1$d·E%2$d</string>
 
     <!-- Add to list -->
     <string name="new_list_name">New list name</string>
@@ -124,6 +125,8 @@
     <string name="primary_mark_next">Mark S%1$d·E%2$d seen</string>
     <string name="primary_mark_next_a11y">Mark season %1$d episode %2$d as seen</string>
     <string name="primary_caught_up">Caught up ✓</string>
+    <string name="primary_special_unseen">Special unseen</string>
+    <string name="primary_special_unseen_a11y">Go to the unseen special, episode %1$d</string>
     <string name="primary_next_up">Next: S%1$d·E%2$d · %3$s</string>
     <string name="primary_not_aired">Not aired yet</string>
     <string name="primary_premieres">Premieres %1$s</string>
@@ -134,4 +137,15 @@
     <string name="movie_marked_watched">Marked as watched</string>
     <string name="tick_next_seen">Marked S%1$d·E%2$d seen</string>
     <string name="removed_from_library">Removed from library</string>
+    <string name="action_close">Close</string>
+    <string name="image_viewer_position">%1$d / %2$d</string>
+    <string name="image_viewer_backdrop">Backdrop %1$d of %2$d</string>
+    <string name="image_viewer_poster">Poster %1$d of %2$d</string>
+    <string name="image_viewer_still">Still %1$d of %2$d</string>
+    <string name="image_open_backdrop">View backdrop full screen</string>
+    <string name="image_open_poster">View poster full screen</string>
+    <string name="image_open_still">View still full screen</string>
+    <string name="image_name_backdrop">Backdrop</string>
+    <string name="image_name_poster">Poster</string>
+    <string name="image_name_still">Still</string>
 </resources>

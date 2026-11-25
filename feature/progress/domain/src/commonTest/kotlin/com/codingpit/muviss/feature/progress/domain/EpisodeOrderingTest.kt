@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.progress.domain
 
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.progress.api.NextEpisodes
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
@@ -102,5 +103,46 @@ class EpisodeOrderingTest {
         val withSpecial = listOf(Season(0, "Specials", listOf(special))) + seasons
 
         assertEquals(EpisodeId(show, 2, 2), EpisodeOrdering.nextAnnounced(withSpecial, setOf(EpisodeId(show, 2, 1)), todayEpochDay = 150)?.id)
+    }
+
+    @Test
+    fun firstUnseenSpecial_is_the_first_aired_special_not_yet_seen_in_order() {
+        val first = episode(0, 1, airDateEpochDay = 50)
+        val second = episode(0, 2, airDateEpochDay = 60)
+        val withSpecials = listOf(Season(0, "Specials", listOf(second, first))) + seasons
+
+        assertEquals(first.id, EpisodeOrdering.firstUnseenSpecial(withSpecials, setOf(EpisodeId(show, 1, 1)), todayEpochDay = 150)?.id)
+        assertEquals(second.id, EpisodeOrdering.firstUnseenSpecial(withSpecials, setOf(first.id), todayEpochDay = 150)?.id)
+    }
+
+    @Test
+    fun firstUnseenSpecial_ignores_an_unaired_or_undated_special() {
+        val unaired = episode(0, 1, airDateEpochDay = 900)
+        val undated = episode(0, 2, airDateEpochDay = null)
+
+        assertNull(EpisodeOrdering.firstUnseenSpecial(listOf(Season(0, "Specials", listOf(unaired, undated))), emptySet(), todayEpochDay = 150))
+    }
+
+    @Test
+    fun next_episodes_of_reports_an_unseen_special_and_anything_aired_without_naming_a_regular_episode() {
+        val special = episode(0, 1, airDateEpochDay = 50)
+        val regular = episode(1, 1, airDateEpochDay = 100)
+        val all = listOf(Season(0, "Specials", listOf(special)), Season(1, "Season 1", listOf(regular)))
+
+        val next = NextEpisodes.of(all, setOf(regular.id), todayEpochDay = 150)
+
+        assertNull(next.aired)
+        assertEquals(special.id, next.unseenSpecial?.id)
+        assertEquals(true, next.anyAired)
+    }
+
+    @Test
+    fun next_episodes_of_reports_nothing_aired_when_no_episode_has_aired_yet() {
+        val all = listOf(Season(1, "Season 1", listOf(episode(1, 1, airDateEpochDay = 900))))
+
+        val next = NextEpisodes.of(all, emptySet(), todayEpochDay = 150)
+
+        assertEquals(false, next.anyAired)
+        assertNull(next.unseenSpecial)
     }
 }
