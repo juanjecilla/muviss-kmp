@@ -1,6 +1,7 @@
 package com.codingpit.muviss.core.network.tmdb
 
 import com.codingpit.muviss.core.network.DefaultMetadataLocale
+import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.network.muvissJson
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -23,6 +24,7 @@ internal class ProviderFixture(
     credentials: TmdbCredentials = TmdbCredentials(apiKey = API_KEY),
     credentialSource: TmdbCredentialSource = FixedTmdbCredentialSource(credentials),
     maxConcurrentRequests: Int = TmdbProvider.DEFAULT_MAX_CONCURRENT_REQUESTS,
+    locale: MetadataLocale = DefaultMetadataLocale(),
     handler: MockRequestHandler,
 ) {
     // The engine handler can run on several threads at once (the concurrency tests).
@@ -39,7 +41,7 @@ internal class ProviderFixture(
             },
         ) { install(ContentNegotiation) { json(muvissJson) } },
         credentialSource = credentialSource,
-        locale = DefaultMetadataLocale(),
+        locale = locale,
         retryPolicy = TmdbRetryPolicy(jitterMs = 0, delay = { delays += it }),
         maxConcurrentRequests = maxConcurrentRequests,
         failureTrace = { traces += it },

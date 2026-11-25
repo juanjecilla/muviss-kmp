@@ -12,6 +12,8 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.SourceId
 import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
@@ -57,6 +59,12 @@ class TmdbSearchRepository(
     override suspend fun images(id: MediaId): Result<TitleImages> = runOnIo { registry.forId(id).images(id) }
 
     override suspend fun episodeImages(episodeId: EpisodeId): Result<TitleImages> = runOnIo { registry.forId(episodeId.show).episodeImages(episodeId) }
+
+    override suspend fun person(id: PersonId): Result<PersonDetails> = runOnIo {
+        registry.require(id.source).person(id)
+            // Same as episodes: only a provider with no people endpoint returns null.
+            ?: error("This source has no person details")
+    }
 
     private suspend fun <T> runOnIo(block: suspend () -> T): Result<T> = withContext(dispatchers.io) { runCatching { block() } }
 }

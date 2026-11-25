@@ -16,6 +16,8 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.SourceId
 import com.codingpit.muviss.models.TitleImages
@@ -196,6 +198,31 @@ class TmdbProvider internal constructor(
      * `locale.language` is a BCP 47 tag ("es-ES"); this parameter wants the bare ISO 639-1 code, so a regional tag matches nothing.
      */
     private fun imageLanguages(): String = listOf(locale.language.substringBefore('-'), "null", "en").distinct().joinToString(",")
+
+    /**
+     * One request for the person and their whole filmography. A biography that is blank in the app's
+     * language costs one more, in English; most people TMDB has translated nothing for would otherwise
+     * show an empty page.
+     */
+    override suspend fun person(id: PersonId): PersonDetails {
+        val dto: TmdbPersonDto = get("person/${id.external}") {
+            parameter("language", locale.language)
+            parameter("append_to_response", "combined_credits,external_ids")
+        }
+        val needsFallback = dto.biography.isNullOrBlank() && !locale.language.startsWith("en")
+        // The page is worth showing without the English text, so only a MetadataError is swallowed
+        // here: a cancellation must still cancel.
+        val english = if (needsFallback) {
+            try {
+                get<TmdbPersonDto>("person/${id.external}") { parameter("language", "en-US") }.biography
+            } catch (_: MetadataError) {
+                null
+            }
+        } else {
+            null
+        }
+        return TmdbMapper.personToDetails(dto, english)
+    }
 
     private suspend fun movieDetails(externalId: String): MediaDetails {
         val dto: TmdbMovieDetailDto = get("movie/$externalId", fresh = true) {
