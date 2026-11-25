@@ -33,7 +33,7 @@ data class ForYouRun(val run: DiscoverRun, val seeds: List<MediaId>, val mustAsk
  * A For you refresh: the [answers] in the seeds' order, and the [failed] seeds whose request failed. A failed seed
  * is owed again on the next run whatever its stored answer's age, so a fresh copy never hides a missed request.
  */
-data class ForYouRefresh(val answers: List<ForYouAnswer>, val failed: Set<MediaId>)
+data class ForYouRefresh(val answers: List<ForYouAnswer>, val failed: Set<MediaId>, val asked: Set<MediaId> = emptySet())
 
 /**
  * The stored raw TMDB responses behind Discover (#724), and "For you"'s copy (#785). Raw means before Muted Genres
@@ -190,7 +190,7 @@ class DiscoverFeed(
         if (asked.values.any { it.isSuccess }) {
             erasures.write(run.run.erasure) { cache.saveForYou(seeds, answers, run.run.language) }
         }
-        return ForYouRefresh(answers, failed = asked.filterValues { it.isFailure }.keys)
+        return ForYouRefresh(answers, failed = asked.filterValues { it.isFailure }.keys, asked = asked.keys)
     }
 
     /**
