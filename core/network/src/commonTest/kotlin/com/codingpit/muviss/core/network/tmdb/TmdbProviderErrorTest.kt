@@ -81,8 +81,20 @@ class TmdbProviderErrorTest {
     fun server_errors_are_retried_then_reported_as_Unknown() = runTest {
         val fixture = ProviderFixture { respondJson("{}", HttpStatusCode.ServiceUnavailable) }
 
-        assertIs<MetadataError.Unknown>(fixture.searchFailure())
+        val error = assertIs<MetadataError.Unknown>(fixture.searchFailure())
+        assertEquals(503, error.status)
         assertEquals(3, fixture.requests.size)
+    }
+
+    @Test
+    fun a_client_error_keeps_its_status_and_is_not_retried() = runTest {
+        val fixture = ProviderFixture { respondJson("""{"status_code":22,"status_message":"Invalid page"}""", HttpStatusCode.UnprocessableEntity) }
+
+        val error = assertIs<MetadataError.Unknown>(fixture.searchFailure())
+        assertEquals(422, error.status)
+        assertEquals("Metadata request failed (HTTP 422)", error.message)
+        assertNoSecrets(error)
+        assertEquals(1, fixture.requests.size)
     }
 
     @Test
@@ -197,12 +209,15 @@ class TmdbProviderErrorTest {
             MetadataError.NotFound(),
             MetadataError.Offline(),
             MetadataError.Unknown(),
+            MetadataError.Unknown(503),
         )
 
         all.forEach { error ->
             assertNull(error.cause)
             assertTrue(error.userMessage.isNotBlank())
-            assertFalse(error.message.orEmpty().contains("http", ignoreCase = true))
+            // A status number may appear ("HTTP 503"); a URL never may.
+            assertFalse(error.message.orEmpty().contains("://"))
+            assertFalse(error.message.orEmpty().contains("themoviedb", ignoreCase = true))
         }
     }
 

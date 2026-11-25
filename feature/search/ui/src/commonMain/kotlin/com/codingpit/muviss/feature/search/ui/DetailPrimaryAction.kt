@@ -22,6 +22,12 @@ internal sealed interface PrimaryAction {
     /** A show with an aired episode still unseen: one tick on [episode], the next one in order. */
     data class TickNext(val episode: Episode) : PrimaryAction
 
+    /**
+     * Every regular episode is seen but an aired special is not (ADR 0037, #797). The button scrolls to the Specials
+     * season, which is expanded so [special] can be ticked from its row. [special] is the first unseen one.
+     */
+    data class SpecialUnseen(val special: Episode) : PrimaryAction
+
     /** Nothing to tick, so the button is disabled and says why. [next] is the next announced episode, if any. */
     data class Waiting(val reason: Reason, val next: Episode?) : PrimaryAction {
         enum class Reason {
@@ -43,7 +49,7 @@ internal sealed interface PrimaryAction {
  * [PrimaryAction.Waiting.Reason.Loading]. Without that, a saved title that is already watched reads
  * "Add to library" or "Mark S1·E1 seen" for the moment before the first emission.
  */
-internal fun primaryActionFor(state: DetailUiState, todayEpochDay: Long, next: NextEpisodes): PrimaryAction {
+internal fun primaryActionFor(state: DetailUiState, next: NextEpisodes): PrimaryAction {
     if (!state.membershipLoaded) return loading()
     // Progress is awaited for an unsaved title too: "Add to library" before the first seen emission would be a guess (#779).
     if (!state.progressLoaded) return loading()
@@ -53,19 +59,18 @@ internal fun primaryActionFor(state: DetailUiState, todayEpochDay: Long, next: N
         return if (state.movieWatched) PrimaryAction.WatchedAgain(state.moviePlayCount) else PrimaryAction.MarkMovieWatched
     }
 
-    // Specials (season 0) are never ticked by this button, but an aired special still counts as "something has aired":
-    // only when nothing at all has aired is the title "not aired yet" rather than "caught up".
-    val anythingAired = details.seasons.any { season -> season.episodes.any { it.hasAired(todayEpochDay) } }
-
     next.aired?.let { return PrimaryAction.TickNext(it) }
+    // The next-episode answer skips specials, so with only one left the title would read "Caught up" while WatchStatus
+    // still counts it (ADR 0037). Finished cannot hold here: it needs every aired special seen too.
+    next.unseenSpecial?.let { return PrimaryAction.SpecialUnseen(it) }
     return when {
         state.watchStatus == WatchStatus.FINISHED -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Finished, null)
-        !anythingAired -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.NotAiredYet, next.announced)
+
+        // An aired special counts as "something has aired" (anyAired), so only nothing at all having aired is "not aired yet".
+        !next.anyAired -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.NotAiredYet, next.announced)
+
         else -> PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.CaughtUp, next.announced)
     }
 }
 
 private fun loading() = PrimaryAction.Waiting(PrimaryAction.Waiting.Reason.Loading, null)
-
-/** Whether this episode has aired by [todayEpochDay]. An undated episode has not: it is never ticked. */
-internal fun Episode.hasAired(todayEpochDay: Long): Boolean = airDateEpochDay?.let { it <= todayEpochDay } == true

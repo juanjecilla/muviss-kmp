@@ -67,8 +67,8 @@ internal class StoreShotCatalog(private val today: Long) {
     val moonbase = movie("Moonbase Diner", 2025, "The only diner on the Moon has one cook, two robots and a very long queue.", listOf("Comedy", "Science Fiction"), 94)
 
     val library = listOf(lighthouse, northbound, orchard, paperMoons, glassHarbor, saltStatic, copperSky, smallHours, nightFerry, winterSignal)
-    val fresh = listOf(ironGarden, longWeekend, riverDistrict, elsewhere, tinyGiants, lastLetter, moonbase)
-    private val all = (library + fresh).associateBy { it.id }
+    val freshTitles = listOf(ironGarden, longWeekend, riverDistrict, elsewhere, tinyGiants, lastLetter, moonbase)
+    private val all = (library + freshTitles).associateBy { it.id }
 
     fun details(id: MediaId): MediaDetails {
         val title = all.getValue(id)
@@ -119,12 +119,12 @@ internal class StoreShotCatalog(private val today: Long) {
     fun provider(): MetadataProvider = object : MetadataProvider {
         override val source: SourceId = SourceId.TMDB
         override suspend fun search(query: String, page: Int) = PagedResult(all.values.filter { it.summary.title.contains(query, ignoreCase = true) }.map { it.summary }, page = 1, totalPages = 1)
-        override suspend fun trending(): List<MediaSummary> = (fresh + library.take(3)).map { it.summary }
+        override suspend fun trending(): List<MediaSummary> = (freshTitles + library.take(3)).map { it.summary }
         override suspend fun details(id: MediaId): MediaDetails = this@StoreShotCatalog.details(id)
-        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = PagedResult(if (page == 1) fresh.filter { it.summary.type == type }.map { it.summary } else emptyList(), page = page, totalPages = 1)
-        override suspend fun genres(type: MediaType): List<Genre> = genres
-        override suspend fun recommendations(id: MediaId, page: Int) = PagedResult(fresh.take(4).map { it.summary }, page = 1, totalPages = 1)
-        override suspend fun similar(id: MediaId, page: Int) = PagedResult(fresh.drop(3).map { it.summary }, page = 1, totalPages = 1)
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean) = PagedResult(if (page == 1) freshTitles.filter { it.summary.type == type }.map { it.summary } else emptyList(), page = page, totalPages = 1)
+        override suspend fun genres(type: MediaType, fresh: Boolean): List<Genre> = genres
+        override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean) = PagedResult(freshTitles.take(4).map { it.summary }, page = 1, totalPages = 1)
+        override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = PagedResult(freshTitles.drop(3).map { it.summary }, page = 1, totalPages = 1)
     }
 
     companion object {

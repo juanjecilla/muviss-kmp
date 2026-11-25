@@ -5,8 +5,7 @@ import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.AppVersion
-import com.codingpit.muviss.core.common.remoteconfig.DefaultsRemoteConfig
-import com.codingpit.muviss.core.common.remoteconfig.RemoteValues
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.MuvissDatabase
@@ -58,7 +57,6 @@ class LocalDataEraserTest {
             dispatchers,
             FakeClock(1L),
             AppVersion("1", 1L),
-            DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
         )
         val fixture = javaClass.getResource("/backups/v1-export.json")!!.readText()
         SqlDelightBackupRestorer(database, dispatchers).restore(fixture)
@@ -74,6 +72,7 @@ class LocalDataEraserTest {
         database.mutedGenreChoiceQueries.upsert(defaultsAtChoice = "", updatedAtEpochMs = 1L, isDirty = true)
         database.triageDeckCursorQueries.upsert("movie|any|-|en-US", 2L, 2L, 2L, 2L, 1L)
         database.discoverCacheQueries.upsert(cacheKey = "genres:tv|en-US", json = "[]", fetchedAtEpochMs = 1L)
+        database.forYouCacheQueries.upsert(cacheKey = "foryou:0000000000000001", json = "{}")
         val secrets = InMemorySecretStore()
         val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
         secrets.put(OwnTmdbKey.STORE_NAME, "c".repeat(32))
@@ -87,6 +86,7 @@ class LocalDataEraserTest {
             secrets,
             widgetRefresher = WidgetRefresher { widgetRefreshes++ },
             syncBackend = NoOpSyncBackend(),
+            erasures = DataEraseFence(),
         ).deleteAllData()
 
         val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
@@ -95,6 +95,7 @@ class LocalDataEraserTest {
         assertTrue(export.mutedGenres.isEmpty() && export.mutedGenreChoice == null, "Muted Genres decisions and the choice are the person's own data")
         assertEquals(null, database.triageDeckCursorQueries.selectByKey("movie|any|-|en-US").awaitAsOneOrNull(), "the deck's saved position is this device's, and goes too")
         assertEquals(null, database.discoverCacheQueries.selectByKey("genres:tv|en-US").awaitAsOneOrNull(), "stored Discover answers are this install's cache, and go too")
+        assertEquals(null, database.forYouCacheQueries.selectByKey("foryou:0000000000000001").awaitAsOneOrNull(), "the For you copy is this install's cache too (#785)")
         assertEquals(null, export.profile, "the profile row is gone until something reads it again")
         assertTrue(database.syncCursorQueries.selectAll().awaitAsList().isEmpty())
         assertEquals(null, database.remoteConfigCacheQueries.selectByKey("config").awaitAsOneOrNull(), "the cached remote config is a cache of this install")
@@ -119,7 +120,6 @@ class LocalDataEraserTest {
             queuedIo,
             FakeClock(1L),
             AppVersion("1", 1L),
-            DefaultsRemoteConfig(RemoteValues(byokEnabled = false)),
             writes,
         )
         val secrets = InMemorySecretStore()
@@ -135,6 +135,7 @@ class LocalDataEraserTest {
             writes,
             widgetRefresher = WidgetRefresher {},
             syncBackend = NoOpSyncBackend(),
+            erasures = DataEraseFence(),
         ).deleteAllData()
         advanceUntilIdle()
 
@@ -207,7 +208,24 @@ class LocalDataEraserTest {
         assertEquals(null, database.syncAccountQueries.selectAccount().awaitAsOne().userId)
     }
 
-    private fun eraser(database: MuvissDatabase, backend: SyncBackend, idle: SyncIdleLock = SyncIdleLock.None) = SqlDelightLocalDataEraser(
+    @Test
+    fun `a write requested before deleting everything is dropped by it, and one requested after is kept`() = runTest {
+        val database = inMemoryDatabase()
+        val erasures = DataEraseFence()
+        val requestedBefore = erasures.request()
+
+        eraser(database, NoOpSyncBackend(), erasures = erasures).deleteAllData()
+
+        assertEquals(false, erasures.write(requestedBefore) { error("a write from before the erase must not run") })
+        assertEquals(true, erasures.write(erasures.request()) {}, "a request begun after the erase is not fenced off")
+    }
+
+    private fun eraser(
+        database: MuvissDatabase,
+        backend: SyncBackend,
+        idle: SyncIdleLock = SyncIdleLock.None,
+        erasures: DataEraseFence = DataEraseFence(),
+    ) = SqlDelightLocalDataEraser(
         database,
         dispatchers,
         OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) })),
@@ -215,6 +233,7 @@ class LocalDataEraserTest {
         widgetRefresher = WidgetRefresher {},
         syncBackend = backend,
         syncIdle = idle,
+        erasures = erasures,
     )
 
     private suspend fun signedIn(database: MuvissDatabase) {

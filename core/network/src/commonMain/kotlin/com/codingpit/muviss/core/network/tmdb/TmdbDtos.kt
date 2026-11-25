@@ -242,3 +242,18 @@ internal data class TmdbFindResponseDto(
     @SerialName("movie_results") val movieResults: List<TmdbResultDto> = emptyList(),
     @SerialName("tv_results") val tvResults: List<TmdbResultDto> = emptyList(),
 )
+
+/** `/{movie|tv}/{id}/images` and `/tv/{id}/season/{n}/episode/{e}/images`; each list is only present for what the endpoint serves. */
+@Serializable
+internal data class TmdbImagesDto(
+    val backdrops: List<TmdbImageDto> = emptyList(),
+    val posters: List<TmdbImageDto> = emptyList(),
+    val stills: List<TmdbImageDto> = emptyList(),
+)
+
+@Serializable
+internal data class TmdbImageDto(
+    @SerialName("file_path") val filePath: String,
+    @SerialName("aspect_ratio") val aspectRatio: Double = 0.0,
+    @SerialName("vote_average") val voteAverage: Double = 0.0,
+)

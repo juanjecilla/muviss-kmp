@@ -13,6 +13,7 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
 import com.codingpit.muviss.models.SourceId
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
 import kotlinx.coroutines.withContext
 
@@ -35,15 +36,15 @@ class TmdbSearchRepository(
 
     override suspend fun details(id: MediaId): Result<MediaDetails> = runOnIo { registry.forId(id).details(id) }
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> = runOnIo { registry.require(SourceId.TMDB).discover(type, page, genreId, excludedGenreIds) }
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> = runOnIo { registry.require(SourceId.TMDB).discover(type, page, genreId, excludedGenreIds, fresh) }
 
-    override suspend fun genres(type: MediaType): Result<List<Genre>> = runOnIo { registry.require(SourceId.TMDB).genres(type) }
+    override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> = runOnIo { registry.require(SourceId.TMDB).genres(type, fresh) }
 
     override suspend fun watchProviders(id: MediaId): Result<WatchProviders> = runOnIo { registry.forId(id).watchProviders(id, locale.region) }
 
-    override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).recommendations(id, page) }
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).recommendations(id, page, fresh) }
 
-    override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).similar(id, page) }
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = runOnIo { registry.forId(id).similar(id, page, fresh) }
 
     override suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails> = runOnIo {
         registry.forId(episodeId.show).episodeDetails(episodeId)
@@ -52,6 +53,10 @@ class TmdbSearchRepository(
             // show its error state rather than an empty one.
             ?: error("This source has no episode details")
     }
+
+    override suspend fun images(id: MediaId): Result<TitleImages> = runOnIo { registry.forId(id).images(id) }
+
+    override suspend fun episodeImages(episodeId: EpisodeId): Result<TitleImages> = runOnIo { registry.forId(episodeId.show).episodeImages(episodeId) }
 
     private suspend fun <T> runOnIo(block: suspend () -> T): Result<T> = withContext(dispatchers.io) { runCatching { block() } }
 }

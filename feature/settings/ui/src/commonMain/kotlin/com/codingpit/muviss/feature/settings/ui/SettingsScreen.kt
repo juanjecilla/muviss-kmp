@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -435,18 +436,22 @@ private fun AppTheme.label(): StringResource = when (this) {
  * denied permission is sticky, so the switch above would store a preference
  * that does nothing; this says so and opens the one place it can be fixed.
  * Re-checked on resume, because that is how the user comes back from there.
+ *
+ * The state starts unknown (`null`), not from the synchronous `blocked()`: on iOS
+ * that is a cache that can predate a change made in iOS Settings, so the first
+ * frame would show a stale line (#856). Nothing is shown until the OS has answered.
  */
 @Composable
 private fun NotificationsBlockedNote(enabledInApp: Boolean) {
     val system = LocalSystemNotificationSettings.current
-    var blocked by remember { mutableStateOf(system.blocked()) }
+    var blocked by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     LifecycleResumeEffect(system) {
         // Awaited, not the cached blocked(): iOS only answers asynchronously.
         val check = scope.launch { blocked = system.blockedNow() }
         onPauseOrDispose { check.cancel() }
     }
-    if (!enabledInApp || !blocked) return
+    if (!enabledInApp || blocked != true) return
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().testTag(NOTIFICATIONS_BLOCKED_TAG),
@@ -582,8 +587,16 @@ private fun ActionRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        // The label keeps its own width and the value takes the rest, right-aligned (#810). Weighting the label
+        // gave the long hint ("Genres, formats, services, languages") the larger share, so "Your taste" wrapped.
+        Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
+        )
         Icon(
             MuvissIcons.ChevronRight,
             contentDescription = null,
