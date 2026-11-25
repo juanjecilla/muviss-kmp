@@ -469,8 +469,6 @@ class SearchViewModel(
         val mutedMovies = mutedFor(MediaType.MOVIE, null)
         val mutedTv = mutedFor(MediaType.TV, null)
         val snapshot = discoverFeed.snapshot(run, mutedMovies, mutedTv)
-        // This load owes its own verdict on the saved copy: the previous refresh's failure is not carried over (#974).
-        discoverBanner = false
         // A stored copy is on screen at once, so the skeleton never shows over it (#723, #724).
         if (snapshot.isEmpty) {
             _state.update { it.copy(loading = true, error = null) }
@@ -486,7 +484,14 @@ class SearchViewModel(
         // the person asked for the refresh: they are told it failed even inside the TTL (#974).
         if (snapshot.isEmpty) refresh.firstFailure?.let { return fail(it) }
         val merged = refresh.mergedInto(snapshot)
-        discoverBanner = refresh.anyFailed && (userInitiated || discoverFeed.isPastTtl(merged, run))
+        // The mark is written only here, once a refresh has answered: a held or cancelled one leaves it as it was. A refresh
+        // that answers in full clears it. One that fails says so when the person asked or the copy is past its TTL; an
+        // automatic failure inside the TTL keeps whatever the person was already told (#974).
+        if (!refresh.anyFailed) {
+            discoverBanner = false
+        } else if (userInitiated || discoverFeed.isPastTtl(merged, run)) {
+            discoverBanner = true
+        }
         _state.update {
             showing(it, merged, mutedMovies, mutedTv).copy(
                 loading = false,
@@ -631,11 +636,12 @@ class SearchViewModel(
         // given, so the next run still asks for them.
         forYouRetriesAnswered = retries
         forYouOwed = refresh.failed
-        // A forced request says so when it failed, even inside the TTL, since the owed check cannot see that case (#974).
-        // An automatic run is silent on failure and clears the mark only once what it owed has answered.
+        // Written only once the run has answered, so a held or cancelled run leaves the mark alone (#974). A forced request
+        // says so when it failed, even inside the TTL. An automatic failure keeps what the person was told; a request that
+        // answers in full clears the mark, and a run that asked nothing changes nothing.
         forYouBanner = when {
-            forced -> refresh.failed.isNotEmpty()
-            refresh.failed.isEmpty() -> false
+            refresh.failed.isNotEmpty() -> forced || forYouBanner
+            refresh.asked.isNotEmpty() -> false
             else -> forYouBanner
         }
         publishBanner()
