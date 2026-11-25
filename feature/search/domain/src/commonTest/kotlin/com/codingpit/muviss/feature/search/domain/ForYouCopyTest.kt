@@ -99,10 +99,50 @@ class ForYouCopyTest {
         feed.refreshForYou(feed.startForYou(seeds), stored = null, recs::ask)
         recs.asked.clear()
 
-        val answers = feed.refreshForYou(feed.startForYou(seeds), feed.forYouStored(feed.startForYou(seeds)), recs::ask)
+        val answers = feed.refreshForYou(feed.startForYou(seeds), feed.forYouStored(feed.startForYou(seeds)), recs::ask).answers
 
         assertEquals(emptyList(), recs.asked, "a library change that keeps the seed set costs no request")
         assertEquals(2, answers.size)
+    }
+
+    /** #924: a seed whose request failed is owed, and the next run asks it although its stored answer is still fresh. */
+    @Test
+    fun a_failed_seed_is_owed_and_the_next_run_asks_it_even_when_its_copy_is_fresh() = runTest {
+        val seeds = listOf(seedA, seedB)
+        val recs = Recommendations().apply { answer(seedA, "10") }
+        val first = feed.refreshForYou(feed.startForYou(seeds), stored = null, recs::ask)
+        assertEquals(setOf(seedB), first.failed, "B failed, so it is owed")
+
+        recs.answer(seedB, "20")
+        recs.asked.clear()
+        val owed = feed.refreshForYou(feed.startForYou(seeds, mustAsk = first.failed), feed.forYouStored(feed.startForYou(seeds)), recs::ask)
+
+        assertEquals(listOf(seedB), recs.asked, "only the owed seed is asked: A's copy is fresh")
+        assertEquals(emptySet(), owed.failed, "nothing is owed once both answered")
+    }
+
+    /** #924: a Retry asks every seed, and a seed whose forced request fails stays owed even though its stored copy is fresh. */
+    @Test
+    fun a_forced_run_asks_every_seed_and_a_fresh_seed_that_fails_stays_owed() = runTest {
+        val seeds = listOf(seedA, seedB)
+        val recs = Recommendations().apply {
+            answer(seedA, "10")
+            answer(seedB, "20")
+        }
+        feed.refreshForYou(feed.startForYou(seeds), stored = null, recs::ask)
+        recs.asked.clear()
+        recs.answers.remove(seedA)
+
+        val forced = feed.refreshForYou(feed.startForYou(seeds, mustAsk = seeds.toSet()), feed.forYouStored(feed.startForYou(seeds)), recs::ask)
+
+        assertEquals(seeds, recs.asked, "a forced run asks A too, although its answer is fresh")
+        assertEquals(setOf(seedA), forced.failed, "A failed, and its fresh copy does not hide that")
+        assertEquals(listOf("10"), forced.answers.first { it.seed == seedA }.items.map { it.id.external }, "A keeps its stored rows")
+
+        recs.answer(seedA, "10")
+        recs.asked.clear()
+        feed.refreshForYou(feed.startForYou(seeds, mustAsk = forced.failed), feed.forYouStored(feed.startForYou(seeds)), recs::ask)
+        assertEquals(listOf(seedA), recs.asked, "the next run asks A again, whatever the age of its copy")
     }
 
     @Test
@@ -121,7 +161,7 @@ class ForYouCopyTest {
 
         // A is now past its TTL and B is not yet: only A is due.
         clock.now += DiscoverFeed.TTL_MS / 2 + 1
-        val answers = feed.refreshForYou(feed.startForYou(seeds), feed.forYouStored(feed.startForYou(seeds)), recs::ask)
+        val answers = feed.refreshForYou(feed.startForYou(seeds), feed.forYouStored(feed.startForYou(seeds)), recs::ask).answers
 
         assertEquals(listOf(seedA), recs.asked, "B was fetched half a TTL ago, so it is not due yet")
         assertEquals(listOf("10"), answers.first { it.seed == seedA }.items.map { it.id.external })
@@ -140,7 +180,7 @@ class ForYouCopyTest {
         clock.now += DiscoverFeed.TTL_MS + 1
         recs.answers.remove(seedB)
 
-        val answers = feed.refreshForYou(feed.startForYou(seeds), feed.forYouStored(feed.startForYou(seeds)), recs::ask)
+        val answers = feed.refreshForYou(feed.startForYou(seeds), feed.forYouStored(feed.startForYou(seeds)), recs::ask).answers
 
         assertEquals(listOf("10"), answers.first { it.seed == seedA }.items.map { it.id.external }, "A was refreshed")
         assertEquals(listOf("20"), answers.first { it.seed == seedB }.items.map { it.id.external }, "B failed and keeps its rows")
@@ -155,7 +195,7 @@ class ForYouCopyTest {
     fun a_seed_that_fails_with_nothing_stored_contributes_nothing_and_is_not_a_crash() = runTest {
         val recs = Recommendations().apply { answer(seedA, "10") }
 
-        val answers = feed.refreshForYou(feed.startForYou(listOf(seedA, seedC)), stored = null, recs::ask)
+        val answers = feed.refreshForYou(feed.startForYou(listOf(seedA, seedC)), stored = null, recs::ask).answers
 
         assertEquals(listOf(seedA), answers.map { it.seed })
         assertEquals(listOf(seedA), feed.forYouStored(feed.startForYou(listOf(seedA, seedC)))?.map { it.seed }, "the seed that answered is stored")
@@ -164,7 +204,7 @@ class ForYouCopyTest {
     @Test
     fun a_refresh_where_every_seed_fails_stores_nothing_new() = runTest {
         val recs = Recommendations()
-        val answers = feed.refreshForYou(feed.startForYou(listOf(seedA)), stored = null, recs::ask)
+        val answers = feed.refreshForYou(feed.startForYou(listOf(seedA)), stored = null, recs::ask).answers
 
         assertTrue(answers.isEmpty())
         assertNull(feed.forYouStored(feed.startForYou(listOf(seedA))), "a failure is not an empty answer: nothing is written")
@@ -177,7 +217,7 @@ class ForYouCopyTest {
         clock.now += DiscoverFeed.TTL_MS + 1
         recs.answer(seedA)
 
-        val answers = feed.refreshForYou(feed.startForYou(listOf(seedA)), feed.forYouStored(feed.startForYou(listOf(seedA))), recs::ask)
+        val answers = feed.refreshForYou(feed.startForYou(listOf(seedA)), feed.forYouStored(feed.startForYou(listOf(seedA))), recs::ask).answers
 
         assertEquals(emptyList(), answers.single().items, "a successful empty list is the answer TMDB gave, not a failure")
     }
