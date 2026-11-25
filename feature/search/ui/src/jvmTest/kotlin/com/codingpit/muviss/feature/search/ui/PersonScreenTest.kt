@@ -2,6 +2,9 @@
 
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
@@ -71,6 +74,44 @@ class PersonScreenTest {
     }
 
     @Test
+    fun the_wikipedia_link_opens_in_the_app_language_not_the_device_language() {
+        // The app language comes from the caller (SearchSection reads MetadataLocale); the row must never read the device locale.
+        val cases = listOf("es-ES" to "eswiki", "ja-JP" to "jawiki", "en-US" to "enwiki")
+        for ((language, edition) in cases) {
+            val opened = mutableListOf<String>()
+            runComposeUiTest {
+                setContent {
+                    CompositionLocalProvider(LocalUriHandler provides recordingUriHandler(opened)) {
+                        MuvissTheme(darkTheme = false) {
+                            PersonBody(person, FilmographyOrganizer.organize(person, today), emptySet(), {}, language)
+                        }
+                    }
+                }
+
+                onNodeWithText("Wikipedia").performClick()
+            }
+
+            assertEquals("https://www.wikidata.org/wiki/Special:GoToLinkedPage/$edition/Q38111", opened.single(), "language $language")
+        }
+    }
+
+    @Test
+    fun a_person_screen_with_no_language_given_opens_the_english_wikipedia() = runComposeUiTest {
+        val opened = mutableListOf<String>()
+        setContent {
+            CompositionLocalProvider(LocalUriHandler provides recordingUriHandler(opened)) {
+                MuvissTheme(darkTheme = false) {
+                    PersonBody(person, FilmographyOrganizer.organize(person, today), emptySet(), {})
+                }
+            }
+        }
+
+        onNodeWithText("Wikipedia").performClick()
+
+        assertEquals("https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q38111", opened.single())
+    }
+
+    @Test
     fun it_opens_on_the_main_department_with_the_work_they_are_known_for() = runComposeUiTest {
         show()
 
@@ -127,5 +168,11 @@ class PersonScreenTest {
         onNodeWithText("Next Film").performClick()
 
         assertEquals(listOf(upcoming.id), opened)
+    }
+}
+
+private fun recordingUriHandler(opened: MutableList<String>) = object : UriHandler {
+    override fun openUri(uri: String) {
+        opened += uri
     }
 }

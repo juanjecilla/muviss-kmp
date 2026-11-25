@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.intl.Locale
 import com.codingpit.muviss.core.designsystem.theme.MuvissSpacing
 import com.codingpit.muviss.feature.search.domain.ExternalLink
 import com.codingpit.muviss.feature.search.domain.ExternalLinkKind
@@ -21,9 +20,13 @@ import org.jetbrains.compose.resources.stringResource
 
 internal const val EXTERNAL_LINKS_TAG = "externalLinks"
 
-/** The language links are opened in: the one the screen is already showing. */
-@Composable
-internal fun linkLanguage(): String = Locale.current.language
+/**
+ * The language a screen's Wikipedia link opens in when no language is passed: the TMDB default
+ * (`DefaultMetadataLocale`). Real screens are given the app's content language by [com.codingpit.muviss.feature.search.ui.SearchSection],
+ * which reads `MetadataLocale`, the same value every TMDB request on the screen was made with.
+ * It is not the device locale: a Spanish device with the app set to English gets the English article.
+ */
+internal const val DEFAULT_LINK_LANGUAGE = "en-US"
 
 /**
  * Links out to IMDb, Wikipedia and TMDB. They open in the system browser and Muviss sends nothing

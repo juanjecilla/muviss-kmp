@@ -79,6 +79,8 @@ fun PersonScreen(
     viewModel: PersonViewModel,
     onBack: () -> Unit,
     onOpenDetail: (MediaId) -> Unit,
+    /** The app's content language (`MetadataLocale`), which the Wikipedia link opens in. Tests leave the default. */
+    linkLanguage: String = DEFAULT_LINK_LANGUAGE,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
@@ -87,7 +89,7 @@ fun PersonScreen(
         when {
             state.loading && person == null -> CircularProgressIndicator(Modifier.align(Alignment.Center).padding(MuvissSpacing.xl))
             state.error != null && person == null -> ErrorState(message = state.error!!, onRetry = viewModel::load, modifier = Modifier.align(Alignment.Center))
-            person != null && filmography != null -> PersonBody(person, filmography, state.libraryIds, onOpenDetail)
+            person != null && filmography != null -> PersonBody(person, filmography, state.libraryIds, onOpenDetail, linkLanguage)
         }
         BackButton(onBack, Modifier.statusBarsPadding().padding(12.dp))
     }
@@ -99,6 +101,7 @@ internal fun PersonBody(
     filmography: Filmography,
     libraryIds: Set<MediaId>,
     onOpenDetail: (MediaId) -> Unit,
+    linkLanguage: String = DEFAULT_LINK_LANGUAGE,
 ) {
     var onActingTab by rememberSaveable(person.id.toString()) { mutableStateOf(filmography.startsOnActing) }
     val tab = if (onActingTab) filmography.acting else filmography.crew
@@ -112,8 +115,7 @@ internal fun PersonBody(
         item(key = "header", contentType = "header") { PersonHeader(person, inset) }
         person.biography?.let { bio -> item(key = "bio", contentType = "bio") { Biography(bio, inset) } }
         item(key = "links", contentType = "links") {
-            val language = linkLanguage()
-            ExternalLinksRow(remember(person, language) { ExternalLinks.forPerson(person.id, person.anchors, language) }, modifier = inset)
+            ExternalLinksRow(remember(person, linkLanguage) { ExternalLinks.forPerson(person.id, person.anchors, linkLanguage) }, modifier = inset)
         }
 
         if (filmography.knownFor.isNotEmpty()) {

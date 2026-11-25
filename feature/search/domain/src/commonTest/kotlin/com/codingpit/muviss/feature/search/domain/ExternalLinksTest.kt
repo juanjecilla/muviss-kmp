@@ -50,6 +50,27 @@ class ExternalLinksTest {
     }
 
     @Test
+    fun the_wikipedia_edition_follows_the_app_language_code() {
+        // Every language the Settings picker offers, plus the unset sentinel (`SupportedLocales.SYSTEM_DEFAULT_LANGUAGE`, empty).
+        val editions = listOf(
+            "en-US" to "enwiki",
+            "es-ES" to "eswiki",
+            "fr-FR" to "frwiki",
+            "de-DE" to "dewiki",
+            "it-IT" to "itwiki",
+            "pt-BR" to "ptwiki",
+            "ja-JP" to "jawiki",
+            "" to "enwiki",
+        )
+
+        for ((language, edition) in editions) {
+            val wiki = ExternalLinks.forTitle(MediaId.tmdbMovie("1"), MediaAnchors(wikidataId = "Q1"), language).single { it.kind == ExternalLinkKind.WIKIPEDIA }
+
+            assertTrue(wiki.url.endsWith("/$edition/Q1"), "language '$language' gave ${wiki.url}")
+        }
+    }
+
+    @Test
     fun an_unrecognised_language_means_english_wikipedia() {
         val links = ExternalLinks.forTitle(MediaId.tmdbMovie("1"), MediaAnchors(wikidataId = "Q1"), "../evil")
 

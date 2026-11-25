@@ -14,6 +14,8 @@ kotlin {
             // The Notification Nudge on Detail (EPIC 47); contract only (ADR 0004).
             implementation(projects.feature.onboarding.api)
             implementation(projects.core.designsystem)
+            // The TMDB content language (`MetadataLocale`), read once in SearchSection and passed down (issue #996 review).
+            implementation(projects.core.network)
             implementation(projects.models)
             // DetailViewModel needs AppClock: bulk marks tick aired episodes only.
             implementation(projects.core.common)
