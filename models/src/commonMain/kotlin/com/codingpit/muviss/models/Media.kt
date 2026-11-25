@@ -47,7 +47,7 @@ data class MediaDetails(
     val backdropUrl: String? = null,
     /** Who is in it, in the source's billing order. Empty when the source lists nobody. */
     val cast: List<Credit> = emptyList(),
-    /** The key crew (directors, creators, writers...), see [Credit.job]. Empty when the source lists nobody. */
+    /** The whole crew (directors, creators, writers...), see [Credit.job]. Empty when the source lists nobody. */
     val crew: List<Credit> = emptyList(),
 ) {
     val id: MediaId get() = summary.id

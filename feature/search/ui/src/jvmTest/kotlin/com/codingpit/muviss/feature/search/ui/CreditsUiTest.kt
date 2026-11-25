@@ -4,9 +4,11 @@ package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollToKeyAction
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.models.Credit
@@ -91,5 +93,18 @@ class CreditsUiTest {
         onNodeWithText("Some Director").assertIsDisplayed()
         onNodeWithText("Writing").assertIsDisplayed()
         onNodeWithText("Screenplay").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_full_credits_reach_past_the_detail_preview() = runComposeUiTest {
+        // Detail shows CAST_PREVIEW_SIZE cards; the sheet is the only way to reach the rest.
+        val longCast = MediaDetails(
+            summary = MediaSummary(MediaId.tmdbMovie("2"), "Ensemble"),
+            cast = (1..CAST_PREVIEW_SIZE + 5).map { credit("$it", "Person $it", character = "Role $it") },
+        )
+        setContent { MuvissTheme(darkTheme = false) { CreditsSheet(longCast, onDismiss = {}, onOpenPerson = null) } }
+
+        onNode(hasScrollToKeyAction()).performScrollToKey("cast-${CAST_PREVIEW_SIZE + 4}")
+        onNodeWithText("Person ${CAST_PREVIEW_SIZE + 5}").assertIsDisplayed()
     }
 }

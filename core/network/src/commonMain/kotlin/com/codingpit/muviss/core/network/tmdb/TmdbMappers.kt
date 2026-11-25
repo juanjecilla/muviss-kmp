@@ -21,10 +21,6 @@ import com.codingpit.muviss.models.WatchProvider
 import com.codingpit.muviss.models.WatchProviders
 
 internal object TmdbMapper {
-    /** The most cast and crew a title keeps. A long-running show lists thousands; nobody scrolls that far. */
-    const val MAX_CAST = 100
-    const val MAX_CREW = 150
-
     /** Two characters at most per person: a voice actor with eleven roles is a wall of text on a 64dp card. */
     private const val MAX_CHARACTERS_SHOWN = 2
 
@@ -184,8 +180,8 @@ internal object TmdbMapper {
             productionStatus = ProductionStatus.RELEASED,
             seasons = emptyList(),
             backdropUrl = backdropUrl(dto.backdropPath),
-            cast = dto.credits?.cast.orEmpty().sortedBy { it.order }.mapNotNull { it.toCredit() }.take(MAX_CAST),
-            crew = dto.credits?.crew.orEmpty().mapNotNull { it.toCredit() }.take(MAX_CREW),
+            cast = dto.credits?.cast.orEmpty().sortedBy { it.order }.mapNotNull { it.toCredit() },
+            crew = dto.credits?.crew.orEmpty().mapNotNull { it.toCredit() },
         )
     }
 
@@ -207,9 +203,9 @@ internal object TmdbMapper {
             productionStatus = tvProductionStatus(dto.status),
             seasons = seasons,
             backdropUrl = backdropUrl(dto.backdropPath),
-            cast = dto.aggregateCredits?.cast.orEmpty().sortedBy { it.order }.mapNotNull { it.toCredit() }.take(MAX_CAST),
+            cast = dto.aggregateCredits?.cast.orEmpty().sortedBy { it.order }.mapNotNull { it.toCredit() },
             // A show's creators come first: they are what "Created by" reads, and `created_by` is not in the credits.
-            crew = (dto.createdBy.map { it.toCredit() } + dto.aggregateCredits?.crew.orEmpty().mapNotNull { it.toCredit() }).take(MAX_CREW),
+            crew = (dto.createdBy.map { it.toCredit() } + dto.aggregateCredits?.crew.orEmpty().mapNotNull { it.toCredit() }),
         )
     }
 

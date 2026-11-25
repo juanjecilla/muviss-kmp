@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -226,7 +227,7 @@ internal fun CreditsSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         modifier = Modifier.testTag(CREDITS_SHEET_TAG),
     ) {
-        val departments = details.crew.groupBy { it.department.orEmpty() }.entries.sortedWith(compareBy(DEPARTMENT_ORDER) { it.key })
+        val departments = remember(details) { details.crew.groupBy { it.department.orEmpty() }.entries.sortedWith(compareBy(DEPARTMENT_ORDER) { it.key }) }
         LazyColumn(
             Modifier.fillMaxWidth().navigationBarsPadding(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = MuvissSpacing.l, vertical = MuvissSpacing.s),

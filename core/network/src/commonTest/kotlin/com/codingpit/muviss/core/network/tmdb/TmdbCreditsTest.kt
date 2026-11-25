@@ -125,13 +125,36 @@ class TmdbCreditsTest {
         assertTrue(details.crew.isEmpty())
     }
 
+    // The "See all" sheet lists the whole mapped cast and crew, so the mapper must not truncate them.
+    // The 20-card preview lives in CreditsSection, not here.
     @Test
-    fun cast_is_capped() = runTest {
+    fun a_movie_keeps_every_cast_member_and_crew_member_past_the_preview() = runTest {
         val cast = (0 until 300).joinToString(",") { """{"id":$it,"name":"P$it","order":$it}""" }
-        val body = """{"id":1,"title":"Big","credits":{"cast":[$cast],"crew":[]}}"""
+        val crew = (0 until 200).joinToString(",") { """{"id":${1000 + it},"name":"C$it","job":"Writer","department":"Writing"}""" }
+        val body = """{"id":1,"title":"Big","credits":{"cast":[$cast],"crew":[$crew]}}"""
 
         val details = ProviderFixture(handler = handler(body)).provider.details(MediaId.tmdbMovie("1"))
 
-        assertEquals(TmdbMapper.MAX_CAST, details.cast.size)
+        assertEquals(300, details.cast.size)
+        assertEquals("P299", details.cast.last().name)
+        assertEquals(200, details.crew.size)
+        assertEquals("C199", details.crew.last().name)
+    }
+
+    @Test
+    fun a_show_keeps_every_cast_member_and_crew_member_with_creators_still_first() = runTest {
+        val cast = (0 until 300).joinToString(",") { """{"id":$it,"name":"P$it","order":$it,"roles":[]}""" }
+        val crew = (0 until 200).joinToString(",") { """{"id":${1000 + it},"name":"C$it","department":"Writing","jobs":[]}""" }
+        val body = """{"id":1,"name":"Long","number_of_seasons":0,"seasons":[],
+            "created_by":[{"id":7,"name":"Creator Person"}],
+            "aggregate_credits":{"cast":[$cast],"crew":[$crew]}}"""
+
+        val details = ProviderFixture(handler = handler(body)).provider.details(MediaId.tmdbTv("1"))
+
+        assertEquals(300, details.cast.size)
+        assertEquals("P299", details.cast.last().name)
+        assertEquals(201, details.crew.size)
+        assertEquals("Creator Person", details.crew.first().name)
+        assertEquals("C199", details.crew.last().name)
     }
 }
