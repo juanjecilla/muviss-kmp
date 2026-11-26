@@ -35,7 +35,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** How the scripted loader answers one address. */
-private sealed interface Answer {
+internal sealed interface Answer {
     /** Loads at once, as a picture of this size. */
     data class Loads(val size: Size) : Answer
 
@@ -53,7 +53,7 @@ private sealed interface Answer {
  * Answers each address as [answers] says and records every address asked for. [finished] lists the addresses whose
  * request has ended, loaded or failed, so a test can wait for the outcome before it looks.
  */
-private class ScriptedFetcherFactory(
+internal class ScriptedFetcherFactory(
     private val answers: Map<String, Answer>,
     val requested: MutableList<String>,
     val finished: MutableList<String>,
@@ -86,7 +86,7 @@ private class ScriptedFetcherFactory(
 }
 
 /** A fresh loader for one test, answering as [answers] says. */
-private fun installLoader(answers: Map<String, Answer>): ScriptedFetcherFactory {
+internal fun installLoader(answers: Map<String, Answer>): ScriptedFetcherFactory {
     val factory = ScriptedFetcherFactory(answers, CopyOnWriteArrayList(), CopyOnWriteArrayList())
     SingletonImageLoader.setUnsafe(ImageLoader.Builder(PlatformContext.INSTANCE).components { add(factory) }.build())
     return factory

@@ -1,5 +1,6 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.models.MetadataError
 import io.ktor.client.HttpClient
@@ -33,7 +34,11 @@ sealed interface SaveOwnKeyResult {
     /** TMDB answered 401: the key is wrong or revoked. Not saved. */
     data object Rejected : SaveOwnKeyResult
 
-    /** Offline, throttled or TMDB failing: the key could not be checked, so it was not saved. */
+    /**
+     * Offline, throttled or TMDB failing: the key could not be checked, so it was not saved. Also what a
+     * check that TMDB accepted reports when Delete all data ran while it was in flight (#1056): the key is
+     * not kept, and the screen that asked is being cleared by that erase anyway.
+     */
     data object CouldNotCheck : SaveOwnKeyResult
 }
 
@@ -52,9 +57,11 @@ sealed interface SaveOwnKeyResult {
  */
 class OwnTmdbKey internal constructor(
     private val store: SecretStore,
+    private val erasures: DataEraseFence,
     private val validator: TmdbKeyValidator,
 ) {
-    constructor(store: SecretStore, client: HttpClient) : this(store, HttpTmdbKeyValidator(client))
+    constructor(store: SecretStore, client: HttpClient, erasures: DataEraseFence) :
+        this(store, erasures, HttpTmdbKeyValidator(client))
 
     private val lock = Mutex()
     private val current = MutableStateFlow<Loaded?>(null)
@@ -93,13 +100,17 @@ class OwnTmdbKey internal constructor(
      */
     suspend fun save(raw: String): SaveOwnKeyResult {
         val candidate = TmdbKeyShape.detect(raw) ?: return SaveOwnKeyResult.Malformed
+        // Taken before TMDB is asked: a key TMDB accepted, but checked before Delete all data, is not kept (#1056).
+        val requestedAt = erasures.request()
         return when (validator.validate(candidate)) {
             KeyCheck.Accepted -> {
-                lock.withLock {
-                    store.put(STORE_NAME, raw.trim())
-                    current.value = Loaded(candidate)
+                val kept = erasures.write(requestedAt) {
+                    lock.withLock {
+                        store.put(STORE_NAME, raw.trim())
+                        current.value = Loaded(candidate)
+                    }
                 }
-                SaveOwnKeyResult.Saved
+                if (kept) SaveOwnKeyResult.Saved else SaveOwnKeyResult.CouldNotCheck
             }
 
             KeyCheck.Rejected -> SaveOwnKeyResult.Rejected

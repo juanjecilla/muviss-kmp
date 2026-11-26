@@ -727,6 +727,8 @@ jobs:
       # The simulator is looked up, not named: the image's device list changes
       # under us (a pinned "iPhone 16" stopped existing).
       - name: Run the iOS UI smoke tests (simulator)
+        # A hang fails in minutes, not after the job's full budget (#784). A healthy run takes a few minutes.
+        timeout-minutes: 20
         run: |
           udid=$(scripts/ios/simulator-udid.sh)
           xcodebuild test \

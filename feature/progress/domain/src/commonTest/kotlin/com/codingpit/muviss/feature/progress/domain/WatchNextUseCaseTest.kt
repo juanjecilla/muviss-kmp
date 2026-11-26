@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.progress.domain
 
 import app.cash.turbine.test
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
@@ -45,7 +46,7 @@ class WatchNextUseCaseTest {
         { collectionApi },
         ObserveSeenEpisodesUseCase(repository),
         ObserveLastWatchedAtUseCase(repository),
-        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(catalogs)), store),
+        EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(catalogs)), store, DataEraseFence()),
         FakeClock(today),
         flowOf(countSpecials),
     )
@@ -225,7 +226,7 @@ class WatchNextUseCaseTest {
             { FakeCollectionApi(listOf(collectionSummary(show, title = "Firefly"))) },
             ObserveSeenEpisodesUseCase(FakeProgressRepository()),
             ObserveLastWatchedAtUseCase(FakeProgressRepository()),
-            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(unavailable), InMemoryEpisodeCatalogStore()),
+            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(unavailable), InMemoryEpisodeCatalogStore(), DataEraseFence()),
             FakeClock(today),
         )
 
