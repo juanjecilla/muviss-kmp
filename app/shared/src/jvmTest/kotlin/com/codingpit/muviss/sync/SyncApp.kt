@@ -5,6 +5,7 @@ import com.codingpit.muviss.core.billing.EntitlementProvider
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.flags.FeatureFlags
+import com.codingpit.muviss.core.common.remoteconfig.RemoteConfig
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.database.MuvissDatabase
@@ -79,6 +80,7 @@ internal class SyncApp(
     entitlement: Entitlement = Entitlement.Active,
     backgroundAvailable: Boolean = true,
     timing: SyncTiming? = null,
+    remoteConfig: RemoteConfig? = null,
 ) {
     val driver = CountingDriver(inMemoryDriver())
     val database = MuvissDatabase(driver)
@@ -105,6 +107,7 @@ internal class SyncApp(
                     }
                 }
                 single<EntitlementProvider> { entitlements }
+                if (remoteConfig != null) single<RemoteConfig> { remoteConfig }
                 single<SyncBackend> {
                     createSupabaseSyncBackend(
                         client = HttpClient(server.engine) {
