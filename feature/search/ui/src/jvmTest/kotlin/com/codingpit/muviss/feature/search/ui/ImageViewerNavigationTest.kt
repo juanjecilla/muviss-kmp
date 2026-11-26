@@ -8,6 +8,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -44,6 +45,8 @@ class ImageViewerNavigationTest {
 
         val viewers = nav.currentBackStack.value.count { it.destination.route?.startsWith(ImageViewerRoute::class.qualifiedName!!) == true }
         assertEquals(1, viewers, "the second tap is dropped: the viewer stays on the first artwork, not a second viewer")
+        // The arguments are the check that matters: a replaced entry would still count as one viewer.
+        assertEquals("Poster", nav.currentBackStackEntry?.toRoute<ImageViewerRoute>()?.kind)
     }
 
     @Composable

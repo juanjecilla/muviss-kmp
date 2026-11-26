@@ -71,6 +71,27 @@ class ImageViewerTest {
     }
 
     @Test
+    fun a_turn_reversed_before_its_first_frame_settles_on_the_reversed_page() = runComposeUiTest {
+        // Right and Left in one injection with no clock advance between them, so neither turn has a frame yet. The
+        // Left turn aims back at page 0, which the pager is already on, so its own animateScrollToPage returns early
+        // and would leave the Right animation running on to page 1.
+        mainClock.autoAdvance = false
+        setContent { MuvissTheme(darkTheme = true) { ImageViewerContent(four, ImageKind.Backdrop, onClose = {}) } }
+        waitForIdle()
+
+        onNodeWithTag(IMAGE_VIEWER_TAG).performKeyInput {
+            keyDown(Key.DirectionRight)
+            keyUp(Key.DirectionRight)
+            keyDown(Key.DirectionLeft)
+            keyUp(Key.DirectionLeft)
+        }
+        mainClock.autoAdvance = true
+        waitForIdle()
+
+        onNodeWithTag(IMAGE_VIEWER_POSITION_TAG).assertTextEquals("1 / 4")
+    }
+
+    @Test
     fun the_arrow_keys_stop_at_the_ends() = runComposeUiTest {
         setContent { MuvissTheme(darkTheme = true) { ImageViewerContent(three, ImageKind.Backdrop, onClose = {}) } }
 

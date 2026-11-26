@@ -73,6 +73,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.image_viewer_s
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.TitleImage
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -146,11 +147,15 @@ internal fun ImageViewerContent(
     // settles aims from here, so it moves on from the first target instead of re-aiming at the same page.
     var turnTarget by remember { mutableStateOf<Int?>(null) }
     var turnSerial by remember { mutableStateOf(0L) }
+    // The animation the latest turn launched. A new turn cancels it first: animateScrollToPage returns without scrolling
+    // when the pager already sits on the target, so a superseded animation would otherwise run on to its own page.
+    val turnJob = remember { arrayOfNulls<Job>(1) }
     val turnTo: (Int) -> Unit = { page ->
         turnSerial += 1
         val serial = turnSerial
         turnTarget = page
-        scope.launch {
+        turnJob[0]?.cancel()
+        turnJob[0] = scope.launch {
             try {
                 pager.animateScrollToPage(page)
             } finally {
