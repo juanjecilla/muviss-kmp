@@ -2,6 +2,7 @@
 
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.EpisodeId
@@ -36,7 +37,7 @@ class SpecialsWatchNextTest {
             { FakeCollectionApi(listOf(collectionSummary(show))) },
             ObserveSeenEpisodesUseCase(repository),
             ObserveLastWatchedAtUseCase(repository),
-            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(mapOf(show to catalog))), InMemoryEpisodeCatalogStore()),
+            EpisodeCatalogCache(FetchEpisodeCatalogUseCase(MapEpisodeCatalogSource(mapOf(show to catalog))), InMemoryEpisodeCatalogStore(), DataEraseFence()),
             FakeClock(today),
             flowOf(countSpecials),
         )
