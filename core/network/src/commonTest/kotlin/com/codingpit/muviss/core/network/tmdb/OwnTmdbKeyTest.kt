@@ -1,14 +1,19 @@
 package com.codingpit.muviss.core.network.tmdb
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.secrets.InMemorySecretStore
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class OwnTmdbKeyTest {
@@ -19,9 +24,29 @@ class OwnTmdbKeyTest {
     private var verdict = KeyCheck.Accepted
     private val validated = mutableListOf<TmdbCredentials>()
 
-    private fun ownKey() = OwnTmdbKey(store) { credentials ->
+    private fun ownKey() = OwnTmdbKey(store, DataEraseFence()) { credentials ->
         validated += credentials
         verdict
+    }
+
+    @Test
+    fun a_save_in_flight_during_delete_all_data_stores_nothing() = runTest {
+        val fence = DataEraseFence()
+        val verdict = CompletableDeferred<KeyCheck>()
+        val key = OwnTmdbKey(store, fence) { verdict.await() }
+
+        val saving = async { key.save(v3) }
+        runCurrent()
+        // Delete all data runs while TMDB is still answering: it clears the key and the store, as the eraser does.
+        fence.erase {
+            key.clear()
+            store.clearAll()
+        }
+        verdict.complete(KeyCheck.Accepted)
+
+        assertNotEquals(SaveOwnKeyResult.Saved, saving.await(), "a key checked before Delete all data is not reported as saved")
+        assertNull(store.get(OwnTmdbKey.STORE_NAME), "nor stored after it, where it would survive the erase")
+        assertNull(key.credentials())
     }
 
     @Test
