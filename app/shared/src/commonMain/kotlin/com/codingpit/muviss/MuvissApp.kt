@@ -55,6 +55,7 @@ import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -355,6 +356,8 @@ private fun MuvissScaffold(
     val syncAvailability = koinInject<SyncAvailability>()
     // Next Pick's Deck result hands its titles to Triage through this seam before it opens the seeded deck (#554).
     val triageSeeds = koinInject<TriageDeckSeeds>()
+    // The TMDB content language. Read at composition, so a Detail or Person link opens in the language its screen shows (#996).
+    val metadataLocale = koinInject<MetadataLocale>()
     val openCoWatch = remember(syncAvailability, navController) {
         coWatchEntry(syncAvailability) { navController.navigate(CompanionsRoute) }
     }
@@ -492,6 +495,7 @@ private fun MuvissScaffold(
                         navController,
                         onOpenTriage = { navController.navigate(TriageRoute) },
                         onOpenNextPick = controller::openNextPickFrom,
+                        linkLanguage = { metadataLocale.language },
                         refreshRequests = controller.refreshRequests,
                     )
                     collectionSection(

@@ -7,7 +7,6 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
-import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaId
@@ -15,7 +14,6 @@ import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.TitleImage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
-import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -27,6 +25,8 @@ fun NavGraphBuilder.searchSection(
     navController: NavController,
     onOpenTriage: () -> Unit,
     onOpenNextPick: (anchor: MediaId?) -> Unit,
+    /** The app's content language, read by the Detail and Person links on each composition (the app shell owns `MetadataLocale`). */
+    linkLanguage: () -> String,
     refreshRequests: Flow<Unit> = emptyFlow(),
 ) {
     composable<SearchRoute> {
@@ -72,7 +72,7 @@ fun NavGraphBuilder.searchSection(
             nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
             // A finished title's entry opens the session anchored on that title (#664).
             onOpenNextPick = onOpenNextPick,
-            linkLanguage = koinInject<MetadataLocale>().language,
+            linkLanguage = linkLanguage(),
         )
     }
     composable<EpisodeDetailRoute> { entry ->
@@ -100,7 +100,7 @@ fun NavGraphBuilder.searchSection(
             onBack = { navController.popBackStack() },
             // Same recursion as "More like this": a title opens Detail, a person on that opens another page, Back unwinds it.
             onOpenDetail = { id -> navController.navigate(DetailRoute(id.toString())) },
-            linkLanguage = koinInject<MetadataLocale>().language,
+            linkLanguage = linkLanguage(),
         )
     }
 }

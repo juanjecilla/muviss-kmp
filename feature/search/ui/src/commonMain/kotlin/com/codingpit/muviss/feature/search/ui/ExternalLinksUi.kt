@@ -21,9 +21,9 @@ import org.jetbrains.compose.resources.stringResource
 internal const val EXTERNAL_LINKS_TAG = "externalLinks"
 
 /**
- * The language a screen's Wikipedia link opens in when no language is passed: the TMDB default
- * (`DefaultMetadataLocale`). Real screens are given the app's content language by [com.codingpit.muviss.feature.search.ui.SearchSection],
- * which reads `MetadataLocale`, the same value every TMDB request on the screen was made with.
+ * The language a screen's Wikipedia link opens in when no language is passed, for tests only: the TMDB default
+ * (`DefaultMetadataLocale`). The app shell always passes the app's content language, read from `MetadataLocale`,
+ * the same value every TMDB request on the screen was made with, through `searchSection`'s `linkLanguage`.
  * It is not the device locale: a Spanish device with the app set to English gets the English article.
  */
 internal const val DEFAULT_LINK_LANGUAGE = "en-US"
