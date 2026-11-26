@@ -309,6 +309,21 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
+    fun a_pre_stamp_claim_retried_with_no_entry_present_claims_the_entry_its_add_makes() = runTest {
+        val h = harness()
+        // A row written before the stamp column, and the entry it named is gone: the retry's add makes it now.
+        h.repository.record(
+            TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
+        )
+
+        h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+
+        val retried = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(retried.createdEntry, "an add that makes the entry keeps the claim")
+        assertNotNull(retried.entryAddedAtEpochMs)
+    }
+
+    @Test
     fun a_retry_keeps_a_stamped_claim_the_first_attempt_recorded() = runTest {
         val h = harness()
         // The first attempt's add made the entry and stamped it. The retry finds that entry still there, so the
