@@ -104,6 +104,8 @@ data class CollectionEntryExport(
     val notificationsMuted: Boolean = false,
     val rating: Int? = null,
     val note: String? = null,
+    /** A tombstone (#1074): a removal the other devices must see. Defaulted so a backup from before it still parses. */
+    val deleted: Boolean = false,
 )
 
 @Serializable
@@ -123,6 +125,8 @@ data class EpisodePlayExport(
     val watchedAtEpochMs: Long,
     /** v2; a v1 play restores with its [watchedAtEpochMs], which is what its stamp was when it was written. */
     val updatedAtEpochMs: Long? = null,
+    /** A tombstone (#1074): a removal the other devices must see. Defaulted so a backup from before it still parses. */
+    val deleted: Boolean = false,
 )
 
 @Serializable
@@ -136,6 +140,8 @@ data class TriageSnoozeExport(
     val snoozedAtEpochMs: Long,
     val dueAtEpochDay: Long,
     val updatedAtEpochMs: Long,
+    /** A tombstone (#1074): a removal the other devices must see. Defaulted so a backup from before it still parses. */
+    val deleted: Boolean = false,
 )
 
 @Serializable
@@ -144,6 +150,8 @@ data class MediaListExport(
     val name: String,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    /** A tombstone (#1074): a removal the other devices must see. Defaulted so a backup from before it still parses. */
+    val deleted: Boolean = false,
 )
 
 @Serializable
@@ -152,6 +160,8 @@ data class ListEntryExport(
     val mediaId: String,
     val addedAtEpochMs: Long,
     val updatedAtEpochMs: Long,
+    /** A tombstone (#1074): a removal the other devices must see. Defaulted so a backup from before it still parses. */
+    val deleted: Boolean = false,
 )
 
 /**
@@ -243,4 +253,6 @@ data class TriageDecisionExport(
     val entryAddedAtEpochMs: Long? = null,
     /** Comma-separated viewing ids (EpisodePlay.idOf) this verdict wrote (#790). Empty for a backup written before the field. */
     val tickedEpisodeIds: String = "",
+    /** A tombstone (#1074): a removal the other devices must see. Defaulted so a backup from before it still parses. */
+    val deleted: Boolean = false,
 )
