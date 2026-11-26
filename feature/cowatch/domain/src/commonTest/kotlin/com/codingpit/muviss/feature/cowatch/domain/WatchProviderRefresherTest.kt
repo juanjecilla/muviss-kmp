@@ -39,8 +39,8 @@ class WatchProviderRefresherTest {
 
     @Test
     fun a_fetch_in_flight_during_delete_all_data_stores_nothing_at_any_point() = runTest {
-        // Sequential (concurrency 1), so the titles before the erase are written, the one in flight is dropped and
-        // the ones after it are asked for after the erase and written.
+        // Sequential (concurrency 1). The batch takes its erase count once, so the titles before the erase are written,
+        // and the one in flight and every title asked after it are dropped (#1090).
         val titles = listOf(MediaId.tmdbMovie("1"), MediaId.tmdbMovie("2"), MediaId.tmdbMovie("3"))
         for (erasedDuring in titles) {
             val fence = DataEraseFence()
@@ -57,9 +57,9 @@ class WatchProviderRefresherTest {
             refresher.refresh(titles.toSet())
 
             assertEquals(
-                titles.filter { it != erasedDuring }.toSet(),
+                titles.takeWhile { it != erasedDuring }.toSet(),
                 cache.stored.keys,
-                "a provider answer requested before Delete all data is not cached after it (erase during $erasedDuring)",
+                "a title asked in a batch that crossed Delete all data is not cached (erase during $erasedDuring)",
             )
         }
     }
