@@ -271,6 +271,43 @@ class DiscoverOfflineViewModelTest {
         assertFalse(vm.state.value.discoverSaved, "an automatic refresh inside the TTL is silent, as before")
     }
 
+    /** #980: a Retry that lands on an automatic refresh in flight is the person's request, so its failure is said. */
+    @Test
+    fun a_retry_that_lands_on_an_automatic_refresh_says_so_when_that_refresh_fails_inside_the_ttl() = runTest {
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        val settings = FakeMutingApi()
+        val gate = CompletableDeferred<Unit>()
+        var holding = false
+        val vm = viewModel(
+            FakeRepo(
+                discoverGate = { _, _ -> if (holding) gate.await() },
+                discoverResult = { _, _, _ -> Result.failure(MetadataError.Offline()) },
+            ),
+            cache,
+            FakeClock(epochMs = 1_000L),
+            settings = settings,
+        )
+        advanceUntilIdle()
+
+        // A muting change starts an automatic refresh, and it waits on the gate.
+        holding = true
+        settings.configured.value = MutedGenres(setOf(talk))
+        advanceUntilIdle()
+        assertTrue(vm.state.value.refreshing, "the automatic refresh is in flight")
+
+        vm.retry()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.refreshing, "the Retry does not restart or cancel the refresh in flight")
+        assertFalse(vm.state.value.discoverSaved, "nothing has failed yet")
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value.discoverSaved, "the person's Retry landed on that refresh, so its failure is said")
+        assertEquals(listOf(drama), vm.state.value.popularTv, "the stored copy stays on screen")
+    }
+
     /** #974: a refresh that succeeds clears the mark a failed one left. */
     @Test
     fun a_refresh_that_succeeds_clears_the_saved_mark() = runTest {

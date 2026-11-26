@@ -158,6 +158,13 @@ class SearchViewModel(
      */
     private var discoverLoads = 0
 
+    /**
+     * The person pressed Retry while a Discover load was already in flight (#980). The load is not restarted: its
+     * single TMDB request is the one that answers. Its outcome then follows the user-initiated rule, as if it had been
+     * the person's own load. Consumed where that load's outcome is decided.
+     */
+    private var userAskedDuringLoad = false
+
     /** For you requests in flight, forced or not (see [forYouFlow]). Counted for the same reason as [discoverLoads]. */
     private var forYouRequests = 0
 
@@ -370,15 +377,17 @@ class SearchViewModel(
     fun retry() {
         val s = _state.value
         if (s.mode == SearchMode.DISCOVER) {
-            // Not while a refresh is in flight: a second request would cancel the first and ask TMDB twice (#965).
+            // A Discover load in flight is not restarted: a second request would cancel the first and ask TMDB twice
+            // (#965). The Retry is recorded instead, and that load's outcome follows the person's request (#980).
             // An error on screen means Discover itself is idle, but For you may still be loading, so Discover's
             // part is retried then.
+            if (discoverLoads > 0) userAskedDuringLoad = true
             if (s.error == null && s.refreshing) return
             if (!s.forYouRequesting) {
                 forYouRetries++
                 forYouAgain.update { it + 1 }
             }
-            if (!s.discoverBusy) reload(userInitiated = true)
+            if (discoverLoads == 0) reload(userInitiated = true)
             return
         }
         reload(userInitiated = true)
@@ -476,9 +485,14 @@ class SearchViewModel(
             _state.update { showing(it, snapshot, mutedMovies, mutedTv).copy(loading = false, error = null, discoverSaved = publishedBanner()) }
         }
         // A fresh copy answers without the network, so it does not pay off a muting mark: that needs a refresh.
-        if (!forced && !discoverFeed.needsRefresh(snapshot, run)) return
+        if (!forced && !discoverFeed.needsRefresh(snapshot, run)) {
+            takeUserAskedDuringLoad()
+            return
+        }
 
         val refresh = discoverFeed.refresh(run, mutedMovies, mutedTv)
+        // A Retry that arrived while this load waited on TMDB counts as the person's own request (#980).
+        val askedByPerson = userInitiated || takeUserAskedDuringLoad()
         // Nothing stored and a section failed: the error state, as Discover always showed. With a copy on
         // screen, a failed section keeps its copy and the screen says so when that copy is past its TTL, or when
         // the person asked for the refresh: they are told it failed even inside the TTL (#974).
@@ -489,7 +503,7 @@ class SearchViewModel(
         // automatic failure inside the TTL keeps whatever the person was already told (#974).
         if (!refresh.anyFailed) {
             discoverBanner = false
-        } else if (userInitiated || discoverFeed.isPastTtl(merged, run)) {
+        } else if (askedByPerson || discoverFeed.isPastTtl(merged, run)) {
             discoverBanner = true
         }
         _state.update {
@@ -500,6 +514,13 @@ class SearchViewModel(
             )
         }
         if (!refresh.anyFailed) settleStale(marks)
+    }
+
+    /** Reads and clears [userAskedDuringLoad]: the load that asked for it has its outcome decided now. */
+    private fun takeUserAskedDuringLoad(): Boolean {
+        val asked = userAskedDuringLoad
+        userAskedDuringLoad = false
+        return asked
     }
 
     /** Pays off the muting marks that were in force when a refresh began, unless a newer one arrived meanwhile. */
