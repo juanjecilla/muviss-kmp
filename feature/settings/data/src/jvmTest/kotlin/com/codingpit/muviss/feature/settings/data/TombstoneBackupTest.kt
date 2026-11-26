@@ -42,7 +42,8 @@ class TombstoneBackupTest {
     @Test
     fun `a removed title is in the export as a tombstone and deletes the live row on restore`() = runTest {
         val source = inMemoryDatabase()
-        seedEntry(source, updatedAt = 2_000L, deleted = true)
+        seedEntry(source, updatedAt = 1_000L)
+        source.collectionEntryQueries.softDelete(now = 2_000L, mediaId = MATRIX)
         val backup = exporter(source).exportData()
         assertTrue(Json.decodeFromString<MuvissDataExport>(backup).collection.single().deleted)
 
@@ -57,7 +58,8 @@ class TombstoneBackupTest {
     @Test
     fun `a removed viewing is in the export as a tombstone and deletes the live play on restore`() = runTest {
         val source = inMemoryDatabase()
-        seedPlay(source, updatedAt = 2_000L, deleted = true)
+        seedPlay(source, updatedAt = 1_000L)
+        source.episodePlayQueries.deleteById(updatedAtEpochMs = 2_000L, id = PLAY_ID)
         val backup = exporter(source).exportData()
         assertTrue(export(source).plays.single().deleted)
 
@@ -72,7 +74,8 @@ class TombstoneBackupTest {
     @Test
     fun `a removed snooze is in the export as a tombstone and deletes the live snooze on restore`() = runTest {
         val source = inMemoryDatabase()
-        seedSnooze(source, updatedAt = 2_000L, deleted = true)
+        seedSnooze(source, updatedAt = 1_000L)
+        source.triageSnoozeQueries.softDelete(now = 2_000L, mediaId = MATRIX)
         val backup = exporter(source).exportData()
         assertTrue(export(source).snoozes.single().deleted)
 
@@ -87,7 +90,8 @@ class TombstoneBackupTest {
     @Test
     fun `a removed triage decision is in the export as a tombstone and deletes the live decision on restore`() = runTest {
         val source = inMemoryDatabase()
-        seedDecision(source, updatedAt = 2_000L, deleted = true)
+        seedDecision(source, updatedAt = 1_000L)
+        source.triageDecisionQueries.softDelete(now = 2_000L, mediaId = MATRIX)
         val backup = exporter(source).exportData()
         assertTrue(export(source).triage.single().deleted)
 
@@ -102,7 +106,8 @@ class TombstoneBackupTest {
     @Test
     fun `a deleted list is in the export as a tombstone and deletes the live list on restore`() = runTest {
         val source = inMemoryDatabase()
-        source.mediaListQueries.upsertList(LIST_ID, "Rainy day", 1_000L, 2_000L, false, true)
+        source.mediaListQueries.upsertList(LIST_ID, "Rainy day", 1_000L, 1_000L, false, false)
+        source.mediaListQueries.softDeleteList(now = 2_000L, id = LIST_ID)
         val backup = exporter(source).exportData()
         assertTrue(export(source).lists.single().deleted)
 
@@ -116,7 +121,8 @@ class TombstoneBackupTest {
     @Test
     fun `a removed list entry is in the export as a tombstone and deletes the live entry on restore`() = runTest {
         val source = inMemoryDatabase()
-        source.mediaListQueries.upsertEntry(LIST_ID, MATRIX, 1_000L, 2_000L, false, true)
+        source.mediaListQueries.upsertEntry(LIST_ID, MATRIX, 1_000L, 1_000L, false, false)
+        source.mediaListQueries.removeEntry(now = 2_000L, listId = LIST_ID, mediaId = MATRIX)
         val backup = exporter(source).exportData()
         assertTrue(export(source).listEntries.single().deleted)
 
