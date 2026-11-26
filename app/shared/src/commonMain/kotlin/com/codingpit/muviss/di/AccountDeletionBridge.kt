@@ -19,8 +19,10 @@ import org.koin.dsl.module
  * default, and Koin's last binding wins.
  */
 val accountDeletionBridgeModule: Module = module {
+    // Resolved per call, not when the eraser is built: SyncEngine takes this seam, and
+    // DeleteAllDataUseCase reaches SyncEngine through settings, so an eager get() here is a
+    // construction cycle (StackOverflowError on the desktop launch, #279).
     single<AccountLocalDataEraser> {
-        val deleteAllData = get<DeleteAllDataUseCase>()
-        AccountLocalDataEraser { deleteAllData() }
+        AccountLocalDataEraser { get<DeleteAllDataUseCase>()() }
     }
 }
