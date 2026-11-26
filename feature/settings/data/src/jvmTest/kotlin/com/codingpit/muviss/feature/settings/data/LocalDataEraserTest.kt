@@ -73,8 +73,9 @@ class LocalDataEraserTest {
         database.triageDeckCursorQueries.upsert("movie|any|-|en-US", 2L, 2L, 2L, 2L, 1L)
         database.discoverCacheQueries.upsert(cacheKey = "genres:tv|en-US", json = "[]", fetchedAtEpochMs = 1L)
         database.forYouCacheQueries.upsert(cacheKey = "foryou:0000000000000001", json = "{}")
+        val erasures = DataEraseFence()
         val secrets = InMemorySecretStore()
-        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
+        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }), erasures)
         secrets.put(OwnTmdbKey.STORE_NAME, "c".repeat(32))
         secrets.put("something-else", "x")
 
@@ -86,7 +87,7 @@ class LocalDataEraserTest {
             secrets,
             widgetRefresher = WidgetRefresher { widgetRefreshes++ },
             syncBackend = NoOpSyncBackend(),
-            erasures = DataEraseFence(),
+            erasures = erasures,
         ).deleteAllData()
 
         val export = Json.decodeFromString<MuvissDataExport>(repository.exportData())
@@ -122,8 +123,9 @@ class LocalDataEraserTest {
             AppVersion("1", 1L),
             writes,
         )
+        val erasures = DataEraseFence()
         val secrets = InMemorySecretStore()
-        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }))
+        val ownKey = OwnTmdbKey(secrets, HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }), erasures)
 
         // The tap parks at the hop to io; Delete all data then runs to completion before it lands.
         launch(start = CoroutineStart.UNDISPATCHED) { repository.setDeviceBackupEnabled(true) }
@@ -135,7 +137,7 @@ class LocalDataEraserTest {
             writes,
             widgetRefresher = WidgetRefresher {},
             syncBackend = NoOpSyncBackend(),
-            erasures = DataEraseFence(),
+            erasures = erasures,
         ).deleteAllData()
         advanceUntilIdle()
 
@@ -228,7 +230,7 @@ class LocalDataEraserTest {
     ) = SqlDelightLocalDataEraser(
         database,
         dispatchers,
-        OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) })),
+        OwnTmdbKey(InMemorySecretStore(), HttpClient(MockEngine { respond("{}", HttpStatusCode.OK) }), erasures),
         InMemorySecretStore(),
         widgetRefresher = WidgetRefresher {},
         syncBackend = backend,

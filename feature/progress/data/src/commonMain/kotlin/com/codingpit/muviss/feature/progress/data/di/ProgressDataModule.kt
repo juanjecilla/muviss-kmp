@@ -93,7 +93,7 @@ val progressDataModule: Module = module {
     factory { ProgressMutations(get(), get(), get(), get(), get()) }
     factory { SetMovieWatchedUseCase(get()) }
     factory { FetchEpisodeCatalogUseCase(get()) }
-    single { EpisodeCatalogCache(get(), get()) }
+    single { EpisodeCatalogCache(get(), get(), get()) }
     // `{ get() }` rather than `get()`: collection's repository depends on
     // `ProgressApi`, so resolving `CollectionApi` while building it closes a
     // cycle. See WatchNextUseCase's KDoc.

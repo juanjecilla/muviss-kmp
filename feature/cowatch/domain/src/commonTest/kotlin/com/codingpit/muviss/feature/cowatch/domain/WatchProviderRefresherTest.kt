@@ -1,7 +1,11 @@
 package com.codingpit.muviss.feature.cowatch.domain
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.models.MediaId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,6 +39,29 @@ class WatchProviderRefresherTest {
     }
 
     private val id = MediaId.tmdbMovie("1")
+
+    @Test
+    fun a_fetch_in_flight_during_delete_all_data_stores_nothing() = runTest {
+        val fence = DataEraseFence()
+        val cache = FakeCache()
+        val answer = CompletableDeferred<Unit>()
+        val source = object : WatchProviderSource {
+            override val region: String = "US"
+            override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> {
+                answer.await()
+                return Result.success(setOf("8"))
+            }
+        }
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), erasures = fence)
+
+        val refreshing = async { refresher.refresh(setOf(id)) }
+        runCurrent()
+        fence.erase {}
+        answer.complete(Unit)
+        refreshing.await()
+
+        assertEquals(null, cache.stored[id], "a provider answer requested before Delete all data is not cached after it")
+    }
 
     @Test
     fun a_never_cached_title_is_fetched_and_stored() = runTest {

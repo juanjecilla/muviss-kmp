@@ -1,5 +1,6 @@
 package com.codingpit.muviss.feature.cowatch.data
 
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.network.NotFoundTitles
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.feature.cowatch.domain.CachedProviders
@@ -7,6 +8,9 @@ import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderSource
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MetadataError
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,6 +46,28 @@ class TmdbWatchProviderFillTest {
     private val a = MediaId.tmdbMovie("1")
     private val b = MediaId.tmdbMovie("2")
     private val c = MediaId.tmdbMovie("3")
+
+    @Test
+    fun a_fill_in_flight_during_delete_all_data_stores_nothing() = runTest {
+        val fence = DataEraseFence()
+        val cache = RecordingCache()
+        val answer = CompletableDeferred<Unit>()
+        val source = object : WatchProviderSource {
+            override val region: String = "US"
+            override suspend fun fetchFlatrateIds(mediaId: MediaId, region: String): Result<Set<String>> {
+                answer.await()
+                return Result.success(setOf("8"))
+            }
+        }
+
+        val filling = async { TmdbWatchProviderFill(cache, source, notFound, fence).fill(listOf(a), region = "US") }
+        runCurrent()
+        fence.erase {}
+        answer.complete(Unit)
+        filling.await()
+
+        assertTrue(cache.puts.isEmpty(), "a provider answer requested before Delete all data is not cached after it")
+    }
 
     @Test
     fun `every_answered_title_is_cached_for_the_region_in_the_order_given`() = runTest {
