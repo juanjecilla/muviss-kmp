@@ -13,7 +13,11 @@ import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
+import com.codingpit.muviss.feature.progress.data.SqlDelightAiredSnapshotRaiser
+import com.codingpit.muviss.feature.progress.data.SqlDelightEpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
+import com.codingpit.muviss.feature.progress.domain.RaiseAiredBeforeTickUseCase
+import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -274,6 +278,80 @@ class ProgressCollectionStatusIntegrationTest {
 
             val entry = awaitItem()!!
             assertTrue(entry.seenEpisodes <= entry.airedEpisodes, "seen ${entry.seenEpisodes} aired ${entry.airedEpisodes}")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * #1115: a tick from a surface that never sees the show's details (the home-screen widget, the AppFunctions
+     * agent) writes progress only. The snapshot was taken before episodes 2..10 aired, so its aired count is 1.
+     * The tick must raise the aired count to what the stored catalog says has aired (ADR 0037), otherwise the
+     * entry reads as caught up after one episode.
+     */
+    @Test
+    fun a_tick_on_a_stale_snapshot_raises_aired_to_the_stored_catalog() = runTest {
+        val db = inMemoryDatabase()
+        val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
+        val tickClock = FakeClock(epochMsAtStartOfDay(150))
+        val repository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, tickClock, NoOpWidgetRefresher)
+        val collection = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, tickClock)
+        val catalog = SqlDelightEpisodeCatalogStore(db.episodeQueries, dispatchers, tickClock)
+        val catalogSeasons = listOf(Season(1, "S1", (1..10).map { episode(1, it, airDay = 100L + it) }))
+        catalog.save(show, catalogSeasons)
+        collection.upsertSnapshot(details(listOf(Season(1, "S1", listOf(episode(1, 1, airDay = 101)))), ProductionStatus.RETURNING))
+        // The chain DefaultProgressApi.setEpisodeSeen runs in the app: the snapshot raise, then the tick.
+        val tick = ToggleEpisodeSeenUseCase(
+            repository,
+            RaiseAiredBeforeTickUseCase(repository, catalog, SqlDelightAiredSnapshotRaiser(db.collectionEntryQueries, dispatchers), tickClock),
+        )
+
+        collection.observeEntry(show).test {
+            awaitItem()
+
+            tick(EpisodeId(show, 1, 1), true)
+
+            // The raise lands before the tick, so the Library may observe the snapshot with nothing seen yet. Every
+            // emission must keep seen within aired; the one after the tick is the state under test.
+            var entry = awaitItem()!!
+            while (entry.seenEpisodes == 0) {
+                assertTrue(entry.seenEpisodes <= entry.airedEpisodes)
+                entry = awaitItem()!!
+            }
+            assertEquals(1, entry.seenEpisodes)
+            assertEquals(10, entry.airedEpisodes, "nine aired episodes are unseen, so the show is not caught up")
+            assertEquals(WatchStatus.WATCHING, entry.status)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * The union rule (ADR 0037): a seen episode the stored catalog does not list still counts toward aired, so the
+     * raise is the size of catalog-aired plus seen, not the larger of the two. Three catalog episodes and one seen
+     * episode outside the catalog give four.
+     */
+    @Test
+    fun a_raise_counts_seen_episodes_the_catalog_does_not_list() = runTest {
+        val db = inMemoryDatabase()
+        val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
+        val tickClock = FakeClock(epochMsAtStartOfDay(150))
+        val repository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, tickClock, NoOpWidgetRefresher)
+        val collection = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, tickClock)
+        val catalog = SqlDelightEpisodeCatalogStore(db.episodeQueries, dispatchers, tickClock)
+        catalog.save(show, listOf(Season(1, "S1", (1..3).map { episode(1, it, airDay = 100L + it) })))
+        collection.upsertSnapshot(details(listOf(Season(1, "S1", listOf(episode(1, 1, airDay = 101)))), ProductionStatus.RETURNING))
+        val outside = EpisodeId(show, 9, 1)
+        repository.setSeen(outside, true)
+        val tick = ToggleEpisodeSeenUseCase(
+            repository,
+            RaiseAiredBeforeTickUseCase(repository, catalog, SqlDelightAiredSnapshotRaiser(db.collectionEntryQueries, dispatchers), tickClock),
+        )
+
+        tick(EpisodeId(show, 1, 1), true)
+
+        collection.observeEntry(show).test {
+            val entry = awaitItem()!!
+            assertEquals(2, entry.seenEpisodes)
+            assertEquals(4, entry.airedEpisodes, "three catalog episodes plus the seen one outside the catalog")
             cancelAndIgnoreRemainingEvents()
         }
     }

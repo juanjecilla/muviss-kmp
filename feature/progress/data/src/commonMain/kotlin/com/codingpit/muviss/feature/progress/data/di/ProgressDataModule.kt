@@ -7,8 +7,11 @@ import com.codingpit.muviss.feature.progress.data.CollectionTitleStatusSource
 import com.codingpit.muviss.feature.progress.data.DefaultProgressApi
 import com.codingpit.muviss.feature.progress.data.ProgressPlayObservers
 import com.codingpit.muviss.feature.progress.data.RegistryEpisodeCatalogSource
+import com.codingpit.muviss.feature.progress.data.SqlDelightAiredSnapshotRaiser
 import com.codingpit.muviss.feature.progress.data.SqlDelightEpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
+import com.codingpit.muviss.feature.progress.domain.AiredBeforeTick
+import com.codingpit.muviss.feature.progress.domain.AiredSnapshotRaiser
 import com.codingpit.muviss.feature.progress.domain.ClearPlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ClearProgressUseCase
 import com.codingpit.muviss.feature.progress.domain.CompletionDetector
@@ -34,6 +37,7 @@ import com.codingpit.muviss.feature.progress.domain.ProgressMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressPlayMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ProgressTicks
+import com.codingpit.muviss.feature.progress.domain.RaiseAiredBeforeTickUseCase
 import com.codingpit.muviss.feature.progress.domain.RecordFirstPlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.RecordPlayUseCase
 import com.codingpit.muviss.feature.progress.domain.RefreshWatchNextCatalogsUseCase
@@ -67,7 +71,10 @@ val progressDataModule: Module = module {
     factory { ObserveSeenEpisodesUseCase(get()) }
     factory { ObserveSeenCountUseCase(get()) }
     factory { ObserveSeenActivityEpochDaysUseCase(get()) }
-    factory { ToggleEpisodeSeenUseCase(get()) }
+    factory { ToggleEpisodeSeenUseCase(get(), get()) }
+    // Raises the library snapshot before every single-episode tick, from every surface (#1115, ADR 0037).
+    single<AiredSnapshotRaiser> { SqlDelightAiredSnapshotRaiser(get<MuvissDatabase>().collectionEntryQueries, get()) }
+    factory<AiredBeforeTick> { RaiseAiredBeforeTickUseCase(get(), get(), get(), get()) }
     factory { TickEpisodeUseCase(get(), get()) }
     factory { TickMovieUseCase(get(), get()) }
     factory { ProgressTicks(get(), get(), get()) }

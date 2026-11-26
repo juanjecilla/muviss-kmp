@@ -1,5 +1,7 @@
 package com.codingpit.muviss.feature.progress.domain
 
+import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.models.EpisodeId
@@ -7,6 +9,7 @@ import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.Season
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /** Observes every progress row for a title, e.g. to render per-episode checkmarks. */
@@ -30,9 +33,58 @@ class ObserveSeenActivityEpochDaysUseCase(private val repository: ProgressReposi
     operator fun invoke(): Flow<Set<Long>> = repository.observeSeenActivityEpochDays()
 }
 
-/** Ticks one episode. */
-class ToggleEpisodeSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(episodeId: EpisodeId, seen: Boolean) = repository.setSeen(episodeId, seen)
+/**
+ * Runs before a single episode is ticked, so the title's snapshot already covers what the tick proves (ADR 0037,
+ * #1115). Before, not after: the snapshot is then never behind the seen count, even for the instant between the two
+ * writes that a Library observer can see. [None] for callers that have no library behind them.
+ */
+fun interface AiredBeforeTick {
+    suspend fun beforeSeen(episodeId: EpisodeId)
+
+    companion object {
+        val None: AiredBeforeTick = AiredBeforeTick { }
+    }
+}
+
+/**
+ * Writes the aired count of a title's library snapshot, never lowering it. Implemented in `:data` over the
+ * `collectionEntry` table, the way the sync engine and the restore raise the same count.
+ */
+fun interface AiredSnapshotRaiser {
+    suspend fun raise(mediaId: MediaId, airedEpisodes: Int)
+}
+
+/** Ticks one episode. A tick on a title whose snapshot is stale raises the snapshot first; see [AiredBeforeTick]. */
+class ToggleEpisodeSeenUseCase(
+    private val repository: ProgressRepository,
+    private val beforeTick: AiredBeforeTick = AiredBeforeTick.None,
+) {
+    suspend operator fun invoke(episodeId: EpisodeId, seen: Boolean) {
+        if (seen) beforeTick.beforeSeen(episodeId)
+        repository.setSeen(episodeId, seen)
+    }
+}
+
+/**
+ * Raises the library snapshot's aired count to the size of the union of the stored catalog's aired episodes and the
+ * title's seen episodes (ADR 0037, #1115). The episode being ticked is not added on its own: only an episode the catalog
+ * says has aired counts, so a tick on an unaired episode cannot inflate the aired count. The union, not the larger of two counts: a
+ * seen episode the catalog does not list still counts. A title with no stored catalog is left alone, because the read
+ * path already floors the stored count at the seen count, so nothing can throw.
+ */
+class RaiseAiredBeforeTickUseCase(
+    private val repository: ProgressRepository,
+    private val catalog: EpisodeCatalogStore,
+    private val raiser: AiredSnapshotRaiser,
+    private val clock: AppClock,
+) : AiredBeforeTick {
+    override suspend fun beforeSeen(episodeId: EpisodeId) {
+        val show = episodeId.show
+        val seasons = catalog.load(listOf(show))[show] ?: return
+        val seen = repository.observeForMedia(show).first().filter { it.seen }.map { it.episodeId }.toSet()
+        val aired = EpisodeOrdering.airedBy(seasons, clock.todayEpochDay()).toSet() + seen
+        raiser.raise(show, aired.size)
+    }
 }
 
 /**
