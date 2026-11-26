@@ -119,8 +119,9 @@ internal class ConfigCatRemoteConfig(
      * is around it to take the fence: this wrapper does. [requestedAt] is set by [refreshIfStale] under its lock,
      * before `forceRefresh`, and starts at the count at construction, so a write can never be unfenced.
      *
-     * Known gap, not closed here: the SDK runs each fetch in its own coroutine. If [refreshIfStale] is cancelled
-     * mid-fetch, that write still lands later, checked against whatever count is armed then.
+     * Known gap, tracked in #1080 and not closed here: the SDK runs each fetch in its own coroutine. If
+     * [refreshIfStale] is cancelled mid-fetch, that write still lands later, checked against whatever count is
+     * armed then.
      */
     private class FencedConfigCache(
         private val delegate: ConfigCache,
