@@ -103,3 +103,31 @@ fun Modifier.extendIntoTopInset(top: Dp): Modifier = layout { measurable, constr
     )
     layout(placeable.width, height) { placeable.place(0, -extra) }
 }
+
+/**
+ * Lets a screen draw sideways into the side bands that [ScreenInsets] padded, by [left] and [right], so a black
+ * full-bleed screen does not leave the theme colour beside it on a landscape phone with a cutout.
+ *
+ * The horizontal counterpart of [extendIntoTopInset]: the child is measured to fill the widened band and placed [left]
+ * to the left of this node's origin, and this node keeps the width it was given. The child is forced to the full width,
+ * so it must not ask for less (use `fillMaxSize` or a weight). A zero extension places the child as it is, and so does an
+ * unbounded width: there is no edge to extend to, so the modifier does nothing rather than guess.
+ */
+fun Modifier.extendIntoSideInsets(left: Dp, right: Dp): Modifier = layout { measurable, constraints ->
+    val extraLeft = if (left > 0.dp && constraints.hasBoundedWidth) left.roundToPx() else 0
+    val extraRight = if (right > 0.dp && constraints.hasBoundedWidth) right.roundToPx() else 0
+    if (extraLeft + extraRight == 0) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    val width = constraints.maxWidth
+    val placeable = measurable.measure(
+        Constraints(
+            minWidth = width + extraLeft + extraRight,
+            maxWidth = width + extraLeft + extraRight,
+            minHeight = constraints.minHeight,
+            maxHeight = constraints.maxHeight,
+        ),
+    )
+    layout(width, placeable.height) { placeable.place(-extraLeft, 0) }
+}
