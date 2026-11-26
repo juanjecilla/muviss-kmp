@@ -10,13 +10,16 @@
     those wake-ups would find nothing changed.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:description="@string/widget_description"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minHeight="60dp"
     android:minResizeHeight="60dp"
     android:minResizeWidth="180dp"
     android:minWidth="180dp"
-    android:previewImage="@mipmap/ic_launcher"
+    android:previewImage="@drawable/widget_preview"
+    tools:ignore="UnusedAttribute"
+    android:previewLayout="@layout/widget_preview"
     android:resizeMode="horizontal|vertical"
     android:targetCellHeight="2"
     android:targetCellWidth="4"

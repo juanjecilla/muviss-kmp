@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_description">Las series que tienes a medias, con un toque para marcarlas.</string>
+    <string name="widget_preview_kicker">A continuación</string>
+    <string name="widget_preview_title">Tu próximo episodio</string>
+    <string name="widget_preview_episode">T2 · E5</string>
     <string name="widget_nothing_title">Nada en curso</string>
     <string name="widget_nothing_body">Empieza a ver algo y aparecerá aquí.</string>
     <string name="widget_no_catalog_title">Abre Muviss una vez</string>

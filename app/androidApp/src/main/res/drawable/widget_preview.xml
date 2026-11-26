@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker preview (API 24-30; API 31+ uses @layout/widget_preview).
+     Drawn from the Muviss dark palette and the Watch next widget's layout: a poster,
+     a title, the episode, progress, and the one-tap tick. Coordinates are dp on a
+     240x120 card, the 4x2 cell target. No artwork: nothing here is a real title. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="100dp"
+    android:viewportWidth="240"
+    android:viewportHeight="120">
+    <path
+        android:fillColor="#FF211E18"
+        android:pathData="M12,0 H228 A12,12 0 0 1 240,12 V108 A12,12 0 0 1 228,120 H12 A12,12 0 0 1 0,108 V12 A12,12 0 0 1 12,0 Z" />
+    <path
+        android:fillColor="#FF35322C"
+        android:pathData="M20,16 H68 A8,8 0 0 1 76,24 V96 A8,8 0 0 1 68,104 H20 A8,8 0 0 1 12,96 V24 A8,8 0 0 1 20,16 Z" />
+    <path
+        android:fillColor="#FFFFCB6B"
+        android:pathData="M93,22 H131 A3,3 0 0 1 134,25 V25 A3,3 0 0 1 131,28 H93 A3,3 0 0 1 90,25 V25 A3,3 0 0 1 93,22 Z" />
+    <path
+        android:fillColor="#FFE9E2D4"
+        android:pathData="M95,36 H165 A5,5 0 0 1 170,41 V41 A5,5 0 0 1 165,46 H95 A5,5 0 0 1 90,41 V41 A5,5 0 0 1 95,36 Z" />
+    <path
+        android:fillColor="#FFE9E2D4"
+        android:pathData="M95,52 H143 A5,5 0 0 1 148,57 V57 A5,5 0 0 1 143,62 H95 A5,5 0 0 1 90,57 V57 A5,5 0 0 1 95,52 Z" />
+    <path
+        android:fillColor="#FFCFC6B4"
+        android:pathData="M93,72 H123 A3,3 0 0 1 126,75 V75 A3,3 0 0 1 123,78 H93 A3,3 0 0 1 90,75 V75 A3,3 0 0 1 93,72 Z" />
+    <path
+        android:fillColor="#FF4C463A"
+        android:pathData="M92,86 H174 A2,2 0 0 1 176,88 V88 A2,2 0 0 1 174,90 H92 A2,2 0 0 1 90,88 V88 A2,2 0 0 1 92,86 Z" />
+    <path
+        android:fillColor="#FF9CD3C0"
+        android:pathData="M92,86 H144 A2,2 0 0 1 146,88 V88 A2,2 0 0 1 144,90 H92 A2,2 0 0 1 90,88 V88 A2,2 0 0 1 92,86 Z" />
+    <path
+        android:fillColor="#FFFFCB6B"
+        android:pathData="M190,60 A18,18 0 1 0 226,60 A18,18 0 1 0 190,60 Z" />
+    <path
+        android:pathData="M199,60 L205,66 L217,54"
+        android:strokeColor="#FF432C00"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="3" />
+</vector>
