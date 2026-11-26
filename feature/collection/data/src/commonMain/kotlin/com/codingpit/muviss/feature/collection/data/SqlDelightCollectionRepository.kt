@@ -8,6 +8,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.epochMsAtStartOfDay
+import com.codingpit.muviss.core.common.localEpochDayOf
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.database.CollectionEntryQueries
 import com.codingpit.muviss.feature.collection.domain.CollectionEntry
@@ -74,8 +75,7 @@ class SqlDelightCollectionRepository(
             val now = clock.nowEpochMs()
             val today = clock.todayEpochDay()
             emit(today)
-            val nextMidnight = epochMsAtStartOfDay(today + 1) - clock.utcOffsetMsAt(now)
-            delay((nextMidnight - now).coerceAtLeast(1L))
+            delay((nextLocalMidnightMs(clock, now, today) - now).coerceAtLeast(1L))
         }
     }
 
@@ -301,3 +301,26 @@ private fun MediaDetails.estimatedRuntimeMinutes(): Int? = when (type) {
 }
 
 private fun List<Int>.averageOrNull(): Int? = if (isEmpty()) null else (sum().toDouble() / size).roundToInt()
+
+/**
+ * The instant the local day after [today] begins, for the wake-up of [localDays] (#951). It is the local midnight, read
+ * with the offset in force at that midnight rather than at [nowMs]: a switch between the two moves it. When the clock
+ * jumps over the midnight itself (a gap, so no midnight exists), the day begins at the jump. That instant is found by
+ * search, not guessed, so the wake-up is never late and never a spin.
+ */
+internal fun nextLocalMidnightMs(clock: AppClock, nowMs: Long, today: Long): Long {
+    val tomorrow = epochMsAtStartOfDay(today + 1)
+    val firstGuess = tomorrow - clock.utcOffsetMsAt(nowMs)
+    val midnight = tomorrow - clock.utcOffsetMsAt(firstGuess)
+    if (clock.localEpochDayOf(midnight) > today) return midnight
+
+    // The midnight is in a gap. The new day starts at the first instant after now whose local day has advanced.
+    var lo = nowMs
+    var hi = maxOf(firstGuess, nowMs + 1)
+    if (clock.localEpochDayOf(hi) <= today) return hi
+    while (hi - lo > 1) {
+        val mid = lo + (hi - lo) / 2
+        if (clock.localEpochDayOf(mid) > today) hi = mid else lo = mid
+    }
+    return hi
+}

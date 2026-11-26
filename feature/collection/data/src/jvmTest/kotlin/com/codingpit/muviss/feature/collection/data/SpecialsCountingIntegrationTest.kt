@@ -205,4 +205,46 @@ class SpecialsCountingIntegrationTest {
         database.setSpecialsCounted(true)
         assertEquals(setOf(1_000L), progress.observeSeenActivityEpochDays().first())
     }
+
+    /** A provider that has not caught up: the regular episodes are not aired yet, and the special is. */
+    private fun laggingDetails() = MediaDetails(
+        summary = MediaSummary(show, "Show"),
+        productionStatus = ProductionStatus.RETURNING,
+        seasons = listOf(
+            Season(0, "Specials", listOf(Episode(special, 0, 1, "Special", airDateEpochDay = 900))),
+            Season(1, "Season 1", listOf(Episode(regular1, 1, 1, "E1", airDateEpochDay = 5_000), Episode(regular2, 1, 2, "E2", airDateEpochDay = 5_000))),
+        ),
+    )
+
+    /**
+     * #938 review: the refresh floor counted every seen tick, so two regular ticks plus a special floored the snapshot at
+     * three. The snapshot holds regular episodes only, whatever the setting and whether the special is cached.
+     */
+    @Test
+    fun a_refresh_floor_ignores_a_seen_special_whatever_the_setting_and_cache() = runTest {
+        for (counted in listOf(false, true)) {
+            for (cached in listOf(false, true)) {
+                val library = library()
+                library.database.setSpecialsCounted(counted)
+                library.repository.upsertSnapshot(details())
+                if (cached) library.database.cacheSpecial()
+                library.database.tick(regular1)
+                library.database.tick(regular2)
+                library.database.tick(special)
+
+                library.repository.upsertSnapshot(laggingDetails())
+
+                val stored = library.database.collectionEntryQueries.selectById(show.toString()).awaitAsOne()
+                assertEquals(2L, stored.airedEpisodes, "aired floor, counted=$counted cached=$cached")
+                assertEquals(2L, stored.totalEpisodes, "total floor, counted=$counted cached=$cached")
+
+                val expected = when {
+                    !counted -> CountedProgress(seen = 2, aired = 2)
+                    cached -> CountedProgress(seen = 3, aired = 3)
+                    else -> CountedProgress(seen = 2, aired = 2)
+                }
+                assertEquals(expected, library.entry().counted, "counted=$counted cached=$cached")
+            }
+        }
+    }
 }

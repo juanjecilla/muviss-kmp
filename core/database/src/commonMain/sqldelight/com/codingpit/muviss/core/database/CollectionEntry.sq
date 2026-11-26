@@ -201,8 +201,8 @@ SELECT COUNT(*) FROM episodeProgress WHERE mediaId = :mediaId AND seen = 1 AND (
 -- updates a live row: a tombstone must not be revived by a device that merely
 -- looked at the title (adding a title back goes through `upsert`).
 --
--- `airedEpisodes` and `totalEpisodes` are floored at the number of episodes
--- already ticked. `WatchProgress` requires `seen <= aired` and throws; ticks
+-- `airedEpisodes` and `totalEpisodes` are floored at the number of regular episodes
+-- already ticked (Regular seasons only, #938: a special tick never moves the snapshot). `WatchProgress` requires `seen <= aired` and throws; ticks
 -- can outrun a snapshot when another device ticked an episode this device's
 -- provider data has not yet caught up to.
 updateSnapshot:
@@ -211,8 +211,8 @@ SET title = :title,
     posterUrl = :posterUrl,
     releaseYear = :releaseYear,
     productionStatus = :productionStatus,
-    totalEpisodes = MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1)),
-    airedEpisodes = MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1)),
+    totalEpisodes = MAX(:totalEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0))),
+    airedEpisodes = MAX(:airedEpisodes, (SELECT COUNT(*) FROM episodeProgress WHERE episodeProgress.mediaId = collectionEntry.mediaId AND episodeProgress.seen = 1 AND (episodeProgress.seasonNumber <> 0 OR episodeProgress.episodeNumber = 0))),
     genres = :genres,
     runtimeMinutes = :runtimeMinutes
 WHERE mediaId = :mediaId AND deleted = 0;
