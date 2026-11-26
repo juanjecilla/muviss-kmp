@@ -352,6 +352,25 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
+    fun a_claim_committed_before_a_cancellation_keeps_the_entry_its_claim_names() = runTest {
+        // #1076: the claim row commits, then the coroutine is cancelled before record() returns. The rollback must not
+        // remove the entry the stored claim names, or the decision is left with a claim for an entry that is gone.
+        val h = harness()
+        h.repository.afterClaimWrite = { awaitCancellation() }
+        var outcome: Result<Unit>? = null
+        val job = launch { outcome = h.useCase(endedShow, TriageVerdict.CAUGHT_UP) }
+        runCurrent()
+        job.cancel()
+        job.join()
+
+        assertNull(outcome, "a cancelled verdict must throw the cancellation (#1079)")
+        val stored = assertNotNull(h.repository.decisions.value[endedShow.id])
+        assertTrue(stored.createdEntry, "the committed claim is kept")
+        assertEquals(1, h.collection.summaries.value.size, "the entry the committed claim names survives the rollback (#1076)")
+        assertEquals(h.collection.summaries.value.single().addedAtEpochMs, stored.entryAddedAtEpochMs)
+    }
+
+    @Test
     fun a_failed_rollback_does_not_replace_the_failure_that_caused_it() = runTest {
         val h = harness()
         h.repository.failClaimWrite = IllegalStateException("disk full")
