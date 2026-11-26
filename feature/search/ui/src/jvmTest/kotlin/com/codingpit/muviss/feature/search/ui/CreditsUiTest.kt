@@ -16,10 +16,21 @@ import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.PersonId
+import java.util.Locale
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class CreditsUiTest {
+
+    private val originalLocale: Locale = Locale.getDefault()
+
+    @BeforeTest
+    fun pinEnglish() = Locale.setDefault(Locale.forLanguageTag("en-US"))
+
+    @AfterTest
+    fun restoreLocale() = Locale.setDefault(originalLocale)
 
     private fun credit(id: String, name: String, character: String? = null, job: String? = null, department: String? = null) = Credit(PersonId.tmdb(id), name, character = character, job = job, department = department)
 
@@ -106,5 +117,55 @@ class CreditsUiTest {
 
         onNode(hasScrollToKeyAction()).performScrollToKey("cast-${CAST_PREVIEW_SIZE + 4}")
         onNodeWithText("Person ${CAST_PREVIEW_SIZE + 5}").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_full_credits_name_a_crew_job_in_the_app_language() = withSpanish {
+        val crew = MediaDetails(
+            summary = MediaSummary(MediaId.tmdbMovie("3"), "Scored"),
+            crew = listOf(
+                credit("20", "Score Person", job = "Original Music Composer", department = "Sound"),
+                credit("21", "Cam Person", job = "Director of Photography", department = "Camera"),
+            ),
+        )
+        runComposeUiTest {
+            setContent { MuvissTheme(darkTheme = false) { CreditsSheet(crew, onDismiss = {}, onOpenPerson = null) } }
+
+            onNodeWithText("Compositor de la música original").assertIsDisplayed()
+            onNodeWithText("Director de fotografía").assertIsDisplayed()
+            onNodeWithText("Original Music Composer").assertDoesNotExist()
+        }
+    }
+
+    @Test
+    fun a_crew_job_the_app_has_no_name_for_is_shown_as_the_source_gave_it() = withSpanish {
+        val crew = MediaDetails(
+            summary = MediaSummary(MediaId.tmdbMovie("4"), "Unmapped"),
+            crew = listOf(credit("22", "Rig Person", job = "Chaperone", department = "Crew")),
+        )
+        runComposeUiTest {
+            setContent { MuvissTheme(darkTheme = false) { CreditsSheet(crew, onDismiss = {}, onOpenPerson = null) } }
+
+            onNodeWithText("Chaperone").assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun the_full_credits_keep_english_job_names_in_english() = withEnglish {
+        runComposeUiTest {
+            setContent { MuvissTheme(darkTheme = false) { CreditsSheet(movie, onDismiss = {}, onOpenPerson = null) } }
+
+            onNodeWithText("Director").assertIsDisplayed()
+            onNodeWithText("Screenplay").assertIsDisplayed()
+        }
+    }
+
+    private fun withSpanish(block: () -> Unit) = withLocaleTag("es-ES", block)
+
+    private fun withEnglish(block: () -> Unit) = withLocaleTag("en-US", block)
+
+    private fun withLocaleTag(tag: String, block: () -> Unit) {
+        Locale.setDefault(Locale.forLanguageTag(tag))
+        block()
     }
 }
