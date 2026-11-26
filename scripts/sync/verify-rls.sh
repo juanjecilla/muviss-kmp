@@ -11,6 +11,12 @@
 # auth.uid() is null for an unauthenticated request, so `using (auth.uid() =
 # user_id)` matches no rows and PostgREST returns an empty set rather than an
 # error. A 200 with rows in it would be the failure.
+#
+# Since EPIC 32 (migration 20261126000100) anon holds no table privilege at
+# all, so the expected read answer becomes a 401 with PostgREST code 42501
+# ("permission denied for table"). Both are accepted as OK: a project that has
+# not applied that migration yet still answers 200 []. `entitlement` (ADR 0019)
+# is checked too — anon must neither read nor write it.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=scripts/sync/lib.sh
@@ -22,17 +28,20 @@ ANON=$(anon_key) || { echo "could not read the anon key"; exit 1; }
 
 fail=0
 
-echo "=== unauthenticated reads (expect: 200 with []) ==="
+echo "=== unauthenticated reads (expect: 200 with [], or 401 permission denied) ==="
 # Every table the app syncs. The pgTAP suite (supabase/tests/database/
 # sync_rls.test.sql) checks the same policies from inside, with several real
 # accounts, on every PR; this is the check that the *hosted* project matches.
 TABLES="collection_entry episode_progress media_list list_entry triage_decision episode_play
-triage_snooze taste_profile cowatch_link cowatch_pool_entry"
+triage_snooze taste_profile cowatch_link cowatch_pool_entry entitlement"
 for t in $TABLES; do
   if http_call "$REST/$t?select=*" -H "apikey: $ANON"; then
     body=$(printf '%s' "$HTTP_BODY" | head -c 80)
     printf '%-18s HTTP %s  %s' "$t" "$HTTP_CODE" "$body"
     if [ "$body" = "[]" ]; then echo "  OK"; else echo "  <-- LEAK"; fail=1; fi
+  elif [ "$HTTP_CODE" = 401 ] && printf '%s' "$HTTP_BODY" | grep -q '42501'; then
+    # entitlement is granted to authenticated only (#279 / #283): anon has no privilege at all.
+    printf '%-18s HTTP %s  OK (no privilege)\n' "$t" "$HTTP_CODE"
   else
     printf '%-18s HTTP %s  <-- READ FAILED, so this table is not verified\n' "$t" "$HTTP_CODE"; fail=1
   fi
@@ -65,6 +74,13 @@ probe_write collection_entry \
   '{"media_id":"rls-probe","media_type":"MOVIE","title":"probe","production_status":"RELEASED","added_at_epoch_ms":1,"updated_at_epoch_ms":1}'
 probe_write cowatch_pool_entry \
   '{"user_id":"00000000-0000-0000-0000-000000000000","recipient_id":"00000000-0000-0000-0000-000000000000","media_id":"rls-probe","media_type":"MOVIE","title":"probe","updated_at_epoch_ms":1}'
+
+# Only the revenuecat-webhook Edge Function (service role) may write this.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$REST/entitlement" \
+  -H "apikey: $ANON" -H "Content-Type: application/json" \
+  -d '{"user_id":"00000000-0000-0000-0000-000000000000","active":true}')
+printf 'POST entitlement      -> HTTP %s' "$code"
+if [ "$code" -ge 400 ]; then echo "  OK"; else echo "  <-- ACCEPTED, anyone can grant themselves sync"; fail=1; fi
 
 echo
 [ "$fail" -eq 0 ] && echo "RLS looks correct." || echo "RLS FAILED — do not ship this."
