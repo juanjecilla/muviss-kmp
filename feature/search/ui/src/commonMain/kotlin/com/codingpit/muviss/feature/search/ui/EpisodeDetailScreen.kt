@@ -177,7 +177,7 @@ internal fun EpisodeBody(
             .verticalScroll(scroll)
             .padding(bottom = MuvissSpacing.bottomContent),
     ) {
-        EpisodeStill(details, onOpenImage)
+        EpisodeStill(details, onOpenImage, sideBands = sides.left + sides.right)
         Column(
             Modifier
                 .padding(start = sides.start + MuvissSpacing.l, end = sides.end + MuvissSpacing.l)
@@ -212,6 +212,9 @@ internal const val EPISODE_TITLE_TAG = "episodeTitle"
 private fun EpisodeStill(
     details: EpisodeDetails,
     onOpenImage: (ImageKind, String) -> Unit,
+    // The cutout bands the still runs into (#1089). The width includes them, the 16:9 height does not: the frame stays
+    // the height it had inside the safe area, so the title below it does not move.
+    sideBands: Dp = 0.dp,
     // The still draws under the status bar (the route is immersive), so it grows by the inset.
     // A parameter because Skiko reports zero insets: tests pass a synthetic value.
     topInset: Dp = immersiveTopPadding(),
@@ -220,7 +223,7 @@ private fun EpisodeStill(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(maxWidth * 9f / 16f + topInset)
+                .height((maxWidth - sideBands) * 9f / 16f + topInset)
                 .testTag(EPISODE_STILL_TAG)
                 .trackImmersiveArtwork()
                 .opensImageViewer(drawnImageUrl(details.stillUrl, PosterSize.Detail), ImageKind.Still, onOpenImage)

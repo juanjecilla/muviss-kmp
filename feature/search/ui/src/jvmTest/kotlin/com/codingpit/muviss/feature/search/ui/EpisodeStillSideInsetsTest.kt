@@ -39,6 +39,7 @@ class EpisodeStillSideInsetsTest {
         val still = onNodeWithTag(EPISODE_STILL_TAG).getBoundsInRoot()
         assertEquals((-40).dp, still.left, "the still starts under the left cutout band, not at the scroll's edge")
         assertEquals(424.dp, still.right, "the still ends under the right cutout band")
+        assertEquals(225.dp, still.bottom - still.top, "the frame is 16:9 of the safe width, so the title keeps its place")
         // The safe area is 0..400dp; the bands are the 40dp and 24dp outside it. Text starts a page gutter inside it.
         val title = onNodeWithTag(EPISODE_TITLE_TAG).getBoundsInRoot()
         assertEquals(MuvissSpacing.l, title.left, "text starts a page gutter inside the left safe edge")
@@ -54,6 +55,7 @@ class EpisodeStillSideInsetsTest {
         val still = onNodeWithTag(EPISODE_STILL_TAG).getBoundsInRoot()
         assertEquals((-40).dp, still.left, "the still still runs under the physical left cutout")
         assertEquals(424.dp, still.right)
+        assertEquals(225.dp, still.bottom - still.top)
         // In RTL the logical start is the right band, so the title (start-aligned) ends a gutter inside the right edge.
         val title = onNodeWithTag(EPISODE_TITLE_TAG).getBoundsInRoot()
         assertEquals(400.dp - MuvissSpacing.l, title.right, "text starts a page gutter inside the right safe edge")
