@@ -10,6 +10,9 @@ import com.codingpit.muviss.models.MediaType
  * These are a fixed snapshot of TMDB's genre lists, not a live catalogue: a language outside en and es
  * matches only through the live catalogue, and a name TMDB has renamed since this was written degrades
  * to no id. TMDB numbers movie and TV genres separately, so each type has its own list.
+ *
+ * Checked against TMDB's `/genre/{movie,tv}/list` in en-US and es-ES on 2026-11-26; the responses are
+ * checked in under `jvmTest/resources/tmdb-genres`, and `BundledGenreNamesTest` pins this table to them.
  */
 internal object BundledGenreNames {
 
@@ -43,12 +46,14 @@ internal object BundledGenreNames {
         genre("10768", "War & Politics"), genre("37", "Western"),
     )
 
+    // TMDB's es-ES TV list leaves six names in English (it has no translation for them), and a snapshot
+    // stores whatever TMDB returned at save time, so these are the names to match, not Spanish ones.
     private val TV_ES = listOf(
-        genre("10759", "Acción y Aventura"), genre("16", "Animación"), genre("35", "Comedia"), genre("80", "Crimen"),
-        genre("99", "Documental"), genre("18", "Drama"), genre("10751", "Familia"), genre("10762", "Infantil"),
-        genre("9648", "Misterio"), genre("10763", "Noticias"), genre("10764", "Reality"),
-        genre("10765", "Sci-Fi y Fantasía"), genre("10766", "Telenovela"), genre("10767", "Talk"),
-        genre("10768", "Guerra y política"), genre("37", "Western"),
+        genre("10759", "Action & Adventure"), genre("16", "Animación"), genre("35", "Comedia"), genre("80", "Crimen"),
+        genre("99", "Documental"), genre("18", "Drama"), genre("10751", "Familia"), genre("10762", "Kids"),
+        genre("9648", "Misterio"), genre("10763", "News"), genre("10764", "Reality"),
+        genre("10765", "Sci-Fi & Fantasy"), genre("10766", "Soap"), genre("10767", "Talk"),
+        genre("10768", "War & Politics"), genre("37", "Western"),
     )
 
     private fun genre(id: String, name: String) = Genre(id = id, name = name)
