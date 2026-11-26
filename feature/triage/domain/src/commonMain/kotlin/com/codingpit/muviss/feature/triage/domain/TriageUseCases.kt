@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.triage.domain
 
 import com.codingpit.muviss.core.common.AppClock
+import com.codingpit.muviss.core.common.crash.CrashReporter
 import com.codingpit.muviss.core.common.flags.SnoozePeriod
 import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.localTodayEpochDay
@@ -199,9 +200,10 @@ class RecordDecisionUseCase(
 
     /**
      * Takes back the entry this attempt brought in, after a failure that left no claim for it (#1071). Runs under
-     * [NonCancellable] because the usual trigger is the person leaving the screen mid-verdict. A failed rollback is
-     * swallowed so the original failure is the one thrown: the entry then stays unclaimed, the bug this guards
-     * against, and is recorded as a known residual in ADR 0010.
+     * [NonCancellable] because the usual trigger is the person leaving the screen mid-verdict. A failed rollback does not
+     * replace the original failure, which is the one thrown: the entry then stays unclaimed, the bug this guards
+     * against. The rollback failure itself is reported to [CrashReporter] instead of being dropped (#1076), and the
+     * residual is recorded in ADR 0010.
      *
      * Known residual (#1076): a person's own add from Detail takes no triage lock, so one landing in the milliseconds
      * between the membership check and this attempt's add is indistinguishable from this attempt's add. If the claim
@@ -212,8 +214,8 @@ class RecordDecisionUseCase(
             val liveStamp = addedAtOf(mediaId) ?: return@withContext
             // A stamp read after the add must still match, so an entry someone else added in the meantime is not removed.
             if (ownStamp != null && liveStamp != ownStamp) return@withContext
-            // A failed rollback cannot be reported over the failure that caused it; the entry then stays unclaimed (ADR 0010).
-            runCatching { collectionApi.remove(mediaId) }
+            // Reported, not thrown: the failure that caused the rollback is the one the caller must see (#1076).
+            runCatching { collectionApi.remove(mediaId) }.onFailure { CrashReporter.recordException(it) }
         }
     }
 

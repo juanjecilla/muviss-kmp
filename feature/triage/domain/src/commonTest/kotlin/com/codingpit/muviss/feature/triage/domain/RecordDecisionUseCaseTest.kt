@@ -317,6 +317,18 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
+    fun a_failed_rollback_does_not_replace_the_failure_that_caused_it() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        h.collection.failRemove = IllegalStateException("remove failed too")
+
+        val failure = h.useCase(endedShow, TriageVerdict.CAUGHT_UP).exceptionOrNull()
+
+        assertEquals("disk full", failure?.message, "the original failure is the one thrown; the rollback failure is reported")
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+    }
+
+    @Test
     fun a_failed_claim_write_leaves_an_entry_the_person_already_had_alone() = runTest {
         val h = harness()
         h.collection.add(endedDetails)
