@@ -2,6 +2,10 @@
     <string name="app_name" translatable="false">Muviss</string>
     <!-- Shown under the widget's preview in the launcher's widget picker. -->
     <string name="widget_description">The shows you are part-way through, with a one-tap tick.</string>
+    <!-- Sample text in the widget picker preview (widget_preview.xml). Not a real title. -->
+    <string name="widget_preview_kicker">Up next</string>
+    <string name="widget_preview_title">Your next episode</string>
+    <string name="widget_preview_episode">S2 · E5</string>
     <string name="widget_nothing_title">Nothing in progress</string>
     <string name="widget_nothing_body">Start watching something and it will show up here.</string>
     <string name="widget_no_catalog_title">Open Muviss once</string>
