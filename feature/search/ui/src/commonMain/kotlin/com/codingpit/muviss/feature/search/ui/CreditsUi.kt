@@ -59,6 +59,45 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.department_sou
 import com.codingpit.muviss.feature.search.ui.generated.resources.department_visual_effects
 import com.codingpit.muviss.feature.search.ui.generated.resources.department_writing
 import com.codingpit.muviss.feature.search.ui.generated.resources.directed_by
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_art_direction
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_assistant_director
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_associate_producer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_author
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_camera_operator
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_casting_director
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_characters
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_co_producer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_co_writer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_costume_design
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_creator
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_director
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_director_of_photography
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_editor
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_executive_producer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_gaffer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_hairstylist
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_key_grip
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_line_producer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_makeup_artist
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_music_supervisor
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_novel
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_original_music_composer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_original_story
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_producer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_production_design
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_screenplay
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_script_editor
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_second_unit_director
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_set_decoration
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_sound_designer
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_story
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_story_editor
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_storyboard_artist
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_stunt_coordinator
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_supervising_editor
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_teleplay
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_visual_effects_supervisor
+import com.codingpit.muviss.feature.search.ui.generated.resources.job_writer
 import com.codingpit.muviss.models.Credit
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaType
@@ -251,7 +290,7 @@ internal fun CreditsSheet(
                     )
                 }
                 itemsIndexed(credits, key = { index, _ -> "dept-$department-$index" }, contentType = { _, _ -> "credit" }) { _, credit ->
-                    CreditListRow(credit, roleText(credit.job, credit.episodeCount), onOpenPerson)
+                    CreditListRow(credit, roleText(credit.job?.let { jobLabel(it) }, credit.episodeCount), onOpenPerson)
                 }
             }
         }
@@ -289,6 +328,57 @@ private fun CreditListRow(credit: Credit, subtitle: String?, onOpenPerson: ((Per
 private val DEPARTMENT_RANK = listOf("Creator", "Directing", "Writing", "Production", "Camera", "Editing", "Sound", "Art", "Costume & Make-Up", "Visual Effects", "Lighting", "Crew")
 
 private val DEPARTMENT_ORDER = compareBy<String>({ DEPARTMENT_RANK.indexOf(it).let { rank -> if (rank < 0) Int.MAX_VALUE else rank } }, { it })
+
+/**
+ * The job in the app's language, for a credit's job under "See all". TMDB sends job names in English only, so
+ * only the common ones are named here; any other job is shown as the source gave it (#995).
+ */
+@Composable
+internal fun jobLabel(job: String): String {
+    val res = when (job) {
+        "Director" -> Res.string.job_director
+        "Assistant Director" -> Res.string.job_assistant_director
+        "Second Unit Director" -> Res.string.job_second_unit_director
+        "Writer" -> Res.string.job_writer
+        "Screenplay" -> Res.string.job_screenplay
+        "Story" -> Res.string.job_story
+        "Original Story" -> Res.string.job_original_story
+        "Characters" -> Res.string.job_characters
+        "Novel" -> Res.string.job_novel
+        "Teleplay" -> Res.string.job_teleplay
+        "Co-Writer" -> Res.string.job_co_writer
+        "Author" -> Res.string.job_author
+        "Creator" -> Res.string.job_creator
+        "Story Editor" -> Res.string.job_story_editor
+        "Script Editor" -> Res.string.job_script_editor
+        "Producer" -> Res.string.job_producer
+        "Executive Producer" -> Res.string.job_executive_producer
+        "Co-Producer" -> Res.string.job_co_producer
+        "Associate Producer" -> Res.string.job_associate_producer
+        "Line Producer" -> Res.string.job_line_producer
+        "Casting Director" -> Res.string.job_casting_director
+        "Editor" -> Res.string.job_editor
+        "Supervising Editor" -> Res.string.job_supervising_editor
+        "Director of Photography" -> Res.string.job_director_of_photography
+        "Camera Operator" -> Res.string.job_camera_operator
+        "Gaffer" -> Res.string.job_gaffer
+        "Key Grip" -> Res.string.job_key_grip
+        "Original Music Composer" -> Res.string.job_original_music_composer
+        "Music Supervisor" -> Res.string.job_music_supervisor
+        "Sound Designer" -> Res.string.job_sound_designer
+        "Production Design" -> Res.string.job_production_design
+        "Art Direction" -> Res.string.job_art_direction
+        "Set Decoration" -> Res.string.job_set_decoration
+        "Costume Design" -> Res.string.job_costume_design
+        "Makeup Artist" -> Res.string.job_makeup_artist
+        "Hairstylist" -> Res.string.job_hairstylist
+        "Visual Effects Supervisor" -> Res.string.job_visual_effects_supervisor
+        "Stunt Coordinator" -> Res.string.job_stunt_coordinator
+        "Storyboard Artist" -> Res.string.job_storyboard_artist
+        else -> return job
+    }
+    return stringResource(res)
+}
 
 /** The department in the app's language. A name this app has no string for is shown as the source gave it. */
 @Composable

@@ -192,4 +192,45 @@
     <string name="link_wikipedia">Wikipedia</string>
     <string name="link_wikipedia_english">Wikipedia (English)</string>
     <string name="link_tmdb">TMDB</string>
+
+    <!-- TMDB job names shown under See all (#995). A job not listed here is shown as TMDB gave it. -->
+    <string name="job_director">Director</string>
+    <string name="job_assistant_director">Assistant Director</string>
+    <string name="job_second_unit_director">Second Unit Director</string>
+    <string name="job_writer">Writer</string>
+    <string name="job_screenplay">Screenplay</string>
+    <string name="job_story">Story</string>
+    <string name="job_original_story">Original Story</string>
+    <string name="job_characters">Characters</string>
+    <string name="job_novel">Novel</string>
+    <string name="job_teleplay">Teleplay</string>
+    <string name="job_co_writer">Co-Writer</string>
+    <string name="job_author">Author</string>
+    <string name="job_creator">Creator</string>
+    <string name="job_story_editor">Story Editor</string>
+    <string name="job_script_editor">Script Editor</string>
+    <string name="job_producer">Producer</string>
+    <string name="job_executive_producer">Executive Producer</string>
+    <string name="job_co_producer">Co-Producer</string>
+    <string name="job_associate_producer">Associate Producer</string>
+    <string name="job_line_producer">Line Producer</string>
+    <string name="job_casting_director">Casting Director</string>
+    <string name="job_editor">Editor</string>
+    <string name="job_supervising_editor">Supervising Editor</string>
+    <string name="job_director_of_photography">Director of Photography</string>
+    <string name="job_camera_operator">Camera Operator</string>
+    <string name="job_gaffer">Gaffer</string>
+    <string name="job_key_grip">Key Grip</string>
+    <string name="job_original_music_composer">Original Music Composer</string>
+    <string name="job_music_supervisor">Music Supervisor</string>
+    <string name="job_sound_designer">Sound Designer</string>
+    <string name="job_production_design">Production Design</string>
+    <string name="job_art_direction">Art Direction</string>
+    <string name="job_set_decoration">Set Decoration</string>
+    <string name="job_costume_design">Costume Design</string>
+    <string name="job_makeup_artist">Makeup Artist</string>
+    <string name="job_hairstylist">Hairstylist</string>
+    <string name="job_visual_effects_supervisor">Visual Effects Supervisor</string>
+    <string name="job_stunt_coordinator">Stunt Coordinator</string>
+    <string name="job_storyboard_artist">Storyboard Artist</string>
 </resources>
