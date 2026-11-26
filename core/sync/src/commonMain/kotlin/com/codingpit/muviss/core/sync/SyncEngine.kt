@@ -272,7 +272,7 @@ class SyncEngine(
         // carry no live grant (ADR 0019). The same refusal answers a write the
         // policy forbids for any other reason — a forged co-watch row is the
         // known one — and that stays a failure.
-        if (failure.isWriteRefusal() && !credentialsGrantSync()) return@getOrElse SyncOutcome.NotEntitled
+        if (failure.isSyncWriteRefusal() && !credentialsGrantSync()) return@getOrElse SyncOutcome.NotEntitled
         val reason = SyncFailureReason.classify(failure)
         val detail = failure.message ?: failure::class.simpleName ?: "Sync failed"
         recordFailure(reason, detail)
@@ -353,17 +353,6 @@ class SyncEngine(
         if (credentialsGrantSync()) return true
         backend.refreshSession().getOrThrow()
         return credentialsGrantSync()
-    }
-
-    private fun Throwable.isWriteRefusal(): Boolean {
-        var current: Throwable? = this
-        var depth = 0
-        while (current != null && depth < MAX_CAUSE_DEPTH) {
-            if (current is SyncWriteRefusedException) return true
-            current = current.cause
-            depth++
-        }
-        return false
     }
 
     /**
@@ -463,7 +452,6 @@ class SyncEngine(
 }
 
 private const val OUTCOME_FAILED = "FAILED"
-private const val MAX_CAUSE_DEPTH = 8
 
 /** The outcome of [SyncEngine.deleteAccount]. Copy keys off [Failed.reason]; there is no text to show. */
 sealed interface AccountDeletionOutcome {

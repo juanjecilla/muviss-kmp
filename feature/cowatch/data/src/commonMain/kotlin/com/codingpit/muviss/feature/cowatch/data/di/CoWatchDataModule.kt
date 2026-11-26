@@ -36,7 +36,7 @@ import org.koin.dsl.module
  */
 val coWatchDataModule: Module = module {
     single<CoWatchRepository> { SqlDelightCoWatchRepository(get(), get(), get(), get()) }
-    single { CompanionSyncer(get(), get(), get(), get()) }
+    single { CompanionSyncer(get(), get(), get(), get(), get()) }
     // #122 (EPIC 41 follow-up): the local cache and the TMDB-backed source
     // behind it, plus the bounded/TTL'd refresher that sits between them and
     // the pool use cases below.

@@ -3,6 +3,8 @@ package com.codingpit.muviss.core.sync.companion
 import com.codingpit.muviss.core.sync.PULL_PAGE_ROWS
 import com.codingpit.muviss.core.sync.PUSH_CHUNK_ROWS
 import com.codingpit.muviss.core.sync.SyncCursor
+import com.codingpit.muviss.core.sync.SyncWriteRefusedException
+import com.codingpit.muviss.core.sync.supabase.SupabaseHttpException
 import com.codingpit.muviss.core.sync.supabase.SupabasePostgrestClient
 import com.codingpit.muviss.core.sync.supabase.SupabaseTokenSource
 import kotlinx.serialization.KSerializer
@@ -40,10 +42,20 @@ internal class SupabaseCompanionBackend(
         drainTable(CompanionTable.POOL_ENTRY, after, CompanionPoolEntryChange.serializer(), { CompanionChangeSet(poolEntries = it) }, onPage)
     }
 
+    /**
+     * A row-level-security refusal is [SyncWriteRefusedException], as on the main backend: it is what the
+     * server answers a push from a token without a live `sync_until` claim (ADR 0019), and the syncer
+     * decides whether it is the paywall.
+     */
     private suspend fun <T> pushRows(table: String, rows: List<T>, serializer: KSerializer<T>) {
         if (rows.isEmpty()) return
         rows.chunked(PUSH_CHUNK_ROWS).forEach { chunk ->
-            tokens.withAccessToken { token -> postgrest.upsert(table, token, chunk, serializer) }
+            try {
+                tokens.withAccessToken { token -> postgrest.upsert(table, token, chunk, serializer) }
+            } catch (refused: SupabaseHttpException) {
+                if (refused.isRowLevelSecurityRefusal) throw SyncWriteRefusedException(refused)
+                throw refused
+            }
         }
     }
 
