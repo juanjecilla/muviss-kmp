@@ -100,6 +100,10 @@ traces to `themoviedb.org/movie/<id>`.
 Across the pool the lowest lightest-backdrop ratio is 5.73:1, the median is
 9.85:1 and the highest is 14.01:1. **None of the 116 falls below 4.5:1.**
 
+Re-run 2026-11-26 (#469), with the same fetch script and the same two TMDB lists, which have moved since:
+117 posters. Lightest backdrop: lowest 5.73:1, median 10.05:1, highest 14.01:1. **None falls below 4.5:1.**
+The floor is the same #4C4C4C white backdrop, and the pure-black ceiling is unchanged.
+
 **Lightest set**: the five lowest lightest-backdrop ratios. They were chosen
 from the ranking, not by whole-poster brightness, because only the region under
 the badge is sampled. The top two sit at #4C4C4C, the rendered white case from
