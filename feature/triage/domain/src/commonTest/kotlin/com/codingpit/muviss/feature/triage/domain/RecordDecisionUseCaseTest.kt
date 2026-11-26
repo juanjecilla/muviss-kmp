@@ -144,8 +144,11 @@ class RecordDecisionUseCaseTest {
 
         h.useCase(ongoingShow, TriageVerdict.CAUGHT_UP).getOrThrow()
 
-        assertEquals(1, h.progress.markedAllAired.size)
-        assertEquals(TODAY_EPOCH_DAY, h.progress.markedAllAired.single().second)
+        // Exactly the aired episodes are ticked (EpisodeOrdering.airedBy), the unaired one is not.
+        assertEquals(
+            com.codingpit.muviss.feature.progress.api.EpisodeOrdering.airedBy(ongoingDetails.seasons, TODAY_EPOCH_DAY).toSet(),
+            h.progress.seen.value,
+        )
         // Two of three episodes have aired: all aired seen, production ongoing.
         assertEquals(WatchStatus.WATCHED, deriveFor(ongoingDetails, seen = 2))
     }
@@ -165,8 +168,7 @@ class RecordDecisionUseCaseTest {
 
         h.useCase(film, TriageVerdict.CAUGHT_UP).getOrThrow()
 
-        assertEquals(listOf(film.id), h.progress.moviesWatched)
-        assertEquals(emptyList(), h.progress.markedAllAired)
+        assertEquals(setOf(EpisodeId.forMovie(film.id)), h.progress.seen.value)
         assertEquals(WatchStatus.WATCHED, deriveFor(movieDetails(film), seen = 1))
     }
 
@@ -223,7 +225,8 @@ class RecordDecisionUseCaseTest {
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
-        assertEquals(listOf(endedShow.id), h.progress.cleared)
+        assertEquals(emptySet(), h.progress.seen.value, "the verdict's ticks are taken back")
+        assertEquals(emptyList(), h.progress.cleared, "undo takes back viewings, never the whole title")
         assertEquals(emptyMap(), h.repository.decisions.value)
     }
 
@@ -275,7 +278,7 @@ class RecordDecisionUseCaseTest {
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
-        assertEquals(listOf(endedShow.id), h.progress.cleared)
+        assertEquals(emptyList(), h.progress.cleared, "undo takes back viewings, never the whole title")
     }
 
     @Test

@@ -176,6 +176,8 @@ class SqlDelightBackupRestorer(
             isDirty = true,
             deleted = false,
             createdEntry = row.createdEntry,
+            entryAddedAtEpochMs = row.entryAddedAtEpochMs,
+            tickedEpisodeIds = row.tickedEpisodeIds,
         )
         return true
     }

@@ -33,9 +33,11 @@ import com.codingpit.muviss.feature.progress.domain.ProgressMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressPlayMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ProgressTicks
+import com.codingpit.muviss.feature.progress.domain.RecordFirstPlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.RecordPlayUseCase
 import com.codingpit.muviss.feature.progress.domain.RefreshWatchNextCatalogsUseCase
 import com.codingpit.muviss.feature.progress.domain.RemoveLatestPlayUseCase
+import com.codingpit.muviss.feature.progress.domain.RemovePlayUseCase
 import com.codingpit.muviss.feature.progress.domain.SetMovieWatchedUseCase
 import com.codingpit.muviss.feature.progress.domain.TickEpisodeUseCase
 import com.codingpit.muviss.feature.progress.domain.TickMovieUseCase
@@ -84,7 +86,9 @@ val progressDataModule: Module = module {
     factory { MarkPreviousSeenUseCase(get()) }
     factory { MarkAllAiredSeenUseCase(get()) }
     factory { ClearProgressUseCase(get()) }
-    factory { ProgressPlayMutations(get(), get(), get()) }
+    factory { RecordFirstPlaysUseCase(get()) }
+    factory { RemovePlayUseCase(get()) }
+    factory { ProgressPlayMutations(get(), get(), get(), get(), get()) }
     factory { ProgressBulkMutations(get(), get(), get(), get(), get(), get()) }
     factory { ProgressMutations(get(), get(), get(), get(), get()) }
     factory { SetMovieWatchedUseCase(get()) }

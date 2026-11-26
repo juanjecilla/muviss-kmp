@@ -66,6 +66,9 @@ class SqlDelightTriageDecisionRepository(
             // leaving a tombstone that would hide the new decision.
             deleted = false,
             createdEntry = decision.createdEntry,
+            entryAddedAtEpochMs = decision.entryAddedAtEpochMs,
+            // The column keeps its name (32.sqm); what it holds is now play ids, see toPlayIds.
+            tickedEpisodeIds = decision.tickedPlayIds.joinToString(separator = TICKED_SEPARATOR),
         )
         Unit
     }
@@ -95,8 +98,24 @@ class SqlDelightTriageDecisionRepository(
             decidedAtEpochMs = decidedAtEpochMs,
             resolved = resolved,
             createdEntry = createdEntry,
+            entryAddedAtEpochMs = entryAddedAtEpochMs,
+            tickedPlayIds = tickedEpisodeIds.toPlayIds(),
         )
     }
 
     private fun String.toMediaIdOrNull(): MediaId? = runCatching { MediaId.parse(this) }.getOrNull()
+
+    // A play id is `EpisodeId@watchedAtEpochMs` and never contains a comma. A piece without the '@' is a legacy bare
+    // episode id, written by a build before viewing ids. It is dropped here rather than kept: undo would find no
+    // viewing for it and do nothing, but the list should hold only what a verdict actually wrote.
+    private fun String.toPlayIds(): List<String> = if (isEmpty()) {
+        emptyList()
+    } else {
+        split(TICKED_SEPARATOR).filter { it.contains(PLAY_ID_MARK) }
+    }
+
+    private companion object {
+        const val TICKED_SEPARATOR = ","
+        const val PLAY_ID_MARK = '@'
+    }
 }

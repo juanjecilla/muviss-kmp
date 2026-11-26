@@ -52,20 +52,30 @@ internal class FakeCollectionApi(initial: List<CollectionSummary> = emptyList())
     val added = mutableListOf<MediaDetails>()
     val removed = mutableListOf<MediaId>()
 
+    /** Each add that makes a new entry stamps it with the next value, as the real repository does (#902). */
+    private var nextAddedAt = 1_000L
+
     override fun observeMembership(mediaId: MediaId): Flow<CollectionMembership?> = summaries.map { all ->
         all.firstOrNull { it.mediaId == mediaId }?.let { CollectionMembership(it.mediaId, it.favorite, it.notificationsMuted, it.rating, null) }
     }
 
     override fun observeSummaries(): Flow<List<CollectionSummary>> = summaries
 
+    /**
+     * A re-add of a title that is not in the library gets a new stamp; adding a present title only refreshes it.
+     * That mirrors `SqlDelightCollectionRepository`, where a removed title's re-add is stamped anew (#902).
+     */
     override suspend fun add(details: MediaDetails) {
         added += details
-        summaries.value = summaries.value + CollectionSummary(
-            mediaId = details.id,
-            title = details.summary.title,
-            posterUrl = details.summary.posterUrl,
-            status = WatchStatus.NOT_STARTED,
-        )
+        if (summaries.value.none { it.mediaId == details.id }) {
+            summaries.value = summaries.value + CollectionSummary(
+                mediaId = details.id,
+                title = details.summary.title,
+                posterUrl = details.summary.posterUrl,
+                status = WatchStatus.NOT_STARTED,
+                addedAtEpochMs = nextAddedAt++,
+            )
+        }
     }
 
     /** Thrown by [remove] before it records anything, to simulate a failed cleanup. */
@@ -98,7 +108,24 @@ internal class FakeProgressApi : ProgressApi {
     val moviesWatched = mutableListOf<MediaId>()
     val cleared = mutableListOf<MediaId>()
 
-    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = MutableStateFlow(emptySet())
+    /** The seen set, kept so a test can tell which ticks were already there when a verdict ran (#790). */
+    val seen = MutableStateFlow<Set<EpisodeId>>(emptySet())
+
+    /** Seeds ticks the person made before the verdict, as Detail's checkmarks would. */
+    fun seedSeen(vararg episodes: EpisodeId) {
+        seen.value = seen.value + episodes
+    }
+
+    /** The live viewings, by [EpisodePlay.idOf] id, so a test can see which viewing undo took and which it kept. */
+    val plays = MutableStateFlow<Map<String, EpisodeId>>(emptyMap())
+
+    /** The person's own viewing of an episode at [watchedAtEpochMs], as a rewatch or a tick from Detail. */
+    fun recordRewatch(episodeId: EpisodeId, watchedAtEpochMs: Long) {
+        plays.value = plays.value + (EpisodePlay.idOf(episodeId, watchedAtEpochMs) to episodeId)
+        seen.value = seen.value + episodeId
+    }
+
+    override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = seen.map { all -> all.filterTo(mutableSetOf()) { it.show == mediaId } }
 
     // Watch-next (EPIC 22) — this fake's subject never asks for it.
     override fun observeWatchNext(): Flow<List<WatchNextItem>> = flowOf(emptyList())
@@ -108,10 +135,17 @@ internal class FakeProgressApi : ProgressApi {
 
     override suspend fun setEpisodeSeen(episodeId: EpisodeId, seen: Boolean) {
         ticked += episodeId
+        this.seen.value = if (seen) this.seen.value + episodeId else this.seen.value - episodeId
     }
 
-    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = flowOf(emptyMap())
-    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = flowOf(emptyList())
+    // Derived from the live viewings, as the repository derives them: a viewing's time is the suffix of its id.
+    override fun observePlayCounts(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = plays.map { all ->
+        all.values.filter { it.show == mediaId }.groupingBy { it }.eachCount()
+    }
+
+    override fun observePlays(episodeId: EpisodeId): Flow<List<EpisodePlay>> = plays.map { all ->
+        all.filter { it.value == episodeId }.keys.map { EpisodePlay(episodeId, it.substringAfterLast('@').toLong()) }
+    }
 
     override fun observeRewatchCounts(sinceEpochMs: Long): Flow<Map<MediaId, Int>> = flowOf(emptyMap())
 
@@ -119,6 +153,23 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun recordPlay(episodeId: EpisodeId) = Unit
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = Unit
     override suspend fun clearPlays(episodeId: EpisodeId) = Unit
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) {
+        ticked += episodeIds
+        episodeIds.forEach { episodeId ->
+            if (plays.value.values.none { it == episodeId }) {
+                plays.value = plays.value + (EpisodePlay.idOf(episodeId, watchedAtEpochMs) to episodeId)
+            }
+        }
+        seen.value = seen.value + episodeIds
+    }
+
+    /** As the real repository does: only this viewing goes, and the episode is unseen only when no viewing of it is left. */
+    override suspend fun removePlay(playId: String) {
+        val episodeId = plays.value[playId] ?: return
+        plays.value = plays.value - playId
+        if (plays.value.values.none { it == episodeId }) seen.value = seen.value - episodeId
+    }
+
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = emptyList()
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
     override suspend fun unmarkSeason(season: Season) = Unit
@@ -129,14 +180,18 @@ internal class FakeProgressApi : ProgressApi {
 
     override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) {
         markedAllAired += seasons to todayEpochDay
+        seen.value = seen.value + EpisodeOrdering.airedBy(seasons, todayEpochDay)
     }
 
     override suspend fun clearProgress(mediaId: MediaId) {
         cleared += mediaId
+        seen.value = seen.value.filterNotTo(mutableSetOf()) { it.show == mediaId }
     }
 
     override suspend fun setMovieWatched(mediaId: MediaId, watched: Boolean) {
         moviesWatched += mediaId
+        val movie = EpisodeId.forMovie(mediaId)
+        seen.value = if (watched) seen.value + movie else seen.value - movie
     }
 }
 

@@ -34,6 +34,21 @@ class ExportShapeTest {
         )
     }
 
+    /**
+     * #902 and #790 added two fields to a triage decision. Both default, so the checked-in v1 fixture still
+     * parses; this pins their names, which a backup written by a later build must carry.
+     */
+    @Test
+    fun `a triage decision exports the entry stamp and the ticks its verdict wrote`() {
+        assertEquals(
+            listOf(
+                "mediaId", "mediaType", "verdict", "title", "posterUrl", "decidedAtEpochMs", "updatedAtEpochMs",
+                "resolved", "createdEntry", "entryAddedAtEpochMs", "tickedEpisodeIds",
+            ),
+            TriageDecisionExport.serializer().descriptor.elementNames.toList(),
+        )
+    }
+
     @Test
     fun `the display preferences group is exported with its one stamp`() {
         assertEquals(

@@ -89,6 +89,8 @@ internal class RealProgressApi(private val repository: SqlDelightProgressReposit
     override suspend fun recordPlay(episodeId: EpisodeId) = repository.recordPlay(episodeId)
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
     override suspend fun clearPlays(episodeId: EpisodeId) = repository.clearPlays(episodeId)
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = repository.recordFirstPlays(episodeIds, watchedAtEpochMs)
+    override suspend fun removePlay(playId: String) = repository.removePlay(playId)
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(listOf(season), todayEpochDay))
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.airedBy(seasons, todayEpochDay))
     override suspend fun unmarkSeason(season: Season) = repository.removeLatestPlays(season.episodes.map { it.id })

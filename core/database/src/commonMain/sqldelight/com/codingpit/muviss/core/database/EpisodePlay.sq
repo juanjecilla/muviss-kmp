@@ -83,6 +83,16 @@ WHERE id = (
     LIMIT 1
 );
 
+-- One viewing, by its id: what triage undo takes back (#790). Soft, so the tombstone syncs and a later rewatch of
+-- the same episode is untouched. A row already deleted matches nothing, so a repeated undo is a no-op.
+--
+-- Not `tombstoneDuplicatePlay`: that one is the sync merge's, and reusing it would tie undo to a rule about
+-- near-duplicates that may change.
+deleteById:
+UPDATE episodePlay
+SET deleted = 1, isDirty = 1, updatedAtEpochMs = :updatedAtEpochMs
+WHERE id = :id AND deleted = 0;
+
 -- The destructive one, reachable only from episode detail's explicit
 -- "clear watch history".
 deleteAllForEpisode:

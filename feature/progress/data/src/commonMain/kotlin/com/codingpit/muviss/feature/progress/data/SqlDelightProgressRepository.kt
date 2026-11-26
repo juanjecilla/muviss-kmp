@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.progress.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOne
@@ -102,7 +103,7 @@ class SqlDelightProgressRepository(
     override suspend fun recordPlay(episodeId: EpisodeId) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction {
-            insertPlay(episodeId, now)
+            insertPlay(episodeId, watchedAtEpochMs = now, updatedAtEpochMs = now)
             upsertSeen(episodeId, seen = true, now = now)
         }
     }
@@ -113,7 +114,7 @@ class SqlDelightProgressRepository(
         queries.transaction {
             episodeIds.forEach { episodeId ->
                 if (playCountOf(episodeId) == 0L) {
-                    insertPlay(episodeId, now)
+                    insertPlay(episodeId, watchedAtEpochMs = now, updatedAtEpochMs = now)
                     upsertSeen(episodeId, seen = true, now = now)
                     written += episodeId
                 }
@@ -137,6 +138,21 @@ class SqlDelightProgressRepository(
     override suspend fun clearPlays(episodeId: EpisodeId) = mutate {
         val now = clock.nowEpochMs()
         queries.transaction { forget(episodeId, now) }
+    }
+
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = mutate {
+        val now = clock.nowEpochMs()
+        queries.transaction {
+            episodeIds.forEach { episodeId ->
+                if (playCountOf(episodeId) == 0L) insertPlay(episodeId, watchedAtEpochMs, updatedAtEpochMs = now)
+                upsertSeen(episodeId, seen = true, now = now)
+            }
+        }
+    }
+
+    override suspend fun removePlay(playId: String) = mutate {
+        val now = clock.nowEpochMs()
+        queries.transaction { dropPlay(playId, now) }
     }
 
     override suspend fun clearForMedia(mediaId: MediaId) = mutate {
@@ -168,8 +184,21 @@ class SqlDelightProgressRepository(
      * episode has any history — the distinct action is [recordPlay].
      */
     private suspend fun recordFirstPlayIfUnseen(episodeId: EpisodeId, now: Long) {
-        if (playCountOf(episodeId) == 0L) insertPlay(episodeId, now)
+        if (playCountOf(episodeId) == 0L) insertPlay(episodeId, watchedAtEpochMs = now, updatedAtEpochMs = now)
         upsertSeen(episodeId, seen = true, now = now)
+    }
+
+    /**
+     * Soft-deletes the one viewing named by [playId], then sets `seen` from what remains of its episode, as
+     * [dropLatestPlay] does. A viewing that is missing or already removed changes nothing, which is what a legacy
+     * or stale id in a triage decision must do.
+     */
+    private suspend fun dropPlay(playId: String, now: Long) {
+        val row = playQueries.selectById(playId).awaitAsOneOrNull() ?: return
+        if (row.deleted) return
+        playQueries.deleteById(updatedAtEpochMs = now, id = playId)
+        val episodeId = EpisodeId.parse(row.episodeId)
+        upsertSeen(episodeId, seen = playCountOf(episodeId) > 0L, now = now)
     }
 
     private suspend fun forget(episodeId: EpisodeId, now: Long) {
@@ -186,26 +215,17 @@ class SqlDelightProgressRepository(
 
     private suspend fun playCountOf(episodeId: EpisodeId): Long = playQueries.countForEpisode(episodeId.toString()).awaitAsOne()
 
-    private suspend fun insertPlay(episodeId: EpisodeId, now: Long) {
+    private suspend fun insertPlay(episodeId: EpisodeId, watchedAtEpochMs: Long, updatedAtEpochMs: Long) {
         playQueries.upsert(
-            id = playId(episodeId, now),
+            id = EpisodePlay.idOf(episodeId, watchedAtEpochMs),
             episodeId = episodeId.toString(),
             mediaId = episodeId.show.toString(),
-            watchedAtEpochMs = now,
-            updatedAtEpochMs = now,
+            watchedAtEpochMs = watchedAtEpochMs,
+            updatedAtEpochMs = updatedAtEpochMs,
             isDirty = true,
             deleted = false,
         )
     }
-
-    /**
-     * A play's identity, derived from the viewing rather than allocated by the
-     * device that recorded it — the same expression `7.sqm` backfills with, and
-     * the reason rewatch history can cross devices at all (ADR 0013). Two
-     * viewings of one episode in the same millisecond therefore collapse into
-     * one row; that is not reachable by tapping.
-     */
-    private fun playId(episodeId: EpisodeId, watchedAtEpochMs: Long): String = "$episodeId@$watchedAtEpochMs"
 
     private suspend fun upsertSeen(episodeId: EpisodeId, seen: Boolean, now: Long) {
         queries.upsert(

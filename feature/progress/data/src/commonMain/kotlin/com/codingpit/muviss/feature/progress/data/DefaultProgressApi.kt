@@ -59,6 +59,10 @@ internal class DefaultProgressApi(
 
     override suspend fun clearPlays(episodeId: EpisodeId) = mutations.plays.clearPlays(episodeId)
 
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = mutations.plays.recordFirstPlays(episodeIds, watchedAtEpochMs)
+
+    override suspend fun removePlay(playId: String) = mutations.plays.removePlay(playId)
+
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long) = mutations.bulk.markSeasonAiredSeen(season, todayEpochDay)
 
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long) = mutations.bulk.markShowAiredSeen(seasons, todayEpochDay)
