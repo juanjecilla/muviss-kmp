@@ -31,6 +31,25 @@ class TraktImportParserTest {
         assertTrue(title.watched)
     }
 
+    // #949: a Trakt special is season 0 and must reach the importer as one, so it is ticked as a special.
+    @Test
+    fun keeps_a_season_zero_history_entry_as_a_special() {
+        val json = """
+            [
+              {
+                "watched_at": "2020-01-01T00:00:00.000Z",
+                "type": "episode",
+                "episode": { "season": 0, "number": 3, "ids": { "tmdb": 900001 } },
+                "show": { "title": "Severance", "ids": { "imdb": "tt11280740", "tmdb": 95396 } }
+              }
+            ]
+        """.trimIndent()
+
+        val title = parser.parse(json).titles.single()
+
+        assertEquals(listOf(ImportedEpisode(0, 3)), title.episodes)
+    }
+
     @Test
     fun parses_episode_history_entries_and_groups_by_show() {
         val json = """
