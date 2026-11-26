@@ -12,6 +12,7 @@ import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.network.tmdb.OwnTmdbKey
 import com.codingpit.muviss.core.sync.NoOpSyncBackend
 import com.codingpit.muviss.core.sync.OAuthProvider
+import com.codingpit.muviss.core.sync.ServerEntitlement
 import com.codingpit.muviss.core.sync.SyncBackend
 import com.codingpit.muviss.core.sync.SyncBackendId
 import com.codingpit.muviss.core.sync.SyncChangeSet
@@ -261,5 +262,9 @@ class LocalDataEraserTest {
         }
         override suspend fun push(changes: SyncChangeSet): Result<Unit> = Result.success(Unit)
         override suspend fun pull(after: Map<SyncTable, SyncCursor>, onPage: suspend (SyncPage) -> Unit): Result<Unit> = Result.success(Unit)
+        override suspend fun syncGrantedUntil(): Long? = null
+        override suspend fun refreshSession(): Result<SyncSession> = Result.failure(UnsupportedOperationException())
+        override suspend fun fetchEntitlement(): Result<ServerEntitlement?> = Result.failure(UnsupportedOperationException())
+        override suspend fun deleteAccount(): Result<Unit> = Result.failure(UnsupportedOperationException())
     }
 }
