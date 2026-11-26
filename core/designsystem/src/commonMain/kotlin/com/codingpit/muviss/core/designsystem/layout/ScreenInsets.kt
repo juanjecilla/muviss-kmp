@@ -25,6 +25,14 @@ import androidx.compose.ui.unit.dp
 fun immersiveTopInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
 
 /**
+ * The sideways band a landscape display cutout takes, which [extendIntoSideInsets] lets a black or artwork-led screen
+ * run under. Read raw, for the same reason as [immersiveTopPadding]: [ScreenInsets] has already consumed it for every
+ * descendant. Read it as a parameter's default, so tests can pass a synthetic cutout.
+ */
+@Composable
+fun immersiveSideInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+
+/**
  * The raw height of [immersiveTopInsets], read as a number.
  *
  * Read this, not `immersiveTopInsets().windowInsetsPadding`, inside a screen that [ScreenInsets] already wraps: that
