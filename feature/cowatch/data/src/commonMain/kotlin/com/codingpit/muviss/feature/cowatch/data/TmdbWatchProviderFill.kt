@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.cowatch.data
 
 import com.codingpit.muviss.core.common.crash.CrashReporter
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.network.NotFoundTitles
 import com.codingpit.muviss.core.network.WatchProviderFill
 import com.codingpit.muviss.feature.cowatch.domain.WatchProviderCache
@@ -19,14 +20,17 @@ internal class TmdbWatchProviderFill(
     private val cache: WatchProviderCache,
     private val source: WatchProviderSource,
     private val notFound: NotFoundTitles,
+    // Shared with Delete all data (#1056): an answer requested before the erase is not cached after it.
+    private val erasures: DataEraseFence,
 ) : WatchProviderFill {
 
     override suspend fun fill(mediaIds: List<MediaId>, region: String) {
         for (mediaId in mediaIds) {
+            val requestedAt = erasures.request()
             val result = source.fetchFlatrateIds(mediaId, region)
             val failure = result.exceptionOrNull()
             if (failure == null) {
-                runCatching { cache.put(mediaId, region, result.getOrThrow()) }.onFailure { error ->
+                runCatching { erasures.write(requestedAt) { cache.put(mediaId, region, result.getOrThrow()) } }.onFailure { error ->
                     if (error is CancellationException) throw error
                     // A storage failure ends the batch like a failed fetch; the cache keeps what it already has.
                     CrashReporter.recordException(error)

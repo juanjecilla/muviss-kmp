@@ -123,6 +123,22 @@ class AppSettingsFeatureFlagsTest {
     }
 
     @Test
+    fun specials_are_not_counted_on_a_fresh_install() = runTest {
+        // Off until the person asks: an upgraded or fresh install reads progress without specials (#938, ADR 0038).
+        assertEquals(false, flags.countSpecialsTowardProgress.first())
+    }
+
+    @Test
+    fun setCountSpecialsTowardProgress_round_trips_and_leaves_the_motion_flags_alone() = runTest {
+        flags.setCountSpecialsTowardProgress(true)
+        assertEquals(true, flags.countSpecialsTowardProgress.first())
+        assertEquals(true, flags.animationsEnabled.first())
+
+        flags.setCountSpecialsTowardProgress(false)
+        assertEquals(false, flags.countSpecialsTowardProgress.first())
+    }
+
+    @Test
     fun setSyncAutomatically_round_trips() = runTest {
         flags.setSyncAutomatically(true)
         assertEquals(true, flags.syncAutomatically.first())

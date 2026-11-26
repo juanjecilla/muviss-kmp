@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.designsystem.component.CELEBRATION_BURST_TAG
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.text.resolveAsync
@@ -310,7 +311,7 @@ private fun WatchNext(
             extras.map { (id, title) -> CollectionSummary(id, title, posterUrl = null, status = WatchStatus.WATCHING) },
     )
     runBlocking { repository.setSeenBulk(seasons.flatMap { it.episodes }.take(alreadySeen).map { it.id }, seen = true) }
-    val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(mapOf(mini to seasons) + extras.mapValues { (id, _) -> listOf(extraSeason(id)) })), InMemoryEpisodeCatalogStore())
+    val cache = EpisodeCatalogCache(FetchEpisodeCatalogUseCase(FakeEpisodeCatalogSource(mapOf(mini to seasons) + extras.mapValues { (id, _) -> listOf(extraSeason(id)) })), InMemoryEpisodeCatalogStore(), DataEraseFence())
     val flags = FakeFeatureFlags().apply {
         this.tickAnimations.value = tickAnimations
         animationsEnabled.value = animations
