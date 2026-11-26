@@ -24,8 +24,9 @@ import kotlin.test.assertTrue
 /**
  * The Taste Profile's round trip through a backup (EPIC 51, #402). The rule it pins
  * is the one restore promises for every table: per-row last-write-wins on the item's
- * stamp, a restored item goes out dirty, and a removed item is simply absent from
- * the file.
+ * stamp, a restored item goes out dirty, and a removed item travels as a tombstone
+ * (#1070), so a backup taken after an unlike removes the item on a device that
+ * still holds the like.
  */
 class TasteProfileBackupTest {
 
