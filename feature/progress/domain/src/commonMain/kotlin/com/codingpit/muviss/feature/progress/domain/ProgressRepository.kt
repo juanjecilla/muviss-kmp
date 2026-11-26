@@ -54,6 +54,12 @@ interface ProgressRepository {
     /** Forgets every viewing of [episodeId] and un-ticks it. */
     suspend fun clearPlays(episodeId: EpisodeId)
 
+    /** [ProgressApi.recordFirstPlays]: the viewings are stamped [watchedAtEpochMs], not the write's own clock. */
+    suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long)
+
+    /** [ProgressApi.removePlay]. */
+    suspend fun removePlay(playId: String)
+
     /**
      * Ticks a single episode. `true` records a first viewing and is
      * idempotent; `false` clears the episode's history. Creates the row if it

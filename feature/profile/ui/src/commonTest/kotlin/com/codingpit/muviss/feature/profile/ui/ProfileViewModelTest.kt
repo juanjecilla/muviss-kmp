@@ -108,6 +108,8 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun recordPlay(episodeId: EpisodeId) = Unit
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = Unit
     override suspend fun clearPlays(episodeId: EpisodeId) = Unit
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = Unit
+    override suspend fun removePlay(playId: String) = Unit
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = emptyList()
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
     override suspend fun unmarkSeason(season: Season) = Unit

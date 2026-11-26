@@ -173,7 +173,7 @@ class StoreShotTest {
     ) {
         val posters = AsyncImagePreviewHandler { request ->
             val name = request.data.toString().substringAfterLast(StoreShotCatalog.POSTER_PREFIX, "")
-            val titles = catalog.library + catalog.fresh
+            val titles = catalog.library + catalog.freshTitles
             val index = titles.indexOfFirst { name.isNotEmpty() && it.summary.posterUrl?.contains(name) == true }
             StoreShotPosters.render(titles.getOrNull(index)?.summary?.title ?: "Muviss", index.coerceAtLeast(0)).asImage()
         }

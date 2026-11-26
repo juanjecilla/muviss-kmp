@@ -28,6 +28,8 @@
     <string name="nextpick_q_era">New or classic?</string>
     <string name="nextpick_era_new">New</string>
     <string name="nextpick_era_classic">Classic</string>
+    <string name="nextpick_services_only">Only my services</string>
+    <string name="nextpick_services_hint">Only my services keeps titles known to be on one of your services. Titles not yet known to be on one are left out, and the list fills in as the pick reaches more of your library.</string>
     <string name="nextpick_q_company">Who is watching?</string>
     <string name="nextpick_company_alone">Alone</string>
     <string name="nextpick_company_partner">With a partner</string>
@@ -49,6 +51,7 @@
     <string name="nextpick_outcome_snoozed">Snoozed for a week</string>
     <string name="nextpick_action_failed">Couldn't save that. Try again.</string>
     <string name="nextpick_no_pick">Nothing fits these answers yet.</string>
+    <string name="nextpick_no_pick_services">With only my services, titles not yet known to be on one of your services are left out. The list fills in as the pick reaches more of your library, so try again later or change an answer.</string>
     <string name="nextpick_start_again">Start again</string>
     <string name="nextpick_failed">Something went wrong. Try again.</string>
     <string name="nextpick_retry">Try again</string>

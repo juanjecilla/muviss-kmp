@@ -27,6 +27,83 @@ internal data class TmdbResultDto(
 @Serializable
 internal data class TmdbExternalIdsDto(
     @SerialName("imdb_id") val imdbId: String? = null,
+    @SerialName("wikidata_id") val wikidataId: String? = null,
+)
+
+/** `credits` appended to a movie: one entry per cast role / crew job. */
+@Serializable
+internal data class TmdbCreditsDto(
+    val cast: List<TmdbCastDto> = emptyList(),
+    val crew: List<TmdbCrewDto> = emptyList(),
+)
+
+@Serializable
+internal data class TmdbCastDto(
+    val id: Long,
+    val name: String = "",
+    @SerialName("profile_path") val profilePath: String? = null,
+    val character: String? = null,
+    val order: Int = Int.MAX_VALUE,
+)
+
+@Serializable
+internal data class TmdbCrewDto(
+    val id: Long,
+    val name: String = "",
+    @SerialName("profile_path") val profilePath: String? = null,
+    val job: String? = null,
+    val department: String? = null,
+)
+
+/**
+ * `aggregate_credits` appended to a show: a person once, with every role they
+ * played across the whole run and how many episodes each covered. A plain
+ * `credits` on a show covers only the latest season.
+ */
+@Serializable
+internal data class TmdbAggregateCreditsDto(
+    val cast: List<TmdbAggregateCastDto> = emptyList(),
+    val crew: List<TmdbAggregateCrewDto> = emptyList(),
+)
+
+@Serializable
+internal data class TmdbAggregateCastDto(
+    val id: Long,
+    val name: String = "",
+    @SerialName("profile_path") val profilePath: String? = null,
+    val roles: List<TmdbRoleDto> = emptyList(),
+    @SerialName("total_episode_count") val totalEpisodeCount: Int? = null,
+    val order: Int = Int.MAX_VALUE,
+)
+
+@Serializable
+internal data class TmdbRoleDto(
+    val character: String? = null,
+    @SerialName("episode_count") val episodeCount: Int? = null,
+)
+
+@Serializable
+internal data class TmdbAggregateCrewDto(
+    val id: Long,
+    val name: String = "",
+    @SerialName("profile_path") val profilePath: String? = null,
+    val department: String? = null,
+    val jobs: List<TmdbJobDto> = emptyList(),
+    @SerialName("total_episode_count") val totalEpisodeCount: Int? = null,
+)
+
+@Serializable
+internal data class TmdbJobDto(
+    val job: String? = null,
+    @SerialName("episode_count") val episodeCount: Int? = null,
+)
+
+/** One entry of a show's `created_by`. */
+@Serializable
+internal data class TmdbCreatorDto(
+    val id: Long,
+    val name: String = "",
+    @SerialName("profile_path") val profilePath: String? = null,
 )
 
 @Serializable
@@ -45,6 +122,7 @@ internal data class TmdbMovieDetailDto(
     @SerialName("vote_average") val voteAverage: Double? = null,
     val status: String? = null,
     @SerialName("external_ids") val externalIds: TmdbExternalIdsDto? = null,
+    val credits: TmdbCreditsDto? = null,
 )
 
 @Serializable
@@ -61,6 +139,8 @@ internal data class TmdbTvDetailDto(
     @SerialName("number_of_seasons") val numberOfSeasons: Int = 0,
     val seasons: List<TmdbSeasonSummaryDto> = emptyList(),
     @SerialName("external_ids") val externalIds: TmdbExternalIdsDto? = null,
+    @SerialName("aggregate_credits") val aggregateCredits: TmdbAggregateCreditsDto? = null,
+    @SerialName("created_by") val createdBy: List<TmdbCreatorDto> = emptyList(),
 )
 
 @Serializable
@@ -111,6 +191,7 @@ internal data class TmdbEpisodeDetailDto(
 
 @Serializable
 internal data class TmdbEpisodeCreditDto(
+    val id: Long? = null,
     val name: String = "",
     val character: String? = null,
     val job: String? = null,
@@ -160,4 +241,59 @@ internal data class TmdbWatchProvidersResponseDto(
 internal data class TmdbFindResponseDto(
     @SerialName("movie_results") val movieResults: List<TmdbResultDto> = emptyList(),
     @SerialName("tv_results") val tvResults: List<TmdbResultDto> = emptyList(),
+)
+
+/** `/{movie|tv}/{id}/images` and `/tv/{id}/season/{n}/episode/{e}/images`; each list is only present for what the endpoint serves. */
+@Serializable
+internal data class TmdbImagesDto(
+    val backdrops: List<TmdbImageDto> = emptyList(),
+    val posters: List<TmdbImageDto> = emptyList(),
+    val stills: List<TmdbImageDto> = emptyList(),
+)
+
+@Serializable
+internal data class TmdbImageDto(
+    @SerialName("file_path") val filePath: String,
+    @SerialName("aspect_ratio") val aspectRatio: Double = 0.0,
+    @SerialName("vote_average") val voteAverage: Double = 0.0,
+)
+
+/** `/person/{id}` with `combined_credits` and `external_ids` appended. */
+@Serializable
+internal data class TmdbPersonDto(
+    val id: Long,
+    val name: String = "",
+    val biography: String? = null,
+    val birthday: String? = null,
+    val deathday: String? = null,
+    @SerialName("place_of_birth") val placeOfBirth: String? = null,
+    @SerialName("profile_path") val profilePath: String? = null,
+    @SerialName("known_for_department") val knownForDepartment: String? = null,
+    @SerialName("external_ids") val externalIds: TmdbExternalIdsDto? = null,
+    @SerialName("combined_credits") val combinedCredits: TmdbCombinedCreditsDto? = null,
+)
+
+@Serializable
+internal data class TmdbCombinedCreditsDto(
+    val cast: List<TmdbPersonCreditDto> = emptyList(),
+    val crew: List<TmdbPersonCreditDto> = emptyList(),
+)
+
+/** One row of a person's `combined_credits`; `character` is set on cast rows, `job` on crew rows. */
+@Serializable
+internal data class TmdbPersonCreditDto(
+    val id: Long,
+    @SerialName("media_type") val mediaType: String? = null,
+    val title: String? = null,
+    val name: String? = null,
+    @SerialName("poster_path") val posterPath: String? = null,
+    val overview: String? = null,
+    @SerialName("release_date") val releaseDate: String? = null,
+    @SerialName("first_air_date") val firstAirDate: String? = null,
+    @SerialName("vote_average") val voteAverage: Double? = null,
+    @SerialName("vote_count") val voteCount: Int = 0,
+    @SerialName("genre_ids") val genreIds: List<Int> = emptyList(),
+    val character: String? = null,
+    val job: String? = null,
+    @SerialName("episode_count") val episodeCount: Int? = null,
 )

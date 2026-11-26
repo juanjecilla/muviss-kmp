@@ -15,6 +15,10 @@ import kotlin.test.assertEquals
  * it can be refetched from TMDB, and including it would inflate an export by
  * an order of magnitude with data the importing install would overwrite on
  * first refresh anyway (ADR 0015).
+ *
+ * The Discover caches (`discoverCache`, #724, and `forYouCache`, #785) are in
+ * the same family and are left out for the same reason. The exact field list
+ * below is what keeps them out, and a restore never writes them.
  */
 class ExportShapeTest {
 
@@ -27,6 +31,21 @@ class ExportShapeTest {
             ),
             MuvissDataExport.serializer().descriptor.elementNames.toList(),
             "the episode catalog is TMDB's data cached locally, not the user's — see ADR 0015",
+        )
+    }
+
+    /**
+     * #902 and #790 added two fields to a triage decision. Both default, so the checked-in v1 fixture still
+     * parses; this pins their names, which a backup written by a later build must carry.
+     */
+    @Test
+    fun `a triage decision exports the entry stamp and the ticks its verdict wrote`() {
+        assertEquals(
+            listOf(
+                "mediaId", "mediaType", "verdict", "title", "posterUrl", "decidedAtEpochMs", "updatedAtEpochMs",
+                "resolved", "createdEntry", "entryAddedAtEpochMs", "tickedEpisodeIds",
+            ),
+            TriageDecisionExport.serializer().descriptor.elementNames.toList(),
         )
     }
 

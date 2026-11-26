@@ -6,17 +6,48 @@ import com.codingpit.muviss.core.common.flags.SnoozePlacement
 import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.api.SnoozedTitle
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
+import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/**
+ * Serialises a verdict's side effects with an Undo on the same title (#792).
+ *
+ * Undo and the verdict's apply both reach the library and the ticks, and the
+ * apply is suspended on a network fetch for seconds. Without this, an Undo
+ * could run while the fetch is pending, find nothing to reverse, and the apply
+ * would then add the title back. With it, Undo waits for an in-flight apply to
+ * finish, and an apply that starts after an Undo sees the decision is gone and
+ * writes nothing.
+ *
+ * Process-wide rather than injected: [RecordDecisionUseCase] and
+ * [UndoDecisionUseCase] are separate Koin factories, and a per-instance lock
+ * would protect nothing. The map keeps one small mutex per title for the life
+ * of the process, which is bounded by the titles the person has ruled on.
+ */
+internal object TriageTitleLocks {
+    private val guard = Mutex()
+    private val locks = mutableMapOf<MediaId, Mutex>()
+
+    suspend fun <T> withTitle(mediaId: MediaId, block: suspend () -> T): T {
+        val lock = guard.withLock { locks.getOrPut(mediaId) { Mutex() } }
+        return lock.withLock { block() }
+    }
+}
 
 /**
  * Records a verdict and applies what it means.
@@ -30,6 +61,10 @@ import kotlinx.coroutines.flow.map
  * No verdict ever writes a `WatchStatus` — [TriageVerdict.WATCHING] and
  * [TriageVerdict.CAUGHT_UP] write real ticks and let `WatchStatusCalculator`
  * derive the rest (ADR 0005).
+ *
+ * What the verdict *took* is recorded as it happens, so Undo can reverse
+ * exactly that and nothing else: whether it created the library entry (#767),
+ * the entry's added-at stamp (#902), and the viewings its ticks wrote (#790).
  */
 class RecordDecisionUseCase(
     private val repository: TriageDecisionRepository,
@@ -42,9 +77,7 @@ class RecordDecisionUseCase(
         require(verdict in TriageVerdict.availableFor(summary.type)) {
             "$verdict is not a valid verdict for a ${summary.type}"
         }
-        // The claim is not decided here. It is taken in apply, against the library
-        // at the moment the add lands, so a verdict that never got that far holds
-        // no claim on an entry it did not make (#767).
+        // The claim is not decided here. It is taken in apply, against the library at the moment the add lands.
         val decision = TriageDecision.of(
             summary = summary,
             verdict = verdict,
@@ -53,81 +86,148 @@ class RecordDecisionUseCase(
         )
         repository.record(decision)
         if (!verdict.savesToCollection) return Result.success(Unit)
-        return apply(decision)
+        return apply(decision.mediaId)
     }
 
-    private suspend fun isInLibrary(mediaId: MediaId): Boolean = collectionApi.observeMembership(mediaId).first() != null
+    /** Re-runs the side effects of a decision that never completed. A claim an earlier attempt recorded is kept. */
+    suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision.mediaId)
+
+    private suspend fun apply(mediaId: MediaId): Result<Unit> = runCatching {
+        // The fetch runs outside the lock, so an Undo that arrives while it is pending is not held up by it. That Undo
+        // restores the decision at once, and the critical section below sees the decision gone and writes nothing (#792).
+        val details = detailsSource.fetch(mediaId).getOrThrow()
+        TriageTitleLocks.withTitle(mediaId) { writeVerdict(mediaId, details) }
+    }
+
+    private suspend fun writeVerdict(mediaId: MediaId, details: MediaDetails) {
+        // Read live, under the lock. Gone means an Undo took the decision back, and writing anything would put the title back.
+        val stored = repository.observeDecision(mediaId).first() ?: return
+        val today = clock.todayEpochDay()
+
+        // #791: the claim is the library's state immediately before the add that makes the entry. A claim an earlier
+        // attempt recorded is kept, because that attempt's add made the entry and the entry being there now says
+        // nothing about who added it. Otherwise the library is read now. That covers a first attempt, and a retry
+        // whose earlier attempt failed before its add: it recorded no claim, and its add is still the one that counts.
+        val absentBeforeAdd = collectionApi.observeMembership(mediaId).first() == null
+        val claimed = stored.createdEntry || absentBeforeAdd
+
+        collectionApi.add(details)
+        // #902: the stamp belongs to the entry the claim is about. This attempt's add made a new entry, so that entry's
+        // stamp is read. Otherwise the add found an entry already there, which may be a replacement the person added
+        // after an earlier attempt's entry was removed; a retry keeps the stamp the claim recorded, never the
+        // replacement's (undo then sees a different stamp and leaves the replacement alone). A claim recorded before
+        // the stamp column has no stamp to keep, so it reads the present entry's as it always did.
+        val stamp = when {
+            absentBeforeAdd -> addedAtOf(mediaId)
+            stored.createdEntry && stored.entryAddedAtEpochMs != null -> stored.entryAddedAtEpochMs
+            stored.createdEntry -> addedAtOf(mediaId)
+            else -> null
+        }
+
+        // Recorded once the add has landed and before the ticks run, so a tick that fails midway still leaves undo the
+        // full list. Only episodes not already seen are planned, so undo can never take back a viewing the person made.
+        // Each planned tick's viewing is named now, at the moment it will be written (EpisodePlay.idOf), so the record
+        // holds the ids the ticks will carry.
+        val now = clock.nowEpochMs()
+        val seenBefore = progressApi.observeSeenEpisodes(mediaId).first()
+        val planned = plannedTicks(details, stored.verdict, seenBefore, today)
+        repository.record(
+            stored.copy(
+                createdEntry = claimed,
+                entryAddedAtEpochMs = stamp,
+                tickedPlayIds = (stored.tickedPlayIds + planned.map { EpisodePlay.idOf(it, now) }).distinct(),
+            ),
+        )
+
+        // One write for every planned tick: a whole show's Caught up is one transaction, and the viewings it writes
+        // carry the ids recorded above. SKIP and LATER plan nothing; WATCHING ticks the first aired episode, so the show
+        // derives Watching; a movie's Caught up ticks the film; a show's Caught up ticks every aired episode
+        // (ProgressApi.markAllAiredSeen's set, not markPreviousSeen's).
+        if (planned.isNotEmpty()) progressApi.recordFirstPlays(planned, watchedAtEpochMs = now)
+        repository.markResolved(mediaId, resolved = true)
+    }
+
+    /** The added-at stamp of [mediaId]'s live library entry, or null when it is not saved. */
+    private suspend fun addedAtOf(mediaId: MediaId): Long? = collectionApi.observeSummaries().first()
+        .firstOrNull { it.mediaId == mediaId }
+        ?.addedAtEpochMs
 
     /**
-     * Re-runs the side effects of a decision that never completed. A claim an
-     * earlier attempt wrote is kept: that attempt's add made the entry, and the
-     * entry being there now says nothing about who added it.
+     * The episodes a verdict is about to tick, minus those already seen. Mirrors what [apply] writes: the first
+     * aired episode for Watching, the movie tick, or every aired episode for a show's Caught up.
      */
-    suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision)
+    private fun plannedTicks(details: MediaDetails, verdict: TriageVerdict, seenBefore: Set<EpisodeId>, today: Long): List<EpisodeId> {
+        val candidates = when (verdict) {
+            TriageVerdict.SKIP, TriageVerdict.LATER -> emptyList()
 
-    private suspend fun apply(decision: TriageDecision): Result<Unit> = runCatching {
-        val details = detailsSource.fetch(decision.mediaId).getOrThrow()
-        // Decided against the library just before the add. A title the person
-        // added from Detail while the deck was open is theirs, not this verdict's.
-        val claimed = decision.createdEntry || !isInLibrary(decision.mediaId)
-        collectionApi.add(details)
-        // Persisted only after the add has landed: a failed fetch or a failed add
-        // leaves no claim behind for undo to act on later.
-        if (claimed && !decision.createdEntry) repository.record(decision.copy(createdEntry = true))
-
-        val today = clock.todayEpochDay()
-        when (decision.verdict) {
-            TriageVerdict.SKIP, TriageVerdict.LATER -> Unit
-
-            // One tick, so the show derives Watching and surfaces on the
-            // Progress screen with a genuine next episode. A show with nothing
-            // aired yet is simply saved unticked.
-            TriageVerdict.WATCHING -> details.firstAiredEpisode(today)?.let { progressApi.setEpisodeSeen(it.id, seen = true) }
+            TriageVerdict.WATCHING -> listOfNotNull(details.firstAiredEpisode(today)?.id)
 
             TriageVerdict.CAUGHT_UP -> when (details.type) {
-                MediaType.MOVIE -> progressApi.setMovieWatched(decision.mediaId, watched = true)
-
-                // Exactly the aired episodes — see ProgressApi.markAllAiredSeen
-                // for why this is not markPreviousSeen.
-                MediaType.TV -> progressApi.markAllAiredSeen(details.seasons, today)
+                MediaType.MOVIE -> listOf(EpisodeId.forMovie(details.id))
+                MediaType.TV -> EpisodeOrdering.airedBy(details.seasons, today)
             }
         }
-        repository.markResolved(decision.mediaId, resolved = true)
+        return candidates.filterNot { it in seenBefore }
     }
 }
 
 /**
- * Takes a verdict back.
+ * Takes a verdict back, completely, and only what it took.
  *
- * Restoring the decision alone is not enough when the verdict created the
- * library entry: it wrote a `CollectionEntry` and, for Watching/CaughtUp,
- * episode ticks, and undo has to reverse those, or the user is left with a
- * show sitting in their library still reading as fully watched.
+ * The library entry is removed only when the verdict created it (#767) **and**
+ * the entry is still the one it created: its added-at stamp must match the one
+ * recorded at decision time (#902). A title the person removed and added again
+ * while the undo was pending has a new stamp, so it stays.
  *
- * Only what the verdict created is reversed. When the entry was already in the
- * library before the card was ruled on (the person added it from Detail while
- * the deck was open, #767), the entry and its ticks are the person's, so they
- * are left alone. A verdict's own ticks on such an entry are not reversed
- * either: nothing records which episodes it ticked (issue #790).
+ * Ticks are reversed by viewing, not by episode (#790), on every path. Undo removes
+ * exactly the viewings the verdict wrote ([TriageDecision.tickedPlayIds]) through
+ * [ProgressApi.removePlay]. An episode the person has since rewatched keeps that
+ * rewatch and stays seen; an episode with no viewings left is un-ticked.
+ *
+ * This holds for an entry the verdict created too. Progress that was on the title
+ * before the verdict is kept, because the verdict did not write it: it is what a
+ * title removed earlier, with its ticks, comes back with. The entry is removed only
+ * when no viewing of the title was made at or after the decision. A viewing made
+ * since then means the person has engaged with the title, so the entry stays with
+ * it, and nothing they did is removed.
+ *
+ * Residual: the sync merge of near-duplicate plays (`RemoteApplier.mergeDuplicatePlays`,
+ * five minutes) can tombstone the verdict's viewing on another device before undo
+ * runs. The undo is then a no-op for that viewing and the tick stays. That is
+ * fail-safe: nothing the person made is removed.
+ *
+ * The cleanup runs before the decision is tombstoned, so a cleanup that fails
+ * leaves the decision readable and a retried undo finishes the job.
  */
 class UndoDecisionUseCase(
     private val repository: TriageDecisionRepository,
     private val collectionApi: CollectionApi,
     private val progressApi: ProgressApi,
 ) {
-    suspend operator fun invoke(mediaId: MediaId, verdict: TriageVerdict) {
-        // Read before the restore soft-deletes the row. A missing row claims
-        // nothing, so nothing is removed.
-        val createdEntry = repository.observeDecision(mediaId).first()?.createdEntry ?: false
-        if (verdict.savesToCollection && createdEntry) {
-            // Cleanup first: a failure or cancellation here leaves the decision
-            // readable, so a retried undo still sees createdEntry and finishes.
-            progressApi.clearProgress(mediaId)
-            collectionApi.remove(mediaId)
+    suspend operator fun invoke(mediaId: MediaId, verdict: TriageVerdict) = TriageTitleLocks.withTitle(mediaId) {
+        // Read before the restore soft-deletes the row. A missing row claims nothing, so nothing is removed.
+        val stored = repository.observeDecision(mediaId).first()
+        if (verdict.savesToCollection && stored != null) {
+            val ownsEntry = stored.createdEntry &&
+                stored.entryAddedAtEpochMs != null &&
+                currentAddedAt(mediaId) == stored.entryAddedAtEpochMs
+            // Every path takes back the verdict's viewings and only those. The owned path used to clear the whole
+            // title here, which also erased a rewatch the person made after the verdict.
+            stored.tickedPlayIds.forEach { progressApi.removePlay(it) }
+            // Removed after the viewings, and only when the person has not watched the title since the decision.
+            if (ownsEntry && !watchedSince(mediaId, stored.decidedAtEpochMs)) collectionApi.remove(mediaId)
         }
-        // Tombstoning the decision last: once it is soft-deleted, observeDecision
-        // reads null and the claim can no longer be read.
+        // Tombstoning last: once soft-deleted, observeDecision reads null and the claim can no longer be read.
         repository.restore(mediaId)
+    }
+
+    private suspend fun currentAddedAt(mediaId: MediaId): Long? = collectionApi.observeSummaries().first()
+        .firstOrNull { it.mediaId == mediaId }
+        ?.addedAtEpochMs
+
+    /** Whether any live viewing of [mediaId] was made at or after [sinceEpochMs]. Read after the verdict's viewings are gone. */
+    private suspend fun watchedSince(mediaId: MediaId, sinceEpochMs: Long): Boolean = progressApi.observePlayCounts(mediaId).first().keys.any { episodeId ->
+        progressApi.observePlays(episodeId).first().any { it.watchedAtEpochMs >= sinceEpochMs }
     }
 }
 

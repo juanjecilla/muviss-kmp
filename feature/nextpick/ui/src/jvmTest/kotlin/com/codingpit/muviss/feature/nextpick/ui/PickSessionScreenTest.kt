@@ -15,6 +15,7 @@ import com.codingpit.muviss.feature.nextpick.api.NextPickPreferences
 import com.codingpit.muviss.feature.nextpick.api.ResultMode
 import com.codingpit.muviss.feature.nextpick.api.SessionLength
 import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
+import com.codingpit.muviss.feature.nextpick.domain.PickCandidate
 import com.codingpit.muviss.feature.nextpick.domain.PickContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -80,6 +81,51 @@ class PickSessionScreenTest {
     }
 
     @Test
+    fun the_services_chip_and_its_copy_show_when_services_are_known() = runComposeUiTest {
+        setContent { ScreenUnderTest(context = PickContext(length = SessionLength.STANDARD, servicesKnown = true)) }
+        waitForIdle()
+        onNodeWithText("Skip").performClick()
+        waitForIdle()
+        onNodeWithText("Skip").performClick()
+        waitForIdle()
+
+        onNodeWithText("Question 3 of 4").assertExists()
+        onNodeWithText("Only my services").assertExists()
+        onNodeWithText("Only my services keeps titles known to be on one of your services", substring = true).assertExists()
+    }
+
+    @Test
+    fun the_services_chip_is_absent_when_services_are_not_known() = runComposeUiTest {
+        setContent { ScreenUnderTest(context = PickContext(length = SessionLength.STANDARD, servicesKnown = false)) }
+        waitForIdle()
+        repeat(3) {
+            onNodeWithText("Skip").performClick()
+            waitForIdle()
+        }
+
+        onNodeWithText("Question 4 of 4").assertExists()
+        onNodeWithText("New or classic?").assertExists()
+        onNodeWithText("Only my services").assertDoesNotExist()
+    }
+
+    @Test
+    fun an_empty_result_under_only_my_services_explains_the_flag() = runComposeUiTest {
+        setContent { ScreenUnderTest(context = PickContext(length = SessionLength.STANDARD, servicesKnown = true), pool = emptyList()) }
+        waitForIdle()
+        onNodeWithText("Skip").performClick()
+        waitForIdle()
+        onNodeWithText("Skip").performClick()
+        waitForIdle()
+        onNodeWithText("Only my services").performClick()
+        waitForIdle()
+        onNodeWithText("Skip").performClick()
+        waitForIdle()
+
+        onNodeWithText("Nothing fits these answers yet.").assertExists()
+        onNodeWithText("titles not yet known to be on one of your services are left out", substring = true).assertExists()
+    }
+
+    @Test
     fun offline_the_question_says_only_the_list_is_searched() = runComposeUiTest {
         setContent { ScreenUnderTest(context = PickContext(length = SessionLength.STANDARD, online = false)) }
         waitForIdle()
@@ -117,9 +163,9 @@ class PickSessionScreenTest {
 internal fun viewModelFor(context: PickContext, pool: List<com.codingpit.muviss.feature.nextpick.domain.PickCandidate> = listOf(candidate("1"), candidate("2"))) = PickSessionViewModel(context = { context }, engine = engineOver(pool), actions = RecordingNextPickActions(), preferences = ScreenPreferences())
 
 @Composable
-private fun ScreenUnderTest(context: PickContext, onLeave: () -> Unit = {}) {
+private fun ScreenUnderTest(context: PickContext, onLeave: () -> Unit = {}, pool: List<PickCandidate> = listOf(candidate("1"), candidate("2"))) {
     MuvissTheme(darkTheme = false) {
-        PickSessionScreen(viewModelFor(context), onLeave = onLeave, onOpenDeck = {})
+        PickSessionScreen(viewModelFor(context, pool), onLeave = onLeave, onOpenDeck = {})
     }
 }
 

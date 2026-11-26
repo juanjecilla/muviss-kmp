@@ -232,4 +232,11 @@ data class TriageDecisionExport(
      * restores with undo behaving as it always has.
      */
     val createdEntry: Boolean = true,
+    /**
+     * The added-at stamp of the entry this verdict created (#902). Null for a backup written before the field
+     * existed, and for a verdict that created no entry: undo then never removes an entry on this row's behalf.
+     */
+    val entryAddedAtEpochMs: Long? = null,
+    /** Comma-separated viewing ids (EpisodePlay.idOf) this verdict wrote (#790). Empty for a backup written before the field. */
+    val tickedEpisodeIds: String = "",
 )

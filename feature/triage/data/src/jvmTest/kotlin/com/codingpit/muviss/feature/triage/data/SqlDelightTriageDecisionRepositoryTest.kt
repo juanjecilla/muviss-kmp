@@ -141,6 +141,8 @@ class SqlDelightTriageDecisionRepositoryTest {
             isDirty = false,
             deleted = false,
             createdEntry = true,
+            entryAddedAtEpochMs = null,
+            tickedEpisodeIds = "",
         )
 
         assertEquals(setOf(matrix), repository.observeDecidedIds().first())

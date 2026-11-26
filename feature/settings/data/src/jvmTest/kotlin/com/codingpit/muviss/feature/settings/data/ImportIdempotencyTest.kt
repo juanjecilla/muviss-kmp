@@ -87,6 +87,8 @@ private class RealProgressApi(private val repository: ProgressRepository) : Prog
     override suspend fun recordPlay(episodeId: EpisodeId) = repository.recordPlay(episodeId)
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = repository.removeLatestPlay(episodeId)
     override suspend fun clearPlays(episodeId: EpisodeId) = repository.clearPlays(episodeId)
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = repository.recordFirstPlays(episodeIds, watchedAtEpochMs)
+    override suspend fun removePlay(playId: String) = repository.removePlay(playId)
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = error("not used")
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = error("not used")
     override suspend fun unmarkSeason(season: Season) = error("not used")

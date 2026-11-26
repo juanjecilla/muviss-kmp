@@ -41,6 +41,8 @@ import coil3.SingletonImageLoader
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.persistence_not_persisted
 import com.codingpit.muviss.app.shared.generated.resources.persistence_read_only_tab
+import com.codingpit.muviss.app.shared.generated.resources.persistence_reload_to_save
+import com.codingpit.muviss.app.shared.generated.resources.persistence_stale
 import com.codingpit.muviss.app.shared.generated.resources.persistence_write_failed
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.common.notifications.SystemNotificationSettings
@@ -53,6 +55,7 @@ import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -74,6 +77,7 @@ import com.codingpit.muviss.feature.onboarding.ui.onboardingSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
+import com.codingpit.muviss.feature.search.ui.ImageViewerRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -352,6 +356,8 @@ private fun MuvissScaffold(
     val syncAvailability = koinInject<SyncAvailability>()
     // Next Pick's Deck result hands its titles to Triage through this seam before it opens the seeded deck (#554).
     val triageSeeds = koinInject<TriageDeckSeeds>()
+    // The TMDB content language. Read at composition, so a Detail or Person link opens in the language its screen shows (#996).
+    val metadataLocale = koinInject<MetadataLocale>()
     val openCoWatch = remember(syncAvailability, navController) {
         coWatchEntry(syncAvailability) { navController.navigate(CompanionsRoute) }
     }
@@ -393,6 +399,9 @@ private fun MuvissScaffold(
     val layoutType = when {
         // The introduction is full-screen: nothing in the bar is reachable until it ends.
         showingOnboarding -> NavigationSuiteType.None
+
+        // So is the Image Viewer: artwork edge to edge, nothing but its own controls on top.
+        currentDestination?.hasRoute(ImageViewerRoute::class) == true -> NavigationSuiteType.None
 
         windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) -> NavigationSuiteType.NavigationRail
 
@@ -443,9 +452,17 @@ private fun MuvissScaffold(
         // without this every screen not built on an M3 Scaffold draws its first
         // pixel under the status bar and camera cutout. One wrap fixes all of
         // them, on every platform.
+        // Every route keeps this top padding, immersive ones included (they extend up into it themselves), so no
+        // navigation state moves a screen. See ScreenInsets.
         ScreenInsets {
             Column {
-                PersistenceBanner(message = rememberPersistenceWarning())
+                val persistence = koinInject<PersistenceStatus>()
+                val warning = rememberPersistenceWarning(persistence)
+                PersistenceBanner(
+                    message = warning?.message,
+                    actionLabel = warning?.actionLabel,
+                    onAction = persistence::reloadPage,
+                )
                 // The "What's next?" sheet (EPIC 51, #400) is hosted here rather than on a screen: its
                 // trigger is a hot flow, so it must be collecting when a tick finishes a title.
                 CompletionSheetHost(
@@ -478,6 +495,8 @@ private fun MuvissScaffold(
                         navController,
                         onOpenTriage = { navController.navigate(TriageRoute) },
                         onOpenNextPick = controller::openNextPickFrom,
+                        linkLanguage = { metadataLocale.language },
+                        refreshRequests = controller.refreshRequests,
                     )
                     collectionSection(
                         navController,
@@ -526,26 +545,35 @@ private fun MuvissScaffold(
 }
 
 /**
- * The one sentence that describes this session's storage, or null when there is
- * nothing to say.
+ * The sentence that describes this session's storage, and the way out of it when
+ * there is one, or null when there is nothing to say.
  *
  * Null for [PersistenceState.Durable] and for [PersistenceState.Pending] —
  * Pending specifically, so the tab that *is* the writer never flashes a warning
  * in the milliseconds before the lock election answers. Every platform but web
  * is permanently Durable, so the banner is drawn on exactly the platform that
  * has the problem without any of the screens knowing which one that is.
+ *
+ * Only a tab that is not saving because another tab has the lock, or because its
+ * copy is out of date (#62), offers a reload. A reload fixes an out-of-date copy
+ * outright; behind another tab's lock it only returns this tab to read-only until
+ * that tab is closed, so the label does not promise saving. It is not offered
+ * where no lock exists at all, or on a failed write, since a reload changes neither.
  */
 @Composable
-private fun rememberPersistenceWarning(): UiText? {
-    val status = koinInject<PersistenceStatus>()
+private fun rememberPersistenceWarning(status: PersistenceStatus): PersistenceWarning? {
     val state by status.state.collectAsStateWithLifecycle()
+    val reload = UiText.Resource(Res.string.persistence_reload_to_save)
     return when (state) {
         PersistenceState.Pending, PersistenceState.Durable -> null
-        PersistenceState.ReadOnlyTab -> UiText.Resource(Res.string.persistence_read_only_tab)
-        PersistenceState.NotPersisted -> UiText.Resource(Res.string.persistence_not_persisted)
-        PersistenceState.WriteFailed -> UiText.Resource(Res.string.persistence_write_failed)
+        PersistenceState.ReadOnlyTab -> PersistenceWarning(UiText.Resource(Res.string.persistence_read_only_tab), reload)
+        PersistenceState.Stale -> PersistenceWarning(UiText.Resource(Res.string.persistence_stale), reload)
+        PersistenceState.NotPersisted -> PersistenceWarning(UiText.Resource(Res.string.persistence_not_persisted), null)
+        PersistenceState.WriteFailed -> PersistenceWarning(UiText.Resource(Res.string.persistence_write_failed), null)
     }
 }
+
+private class PersistenceWarning(val message: UiText, val actionLabel: UiText?)
 
 private fun configureImageLoader() {
     SingletonImageLoader.setSafe { context -> createImageLoader(context) }

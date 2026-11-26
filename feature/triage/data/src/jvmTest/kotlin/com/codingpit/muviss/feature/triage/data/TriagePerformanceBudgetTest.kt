@@ -143,6 +143,8 @@ class TriagePerformanceBudgetTest {
                 isDirty = false,
                 deleted = false,
                 createdEntry = true,
+                entryAddedAtEpochMs = null,
+                tickedEpisodeIds = "",
             )
         }
         val source = CountingDeckSource(pages)
@@ -169,6 +171,8 @@ class TriagePerformanceBudgetTest {
                 isDirty = false,
                 deleted = false,
                 createdEntry = true,
+                entryAddedAtEpochMs = null,
+                tickedEpisodeIds = "",
             )
         }
         driver.reset()

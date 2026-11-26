@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import com.codingpit.muviss.app.shared.generated.resources.Res
 import com.codingpit.muviss.app.shared.generated.resources.menu_file
 import com.codingpit.muviss.app.shared.generated.resources.menu_quit
+import com.codingpit.muviss.app.shared.generated.resources.menu_refresh
 import com.codingpit.muviss.app.shared.generated.resources.menu_view
 import com.codingpit.muviss.app.shared.generated.resources.menu_whats_next
 import org.jetbrains.compose.resources.stringResource
@@ -25,4 +26,7 @@ object HostText {
 
     @Composable
     fun menuWhatsNext(): String = stringResource(Res.string.menu_whats_next)
+
+    @Composable
+    fun menuRefresh(): String = stringResource(Res.string.menu_refresh)
 }

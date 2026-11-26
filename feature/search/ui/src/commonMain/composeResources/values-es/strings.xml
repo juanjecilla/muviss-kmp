@@ -12,6 +12,8 @@
     <string name="search_placeholder">Busca películas y series</string>
     <string name="search_clear">Borrar búsqueda</string>
     <string name="show_muted">Ver géneros silenciados</string>
+    <!-- The refresh control on Discover: its label for screen readers and its tooltip. -->
+    <string name="discover_refresh">Actualizar</string>
     <string name="carousel_for_you">Para ti</string>
     <string name="genres_movies">Géneros de películas</string>
     <string name="genres_tv">Géneros de series</string>
@@ -75,6 +77,7 @@
     <string name="tick_caught_up">Al día con %1$s</string>
     <string name="undo_season_seen">%1$s marcada como vista</string>
     <string name="undo_show_seen">Todos los episodios emitidos marcados como vistos</string>
+    <string name="undo_caught_up_through">Al día hasta T%1$d·E%2$d</string>
 
     <string name="new_list_name">Nombre de la nueva lista</string>
     <string name="list_with_count">%1$s (%2$d)</string>
@@ -108,6 +111,8 @@
     <string name="primary_caught_up">Al día ✓</string>
     <string name="primary_next_up">Siguiente: T%1$d·E%2$d · %3$s</string>
     <string name="primary_not_aired">Aún no se ha emitido</string>
+    <string name="primary_special_unseen">Especial sin ver</string>
+    <string name="primary_special_unseen_a11y">Ir al especial sin ver, episodio %1$d</string>
     <string name="primary_premieres">Se estrena el %1$s</string>
     <string name="primary_finished">Terminada ✓</string>
     <string name="primary_loading">Cargando…</string>
@@ -116,4 +121,54 @@
     <string name="movie_marked_watched">Marcada como vista</string>
     <string name="tick_next_seen">T%1$d·E%2$d marcado como visto</string>
     <string name="removed_from_library">Quitada de la biblioteca</string>
+    <string name="cast">Reparto</string>
+    <string name="credits_title">Reparto y equipo</string>
+    <string name="directed_by">Dirigida por %1$s</string>
+    <string name="created_by">Creada por %1$s</string>
+    <plurals name="credit_role_episodes">
+        <item quantity="one">%1$s · %2$d ep.</item>
+        <item quantity="other">%1$s · %2$d eps.</item>
+    </plurals>
+    <plurals name="credit_episodes">
+        <item quantity="one">%1$d ep.</item>
+        <item quantity="other">%1$d eps.</item>
+    </plurals>
+    <string name="department_creator">Creadores</string>
+    <string name="department_directing">Dirección</string>
+    <string name="department_writing">Guion</string>
+    <string name="department_production">Producción</string>
+    <string name="department_camera">Cámara</string>
+    <string name="department_editing">Montaje</string>
+    <string name="department_sound">Sonido</string>
+    <string name="department_art">Arte</string>
+    <string name="department_costume">Vestuario y maquillaje</string>
+    <string name="department_visual_effects">Efectos visuales</string>
+    <string name="department_lighting">Iluminación</string>
+    <string name="department_crew">Equipo técnico</string>
+    <string name="department_other">Otros</string>
+    <string name="action_close">Cerrar</string>
+    <string name="image_viewer_position">%1$d / %2$d</string>
+    <string name="image_viewer_backdrop">Fondo %1$d de %2$d</string>
+    <string name="image_viewer_poster">Póster %1$d de %2$d</string>
+    <string name="image_viewer_still">Fotograma %1$d de %2$d</string>
+    <string name="image_open_backdrop">Ver el fondo a pantalla completa</string>
+    <string name="image_open_poster">Ver el póster a pantalla completa</string>
+    <string name="image_open_still">Ver el fotograma a pantalla completa</string>
+    <string name="image_name_backdrop">Fondo</string>
+    <string name="image_name_poster">Póster</string>
+    <string name="image_name_still">Fotograma</string>
+    <string name="person_known_for">Conocido por</string>
+    <string name="person_tab_acting">Interpretación</string>
+    <string name="person_in_library">En tu biblioteca</string>
+    <string name="person_upcoming">Próximamente</string>
+    <string name="person_no_credits">No hay créditos.</string>
+    <string name="person_born_in">Nació en %1$s, %2$s</string>
+    <string name="person_born">Nació en %1$s</string>
+    <string name="person_died">Falleció en %1$s</string>
+    <string name="person_bio_more">Leer más</string>
+    <string name="person_bio_less">Mostrar menos</string>
+    <string name="link_imdb">IMDb</string>
+    <string name="link_wikipedia">Wikipedia</string>
+    <string name="link_wikipedia_english">Wikipedia (inglés)</string>
+    <string name="link_tmdb">TMDB</string>
 </resources>

@@ -8,6 +8,7 @@ import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionMembership
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.collection.api.NewEpisodesResult
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
 import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
@@ -67,11 +68,11 @@ internal class FakeDetailRepo(
     override suspend fun search(query: String, page: Int) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
     override suspend fun trending() = Result.success(emptyList<MediaSummary>())
     override suspend fun details(id: MediaId) = detailsFailure?.let { Result.failure<MediaDetails>(it) } ?: Result.success(details)
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
-    override suspend fun genres(type: MediaType) = Result.success(emptyList<Genre>())
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean) = Result.success(PagedResult(emptyList<MediaSummary>(), 1, 1))
+    override suspend fun genres(type: MediaType, fresh: Boolean) = Result.success(emptyList<Genre>())
     override suspend fun watchProviders(id: MediaId) = watchProviders
-    override suspend fun recommendations(id: MediaId, page: Int) = recommendations
-    override suspend fun similar(id: MediaId, page: Int) = similar
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean) = recommendations
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean) = similar
     override suspend fun episodeDetails(episodeId: EpisodeId) = Result.success(EpisodeDetails(episodeId, "Episode", episodeId.seasonNumber, episodeId.episodeNumber))
 }
 
@@ -258,6 +259,12 @@ internal class FakeProgressApi : ProgressApi {
         plays.value = plays.value - episodeId
     }
 
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) {
+        episodeIds.filter { plays.value[it].isNullOrEmpty() }.forEach { addPlay(it) }
+    }
+
+    override suspend fun removePlay(playId: String) = error("not used")
+
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> {
         markedSeasons += season
         return airedUnseen(listOf(season), todayEpochDay).onEach { addPlay(it) }
@@ -289,8 +296,18 @@ internal class FakeProgressApi : ProgressApi {
         episodeIds.forEach { removeLatestPlay(it) }
     }
 
-    override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId) {
+    /**
+     * Runs once, at the start of the next [markPreviousSeen] call, as a progress write from another view model does
+     * between the caller's seen read and this write (#945). Lets a test tick what the caller still thought unseen.
+     */
+    var beforeNextMarkPreviousSeen: (suspend () -> Unit)? = null
+
+    override suspend fun markPreviousSeen(seasons: List<Season>, target: EpisodeId): List<EpisodeId> {
         markedPrevious += target
+        val race = beforeNextMarkPreviousSeen
+        beforeNextMarkPreviousSeen = null
+        race?.invoke()
+        return EpisodeOrdering.upToInclusive(seasons, target).filter { it !in seenIds }.onEach { addPlay(it) }
     }
 
     override suspend fun markAllAiredSeen(seasons: List<Season>, todayEpochDay: Long) = Unit
@@ -553,19 +570,6 @@ class DetailViewModelTest {
         advanceUntilIdle()
 
         assertEquals("Great rewatch", vm.state.value.note)
-    }
-
-    @Test
-    fun toggleMovieWatched_flips_the_synthetic_movie_episode() = runTest {
-        val progressApi = FakeProgressApi()
-        val vm = viewModel(progressApi = progressApi)
-        advanceUntilIdle()
-
-        assertFalse(vm.state.value.movieWatched)
-        vm.toggleMovieWatched()
-        advanceUntilIdle()
-
-        assertTrue(vm.state.value.movieWatched)
     }
 
     @Test
