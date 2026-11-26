@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.onNodeWithTag
@@ -56,14 +56,13 @@ class DetailImageTapTest {
 
     @Test
     fun tapping_the_poster_opens_the_poster_gallery() = runComposeUiTest {
+        val loader = installLoader(emptyMap())
         val opened = mutableListOf<Pair<ImageKind, String>>()
         setContent { Detail(withArt = true) { kind, url -> opened += kind to url } }
         waitForIdle()
-        // No network here, so Coil's load fails and `PosterImage` swaps the picture for its title text. A click
-        // that lands mid-swap goes to a node that is gone, so wait for the settled one.
-        waitUntil(timeoutMillis = 5_000) {
-            onNodeWithTag(DETAIL_POSTER_TAG).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text) != null
-        }
+        // The load fails and `PosterImage` swaps the picture for its title text. A click that lands mid-swap goes to
+        // a node that is gone, so wait for the settled one.
+        waitForPosterSettled(loader)
 
         onNodeWithTag(DETAIL_POSTER_TAG).performClick()
 
@@ -87,11 +86,10 @@ class DetailImageTapTest {
 
     @Test
     fun the_poster_button_has_a_name_and_keeps_its_action_label() = runComposeUiTest {
+        val loader = installLoader(emptyMap())
         setContent { Detail(withArt = true) { _, _ -> } }
         waitForIdle()
-        waitUntil(timeoutMillis = 5_000) {
-            onNodeWithTag(DETAIL_POSTER_TAG).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text) != null
-        }
+        waitForPosterSettled(loader)
 
         val poster = onNodeWithTag(DETAIL_POSTER_TAG)
         poster.assertContentDescriptionEquals("Poster")
@@ -108,6 +106,12 @@ class DetailImageTapTest {
         onNodeWithTag(DETAIL_POSTER_TAG).performClick()
 
         assertEquals(emptyList(), opened)
+    }
+
+    /** Waits until the poster's request has failed, so the picture has been swapped for its fallback. */
+    private fun ComposeUiTest.waitForPosterSettled(loader: ScriptedFetcherFactory) {
+        waitUntil(timeoutMillis = 5_000) { loader.finished.any { it.contains("/poster.jpg") } }
+        waitForIdle()
     }
 
     private companion object {

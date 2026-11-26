@@ -67,7 +67,7 @@ fun NavGraphBuilder.searchSection(
             // grows the back stack and Back unwinds it one title at a time.
             onOpenDetail = { newId -> navController.navigate(DetailRoute(newId.toString())) },
             onOpenEpisode = { episodeId -> navController.navigate(EpisodeDetailRoute(episodeId.toString())) },
-            onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(id.toString(), kind.name, url)) },
+            onOpenImage = { kind, url -> navController.openImageViewer(ImageViewerRoute(id.toString(), kind.name, url)) },
             onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
             nudge = koinViewModel<NotificationNudgeViewModel> { parametersOf(id) },
             // A finished title's entry opens the session anchored on that title (#664).
@@ -81,7 +81,7 @@ fun NavGraphBuilder.searchSection(
         EpisodeDetailScreen(
             viewModel,
             onBack = { navController.popBackStack() },
-            onOpenImage = { kind, url -> navController.navigate(ImageViewerRoute(episodeId.show.toString(), kind.name, url, episodeId.toString())) },
+            onOpenImage = { kind, url -> navController.openImageViewer(ImageViewerRoute(episodeId.show.toString(), kind.name, url, episodeId.toString())) },
             onOpenPerson = { personId -> navController.navigate(PersonRoute(personId.toString())) },
         )
     }
@@ -103,4 +103,12 @@ fun NavGraphBuilder.searchSection(
             linkLanguage = linkLanguage(),
         )
     }
+}
+
+/**
+ * Opens the Image Viewer for [route]. Single-top, so a second tap on the same artwork while the first viewer is still
+ * being pushed does not stack a second viewer, which Back would then show before reaching the title.
+ */
+internal fun NavController.openImageViewer(route: ImageViewerRoute) {
+    navigate(route) { launchSingleTop = true }
 }

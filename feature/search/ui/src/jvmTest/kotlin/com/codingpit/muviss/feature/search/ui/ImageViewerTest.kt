@@ -2,18 +2,23 @@
 
 package com.codingpit.muviss.feature.search.ui
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertLeftPositionInRootIsEqualTo
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.dp
+import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.TitleImage
@@ -28,6 +33,7 @@ import kotlin.test.assertEquals
 class ImageViewerTest {
 
     private val three = listOf("a.jpg", "b.jpg", "c.jpg").map { TitleImage("https://image.tmdb.org/t/p/w1280/$it") }
+    private val four = three + TitleImage("https://image.tmdb.org/t/p/w1280/d.jpg")
 
     @Test
     fun it_opens_on_the_first_image_and_says_where_it_is() = runComposeUiTest {
@@ -47,6 +53,21 @@ class ImageViewerTest {
         onNodeWithTag(IMAGE_VIEWER_TAG).performKeyInput { pressKey(Key.DirectionLeft) }
         waitForIdle()
         onNodeWithTag(IMAGE_VIEWER_POSITION_TAG).assertTextEquals("1 / 3")
+    }
+
+    @Test
+    fun two_presses_before_the_first_turn_settles_both_count() = runComposeUiTest {
+        // Holding the clock keeps the first turn unsettled while the second press arrives, as a held arrow does.
+        mainClock.autoAdvance = false
+        setContent { MuvissTheme(darkTheme = true) { ImageViewerContent(four, ImageKind.Backdrop, onClose = {}) } }
+        waitForIdle()
+
+        onNodeWithTag(IMAGE_VIEWER_TAG).performKeyInput { pressKey(Key.DirectionRight) }
+        onNodeWithTag(IMAGE_VIEWER_TAG).performKeyInput { pressKey(Key.DirectionRight) }
+        mainClock.autoAdvance = true
+        waitForIdle()
+
+        onNodeWithTag(IMAGE_VIEWER_POSITION_TAG).assertTextEquals("3 / 4")
     }
 
     @Test
@@ -90,6 +111,25 @@ class ImageViewerTest {
         onNodeWithTag(IMAGE_VIEWER_CLOSE_TAG).performClick()
 
         assertEquals(1, closed)
+    }
+
+    @Test
+    fun the_viewer_runs_edge_to_edge_under_a_landscape_cutout() = runComposeUiTest {
+        val cutout = WindowInsets(left = 40.dp, right = 40.dp)
+        setContent {
+            MuvissTheme(darkTheme = true) {
+                ScreenInsets(insets = cutout) {
+                    ImageViewerContent(three, ImageKind.Backdrop, onClose = {}, horizontalInsets = cutout)
+                }
+            }
+        }
+
+        val window = onRoot().fetchSemanticsNode().boundsInRoot
+        val viewer = onNodeWithTag(IMAGE_VIEWER_TAG).fetchSemanticsNode().boundsInRoot
+        assertEquals(window.left, viewer.left, "the black viewer reaches the left edge, not the inset")
+        assertEquals(window.right, viewer.right, "the black viewer reaches the right edge, not the inset")
+        // The close button is clear of the cutout: the inset plus its own 12dp margin.
+        onNodeWithTag(IMAGE_VIEWER_CLOSE_TAG).assertLeftPositionInRootIsEqualTo(52.dp)
     }
 
     @Test
