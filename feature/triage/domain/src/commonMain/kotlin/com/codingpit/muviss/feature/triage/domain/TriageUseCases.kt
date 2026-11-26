@@ -89,7 +89,10 @@ class RecordDecisionUseCase(
         return apply(decision.mediaId)
     }
 
-    /** Re-runs the side effects of a decision that never completed. A claim an earlier attempt recorded is kept. */
+    /**
+     * Re-runs the side effects of a decision that never completed. A stamped claim an earlier attempt recorded is kept;
+     * a pre-stamp claim is retired (#1058), since it cannot say which entry it is about.
+     */
     suspend fun retry(decision: TriageDecision): Result<Unit> = apply(decision.mediaId)
 
     private suspend fun apply(mediaId: MediaId): Result<Unit> = runCatching {
@@ -104,23 +107,26 @@ class RecordDecisionUseCase(
         val stored = repository.observeDecision(mediaId).first() ?: return
         val today = clock.todayEpochDay()
 
-        // #791: the claim is the library's state immediately before the add that makes the entry. A claim an earlier
-        // attempt recorded is kept, because that attempt's add made the entry and the entry being there now says
-        // nothing about who added it. Otherwise the library is read now. That covers a first attempt, and a retry
+        // #791: the claim is the library's state immediately before the add that makes the entry. A stamped claim an
+        // earlier attempt recorded is kept, because that attempt's add made the entry and the entry being there now
+        // says nothing about who added it. Otherwise the library is read now. That covers a first attempt, and a retry
         // whose earlier attempt failed before its add: it recorded no claim, and its add is still the one that counts.
         val absentBeforeAdd = collectionApi.observeMembership(mediaId).first() == null
-        val claimed = stored.createdEntry || absentBeforeAdd
+        // #1058: a claim recorded before the stamp column (createdEntry with no stamp) cannot say which entry it is
+        // about. If an entry is present now it may be a replacement the person added, so the claim is retired rather
+        // than transferred to it. Undo then leaves whatever is in the library alone. The cost, an entry this verdict
+        // created surviving undo, is tracked in #1064.
+        val legacyClaim = stored.createdEntry && stored.entryAddedAtEpochMs == null
+        val claimed = absentBeforeAdd || (stored.createdEntry && !legacyClaim)
 
         collectionApi.add(details)
         // #902: the stamp belongs to the entry the claim is about. This attempt's add made a new entry, so that entry's
         // stamp is read. Otherwise the add found an entry already there, which may be a replacement the person added
         // after an earlier attempt's entry was removed; a retry keeps the stamp the claim recorded, never the
-        // replacement's (undo then sees a different stamp and leaves the replacement alone). A claim recorded before
-        // the stamp column has no stamp to keep, so it reads the present entry's as it always did.
+        // replacement's (undo then sees a different stamp and leaves the replacement alone).
         val stamp = when {
             absentBeforeAdd -> addedAtOf(mediaId)
-            stored.createdEntry && stored.entryAddedAtEpochMs != null -> stored.entryAddedAtEpochMs
-            stored.createdEntry -> addedAtOf(mediaId)
+            claimed -> stored.entryAddedAtEpochMs
             else -> null
         }
 
