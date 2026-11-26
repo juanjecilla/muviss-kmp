@@ -238,12 +238,19 @@ class TmdbProvider internal constructor(
             parameter("append_to_response", "external_ids,aggregate_credits")
         }
         val showId = MediaId.tmdbTv(externalId)
-        val seasons = show.seasons
-            .map { it.seasonNumber }
+        val listed = show.seasons.map { it.seasonNumber }
+        // Specials (season 0) get their own request, made only when TMDB lists the season (#938). They are
+        // never appended with the numbered seasons, whose append keys are for the regular run only.
+        val specials = if (SPECIALS_SEASON_NUMBER in listed) {
+            listOf(TmdbMapper.seasonToModel(showId, seasonDetail(externalId, SPECIALS_SEASON_NUMBER)))
+        } else {
+            emptyList()
+        }
+        val regular = listed
             .filter { it > 0 }
             .chunked(MAX_APPENDED_SEASONS)
             .flatMap { chunk -> seasonsOf(externalId, showId, chunk) }
-        return TmdbMapper.tvToDetails(show, seasons)
+        return TmdbMapper.tvToDetails(show, specials + regular)
     }
 
     /**
@@ -330,6 +337,9 @@ class TmdbProvider internal constructor(
          * is fetched on the show request, so a season chunk has all 20 to itself.
          */
         const val MAX_APPENDED_SEASONS = 20
+
+        /** TMDB's season number for "Specials" (ADR 0037). Loaded on its own request and never counted by default (#938). */
+        const val SPECIALS_SEASON_NUMBER = 0
     }
 }
 

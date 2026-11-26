@@ -19,7 +19,9 @@ import com.codingpit.muviss.models.MediaSummary
  * in the library (#767). Undo removes the library entry only then, so a title
  * the person added while the deck was open is not taken back with the verdict.
  * It stays false for a verdict that saves nothing. It is the claim made on the
- * first attempt, just before the add, and retries keep it (#791).
+ * first attempt, just before the add, and retries keep it (#791). A claim with
+ * no stamp (written before the stamp column) is the exception: a retry retires
+ * it rather than keep it, since it cannot say which entry it is about (#1058).
  *
  * [entryAddedAtEpochMs] is the added-at stamp of the entry this verdict created,
  * read right after the add (#902). Undo removes the entry only while its current

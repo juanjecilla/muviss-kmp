@@ -172,7 +172,8 @@ CREATE TABLE appSettings (
     reviewLastAskedAtEpochMs INTEGER,
     reviewLastAskedVersion TEXT,
     displayPreferencesUpdatedAtEpochMs INTEGER,
-    displayPreferencesDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
+    displayPreferencesDirty INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0,
+    countSpecialsTowardProgress INTEGER AS kotlin.Boolean NOT NULL DEFAULT 0
 );
 
 selectSettings:
@@ -267,6 +268,11 @@ UPDATE appSettings SET mutedGenres = :mutedGenres WHERE id = 0;
 
 updateMutedGenresInSearch:
 UPDATE appSettings SET mutedGenresInSearch = :mutedGenresInSearch WHERE id = 0;
+
+-- Whether season 0 counts toward progress (#938, `33.sqm`). Per device, not synced, not exported, and deliberately
+-- outside the Display Preferences group: it changes how this device reads progress, not what the library holds.
+updateCountSpecialsTowardProgress:
+UPDATE appSettings SET countSpecialsTowardProgress = :countSpecialsTowardProgress WHERE id = 0;
 
 updateDeviceBackupEnabled:
 UPDATE appSettings SET deviceBackupEnabled = :deviceBackupEnabled WHERE id = 0;
