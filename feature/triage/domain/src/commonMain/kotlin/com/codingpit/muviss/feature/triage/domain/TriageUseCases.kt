@@ -162,7 +162,9 @@ class RecordDecisionUseCase(
             // entry's stamp is read. Otherwise the add found an entry already there, which may be a replacement the person
             // added after an earlier attempt's entry was removed; a retry keeps the stamp the claim recorded, never the
             // replacement's (undo then sees a different stamp and leaves the replacement alone).
-            if (absentBeforeAdd) ownStamp = addedAtOf(mediaId)
+            // A claim without its stamp is the pre-stamp shape #1058 retires, so an add whose stamp cannot be read fails
+            // the attempt instead of writing one. The finally then rolls the add back.
+            if (absentBeforeAdd) ownStamp = checkNotNull(addedAtOf(mediaId)) { "the add did not leave a readable entry for $mediaId" }
             val stamp = when {
                 absentBeforeAdd -> ownStamp
                 claimed -> stored.entryAddedAtEpochMs
@@ -192,6 +194,10 @@ class RecordDecisionUseCase(
      * [NonCancellable] because the usual trigger is the person leaving the screen mid-verdict. A failed rollback is
      * swallowed so the original failure is the one thrown: the entry then stays unclaimed, the bug this guards
      * against, and is recorded as a known residual in ADR 0010.
+     *
+     * Known residual (#1076): a person's own add from Detail takes no triage lock, so one landing in the milliseconds
+     * between the membership check and this attempt's add is indistinguishable from this attempt's add. If the claim
+     * then fails, the rollback takes the person's entry back too.
      */
     private suspend fun rollBackAdd(mediaId: MediaId, ownStamp: Long?) {
         withContext(NonCancellable) {
