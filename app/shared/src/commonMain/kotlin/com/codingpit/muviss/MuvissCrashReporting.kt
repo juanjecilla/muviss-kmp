@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.crash.CrashReportingConfig
 import com.codingpit.muviss.core.database.CrashReportsConsent
 import com.codingpit.muviss.core.database.DatabaseDriverFactory
 import com.codingpit.muviss.feature.settings.api.SettingsApi
+import com.codingpit.muviss.models.isRoutineFailure
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -115,6 +116,7 @@ object MuvissCrashReporting {
         environment = MuvissBuildConfig.SENTRY_ENVIRONMENT,
         release = releaseOf(version),
         dist = version.versionCode.toString(),
+        isRoutine = Throwable::isRoutineFailure,
     )
 
     /**

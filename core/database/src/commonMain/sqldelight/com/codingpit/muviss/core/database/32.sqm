@@ -1,0 +1,18 @@
+-- What a triage verdict wrote into the library, so undo takes back exactly that (#902, #790).
+-- The filename is the version this migrates FROM: 32.sqm takes a v32 database to v33 (fixture 33.db).
+--
+-- NUMBERING: claimed on the #902/#790/#791/#792 branch, which opened after 29.sqm (#767) merged to
+-- develop. 30.sqm (#853) and 31.sqm (#785) landed while it was open, so it took 32. `verifyMigrations`
+-- cannot see a collision, so re-check this number against develop before merging.
+--
+-- entryAddedAtEpochMs: the `addedAtEpochMs` of the collection entry the verdict created, read right
+-- after the add. Undo removes the entry only while its current stamp still equals this one, so an
+-- entry the person removed and added again while the undo snackbar was open survives (#902). NULL
+-- for every row written before this column, and for any verdict that did not create its entry; a
+-- NULL stamp never authorises a removal.
+--
+-- tickedEpisodeIds: the EpisodeId strings the verdict itself newly ticked, comma-separated (an
+-- EpisodeId never contains a comma). Undo un-ticks exactly these and leaves every tick the person
+-- made themselves (#790). Empty for every row written before this column; undo then un-ticks nothing.
+ALTER TABLE triageDecision ADD COLUMN entryAddedAtEpochMs INTEGER;
+ALTER TABLE triageDecision ADD COLUMN tickedEpisodeIds TEXT NOT NULL DEFAULT '';

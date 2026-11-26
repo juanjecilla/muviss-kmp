@@ -9,8 +9,10 @@ import com.codingpit.muviss.feature.search.domain.DiscoverFeed
 import com.codingpit.muviss.feature.search.domain.DiscoverMediaUseCase
 import com.codingpit.muviss.feature.search.domain.EpisodeDetailUseCase
 import com.codingpit.muviss.feature.search.domain.GenresUseCase
+import com.codingpit.muviss.feature.search.domain.LoadGalleryUseCase
 import com.codingpit.muviss.feature.search.domain.MediaDetailUseCase
 import com.codingpit.muviss.feature.search.domain.MoreLikeThisUseCase
+import com.codingpit.muviss.feature.search.domain.PersonDetailUseCase
 import com.codingpit.muviss.feature.search.domain.RecommendationsUseCase
 import com.codingpit.muviss.feature.search.domain.SearchMediaUseCase
 import com.codingpit.muviss.feature.search.domain.SearchOnboarding
@@ -29,6 +31,8 @@ val searchDataModule: Module = module {
     factory { TrendingUseCase(get()) }
     factory { MediaDetailUseCase(get()) }
     factory { EpisodeDetailUseCase(get()) }
+    factory { LoadGalleryUseCase(get()) }
+    factory { PersonDetailUseCase(get()) }
     factory { DiscoverMediaUseCase(get()) }
     factory { GenresUseCase(get()) }
     factory { WatchProvidersUseCase(get()) }
@@ -37,6 +41,8 @@ val searchDataModule: Module = module {
     factory { MoreLikeThisUseCase(get(), get()) }
     // Discover's offline cache (#724): raw TMDB answers, per device, read before the network.
     single { get<MuvissDatabase>().discoverCacheQueries }
-    single<DiscoverCache> { SqlDelightDiscoverCache(get(), get(), get()) }
-    factory { DiscoverFeed(get(), get(), get()) }
+    // "For you"'s copy (#785) lives in the same cache, in its own table.
+    single { get<MuvissDatabase>().forYouCacheQueries }
+    single<DiscoverCache> { SqlDelightDiscoverCache(get(), get(), get(), get()) }
+    factory { DiscoverFeed(get(), get(), get(), get()) }
 }

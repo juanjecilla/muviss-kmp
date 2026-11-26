@@ -36,10 +36,10 @@ CREATE TABLE triageDecision (
     -- only when true, so a title the person added while the deck was open survives. See 29.sqm.
     createdEntry INTEGER AS kotlin.Boolean NOT NULL DEFAULT 1,
     -- The added-at stamp of the entry this verdict created, read right after the add. Undo removes the
-    -- entry only while its current stamp still matches (#902). NULL when no entry was created. See 30.sqm.
+    -- entry only while its current stamp still matches (#902). NULL when no entry was created. See 32.sqm.
     entryAddedAtEpochMs INTEGER,
     -- Comma-separated EpisodeId strings this verdict newly ticked; undo un-ticks exactly these (#790).
-    -- See 30.sqm.
+    -- See 32.sqm.
     tickedEpisodeIds TEXT NOT NULL DEFAULT ''
 );
 

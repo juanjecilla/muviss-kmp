@@ -15,14 +15,19 @@ import vm from "node:vm";
 
 const WORKER = new URL("../muviss-sqljs.worker.js", import.meta.url);
 const IMPORT = 'import initSqlJs from "sql.js";';
+const KEY = "muviss.db";
 
 // An IndexedDB whose `put` fails when `failing` is true as it settles, and
 // whose transaction only aborts (as a full quota does) when `aborting` is. With
 // `throwing`, `put` itself throws synchronously instead, as a DataCloneError
 // does. With `hold`, each put waits until the test releases it, to make writes
 // overlap.
+// The generation record is read by `get` and written by `put`, like the snapshot
+// itself. Only the snapshot's put is a write that can fail or be held, so the
+// generation put rides along with it and is applied only when the snapshot
+// write succeeds.
 function fakeIndexedDb() {
-  const fake = { failing: false, aborting: false, throwing: false, puts: [], holds: [] };
+  const fake = { failing: false, aborting: false, throwing: false, puts: [], holds: [], generation: 0 };
   fake.open = () => {
     const req = {};
     queueMicrotask(() => {
@@ -31,7 +36,25 @@ function fakeIndexedDb() {
         transaction: () => {
           const tx = {
             objectStore: () => ({
-              put: (bytes) => {
+              get: () => {
+                const getReq = {};
+                queueMicrotask(() => {
+                  getReq.result = fake.generation;
+                  // As in a browser, an exception from a request handler aborts the transaction.
+                  try {
+                    getReq.onsuccess();
+                  } catch (e) {
+                    tx.error = e;
+                    tx.onabort?.();
+                  }
+                });
+                return getReq;
+              },
+              put: (value, key) => {
+                if (key !== KEY) {
+                  tx.nextGeneration = value;
+                  return;
+                }
                 if (fake.throwing) throw new Error("DataCloneError");
                 const settle = () => {
                   if (fake.aborting) {
@@ -41,7 +64,8 @@ function fakeIndexedDb() {
                     tx.error = new Error("QuotaExceededError");
                     tx.onerror();
                   } else {
-                    fake.puts.push(bytes);
+                    fake.puts.push(value);
+                    fake.generation = tx.nextGeneration;
                     tx.oncomplete();
                   }
                 };
@@ -60,7 +84,8 @@ function fakeIndexedDb() {
   return fake;
 }
 
-function loadWorker() {
+// `sqlite`, when given, is the database the worker runs against (see fakeSqlite).
+function loadWorker(sqlite = null) {
   const source = readFileSync(WORKER, "utf8");
   assert.ok(source.includes(IMPORT), "the worker's sql.js import moved; update this test");
   const indexedDB = fakeIndexedDb();
@@ -78,9 +103,10 @@ function loadWorker() {
   vm.runInContext(source.replace(IMPORT, "const initSqlJs = async () => ({});"), context);
   // Copied on this side: an object made in the worker's realm has that realm's
   // Object.prototype, and deepEqual would refuse it.
-  Object.assign(context, { __version: { n: 0 }, __post: (m) => announced.push({ ...m }) });
+  Object.assign(context, { __version: { n: 0 }, __post: (m) => announced.push({ ...m }), __sqlite: sqlite });
   vm.runInContext(
-    "isWriter = true; db = { export: () => `snapshot ${++__version.n}` };" +
+    "isWriter = true; postMessage = () => {};" +
+      `db = ${sqlite ? "__sqlite" : "{ export: () => `snapshot ${++__version.n}` }"};` +
       "persistencePort = { postMessage: __post };",
     context,
   );
@@ -93,11 +119,11 @@ test("a failed put is announced, and the next successful write clears it", async
 
   indexedDB.failing = true;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true, stale: false, reload: false });
 
   indexedDB.failing = false;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false, stale: false, reload: false });
   assert.equal(indexedDB.puts.length, 1);
 });
 
@@ -106,11 +132,11 @@ test("a put that throws synchronously is a failed write, and the next good one c
 
   indexedDB.throwing = true;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: true, stale: false, reload: false });
 
   indexedDB.throwing = false;
   await run("saveSnapshot()");
-  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false });
+  assert.deepEqual(announced.at(-1), { writer: true, supported: true, lastWriteFailed: false, stale: false, reload: false });
   assert.equal(indexedDB.puts.length, 1);
 });
 
@@ -164,7 +190,7 @@ test("an aborted transaction is a failed write, and does not block the next one"
 test("a snapshot due inside a transaction waits for it instead of failing", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return /total_changes/.test(sql) ? [{ values: [[0]] }] : []; }," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -181,7 +207,7 @@ test("a snapshot due inside a transaction waits for it instead of failing", asyn
 
 test("a snapshot due inside a rolled-back transaction is still taken", async () => {
   const { indexedDB, run } = loadWorker();
-  run("db.exec = () => []; postMessage = () => {};");
+  run("db.exec = (sql) => (/total_changes/.test(sql) ? [{ values: [[0]] }] : []); postMessage = () => {};");
   run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
   await run("saveSnapshot()");
   run('onModuleReady.call({ data: { action: "rollback_transaction", id: 2 } })');
@@ -189,10 +215,177 @@ test("a snapshot due inside a rolled-back transaction is still taken", async () 
   assert.deepEqual(indexedDB.puts, ["snapshot 1"]);
 });
 
+// A stand-in for the SQLite connection, with the behaviour the worker depends on:
+// a transaction holds its writes until END, a failed END may leave the transaction
+// open (a deferred constraint) or undo it (a full disk, or an I/O error), and
+// export() cannot run inside an open transaction. `fail` names the next boundary to
+// throw, once; `undone` makes the throw also undo the transaction. A write counts one
+// changed row, cumulatively, so total_changes() moves as SQLite's does: without that
+// a row-only write never marks the tab dirty, and a test of "nothing is saved" has no
+// pending save for the transactionBroken guard to refuse (#909).
+function fakeSqlite({ begin = false, end = false, rollback = false, undone = false } = {}) {
+  const faults = { begin, end, rollback };
+  const undo = (sqlite) => {
+    sqlite.open = false;
+    sqlite.pending = [];
+  };
+  const sqlite = {
+    open: false,
+    pending: [],
+    committed: [],
+    changes: 0,
+    exec(sql) {
+      const verb = sql.trim().split(/\s+/)[0].toUpperCase();
+      if (verb === "BEGIN") {
+        if (faults.begin) {
+          faults.begin = false;
+          throw new Error("begin failed");
+        }
+        sqlite.open = true;
+        return [];
+      }
+      if (verb === "END") {
+        if (faults.end) {
+          faults.end = false;
+          if (undone) undo(sqlite);
+          throw new Error("end failed");
+        }
+        sqlite.committed.push(...sqlite.pending);
+        undo(sqlite);
+        return [];
+      }
+      if (verb === "ROLLBACK") {
+        if (faults.rollback) {
+          faults.rollback = false;
+          if (undone) undo(sqlite);
+          throw new Error("rollback failed");
+        }
+        undo(sqlite);
+        return [];
+      }
+      if (/total_changes/i.test(sql)) return [{ values: [[sqlite.changes]] }];
+      sqlite.changes += 1;
+      if (sqlite.open) sqlite.pending.push(sql);
+      else sqlite.committed.push(sql);
+      return [];
+    },
+    // The stored snapshot is the committed text, so a test can read what was saved.
+    export() {
+      if (sqlite.open) throw new Error("cannot export during a transaction");
+      return sqlite.committed.join(";");
+    },
+    close() {},
+  };
+  return sqlite;
+}
+
+// The Kotlin side, as SQLDelight 2.4.1's WebWorkerDriver runs its transactions
+// (read from the compiled driver): a transaction moves the driver's current
+// pointer to itself before it sends BEGIN, sends BEGIN only when it has no
+// enclosing transaction, sends END or ROLLBACK only from the outermost one, and
+// moves the pointer back only when that send succeeds. So after a throw the
+// pointer stays on a transaction that is over, and the next transaction is nested.
+function kotlinDriver(run) {
+  const send = (action, sql) =>
+    run(`onModuleReady.call({ data: { action: ${JSON.stringify(action)}, sql: ${JSON.stringify(sql ?? "")}, id: 1 } })`);
+  let current = null;
+  return {
+    begin() {
+      const tx = { enclosing: current };
+      current = tx;
+      if (tx.enclosing === null) send("begin_transaction");
+      return tx;
+    },
+    end(tx, successful) {
+      if (tx.enclosing === null) send(successful ? "end_transaction" : "rollback_transaction");
+      current = tx.enclosing;
+    },
+    exec: (sql) => send("exec", sql),
+  };
+}
+
+// After a failed boundary the later write is pending (the fake counts its row), and the
+// worker still believes it is inside the failed transaction, which alone would defer the
+// save. Clearing that belief leaves the transactionBroken guard as the only thing between
+// the pending write and the store.
+function pendingWriteIsRefused(run) {
+  assert.equal(run("dirty"), true, "the later write should be pending");
+  run("inTransaction = false");
+}
+
+// The control for the three tests below: the same two transactions with every boundary
+// succeeding are saved, so their "nothing is saved" is the guard's doing, not an
+// idle tab's.
+test("the same transactions with every boundary succeeding are saved", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite());
+  const driver = kotlinDriver(run);
+  const t1 = driver.begin();
+  driver.exec("UPDATE t SET x = 1");
+  driver.end(t1, true);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, true);
+  await run("flush()");
+  // One snapshot per committed transaction; the last holds both.
+  assert.match(indexedDB.puts.at(-1), /UPDATE t SET x = 1.*INSERT B/);
+  assert.deepEqual(announced, []);
+});
+
+// A COMMIT that throws leaves the driver's pointer on a transaction that is over.
+// Its next transaction is nested: no BEGIN, and its writes run outside any
+// transaction. Those must not reach the store, and the failure must be announced.
+test("a COMMIT that throws keeps the tab from saving anything after it", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ end: true, undone: true }));
+  const driver = kotlinDriver(run);
+  const t1 = driver.begin();
+  driver.exec("UPDATE t SET x = 1");
+  assert.throws(() => driver.end(t1, true), /end failed/);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, false);
+  pendingWriteIsRefused(run);
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, []);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
+});
+
+// A ROLLBACK that throws after SQLite already undid the transaction: the nested
+// transaction's writes then autocommit. Nothing autocommitted may be saved either.
+test("a ROLLBACK that throws keeps the tab from saving the writes that follow it", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ rollback: true, undone: true }));
+  const driver = kotlinDriver(run);
+  const t1 = driver.begin();
+  driver.exec("UPDATE t SET x = 1");
+  assert.throws(() => driver.end(t1, false), /rollback failed/);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, true);
+  pendingWriteIsRefused(run);
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, []);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
+});
+
+// A BEGIN that throws: the pointer is already on the transaction, so the next one is
+// nested and runs without a transaction. Its writes must not be saved either.
+test("a BEGIN that throws keeps the tab from saving the writes that follow it", async () => {
+  const { indexedDB, announced, run } = loadWorker(fakeSqlite({ begin: true }));
+  const driver = kotlinDriver(run);
+  assert.throws(() => driver.begin(), /begin failed/);
+  const t2 = driver.begin();
+  driver.exec("INSERT B");
+  driver.end(t2, true);
+  pendingWriteIsRefused(run);
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, []);
+  assert.equal(announced.at(-1).lastWriteFailed, true);
+});
+
 test("changes committed before a transaction are saved before it opens", async () => {
   const { indexedDB, announced, run } = loadWorker();
+  // The UPDATE changes one row, so the fake counts it, as SQLite would.
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { changes: 0, exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; if (/^UPDATE/.test(sql)) db.changes += 1; return /total_changes/.test(sql) ? [{ values: [[db.changes]] }] : []; }," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -207,7 +400,7 @@ test("changes committed before a transaction are saved before it opens", async (
 test("a save queued behind a slow one still holds the changes made before a transaction", async () => {
   const { indexedDB, announced, run } = loadWorker();
   run(
-    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return []; }," +
+    "db = { exec: (sql) => { if (/^BEGIN/.test(sql)) db.open = true; if (/^(END|ROLLBACK)/.test(sql)) db.open = false; return /total_changes/.test(sql) ? [{ values: [[0]] }] : []; }," +
       " export: () => { if (db.open) throw new Error('cannot export during a transaction'); return `snapshot ${++__version.n}`; } };" +
       "postMessage = () => {};",
   );
@@ -251,4 +444,136 @@ test("a failed export keeps the good copy waiting and still reports the failure"
   await done;
   assert.deepEqual(indexedDB.puts, ["snapshot 1", "snapshot 2"]);
   assert.equal(announced.at(-1).lastWriteFailed, true);
+});
+
+// A save that began before a transaction boundary failed can finish after it. Its
+// success must not clear the failure: the tab stopped saving, and announcing it as
+// saving again would hide that the newest changes are not saved.
+test("a save in flight when a transaction boundary fails does not clear the failure", async () => {
+  const { indexedDB, announced, run } = loadWorker();
+  indexedDB.hold = true;
+  run("saveSnapshot()");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(indexedDB.holds.length, 1, "the save is waiting on its IndexedDB write");
+  run('breakTransaction(new Error("boundary failed"))');
+  indexedDB.holds.forEach((release) => release());
+  await run("saveChain");
+  assert.equal(announced.at(-1).lastWriteFailed, true, "the failure is still announced");
+});
+
+// The worker's own classification of what counts as a write (see isMutation).
+test("a WITH statement is a read unless it writes, on whole words only", () => {
+  const { run } = loadWorker();
+  const mutates = (sql) => run(`isMutation(${JSON.stringify(sql)})`);
+  // The rewatch queries in EpisodePlay.sq: reads, and must not dirty a writer.
+  assert.equal(mutates("WITH p AS (SELECT mediaId FROM episodePlay WHERE deleted = 0) SELECT mediaId FROM p"), false);
+  assert.equal(mutates("WITH c AS (SELECT 1 AS n) SELECT n FROM c"), false);
+  assert.equal(mutates("WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c"), true);
+  assert.equal(mutates("WITH c AS (SELECT 1) DELETE FROM t"), true);
+  assert.equal(mutates("WITH c AS (SELECT 1) REPLACE INTO t SELECT * FROM c"), true);
+  assert.equal(mutates("WITH c AS (SELECT 1) UPDATE t SET x = 1"), true);
+});
+
+// An INSERT OR IGNORE that ignored its row, or an UPDATE that matched none, changes
+// nothing the stored snapshot lacks, so it is not saved. DDL is always saved: its
+// change is invisible to total_changes(), and a migration must survive a reload.
+test("a row write that changes no row is not saved, but a schema change is", async () => {
+  const { indexedDB, run } = loadWorker();
+  run(
+    "db = { changes: 0, exec: (sql) => { if (!/NO-OP/.test(sql) && /^(INSERT|UPDATE|DELETE)/.test(sql)) db.changes += 1; return /total_changes/.test(sql) ? [{ values: [[db.changes]] }] : []; }," +
+      " export: () => `snapshot ${++__version.n}` };" +
+      "postMessage = () => {};",
+  );
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT OR IGNORE INTO t VALUES (1) NO-OP", id: 1 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, [], "a write that changed no row is not saved");
+
+  run('onModuleReady.call({ data: { action: "exec", sql: "CREATE TABLE u (x)", id: 2 } })');
+  await run("flush()");
+  assert.deepEqual(indexedDB.puts, ["snapshot 1"], "a schema change is saved even with no row changed");
+});
+
+// A stand-in whose transactions hold their writes until COMMIT and whose ROLLBACK
+// discards them, as SQLite's do. total_changes() counts every row a statement changed,
+// including one a later ROLLBACK undid, as SQLite's does too.
+function transactionalSqlite() {
+  const sqlite = {
+    open: false,
+    changes: 0,
+    pending: [],
+    committed: [],
+    exec(sql) {
+      const verb = sql.trim().split(/\s+/)[0].toUpperCase();
+      if (verb === "BEGIN") {
+        sqlite.open = true;
+        return [];
+      }
+      if (verb === "END" || verb === "COMMIT") {
+        sqlite.committed.push(...sqlite.pending);
+        sqlite.pending = [];
+        sqlite.open = false;
+        return [];
+      }
+      if (verb === "ROLLBACK") {
+        sqlite.pending = [];
+        sqlite.open = false;
+        return [];
+      }
+      if (/total_changes/i.test(sql)) return [{ values: [[sqlite.changes]] }];
+      if (/^(INSERT|UPDATE|DELETE)/i.test(sql)) {
+        sqlite.changes += 1;
+        (sqlite.open ? sqlite.pending : sqlite.committed).push(sql);
+      }
+      return [];
+    },
+    export() {
+      if (sqlite.open) throw new Error("cannot export during a transaction");
+      return sqlite.committed.join(";");
+    },
+    close() {},
+  };
+  return sqlite;
+}
+
+// No-op saves must not reach the store: each would advance the generation for a
+// tab that is waiting with changes of its own. Each case first saves one real change
+// as a baseline, then checks that the no-op adds no write.
+test("an empty transaction saves nothing", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT A", id: 1 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "the baseline is saved");
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 2 } })');
+  run('onModuleReady.call({ data: { action: "end_transaction", id: 3 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "an empty transaction is not a save");
+});
+
+test("a rollback that undoes its transaction's changes saves nothing", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT A", id: 1 } })');
+  await run("flush()");
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 2 } })');
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT X", id: 3 } })');
+  run('onModuleReady.call({ data: { action: "rollback_transaction", id: 4 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "the rolled-back change is not saved as a new snapshot");
+});
+
+test("a batch of only whitespace or comments saves nothing", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT A", id: 1 } })');
+  await run("flush()");
+  run('onModuleReady.call({ data: { action: "exec", sql: "  -- nothing to run\\n /* at all */ ", id: 2 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "a batch with nothing to run is not a save");
+});
+
+test("a transaction that commits a change is still saved", async () => {
+  const { indexedDB, run } = loadWorker(transactionalSqlite());
+  run('onModuleReady.call({ data: { action: "begin_transaction", id: 1 } })');
+  run('onModuleReady.call({ data: { action: "exec", sql: "INSERT Y", id: 2 } })');
+  run('onModuleReady.call({ data: { action: "end_transaction", id: 3 } })');
+  await run("flush()");
+  assert.equal(indexedDB.puts.length, 1, "a committed change is saved");
 });

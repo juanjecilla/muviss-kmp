@@ -19,6 +19,9 @@ import kotlin.test.assertEquals
  * `core/database`, and adding a field here is a one-line change. Whoever
  * makes that change should have to come here and mean it.
  *
+ * The Discover caches are the same kind of mistake (ADR 0015's family): `discoverCache` (#724) and `forYouCache`
+ * (#785) hold TMDB answers and have no dirty flag or soft delete, so the exact list below is what keeps them out.
+ *
  * This test has already earned its place once. `episodePlays` joined the set
  * when rewatch history started syncing on a derived key (ADR 0013), landing
  * from a branch written in parallel with this one — and the assertion below

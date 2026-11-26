@@ -30,10 +30,10 @@ class DiscoverFeedTest {
 
     @Test
     fun a_cold_start_has_nothing_stored_and_needs_the_network() = runTest {
-        val snapshot = feed.snapshot()
+        val snapshot = feed.snapshot(feed.startRun())
 
         assertTrue(snapshot.isEmpty)
-        assertTrue(feed.needsRefresh(snapshot))
+        assertTrue(feed.needsRefresh(snapshot, feed.startRun()))
     }
 
     @Test
@@ -43,34 +43,34 @@ class DiscoverFeedTest {
         repository.movieGenres = listOf(Genre("28", "Action"))
         repository.tvGenres = listOf(Genre("10759", "Action & Adventure"))
 
-        feed.refresh(MutedGenres.NONE, MutedGenres.NONE)
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres.NONE)
         repository.failEverything = true
-        val next = feed.snapshot()
+        val next = feed.snapshot(feed.startRun())
 
         assertEquals(listOf("m1", "m2"), next.popularMovies?.items?.map { it.id.external })
         assertEquals(listOf("t1"), next.popularTv?.items?.map { it.id.external })
         assertEquals(listOf(Genre("28", "Action")), next.movieGenres?.value)
-        assertFalse(feed.needsRefresh(next), "a fresh copy is shown without asking the network")
+        assertFalse(feed.needsRefresh(next, feed.startRun()), "a fresh copy is shown without asking the network")
     }
 
     @Test
     fun a_copy_past_the_ttl_needs_a_refresh_and_is_past_the_ttl() = runTest {
         repository.movies = listOf(page(1, 1, movie("m1")))
         repository.tvs = listOf(page(1, 1, show("t1")))
-        feed.refresh(MutedGenres.NONE, MutedGenres.NONE)
-        val stored = feed.snapshot()
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres.NONE)
+        val stored = feed.snapshot(feed.startRun())
 
         clock.now += DiscoverFeed.TTL_MS + 1
 
-        assertTrue(feed.needsRefresh(stored))
-        assertTrue(feed.isPastTtl(stored))
+        assertTrue(feed.needsRefresh(stored, feed.startRun()))
+        assertTrue(feed.isPastTtl(stored, feed.startRun()))
     }
 
     @Test
     fun a_refresh_that_fails_everywhere_reports_every_section_failed() = runTest {
         repository.failEverything = true
 
-        val refresh = feed.refresh(MutedGenres.NONE, MutedGenres.NONE)
+        val refresh = feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres.NONE)
 
         assertTrue(refresh.anyFailed)
         assertTrue(refresh.popularMovies.isFailure && refresh.popularTv.isFailure && refresh.movieGenres.isFailure && refresh.tvGenres.isFailure)
@@ -82,13 +82,13 @@ class DiscoverFeedTest {
         repository.tvs = listOf(page(1, 1, show("t1")))
         repository.movieGenres = listOf(Genre("28", "Action"))
         repository.tvGenres = listOf(Genre("10759", "Action & Adventure"))
-        feed.refresh(MutedGenres.NONE, MutedGenres.NONE)
-        val stored = feed.snapshot()
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres.NONE)
+        val stored = feed.snapshot(feed.startRun())
 
         clock.now += 10_000
         repository.movies = listOf(page(1, 1, movie("m2")))
         repository.tvGenres = null // the TV genre list fails this time
-        val refresh = feed.refresh(MutedGenres.NONE, MutedGenres.NONE)
+        val refresh = feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres.NONE)
         val merged = refresh.mergedInto(stored)
 
         assertEquals(listOf("m2"), merged.popularMovies?.items?.map { it.id.external }, "the movie shelf refreshed")
@@ -105,17 +105,17 @@ class DiscoverFeedTest {
             page(3, 3, *tvTitles("keep-c", 12)),
         )
 
-        feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
 
         assertEquals(listOf(1, 2, 3), repository.discoverPages(MediaType.TV), "the thin shelf read two more pages")
-        assertEquals(3, cache.popular(MediaType.TV, 3)?.value?.page, "every page read is stored under its own page")
+        assertEquals(3, cache.popular(MediaType.TV, 3, "en-US")?.value?.page, "every page read is stored under its own page")
     }
 
     @Test
     fun a_shelf_that_is_full_enough_reads_only_its_first_page() = runTest {
         repository.tvs = listOf(page(1, 3, *tvTitles("keep", 20)))
 
-        feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
 
         assertEquals(listOf(1), repository.discoverPages(MediaType.TV))
     }
@@ -124,7 +124,7 @@ class DiscoverFeedTest {
     fun a_shelf_stops_at_the_last_page_when_the_catalogue_is_shorter() = runTest {
         repository.tvs = listOf(page(1, 1, *tvTitles("mute", 15, "10767")))
 
-        feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
 
         assertEquals(listOf(1), repository.discoverPages(MediaType.TV))
     }
@@ -132,19 +132,19 @@ class DiscoverFeedTest {
     @Test
     fun muting_is_applied_at_read_so_a_newly_muted_genre_never_shows_offline() = runTest {
         repository.tvs = listOf(page(1, 1, show("talk", "10767"), show("drama", "18")))
-        feed.refresh(MutedGenres.NONE, MutedGenres.NONE)
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres.NONE)
 
-        val shown = feed.visible(feed.snapshot().popularTv!!.items, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        val shown = feed.visible(feed.snapshot(feed.startRun()).popularTv!!.items, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
 
         assertEquals(listOf("drama"), shown.map { it.id.external })
     }
 
     @Test
     fun a_stored_page_is_looked_up_by_its_section_and_page() = runTest {
-        cache.savePopular(MediaType.MOVIE, 2, page(2, 3, movie("only-page-two")), fetchedAtEpochMs = 1L)
+        cache.savePopular(MediaType.MOVIE, 2, page(2, 3, movie("only-page-two")), fetchedAtEpochMs = 1L, "en-US")
 
-        assertNull(cache.popular(MediaType.MOVIE, 1))
-        assertEquals(2, cache.popular(MediaType.MOVIE, 2)?.value?.page)
+        assertNull(cache.popular(MediaType.MOVIE, 1, "en-US"))
+        assertEquals(2, cache.popular(MediaType.MOVIE, 2, "en-US")?.value?.page)
     }
 
     @Test
@@ -152,15 +152,15 @@ class DiscoverFeedTest {
         // Page 1 of the TV shelf was stored, page 2 never was, and page 1 is too thin to stop there: the shelf is
         // partial. Reopening Discover must still ask for the network, not treat the shelf as complete for six hours.
         val now = clock.now
-        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), now)
-        cache.saveGenres(MediaType.TV, listOf(Genre("18", "Drama")), now)
-        cache.savePopular(MediaType.MOVIE, 1, page(1, 1, movie("m1")), now)
-        cache.savePopular(MediaType.TV, 1, page(1, 2, *tvTitles("keep", 5)), now)
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), now, "en-US")
+        cache.saveGenres(MediaType.TV, listOf(Genre("18", "Drama")), now, "en-US")
+        cache.savePopular(MediaType.MOVIE, 1, page(1, 1, movie("m1")), now, "en-US")
+        cache.savePopular(MediaType.TV, 1, page(1, 2, *tvTitles("keep", 5)), now, "en-US")
 
-        val reopened = feed.snapshot()
+        val reopened = feed.snapshot(feed.startRun())
 
         assertEquals(false, reopened.popularTv?.complete, "the stored shelf is known to be partial")
-        assertTrue(feed.needsRefresh(reopened), "a partial shelf is owed a refresh even while fresh")
+        assertTrue(feed.needsRefresh(reopened, feed.startRun()), "a partial shelf is owed a refresh even while fresh")
     }
 
     @Test
@@ -168,6 +168,52 @@ class DiscoverFeedTest {
         val repeated = listOf(movie("1"), movie("1"), movie("2"))
 
         assertEquals(listOf(movie("1"), movie("2")), feed.visible(repeated, MutedGenres.NONE))
+    }
+
+    /** #922: a TTL-driven refresh asks TMDB fresh for both genre lists, both media types, and a supplemental page. */
+    @Test
+    fun every_request_is_fresh_once_the_stored_copy_is_past_the_ttl() = runTest {
+        storeShelvesWithASupplementalPage()
+        clock.now += DiscoverFeed.TTL_MS + 1
+        val run = feed.startRun()
+        assertTrue(feed.needsRefresh(feed.snapshot(run), run), "the copy is past its TTL, so the feed refreshes")
+        repository.freshness.clear()
+
+        feed.refresh(feed.startRun(), MutedGenres.NONE, mutedTv)
+
+        assertFreshEverywhere(repository.freshness)
+    }
+
+    /** #922: a direct refresh over a young copy is still a refresh the person asked for, so it is fresh too. */
+    @Test
+    fun every_request_is_fresh_for_a_direct_refresh_over_a_young_copy() = runTest {
+        storeShelvesWithASupplementalPage()
+        clock.now += 60_000L
+        repository.freshness.clear()
+
+        feed.refresh(feed.startRun(), MutedGenres.NONE, mutedTv)
+
+        assertFreshEverywhere(repository.freshness)
+    }
+
+    private val mutedTv = MutedGenres(setOf(GenreKey(MediaType.TV, "10767")))
+
+    /** Stores both genre lists and both shelves, with the TV shelf reading two pages (page 1 is mostly muted). */
+    private suspend fun storeShelvesWithASupplementalPage() {
+        repository.movies = listOf(page(1, 1, movie("m1")))
+        repository.tvs = listOf(page(1, 2, *tvTitles("mute", 15, "10767"), *tvTitles("keep", 5)), page(2, 2, *tvTitles("keep-b", 12)))
+        repository.movieGenres = listOf(Genre("28", "Action"))
+        repository.tvGenres = listOf(Genre("10759", "Action & Adventure"))
+        feed.refresh(feed.startRun(), MutedGenres.NONE, mutedTv)
+    }
+
+    private fun assertFreshEverywhere(requests: List<Triple<String, MediaType, Boolean>>) {
+        assertTrue(requests.any { it.first == "genres" && it.second == MediaType.MOVIE }, "the movie genre list is requested")
+        assertTrue(requests.any { it.first == "genres" && it.second == MediaType.TV }, "the TV genre list is requested")
+        assertTrue(requests.any { it.first == "discover:1" && it.second == MediaType.TV }, "the TV first page is requested")
+        assertTrue(requests.any { it.first == "discover:2" && it.second == MediaType.TV }, "the TV supplemental page is requested")
+        assertTrue(requests.any { it.first == "discover:1" && it.second == MediaType.MOVIE }, "the movie shelf is requested")
+        assertEquals(emptyList(), requests.filterNot { it.third }, "no request is made without fresh = true")
     }
 
     private fun movie(id: String, vararg genres: String) = MediaSummary(MediaId.tmdbMovie(id), id, genreIds = genres.toList())
@@ -184,17 +230,32 @@ class DiscoverFeedTest {
     }
 
     private class MemoryDiscoverCache : DiscoverCache {
-        private val genres = mutableMapOf<MediaType, Saved<List<Genre>>>()
-        private val pages = mutableMapOf<Pair<MediaType, Int>, Saved<PagedResult<MediaSummary>>>()
+        var language = "en-US"
+        private val genres = mutableMapOf<Pair<MediaType, String>, Saved<List<Genre>>>()
+        private val pages = mutableMapOf<Triple<MediaType, Int, String>, Saved<PagedResult<MediaSummary>>>()
 
-        override suspend fun genres(type: MediaType): Saved<List<Genre>>? = genres[type]
-        override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long) {
-            this.genres[type] = Saved(genres, fetchedAtEpochMs)
+        override fun language(): String = language
+
+        override suspend fun genres(type: MediaType, language: String): Saved<List<Genre>>? = genres[type to language]
+        override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long, language: String) {
+            this.genres[type to language] = Saved(genres, fetchedAtEpochMs)
         }
-        override suspend fun popular(type: MediaType, page: Int): Saved<PagedResult<MediaSummary>>? = pages[type to page]
-        override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long) {
-            pages[type to page] = Saved(result, fetchedAtEpochMs)
+        override suspend fun popular(type: MediaType, page: Int, language: String): Saved<PagedResult<MediaSummary>>? = pages[Triple(type, page, language)]
+        override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long, language: String) {
+            pages[Triple(type, page, language)] = Saved(result, fetchedAtEpochMs)
         }
+    }
+
+    /** A shelf stored in one language is a miss in another, and the English copy is still there when the device returns. */
+    @Test
+    fun a_shelf_stored_in_one_language_is_a_miss_in_another() = runTest {
+        repository.movies = listOf(page(1, 1, movie("m1")))
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres.NONE)
+        cache.language = "es-ES"
+
+        assertNull(feed.snapshot(feed.startRun()).popularMovies, "the English shelf is not shown in Spanish")
+        cache.language = "en-US"
+        assertEquals(listOf("m1"), feed.snapshot(feed.startRun()).popularMovies?.items?.map { it.id.external }, "back in English, the copy is there")
     }
 
     /** TMDB's stand-in: each list holds the answers for one type, one per page number. */
@@ -203,7 +264,7 @@ class DiscoverFeedTest {
         // Every page is mostly muted and the catalogue has five more: the shelf still reads only MAX_SHELF_PAGES.
         repository.tvs = (1..5).map { n -> page(n, 5, *tvTitles("mute-$n", 15, "10767")) }
 
-        feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
 
         assertEquals((1..DiscoverFeed.MAX_SHELF_PAGES).toList(), repository.discoverPages(MediaType.TV), "no page after the budget is requested")
     }
@@ -211,13 +272,13 @@ class DiscoverFeedTest {
     @Test
     fun a_failed_supplemental_page_keeps_the_saved_shelf_instead_of_replacing_it() = runTest {
         repository.tvs = listOf(page(1, 2, *tvTitles("mute-a", 15, "10767"), *tvTitles("keep-a", 5)), page(2, 2, *tvTitles("keep-b", 12)))
-        feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
-        val saved = feed.snapshot()
+        feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        val saved = feed.snapshot(feed.startRun())
         assertEquals(32, saved.popularTv?.items?.size, "the first refresh stored both pages")
 
         // Page 2 is gone this time: the fresh read is partial, and the stored shelf with every title stays.
         repository.tvs = listOf(page(1, 2, *tvTitles("mute-a", 15, "10767"), *tvTitles("keep-a", 5)))
-        val refresh = feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        val refresh = feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
         val merged = refresh.mergedInto(saved)
 
         assertTrue(refresh.anyFailed, "a partial shelf is reported as a failure, so the saved copy says so")
@@ -228,7 +289,7 @@ class DiscoverFeedTest {
     fun a_partial_shelf_with_nothing_stored_is_kept_as_read() = runTest {
         repository.tvs = listOf(page(1, 2, *tvTitles("mute-a", 15, "10767"), *tvTitles("keep-a", 5)))
 
-        val refresh = feed.refresh(MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
+        val refresh = feed.refresh(feed.startRun(), MutedGenres.NONE, MutedGenres(setOf(GenreKey(MediaType.TV, "10767"))))
         val merged = refresh.mergedInto(DiscoverSnapshot(movieGenres = null, tvGenres = null, popularMovies = null, popularTv = null))
 
         assertEquals(20, merged.popularTv?.items?.size, "with no stored copy the partial read is all there is")
@@ -242,17 +303,22 @@ class DiscoverFeedTest {
         var failEverything = false
         private val requests = mutableListOf<Pair<MediaType, Int>>()
 
+        /** Every genre and discover request, with the `fresh` flag it was made with (#922). */
+        val freshness = mutableListOf<Triple<String, MediaType, Boolean>>()
+
         fun discoverPages(type: MediaType): List<Int> = requests.filter { it.first == type }.map { it.second }
 
-        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): Result<PagedResult<MediaSummary>> {
+        override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): Result<PagedResult<MediaSummary>> {
             requests += type to page
+            freshness += Triple("discover:$page", type, fresh)
             if (failEverything) return Result.failure(MetadataError.Offline())
             val source = if (type == MediaType.MOVIE) movies else tvs
             val answer = source.firstOrNull { it.page == page } ?: return Result.failure(MetadataError.NotFound())
             return Result.success(answer)
         }
 
-        override suspend fun genres(type: MediaType): Result<List<Genre>> {
+        override suspend fun genres(type: MediaType, fresh: Boolean): Result<List<Genre>> {
+            freshness += Triple("genres", type, fresh)
             if (failEverything) return Result.failure(MetadataError.Offline())
             val answer = if (type == MediaType.MOVIE) movieGenres else tvGenres
             return answer?.let { Result.success(it) } ?: Result.failure(MetadataError.Offline())
@@ -262,8 +328,8 @@ class DiscoverFeedTest {
         override suspend fun trending(): Result<List<MediaSummary>> = error("not used")
         override suspend fun details(id: MediaId): Result<MediaDetails> = error("not used")
         override suspend fun watchProviders(id: MediaId): Result<WatchProviders> = error("not used")
-        override suspend fun recommendations(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
-        override suspend fun similar(id: MediaId, page: Int): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = error("not used")
+        override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): Result<PagedResult<MediaSummary>> = error("not used")
         override suspend fun episodeDetails(episodeId: EpisodeId): Result<EpisodeDetails> = error("not used")
     }
 }

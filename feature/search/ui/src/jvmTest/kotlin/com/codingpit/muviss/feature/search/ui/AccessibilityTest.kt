@@ -38,7 +38,7 @@ class AccessibilityTest {
 
     @Test
     fun the_primary_action_is_one_button_named_by_what_it_does() = runComposeUiTest {
-        setContent { MuvissTheme(darkTheme = true) { PrimaryActionButton(PrimaryAction.MarkMovieWatched, onAdd = {}, onMarkMovieWatched = {}, onWatchedAgain = {}, onTickNext = {}) } }
+        setContent { MuvissTheme(darkTheme = true) { PrimaryActionButton(PrimaryAction.MarkMovieWatched, onAdd = {}, onMarkMovieWatched = {}, onWatchedAgain = {}, onTickNext = {}, onSpecialUnseen = {}) } }
 
         onNode(button).assertHasClickAction()
     }
@@ -46,7 +46,7 @@ class AccessibilityTest {
     // The JVM test locale is pinned to en-US, so the English copy is the expected accessible name.
     @Test
     fun the_movie_primary_action_is_named_by_its_label() = runComposeUiTest {
-        setContent { MuvissTheme(darkTheme = true) { PrimaryActionButton(PrimaryAction.MarkMovieWatched, onAdd = {}, onMarkMovieWatched = {}, onWatchedAgain = {}, onTickNext = {}) } }
+        setContent { MuvissTheme(darkTheme = true) { PrimaryActionButton(PrimaryAction.MarkMovieWatched, onAdd = {}, onMarkMovieWatched = {}, onWatchedAgain = {}, onTickNext = {}, onSpecialUnseen = {}) } }
 
         onNode(button).assertHasClickAction().assertTextEquals("Mark as watched")
     }
@@ -54,7 +54,7 @@ class AccessibilityTest {
     @Test
     fun the_tick_next_primary_action_is_named_by_the_episode_it_ticks() = runComposeUiTest {
         val episode = Episode(EpisodeId(MediaId.tmdbTv("1399"), 1, 2), 1, 2, "The Kingsroad", airDateEpochDay = 11L)
-        setContent { MuvissTheme(darkTheme = true) { PrimaryActionButton(PrimaryAction.TickNext(episode), onAdd = {}, onMarkMovieWatched = {}, onWatchedAgain = {}, onTickNext = {}) } }
+        setContent { MuvissTheme(darkTheme = true) { PrimaryActionButton(PrimaryAction.TickNext(episode), onAdd = {}, onMarkMovieWatched = {}, onWatchedAgain = {}, onTickNext = {}, onSpecialUnseen = {}) } }
 
         onNode(button).assertHasClickAction().assertContentDescriptionEquals("Mark season 1 episode 2 as seen")
     }

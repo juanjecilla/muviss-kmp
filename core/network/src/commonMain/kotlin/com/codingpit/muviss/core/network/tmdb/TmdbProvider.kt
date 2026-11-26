@@ -16,8 +16,11 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.MetadataError
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
 import com.codingpit.muviss.models.Season
 import com.codingpit.muviss.models.SourceId
+import com.codingpit.muviss.models.TitleImages
 import com.codingpit.muviss.models.WatchProviders
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -116,10 +119,12 @@ class TmdbProvider internal constructor(
         MediaType.TV -> tvDetails(id.external)
     }
 
-    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>): PagedResult<MediaSummary> = discoverFiltered(type, page, DiscoverFilters(genreIds = setOfNotNull(genreId), excludedGenreIds = excludedGenreIds))
+    override suspend fun discover(type: MediaType, page: Int, genreId: String?, excludedGenreIds: Set<String>, fresh: Boolean): PagedResult<MediaSummary> = discoverPage(type, page, DiscoverFilters(genreIds = setOfNotNull(genreId), excludedGenreIds = excludedGenreIds), fresh)
 
-    override suspend fun discoverFiltered(type: MediaType, page: Int, filters: DiscoverFilters): PagedResult<MediaSummary> {
-        val dto: TmdbPageDto = get("discover/${type.tmdbPath}") {
+    override suspend fun discoverFiltered(type: MediaType, page: Int, filters: DiscoverFilters): PagedResult<MediaSummary> = discoverPage(type, page, filters, fresh = false)
+
+    private suspend fun discoverPage(type: MediaType, page: Int, filters: DiscoverFilters, fresh: Boolean): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = get("discover/${type.tmdbPath}", fresh = fresh) {
             parameter("language", locale.language)
             parameter("sort_by", filters.sort.tmdbValue(type))
             parameter("page", page)
@@ -128,8 +133,8 @@ class TmdbProvider internal constructor(
         return TmdbMapper.discoverPageToPagedResult(type, dto)
     }
 
-    override suspend fun genres(type: MediaType): List<Genre> {
-        val dto: TmdbGenreListDto = get("genre/${type.tmdbPath}/list") { parameter("language", locale.language) }
+    override suspend fun genres(type: MediaType, fresh: Boolean): List<Genre> {
+        val dto: TmdbGenreListDto = get("genre/${type.tmdbPath}/list", fresh = fresh) { parameter("language", locale.language) }
         return TmdbMapper.genreListToModels(dto)
     }
 
@@ -138,16 +143,16 @@ class TmdbProvider internal constructor(
         return TmdbMapper.watchProvidersToModel(dto.results[region])
     }
 
-    override suspend fun recommendations(id: MediaId, page: Int): PagedResult<MediaSummary> {
-        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/recommendations") {
+    override suspend fun recommendations(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/recommendations", fresh = fresh) {
             parameter("language", locale.language)
             parameter("page", page)
         }
         return TmdbMapper.discoverPageToPagedResult(id.type, dto)
     }
 
-    override suspend fun similar(id: MediaId, page: Int): PagedResult<MediaSummary> {
-        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/similar") {
+    override suspend fun similar(id: MediaId, page: Int, fresh: Boolean): PagedResult<MediaSummary> {
+        val dto: TmdbPageDto = get("${id.type.tmdbPath}/${id.external}/similar", fresh = fresh) {
             parameter("language", locale.language)
             parameter("page", page)
         }
@@ -176,10 +181,53 @@ class TmdbProvider internal constructor(
         return TmdbMapper.episodeDetailToModel(episodeId, dto)
     }
 
+    override suspend fun images(id: MediaId): TitleImages {
+        val dto: TmdbImagesDto = get("${id.type.tmdbPath}/${id.external}/images") { parameter("include_image_language", imageLanguages()) }
+        return TmdbMapper.imagesToModel(dto)
+    }
+
+    override suspend fun episodeImages(episodeId: EpisodeId): TitleImages {
+        val dto: TmdbImagesDto = get("tv/${episodeId.show.external}/season/${episodeId.seasonNumber}/episode/${episodeId.episodeNumber}/images") {
+            parameter("include_image_language", imageLanguages())
+        }
+        return TmdbMapper.imagesToModel(dto)
+    }
+
+    /**
+     * TMDB drops every image whose language is not listed: art with no text on it is `null`, and English is the common fallback.
+     * `locale.language` is a BCP 47 tag ("es-ES"); this parameter wants the bare ISO 639-1 code, so a regional tag matches nothing.
+     */
+    private fun imageLanguages(): String = listOf(locale.language.substringBefore('-'), "null", "en").distinct().joinToString(",")
+
+    /**
+     * One request for the person and their whole filmography. A biography that is blank in the app's
+     * language costs one more, in English; most people TMDB has translated nothing for would otherwise
+     * show an empty page.
+     */
+    override suspend fun person(id: PersonId): PersonDetails {
+        val dto: TmdbPersonDto = get("person/${id.external}") {
+            parameter("language", locale.language)
+            parameter("append_to_response", "combined_credits,external_ids")
+        }
+        val needsFallback = dto.biography.isNullOrBlank() && !locale.language.startsWith("en")
+        // The page is worth showing without the English text, so only a MetadataError is swallowed
+        // here: a cancellation must still cancel.
+        val english = if (needsFallback) {
+            try {
+                get<TmdbPersonDto>("person/${id.external}") { parameter("language", "en-US") }.biography
+            } catch (_: MetadataError) {
+                null
+            }
+        } else {
+            null
+        }
+        return TmdbMapper.personToDetails(dto, english)
+    }
+
     private suspend fun movieDetails(externalId: String): MediaDetails {
         val dto: TmdbMovieDetailDto = get("movie/$externalId", fresh = true) {
             parameter("language", locale.language)
-            parameter("append_to_response", "external_ids")
+            parameter("append_to_response", "external_ids,credits")
         }
         return TmdbMapper.movieToDetails(dto)
     }
@@ -187,7 +235,7 @@ class TmdbProvider internal constructor(
     private suspend fun tvDetails(externalId: String): MediaDetails {
         val show: TmdbTvDetailDto = get("tv/$externalId", fresh = true) {
             parameter("language", locale.language)
-            parameter("append_to_response", "external_ids")
+            parameter("append_to_response", "external_ids,aggregate_credits")
         }
         val showId = MediaId.tmdbTv(externalId)
         val seasons = show.seasons

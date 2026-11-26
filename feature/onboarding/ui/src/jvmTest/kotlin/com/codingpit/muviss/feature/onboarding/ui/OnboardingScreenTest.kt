@@ -187,6 +187,24 @@ class OnboardingScreenTest {
         assertEquals(listOf(netflix to true), taste.writes)
     }
 
+    @Test
+    fun the_taste_page_offers_the_bundled_genres_offline_and_a_tap_writes_one() = runComposeUiTest {
+        // No genre catalogue is wired into the page at all, so nothing here waits on the network (#807).
+        screen()
+        val pages = pagesFor(canNotify = true, byokOffered = true, canBackUp = true)
+        repeat(pages.indexOf(OnboardingPage.TASTE)) { onNodeWithTag(ONBOARDING_NEXT_TAG).performClick() }
+
+        val film = TasteChoices.movieGenres.first { it.value == "movie:28" }
+        val series = TasteChoices.tvGenres.first { it.value == "tv:10759" }
+        onNodeWithTag(onboardingTasteTag(film)).performScrollTo().assertIsNotSelected()
+        onNodeWithTag(onboardingTasteTag(series)).performScrollTo().assertIsNotSelected()
+
+        onNodeWithTag(onboardingTasteTag(series)).performClick()
+
+        onNodeWithTag(onboardingTasteTag(series)).assertIsSelected()
+        assertEquals(listOf(series to true), taste.writes)
+    }
+
     private companion object {
         const val MAX_PAGES = 12
     }

@@ -76,10 +76,10 @@ class DiscoverOfflineViewModelTest {
 
     /** What Discover stored on this device at [now]: the movie and TV shelves and their genre lists. */
     private suspend fun storedDiscover(cache: MemoryDiscoverCache, now: Long) {
-        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), now)
-        cache.saveGenres(MediaType.TV, listOf(talkGenre, Genre("18", "Drama")), now)
-        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), now)
-        cache.savePopular(MediaType.TV, 1, PagedResult(listOf(talkShow, drama), page = 1, totalPages = 1), now)
+        cache.saveGenres(MediaType.MOVIE, listOf(Genre("28", "Action")), now, "en-US")
+        cache.saveGenres(MediaType.TV, listOf(talkGenre, Genre("18", "Drama")), now, "en-US")
+        cache.savePopular(MediaType.MOVIE, 1, PagedResult(emptyList(), page = 1, totalPages = 1), now, "en-US")
+        cache.savePopular(MediaType.TV, 1, PagedResult(listOf(talkShow, drama), page = 1, totalPages = 1), now, "en-US")
     }
 
     @Test
@@ -237,6 +237,68 @@ class DiscoverOfflineViewModelTest {
         assertEquals(listOf(talkShow, drama), vm.state.value.popularTv, "the next reload refreshed, so the unmuted talk show is back")
     }
 
+    /** #974: a refresh the person asks for says so when it fails, even while the copy is inside its TTL. */
+    @Test
+    fun a_refresh_the_person_asked_for_says_so_when_it_fails_inside_the_ttl() = runTest {
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        val vm = viewModel(offline(), cache, FakeClock(epochMs = 1_000L))
+        advanceUntilIdle()
+        assertFalse(vm.state.value.discoverSaved, "the fresh copy needed no refresh, so nothing failed")
+
+        vm.retry()
+        advanceUntilIdle()
+
+        assertEquals(listOf(talkShow, drama), vm.state.value.popularTv, "the stored shelf stays on screen")
+        assertNull(vm.state.value.error, "a stored copy is never an error")
+        assertTrue(vm.state.value.discoverSaved, "the person asked for the refresh and it failed: say so")
+    }
+
+    /** #974: an automatic refresh keeps the silent rule while the copy is inside its TTL. */
+    @Test
+    fun an_automatic_refresh_that_fails_inside_the_ttl_stays_silent() = runTest {
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        val settings = FakeMutingApi()
+        val vm = viewModel(offline(), cache, FakeClock(epochMs = 1_000L), settings = settings)
+        advanceUntilIdle()
+
+        // A muting change refreshes Discover without anyone asking for it.
+        settings.configured.value = MutedGenres(setOf(talk))
+        advanceUntilIdle()
+
+        assertEquals(listOf(drama), vm.state.value.popularTv, "the copy is re-filtered for the new muting")
+        assertFalse(vm.state.value.discoverSaved, "an automatic refresh inside the TTL is silent, as before")
+    }
+
+    /** #974: a refresh that succeeds clears the mark a failed one left. */
+    @Test
+    fun a_refresh_that_succeeds_clears_the_saved_mark() = runTest {
+        val cache = MemoryDiscoverCache()
+        storedDiscover(cache, now = 0L)
+        var reachable = false
+        val vm = viewModel(
+            FakeRepo(
+                discoverResult = { _, page, _ ->
+                    if (reachable) Result.success(PagedResult(listOf(drama), page, page)) else Result.failure(MetadataError.Offline())
+                },
+            ),
+            cache,
+            FakeClock(epochMs = 1_000L),
+        )
+        advanceUntilIdle()
+        vm.retry()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.discoverSaved, "the refresh failed inside the TTL, and the person asked for it")
+
+        reachable = true
+        vm.retry()
+        advanceUntilIdle()
+
+        assertFalse(vm.state.value.discoverSaved, "the refresh answered, so the mark is gone")
+        assertEquals(listOf(drama), vm.state.value.popularTv)
+    }
+
     @Test
     fun a_cold_start_that_cannot_reach_the_network_keeps_the_error_state() = runTest {
         val vm = viewModel(FakeRepo(movieGenresResult = Result.failure(MetadataError.Offline())), MemoryDiscoverCache(), FakeClock(epochMs = 0L))
@@ -249,15 +311,18 @@ class DiscoverOfflineViewModelTest {
 
 /** An in-memory [DiscoverCache]: what a device keeps between visits, for the Discover tests (#724). */
 private class MemoryDiscoverCache : DiscoverCache {
-    private val genres = mutableMapOf<MediaType, Saved<List<Genre>>>()
-    private val pages = mutableMapOf<Pair<MediaType, Int>, Saved<PagedResult<MediaSummary>>>()
+    var language = "en-US"
+    private val genres = mutableMapOf<Pair<MediaType, String>, Saved<List<Genre>>>()
+    private val pages = mutableMapOf<Triple<MediaType, Int, String>, Saved<PagedResult<MediaSummary>>>()
 
-    override suspend fun genres(type: MediaType): Saved<List<Genre>>? = genres[type]
-    override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long) {
-        this.genres[type] = Saved(genres, fetchedAtEpochMs)
+    override fun language(): String = language
+
+    override suspend fun genres(type: MediaType, language: String): Saved<List<Genre>>? = genres[type to language]
+    override suspend fun saveGenres(type: MediaType, genres: List<Genre>, fetchedAtEpochMs: Long, language: String) {
+        this.genres[type to language] = Saved(genres, fetchedAtEpochMs)
     }
-    override suspend fun popular(type: MediaType, page: Int): Saved<PagedResult<MediaSummary>>? = pages[type to page]
-    override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long) {
-        pages[type to page] = Saved(result, fetchedAtEpochMs)
+    override suspend fun popular(type: MediaType, page: Int, language: String): Saved<PagedResult<MediaSummary>>? = pages[Triple(type, page, language)]
+    override suspend fun savePopular(type: MediaType, page: Int, result: PagedResult<MediaSummary>, fetchedAtEpochMs: Long, language: String) {
+        pages[Triple(type, page, language)] = Saved(result, fetchedAtEpochMs)
     }
 }

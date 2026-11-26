@@ -11,8 +11,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Covers `30.sqm` — the added-at stamp and the ticked episode ids a triage verdict wrote (#902, #790).
- * Starts from the checked-in `30.db` fixture, a genuine v30 file with a decision row written before the
+ * Covers `32.sqm` — the added-at stamp and the ticked episode ids a triage verdict wrote (#902, #790).
+ * Starts from the checked-in `32.db` fixture, a genuine v32 file with a decision row written before the
  * columns existed, migrates forward, and asserts the old row claims nothing it cannot prove and the new
  * values round-trip.
  */
@@ -20,21 +20,21 @@ class TriageUndoStampMigrationTest {
 
     private val fixtures = File("src/commonMain/sqldelight/databases")
 
-    private fun v30Driver(): JdbcSqliteDriver {
+    private fun v32Driver(): JdbcSqliteDriver {
         val working = File(createTempDirectory("muviss-migration-test").toFile(), "muviss.db")
-        fixtures.resolve("30.db").copyTo(working)
+        fixtures.resolve("32.db").copyTo(working)
         return JdbcSqliteDriver("jdbc:sqlite:${working.absolutePath}")
     }
 
     @Test
-    fun `31_db fixture exists for the schema this migration produces`() {
-        assertTrue(fixtures.resolve("31.db").exists(), "31.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
+    fun `33_db fixture exists for the schema this migration produces`() {
+        assertTrue(fixtures.resolve("33.db").exists(), "33.db fixture is missing — run generateCommonMainMuvissDatabaseSchema")
     }
 
     @Test
     fun `a decision written before the columns existed claims no stamp and ticks nothing`() {
-        val driver = v30Driver()
-        // Raw SQL: at v30 the generated `upsert` does not take the new columns.
+        val driver = v32Driver()
+        // Raw SQL: at v32 the generated `upsert` does not take the new columns.
         driver.execute(
             identifier = null,
             sql = """
@@ -47,7 +47,7 @@ class TriageUndoStampMigrationTest {
         )
 
         runBlocking {
-            MuvissDatabase.Schema.synchronous().migrate(driver, oldVersion = 30L, newVersion = MuvissDatabase.Schema.version)
+            MuvissDatabase.Schema.synchronous().migrate(driver, oldVersion = 32L, newVersion = MuvissDatabase.Schema.version)
         }
 
         val row = MuvissDatabase(driver).triageDecisionQueries.selectById("tmdb:tv:1399").executeAsOne()
@@ -58,9 +58,9 @@ class TriageUndoStampMigrationTest {
 
     @Test
     fun `a stamp and a tick list written after the upgrade round-trip`() {
-        val driver = v30Driver()
+        val driver = v32Driver()
         runBlocking {
-            MuvissDatabase.Schema.synchronous().migrate(driver, oldVersion = 30L, newVersion = MuvissDatabase.Schema.version)
+            MuvissDatabase.Schema.synchronous().migrate(driver, oldVersion = 32L, newVersion = MuvissDatabase.Schema.version)
         }
         val database = MuvissDatabase(driver)
 

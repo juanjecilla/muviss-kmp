@@ -67,4 +67,28 @@ data class MediaId(
 @Serializable
 data class MediaAnchors(
     val imdbId: String? = null,
+    /** Wikidata's id (`Q...`), the way to a Wikipedia article in any language. */
+    val wikidataId: String? = null,
 )
+
+/**
+ * Source-namespaced identity of a person credited on a title, e.g. `tmdb:person:287`.
+ * Shaped like [MediaId] so it travels through a navigation route as one string.
+ */
+@Serializable
+data class PersonId(
+    val source: SourceId,
+    val external: String,
+) {
+    override fun toString(): String = "$source:person:$external"
+
+    companion object {
+        fun tmdb(id: String) = PersonId(SourceId.TMDB, id)
+
+        fun parse(raw: String): PersonId {
+            val parts = raw.split(":")
+            require(parts.size == 3 && parts[1] == "person") { "Malformed PersonId: $raw" }
+            return PersonId(SourceId(parts[0]), parts[2])
+        }
+    }
+}

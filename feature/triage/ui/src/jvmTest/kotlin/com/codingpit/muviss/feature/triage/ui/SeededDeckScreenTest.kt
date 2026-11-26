@@ -5,6 +5,7 @@ package com.codingpit.muviss.feature.triage.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runComposeUiTest
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +15,7 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 /**
  * EPIC 51 (#555, item 1): when a seeded deck runs out it says the picks are done. "All caught up" is a claim about
@@ -37,6 +39,22 @@ class SeededDeckScreenTest {
         onNodeWithText("Your picks are done").assertIsDisplayed()
         onNodeWithText("All caught up").assertDoesNotExist()
         onNodeWithText("Keep looking").assertDoesNotExist()
+    }
+
+    @Test
+    fun a_restored_empty_seeded_deck_neither_falls_back_to_the_catalogue_nor_says_all_caught_up_and_offers_the_way_back() = runComposeUiTest {
+        // The process died, so the holder is empty on restore (#768). The catalogue has titles that must not appear.
+        val harness = TriageHarness(movies = listOf(movie("1"), movie("2")))
+        var backs = 0
+
+        setContent { MuvissTheme { TriageScreen(harness.seededViewModel(emptyList()), onBack = { backs++ }, onOpenSkipped = {}, onOpenSnoozed = {}, onOpenDetail = {}) } }
+        waitForIdle()
+
+        onNodeWithTag(TRIAGE_CARD_TAG).assertDoesNotExist()
+        onNodeWithText("Your picks are done").assertIsDisplayed()
+        onNodeWithText("All caught up").assertDoesNotExist()
+        onNodeWithText("Back to Next Pick").performClick()
+        assertEquals(1, backs)
     }
 
     @Test
