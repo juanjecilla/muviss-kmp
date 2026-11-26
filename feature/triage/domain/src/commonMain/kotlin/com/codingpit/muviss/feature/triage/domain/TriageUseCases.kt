@@ -21,9 +21,11 @@ import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -139,11 +141,12 @@ class RecordDecisionUseCase(
     }
 
     /**
-     * [runCatching] for suspending work that must not swallow cancellation (#1079). A cancelled verdict (the person left
-     * the screen) rethrows the [CancellationException] instead of returning it as a failure, so the caller's coroutine
-     * ends cancelled rather than running follow-up work on a dead scope.
+     * [runCatching] for suspending work that must not swallow the caller's cancellation (#1079). When the caller's own
+     * coroutine has been cancelled (the person left the screen), the [CancellationException] is rethrown so the caller
+     * ends cancelled rather than running follow-up work on a dead scope. A cancellation that came from an inner source
+     * while the caller is still active is an ordinary failure: the retry UI must still see it.
      */
-    private inline fun <T> runSuspendCatchingUnlessCancelled(block: () -> T): Result<T> = runCatching(block).onFailure { if (it is CancellationException) throw it }
+    private suspend inline fun <T> runSuspendCatchingUnlessCancelled(block: () -> T): Result<T> = runCatching(block).onFailure { if (it is CancellationException && !currentCoroutineContext().isActive) throw it }
 
     /**
      * The add and the claim write, as one unit (#1071). The claim is recorded once the add has landed and before the

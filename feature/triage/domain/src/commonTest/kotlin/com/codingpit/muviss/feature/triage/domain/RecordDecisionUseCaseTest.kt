@@ -317,6 +317,23 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
+    fun a_cancellation_from_an_inner_source_while_the_caller_is_alive_is_a_failure() = runTest {
+        val useCase = RecordDecisionUseCase(
+            FakeTriageDecisionRepository(),
+            FakeCollectionApi(),
+            FakeProgressApi(),
+            object : TriageDetailsSource {
+                override suspend fun fetch(mediaId: MediaId): Result<MediaDetails> = Result.failure(kotlinx.coroutines.CancellationException("inner source cancelled"))
+            },
+            FakeClock(NOW_EPOCH_MS),
+        )
+
+        val result = useCase(endedShow, TriageVerdict.CAUGHT_UP)
+
+        assertTrue(result.isFailure, "the caller is not cancelled, so the failure is returned for the retry UI (#1079)")
+    }
+
+    @Test
     fun a_failed_rollback_does_not_replace_the_failure_that_caused_it() = runTest {
         val h = harness()
         h.repository.failClaimWrite = IllegalStateException("disk full")
