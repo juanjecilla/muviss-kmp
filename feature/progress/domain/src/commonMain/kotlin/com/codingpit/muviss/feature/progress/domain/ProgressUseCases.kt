@@ -91,6 +91,16 @@ class ClearPlaysUseCase(private val repository: ProgressRepository) {
     suspend operator fun invoke(episodeId: EpisodeId) = repository.clearPlays(episodeId)
 }
 
+/** Ticks episodes as seen, giving each one with no viewing yet a viewing stamped [watchedAtEpochMs] (#790). */
+class RecordFirstPlaysUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = repository.recordFirstPlays(episodeIds, watchedAtEpochMs)
+}
+
+/** Takes back one viewing by id, and only that one (#790). */
+class RemovePlayUseCase(private val repository: ProgressRepository) {
+    suspend operator fun invoke(playId: String) = repository.removePlay(playId)
+}
+
 /** How many times each episode of a title has been watched. */
 class ObservePlayCountsUseCase(private val repository: ProgressRepository) {
     operator fun invoke(mediaId: MediaId): Flow<Map<EpisodeId, Int>> = repository.observePlayCounts(mediaId)
@@ -118,10 +128,13 @@ class ObserveRewatchTimestampsUseCase(private val repository: ProgressRepository
 
 /**
  * Marks every episode at or before [target] (inclusive, across all of
- * [seasons]) as seen — the "I'm caught up through here" catch-up action.
+ * [seasons]) as seen — the "I'm caught up through here" catch-up action — and
+ * returns exactly the ids it ticked. Like [MarkSeasonAiredSeenUseCase], it
+ * writes one first viewing per episode that has none, so an undo can drop
+ * precisely those viewings.
  */
 class MarkPreviousSeenUseCase(private val repository: ProgressRepository) {
-    suspend operator fun invoke(seasons: List<Season>, target: EpisodeId) = repository.setSeenBulk(EpisodeOrdering.upToInclusive(seasons, target), seen = true)
+    suspend operator fun invoke(seasons: List<Season>, target: EpisodeId): List<EpisodeId> = repository.recordPlaysForUnseen(EpisodeOrdering.upToInclusive(seasons, target))
 }
 
 /**
@@ -177,6 +190,8 @@ class ProgressPlayMutations(
     val recordPlay: RecordPlayUseCase,
     val removeLatestPlay: RemoveLatestPlayUseCase,
     val clearPlays: ClearPlaysUseCase,
+    val recordFirstPlays: RecordFirstPlaysUseCase,
+    val removePlay: RemovePlayUseCase,
 )
 
 /** Every write that covers more than one episode, and their reversals, grouped likewise. */

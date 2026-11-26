@@ -96,16 +96,19 @@ class SqlDelightCollectionRepositoryTest {
     }
 
     @Test
-    fun remove_then_readd_undeletes_and_keeps_original_addedAt() = runTest {
+    fun remove_then_readd_undeletes_and_stamps_a_new_addedAt() = runTest {
         repository.upsertSnapshot(details())
         repository.remove(MediaId.tmdbMovie("603"))
 
         clock.advanceTo(9_000L)
         repository.upsertSnapshot(details())
 
+        // A re-add is a new add, so it carries the new date. Triage's undo compares this stamp (#902), and a
+        // title removed and added back must not look like the entry the verdict made. Undoing a removal keeps
+        // the original stamp; that is CollectionRestoreTest.
         repository.observeAll().test {
             val entry = awaitItem().single()
-            assertEquals(1_000L, entry.addedAtEpochMs)
+            assertEquals(9_000L, entry.addedAtEpochMs)
             cancelAndIgnoreRemainingEvents()
         }
     }

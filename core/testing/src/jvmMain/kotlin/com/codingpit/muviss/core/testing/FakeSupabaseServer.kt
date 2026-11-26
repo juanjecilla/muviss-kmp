@@ -542,6 +542,9 @@ class FakeSupabaseServer(
                     // #767. Defaulted server-side, so a push from a build that predates the column
                     // leaves an existing row's claim alone, the way PostgREST treats an absent key.
                     "created_entry" to booleanDefault(true),
+                    // #902 and #790. Both defaulted server-side, for the same reason as created_entry.
+                    "entry_added_at_epoch_ms" to nullableInteger,
+                    "ticked_episode_ids" to textDefault(""),
                 ),
             ),
             // EPIC 42 (ADR 0023). `year`, `poster_url` and `overview` are all

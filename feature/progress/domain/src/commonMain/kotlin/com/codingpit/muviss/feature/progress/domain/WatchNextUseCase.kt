@@ -8,7 +8,7 @@ import com.codingpit.muviss.core.model.SpecialsCounting
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.collection.api.CollectionSummary
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
-import com.codingpit.muviss.feature.progress.api.EpisodeOrdering.SPECIALS_SEASON_NUMBER
+import com.codingpit.muviss.feature.progress.api.EpisodeOrdering.SPECIALS_SEASON
 import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.models.WatchStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -96,9 +96,9 @@ class WatchNextUseCase(
     ) { seen, catalogMap, specialsCounted ->
         val seasons = catalogMap[summary.mediaId].orEmpty()
         val today = clock.todayEpochDay()
-        val airedRegular = EpisodeOrdering.flatten(seasons.filter { it.number != SPECIALS_SEASON_NUMBER })
+        val airedRegular = EpisodeOrdering.flatten(seasons.filter { it.number != SPECIALS_SEASON })
             .filter { ep -> ep.airDateEpochDay?.let { it <= today } == true }
-        val airedSpecials = EpisodeOrdering.flatten(seasons.filter { it.number == SPECIALS_SEASON_NUMBER })
+        val airedSpecials = EpisodeOrdering.flatten(seasons.filter { it.number == SPECIALS_SEASON })
             .filter { ep -> ep.airDateEpochDay?.let { it <= today } == true }
         // The same counts the Library and Detail derive status from (#938): a special counts only when it is aired
         // and the setting says so, and both halves come from the one aired catalog, so seen never exceeds aired.

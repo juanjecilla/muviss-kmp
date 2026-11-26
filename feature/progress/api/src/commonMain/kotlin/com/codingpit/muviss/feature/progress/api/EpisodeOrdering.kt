@@ -15,7 +15,7 @@ import com.codingpit.muviss.models.Season
 object EpisodeOrdering {
 
     /** TMDB's season number for "Specials" (ADR 0037). */
-    const val SPECIALS_SEASON_NUMBER = 0
+    const val SPECIALS_SEASON = 0
 
     /** Every episode across [seasons], in air order (season number, then episode number). */
     fun flatten(seasons: List<Season>): List<Episode> = seasons
@@ -44,6 +44,18 @@ object EpisodeOrdering {
         }
 
     /**
+     * The first season-0 special that has aired and is not in [seen], in show order, or null. Only meaningful once no
+     * regular episode is left to tick: the state Detail names "Special unseen" (ADR 0037, #797).
+     */
+    fun firstUnseenSpecial(seasons: List<Season>, seen: Set<EpisodeId>, todayEpochDay: Long): Episode? = seasons
+        .filter { it.number == SPECIALS_SEASON }
+        .flatMap { season -> season.episodes.sortedBy { it.episodeNumber } }
+        .firstOrNull { episode -> hasAired(episode, todayEpochDay) && episode.id !in seen }
+
+    /** Whether [episode] has aired by [todayEpochDay]. An undated episode has not, so it is never ticked. */
+    fun hasAired(episode: Episode, todayEpochDay: Long): Boolean = episode.airDateEpochDay?.let { it <= todayEpochDay } == true
+
+    /**
      * Every episode that has aired by [todayEpochDay], in show order.
      *
      * Deliberately not expressible as [upToInclusive] with the last aired
@@ -69,8 +81,11 @@ object EpisodeOrdering {
      * walking all seasons would tick every special ahead of any regular episode, undated ones included.
      */
     fun upToInclusive(seasons: List<Season>, target: EpisodeId): List<EpisodeId> {
-        val inSpecials = target.seasonNumber == SPECIALS_SEASON_NUMBER
-        val ordered = flatten(seasons.filter { (it.number == SPECIALS_SEASON_NUMBER) == inSpecials })
+        val ordered = if (target.seasonNumber == SPECIALS_SEASON) {
+            flatten(seasons.filter { it.number == SPECIALS_SEASON })
+        } else {
+            regular(seasons)
+        }
         val targetIndex = ordered.indexOfFirst { it.id == target }
         if (targetIndex < 0) return listOf(target)
         return ordered.subList(0, targetIndex + 1).map { it.id }

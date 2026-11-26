@@ -19,6 +19,9 @@ import kotlin.test.assertEquals
  * `core/database`, and adding a field here is a one-line change. Whoever
  * makes that change should have to come here and mean it.
  *
+ * The Discover caches are the same kind of mistake (ADR 0015's family): `discoverCache` (#724) and `forYouCache`
+ * (#785) hold TMDB answers and have no dirty flag or soft delete, so the exact list below is what keeps them out.
+ *
  * This test has already earned its place once. `episodePlays` joined the set
  * when rewatch history started syncing on a derived key (ADR 0013), landing
  * from a branch written in parallel with this one — and the assertion below
@@ -33,6 +36,21 @@ class SyncChangeSetShapeTest {
             listOf("collectionEntries", "episodeProgress", "mediaLists", "listEntries", "triageDecisions", "triageSnoozes", "episodePlays", "tasteProfileItems"),
             SyncChangeSet.serializer().descriptor.elementNames.toList(),
             "adding a table to sync is a deliberate act — see ADR 0009's six touchpoints, and ADR 0015 for why the episode catalog is not one of them",
+        )
+    }
+
+    /**
+     * A column is a wire change too: a push that drops a key leaves the server's value alone, so a renamed or
+     * forgotten field would silently stop syncing. #902 and #790 added these two to a decision.
+     */
+    @Test
+    fun `a triage decision change carries the entry stamp and the ticks its verdict wrote`() {
+        assertEquals(
+            listOf(
+                "media_id", "media_type", "verdict", "title", "poster_url", "decided_at_epoch_ms", "resolved",
+                "updated_at_epoch_ms", "deleted", "created_entry", "entry_added_at_epoch_ms", "ticked_episode_ids",
+            ),
+            TriageDecisionChange.serializer().descriptor.elementNames.toList(),
         )
     }
 }

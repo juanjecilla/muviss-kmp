@@ -144,8 +144,11 @@ class RecordDecisionUseCaseTest {
 
         h.useCase(ongoingShow, TriageVerdict.CAUGHT_UP).getOrThrow()
 
-        assertEquals(1, h.progress.markedAllAired.size)
-        assertEquals(TODAY_EPOCH_DAY, h.progress.markedAllAired.single().second)
+        // Exactly the aired episodes are ticked (EpisodeOrdering.airedBy), the unaired one is not.
+        assertEquals(
+            com.codingpit.muviss.feature.progress.api.EpisodeOrdering.airedBy(ongoingDetails.seasons, TODAY_EPOCH_DAY).toSet(),
+            h.progress.seen.value,
+        )
         // Two of three episodes have aired: all aired seen, production ongoing.
         assertEquals(WatchStatus.WATCHED, deriveFor(ongoingDetails, seen = 2))
     }
@@ -165,9 +168,36 @@ class RecordDecisionUseCaseTest {
 
         h.useCase(film, TriageVerdict.CAUGHT_UP).getOrThrow()
 
-        assertEquals(listOf(film.id), h.progress.moviesWatched)
-        assertEquals(emptyList(), h.progress.markedAllAired)
+        assertEquals(setOf(EpisodeId.forMovie(film.id)), h.progress.seen.value)
         assertEquals(WatchStatus.WATCHED, deriveFor(movieDetails(film), seen = 1))
+    }
+
+    @Test
+    fun caught_up_never_ticks_an_aired_special_and_records_no_play_for_one() = runTest {
+        // ADR 0038: triage ticks regular seasons only, so a special stays unseen and its viewing is never recorded.
+        val withSpecial = show("1401", "Doctor Who")
+        val details = tvDetails(
+            summary = withSpecial,
+            seasons = listOf(
+                0 to listOf(TODAY_EPOCH_DAY - 40),
+                1 to listOf(TODAY_EPOCH_DAY - 30, TODAY_EPOCH_DAY - 23, TODAY_EPOCH_DAY + 4),
+            ),
+        )
+        val h = Harness(details = FakeTriageDetailsSource(byId = mapOf(withSpecial.id to details)))
+
+        h.useCase(withSpecial, TriageVerdict.CAUGHT_UP).getOrThrow()
+
+        assertEquals(
+            setOf(EpisodeId(withSpecial.id, 1, 1), EpisodeId(withSpecial.id, 1, 2)),
+            h.progress.seen.value,
+        )
+        assertEquals(
+            listOf(
+                com.codingpit.muviss.feature.progress.api.EpisodePlay.idOf(EpisodeId(withSpecial.id, 1, 1), NOW_EPOCH_MS),
+                com.codingpit.muviss.feature.progress.api.EpisodePlay.idOf(EpisodeId(withSpecial.id, 1, 2), NOW_EPOCH_MS),
+            ),
+            h.repository.decisions.value.getValue(withSpecial.id).tickedPlayIds,
+        )
     }
 
     // --- failure handling ---
@@ -223,7 +253,8 @@ class RecordDecisionUseCaseTest {
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
-        assertEquals(listOf(endedShow.id), h.progress.cleared)
+        assertEquals(emptySet(), h.progress.seen.value, "the verdict's ticks are taken back")
+        assertEquals(emptyList(), h.progress.cleared, "undo takes back viewings, never the whole title")
         assertEquals(emptyMap(), h.repository.decisions.value)
     }
 
@@ -275,7 +306,7 @@ class RecordDecisionUseCaseTest {
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)
-        assertEquals(listOf(endedShow.id), h.progress.cleared)
+        assertEquals(emptyList(), h.progress.cleared, "undo takes back viewings, never the whole title")
     }
 
     @Test
@@ -295,8 +326,12 @@ class RecordDecisionUseCaseTest {
         h.repository.record(
             TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
         )
+        // The entry the first attempt added is already in the library when the retry runs. A retry that recomputed
+        // ownership from the library would now read "already there", drop the claim, and undo would keep the entry.
+        h.collection.add(endedDetails)
 
         h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+        assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "the retry must keep the stored claim")
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
         assertEquals(listOf(endedShow.id), h.collection.removed)

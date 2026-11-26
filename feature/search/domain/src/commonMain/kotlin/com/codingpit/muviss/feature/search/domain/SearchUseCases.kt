@@ -3,12 +3,18 @@ package com.codingpit.muviss.feature.search.domain
 import com.codingpit.muviss.models.EpisodeDetails
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.Genre
+import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 import com.codingpit.muviss.models.MediaType
 import com.codingpit.muviss.models.PagedResult
+import com.codingpit.muviss.models.PersonDetails
+import com.codingpit.muviss.models.PersonId
+import com.codingpit.muviss.models.TitleImage
 import com.codingpit.muviss.models.WatchProviders
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 /**
  * Drops from [this] every title whose id is in [shown], and every repeat of an
@@ -81,7 +87,7 @@ class WatchProvidersUseCase(private val repository: SearchRepository) {
  * fetch each seed's recommendations for Discover's "For you" section.
  */
 class RecommendationsUseCase(private val repository: SearchRepository) {
-    suspend operator fun invoke(id: MediaId, page: Int = 1): Result<PagedResult<MediaSummary>> = repository.recommendations(id, page)
+    suspend operator fun invoke(id: MediaId, page: Int = 1, fresh: Boolean = false): Result<PagedResult<MediaSummary>> = repository.recommendations(id, page, fresh)
 }
 
 /** Loads titles similar to [id] (EPIC 16); the Detail screen's recommendations fallback (see [MoreLikeThisUseCase]). */
@@ -114,4 +120,39 @@ class MoreLikeThisUseCase(
 /** Loads one episode's full detail for the episode screen. */
 class EpisodeDetailUseCase(private val repository: SearchRepository) {
     suspend operator fun invoke(episodeId: EpisodeId): Result<EpisodeDetails> = repository.episodeDetails(episodeId)
+}
+
+/** A Gallery as the Image Viewer pages it. */
+data class Gallery(val images: List<TitleImage>)
+
+/**
+ * The images the Image Viewer pages through, starting from the one the person tapped.
+ *
+ * Opens at once on [seed] — the artwork already on the screen, so already in the image cache — and
+ * fills in the rest when the source answers. The seed stays the first page throughout, so the page
+ * the person is looking at does not move when the list arrives. A source that is offline, or has
+ * nothing, leaves the Gallery as the seed alone; there is no error to show for a request the person
+ * never made.
+ *
+ * With [episodeId] the Gallery is that episode's stills; otherwise it is [kind] of [mediaId]'s art.
+ */
+class LoadGalleryUseCase(private val repository: SearchRepository) {
+    operator fun invoke(mediaId: MediaId, episodeId: EpisodeId?, kind: ImageKind, seed: TitleImage): Flow<Gallery> = flow {
+        emit(Gallery(listOf(seed)))
+        val fetched = if (episodeId != null) repository.episodeImages(episodeId) else repository.images(mediaId)
+        val others = fetched.getOrNull()?.of(kind).orEmpty()
+        if (others.isNotEmpty()) emit(merge(seed, others))
+    }
+
+    /** The seed first — at the source's larger size when it is in [others] — then the rest, once each. */
+    internal fun merge(seed: TitleImage, others: List<TitleImage>): Gallery {
+        val sameFile = others.firstOrNull { it.fileKey == seed.fileKey }
+        val rest = others.filter { it.fileKey != seed.fileKey }.distinctBy { it.fileKey }
+        return Gallery(listOf(sameFile ?: seed) + rest)
+    }
+}
+
+/** One person's page: who they are and what they are credited on. */
+class PersonDetailUseCase(private val repository: SearchRepository) {
+    suspend operator fun invoke(id: PersonId): Result<PersonDetails> = repository.person(id)
 }

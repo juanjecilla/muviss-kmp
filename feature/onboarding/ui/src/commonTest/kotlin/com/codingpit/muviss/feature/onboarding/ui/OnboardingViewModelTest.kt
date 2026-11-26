@@ -142,6 +142,20 @@ class OnboardingViewModelTest {
     }
 
     @Test
+    fun a_bundled_genre_chip_is_written_as_the_same_taste_item_settings_writes() = runTest {
+        val vm = viewModel()
+        val drama = TasteChoices.tvGenres.first { it.value == "tv:18" }
+        val film = TasteChoices.movieGenres.first { it.value == "movie:28" }
+
+        vm.onTasteToggled(drama, liked = true)
+        vm.onTasteToggled(film, liked = true)
+
+        assertEquals(listOf(drama to true, film to true), taste.writes, "no catalogue is needed: the chips write straight away")
+        assertEquals("GENRE:tv:18", drama.id)
+        assertTrue(drama.id in vm.state.value.likedTaste)
+    }
+
+    @Test
     fun finishing_waits_for_a_taste_chip_still_being_written() = runTest {
         val vm = viewModel()
         val gate = CompletableDeferred<Unit>()

@@ -1,8 +1,8 @@
 -- Whether season 0 (Specials) counts toward a title's progress (#938, ADR 0038). The filename is the version this
 -- migrates FROM: 33.sqm takes a v33 database to v34 (fixture 34.db).
 --
--- NUMBERING: claimed when the #938 branch opened. Develop ends at 29.sqm, and 30-32 are claimed by open PRs (#920, #913,
--- #926), so `verifyMigrations` reports a gap until those merge; re-check this number against develop before merging.
+-- NUMBERING: re-checked against develop when #938 merged develop in. 30-32 have landed (#853, #785, the triage undo),
+-- so 33 is the next free number. `verifyMigrations` cannot see a collision, so re-check it again before merging.
 --
 -- Per device and NOT synced, NOT exported, and not in the Display Preferences group: it changes how progress is read on
 -- this device, not what the library holds. DEFAULT 0 is what every install gets, except one that already has a special

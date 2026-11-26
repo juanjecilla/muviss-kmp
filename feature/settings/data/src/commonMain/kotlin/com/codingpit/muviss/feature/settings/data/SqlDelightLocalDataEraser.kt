@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.settings.data
 
 import com.codingpit.muviss.core.common.AppDispatchers
+import com.codingpit.muviss.core.common.erase.DataEraseFence
 import com.codingpit.muviss.core.common.secrets.SecretStore
 import com.codingpit.muviss.core.common.widget.WidgetRefresher
 import com.codingpit.muviss.core.database.DeviceBackupExclusion
@@ -37,6 +38,8 @@ class SqlDelightLocalDataEraser(
     private val widgetRefresher: WidgetRefresher,
     private val syncBackend: SyncBackend,
     private val syncIdle: SyncIdleLock = SyncIdleLock.None,
+    // Fences the erase against the writers of fetched local data (For you, Discover) that may still be in flight (#965).
+    private val erasures: DataEraseFence,
 ) : LocalDataEraser {
 
     // Signs out first, so once the erase starts nothing can pull the library back (#645), and does
@@ -58,6 +61,20 @@ class SqlDelightLocalDataEraser(
     }
 
     private suspend fun eraseEverything() {
+        erasures.erase { eraseRows() }
+        // The Own TMDB Key (EPIC 46) is not in the database. `clear` also drops the copy the
+        // provider holds in memory, so the next request is Muviss's; `clearAll` then wipes the
+        // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
+        ownTmdbKey.clear()
+        secrets.clearAll()
+        widgetRefresher.refresh()
+        // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
+        // exclusion follows it: an iOS directory left un-excluded would back a deleted library up. Last,
+        // because it can throw; the data is already gone by then, and the next open applies it again.
+        DeviceBackupExclusion.apply(enabled = false)
+    }
+
+    private suspend fun eraseRows() {
         database.transaction {
             // The user's own data — the set sync's "discard local data" deletes.
             database.collectionEntryQueries.deleteAll()
@@ -86,21 +103,13 @@ class SqlDelightLocalDataEraser(
             database.remoteConfigCacheQueries.deleteAll()
             // Discover's stored TMDB answers (#724): a cache of what this install looked at.
             database.discoverCacheQueries.deleteAll()
+            // And "For you"'s copy of the recommendations for the library it was built from (#785).
+            database.forYouCacheQueries.deleteAll()
             // Whose library this was, and how far it had pulled.
             database.syncCursorQueries.deleteAll()
             database.syncStateQueries.deleteRow()
             // The persisted session: a restart must not restore it when the remote sign-out failed.
             database.syncAccountQueries.clearSession()
         }
-        // The Own TMDB Key (EPIC 46) is not in the database. `clear` also drops the copy the
-        // provider holds in memory, so the next request is Muviss's; `clearAll` then wipes the
-        // store and its key material, which on iOS is a Keychain item that outlives an uninstall.
-        ownTmdbKey.clear()
-        secrets.clearAll()
-        widgetRefresher.refresh()
-        // The settings row is gone, so Device Backup is back to its default, off (ADR 0034). The OS
-        // exclusion follows it: an iOS directory left un-excluded would back a deleted library up. Last,
-        // because it can throw; the data is already gone by then, and the next open applies it again.
-        DeviceBackupExclusion.apply(enabled = false)
     }
 }

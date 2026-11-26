@@ -315,6 +315,8 @@ create table triage_decision (
   updated_at_epoch_ms bigint not null,
   deleted boolean not null default false,
   created_entry boolean not null default true,  -- #767: undo removes the library entry only when true
+  entry_added_at_epoch_ms bigint,  -- #902: the added-at stamp of that entry; undo removes it only while it matches
+  ticked_episode_ids text not null default '',  -- #790: comma-separated episode ids the verdict newly ticked
   primary key (user_id, media_id)
 );
 

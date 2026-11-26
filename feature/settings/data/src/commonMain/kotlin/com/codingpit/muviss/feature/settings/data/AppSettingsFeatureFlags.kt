@@ -38,9 +38,6 @@ class AppSettingsFeatureFlags(
     private val clock: AppClock,
 ) : FeatureFlags {
 
-    // Same seed as the other settings-path wrappers. A row another module creates first gets the compiled default instead (#853).
-    private val rowSeeder = AppSettingsRowSeeder(queries, remoteConfig, dispatchers)
-
     override val triageControlScheme: Flow<TriageControlScheme> = settings()
         .map { row -> TriageControlScheme.fromStored(row?.triageControlScheme) }
 
@@ -137,5 +134,5 @@ class AppSettingsFeatureFlags(
         .mapToOneOrNull(dispatchers.io)
         .onStart { ensureRow() }
 
-    private suspend fun ensureRow() = rowSeeder.ensureRow()
+    private suspend fun ensureRow() = withContext(dispatchers.io) { queries.ensureRow() }
 }

@@ -43,14 +43,10 @@ class DetailPrimaryActionTest {
         specialsCounted = specialsCounted,
     )
 
-    /** The answer `ProgressApi.nextEpisodes` gives for [state], computed by the same ordering it calls. */
+    /** The answer `ProgressApi.nextEpisodes` gives for [state]: the same derivation it calls, so the two cannot drift. */
     private fun primaryFor(state: DetailUiState): PrimaryAction {
         val seasons = state.details?.seasons.orEmpty()
-        val next = NextEpisodes(
-            aired = EpisodeOrdering.nextUnseen(seasons, state.seenEpisodes, today),
-            announced = EpisodeOrdering.nextAnnounced(seasons, state.seenEpisodes, today),
-        )
-        return primaryActionFor(state, today, next)
+        return primaryActionFor(state, NextEpisodes.of(seasons, state.seenEpisodes, today))
     }
 
     @Test

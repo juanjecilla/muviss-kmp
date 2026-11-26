@@ -90,18 +90,17 @@ val settingsDataModule: Module = module {
             get(),
             get(),
             get(),
-            get(),
         )
     }
     single { DeviceBackupWrites() }
     // The store-review counters (#410): per device, the same appSettings row as the switches above.
-    single<ReviewLedger> { SqlDelightReviewLedger(get(), get(), get()) }
+    single<ReviewLedger> { SqlDelightReviewLedger(get(), get()) }
     single { MutedGenresSession() }
     single<GenreCatalog> { TmdbGenreCatalog(get(), get()) }
     factory { LoadGenresUseCase(get()) }
     single<SettingsApi> { DefaultSettingsApi(get(), get(), get(), get()) }
     single<BackupRestorer> { SqlDelightBackupRestorer(get(), get()) }
-    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get(), get(), get()) }
+    single<LocalDataEraser> { SqlDelightLocalDataEraser(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     single<TmdbKeyApi> { OwnTmdbKeySettings(get()) }
     single<TasteProfileRepository> { SqlDelightTasteProfileRepository(get<MuvissDatabase>().tasteProfileQueries, get(), get()) }
     factory { ObserveTasteProfileUseCase(get(), mutedGenreKeys(get())) }

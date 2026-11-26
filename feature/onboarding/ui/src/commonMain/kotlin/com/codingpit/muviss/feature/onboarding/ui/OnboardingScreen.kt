@@ -95,8 +95,34 @@ import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_format_series
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_formats
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_more
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_10749
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_10751
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_16
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_18
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_27
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_28
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_35
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_53
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_80
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_878
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_9648
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genre_99
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_movie_genres
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_services
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_title
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_10751
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_10759
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_10762
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_10765
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_10768
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_16
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_18
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_35
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_37
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_80
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_9648
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genre_99
+import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_taste_tv_genres
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_watch_next_body
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_watch_next_title
 import com.codingpit.muviss.feature.onboarding.ui.generated.resources.onboarding_watch_next_widget
@@ -313,6 +339,11 @@ private fun PageContent(
             val formats = TasteChoices.formats.associateWith { formatName(it) }
             val companies = TasteChoices.companies.associateWith { companyName(it) }
             TasteGroup(Res.string.onboarding_taste_formats, TasteChoices.formats, state, onTasteToggled) { formats.getValue(it) }
+            // The bundled genres (#807): offline, so the page never waits on TMDB's catalogue.
+            val movieGenres = TasteChoices.movieGenres.associateWith { genreName(it) }
+            val tvGenres = TasteChoices.tvGenres.associateWith { genreName(it) }
+            TasteGroup(Res.string.onboarding_taste_movie_genres, TasteChoices.movieGenres, state, onTasteToggled) { movieGenres.getValue(it) }
+            TasteGroup(Res.string.onboarding_taste_tv_genres, TasteChoices.tvGenres, state, onTasteToggled) { tvGenres.getValue(it) }
             TasteGroup(Res.string.onboarding_taste_services, TasteChoices.services, state, onTasteToggled) { it.label }
             TasteGroup(Res.string.onboarding_taste_company, companies.keys.toList(), state, onTasteToggled) { companies.getValue(it) }
             Spacer(Modifier.height(MuvissSpacing.s))
@@ -368,6 +399,40 @@ private fun formatName(item: TasteItem): String = stringResource(
         "LIMITED_SERIES" -> Res.string.onboarding_taste_format_limited
         else -> Res.string.onboarding_taste_format_movie
     },
+)
+
+/** The bundled genre's name, keyed by its type and TMDB id (`movie:28`, `tv:10759`), see [genreNames]. */
+@Composable
+private fun genreName(item: TasteItem): String = stringResource(
+    checkNotNull(genreNames[item.value]) { "no name for bundled genre ${item.value}" },
+)
+
+/** Each bundled genre's name, keyed by its `<movie|tv>:<tmdb id>` value, the same key a Muted Genre uses. */
+private val genreNames: Map<String, org.jetbrains.compose.resources.StringResource> = mapOf(
+    "movie:28" to Res.string.onboarding_taste_movie_genre_28,
+    "movie:35" to Res.string.onboarding_taste_movie_genre_35,
+    "movie:18" to Res.string.onboarding_taste_movie_genre_18,
+    "movie:27" to Res.string.onboarding_taste_movie_genre_27,
+    "movie:878" to Res.string.onboarding_taste_movie_genre_878,
+    "movie:10749" to Res.string.onboarding_taste_movie_genre_10749,
+    "movie:53" to Res.string.onboarding_taste_movie_genre_53,
+    "movie:16" to Res.string.onboarding_taste_movie_genre_16,
+    "movie:99" to Res.string.onboarding_taste_movie_genre_99,
+    "movie:9648" to Res.string.onboarding_taste_movie_genre_9648,
+    "movie:80" to Res.string.onboarding_taste_movie_genre_80,
+    "movie:10751" to Res.string.onboarding_taste_movie_genre_10751,
+    "tv:10759" to Res.string.onboarding_taste_tv_genre_10759,
+    "tv:35" to Res.string.onboarding_taste_tv_genre_35,
+    "tv:18" to Res.string.onboarding_taste_tv_genre_18,
+    "tv:80" to Res.string.onboarding_taste_tv_genre_80,
+    "tv:9648" to Res.string.onboarding_taste_tv_genre_9648,
+    "tv:10765" to Res.string.onboarding_taste_tv_genre_10765,
+    "tv:16" to Res.string.onboarding_taste_tv_genre_16,
+    "tv:99" to Res.string.onboarding_taste_tv_genre_99,
+    "tv:10751" to Res.string.onboarding_taste_tv_genre_10751,
+    "tv:10762" to Res.string.onboarding_taste_tv_genre_10762,
+    "tv:37" to Res.string.onboarding_taste_tv_genre_37,
+    "tv:10768" to Res.string.onboarding_taste_tv_genre_10768,
 )
 
 /** The company choices are stored as the Pick Session's enum names, so their labels are localized here. */

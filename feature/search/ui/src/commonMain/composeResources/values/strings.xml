@@ -15,6 +15,8 @@
     <string name="search_clear">Clear search</string>
     <string name="carousel_for_you">For you</string>
     <string name="show_muted">Show muted genres</string>
+    <!-- The refresh control on Discover: its label for screen readers and its tooltip. -->
+    <string name="discover_refresh">Refresh</string>
     <string name="genres_movies">Movie genres</string>
     <string name="genres_tv">TV genres</string>
     <string name="carousel_popular_movies">Popular movies</string>
@@ -89,6 +91,7 @@
     <string name="tick_caught_up">Caught up on %1$s</string>
     <string name="undo_season_seen">%1$s marked seen</string>
     <string name="undo_show_seen">Marked every aired episode seen</string>
+    <string name="undo_caught_up_through">Caught up through S%1$d·E%2$d</string>
 
     <!-- Add to list -->
     <string name="new_list_name">New list name</string>
@@ -140,4 +143,57 @@
         <item quantity="one">%1$d unseen</item>
         <item quantity="other">%1$d unseen</item>
     </plurals>
+    <string name="cast">Cast</string>
+    <string name="credits_title">Cast &amp; crew</string>
+    <!-- %1$s is one or more names, comma separated. -->
+    <string name="directed_by">Directed by %1$s</string>
+    <string name="created_by">Created by %1$s</string>
+    <!-- %1$s is a character or job, %2$d the episodes it covers. -->
+    <plurals name="credit_role_episodes">
+        <item quantity="one">%1$s · %2$d ep</item>
+        <item quantity="other">%1$s · %2$d eps</item>
+    </plurals>
+    <plurals name="credit_episodes">
+        <item quantity="one">%1$d ep</item>
+        <item quantity="other">%1$d eps</item>
+    </plurals>
+    <string name="department_creator">Creators</string>
+    <string name="department_directing">Directing</string>
+    <string name="department_writing">Writing</string>
+    <string name="department_production">Production</string>
+    <string name="department_camera">Camera</string>
+    <string name="department_editing">Editing</string>
+    <string name="department_sound">Sound</string>
+    <string name="department_art">Art</string>
+    <string name="department_costume">Costume &amp; make-up</string>
+    <string name="department_visual_effects">Visual effects</string>
+    <string name="department_lighting">Lighting</string>
+    <string name="department_crew">Crew</string>
+    <string name="department_other">Other</string>
+    <string name="action_close">Close</string>
+    <string name="image_viewer_position">%1$d / %2$d</string>
+    <string name="image_viewer_backdrop">Backdrop %1$d of %2$d</string>
+    <string name="image_viewer_poster">Poster %1$d of %2$d</string>
+    <string name="image_viewer_still">Still %1$d of %2$d</string>
+    <string name="image_open_backdrop">View backdrop full screen</string>
+    <string name="image_open_poster">View poster full screen</string>
+    <string name="image_open_still">View still full screen</string>
+    <string name="image_name_backdrop">Backdrop</string>
+    <string name="image_name_poster">Poster</string>
+    <string name="image_name_still">Still</string>
+    <string name="person_known_for">Known for</string>
+    <string name="person_tab_acting">Acting</string>
+    <string name="person_in_library">In your library</string>
+    <string name="person_upcoming">Upcoming</string>
+    <string name="person_no_credits">No credits listed.</string>
+    <!-- %1$s is a year, %2$s a place. -->
+    <string name="person_born_in">Born %1$s in %2$s</string>
+    <string name="person_born">Born %1$s</string>
+    <string name="person_died">Died %1$s</string>
+    <string name="person_bio_more">Read more</string>
+    <string name="person_bio_less">Show less</string>
+    <string name="link_imdb">IMDb</string>
+    <string name="link_wikipedia">Wikipedia</string>
+    <string name="link_wikipedia_english">Wikipedia (English)</string>
+    <string name="link_tmdb">TMDB</string>
 </resources>

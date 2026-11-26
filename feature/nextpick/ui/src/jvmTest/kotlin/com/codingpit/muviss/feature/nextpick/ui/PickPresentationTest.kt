@@ -2,11 +2,15 @@
 
 package com.codingpit.muviss.feature.nextpick.ui
 
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.feature.nextpick.domain.NextPickResultMode
 import com.codingpit.muviss.feature.nextpick.domain.PickReason
@@ -71,6 +75,29 @@ class PickPresentationTest {
     }
 
     @Test
+    fun one_pick_reaches_its_actions_when_the_screen_is_shorter_than_the_result() = runComposeUiTest {
+        // Given a narrow, short frame (a tall phone's poster pushes the actions below the fold)
+        val pick = ranked("1")
+        var another = 0
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                OnePickPresentation.Content(
+                    state = result(NextPickResultMode.ONE_PICK, listOf(pick)),
+                    callbacks = callbacks(onAnother = { another++ }),
+                    modifier = Modifier.size(width = 360.dp, height = 420.dp),
+                )
+            }
+        }
+
+        // When the person scrolls to the last button and presses it
+        onNodeWithText("Another").performScrollTo().assertIsDisplayed().performClick()
+
+        // Then it was reachable
+        assertEquals(1, another)
+        onNodeWithContentDescription("Add Title 1").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun deck_offers_the_swipe_when_the_library_does_not_hold_a_pick() = runComposeUiTest {
         // Given a list with one title the library does not hold
         var opened = 0
@@ -113,10 +140,11 @@ class PickPresentationTest {
 private fun callbacks(
     onAdd: (MediaId) -> Unit = {},
     onOpenDeck: () -> Unit = {},
+    onAnother: () -> Unit = {},
 ) = PickResultCallbacks(
     onAdd = onAdd,
     onNotForMe = {},
     onSnooze = {},
-    onAnother = {},
+    onAnother = onAnother,
     onOpenDeck = onOpenDeck,
 )

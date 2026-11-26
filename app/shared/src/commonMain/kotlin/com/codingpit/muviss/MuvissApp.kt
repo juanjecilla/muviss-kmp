@@ -55,6 +55,7 @@ import com.codingpit.muviss.core.designsystem.component.PersistenceBanner
 import com.codingpit.muviss.core.designsystem.layout.ScreenInsets
 import com.codingpit.muviss.core.designsystem.text.UiText
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
+import com.codingpit.muviss.core.network.MetadataLocale
 import com.codingpit.muviss.core.sync.SignInFeedback
 import com.codingpit.muviss.core.sync.SyncAvailability
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -76,6 +77,7 @@ import com.codingpit.muviss.feature.onboarding.ui.onboardingSection
 import com.codingpit.muviss.feature.profile.ui.profileSection
 import com.codingpit.muviss.feature.progress.ui.progressSection
 import com.codingpit.muviss.feature.search.ui.DetailRoute
+import com.codingpit.muviss.feature.search.ui.ImageViewerRoute
 import com.codingpit.muviss.feature.search.ui.SearchRoute
 import com.codingpit.muviss.feature.search.ui.searchSection
 import com.codingpit.muviss.feature.settings.api.SettingsApi
@@ -354,6 +356,8 @@ private fun MuvissScaffold(
     val syncAvailability = koinInject<SyncAvailability>()
     // Next Pick's Deck result hands its titles to Triage through this seam before it opens the seeded deck (#554).
     val triageSeeds = koinInject<TriageDeckSeeds>()
+    // The TMDB content language. Read at composition, so a Detail or Person link opens in the language its screen shows (#996).
+    val metadataLocale = koinInject<MetadataLocale>()
     val openCoWatch = remember(syncAvailability, navController) {
         coWatchEntry(syncAvailability) { navController.navigate(CompanionsRoute) }
     }
@@ -395,6 +399,9 @@ private fun MuvissScaffold(
     val layoutType = when {
         // The introduction is full-screen: nothing in the bar is reachable until it ends.
         showingOnboarding -> NavigationSuiteType.None
+
+        // So is the Image Viewer: artwork edge to edge, nothing but its own controls on top.
+        currentDestination?.hasRoute(ImageViewerRoute::class) == true -> NavigationSuiteType.None
 
         windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) -> NavigationSuiteType.NavigationRail
 
@@ -445,6 +452,8 @@ private fun MuvissScaffold(
         // without this every screen not built on an M3 Scaffold draws its first
         // pixel under the status bar and camera cutout. One wrap fixes all of
         // them, on every platform.
+        // Every route keeps this top padding, immersive ones included (they extend up into it themselves), so no
+        // navigation state moves a screen. See ScreenInsets.
         ScreenInsets {
             Column {
                 val persistence = koinInject<PersistenceStatus>()
@@ -486,6 +495,8 @@ private fun MuvissScaffold(
                         navController,
                         onOpenTriage = { navController.navigate(TriageRoute) },
                         onOpenNextPick = controller::openNextPickFrom,
+                        linkLanguage = { metadataLocale.language },
+                        refreshRequests = controller.refreshRequests,
                     )
                     collectionSection(
                         navController,

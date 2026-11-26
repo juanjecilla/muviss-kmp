@@ -9,6 +9,7 @@ import androidx.glance.appwidget.state.updateAppWidgetState
 import com.codingpit.muviss.MainActivity
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.models.EpisodeId
+import kotlinx.coroutines.flow.first
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -23,6 +24,12 @@ val OpenNextPickKey = ActionParameters.Key<Boolean>(MainActivity.EXTRA_OPEN_NEXT
 
 /** Where the "just ticked, offer Undo" marker lives, per widget instance. */
 internal val JustTickedKey = stringPreferencesKey("justTickedEpisodeId")
+
+/**
+ * The just-ticked title, kept with the marker (#888). A tick can take its title out of Watch Next, and the widget
+ * then draws that title's row from this rather than from the shared list, until the marker clears.
+ */
+internal val JustTickedTitleKey = stringPreferencesKey("justTickedTitle")
 
 /**
  * Ticks a row's episode straight from the home screen.
@@ -45,11 +52,39 @@ class TickAction :
 
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val episodeId = parseEpisodeId(parameters[EpisodeIdKey]) ?: return
+        // Read before the write: the tick may take the title out of Watch Next, and then it is no longer listed.
+        val title = progressApi.observeWatchNext().first().firstOrNull { it.mediaId == episodeId.show }?.title
+        // The previous marker is read before the write too: the write's refresh clears it (see GlanceWidgetRefresher).
+        var markedEpisode: String? = null
+        var markedTitle: String? = null
+        updateAppWidgetState(context, glanceId) {
+            markedEpisode = it[JustTickedKey]
+            markedTitle = it[JustTickedTitleKey]
+        }
         progressApi.setEpisodeSeen(episodeId, seen = true)
-        updateAppWidgetState(context, glanceId) { it[JustTickedKey] = episodeId.toString() }
+        val keptTitle = rememberedTickTitle(episodeId.toString(), title, markedEpisode, markedTitle)
+        updateAppWidgetState(context, glanceId) {
+            it[JustTickedKey] = episodeId.toString()
+            if (keptTitle != null) it[JustTickedTitleKey] = keptTitle else it.remove(JustTickedTitleKey)
+        }
         MuvissWidget().update(context, glanceId)
     }
 }
+
+/**
+ * The title the Undo row keeps for a tick (#888).
+ *
+ * A repeated tick of the episode the marker already names finds no Watch Next item, because the first tick took
+ * its title out of the list. It then keeps the title the marker remembers rather than dropping it, which would
+ * remove the Undo row. A tick of a different episode keeps only the title it found, so a stale title never lands on
+ * another show's marker. iOS's `IosWidgetBridge.tick` applies the same rule.
+ */
+internal fun rememberedTickTitle(
+    episodeId: String,
+    title: String?,
+    markedEpisodeId: String?,
+    markedTitle: String?,
+): String? = title ?: markedTitle.takeIf { markedEpisodeId == episodeId }
 
 /**
  * Takes back a widget tick, both halves of it.
@@ -68,7 +103,10 @@ class UndoTickAction :
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val episodeId = parseEpisodeId(parameters[EpisodeIdKey]) ?: return
         progressApi.setEpisodeSeen(episodeId, seen = false)
-        updateAppWidgetState(context, glanceId) { it.remove(JustTickedKey) }
+        updateAppWidgetState(context, glanceId) {
+            it.remove(JustTickedKey)
+            it.remove(JustTickedTitleKey)
+        }
         MuvissWidget().update(context, glanceId)
     }
 }

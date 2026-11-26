@@ -136,6 +136,8 @@ class TriageDecisionMigrationTest {
                 isDirty = true,
                 deleted = false,
                 createdEntry = true,
+                entryAddedAtEpochMs = null,
+                tickedEpisodeIds = "",
             )
 
             assertEquals(listOf("tmdb:movie:603"), database.triageDecisionQueries.selectDecidedIds().executeAsList())

@@ -2,6 +2,8 @@ Muviss is a private tracker for movies and TV shows. Tick episodes as you watch 
 
 TRACK WHAT YOU WATCH
 • Search any movie or show, with posters, synopses, full episode guides and where to watch it.
+• Tap a poster, backdrop or episode still to see it full screen: swipe through the other images of that same kind (posters, backdrops, or stills from that episode), and pinch or double-tap to zoom.
+• See who is in a movie or show and who made it. Open anyone for their biography and the rest of their work, with the titles you already have marked. Titles and people also link out to IMDb, Wikipedia and TMDB wherever those sites have an ID for them.
 • Tick episodes one by one, or a whole season of aired episodes at once. Ticking a title you haven't added yet adds it to your library.
 • Specials get their own section. They count toward a show's progress only if you turn that on in Settings; it is off by default.
 • Automatic status: Not started, Watching, Watched or Finished, worked out from what you've actually seen and whether a show is still airing. You never set it by hand.
@@ -18,7 +20,7 @@ KNOW WHAT'S NEXT
 FILL YOUR LIBRARY FAST
 • Go through titles one at a time and decide in a tap — not for me, later, watching, or caught up. Not sure yet? Snooze it and it comes back when you choose.
 • Import your history from Trakt, TV Time or a CSV file.
-• Discover by genre, see what's popular, and get suggestions based on what you love. Your genre lists and popular titles open offline with what you saw last.
+• Discover by genre, see what's popular, and get suggestions based on what you love. Your genre lists, popular titles and For you open offline with what you saw last, and Refresh fetches new picks right away.
 • Mute the genres you never watch. Talk shows, news and reality TV stay out of suggestions by default; change that in a short first-run step or in Settings.
 
 SEE YOUR HABITS

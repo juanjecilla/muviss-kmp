@@ -75,6 +75,8 @@ class CreatedEntryMigrationTest {
                 isDirty = true,
                 deleted = false,
                 createdEntry = false,
+                entryAddedAtEpochMs = null,
+                tickedEpisodeIds = "",
             )
         }
         runBlocking {
@@ -90,6 +92,8 @@ class CreatedEntryMigrationTest {
                 isDirty = true,
                 deleted = false,
                 createdEntry = true,
+                entryAddedAtEpochMs = null,
+                tickedEpisodeIds = "",
             )
         }
 

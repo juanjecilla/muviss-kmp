@@ -223,6 +223,8 @@ internal fun TriageDecisionRow.toChange() = TriageDecisionChange(
     updatedAtEpochMs = updatedAtEpochMs,
     deleted = deleted,
     createdEntry = createdEntry,
+    entryAddedAtEpochMs = entryAddedAtEpochMs,
+    tickedEpisodeIds = tickedEpisodeIds,
 )
 
 internal fun TriageSnoozeRow.toChange() = TriageSnoozeChange(

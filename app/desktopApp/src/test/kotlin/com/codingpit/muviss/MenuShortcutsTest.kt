@@ -89,6 +89,19 @@ class MenuShortcutsTest {
         assertEquals(expected(Key.N), nextPickShortcut)
     }
 
+    /** Discover's refresh (#965) is bound to the platform's primary modifier plus R. */
+    @Test
+    fun `refresh is bound to the platform's primary modifier plus R`() {
+        assertEquals(expected(Key.R), refreshShortcut)
+    }
+
+    /** Refresh must not take a chord another menu item owns: a dropped accelerator would look like a working one. */
+    @Test
+    fun `refresh does not share a chord with any other shortcut`() {
+        val taken = viewShortcuts.values + listOfNotNull(quitShortcut, nextPickShortcut)
+        assertTrue(refreshShortcut !in taken, "Ctrl/Cmd+R collides with another menu shortcut: $taken")
+    }
+
     /** A second binding on a chord already taken would be dropped by the menu, or would steal the other one. */
     @Test
     fun `what's next does not share a chord with any other shortcut`() {

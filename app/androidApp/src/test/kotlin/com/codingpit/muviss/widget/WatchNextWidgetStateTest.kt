@@ -238,4 +238,89 @@ class WatchNextWidgetStateTest {
         assertEquals(WatchNextWidgetUi.Empty.NO_CATALOG_YET, ui)
         assertEquals(EmptyAction.OPEN_APP, (ui as WatchNextWidgetUi.Empty).action)
     }
+
+    /**
+     * #888. The last regular episode is ticked and only an aired special is left, so the shared list (which drops
+     * a title whose only unseen episodes are specials) no longer holds the show. The widget keeps its row.
+     */
+    @Test
+    fun `the last regular tick keeps the title row with Undo when only an aired special is left`() {
+        val ticked = EpisodeId(got, 1, 10)
+        val ui = watchNextWidgetUi(
+            listOf(item(firefly, "Firefly")),
+            WidgetSize.MEDIUM,
+            justTicked = ticked,
+            justTickedTitle = "Game of Thrones",
+        )
+
+        val rows = (ui as WatchNextWidgetUi.Rows).rows
+        assertEquals(2, rows.size)
+        val kept = rows.first()
+        assertEquals(got.toString(), kept.mediaId)
+        assertEquals("Game of Thrones", kept.title)
+        assertEquals(ticked, kept.undoable)
+        assertEquals("S1 · E10", kept.tickedLabel)
+        assertNull(kept.tickable, "a kept row offers Undo, not a tick")
+        assertNull(rows.last().undoable)
+    }
+
+    /** #888. A completing tick takes the title out of WATCHING, so it is absent from the list the same way. */
+    @Test
+    fun `a completing tick keeps the title row with Undo instead of the empty state`() {
+        val ticked = EpisodeId(got, 8, 6)
+        val ui = watchNextWidgetUi(
+            emptyList(),
+            WidgetSize.SMALL,
+            justTicked = ticked,
+            justTickedTitle = "Game of Thrones",
+        )
+
+        val rows = (ui as WatchNextWidgetUi.Rows).rows
+        assertEquals(1, rows.size)
+        assertEquals(ticked, rows.single().undoable)
+        assertEquals("S8 · E6", rows.single().tickedLabel)
+    }
+
+    /** #888. The kept row takes one of the widget's slots, so the size still bounds the list. */
+    @Test
+    fun `the kept row counts toward the widget's row budget`() {
+        val ui = watchNextWidgetUi(
+            listOf(item(firefly, "Firefly"), item(MediaId.tmdbTv("60625"), "Rick and Morty")),
+            WidgetSize.SMALL,
+            justTicked = EpisodeId(got, 1, 10),
+            justTickedTitle = "Game of Thrones",
+        )
+
+        val rows = (ui as WatchNextWidgetUi.Rows).rows
+        assertEquals(listOf("Game of Thrones"), rows.map { it.title })
+    }
+
+    /** #888. A marker without a title (an older build's, or a title that was not found) keeps the old behaviour. */
+    @Test
+    fun `without a remembered title an emptied list still says nothing is in progress`() {
+        val ui = watchNextWidgetUi(
+            emptyList(),
+            WidgetSize.MEDIUM,
+            justTicked = EpisodeId(got, 1, 10),
+            justTickedTitle = null,
+        )
+
+        assertEquals(WatchNextWidgetUi.Empty.NOTHING_IN_PROGRESS, ui)
+    }
+
+    /** #888. While the title is still listed, its own row carries Undo and nothing is duplicated. */
+    @Test
+    fun `a title still in the list is not kept twice`() {
+        val ticked = EpisodeId(got, 1, 1)
+        val ui = watchNextWidgetUi(
+            listOf(item(got, "Game of Thrones", next = episode(got, 1, 2, "The Kingsroad")), item(firefly, "Firefly")),
+            WidgetSize.MEDIUM,
+            justTicked = ticked,
+            justTickedTitle = "Game of Thrones",
+        )
+
+        val rows = (ui as WatchNextWidgetUi.Rows).rows
+        assertEquals(2, rows.size)
+        assertEquals(1, rows.count { it.undoable != null })
+    }
 }

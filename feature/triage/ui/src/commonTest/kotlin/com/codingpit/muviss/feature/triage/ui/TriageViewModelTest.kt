@@ -148,7 +148,7 @@ class TriageViewModelTest {
         assertEquals(filmA.id, vm.state.value.topCard?.id)
         assertEquals(emptyMap(), harness.repository.decisions.value)
         assertEquals(listOf(filmA.id), harness.collection.removed)
-        assertEquals(listOf(filmA.id), harness.progress.cleared)
+        assertEquals(emptyList(), harness.progress.cleared, "undo takes back the verdict's viewings, never the whole title")
         assertNull(vm.state.value.undoable)
     }
 
