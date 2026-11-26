@@ -16,8 +16,11 @@ import com.codingpit.muviss.feature.progress.api.WatchNextItem
 import com.codingpit.muviss.feature.progress.data.SqlDelightAiredSnapshotRaiser
 import com.codingpit.muviss.feature.progress.data.SqlDelightEpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
-import com.codingpit.muviss.feature.progress.domain.RaiseAiredBeforeTickUseCase
+import com.codingpit.muviss.feature.progress.domain.MarkSeasonAiredSeenUseCase
+import com.codingpit.muviss.feature.progress.domain.RaiseAiredBeforeWriteUseCase
+import com.codingpit.muviss.feature.progress.domain.RecordPlayUseCase
 import com.codingpit.muviss.feature.progress.domain.ToggleEpisodeSeenUseCase
+import com.codingpit.muviss.feature.progress.domain.beforeAired
 import com.codingpit.muviss.models.Episode
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -302,7 +305,7 @@ class ProgressCollectionStatusIntegrationTest {
         // The chain DefaultProgressApi.setEpisodeSeen runs in the app: the snapshot raise, then the tick.
         val tick = ToggleEpisodeSeenUseCase(
             repository,
-            RaiseAiredBeforeTickUseCase(repository, catalog, SqlDelightAiredSnapshotRaiser(db.collectionEntryQueries, dispatchers), tickClock),
+            RaiseAiredBeforeWriteUseCase(repository, catalog, SqlDelightAiredSnapshotRaiser(db.collectionEntryQueries, dispatchers), tickClock),
         )
 
         collection.observeEntry(show).test {
@@ -343,7 +346,7 @@ class ProgressCollectionStatusIntegrationTest {
         repository.setSeen(outside, true)
         val tick = ToggleEpisodeSeenUseCase(
             repository,
-            RaiseAiredBeforeTickUseCase(repository, catalog, SqlDelightAiredSnapshotRaiser(db.collectionEntryQueries, dispatchers), tickClock),
+            RaiseAiredBeforeWriteUseCase(repository, catalog, SqlDelightAiredSnapshotRaiser(db.collectionEntryQueries, dispatchers), tickClock),
         )
 
         tick(EpisodeId(show, 1, 1), true)
@@ -352,6 +355,86 @@ class ProgressCollectionStatusIntegrationTest {
             val entry = awaitItem()!!
             assertEquals(2, entry.seenEpisodes)
             assertEquals(4, entry.airedEpisodes, "three catalog episodes plus the seen one outside the catalog")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /** A snapshot that says one episode has aired, over a stored catalog of ten aired episodes in season 1 and five in season 2. */
+    private inner class StaleRig {
+        val db = inMemoryDatabase()
+        val dispatchers = StatusTestDispatchers(UnconfinedTestDispatcher())
+        val clock = FakeClock(epochMsAtStartOfDay(150))
+        val repository = SqlDelightProgressRepository(db.episodeProgressQueries, db.episodePlayQueries, dispatchers, clock, NoOpWidgetRefresher)
+        val collection = SqlDelightCollectionRepository(db.collectionEntryQueries, dispatchers, clock)
+        val catalog = SqlDelightEpisodeCatalogStore(db.episodeQueries, dispatchers, clock)
+        val raise = RaiseAiredBeforeWriteUseCase(repository, catalog, SqlDelightAiredSnapshotRaiser(db.collectionEntryQueries, dispatchers), clock)
+        val season1 = Season(1, "S1", (1..10).map { episode(1, it, airDay = 100L + it) })
+        val season2 = Season(2, "S2", (1..5).map { episode(2, it, airDay = 110L + it) })
+
+        suspend fun seed(storeCatalog: Boolean = true) {
+            if (storeCatalog) catalog.save(show, listOf(season1, season2))
+            collection.upsertSnapshot(details(listOf(Season(1, "S1", listOf(episode(1, 1, airDay = 101)))), ProductionStatus.RETURNING))
+        }
+    }
+
+    /** #1125: a bulk mark on a stale snapshot raises it first, so the entry reads as still watching, not caught up. */
+    @Test
+    fun a_bulk_mark_on_a_stale_snapshot_raises_aired_before_it_ticks() = runTest {
+        val rig = StaleRig().apply { seed() }
+        val mark = MarkSeasonAiredSeenUseCase(rig.repository, rig.raise)
+
+        rig.collection.observeEntry(show).test {
+            awaitItem()
+
+            mark(rig.season1, rig.clock.todayEpochDay())
+
+            var entry = awaitItem()!!
+            while (entry.seenEpisodes == 0) {
+                assertTrue(entry.seenEpisodes <= entry.airedEpisodes)
+                entry = awaitItem()!!
+            }
+            assertEquals(10, entry.seenEpisodes)
+            assertEquals(15, entry.airedEpisodes, "season 2 has aired too, and is unseen")
+            assertEquals(WatchStatus.WATCHING, entry.status)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /** #1125: "Watched again" on a stale snapshot raises it from the stored catalog. */
+    @Test
+    fun a_rewatch_on_a_stale_snapshot_raises_aired_from_the_stored_catalog() = runTest {
+        val rig = StaleRig().apply { seed() }
+        val play = RecordPlayUseCase(rig.repository, rig.raise)
+
+        rig.collection.observeEntry(show).test {
+            awaitItem()
+
+            play(EpisodeId(show, 1, 1))
+
+            var entry = awaitItem()!!
+            while (entry.seenEpisodes == 0) entry = awaitItem()!!
+            assertEquals(15, entry.airedEpisodes)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    /**
+     * #1125: Detail raises from the catalog it displays before a tick. Here the store holds nothing, so the displayed
+     * seasons are the only source of the aired count, the case Detail's first open reaches.
+     */
+    @Test
+    fun a_detail_tick_raises_aired_to_the_displayed_catalog_when_nothing_is_stored() = runTest {
+        val rig = StaleRig().apply { seed(storeCatalog = false) }
+        val displayed = listOf(rig.season1, rig.season2)
+        val raise = RaiseAiredBeforeWriteUseCase(rig.repository, rig.catalog, SqlDelightAiredSnapshotRaiser(rig.db.collectionEntryQueries, rig.dispatchers), rig.clock)
+
+        raise.beforeAired(displayed, rig.clock.todayEpochDay())
+        ToggleEpisodeSeenUseCase(rig.repository).invoke(EpisodeId(show, 1, 1), true)
+
+        rig.collection.observeEntry(show).test {
+            val entry = awaitItem()!!
+            assertEquals(15, entry.airedEpisodes)
+            assertEquals(WatchStatus.WATCHING, entry.status)
             cancelAndIgnoreRemainingEvents()
         }
     }

@@ -10,7 +10,7 @@ import com.codingpit.muviss.feature.progress.data.RegistryEpisodeCatalogSource
 import com.codingpit.muviss.feature.progress.data.SqlDelightAiredSnapshotRaiser
 import com.codingpit.muviss.feature.progress.data.SqlDelightEpisodeCatalogStore
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
-import com.codingpit.muviss.feature.progress.domain.AiredBeforeTick
+import com.codingpit.muviss.feature.progress.domain.AiredBeforeWrite
 import com.codingpit.muviss.feature.progress.domain.AiredSnapshotRaiser
 import com.codingpit.muviss.feature.progress.domain.ClearPlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.ClearProgressUseCase
@@ -37,7 +37,7 @@ import com.codingpit.muviss.feature.progress.domain.ProgressMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressPlayMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressRepository
 import com.codingpit.muviss.feature.progress.domain.ProgressTicks
-import com.codingpit.muviss.feature.progress.domain.RaiseAiredBeforeTickUseCase
+import com.codingpit.muviss.feature.progress.domain.RaiseAiredBeforeWriteUseCase
 import com.codingpit.muviss.feature.progress.domain.RecordFirstPlaysUseCase
 import com.codingpit.muviss.feature.progress.domain.RecordPlayUseCase
 import com.codingpit.muviss.feature.progress.domain.RefreshWatchNextCatalogsUseCase
@@ -71,18 +71,18 @@ val progressDataModule: Module = module {
     factory { ObserveSeenEpisodesUseCase(get()) }
     factory { ObserveSeenCountUseCase(get()) }
     factory { ObserveSeenActivityEpochDaysUseCase(get()) }
-    factory { ToggleEpisodeSeenUseCase(get(), get()) }
-    // Raises the library snapshot before every single-episode tick, from every surface (#1115, ADR 0037).
+    // Raises the library snapshot before progress is written, from every surface (#1115, #1125, ADR 0037).
     single<AiredSnapshotRaiser> { SqlDelightAiredSnapshotRaiser(get<MuvissDatabase>().collectionEntryQueries, get()) }
-    factory<AiredBeforeTick> { RaiseAiredBeforeTickUseCase(get(), get(), get(), get()) }
+    factory<AiredBeforeWrite> { RaiseAiredBeforeWriteUseCase(get(), get(), get(), get()) }
+    factory { ToggleEpisodeSeenUseCase(get(), get()) }
     factory { TickEpisodeUseCase(get(), get()) }
     factory { TickMovieUseCase(get(), get()) }
-    factory { ProgressTicks(get(), get(), get()) }
-    factory { MarkSeasonAiredSeenUseCase(get()) }
-    factory { MarkShowAiredSeenUseCase(get()) }
+    factory { ProgressTicks(get(), get(), get(), get()) }
+    factory { MarkSeasonAiredSeenUseCase(get(), get()) }
+    factory { MarkShowAiredSeenUseCase(get(), get()) }
     factory { UnmarkSeasonsUseCase(get()) }
     factory { UndoBulkMarkUseCase(get()) }
-    factory { RecordPlayUseCase(get()) }
+    factory { RecordPlayUseCase(get(), get()) }
     factory { RemoveLatestPlayUseCase(get()) }
     factory { ClearPlaysUseCase(get()) }
     factory { ObservePlayCountsUseCase(get()) }
@@ -91,10 +91,10 @@ val progressDataModule: Module = module {
     factory { ObserveRewatchTimestampsUseCase(get()) }
     factory { ObserveLastWatchedAtUseCase(get()) }
     factory { ProgressPlayObservers(get(), get(), get(), get()) }
-    factory { MarkPreviousSeenUseCase(get()) }
-    factory { MarkAllAiredSeenUseCase(get()) }
+    factory { MarkPreviousSeenUseCase(get(), get(), get()) }
+    factory { MarkAllAiredSeenUseCase(get(), get()) }
     factory { ClearProgressUseCase(get()) }
-    factory { RecordFirstPlaysUseCase(get()) }
+    factory { RecordFirstPlaysUseCase(get(), get()) }
     factory { RemovePlayUseCase(get()) }
     factory { ProgressPlayMutations(get(), get(), get(), get(), get()) }
     factory { ProgressBulkMutations(get(), get(), get(), get(), get(), get()) }

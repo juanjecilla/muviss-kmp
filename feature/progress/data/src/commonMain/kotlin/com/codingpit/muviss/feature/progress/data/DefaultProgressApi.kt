@@ -15,6 +15,7 @@ import com.codingpit.muviss.feature.progress.domain.ProgressMutations
 import com.codingpit.muviss.feature.progress.domain.ProgressTicks
 import com.codingpit.muviss.feature.progress.domain.RefreshWatchNextCatalogsUseCase
 import com.codingpit.muviss.feature.progress.domain.WatchNextUseCase
+import com.codingpit.muviss.feature.progress.domain.beforeAired
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.Season
@@ -86,6 +87,8 @@ internal class DefaultProgressApi(
     override suspend fun tickEpisode(episodeId: EpisodeId, seen: Boolean) = ticks.tickEpisode(episodeId, seen)
 
     override suspend fun tickMovie(mediaId: MediaId, watched: Boolean) = ticks.tickMovie(mediaId, watched)
+
+    override suspend fun raiseAiredSnapshot(seasons: List<Season>, todayEpochDay: Long) = ticks.aired.beforeAired(seasons, todayEpochDay)
 }
 
 /**

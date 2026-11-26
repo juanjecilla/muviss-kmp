@@ -180,7 +180,7 @@ class CompletionPathsTest {
     @Test
     fun catching_up_through_an_episode_is_silent() = runTest {
         val rig = Rig(ProductionStatus.ENDED, aired = 2)
-        val seen = collecting(rig) { MarkPreviousSeenUseCase(rig.repository)(twoAired, ep2) }
+        val seen = collecting(rig) { MarkPreviousSeenUseCase(rig.repository, FakeClock(1_000L))(twoAired, ep2) }
         assertTrue(seen.isEmpty())
     }
 

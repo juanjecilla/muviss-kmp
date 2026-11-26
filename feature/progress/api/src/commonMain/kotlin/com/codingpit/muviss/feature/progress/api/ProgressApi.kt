@@ -304,6 +304,13 @@ interface ProgressApi {
      */
     suspend fun tickEpisode(episodeId: EpisodeId, seen: Boolean) = setEpisodeSeen(episodeId, seen)
 
+    /**
+     * Raises [mediaId]'s library snapshot to the aired episodes of [seasons] (ADR 0037, #1125), the catalog the caller
+     * displays. Detail calls it before a single tick, because the displayed catalog can be newer than the stored one a
+     * tick otherwise reads. Never lowers the snapshot, and writes no progress.
+     */
+    suspend fun raiseAiredSnapshot(seasons: List<Season>, todayEpochDay: Long) = Unit
+
     /** [setMovieWatched] for a tick the person makes by hand; see [tickEpisode]. */
     suspend fun tickMovie(mediaId: MediaId, watched: Boolean) = setMovieWatched(mediaId, watched)
 }
