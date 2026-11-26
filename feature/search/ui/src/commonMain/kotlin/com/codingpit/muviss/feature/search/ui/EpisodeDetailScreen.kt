@@ -202,10 +202,10 @@ private fun EpisodeStill(
                 .fillMaxWidth()
                 .height(maxWidth * 9f / 16f + topInset)
                 .trackImmersiveArtwork()
-                .opensImageViewer(drawnImageUrl(details.stillUrl, PosterSize.Detail), ImageKind.Still, onOpenImage)
+                .opensImageViewer(drawnImageUrl(details.stillUrl, PosterSize.Still), ImageKind.Still, onOpenImage)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
-            PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize())
+            PosterImage(url = details.stillUrl, title = details.name, modifier = Modifier.fillMaxSize(), size = PosterSize.Still)
         }
     }
 }

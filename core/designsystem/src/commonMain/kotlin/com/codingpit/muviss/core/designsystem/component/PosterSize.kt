@@ -3,18 +3,25 @@ package com.codingpit.muviss.core.designsystem.component
 /**
  * How large an artwork is actually drawn, so [PosterImage] can ask TMDB's image
  * CDN for a matching width instead of decoding a `w500` poster into a 44dp
- * row. Widths are TMDB's published poster sizes; `w185` is also valid for
- * stills and profile photos.
+ * row. Each segment is a size TMDB lists for the artwork it is applied to:
+ * poster sizes for posters, still sizes for [Still] (see /configuration).
  */
-enum class PosterSize(val tmdbWidth: Int) {
+enum class PosterSize(val tmdbSegment: String) {
     /** List rows, cast avatars and episode thumbnails: drawn well under 100dp wide. */
-    Thumbnail(185),
+    Thumbnail("w185"),
 
     /** Poster grids: one of two to five columns. */
-    Grid(342),
+    Grid("w342"),
 
-    /** Detail heroes and full-card surfaces. The size stored URLs already carry. */
-    Detail(500),
+    /** Detail heroes and full-card surfaces. The size stored poster URLs already carry. */
+    Detail("w500"),
+
+    /**
+     * An episode still as a full-width hero. TMDB does not list `w500` for stills; it lists `w300` (blurry at a
+     * phone's hero width) and `original`, so the hero asks for `original`. Stored still URLs are `w300`, which
+     * thumbnails rewrite to `w185`.
+     */
+    Still("original"),
 }
 
 private const val TMDB_IMAGE_PREFIX = "https://image.tmdb.org/t/p/"
@@ -31,5 +38,5 @@ fun sizedImageUrl(url: String, size: PosterSize): String {
     if (!url.startsWith(TMDB_IMAGE_PREFIX)) return url
     val rest = url.removePrefix(TMDB_IMAGE_PREFIX)
     if (!tmdbWidthSegment.containsMatchIn(rest)) return url
-    return TMDB_IMAGE_PREFIX + rest.replaceFirst(tmdbWidthSegment, "w${size.tmdbWidth}/")
+    return TMDB_IMAGE_PREFIX + rest.replaceFirst(tmdbWidthSegment, "${size.tmdbSegment}/")
 }

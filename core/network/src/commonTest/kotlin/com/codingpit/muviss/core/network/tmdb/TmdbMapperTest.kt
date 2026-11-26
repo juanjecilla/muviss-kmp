@@ -247,7 +247,7 @@ class TmdbMapperTest {
         assertEquals("Robb presents himself to Walder Frey.", details.overview)
         assertEquals(51, details.runtimeMinutes)
         assertEquals(9.2, details.voteAverage)
-        assertEquals("https://image.tmdb.org/t/p/w500/still.jpg", details.stillUrl)
+        assertEquals("https://image.tmdb.org/t/p/w300/still.jpg", details.stillUrl)
         assertEquals("Walder Frey", details.guestStars.single().character)
         assertEquals("Director", details.crew.single().job)
     }

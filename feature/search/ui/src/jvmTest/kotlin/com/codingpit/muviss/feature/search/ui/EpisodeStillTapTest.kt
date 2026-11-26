@@ -57,7 +57,7 @@ class EpisodeStillTapTest {
 
         onNodeWithContentDescription("Still").performClick()
 
-        assertEquals(listOf(ImageKind.Still to drawnImageUrl(STILL, PosterSize.Detail)), opened)
+        assertEquals(listOf(ImageKind.Still to drawnImageUrl(STILL, PosterSize.Still)), opened)
     }
 
     private companion object {
