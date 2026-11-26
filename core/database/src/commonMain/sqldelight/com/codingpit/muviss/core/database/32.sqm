@@ -11,8 +11,8 @@
 -- for every row written before this column, and for any verdict that did not create its entry; a
 -- NULL stamp never authorises a removal.
 --
--- tickedEpisodeIds: the EpisodeId strings the verdict itself newly ticked, comma-separated (an
--- EpisodeId never contains a comma). Undo un-ticks exactly these and leaves every tick the person
+-- tickedEpisodeIds: the viewing ids (EpisodeId@watchedAtEpochMs) the verdict itself wrote, comma-separated (an
+-- id never contains a comma). Undo removes exactly these viewings and leaves every viewing the person
 -- made themselves (#790). Empty for every row written before this column; undo then un-ticks nothing.
 ALTER TABLE triageDecision ADD COLUMN entryAddedAtEpochMs INTEGER;
 ALTER TABLE triageDecision ADD COLUMN tickedEpisodeIds TEXT NOT NULL DEFAULT '';

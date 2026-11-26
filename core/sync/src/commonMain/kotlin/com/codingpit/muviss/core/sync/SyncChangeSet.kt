@@ -155,7 +155,7 @@ data class TriageDecisionChange(
     // #902: the added-at stamp of the entry this verdict created, so undo on another device can tell whether
     // the entry is still that one. Null when the verdict created none, and when a build predates the column.
     @SerialName("entry_added_at_epoch_ms") val entryAddedAtEpochMs: Long? = null,
-    // #790: the EpisodeId strings the verdict newly ticked, comma-separated (an EpisodeId has no comma).
+    // #790: the viewing ids the verdict wrote, comma-separated (an id has no comma). See TriageDecision.
     // Empty when a build predates the column, which makes undo on that device un-tick nothing.
     @SerialName("ticked_episode_ids") val tickedEpisodeIds: String = "",
 )

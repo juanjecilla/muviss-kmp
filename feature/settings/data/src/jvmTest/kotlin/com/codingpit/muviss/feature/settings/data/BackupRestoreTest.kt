@@ -42,6 +42,10 @@ class BackupRestoreTest {
         val source = newDatabase()
         seedEverything(source)
         val first = exporter(source).exportData()
+        // The seeded undo metadata reaches the backup itself, so the comparison below is not two defaults agreeing.
+        val exportedVerdict = Json.decodeFromString<MuvissDataExport>(first).triage.single { it.mediaId == "tmdb:movie:550" }
+        assertEquals(1_234L, exportedVerdict.entryAddedAtEpochMs)
+        assertEquals("$SHOW/1/1@1100,$SHOW/1/2@1200", exportedVerdict.tickedEpisodeIds)
 
         val fresh = newDatabase()
         restorer(fresh).restore(first)
@@ -473,7 +477,12 @@ class BackupRestoreTest {
         database.episodePlayQueries.upsert("$SHOW/1/2@1200", "$SHOW/1/2", SHOW, 1_200L, 1_200L, false, false)
         database.mediaListQueries.upsertList("list-1", "Rainy day", 1_000L, 1_000L, false, false)
         database.mediaListQueries.upsertEntry("list-1", MATRIX, 1_500L, 1_500L, false, false)
-        database.triageDecisionQueries.upsert("tmdb:movie:550", "MOVIE", "SKIP", "Fight Club", null, 2_000L, true, 2_000L, false, false, true, null, "")
+        // Undo metadata that is not the default on any field: a stamp, and two viewing ids (#902, #790). The round trip
+        // must carry both, and the first-export assertion below would fail if a mapping dropped either.
+        database.triageDecisionQueries.upsert(
+            "tmdb:movie:550", "MOVIE", "SKIP", "Fight Club", null, 2_000L, true, 2_000L, false, false, true, 1_234L,
+            "$SHOW/1/1@1100,$SHOW/1/2@1200",
+        )
         database.triageSnoozeQueries.upsert("tmdb:movie:1", "MOVIE", "Later", 2020L, null, null, 3_000L, 20_100L, 3_000L, false, false)
         database.profileQueries.ensureRow()
         database.profileQueries.updateDisplayName("Juanje")

@@ -1,6 +1,7 @@
 package com.codingpit.muviss.feature.triage.domain
 
 import com.codingpit.muviss.core.testing.FakeClock
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaDetails
@@ -149,7 +150,7 @@ class TriageUndoLedgerTest {
 
         h.record(ongoingShow, TriageVerdict.CAUGHT_UP).getOrThrow()
         // Only the unseen aired episode is the verdict's; the one the person ticked is not recorded as its own.
-        assertEquals(listOf(s1e2), h.repository.decisions.value.getValue(ongoingShow.id).tickedEpisodeIds)
+        assertEquals(listOf(EpisodePlay.idOf(s1e2, NOW_EPOCH_MS)), h.repository.decisions.value.getValue(ongoingShow.id).tickedPlayIds)
 
         h.undo(ongoingShow.id, TriageVerdict.CAUGHT_UP)
 
@@ -164,8 +165,11 @@ class TriageUndoLedgerTest {
 
         // Aired episodes only: the unaired episode 3 is never ticked (ADR 0005, EpisodeOrdering.airedBy).
         assertEquals(
-            listOf(EpisodeId(ongoingShow.id, 1, 1), EpisodeId(ongoingShow.id, 1, 2)),
-            h.repository.decisions.value.getValue(ongoingShow.id).tickedEpisodeIds,
+            listOf(
+                EpisodePlay.idOf(EpisodeId(ongoingShow.id, 1, 1), NOW_EPOCH_MS),
+                EpisodePlay.idOf(EpisodeId(ongoingShow.id, 1, 2), NOW_EPOCH_MS),
+            ),
+            h.repository.decisions.value.getValue(ongoingShow.id).tickedPlayIds,
         )
     }
 
@@ -181,6 +185,113 @@ class TriageUndoLedgerTest {
 
         assertEquals(emptySet(), h.progress.seen.value)
         assertTrue(h.entryPresent(film.id))
+    }
+
+    // --- #790: undo takes back the viewings the verdict wrote, not the episode's history ---
+
+    private val firstEpisode = EpisodeId(ongoingShow.id, seasonNumber = 1, episodeNumber = 1)
+
+    /** A rewatch is a day after the verdict, so its viewing id never collides with the verdict's. */
+    private val rewatchAt = NOW_EPOCH_MS + 86_400_000L
+
+    @Test
+    fun tick_then_rewatch_then_undo_keeps_the_rewatch_and_the_episode_stays_seen() = runTest {
+        val h = harness(ongoingDetails)
+        h.collection.add(ongoingDetails)
+        h.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+        // The person watches the same episode again, after the verdict ticked it.
+        h.progress.recordRewatch(firstEpisode, rewatchAt)
+
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertEquals(
+            mapOf(EpisodePlay.idOf(firstEpisode, rewatchAt) to firstEpisode),
+            h.progress.plays.value,
+            "only the verdict's viewing goes; the rewatch is the person's and stays",
+        )
+        assertTrue(firstEpisode in h.progress.seen.value, "an episode with a rewatch left is still seen")
+    }
+
+    @Test
+    fun undo_with_no_rewatch_removes_the_verdicts_viewing_and_unticks_the_episode() = runTest {
+        val h = harness(ongoingDetails)
+        h.collection.add(ongoingDetails)
+        h.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertEquals(emptyMap(), h.progress.plays.value)
+        assertFalse(firstEpisode in h.progress.seen.value)
+    }
+
+    @Test
+    fun undo_of_caught_up_keeps_a_rewatch_of_one_of_the_episodes_it_ticked() = runTest {
+        val h = harness(ongoingDetails)
+        h.collection.add(ongoingDetails)
+        val secondEpisode = EpisodeId(ongoingShow.id, seasonNumber = 1, episodeNumber = 2)
+        h.record(ongoingShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        h.progress.recordRewatch(secondEpisode, rewatchAt)
+
+        h.undo(ongoingShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(setOf(EpisodePlay.idOf(secondEpisode, rewatchAt)), h.progress.plays.value.keys)
+        assertEquals(setOf(secondEpisode), h.progress.seen.value)
+    }
+
+    @Test
+    fun legacy_bare_episode_ids_are_no_ops_and_keep_a_rewatch() = runTest {
+        val h = harness(ongoingDetails)
+        h.collection.add(ongoingDetails)
+        // A decision whose list holds a bare episode id, the shape written before viewing ids. Undo must not read it
+        // as a viewing and must not take the person's rewatch with it.
+        h.progress.recordRewatch(firstEpisode, rewatchAt)
+        h.repository.record(
+            TriageDecision.of(ongoingShow, TriageVerdict.WATCHING, NOW_EPOCH_MS, resolved = true)
+                .copy(tickedPlayIds = listOf(firstEpisode.toString())),
+        )
+
+        h.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertEquals(mapOf(EpisodePlay.idOf(firstEpisode, rewatchAt) to firstEpisode), h.progress.plays.value)
+        assertTrue(firstEpisode in h.progress.seen.value)
+    }
+
+    @Test
+    fun a_replayed_removal_of_an_already_removed_viewing_does_not_reach_a_later_rewatch() = runTest {
+        val h = harness(ongoingDetails)
+        h.collection.add(ongoingDetails)
+        h.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+        val verdictViewing = h.repository.decisions.value.getValue(ongoingShow.id).tickedPlayIds.single()
+        // An earlier undo took the verdict's viewing back. The person then rewatches. A replay of that removal must
+        // find nothing to remove.
+        h.progress.removePlay(verdictViewing)
+        h.progress.recordRewatch(firstEpisode, rewatchAt)
+
+        h.progress.removePlay(verdictViewing)
+
+        assertEquals(mapOf(EpisodePlay.idOf(firstEpisode, rewatchAt) to firstEpisode), h.progress.plays.value)
+        assertTrue(firstEpisode in h.progress.seen.value)
+    }
+
+    @Test
+    fun two_devices_undo_of_a_verdict_made_on_the_other_keeps_this_devices_own_rewatch() = runTest {
+        // Device A made the verdict. Its decision reached device B by sync, and so did the viewing the verdict wrote.
+        val a = harness(ongoingDetails)
+        a.collection.add(ongoingDetails)
+        a.record(ongoingShow, TriageVerdict.WATCHING).getOrThrow()
+        val decisionFromA = a.repository.decisions.value.getValue(ongoingShow.id)
+
+        // Device B holds the same viewing (same id) and a rewatch it recorded itself.
+        val b = harness(ongoingDetails)
+        b.collection.add(ongoingDetails)
+        b.progress.recordFirstPlays(listOf(firstEpisode), NOW_EPOCH_MS)
+        b.progress.recordRewatch(firstEpisode, rewatchAt)
+        b.repository.record(decisionFromA)
+
+        b.undo(ongoingShow.id, TriageVerdict.WATCHING)
+
+        assertEquals(mapOf(EpisodePlay.idOf(firstEpisode, rewatchAt) to firstEpisode), b.progress.plays.value)
+        assertTrue(firstEpisode in b.progress.seen.value)
     }
 
     // --- #791: the claim is read right before the add, and a retry claims what its own add makes ---

@@ -5,7 +5,7 @@
 -- undo was pending survives. Nullable: a verdict that created no entry has none, and a NULL never
 -- authorises a removal.
 --
--- ticked_episode_ids: the EpisodeId strings the verdict newly ticked, comma-separated. Undo un-ticks
+-- ticked_episode_ids: the viewing ids (EpisodeId@watchedAtEpochMs) the verdict wrote, comma-separated. Undo removes
 -- exactly these and leaves the person's own ticks.
 --
 -- Both must sync with the decision, because undo can run on any device that holds it. A push from a

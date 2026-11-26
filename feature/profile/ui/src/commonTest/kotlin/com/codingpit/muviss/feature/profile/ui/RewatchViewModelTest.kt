@@ -86,6 +86,8 @@ private class RewatchProgressApi : ProgressApi {
     override suspend fun recordPlay(episodeId: EpisodeId) = error("not used")
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = error("not used")
     override suspend fun clearPlays(episodeId: EpisodeId) = error("not used")
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = error("not used")
+    override suspend fun removePlay(playId: String) = error("not used")
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = error("not used")
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = error("not used")
     override suspend fun unmarkSeason(season: Season) = error("not used")

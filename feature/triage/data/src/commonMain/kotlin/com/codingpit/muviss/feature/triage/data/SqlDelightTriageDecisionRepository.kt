@@ -10,7 +10,6 @@ import com.codingpit.muviss.core.database.TriageDecisionQueries
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.TriageDecision
 import com.codingpit.muviss.feature.triage.domain.TriageDecisionRepository
-import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -68,7 +67,8 @@ class SqlDelightTriageDecisionRepository(
             deleted = false,
             createdEntry = decision.createdEntry,
             entryAddedAtEpochMs = decision.entryAddedAtEpochMs,
-            tickedEpisodeIds = decision.tickedEpisodeIds.joinToString(separator = TICKED_SEPARATOR) { it.toString() },
+            // The column keeps its name (32.sqm); what it holds is now play ids, see toPlayIds.
+            tickedEpisodeIds = decision.tickedPlayIds.joinToString(separator = TICKED_SEPARATOR),
         )
         Unit
     }
@@ -99,21 +99,23 @@ class SqlDelightTriageDecisionRepository(
             resolved = resolved,
             createdEntry = createdEntry,
             entryAddedAtEpochMs = entryAddedAtEpochMs,
-            tickedEpisodeIds = tickedEpisodeIds.toEpisodeIds(),
+            tickedPlayIds = tickedEpisodeIds.toPlayIds(),
         )
     }
 
     private fun String.toMediaIdOrNull(): MediaId? = runCatching { MediaId.parse(this) }.getOrNull()
 
-    // An EpisodeId never contains a comma (see 30.sqm). A piece that does not parse is dropped rather
-    // than failing the whole row: losing one un-tick is better than losing the decision.
-    private fun String.toEpisodeIds(): List<EpisodeId> = if (isEmpty()) {
+    // A play id is `EpisodeId@watchedAtEpochMs` and never contains a comma. A piece without the '@' is a legacy bare
+    // episode id, written by a build before viewing ids. It is dropped here rather than kept: undo would find no
+    // viewing for it and do nothing, but the list should hold only what a verdict actually wrote.
+    private fun String.toPlayIds(): List<String> = if (isEmpty()) {
         emptyList()
     } else {
-        split(TICKED_SEPARATOR).mapNotNull { runCatching { EpisodeId.parse(it) }.getOrNull() }
+        split(TICKED_SEPARATOR).filter { it.contains(PLAY_ID_MARK) }
     }
 
     private companion object {
         const val TICKED_SEPARATOR = ","
+        const val PLAY_ID_MARK = '@'
     }
 }

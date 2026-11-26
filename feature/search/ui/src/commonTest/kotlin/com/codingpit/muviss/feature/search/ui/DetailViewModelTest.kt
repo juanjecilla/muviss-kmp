@@ -259,6 +259,12 @@ internal class FakeProgressApi : ProgressApi {
         plays.value = plays.value - episodeId
     }
 
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) {
+        episodeIds.filter { plays.value[it].isNullOrEmpty() }.forEach { addPlay(it) }
+    }
+
+    override suspend fun removePlay(playId: String) = error("not used")
+
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> {
         markedSeasons += season
         return airedUnseen(listOf(season), todayEpochDay).onEach { addPlay(it) }

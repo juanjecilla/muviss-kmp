@@ -237,6 +237,6 @@ data class TriageDecisionExport(
      * existed, and for a verdict that created no entry: undo then never removes an entry on this row's behalf.
      */
     val entryAddedAtEpochMs: Long? = null,
-    /** Comma-separated episode ids this verdict newly ticked (#790). Empty for a backup written before the field. */
+    /** Comma-separated viewing ids (EpisodePlay.idOf) this verdict wrote (#790). Empty for a backup written before the field. */
     val tickedEpisodeIds: String = "",
 )

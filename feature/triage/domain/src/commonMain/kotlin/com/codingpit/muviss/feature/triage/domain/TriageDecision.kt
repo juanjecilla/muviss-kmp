@@ -1,7 +1,7 @@
 package com.codingpit.muviss.feature.triage.domain
 
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
-import com.codingpit.muviss.models.EpisodeId
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
 
@@ -26,8 +26,9 @@ import com.codingpit.muviss.models.MediaSummary
  * stamp still equals this one, so an entry the person removed and added again
  * while the undo was pending survives. Null when no entry was created.
  *
- * [tickedEpisodeIds] are the episodes this verdict itself newly ticked (#790).
- * Undo un-ticks exactly these and leaves every tick the person made.
+ * [tickedPlayIds] are the viewings this verdict itself wrote, one [EpisodePlay.idOf] id per episode it newly ticked
+ * (#790). Undo takes back exactly these viewings and leaves every viewing the person made, including a rewatch of
+ * the same episode. An id that no longer names a live viewing is a no-op.
  */
 data class TriageDecision(
     val mediaId: MediaId,
@@ -38,7 +39,7 @@ data class TriageDecision(
     val resolved: Boolean = true,
     val createdEntry: Boolean = false,
     val entryAddedAtEpochMs: Long? = null,
-    val tickedEpisodeIds: List<EpisodeId> = emptyList(),
+    val tickedPlayIds: List<String> = emptyList(),
 ) {
     companion object {
         fun of(

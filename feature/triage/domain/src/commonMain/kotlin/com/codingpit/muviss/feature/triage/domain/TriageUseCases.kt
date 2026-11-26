@@ -7,6 +7,7 @@ import com.codingpit.muviss.core.common.localTodayEpochDay
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.feature.collection.api.CollectionApi
 import com.codingpit.muviss.feature.progress.api.EpisodeOrdering
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.api.ProgressApi
 import com.codingpit.muviss.feature.triage.api.SkippedTitle
 import com.codingpit.muviss.feature.triage.api.SnoozedTitle
@@ -63,7 +64,7 @@ internal object TriageTitleLocks {
  *
  * What the verdict *took* is recorded as it happens, so Undo can reverse
  * exactly that and nothing else: whether it created the library entry (#767),
- * the entry's added-at stamp (#902), and the episodes it newly ticked (#790).
+ * the entry's added-at stamp (#902), and the viewings its ticks wrote (#790).
  */
 class RecordDecisionUseCase(
     private val repository: TriageDecisionRepository,
@@ -124,33 +125,25 @@ class RecordDecisionUseCase(
         }
 
         // Recorded once the add has landed and before the ticks run, so a tick that fails midway still leaves undo the
-        // full list. Only episodes not already seen are listed, so undo can never un-tick a tick the person made.
+        // full list. Only episodes not already seen are planned, so undo can never take back a viewing the person made.
+        // Each planned tick's viewing is named now, at the moment it will be written (EpisodePlay.idOf), so the record
+        // holds the ids the ticks will carry.
+        val now = clock.nowEpochMs()
         val seenBefore = progressApi.observeSeenEpisodes(mediaId).first()
         val planned = plannedTicks(details, stored.verdict, seenBefore, today)
         repository.record(
             stored.copy(
                 createdEntry = claimed,
                 entryAddedAtEpochMs = stamp,
-                tickedEpisodeIds = (stored.tickedEpisodeIds + planned).distinct(),
+                tickedPlayIds = (stored.tickedPlayIds + planned.map { EpisodePlay.idOf(it, now) }).distinct(),
             ),
         )
 
-        when (stored.verdict) {
-            TriageVerdict.SKIP, TriageVerdict.LATER -> Unit
-
-            // One tick, so the show derives Watching and surfaces on the
-            // Progress screen with a genuine next episode. A show with nothing
-            // aired yet is simply saved unticked.
-            TriageVerdict.WATCHING -> details.firstAiredEpisode(today)?.let { progressApi.setEpisodeSeen(it.id, seen = true) }
-
-            TriageVerdict.CAUGHT_UP -> when (details.type) {
-                MediaType.MOVIE -> progressApi.setMovieWatched(mediaId, watched = true)
-
-                // Exactly the aired episodes — see ProgressApi.markAllAiredSeen
-                // for why this is not markPreviousSeen.
-                MediaType.TV -> progressApi.markAllAiredSeen(details.seasons, today)
-            }
-        }
+        // One write for every planned tick: a whole show's Caught up is one transaction, and the viewings it writes
+        // carry the ids recorded above. SKIP and LATER plan nothing; WATCHING ticks the first aired episode, so the show
+        // derives Watching; a movie's Caught up ticks the film; a show's Caught up ticks every aired episode
+        // (ProgressApi.markAllAiredSeen's set, not markPreviousSeen's).
+        if (planned.isNotEmpty()) progressApi.recordFirstPlays(planned, watchedAtEpochMs = now)
         repository.markResolved(mediaId, resolved = true)
     }
 
@@ -186,10 +179,16 @@ class RecordDecisionUseCase(
  * recorded at decision time (#902). A title the person removed and added again
  * while the undo was pending has a new stamp, so it stays.
  *
- * Ticks are reversed exactly as the verdict wrote them (#790). When the entry is
- * the verdict's own, its progress goes with it, as before. When the title was
- * already in the library, only the episodes the verdict newly ticked are un-ticked,
- * and every tick the person made themselves is kept.
+ * Ticks are reversed by viewing, not by episode (#790). Undo removes exactly the
+ * viewings the verdict wrote ([TriageDecision.tickedPlayIds]) through
+ * [ProgressApi.removePlay]. An episode the person has since rewatched keeps that
+ * rewatch and stays seen; an episode with no viewings left is un-ticked. When the
+ * entry is the verdict's own, its progress goes with it, as before.
+ *
+ * Residual: the sync merge of near-duplicate plays (`RemoteApplier.mergeDuplicatePlays`,
+ * five minutes) can tombstone the verdict's viewing on another device before undo
+ * runs. The undo is then a no-op for that viewing and the tick stays. That is
+ * fail-safe: nothing the person made is removed.
  *
  * The cleanup runs before the decision is tombstoned, so a cleanup that fails
  * leaves the decision readable and a retried undo finishes the job.
@@ -210,7 +209,7 @@ class UndoDecisionUseCase(
                 progressApi.clearProgress(mediaId)
                 collectionApi.remove(mediaId)
             } else {
-                stored.tickedEpisodeIds.forEach { untick(mediaId, it) }
+                stored.tickedPlayIds.forEach { progressApi.removePlay(it) }
             }
         }
         // Tombstoning last: once soft-deleted, observeDecision reads null and the claim can no longer be read.
@@ -220,14 +219,6 @@ class UndoDecisionUseCase(
     private suspend fun currentAddedAt(mediaId: MediaId): Long? = collectionApi.observeSummaries().first()
         .firstOrNull { it.mediaId == mediaId }
         ?.addedAtEpochMs
-
-    private suspend fun untick(mediaId: MediaId, episodeId: EpisodeId) {
-        if (episodeId == EpisodeId.forMovie(mediaId)) {
-            progressApi.setMovieWatched(mediaId, watched = false)
-        } else {
-            progressApi.setEpisodeSeen(episodeId, seen = false)
-        }
-    }
 }
 
 /** Genre chips for the deck's filter row. An empty list simply means no chips. */

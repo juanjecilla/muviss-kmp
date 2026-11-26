@@ -104,6 +104,10 @@ class FakeProgressRepository : ProgressRepository {
     }
 
     override suspend fun clearPlays(episodeId: EpisodeId) = setSeen(episodeId, false)
+
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) = episodeIds.forEach { setSeen(it, true) }
+
+    override suspend fun removePlay(playId: String) = error("not used")
 }
 
 class MapEpisodeCatalogSource(private val bySeasons: Map<MediaId, List<Season>>) : EpisodeCatalogSource {

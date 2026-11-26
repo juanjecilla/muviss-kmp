@@ -4,6 +4,7 @@ package com.codingpit.muviss.core.sync
 
 import app.cash.turbine.test
 import com.codingpit.muviss.core.testing.FakeSupabaseServer
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
@@ -61,9 +62,18 @@ class SyncIntegrationTest {
         a.progress.setSeenBulk(episodeIds(3), true)
         a.device.database.mediaListQueries.insertList("list-1", "Weekend", 1_000L, 1_000L, true, false)
         a.device.database.mediaListQueries.upsertEntry("list-1", movie.toString(), 1_000L, 1_000L, true, false)
-        a.device.database.triageDecisionQueries.upsert(second.toString(), "movie", "SKIP", "Reloaded", null, 1_000L, true, 1_000L, true, false, true, null, "")
+        // Undo metadata that is not the default on any field: a stamp, and two viewing ids (#902, #790).
+        val verdictViewings = episodeIds(3).take(2).map { EpisodePlay.idOf(it, 1_000L) }
+        a.device.database.triageDecisionQueries.upsert(
+            second.toString(), "movie", "SKIP", "Reloaded", null, 1_000L, true, 1_000L, true, false, true, 1_234L,
+            verdictViewings.joinToString(","),
+        )
         assertTrue(a.sync() is SyncOutcome.Success)
         assertTrue(b.sync() is SyncOutcome.Success)
+        // The receiving device keeps the stamp and the viewing ids as the verdict wrote them.
+        val verdictOnB = b.device.database.triageDecisionQueries.selectById(second.toString()).executeAsOne()
+        assertEquals(1_234L, verdictOnB.entryAddedAtEpochMs)
+        assertEquals(verdictViewings.joinToString(","), verdictOnB.tickedEpisodeIds)
 
         // Then the destructive half: clear a rating and a note, un-tick, remove, delete.
         a.at(5_000)

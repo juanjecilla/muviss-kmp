@@ -32,7 +32,15 @@ data class Completion(val mediaId: MediaId, val kind: CompletionKind)
 data class EpisodePlay(
     val episodeId: EpisodeId,
     val watchedAtEpochMs: Long,
-)
+) {
+    companion object {
+        /**
+         * The id of the viewing of [episodeId] at [watchedAtEpochMs] (ADR 0013). Derived rather than allocated, so the
+         * same viewing has the same id on every device, and a caller can name a viewing before it is written (#790).
+         */
+        fun idOf(episodeId: EpisodeId, watchedAtEpochMs: Long): String = "$episodeId@$watchedAtEpochMs"
+    }
+}
 
 /**
  * One title the user is part-way through, with the next episode they have not
@@ -214,6 +222,20 @@ interface ProgressApi {
 
     /** Forgets every viewing of [episodeId] and un-ticks it. */
     suspend fun clearPlays(episodeId: EpisodeId)
+
+    /**
+     * Ticks each of [episodeIds] as seen. An episode with no viewing yet gets one, stamped [watchedAtEpochMs], whose id
+     * is [EpisodePlay.idOf] of the same arguments: a caller that records that id before calling can take exactly this
+     * viewing back with [removePlay] (triage undo, #790). An episode that already has a viewing is only re-asserted seen.
+     */
+    suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long)
+
+    /**
+     * Takes back the one viewing whose id is [playId] and nothing else (#790). Soft, so the removal syncs and a later
+     * rewatch of the same episode survives. The episode is un-ticked only when no other viewing of it remains. An id
+     * that names no live viewing, such as one already removed or a legacy id, changes nothing.
+     */
+    suspend fun removePlay(playId: String)
 
     /**
      * Marks every episode of [season] that has aired by [todayEpochDay] as

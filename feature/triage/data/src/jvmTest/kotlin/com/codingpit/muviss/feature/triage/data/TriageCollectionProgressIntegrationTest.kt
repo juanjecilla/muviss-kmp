@@ -8,6 +8,7 @@ import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.testing.FakeClock
 import com.codingpit.muviss.core.testing.inMemoryDatabase
 import com.codingpit.muviss.feature.collection.data.SqlDelightCollectionRepository
+import com.codingpit.muviss.feature.progress.api.EpisodePlay
 import com.codingpit.muviss.feature.progress.data.SqlDelightProgressRepository
 import com.codingpit.muviss.feature.triage.api.TriageVerdict
 import com.codingpit.muviss.feature.triage.domain.DeckCursor
@@ -82,6 +83,10 @@ class TriageCollectionProgressIntegrationTest {
         record = RecordDecisionUseCase(triageRepository, collectionApi, progressApi, detailsSource, clock)
     }
 
+    private companion object {
+        const val ONE_DAY_MS = 86_400_000L
+    }
+
     private suspend fun statusOf(details: MediaDetails): WatchStatus? = collectionApi.observeSummaries().first().firstOrNull { it.mediaId == details.id }?.status
 
     @Test
@@ -130,6 +135,29 @@ class TriageCollectionProgressIntegrationTest {
 
         assertEquals(0, database.episodeProgressQueries.selectForMedia(ongoing.id.toString()).executeAsList().count { it.seen })
         assertEquals(WatchStatus.NOT_STARTED, statusOf(ongoing))
+    }
+
+    @Test
+    fun `undo of a watching verdict on a listed title takes back only its viewing and keeps a later rewatch`() = runTest {
+        // The title is listed before the verdict, so undo must not remove the entry; only the viewing is the verdict's.
+        collectionApi.add(ongoing)
+        record(ongoing.summary, TriageVerdict.WATCHING).getOrThrow()
+        val episode = EpisodeId(ongoing.id, seasonNumber = 1, episodeNumber = 1)
+        val verdictViewing = EpisodePlay.idOf(episode, NOW_EPOCH_MS)
+        // The person rewatches the same episode a day later, from Detail, through the real rewatch path.
+        val rewatchAt = NOW_EPOCH_MS + ONE_DAY_MS
+        (deckClock as FakeClock).epochMs = rewatchAt
+        progressApi.recordPlay(episode)
+
+        UndoDecisionUseCase(triageRepository, collectionApi, progressApi)(ongoing.id, TriageVerdict.WATCHING)
+
+        // Live viewings are the rewatch alone (selectForEpisode filters deleted rows).
+        assertEquals(listOf(rewatchAt), database.episodePlayQueries.selectForEpisode(episode.toString()).executeAsList().map { it.watchedAtEpochMs })
+        // The verdict's viewing is tombstoned, not hard-deleted, so the removal syncs.
+        assertTrue(database.episodePlayQueries.selectById(verdictViewing).executeAsOne().deleted)
+        // The episode keeps its seen flag because the rewatch is still a viewing of it.
+        assertTrue(database.episodeProgressQueries.selectForMedia(ongoing.id.toString()).executeAsList().single { it.episodeId == episode.toString() }.seen)
+        assertTrue(database.collectionEntryQueries.selectById(ongoing.id.toString()).executeAsOne().deleted.not(), "the listed title stays")
     }
 
     @Test

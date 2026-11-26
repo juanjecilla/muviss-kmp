@@ -116,6 +116,15 @@ internal class FakeProgressApi : ProgressApi {
         seen.value = seen.value + episodes
     }
 
+    /** The live viewings, by [EpisodePlay.idOf] id, so a test can see which viewing undo took and which it kept. */
+    val plays = MutableStateFlow<Map<String, EpisodeId>>(emptyMap())
+
+    /** The person's own viewing of an episode at [watchedAtEpochMs], as a rewatch or a tick from Detail. */
+    fun recordRewatch(episodeId: EpisodeId, watchedAtEpochMs: Long) {
+        plays.value = plays.value + (EpisodePlay.idOf(episodeId, watchedAtEpochMs) to episodeId)
+        seen.value = seen.value + episodeId
+    }
+
     override fun observeSeenEpisodes(mediaId: MediaId): Flow<Set<EpisodeId>> = seen.map { all -> all.filterTo(mutableSetOf()) { it.show == mediaId } }
 
     // Watch-next (EPIC 22) — this fake's subject never asks for it.
@@ -138,6 +147,23 @@ internal class FakeProgressApi : ProgressApi {
     override suspend fun recordPlay(episodeId: EpisodeId) = Unit
     override suspend fun removeLatestPlay(episodeId: EpisodeId) = Unit
     override suspend fun clearPlays(episodeId: EpisodeId) = Unit
+    override suspend fun recordFirstPlays(episodeIds: List<EpisodeId>, watchedAtEpochMs: Long) {
+        ticked += episodeIds
+        episodeIds.forEach { episodeId ->
+            if (plays.value.values.none { it == episodeId }) {
+                plays.value = plays.value + (EpisodePlay.idOf(episodeId, watchedAtEpochMs) to episodeId)
+            }
+        }
+        seen.value = seen.value + episodeIds
+    }
+
+    /** As the real repository does: only this viewing goes, and the episode is unseen only when no viewing of it is left. */
+    override suspend fun removePlay(playId: String) {
+        val episodeId = plays.value[playId] ?: return
+        plays.value = plays.value - playId
+        if (plays.value.values.none { it == episodeId }) seen.value = seen.value - episodeId
+    }
+
     override suspend fun markSeasonAiredSeen(season: Season, todayEpochDay: Long): List<EpisodeId> = emptyList()
     override suspend fun markShowAiredSeen(seasons: List<Season>, todayEpochDay: Long): List<EpisodeId> = emptyList()
     override suspend fun unmarkSeason(season: Season) = Unit
