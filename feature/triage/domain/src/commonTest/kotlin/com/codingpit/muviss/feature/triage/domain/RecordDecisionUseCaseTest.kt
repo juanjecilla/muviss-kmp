@@ -290,9 +290,9 @@ class RecordDecisionUseCaseTest {
     fun a_failed_claim_write_leaves_an_entry_the_person_already_had_alone() = runTest {
         val h = harness()
         h.collection.add(endedDetails)
-        h.repository.failClaimWrite = IllegalStateException("disk full")
+        h.repository.failUnclaimedClaimWrite = IllegalStateException("disk full")
 
-        h.useCase(endedShow, TriageVerdict.CAUGHT_UP)
+        assertTrue(h.useCase(endedShow, TriageVerdict.CAUGHT_UP).isFailure, "the claim write failed, so the verdict fails")
 
         assertEquals(emptyList(), h.collection.removed, "an entry present before the verdict is never rolled back")
         assertEquals(listOf(endedShow.id), h.collection.summaries.value.map { it.mediaId })

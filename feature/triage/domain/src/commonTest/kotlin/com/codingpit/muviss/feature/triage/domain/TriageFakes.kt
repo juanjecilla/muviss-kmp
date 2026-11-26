@@ -34,10 +34,24 @@ internal class FakeTriageDecisionRepository : TriageDecisionRepository {
     /** Thrown by the next write of a claim (a decision with [TriageDecision.createdEntry]), once. Simulates #1071's failed claim write. */
     var failClaimWrite: Throwable? = null
 
+    /**
+     * Thrown by the claim write of an attempt whose add found the entry already there (a write with `createdEntry`
+     * false), once. The verdict's own first write is also `createdEntry` false, so this hook skips that one and fails
+     * the second write. Simulates a claim write that fails when the title was already in the library (#1071).
+     */
+    var failUnclaimedClaimWrite: Throwable? = null
+    private var writes = 0
+
     override suspend fun record(decision: TriageDecision) {
+        writes++
         if (decision.createdEntry) {
             failClaimWrite?.let {
                 failClaimWrite = null
+                throw it
+            }
+        } else if (writes == 2) {
+            failUnclaimedClaimWrite?.let {
+                failUnclaimedClaimWrite = null
                 throw it
             }
         }
