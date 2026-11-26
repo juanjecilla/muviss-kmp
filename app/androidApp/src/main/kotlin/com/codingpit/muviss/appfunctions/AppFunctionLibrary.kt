@@ -88,8 +88,9 @@ internal class AppFunctionLibrary(
             title = summary.title,
             status = summary.status.agentName(),
             catalogLoaded = seasons != null,
-            // Counted over aired episodes only, the basis watch-next uses, so the two functions agree.
-            seenCount = seen.count { it in aired },
+            // Counted over aired episodes only, the basis watch-next uses, so the two functions agree. Without a stored
+            // catalog nothing is known to have aired, so every tick is counted instead (#1127).
+            seenCount = if (seasons == null) seen.size else seen.count { it in aired },
             airedCount = aired.size,
             nextEpisodeId = next?.id?.toString(),
             nextEpisodeLabel = next?.let(::episodeLabel),

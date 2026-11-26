@@ -58,7 +58,10 @@ data class TitleProgress(
     val status: String,
     /** False until Muviss has loaded this title's episodes; then airedCount and the next episode are unknown. */
     val catalogLoaded: Boolean,
-    /** How many aired episodes the user has seen, or 1 for a movie when it is watched. */
+    /**
+     * How many aired episodes the user has seen, or 1 for a movie when it is watched. While catalogLoaded is false
+     * nothing is known to have aired, so this counts every episode the user has ticked.
+     */
     val seenCount: Int,
     /** How many episodes have aired, or 1 for a movie. Zero when Muviss has not loaded the episodes yet. */
     val airedCount: Int,
