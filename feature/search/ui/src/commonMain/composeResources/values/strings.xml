@@ -190,5 +190,6 @@
     <string name="person_bio_less">Show less</string>
     <string name="link_imdb">IMDb</string>
     <string name="link_wikipedia">Wikipedia</string>
+    <string name="link_wikipedia_english">Wikipedia (English)</string>
     <string name="link_tmdb">TMDB</string>
 </resources>

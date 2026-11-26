@@ -169,5 +169,6 @@
     <string name="person_bio_less">Mostrar menos</string>
     <string name="link_imdb">IMDb</string>
     <string name="link_wikipedia">Wikipedia</string>
+    <string name="link_wikipedia_english">Wikipedia (inglés)</string>
     <string name="link_tmdb">TMDB</string>
 </resources>

@@ -96,6 +96,40 @@ class PersonScreenTest {
     }
 
     @Test
+    fun the_english_wikipedia_chip_is_offered_beside_a_non_english_app_language_and_opens_the_same_item() {
+        // Issue #990: the selected edition may have no article, so the English one sits beside it, same Q-id.
+        val cases = listOf("es-ES" to "https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q38111", "ja-JP" to "https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q38111")
+        for ((language, expected) in cases) {
+            val opened = mutableListOf<String>()
+            runComposeUiTest {
+                setContent {
+                    CompositionLocalProvider(LocalUriHandler provides recordingUriHandler(opened)) {
+                        MuvissTheme(darkTheme = false) {
+                            PersonBody(person, FilmographyOrganizer.organize(person, today), emptySet(), {}, language)
+                        }
+                    }
+                }
+
+                onNodeWithText("Wikipedia (English)").performClick()
+            }
+
+            assertEquals(expected, opened.single(), "language $language")
+        }
+    }
+
+    @Test
+    fun an_english_app_language_shows_no_second_wikipedia_chip() = runComposeUiTest {
+        setContent {
+            MuvissTheme(darkTheme = false) {
+                PersonBody(person, FilmographyOrganizer.organize(person, today), emptySet(), {}, "en-US")
+            }
+        }
+
+        onAllNodesWithText("Wikipedia (English)").assertCountEquals(0)
+        onNodeWithText("Wikipedia").assertIsDisplayed()
+    }
+
+    @Test
     fun a_person_screen_with_no_language_given_opens_the_english_wikipedia() = runComposeUiTest {
         val opened = mutableListOf<String>()
         setContent {

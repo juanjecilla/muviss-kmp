@@ -13,6 +13,8 @@ class ExternalLinksTest {
 
     private fun urls(links: List<ExternalLink>) = links.map { it.kind to it.url }
 
+    private fun ExternalLinkKind.isWikipedia() = this == ExternalLinkKind.WIKIPEDIA || this == ExternalLinkKind.WIKIPEDIA_ENGLISH
+
     @Test
     fun a_movie_links_to_imdb_wikipedia_and_tmdb() {
         val links = ExternalLinks.forTitle(MediaId.tmdbMovie("27205"), MediaAnchors("tt1375666", "Q25188"), "en-US")
@@ -92,6 +94,61 @@ class ExternalLinksTest {
         assertEquals(listOf(ExternalLinkKind.TMDB), links.map { it.kind })
         // A title id is not a name id: IMDb would 404 it.
         assertEquals(listOf(ExternalLinkKind.TMDB), person.map { it.kind })
+    }
+
+    @Test
+    fun a_non_english_app_language_offers_the_english_edition_of_the_same_item_beside_it() {
+        // Issue #990: no request tells the app whether the selected edition has an article, so the English one is offered
+        // beside it, with the same validated Q-id and no app request. Each listed language, plus the unlisted region variant.
+        val cases = listOf("es-ES" to "eswiki", "fr-FR" to "frwiki", "de-DE" to "dewiki", "it-IT" to "itwiki", "pt-BR" to "ptwiki", "ja-JP" to "jawiki", "es-MX" to "eswiki")
+
+        for ((language, edition) in cases) {
+            val wiki = ExternalLinks.forTitle(MediaId.tmdbMovie("1"), MediaAnchors(wikidataId = "Q25188"), language).filter { it.kind.isWikipedia() }
+
+            assertEquals(
+                listOf(
+                    ExternalLinkKind.WIKIPEDIA to "https://www.wikidata.org/wiki/Special:GoToLinkedPage/$edition/Q25188",
+                    ExternalLinkKind.WIKIPEDIA_ENGLISH to "https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q25188",
+                ),
+                wiki.map { it.kind to it.url },
+                "language $language",
+            )
+        }
+    }
+
+    @Test
+    fun an_english_or_unset_app_language_offers_one_wikipedia_link_only() {
+        // English, the unset sentinel and an unsupported code all resolve to English: one article, no second chip.
+        for (language in listOf("en-US", "en", "", "../evil")) {
+            val kinds = ExternalLinks.forTitle(MediaId.tmdbMovie("1"), MediaAnchors(wikidataId = "Q1"), language).map { it.kind }
+
+            assertEquals(listOf(ExternalLinkKind.WIKIPEDIA), kinds.filter { it.isWikipedia() }, "language '$language'")
+        }
+    }
+
+    @Test
+    fun a_person_gets_the_same_english_fallback_as_a_title() {
+        val links = ExternalLinks.forPerson(PersonId.tmdb("6193"), PersonAnchors(wikidataId = "Q38111"), "es-ES")
+
+        assertEquals(
+            listOf(
+                ExternalLinkKind.WIKIPEDIA to "https://www.wikidata.org/wiki/Special:GoToLinkedPage/eswiki/Q38111",
+                ExternalLinkKind.WIKIPEDIA_ENGLISH to "https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q38111",
+            ),
+            links.filter { it.kind.isWikipedia() }.map { it.kind to it.url },
+        )
+    }
+
+    @Test
+    fun no_wikidata_id_or_a_malformed_one_means_no_wikipedia_link_in_either_edition() {
+        // Both titles and people, in a non-English app language, with each way the id can be missing or malformed.
+        for (wikidata in listOf(null, "", "Q1?a=b", "P25188")) {
+            val title = ExternalLinks.forTitle(MediaId.tmdbMovie("1"), MediaAnchors(wikidataId = wikidata), "es-ES")
+            val person = ExternalLinks.forPerson(PersonId.tmdb("1"), PersonAnchors(wikidataId = wikidata), "es-ES")
+
+            assertTrue(title.none { it.kind.isWikipedia() }, "title with '$wikidata'")
+            assertTrue(person.none { it.kind.isWikipedia() }, "person with '$wikidata'")
+        }
     }
 
     @Test

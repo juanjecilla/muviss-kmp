@@ -16,6 +16,7 @@ import com.codingpit.muviss.feature.search.ui.generated.resources.Res
 import com.codingpit.muviss.feature.search.ui.generated.resources.link_imdb
 import com.codingpit.muviss.feature.search.ui.generated.resources.link_tmdb
 import com.codingpit.muviss.feature.search.ui.generated.resources.link_wikipedia
+import com.codingpit.muviss.feature.search.ui.generated.resources.link_wikipedia_english
 import org.jetbrains.compose.resources.stringResource
 
 internal const val EXTERNAL_LINKS_TAG = "externalLinks"
@@ -46,6 +47,7 @@ internal fun ExternalLinksRow(links: List<ExternalLink>, modifier: Modifier = Mo
 private fun ExternalLinkKind.label() = when (this) {
     ExternalLinkKind.IMDB -> Res.string.link_imdb
     ExternalLinkKind.WIKIPEDIA -> Res.string.link_wikipedia
+    ExternalLinkKind.WIKIPEDIA_ENGLISH -> Res.string.link_wikipedia_english
     ExternalLinkKind.TMDB -> Res.string.link_tmdb
 }
 
