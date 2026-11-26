@@ -25,9 +25,10 @@ import androidx.compose.ui.unit.dp
 fun immersiveTopInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
 
 /**
- * The sideways band a landscape display cutout takes, which [extendIntoSideInsets] lets a black or artwork-led screen
- * run under. Read raw, for the same reason as [immersiveTopPadding]: [ScreenInsets] has already consumed it for every
- * descendant. Read it as a parameter's default, so tests can pass a synthetic cutout.
+ * The horizontal safe area that [extendIntoSideInsets] lets an immersive screen run under: a landscape display cutout,
+ * and, where the system puts it on a side, the navigation bar too. That is `safeDrawing` on the sides, the same set the
+ * Image Viewer uses, so the two screens agree. Read raw, for the same reason as [immersiveTopPadding]: [ScreenInsets]
+ * has already consumed it for every descendant. It is a parameter's default, so tests can pass a synthetic cutout.
  */
 @Composable
 fun immersiveSideInsets(): WindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)

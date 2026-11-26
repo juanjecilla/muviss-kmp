@@ -8,12 +8,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.codingpit.muviss.core.designsystem.theme.MuvissTheme
 import com.codingpit.muviss.models.MediaDetails
@@ -68,6 +71,35 @@ class DetailHeroSideInsetsTest {
         assertEquals(424.dp, hero.right)
         val row = onNodeWithTag(ROW_TAG).getBoundsInRoot()
         assertEquals(0.dp, row.left, "an ordinary row stays inside the safe area")
+        assertEquals(400.dp, row.right)
+    }
+
+    /**
+     * The same shape in a right-to-left layout. The cutout is still on the physical left and right, but the list's
+     * logical start and end swap sides, so a swapped read would put the row at the wrong edge. The widths differ (40
+     * and 24) so a swap is visible.
+     */
+    @Test
+    fun the_same_cutout_lays_out_the_same_way_right_to_left() = runComposeUiTest {
+        val cutout = WindowInsets(left = 40.dp, top = 0.dp, right = 24.dp, bottom = 0.dp)
+        setContent {
+            MuvissTheme(darkTheme = true) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    Box(Modifier.width(400.dp)) {
+                        DetailList(rememberLazyListState(), bottomPadding = 0.dp, horizontalInsets = cutout) {
+                            item { DetailBackdrop(details(), height = 200.dp, topInset = 0.dp, horizontalInsets = cutout) }
+                            item { Box(Modifier.fillMaxWidth().height(20.dp).testTag(ROW_TAG)) }
+                        }
+                    }
+                }
+            }
+        }
+
+        val hero = onNodeWithTag(DETAIL_BACKDROP_TAG).getBoundsInRoot()
+        assertEquals((-40).dp, hero.left, "the hero still runs under the physical left cutout")
+        assertEquals(424.dp, hero.right)
+        val row = onNodeWithTag(ROW_TAG).getBoundsInRoot()
+        assertEquals(0.dp, row.left, "the row keeps the safe area in a right-to-left layout")
         assertEquals(400.dp, row.right)
     }
 
