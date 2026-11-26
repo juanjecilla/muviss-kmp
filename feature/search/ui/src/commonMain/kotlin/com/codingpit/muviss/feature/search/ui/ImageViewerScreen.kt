@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImagePainter
@@ -137,19 +138,25 @@ internal fun ImageViewerContent(
     // Physical sides: a cutout is on a named side of the screen whatever the reading direction.
     val leftInset = sides.calculateLeftPadding(layoutDirection)
     val rightInset = sides.calculateRightPadding(layoutDirection)
+    // The close button sits in the start corner, so it clears the start inset (the right one in a right-to-left layout).
+    val closeInset = if (layoutDirection == LayoutDirection.Rtl) rightInset else leftInset
     val pager = rememberPagerState { images.size }
     val scope = rememberCoroutineScope()
     // The page the arrow keys have asked for and the pager has not reached yet. A second press before the first turn
     // settles aims from here, so it moves on from the first target instead of re-aiming at the same page.
     var turnTarget by remember { mutableStateOf<Int?>(null) }
+    var turnSerial by remember { mutableStateOf(0L) }
     val turnTo: (Int) -> Unit = { page ->
+        turnSerial += 1
+        val serial = turnSerial
         turnTarget = page
         scope.launch {
             try {
                 pager.animateScrollToPage(page)
             } finally {
-                // Only the latest turn clears it: a turn that was superseded must not clear the one that replaced it.
-                if (turnTarget == page) turnTarget = null
+                // Only the latest turn clears it. Keyed on the serial, not the page: a press at the end of the gallery
+                // turns to the page it is already on, and a superseded turn must not clear the one that replaced it.
+                if (turnSerial == serial) turnTarget = null
             }
         }
     }
@@ -218,7 +225,7 @@ internal fun ImageViewerContent(
             Surface(
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = 0.45f),
-                modifier = Modifier.padding(top = topInset, start = leftInset).padding(12.dp).size(36.dp).testTag(IMAGE_VIEWER_CLOSE_TAG),
+                modifier = Modifier.padding(top = topInset, start = closeInset).padding(12.dp).size(36.dp).testTag(IMAGE_VIEWER_CLOSE_TAG),
             ) {
                 IconButton(onClick = leave) {
                     Icon(MuvissIcons.Close, contentDescription = stringResource(Res.string.action_close), tint = Color.White)

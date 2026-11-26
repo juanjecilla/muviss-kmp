@@ -3,6 +3,7 @@
 package com.codingpit.muviss.feature.search.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -25,6 +26,7 @@ import com.codingpit.muviss.models.ImageKind
 import com.codingpit.muviss.models.MediaDetails
 import com.codingpit.muviss.models.MediaId
 import com.codingpit.muviss.models.MediaSummary
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -69,6 +71,25 @@ class DetailImageTapTest {
         // The compact poster draws the w342 grid request, so the viewer opens on that same URL: it is cached, and
         // the picture is on screen offline. The stored w500 is a different cache entry.
         assertEquals(listOf(ImageKind.Poster to drawnImageUrl(POSTER, PosterSize.Grid)), opened)
+    }
+
+    @Test
+    fun the_poster_button_is_named_poster_while_its_picture_is_loading() = runComposeUiTest {
+        // Both sizes the screen can draw are held, so the poster is in its loading state whichever one is on screen.
+        val gate = CompletableDeferred<Unit>()
+        val held = Answer.Waits(gate, Size(200f, 300f))
+        val loader = installLoader(
+            mapOf(drawnImageUrl(POSTER, PosterSize.Detail)!! to held, drawnImageUrl(POSTER, PosterSize.Grid)!! to held),
+        )
+        try {
+            setContent { Detail(withArt = true) { _, _ -> } }
+            waitUntil(timeoutMillis = 10_000) { loader.requested.any { it.endsWith("/poster.jpg") || it.contains("/poster.jpg") } }
+            waitForIdle()
+
+            onNodeWithTag(DETAIL_POSTER_TAG).assertContentDescriptionEquals("Poster")
+        } finally {
+            gate.complete(Unit)
+        }
     }
 
     @Test
