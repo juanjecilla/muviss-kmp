@@ -83,7 +83,7 @@ class DetailImageTapTest {
         )
         try {
             setContent { Detail(withArt = true) { _, _ -> } }
-            waitUntil(timeoutMillis = 10_000) { loader.requested.any { it.endsWith("/poster.jpg") || it.contains("/poster.jpg") } }
+            waitUntil(timeoutMillis = 10_000) { loader.requested.any { it.contains("/poster.jpg") } }
             waitForIdle()
 
             onNodeWithTag(DETAIL_POSTER_TAG).assertContentDescriptionEquals("Poster")

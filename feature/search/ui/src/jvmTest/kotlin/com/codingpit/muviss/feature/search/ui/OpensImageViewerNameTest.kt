@@ -17,9 +17,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Artwork that is still loading is named by its kind alone. [PosterImage] names its picture by the title, and the
- * opener's name must not be merged with it: a screen reader would otherwise read "Still, <episode title>" while the
- * picture loads and "Still" once it fails.
+ * Guards that an opener's name is the kind alone while its picture loads, for every kind of artwork. This does not
+ * reproduce the device bug (the title joining the name); the Episode Detail still test is the one that goes red when
+ * the opener's name is merged with the picture's description.
  */
 class OpensImageViewerNameTest {
 

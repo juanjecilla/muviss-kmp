@@ -110,7 +110,8 @@ fun Modifier.extendIntoTopInset(top: Dp): Modifier = layout { measurable, constr
  *
  * The horizontal counterpart of [extendIntoTopInset]: the child is measured to fill the widened band and placed [left]
  * to the left of this node's origin, and this node keeps the width it was given. The child is forced to the full width,
- * so it must not ask for less (use `fillMaxSize` or a weight). A zero extension places the child as it is.
+ * so it must not ask for less (use `fillMaxSize` or a weight). A zero extension places the child as it is, and so does an
+ * unbounded width: there is no edge to extend to, so the modifier does nothing rather than guess.
  */
 fun Modifier.extendIntoSideInsets(left: Dp, right: Dp): Modifier = layout { measurable, constraints ->
     val extraLeft = if (left > 0.dp && constraints.hasBoundedWidth) left.roundToPx() else 0

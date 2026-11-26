@@ -32,6 +32,20 @@ class ImageViewerNavigationTest {
         assertEquals(1, viewers)
     }
 
+    @Test
+    fun a_tap_on_another_artwork_before_the_first_viewer_is_shown_does_not_stack_a_second_viewer() = runComposeUiTest {
+        lateinit var nav: NavHostController
+        setContent { nav = TestNavHost() }
+        waitForIdle()
+
+        nav.openImageViewer(ImageViewerRoute(mediaId = "1", kind = "Poster", seedUrl = "https://image.tmdb.org/t/p/w500/p.jpg"))
+        nav.openImageViewer(ImageViewerRoute(mediaId = "1", kind = "Backdrop", seedUrl = "https://image.tmdb.org/t/p/w780/b.jpg"))
+        waitForIdle()
+
+        val viewers = nav.currentBackStack.value.count { it.destination.route?.startsWith(ImageViewerRoute::class.qualifiedName!!) == true }
+        assertEquals(1, viewers, "the second tap is dropped: the viewer stays on the first artwork, not a second viewer")
+    }
+
     @Composable
     private fun TestNavHost(): NavHostController {
         val nav = rememberNavController()

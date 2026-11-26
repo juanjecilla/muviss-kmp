@@ -106,8 +106,9 @@ fun NavGraphBuilder.searchSection(
 }
 
 /**
- * Opens the Image Viewer for [route]. Single-top, so a second tap on the same artwork while the first viewer is still
- * being pushed does not stack a second viewer, which Back would then show before reaching the title.
+ * Opens the Image Viewer for [route]. Single-top, so a second tap while a viewer is still being pushed does not stack a
+ * second viewer, which Back would then show before reaching the title. A tap on a *different* artwork in that moment is
+ * dropped too: the viewer that is on top stays on its first artwork.
  */
 internal fun NavController.openImageViewer(route: ImageViewerRoute) {
     navigate(route) { launchSingleTop = true }
