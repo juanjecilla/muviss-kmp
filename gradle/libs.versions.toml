@@ -64,7 +64,7 @@ licensee = "1.14.1"
 kover = "0.9.11"
 androidxWork = "2.12.0"
 # AppFunctions (EPIC 701): Android-only, consumed by :app:androidApp alone. KSP generates the service.
-appfunctions = "1.0.0-beta01"
+appfunctions = "1.0.0"
 ksp = "2.3.14"
 
 [libraries]

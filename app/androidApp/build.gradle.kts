@@ -71,10 +71,6 @@ licensee {
     }
 }
 
-ksp {
-    arg("appfunctions:aggregateAppFunctions", "true")
-}
-
 dependencies {
     // The Play review SDK pulls androidx.fragment 1.1.0, and lint rejects that next to the
     // ActivityResult APIs `MainActivity` uses (InvalidFragmentVersionForActivityResult, needs 1.3.0).
