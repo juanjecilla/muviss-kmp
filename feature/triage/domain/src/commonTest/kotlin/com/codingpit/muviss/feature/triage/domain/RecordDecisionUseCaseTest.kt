@@ -244,6 +244,60 @@ class RecordDecisionUseCaseTest {
         assertTrue(h.repository.decisions.value.values.all { it.resolved })
     }
 
+    // --- a failed claim write after the add (#1071) ---
+
+    @Test
+    fun a_failed_claim_write_after_the_add_takes_the_added_entry_back() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+
+        assertTrue(h.useCase(endedShow, TriageVerdict.CAUGHT_UP).isFailure)
+
+        assertEquals(listOf(endedShow.id), h.collection.removed, "the add this attempt made is rolled back")
+        assertEquals(emptyList(), h.collection.summaries.value, "the library is as it was before the verdict")
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "no claim was written")
+    }
+
+    @Test
+    fun a_retry_after_a_rolled_back_claim_write_claims_and_undo_removes_the_entry() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+        h.useCase(endedShow, TriageVerdict.CAUGHT_UP)
+
+        h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
+        val claim = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(claim.createdEntry)
+        assertNotNull(claim.entryAddedAtEpochMs)
+
+        UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(emptyList(), h.collection.summaries.value, "undo takes the retried claim's entry back")
+    }
+
+    @Test
+    fun a_cancelled_claim_write_still_takes_the_added_entry_back() = runTest {
+        val h = harness()
+        h.repository.failClaimWrite = kotlinx.coroutines.CancellationException("left the screen")
+
+        assertTrue(h.useCase(endedShow, TriageVerdict.CAUGHT_UP).isFailure)
+
+        assertEquals(emptyList(), h.collection.summaries.value)
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).resolved)
+    }
+
+    @Test
+    fun a_failed_claim_write_leaves_an_entry_the_person_already_had_alone() = runTest {
+        val h = harness()
+        h.collection.add(endedDetails)
+        h.repository.failClaimWrite = IllegalStateException("disk full")
+
+        h.useCase(endedShow, TriageVerdict.CAUGHT_UP)
+
+        assertEquals(emptyList(), h.collection.removed, "an entry present before the verdict is never rolled back")
+        assertEquals(listOf(endedShow.id), h.collection.summaries.value.map { it.mediaId })
+    }
+
     // --- undo ---
 
     @Test

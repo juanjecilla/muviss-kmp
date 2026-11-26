@@ -31,7 +31,16 @@ internal class FakeTriageDecisionRepository : TriageDecisionRepository {
 
     override fun observeDecision(mediaId: MediaId): Flow<TriageDecision?> = decisions.map { it[mediaId] }
 
+    /** Thrown by the next write of a claim (a decision with [TriageDecision.createdEntry]), once. Simulates #1071's failed claim write. */
+    var failClaimWrite: Throwable? = null
+
     override suspend fun record(decision: TriageDecision) {
+        if (decision.createdEntry) {
+            failClaimWrite?.let {
+                failClaimWrite = null
+                throw it
+            }
+        }
         decisions.value = decisions.value + (decision.mediaId to decision)
     }
 
