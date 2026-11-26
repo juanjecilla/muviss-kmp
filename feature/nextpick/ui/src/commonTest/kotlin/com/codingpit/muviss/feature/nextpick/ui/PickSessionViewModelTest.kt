@@ -38,6 +38,59 @@ import kotlin.test.assertTrue
 
 class PickSessionViewModelTest {
 
+    /** An engine whose pick waits on [gate], so a test can act while a pick is in flight. */
+    private fun gatedViewModel(gate: CompletableDeferred<Unit>, pool: List<PickCandidate>, context: PickContext) = PickSessionViewModel(
+        context = { context },
+        engine = PickEngine(
+            sources = listOf(
+                PickCandidates { _, _ ->
+                    gate.await()
+                    pool
+                },
+            ),
+            exclusions = PickExclusions { emptySet() },
+            history = PickHistoryReader { PickHistory() },
+            muting = PickMuting { MutedGenres.NONE },
+        ),
+        actions = RecordingNextPickActions(),
+        preferences = FixedPreferences(),
+    )
+
+    @Test
+    fun a_double_tap_on_the_last_answer_does_not_throw() {
+        // Given a quick session whose last question is answered while the pick is still in flight
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = gatedViewModel(gate, listOf(candidate("1")), PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true))
+        viewModel.answer(PickAnswer.Source(PickSource.EITHER))
+        viewModel.skipQuestion()
+        assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+
+        // When the same last tap lands a second time before the pick returns
+        // Then the second tap is ignored rather than thrown from requireNotNull
+        viewModel.skipQuestion()
+        gate.complete(Unit)
+        assertIs<PickSessionUiState.Result>(viewModel.state.value)
+    }
+
+    @Test
+    fun back_during_a_pick_does_not_overwrite_the_question_the_person_returned_to() {
+        // Given a quick session whose last answer is in flight, so the pick has not landed
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = gatedViewModel(gate, listOf(candidate("1")), PickContext(length = SessionLength.QUICK, online = true, hasBacklog = true))
+        viewModel.answer(PickAnswer.Source(PickSource.EITHER))
+        val beforeLast = assertIs<PickSessionUiState.Asking>(viewModel.state.value).question
+        viewModel.skipQuestion()
+
+        // When the person goes back before the pick returns, and the pick then lands
+        assertTrue(viewModel.back())
+        assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+        gate.complete(Unit)
+
+        // Then the screen still shows the question they went back to, not the pick of the session they left
+        val asking = assertIs<PickSessionUiState.Asking>(viewModel.state.value)
+        assertEquals(beforeLast, asking.question)
+    }
+
     @BeforeTest
     fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
 
