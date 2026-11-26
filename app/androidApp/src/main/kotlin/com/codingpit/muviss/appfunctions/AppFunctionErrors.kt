@@ -66,6 +66,9 @@ internal class InvalidAgentArgument(message: String, cause: Throwable? = null) :
 
 internal fun invalidArgument(text: String, cause: Throwable? = null): InvalidAgentArgument = InvalidAgentArgument(text, cause)
 
+/** A title, episode or other item the agent named that Muviss does not have. Mapped to ElementNotFound by the guard. */
+internal class MissingAgentItem(message: String) : RuntimeException(message)
+
 /**
  * Runs one AppFunction body, turning every failure into an [AppFunctionException] with fixed text.
  *
@@ -80,6 +83,8 @@ internal suspend inline fun <T> guardAppFunction(crossinline block: suspend () -
     throw e
 } catch (e: InvalidAgentArgument) {
     throw AppFunctionInvalidArgumentException(e.message.orEmpty())
+} catch (e: MissingAgentItem) {
+    throw AppFunctionElementNotFoundException(e.message.orEmpty())
 } catch (e: MetadataError) {
     throw e.appFunctionFailure().toException()
 } catch (e: CancellationException) {

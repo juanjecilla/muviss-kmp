@@ -92,12 +92,15 @@
 
         <!-- AppFunctions (EPIC 701): the assistant surface, bound by the system through this name. KSP generates
              MuvissAppFunctionService from BaseMuvissAppFunctionService; the v2 property points at the generated
-             function list in assets/. The schema property is declared by the library's own manifest. -->
+             function list in assets/. -->
         <service
             android:name=".appfunctions.MuvissAppFunctionService"
             android:exported="true"
             android:permission="android.permission.BIND_APP_FUNCTION_SERVICE"
             tools:targetApi="36">
+            <property
+                android:name="android.app.appfunctions.schema"
+                android:value="app_functions_schema.xsd" />
             <property
                 android:name="android.app.appfunctions.v2"
                 android:value="muviss_app_function_service.xml" />

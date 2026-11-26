@@ -15,6 +15,7 @@ internal fun WatchNextItem.toEntry(): WatchNextEntry = WatchNextEntry(
     title = title,
     nextEpisodeId = nextEpisode?.id?.toString(),
     nextEpisodeLabel = nextEpisode?.let(::episodeLabel),
+    catalogLoaded = catalogLoaded,
     seenCount = seenCount,
     airedCount = airedCount,
 )

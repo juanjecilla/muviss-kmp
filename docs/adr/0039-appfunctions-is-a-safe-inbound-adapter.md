@@ -36,12 +36,12 @@ nothing else.
   make quietly. Each one needs its own decision.
 - *Silent ticks replaced by the Detail tick path.* The Detail path raises the snapshot's aired count and can
   produce a Completion. Keeping the widget path keeps the agent's writes as small as the widget's; the aired-count
-  gap is tracked as its own issue.
+  gap is tracked as #1115.
 - *Searching through `SearchApi`.* It is an empty interface. Reaching `MetadataProviderRegistry` directly keeps the
   adapter one hop from the provider it needs.
 
 ## Consequences
 
-- The manifest and `app_metadata.xml` are checked only against the library's documented shape. The device check and
-  the R8 release check on Android 17 are a follow-up issue, not something this ADR claims is verified.
+- The manifest, `app_metadata.xml` and the R8 release build are checked only against the library's shipped resources
+  and a build. The device check on Android 17 is #1114, not something this ADR claims is verified.
 - `aggregateAppFunctions` stays set because beta01 needs it. Moving to a later release drops that argument.

@@ -48,7 +48,7 @@ abstract class BaseMuvissAppFunctionService :
      * @return Up to ten matches, each with the mediaId to pass to addToLibrary.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun searchTitles(query: String, type: String?): List<TitleHit> = guardAppFunction { library.searchTitles(query, parseMediaType(type)) }
+    suspend fun searchTitles(query: String, type: String? = null): List<TitleHit> = guardAppFunction { library.searchTitles(query, parseMediaType(type)) }
 
     /**
      * Lists the titles in the user's library, optionally filtered by status or to favorites. Read-only.
@@ -58,7 +58,7 @@ abstract class BaseMuvissAppFunctionService :
      * @return The matching library titles.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun getLibrary(status: String?, favoritesOnly: Boolean): List<LibraryEntry> = guardAppFunction { library.library(parseStatus(status), favoritesOnly) }
+    suspend fun getLibrary(status: String? = null, favoritesOnly: Boolean = false): List<LibraryEntry> = guardAppFunction { library.library(parseStatus(status), favoritesOnly) }
 
     /**
      * Reports how far the user has got with one title in the library. Read-only.

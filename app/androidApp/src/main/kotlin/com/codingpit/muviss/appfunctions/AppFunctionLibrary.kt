@@ -1,6 +1,5 @@
 package com.codingpit.muviss.appfunctions
 
-import androidx.appfunctions.AppFunctionElementNotFoundException
 import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.todayEpochDay
 import com.codingpit.muviss.core.network.MetadataProviderRegistry
@@ -37,13 +36,24 @@ internal class AppFunctionLibrary(
         progress.observeWatchNext().first().map { it.toEntry() }
     }
 
+    /**
+     * Searches TMDB and narrows to [type] after each page: the search is multi, so one page can hold people and the
+     * other media type. Pages are read until [SEARCH_LIMIT] hits are found or [MAX_SEARCH_PAGES] is reached.
+     */
     suspend fun searchTitles(query: String, type: MediaType?): List<TitleHit> = withContext(Dispatchers.IO) {
         val text = query.trim()
         if (text.isEmpty()) throw invalidArgument("query must not be blank.")
-        providers.require(SourceId.TMDB).search(text).items
-            .filter { type == null || it.id.type == type }
-            .take(SEARCH_LIMIT)
-            .map { it.toHit() }
+        val source = providers.require(SourceId.TMDB)
+        val hits = mutableListOf<TitleHit>()
+        var page = 1
+        var totalPages = 1
+        while (hits.size < SEARCH_LIMIT && page <= totalPages && page <= MAX_SEARCH_PAGES) {
+            val result = source.search(text, page)
+            totalPages = result.totalPages
+            hits += result.items.filter { type == null || it.id.type == type }.map { it.toHit() }
+            page++
+        }
+        hits.take(SEARCH_LIMIT)
     }
 
     suspend fun library(status: WatchStatus?, favoritesOnly: Boolean): List<LibraryEntry> = withContext(Dispatchers.IO) {
@@ -62,6 +72,7 @@ internal class AppFunctionLibrary(
                 mediaId = mediaId.toString(),
                 title = summary.title,
                 status = summary.status.agentName(),
+                catalogLoaded = true,
                 seenCount = if (watched) 1 else 0,
                 airedCount = 1,
                 nextEpisodeId = null,
@@ -69,14 +80,17 @@ internal class AppFunctionLibrary(
             )
         }
         val today = clock.todayEpochDay()
-        val seasons = progress.storedSeasons(mediaId).orEmpty()
-        val next = progress.nextEpisodes(seasons, seen, today).aired
+        val seasons = progress.storedSeasons(mediaId)
+        val aired = seasons?.let { EpisodeOrdering.airedBy(it, today).toSet() }.orEmpty()
+        val next = seasons?.let { progress.nextEpisodes(it, seen, today).aired }
         TitleProgress(
             mediaId = mediaId.toString(),
             title = summary.title,
             status = summary.status.agentName(),
-            seenCount = seen.size,
-            airedCount = EpisodeOrdering.airedBy(seasons, today).size,
+            catalogLoaded = seasons != null,
+            // Counted over aired episodes only, the basis watch-next uses, so the two functions agree.
+            seenCount = seen.count { it in aired },
+            airedCount = aired.size,
             nextEpisodeId = next?.id?.toString(),
             nextEpisodeLabel = next?.let(::episodeLabel),
         )
@@ -88,17 +102,13 @@ internal class AppFunctionLibrary(
         }
         savedSummary(episodeId.show)
         val seasons = progress.storedSeasons(episodeId.show)
-            ?: throw AppFunctionElementNotFoundException(
-                "Muviss has not loaded this show's episodes yet. Open the show in Muviss, then try again.",
-            )
+            ?: throw MissingAgentItem("Muviss has not loaded this show's episodes yet. Open the show in Muviss, then try again.")
         val episode = EpisodeOrdering.flatten(seasons).firstOrNull { it.id == episodeId }
-            ?: throw AppFunctionElementNotFoundException(
-                "That episode is not in this show's episode list. Call getWatchNext for a valid episodeId.",
-            )
-        if (!EpisodeOrdering.hasAired(episode, clock.todayEpochDay())) {
-            throw invalidArgument("That episode has not aired yet, so it cannot be ticked.")
+        when (tickRefusal(episode, clock.todayEpochDay())) {
+            null -> progress.setEpisodeSeen(episodeId, seen = true)
+            TickRefusal.NOT_IN_CATALOG -> throw MissingAgentItem(TickRefusal.NOT_IN_CATALOG.text)
+            TickRefusal.NOT_AIRED -> throw invalidArgument(TickRefusal.NOT_AIRED.text)
         }
-        progress.setEpisodeSeen(episodeId, seen = true)
     }
 
     suspend fun addToLibrary(mediaId: MediaId) = withContext(Dispatchers.IO) {
@@ -129,9 +139,10 @@ internal class AppFunctionLibrary(
     /** The library row for [mediaId], or the "add it first" failure every write on a title starts with. */
     private suspend fun savedSummary(mediaId: MediaId): CollectionSummary = collection.observeSummaries().first()
         .firstOrNull { it.mediaId == mediaId }
-        ?: throw AppFunctionElementNotFoundException("That title is not in the library. Call addToLibrary with its mediaId first.")
+        ?: throw MissingAgentItem("That title is not in the library. Call addToLibrary with its mediaId first.")
 
     private companion object {
         const val SEARCH_LIMIT = 10
+        const val MAX_SEARCH_PAGES = 3
     }
 }

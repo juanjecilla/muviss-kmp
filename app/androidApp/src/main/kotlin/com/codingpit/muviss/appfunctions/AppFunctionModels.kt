@@ -13,6 +13,8 @@ data class WatchNextEntry(
     val nextEpisodeId: String?,
     /** The next episode's season, number and name, such as "S1E2 Pilot", or null when there is none. */
     val nextEpisodeLabel: String?,
+    /** False until Muviss has loaded this title's episodes. Then nextEpisodeId is unknown, not "caught up". */
+    val catalogLoaded: Boolean,
     /** How many episodes of this title the user has seen. */
     val seenCount: Int,
     /** How many episodes of this title have aired so far. */
@@ -54,7 +56,9 @@ data class TitleProgress(
     val title: String,
     /** One of NOT_STARTED, WATCHING, WATCHED or FINISHED. */
     val status: String,
-    /** How many episodes, or for a movie 1 when watched, the user has seen. */
+    /** False until Muviss has loaded this title's episodes; then airedCount and the next episode are unknown. */
+    val catalogLoaded: Boolean,
+    /** How many aired episodes the user has seen, or 1 for a movie when it is watched. */
     val seenCount: Int,
     /** How many episodes have aired, or 1 for a movie. Zero when Muviss has not loaded the episodes yet. */
     val airedCount: Int,
