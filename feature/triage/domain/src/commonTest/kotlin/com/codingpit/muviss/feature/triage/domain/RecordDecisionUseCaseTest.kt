@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RecordDecisionUseCaseTest {
@@ -291,22 +292,35 @@ class RecordDecisionUseCaseTest {
     }
 
     @Test
-    fun a_retry_keeps_the_claim_the_first_attempt_recorded() = runTest {
+    fun a_retry_retires_a_pre_stamp_claim_when_an_entry_is_already_there() = runTest {
         val h = harness()
-        // The first attempt recorded its claim before its side effects failed. The
-        // retry adds the entry itself, so re-reading the library would now say "already there".
+        // A claim recorded before the stamp column (#1058): it names no entry, so a present entry cannot be proven to be
+        // the one it made. The retry retires it, and undo leaves the entry alone.
         h.repository.record(
             TriageDecision.of(endedShow, TriageVerdict.CAUGHT_UP, NOW_EPOCH_MS, resolved = false, createdEntry = true),
         )
-        // The entry the first attempt added is already in the library when the retry runs. A retry that recomputed
-        // ownership from the library would now read "already there", drop the claim, and undo would keep the entry.
         h.collection.add(endedDetails)
 
         h.useCase.retry(h.repository.decisions.value.getValue(endedShow.id)).getOrThrow()
-        assertTrue(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "the retry must keep the stored claim")
+        assertFalse(h.repository.decisions.value.getValue(endedShow.id).createdEntry, "the retry retires a pre-stamp claim")
         UndoDecisionUseCase(h.repository, h.collection, h.progress)(endedShow.id, TriageVerdict.CAUGHT_UP)
 
-        assertEquals(listOf(endedShow.id), h.collection.removed)
+        assertEquals(emptyList(), h.collection.removed)
+    }
+
+    @Test
+    fun a_retry_keeps_a_stamped_claim_the_first_attempt_recorded() = runTest {
+        val h = harness()
+        // The first attempt's add made the entry and stamped it. The retry finds that entry still there, so the
+        // claim, and the stamp it carries, stay as they were.
+        h.useCase(endedShow, TriageVerdict.CAUGHT_UP).getOrThrow()
+        val first = h.repository.decisions.value.getValue(endedShow.id)
+        assertNotNull(first.entryAddedAtEpochMs)
+        h.useCase.retry(first).getOrThrow()
+
+        val retried = h.repository.decisions.value.getValue(endedShow.id)
+        assertTrue(retried.createdEntry, "the retry keeps a stamped claim")
+        assertEquals(first.entryAddedAtEpochMs, retried.entryAddedAtEpochMs)
     }
 
     @Test
