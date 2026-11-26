@@ -76,14 +76,17 @@ internal class ConfigCatRemoteConfig(
             val now = clock.nowEpochMs()
             if (last != null && now - last in 0 until STALE_AFTER_MS) return
             // Taken before the SDK asks TMDB's CDN, and it is what the SDK's write below is checked against.
-            fencedCache.requestedAt = erasures.request()
+            val requestedAt = erasures.request()
+            fencedCache.requestedAt = requestedAt
             // Not cancellable: the SDK's fetch runs in its own coroutine and writes the cache there, so a
             // cancelled caller would leave that write to land later, checked against a count armed by a
             // refresh that started after an erase (#1080). Waiting for forceRefresh means the write has
             // finished, or been abandoned, before this returns; the SDK's own request timeouts bound it.
             withContext(NonCancellable) { runCatchingNonCancellation { client.forceRefresh() } }
-            // A failed fetch still counts: retrying on every foreground would hammer the CDN offline.
-            lastFetchEpochMs = now
+            // A failed fetch still counts: retrying on every foreground would hammer the CDN offline. But a refresh an erase
+            // overlapped had its write fenced (the count moved), so it did not complete: the next foreground refresh fetches
+            // again instead of reading defaults for the rest of the hour (#1091).
+            lastFetchEpochMs = if (erasures.request() == requestedAt) now else null
             evaluate()
         }
     }
