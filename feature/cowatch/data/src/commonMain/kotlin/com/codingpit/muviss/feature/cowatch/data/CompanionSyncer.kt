@@ -2,6 +2,7 @@ package com.codingpit.muviss.feature.cowatch.data
 
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import com.codingpit.muviss.core.common.AppClock
 import com.codingpit.muviss.core.common.AppDispatchers
 import com.codingpit.muviss.core.database.MuvissDatabase
 import com.codingpit.muviss.core.sync.SyncBackend
@@ -12,11 +13,25 @@ import com.codingpit.muviss.core.sync.companion.CompanionLinkChange
 import com.codingpit.muviss.core.sync.companion.CompanionPage
 import com.codingpit.muviss.core.sync.companion.CompanionPoolEntryChange
 import com.codingpit.muviss.core.sync.companion.CompanionTable
+import com.codingpit.muviss.core.sync.isSyncWriteRefusal
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
+/** What one co-watch cycle came to. [NotEntitled] is the paywall, not a failure (ADR 0019). */
+sealed interface CompanionSyncResult {
+    data object Synced : CompanionSyncResult
+
+    data object NotEntitled : CompanionSyncResult
+}
+
 /**
  * Moves co-watch rows to and from the cloud (EPIC 41, ADR 0022).
+ *
+ * The paid gate (ADR 0019, #285) is the same one [com.codingpit.muviss.core.sync.SyncEngine] applies to
+ * the library, and it is checked here before any table is touched: no live `sync_until` claim renews the
+ * session once, and still none means [CompanionSyncResult.NotEntitled] with no push and no pull. An
+ * unpaid pull is `200 []` and would read as "nothing new"; an unpaid push is a 403 that would read as a
+ * failure. Neither is reported as such.
  *
  * The part worth reading is [applyPage]. A pull returns rows in both
  * directions — the policy grants a read to the author and to the addressee — so
@@ -40,18 +55,44 @@ internal class CompanionSyncer(
     private val backend: SyncBackend,
     private val companionBackend: CompanionBackend,
     private val dispatchers: AppDispatchers,
+    private val clock: AppClock,
 ) {
     private val links = database.companionLinkQueries
     private val pools = database.companionPoolQueries
     private val cursors = database.syncCursorQueries
 
     /** One cycle: push what changed, then pull and apply. Mirrors `SyncEngine.runSync`'s order, for the same reason (ADR 0009). */
-    suspend fun syncNow(): Result<Unit> = withContext(dispatchers.io) {
-        val me = backend.session.first()?.userId ?: return@withContext Result.success(Unit)
-        runCatching {
-            push(me).getOrThrow()
-            pull(me).getOrThrow()
+    suspend fun syncNow(): Result<CompanionSyncResult> = withContext(dispatchers.io) {
+        val me = backend.session.first()?.userId ?: return@withContext Result.success(CompanionSyncResult.Synced)
+        runCatching { cycle(me) }
+    }
+
+    private suspend fun cycle(me: String): CompanionSyncResult {
+        if (!serverWillAcceptSync()) return CompanionSyncResult.NotEntitled
+        push(me).exceptionOrNull()?.let { failure ->
+            // Refused with no live grant is the paywall. Refused under a live grant is a forged or
+            // otherwise forbidden row, and stays a failure: the same answer, a different cause.
+            if (failure.isSyncWriteRefusal() && !credentialsGrantSync()) return CompanionSyncResult.NotEntitled
+            throw failure
         }
+        pull(me).getOrThrow()
+        // The grant can lapse mid-cycle. Whatever pages arrived are real; "synced" must not be claimed
+        // over a pull that could not see anything.
+        return if (credentialsGrantSync()) CompanionSyncResult.Synced else CompanionSyncResult.NotEntitled
+    }
+
+    /** Whether the credentials carry a grant the server will still honour now. Local; no network. */
+    private suspend fun credentialsGrantSync(): Boolean = backend.syncGrantedUntil()?.let { it > clock.nowEpochMs() } ?: false
+
+    /**
+     * Whether the server will accept this cycle. Credentials keep the grant they were minted with, so a
+     * purchase reaches them only through new ones: renew once, then ask again. A renewal that fails
+     * propagates and is reported as a failure, since it is not a verdict on the account.
+     */
+    private suspend fun serverWillAcceptSync(): Boolean {
+        if (credentialsGrantSync()) return true
+        backend.refreshSession().getOrThrow()
+        return credentialsGrantSync()
     }
 
     private suspend fun push(me: String): Result<Unit> {

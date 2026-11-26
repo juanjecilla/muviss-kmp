@@ -110,3 +110,20 @@ class SyncSessionExpiredException(cause: Throwable? = null) : RuntimeException("
  * [SyncFailureReason.classify] still reads the cause for the second case.
  */
 class SyncWriteRefusedException(cause: Throwable) : RuntimeException("The sync server's access policy refused the write", cause)
+
+/**
+ * Whether this failure, or one of its causes, is a [SyncWriteRefusedException]. The engine and the
+ * co-watch syncer both read the paywall from it, so the cause walk lives here once.
+ */
+fun Throwable.isSyncWriteRefusal(): Boolean {
+    var current: Throwable? = this
+    var depth = 0
+    while (current != null && depth < REFUSAL_CAUSE_DEPTH) {
+        if (current is SyncWriteRefusedException) return true
+        current = current.cause
+        depth++
+    }
+    return false
+}
+
+private const val REFUSAL_CAUSE_DEPTH = 8
