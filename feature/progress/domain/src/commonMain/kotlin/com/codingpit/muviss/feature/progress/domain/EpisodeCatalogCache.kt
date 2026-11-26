@@ -30,7 +30,7 @@ class EpisodeCatalogCache(
     private val fetchEpisodeCatalog: FetchEpisodeCatalogUseCase,
     private val store: EpisodeCatalogStore,
     // Shared with Delete all data (#1056): a fetch that lands after the erase must not re-create the deleted rows.
-    private val erasures: DataEraseFence = DataEraseFence(),
+    private val erasures: DataEraseFence,
 ) {
 
     private val _catalogs = MutableStateFlow<Map<MediaId, List<Season>>>(emptyMap())

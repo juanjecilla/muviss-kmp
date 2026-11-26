@@ -76,7 +76,7 @@ class WatchProviderRefresher(
     private val concurrency: Int = REFRESH_CONCURRENCY,
     private val maxAgeMs: Long = DEFAULT_MAX_AGE_MS,
     // Shared with Delete all data (#1056): an answer requested before the erase is not cached after it.
-    private val erasures: DataEraseFence = DataEraseFence(),
+    private val erasures: DataEraseFence,
 ) {
     /** Ensures the cache is current for [mediaIds], then returns each one's flatrate ids (fresh or, on a failed fetch, stale). */
     suspend fun refresh(mediaIds: Set<MediaId>): Map<MediaId, Set<String>> {

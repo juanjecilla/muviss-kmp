@@ -21,7 +21,7 @@ internal class TmdbWatchProviderFill(
     private val source: WatchProviderSource,
     private val notFound: NotFoundTitles,
     // Shared with Delete all data (#1056): an answer requested before the erase is not cached after it.
-    private val erasures: DataEraseFence = DataEraseFence(),
+    private val erasures: DataEraseFence,
 ) : WatchProviderFill {
 
     override suspend fun fill(mediaIds: List<MediaId>, region: String) {

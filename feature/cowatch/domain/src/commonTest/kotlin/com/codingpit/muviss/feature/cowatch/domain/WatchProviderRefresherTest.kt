@@ -67,7 +67,7 @@ class WatchProviderRefresherTest {
     fun a_never_cached_title_is_fetched_and_stored() = runTest {
         val cache = FakeCache()
         val source = FakeSource().apply { nextResult = Result.success(setOf("8")) }
-        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -81,7 +81,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource()
         val clock = FakeClock(1_000L) // well inside the default 24h TTL
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -95,7 +95,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource().apply { nextResult = Result.success(setOf("9")) }
         val clock = FakeClock(oneDayMs + 1)
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -110,7 +110,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource(region = "GB").apply { nextResult = Result.success(setOf("30")) }
         val clock = FakeClock(1L) // far inside the TTL
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -124,7 +124,7 @@ class WatchProviderRefresherTest {
         val cache = FakeCache().apply { stored[id] = CachedProviders("US", setOf("8"), fetchedAtEpochMs = 0L) }
         val source = FakeSource().apply { nextResult = Result.failure(RuntimeException("offline")) }
         val clock = FakeClock(oneDayMs + 1)
-        val refresher = WatchProviderRefresher(cache, source, clock)
+        val refresher = WatchProviderRefresher(cache, source, clock, erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -135,7 +135,7 @@ class WatchProviderRefresherTest {
     fun a_failed_fetch_with_nothing_cached_yields_an_empty_set_not_an_error() = runTest {
         val cache = FakeCache()
         val source = FakeSource().apply { nextResult = Result.failure(RuntimeException("offline")) }
-        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), erasures = DataEraseFence())
 
         val result = refresher.refresh(setOf(id))
 
@@ -146,7 +146,7 @@ class WatchProviderRefresherTest {
     fun an_empty_request_touches_neither_the_cache_nor_the_source() = runTest {
         val cache = FakeCache()
         val source = FakeSource()
-        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L))
+        val refresher = WatchProviderRefresher(cache, source, FakeClock(0L), erasures = DataEraseFence())
 
         assertTrue(refresher.refresh(emptySet()).isEmpty())
         assertEquals(0, cache.getCallCount)
